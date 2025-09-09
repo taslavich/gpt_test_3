@@ -2,11 +2,11 @@ package main
 
 import (
 	"context"
-	"fmt"
+	_ "fmt"
 	"log"
 	"os"
 
-	"github.com/redis/go-redis/v9"
+	_ "github.com/redis/go-redis/v9"
 	"gitlab.com/twinbid-exchange/RTB-exchange/internal/config"
 	"gitlab.com/twinbid-exchange/RTB-exchange/internal/geoBadIp"
 	httpServer "gitlab.com/twinbid-exchange/RTB-exchange/internal/http"

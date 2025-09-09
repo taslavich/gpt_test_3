@@ -16,7 +16,7 @@ import (
 	maxproc "gitlab.com/twinbid-exchange/RTB-exchange/internal/mp"
 	dspRouterWeb "gitlab.com/twinbid-exchange/RTB-exchange/internal/services/dspRouter/web"
 
-	"github.com/redis/go-redis/v9"
+	_ "github.com/redis/go-redis/v9"
 	"google.golang.org/grpc"
 )
 

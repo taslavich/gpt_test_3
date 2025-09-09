@@ -14,7 +14,7 @@ import (
 	orchestrator "gitlab.com/twinbid-exchange/RTB-exchange/internal/services/orchestrator/service"
 	orchestratorWeb "gitlab.com/twinbid-exchange/RTB-exchange/internal/services/orchestrator/web"
 
-	"github.com/redis/go-redis/v9"
+	_ "github.com/redis/go-redis/v9"
 	"google.golang.org/grpc"
 )
 
