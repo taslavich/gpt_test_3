@@ -24,7 +24,7 @@ func main() {
 	}
 	log.Println("Config initialized!")
 
-	redisClient := redis.NewClient(&redis.Options{
+	/*redisClient := redis.NewClient(&redis.Options{
 		Addr:     fmt.Sprintf("%s:%s", cfg.RedisHost, cfg.RedisPort),
 		Password: cfg.RedisPassword,
 		DB:       cfg.RedisDB,
@@ -36,7 +36,7 @@ func main() {
 	if err := redisClient.Ping(ctx).Err(); err != nil {
 		log.Fatalf("Failed to connect to Redis: %v", err)
 	}
-	log.Println("✅ Connected to Redis")
+	log.Println("✅ Connected to Redis")*/
 
 	if _, err := os.Stat(cfg.GeoIpDbPath); os.IsNotExist(err) {
 		log.Fatalf("GeoIP file does not exist at path: %s", cfg.GeoIpDbPath)
@@ -64,7 +64,7 @@ func main() {
 	sppAdapterWeb.InitRoutes(
 		ctx,
 		router,
-		redisClient,
+		nil,
 		badIp.IsBad,
 		geoIp.GetCountryISO,
 		client,
