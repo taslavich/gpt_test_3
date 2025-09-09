@@ -28,7 +28,7 @@ func main() {
 	}
 	log.Println("Config initialized!")
 
-	redisClient := redis.NewClient(&redis.Options{
+	/*redisClient := redis.NewClient(&redis.Options{
 		Addr:     fmt.Sprintf("%s:%s", cfg.RedisHost, cfg.RedisPort),
 		Password: cfg.RedisPassword,
 		DB:       cfg.RedisDB,
@@ -38,7 +38,7 @@ func main() {
 	if err := redisClient.Ping(ctx).Err(); err != nil {
 		log.Fatalf("Failed to connect to Redis: %v", err)
 	}
-	log.Println("✅ Connected to Redis")
+	log.Println("✅ Connected to Redis")*/
 
 	o := orchestrator.NewOrchestrator(cfg.UriOfBidEngine, cfg.UriOfDspRouter)
 
@@ -52,7 +52,7 @@ func main() {
 		orchestratorWeb.NewServer(
 			clients.BidEngineGrpcClient,
 			clients.DspRouterGrpcClient,
-			redisClient,
+			nil,
 			cfg.GetBidsTimeout,
 			cfg.AuctionTimeout,
 		),
