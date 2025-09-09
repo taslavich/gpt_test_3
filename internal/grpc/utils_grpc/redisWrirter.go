@@ -2,7 +2,7 @@ package utils
 
 import (
 	"context"
-	"fmt"
+	_ "fmt"
 
 	"github.com/redis/go-redis/v9"
 )
