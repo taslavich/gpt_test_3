@@ -16,7 +16,7 @@ import (
 	maxproc "gitlab.com/twinbid-exchange/RTB-exchange/internal/mp"
 	dspRouterWeb "gitlab.com/twinbid-exchange/RTB-exchange/internal/services/dspRouter/web"
 
-	_ "github.com/redis/go-redis/v9"
+	"github.com/redis/go-redis/v9"
 	"google.golang.org/grpc"
 )
 
@@ -36,7 +36,7 @@ func main() {
 
 	log.Println("Timeout", cfg.BidResponsesTimeout)
 
-	/*redisClient := redis.NewClient(&redis.Options{
+	redisClient := redis.NewClient(&redis.Options{
 		Addr:     fmt.Sprintf("%s:%s", cfg.RedisHost, cfg.RedisPort),
 		Password: cfg.RedisPassword,
 		DB:       cfg.RedisDB,
@@ -46,7 +46,7 @@ func main() {
 	if err := waitForRedis(ctx, redisClient, 10, 2*time.Second); err != nil {
 		log.Fatalf("Failed to connect to Redis: %v", err)
 	}
-	log.Println("✅ Connected to Redis")*/
+	log.Println("✅ Connected to Redis")
 
 	ruleManager := filter.NewRuleManager()
 
@@ -94,7 +94,7 @@ func main() {
 			processor,
 			cfg.DSPEndpoints_v_2_4,
 			cfg.DSPEndpoints_v_2_5,
-			nil,
+			redisClient,
 			cfg.BidResponsesTimeout,
 			cfg.MaxParallelRequests,
 		),
@@ -134,7 +134,7 @@ func main() {
 	}
 }
 
-/*func waitForRedis(ctx context.Context, client *redis.Client, attempts int, delay time.Duration) error {
+func waitForRedis(ctx context.Context, client *redis.Client, attempts int, delay time.Duration) error {
 	var lastErr error
 	for attempt := 1; attempt <= attempts; attempt++ {
 		if err := client.Ping(ctx).Err(); err == nil {
@@ -152,7 +152,7 @@ func main() {
 	}
 
 	return fmt.Errorf("redis ping failed after %d attempts: %w", attempts, lastErr)
-}*/
+}
 
 func waitForFile(ctx context.Context, path string, attempts int, delay time.Duration) error {
 	var lastErr error
