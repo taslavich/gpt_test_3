@@ -125,7 +125,7 @@ case "$1" in
         ;;
     start)
         echo "🚀 Starting ALL services (infra + core + mocks)..."
-        #$0 start-infra
+        $0 start-infra
         sleep 3
         $0 start-core
         sleep 2
@@ -153,7 +153,7 @@ case "$1" in
         sleep 1
         $0 stop-core
         sleep 1
-        #$0 stop-infra
+        $0 stop-infra
         echo "✅ All services stopped"
         ;;
     restart)
