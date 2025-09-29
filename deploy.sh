@@ -7,10 +7,16 @@ K8S_DIR="$SCRIPT_DIR/deploy/k8s"
 ASSETS_DIR="$SCRIPT_DIR/deploy/assets"
 NAMESPACE="exchange"
 
+METALLB_VERSION="${METALLB_VERSION:-v0.13.12}"
+METALLB_MANIFEST_URL="${METALLB_MANIFEST_URL:-https://raw.githubusercontent.com/metallb/metallb/$METALLB_VERSION/config/manifests/metallb-native.yaml}"
+METALLB_MANIFEST_PATH="${METALLB_MANIFEST_PATH:-$ASSETS_DIR/metallb/metallb-native.yaml}"
+METALLB_IP_POOL_NAME="${METALLB_IP_POOL_NAME:-rtb-exchange-pool}"
+METALLB_L2_ADVERTISEMENT_NAME="${METALLB_L2_ADVERTISEMENT_NAME:-rtb-exchange-l2}"
+
 echo "=== RTB Exchange Deployment ==="
 
 usage() {
-    echo "Usage: $0 [all|configs|redis|kafka|clickhouse|loaders|services|gateway|ingress|status|logs|test|clean|destroy]"
+    echo "Usage: $0 [all|configs|redis|kafka|clickhouse|loaders|services|gateway|ingress|metallb|status|logs|test|clean|destroy]"
     echo "  all         - Full deployment (default)"
     echo "  configs     - Apply only configs"
     echo "  redis       - Deploy only Redis"
@@ -20,11 +26,129 @@ usage() {
     echo "  services    - Deploy only microservices"
     echo "  gateway     - Deploy only external gateway"
     echo "  ingress     - Deploy only ingress"
+    echo "  metallb     - Install/refresh MetalLB load balancer"
     echo "  status      - Check deployment status"
     echo "  logs        - Show logs"
     echo "  test        - Test endpoints"
     echo "  clean       - Remove all resources but keep namespace"
     echo "  destroy     - COMPLETELY remove everything including namespace"
+}
+
+ensure_metallb_manifest() {
+    local manifest_dir
+    manifest_dir="$(dirname "$METALLB_MANIFEST_PATH")"
+
+    if [ -f "$METALLB_MANIFEST_PATH" ]; then
+        return 0
+    fi
+
+    if [ ! -d "$manifest_dir" ]; then
+        mkdir -p "$manifest_dir"
+    fi
+
+    if ! command -v curl >/dev/null 2>&1; then
+        echo "❌ curl is required to download MetalLB manifest. Install curl or place manifest at $METALLB_MANIFEST_PATH manually"
+        return 1
+    fi
+
+    echo "🌐 Downloading MetalLB manifest ($METALLB_VERSION)..."
+    if ! curl -fsSL "$METALLB_MANIFEST_URL" -o "$METALLB_MANIFEST_PATH.tmp"; then
+        echo "❌ Failed to download MetalLB manifest from $METALLB_MANIFEST_URL"
+        echo "   Please download it manually and save as $METALLB_MANIFEST_PATH"
+        rm -f "$METALLB_MANIFEST_PATH.tmp"
+        return 1
+    fi
+
+    mv "$METALLB_MANIFEST_PATH.tmp" "$METALLB_MANIFEST_PATH"
+    echo "✅ MetalLB manifest cached at $METALLB_MANIFEST_PATH"
+}
+
+detect_metallb_range() {
+    if [ -n "${METALLB_IP_RANGE:-}" ]; then
+        echo "$METALLB_IP_RANGE"
+        return 0
+    fi
+
+    if ! command -v kubectl >/dev/null 2>&1; then
+        return 1
+    fi
+
+    local node_ip
+    node_ip=$(kubectl get nodes -o jsonpath='{.items[0].status.addresses[?(@.type=="InternalIP")].address}' 2>/dev/null || true)
+
+    if [[ "$node_ip" =~ ^([0-9]+)\.([0-9]+)\.([0-9]+)\.([0-9]+)$ ]]; then
+        local prefix
+        prefix="${BASH_REMATCH[1]}.${BASH_REMATCH[2]}.${BASH_REMATCH[3]}"
+        echo "${prefix}.240-${prefix}.250"
+    fi
+}
+
+apply_metallb_config() {
+    local ip_range
+    ip_range=$(detect_metallb_range)
+
+    if [ -z "$ip_range" ]; then
+        echo "⚠️  Could not detect IP range for MetalLB automatically."
+        echo "   Set METALLB_IP_RANGE (e.g. 192.168.1.240-192.168.1.250) and re-run the script."
+        return 1
+    fi
+
+    echo "📝 Configuring MetalLB IP pool with range $ip_range"
+    cat <<EOF | kubectl apply -f -
+apiVersion: metallb.io/v1beta1
+kind: IPAddressPool
+metadata:
+  name: ${METALLB_IP_POOL_NAME}
+  namespace: metallb-system
+spec:
+  addresses:
+    - $ip_range
+---
+apiVersion: metallb.io/v1beta1
+kind: L2Advertisement
+metadata:
+  name: ${METALLB_L2_ADVERTISEMENT_NAME}
+  namespace: metallb-system
+spec:
+  ipAddressPools:
+    - ${METALLB_IP_POOL_NAME}
+EOF
+}
+
+ensure_metallb() {
+    if [[ "${SKIP_METALLB_INSTALL:-0}" == "1" ]]; then
+        echo "⏭️  Skipping MetalLB installation (SKIP_METALLB_INSTALL=1)"
+        return 0
+    fi
+
+    if ! command -v kubectl >/dev/null 2>&1; then
+        echo "❌ kubectl is required to install MetalLB"
+        return 1
+    fi
+
+    ensure_metallb_manifest || return 1
+
+    if kubectl get namespace metallb-system >/dev/null 2>&1; then
+        echo "✅ MetalLB namespace already exists"
+    else
+        echo "🛠️  Installing MetalLB components..."
+    fi
+
+    echo "📦 Applying MetalLB core manifests..."
+    kubectl apply -f "$METALLB_MANIFEST_PATH"
+
+    echo "⏳ Waiting for MetalLB CRDs to be established..."
+    kubectl wait --for=condition=Established crd/ipaddresspools.metallb.io --timeout=120s >/dev/null
+    kubectl wait --for=condition=Established crd/l2advertisements.metallb.io --timeout=120s >/dev/null
+
+    echo "⏳ Waiting for MetalLB controller..."
+    kubectl rollout status deployment/controller -n metallb-system --timeout=180s
+    echo "⏳ Waiting for MetalLB speaker..."
+    kubectl rollout status daemonset/speaker -n metallb-system --timeout=180s
+
+    apply_metallb_config || return 1
+
+    echo "✅ MetalLB is ready"
 }
 
 # Функция для настройки k3s
@@ -133,7 +257,10 @@ auto_setup_before_deploy() {
     else
         echo "✅ Local registry is running"
     fi
-    
+
+    # Устанавливаем MetalLB для автоматической выдачи внешних IP
+    ensure_metallb
+
     # Проверяем, что образы существуют в registry
     echo "🔍 Checking if images are available in registry..."
     local images_missing=0
@@ -587,6 +714,9 @@ case "${1:-all}" in
     "ingress")
         auto_setup_before_deploy
         deploy_ingress
+        ;;
+    "metallb")
+        ensure_metallb
         ;;
     "status")
         check_status
