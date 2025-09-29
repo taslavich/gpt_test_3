@@ -1,0 +1,20 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: clickhouse-loader-config
+  namespace: exchange
+data:
+  KAFKA_BROKER: "kafka-service:9092"
+  KAFKA_TOPIC: "rtb"
+  KAFKA_GROUP_ID: "clickhouse-loader"
+  FLUSH_INTERVAL_SEC: "10"
+
+  CLICK_HOUSE_TABLE: "rtb_events"
+  CLICKHOUSE_BATCH_SIZE: "1000"
+  CLICKHOUSE_USERNAME: "default"
+  CLICKHOUSE_PASSWORD: "GbbL2d7.dd.hi"
+  CLICKHOUSE_DB: "rtb"
+  CLICKHOUSE_HOST: "hntzp0jsnf.europe-west4.gcp.clickhouse.cloud"
+  CLICKHOUSE_PORT: "9440"
+
+  TIMEOUT_SEC: "30"

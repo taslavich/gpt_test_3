@@ -1,0 +1,12 @@
+# GeoIP базы
+GeoIP2_City.mmdb
+*.mmdb
+
+# Папка с данными реестра
+/registry-data/
+registry-data/
+
+# Также можно добавить общие правила для БД и бинарных файлов
+*.db
+*.sqlite
+*.sqlite3

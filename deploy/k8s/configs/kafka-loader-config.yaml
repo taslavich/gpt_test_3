@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: kafka-loader-config
+  namespace: exchange
+data:
+  REDIS_HOST: "redis-service"
+  REDIS_PORT: "6379"
+  REDIS_DB: "0"
+
+  KAFKA_BROKER: "kafka-service:9092"
+  KAFKA_TOPIC: "rtb"
+  FLUSH_INTERVAL_SEC: "10"
+
+  BATCH_SIZE: "1000"

@@ -1,0 +1,39 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: orchestrator-deployment
+  namespace: exchange
+  labels:
+    app: orchestrator
+    tier: backend
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: orchestrator
+  template:
+    metadata:
+      labels:
+        app: orchestrator
+        tier: backend
+    spec:
+      containers:
+        - name: orchestrator
+          image: localhost:5000/exchange/orchestrator:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8081
+          envFrom:
+            - configMapRef:
+                name: orchestrator-config
+            - configMapRef:
+                name: redis-config
+            - secretRef:
+                name: redis-auth
+          resources:
+            requests:
+              memory: "128Mi"
+              cpu: "150m"
+            limits:
+              memory: "256Mi"
+              cpu: "300m"

@@ -1,0 +1,16 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: clickhouse-loader-service
+  namespace: exchange
+  labels:
+    app: clickhouse-loader
+spec:
+  selector:
+    app: clickhouse-loader
+  ports:
+    - port: 8084
+      targetPort: 8084
+      protocol: TCP
+      name: http
+  type: ClusterIP
