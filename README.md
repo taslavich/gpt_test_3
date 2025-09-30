@@ -71,7 +71,6 @@ curl -k -X POST https://rtb.example.com/bidRequest/v2_4 \
       }'
 ```
 
-
 ### POST `/bidRequest/v2_5`
 
 ```bash
@@ -193,6 +192,7 @@ grpcurl -insecure \
 ```bash
 # Redis
 kubectl port-forward -n exchange deployment/redis-deployment 6379:6379
+
 # Kafka (порт клиента)
 kubectl port-forward -n exchange svc/kafka-service 9092:9092
 ```
