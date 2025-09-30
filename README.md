@@ -29,6 +29,7 @@ export METALLB_IP_ADDRESS=203.0.113.10
 
 > ℹ️ Если указанный IP уже назначен сетевому интерфейсу узла (например, у вас единственный публичный адрес сервера), `deploy.sh` автоматически пропустит конфигурацию пула MetalLB и создаст `gateway-service` с полем `externalIPs`. В этом режиме Kubernetes начинает слушать запросы на выбранном IP без участия MetalLB, а команда `kubectl get svc gateway-service` сразу покажет внешний адрес без статуса `<pending>`.
 
+
 ### HTTP/HTTPS маршрутизация
 
 nginx внутри gateway разбирает URL-путь и отправляет запрос в нужный сервис. Все HTTP API и gRPC эндпоинты доступны по `http://<EXTERNAL_IP>/...` или `https://<DOMAIN>/...` (при наличии TLS-секрета `gateway-tls`).
