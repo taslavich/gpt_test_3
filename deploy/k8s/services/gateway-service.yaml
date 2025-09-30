@@ -8,6 +8,7 @@ metadata:
     component: edge
 spec:
   type: LoadBalancer
+  loadBalancerIP: 142.93.239.222
   selector:
     app: gateway
     component: edge
