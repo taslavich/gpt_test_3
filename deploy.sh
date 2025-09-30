@@ -13,6 +13,16 @@ METALLB_MANIFEST_PATH="${METALLB_MANIFEST_PATH:-$ASSETS_DIR/metallb/metallb-nati
 METALLB_IP_POOL_NAME="${METALLB_IP_POOL_NAME:-rtb-exchange-pool}"
 METALLB_L2_ADVERTISEMENT_NAME="${METALLB_L2_ADVERTISEMENT_NAME:-rtb-exchange-l2}"
 
+CERT_MANAGER_VERSION="${CERT_MANAGER_VERSION:-v1.14.4}"
+CERT_MANAGER_MANIFEST_URL="${CERT_MANAGER_MANIFEST_URL:-https://github.com/cert-manager/cert-manager/releases/download/$CERT_MANAGER_VERSION/cert-manager.yaml}"
+CERT_MANAGER_MANIFEST_PATH="${CERT_MANAGER_MANIFEST_PATH:-$ASSETS_DIR/cert-manager/cert-manager.yaml}"
+CERT_MANAGER_NAMESPACE="${CERT_MANAGER_NAMESPACE:-cert-manager}"
+
+INGRESS_NGINX_VERSION="${INGRESS_NGINX_VERSION:-controller-v1.10.1}"
+INGRESS_NGINX_MANIFEST_URL="${INGRESS_NGINX_MANIFEST_URL:-https://raw.githubusercontent.com/kubernetes/ingress-nginx/$INGRESS_NGINX_VERSION/deploy/static/provider/cloud/deploy.yaml}"
+INGRESS_NGINX_MANIFEST_PATH="${INGRESS_NGINX_MANIFEST_PATH:-$ASSETS_DIR/ingress-nginx/deploy.yaml}"
+DEFAULT_INGRESS_CLASS="${DEFAULT_INGRESS_CLASS:-nginx}"
+
 echo "=== RTB Exchange Deployment ==="
 
 usage() {
@@ -61,6 +71,174 @@ ensure_metallb_manifest() {
 
     mv "$METALLB_MANIFEST_PATH.tmp" "$METALLB_MANIFEST_PATH"
     echo "✅ MetalLB manifest cached at $METALLB_MANIFEST_PATH"
+}
+
+ensure_ingress_manifest() {
+    local manifest_path="$INGRESS_NGINX_MANIFEST_PATH"
+    local manifest_dir
+    manifest_dir="$(dirname "$manifest_path")"
+
+    if [ -f "$manifest_path" ]; then
+        return 0
+    fi
+
+    mkdir -p "$manifest_dir"
+
+    if ! command -v curl >/dev/null 2>&1; then
+        echo "❌ curl is required to download ingress-nginx manifest. Install curl or place manifest at $manifest_path manually"
+        return 1
+    fi
+
+    echo "🌐 Downloading ingress-nginx manifest ($INGRESS_NGINX_VERSION)..."
+    if ! curl -fsSL "$INGRESS_NGINX_MANIFEST_URL" -o "$manifest_path.tmp"; then
+        echo "❌ Failed to download ingress-nginx manifest from $INGRESS_NGINX_MANIFEST_URL"
+        rm -f "$manifest_path.tmp"
+        return 1
+    fi
+
+    mv "$manifest_path.tmp" "$manifest_path"
+    echo "✅ ingress-nginx manifest cached at $manifest_path"
+}
+
+ensure_cert_manager_manifest() {
+    local manifest_path="$CERT_MANAGER_MANIFEST_PATH"
+    local manifest_dir
+    manifest_dir="$(dirname "$manifest_path")"
+
+    if [ -f "$manifest_path" ]; then
+        return 0
+    fi
+
+    mkdir -p "$manifest_dir"
+
+    if ! command -v curl >/dev/null 2>&1; then
+        echo "❌ curl is required to download cert-manager manifest. Install curl or place manifest at $manifest_path manually"
+        return 1
+    fi
+
+    echo "🌐 Downloading cert-manager manifest ($CERT_MANAGER_VERSION)..."
+    if ! curl -fsSL "$CERT_MANAGER_MANIFEST_URL" -o "$manifest_path.tmp"; then
+        echo "❌ Failed to download cert-manager manifest from $CERT_MANAGER_MANIFEST_URL"
+        rm -f "$manifest_path.tmp"
+        return 1
+    fi
+
+    mv "$manifest_path.tmp" "$manifest_path"
+    echo "✅ cert-manager manifest cached at $manifest_path"
+}
+
+ensure_ingress_nginx() {
+    if [[ "${SKIP_INGRESS_INSTALL:-0}" == "1" ]]; then
+        echo "⏭️  Skipping ingress-nginx installation (SKIP_INGRESS_INSTALL=1)"
+        return 0
+    fi
+
+    if ! command -v kubectl >/dev/null 2>&1; then
+        echo "❌ kubectl is required to install ingress-nginx"
+        return 1
+    fi
+
+    ensure_ingress_manifest || return 1
+
+    echo "📦 Applying ingress-nginx manifests..."
+    kubectl apply -f "$INGRESS_NGINX_MANIFEST_PATH"
+
+    echo "⏳ Waiting for ingress-nginx controller to be ready..."
+    kubectl rollout status deployment/ingress-nginx-controller -n ingress-nginx --timeout=240s
+    echo "✅ ingress-nginx is ready"
+}
+
+ensure_cert_manager() {
+    if [[ "${SKIP_CERT_MANAGER_INSTALL:-0}" == "1" ]]; then
+        echo "⏭️  Skipping cert-manager installation (SKIP_CERT_MANAGER_INSTALL=1)"
+        return 0
+    fi
+
+    if ! command -v kubectl >/dev/null 2>&1; then
+        echo "❌ kubectl is required to install cert-manager"
+        return 1
+    fi
+
+    ensure_cert_manager_manifest || return 1
+
+    echo "📦 Applying cert-manager manifests..."
+    kubectl apply -f "$CERT_MANAGER_MANIFEST_PATH"
+
+    echo "⏳ Waiting for cert-manager components..."
+    kubectl rollout status deployment/cert-manager -n "$CERT_MANAGER_NAMESPACE" --timeout=240s
+    kubectl rollout status deployment/cert-manager-webhook -n "$CERT_MANAGER_NAMESPACE" --timeout=240s
+    kubectl rollout status deployment/cert-manager-cainjector -n "$CERT_MANAGER_NAMESPACE" --timeout=240s
+    echo "✅ cert-manager is ready"
+}
+
+apply_template() {
+    local template_path="$1"
+
+    if [ ! -f "$template_path" ]; then
+        echo "❌ Template not found: $template_path"
+        return 1
+    fi
+
+    if ! command -v envsubst >/dev/null 2>&1; then
+        echo "❌ envsubst is required to render templates. Install gettext or provide manifests manually."
+        return 1
+    fi
+
+    local tmp_file
+    tmp_file=$(mktemp)
+    envsubst < "$template_path" > "$tmp_file"
+    kubectl apply -f "$tmp_file"
+    rm -f "$tmp_file"
+}
+
+resolve_ingress_host() {
+    local ingress_service="${INGRESS_SERVICE_NAME:-ingress-nginx-controller}"
+    local ingress_namespace="${INGRESS_NAMESPACE:-ingress-nginx}"
+    local lb_host=""
+
+    if command -v kubectl >/dev/null 2>&1; then
+        lb_host=$(kubectl get svc "$ingress_service" -n "$ingress_namespace" -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || true)
+        if [ -z "$lb_host" ] || [ "$lb_host" = "<no value>" ]; then
+            lb_host=$(kubectl get svc "$ingress_service" -n "$ingress_namespace" -o jsonpath='{.status.loadBalancer.ingress[0].hostname}' 2>/dev/null || true)
+        fi
+    fi
+
+    if [ -z "$lb_host" ] || [ "$lb_host" = "<no value>" ]; then
+        lb_host="${RTB_DOMAIN:-}"
+    fi
+
+    if [ -z "$lb_host" ]; then
+        lb_host="127.0.0.1"
+    fi
+
+    echo "$lb_host"
+}
+
+print_ingress_usage() {
+    if ! command -v kubectl >/dev/null 2>&1; then
+        return
+    fi
+
+    local ingress_host
+    ingress_host=$(resolve_ingress_host)
+
+    echo ""
+    echo "=== External ingress entrypoint ==="
+    echo "HTTP : http://$ingress_host/"
+    echo "HTTPS: https://$ingress_host/"
+    echo "SPP Adapter health: https://$ingress_host/spp-adapter/health"
+    local domain="${RTB_DOMAIN:-rtb.local}"
+
+    if [[ "$domain" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+        echo "gRPC сервисы : требуется доменное имя (RTB_DOMAIN). При IP используйте \"kubectl port-forward\""
+    else
+        local -a grpc_hosts=("router" "orchestrator" "bid-engine")
+        for host in "${grpc_hosts[@]}"; do
+            echo "${host} gRPC : ${host}.${domain} (порт 443, HTTP/2)"
+        done
+    fi
+    echo ""
+    echo "ℹ️  Все входящие HTTP/HTTPS запросы проходят через ingress-nginx по портам 80/443."
 }
 
 detect_metallb_range() {
@@ -260,6 +438,9 @@ auto_setup_before_deploy() {
 
     # Устанавливаем MetalLB для автоматической выдачи внешних IP
     ensure_metallb
+
+    # Устанавливаем ingress-nginx для маршрутизации входящего трафика
+    ensure_ingress_nginx
 
     # Проверяем, что образы существуют в registry
     echo "🔍 Checking if images are available in registry..."
@@ -513,13 +694,92 @@ deploy_gateway() {
 # Функция деплоя ingress
 deploy_ingress() {
     echo "🌐 Deploying ingress..."
-    if [ -d "$K8S_DIR/ingress" ]; then
-        kubectl apply -f "$K8S_DIR/ingress/"
-        echo "✅ Ingress deployed"
+
+    ensure_ingress_nginx
+
+    local domain="${RTB_DOMAIN:-rtb.local}"
+    export RTB_DOMAIN="$domain"
+    export LETSENCRYPT_INGRESS_CLASS="${LETSENCRYPT_INGRESS_CLASS:-$DEFAULT_INGRESS_CLASS}"
+    export LETSENCRYPT_CLUSTER_ANNOTATION_LINE='    # cert-manager disabled'
+
+    local -a grpc_entries=(
+        "router:router-service:8082"
+        "orchestrator:orchestrator-service:8081"
+        "bid-engine:bid-engine-service:8080"
+    )
+
+    local domain_is_ip=0
+    if [[ "$domain" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+        domain_is_ip=1
+        export TLS_DNS_ADDITIONAL_LINES="    # gRPC hostnames отключены (RTB_DOMAIN выглядит как IP)"
+        echo "⚠️  RTB_DOMAIN='$domain' выглядит как IP. Для gRPC через ingress потребуется DNS-имя."
     else
-        echo "❌ Ingress directory not found: $K8S_DIR/ingress/"
-        return 1
+        local extra_dns=""
+        for entry in "${grpc_entries[@]}"; do
+            local subdomain="${entry%%:*}"
+            local fqdn="${subdomain}.${domain}"
+
+            if [ -z "$extra_dns" ]; then
+                extra_dns="    - ${fqdn}"
+            else
+                extra_dns+=$'\n'"    - ${fqdn}"
+            fi
+        done
+
+        export TLS_DNS_ADDITIONAL_LINES="$extra_dns"
     fi
+
+    local enable_acme=0
+    if [ -n "${LETSENCRYPT_EMAIL:-}" ]; then
+        if [[ "$domain" =~ \.local$ ]]; then
+            echo "⚠️  Domain '$domain' выглядит как локальный. Let's Encrypt пропущен."
+        else
+            enable_acme=1
+        fi
+    else
+        echo "ℹ️  LETSENCRYPT_EMAIL не задан, сертификат Let's Encrypt не будет выпрошен."
+    fi
+
+    if [ $enable_acme -eq 1 ]; then
+        ensure_cert_manager
+
+        local env_stage
+        case "${LETSENCRYPT_ENVIRONMENT:-staging}" in
+            prod|production)
+                env_stage="prod"
+                export LETSENCRYPT_SERVER="https://acme-v02.api.letsencrypt.org/directory"
+                ;;
+            *)
+                env_stage="staging"
+                export LETSENCRYPT_SERVER="https://acme-staging-v02.api.letsencrypt.org/directory"
+                ;;
+        esac
+
+        export LETSENCRYPT_ENVIRONMENT="$env_stage"
+        export LETSENCRYPT_CLUSTER_ISSUER="letsencrypt-${env_stage}"
+        export LETSENCRYPT_CLUSTER_ANNOTATION_LINE="    cert-manager.io/cluster-issuer: ${LETSENCRYPT_CLUSTER_ISSUER}"
+
+        apply_template "$K8S_DIR/cert-manager/cluster-issuer.yaml.tpl"
+        apply_template "$K8S_DIR/cert-manager/certificate.yaml.tpl"
+    fi
+
+    apply_template "$K8S_DIR/ingress/gateway-ingress.yaml.tpl"
+    if [ $domain_is_ip -eq 0 ]; then
+        for entry in "${grpc_entries[@]}"; do
+            local subdomain="${entry%%:*}"
+            local rest="${entry#*:}"
+            local service="${rest%%:*}"
+            local port="${rest##*:}"
+
+            export GRPC_INGRESS_NAME="${subdomain}-grpc-ingress"
+            export GRPC_FQDN="${subdomain}.${domain}"
+            export GRPC_SERVICE_NAME="$service"
+            export GRPC_SERVICE_PORT="$port"
+
+            apply_template "$K8S_DIR/ingress/grpc-ingress.yaml.tpl"
+        done
+    fi
+    echo "✅ Ingress манифест применён"
 }
 
 # Функция проверки статуса
@@ -543,6 +803,8 @@ check_status() {
     echo ""
     echo "=== Ingress ==="
     kubectl get ingress -n "$NAMESPACE" 2>/dev/null || echo "No ingress found"
+
+    print_ingress_usage
 }
 
 # Функция показа логов
@@ -580,51 +842,16 @@ test_endpoints() {
         return 1
     fi
 
-    local node_ip
-    node_ip=$(kubectl get nodes -o wide | grep 'Ready' | head -1 | awk '{print $6}')
-    if [ -z "$node_ip" ]; then
-        node_ip="127.0.0.1"
-    fi
-
-    echo "Node IP: $node_ip"
-
     local gateway_host
-    gateway_host=$(kubectl get svc gateway-service -n "$NAMESPACE" -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || true)
-    if [ -z "$gateway_host" ] || [ "$gateway_host" = "<no value>" ]; then
-        gateway_host=$(kubectl get svc gateway-service -n "$NAMESPACE" -o jsonpath='{.status.loadBalancer.ingress[0].hostname}' 2>/dev/null || true)
-    fi
-    if [ -z "$gateway_host" ] || [ "$gateway_host" = "<no value>" ]; then
-        gateway_host=$node_ip
-    fi
+    gateway_host=$(resolve_ingress_host)
 
-    get_gateway_port() {
-        local port_name="$1"
-        local default_value="$2"
-        local jsonpath="{.spec.ports[?(@.name==\\\"$port_name\\\")].port}"
-        local value
-        value=$(kubectl get svc gateway-service -n "$NAMESPACE" -o jsonpath="$jsonpath" 2>/dev/null || true)
-        if [ -z "$value" ]; then
-            value="$default_value"
-        fi
-        echo "$value"
-    }
-
-    local http_port=$(get_gateway_port http 80)
-    local bid_port=$(get_gateway_port bid-engine 8080)
-    local orchestrator_port=$(get_gateway_port orchestrator 8081)
-    local router_port=$(get_gateway_port router 8082)
-    local spp_port=$(get_gateway_port spp-adapter 8083)
-
-    echo "Gateway host: $gateway_host"
+    echo "Ingress endpoint: $gateway_host"
     echo ""
 
     local endpoints=(
-        "gateway:http://$gateway_host:$http_port/healthz"
-        "bid-engine:http://$gateway_host:$bid_port/health"
-        "orchestrator:http://$gateway_host:$orchestrator_port/health"
-        "router:http://$gateway_host:$router_port/health"
-        "spp-adapter:http://$gateway_host:$spp_port/health"
-        "gateway-router:http://$gateway_host:$http_port/router/health"
+        "gateway:http://$gateway_host/healthz"
+        "spp-adapter:http://$gateway_host/spp-adapter/health"
+        "https-gateway:https://$gateway_host/healthz"
     )
 
     for endpoint in "${endpoints[@]}"; do
@@ -632,14 +859,18 @@ test_endpoints() {
         local url=$(echo "$endpoint" | cut -d: -f2-)
 
         echo "Testing $name ($url)..."
-        if curl -s --connect-timeout 5 "$url" >/dev/null; then
+        if [[ "$url" =~ ^https ]]; then
+            curl -sk --connect-timeout 5 "$url" >/dev/null
+        else
+            curl -s --connect-timeout 5 "$url" >/dev/null
+        fi
+
+        if [ $? -eq 0 ]; then
             echo "✅ $name is accessible"
         else
             echo "❌ $name is not accessible"
         fi
     done
-
-    unset -f get_gateway_port
 }
 
 # Основная функция деплоя
