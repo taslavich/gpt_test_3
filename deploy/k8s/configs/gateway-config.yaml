@@ -85,6 +85,15 @@ data:
           proxy_pass http://router;
         }
 
+        location ^~ /bidRequest/ {
+          rewrite ^/bidRequest/(bid|v2_5)/?$ /bid_v_2_5 break;
+          rewrite ^/bidRequest/v2_4/?$ /bid_v_2_4 break;
+          rewrite ^/bidRequest/nurl/?$ /nurl break;
+          rewrite ^/bidRequest/burl/?$ /burl break;
+          rewrite ^/bidRequest/health/?$ /health break;
+          proxy_pass http://spp_adapter;
+        }
+
         location /spp-adapter/ {
           rewrite ^/spp-adapter(/|$)(.*)$ /$2 break;
           proxy_pass http://spp_adapter;
@@ -136,6 +145,30 @@ data:
           proxy_pass http://router;
         }
 
+        location ~ ^/dspRouter\.DspRouterService/ {
+          grpc_set_header Host $host;
+          grpc_pass grpc://router;
+        }
+
+        location ~ ^/orchestrator\.OrchestratorService/ {
+          grpc_set_header Host $host;
+          grpc_pass grpc://orchestrator;
+        }
+
+        location ~ ^/bidEngine\.BidEngineService/ {
+          grpc_set_header Host $host;
+          grpc_pass grpc://bid_engine;
+        }
+
+        location ^~ /bidRequest/ {
+          rewrite ^/bidRequest/(bid|v2_5)/?$ /bid_v_2_5 break;
+          rewrite ^/bidRequest/v2_4/?$ /bid_v_2_4 break;
+          rewrite ^/bidRequest/nurl/?$ /nurl break;
+          rewrite ^/bidRequest/burl/?$ /burl break;
+          rewrite ^/bidRequest/health/?$ /health break;
+          proxy_pass http://spp_adapter;
+        }
+
         location /spp-adapter/ {
           rewrite ^/spp-adapter(/|$)(.*)$ /$2 break;
           proxy_pass http://spp_adapter;
@@ -157,51 +190,4 @@ data:
         }
       }
 
-      server {
-        listen 8080;
-        server_name _;
-        location / {
-          proxy_pass http://bid_engine;
-        }
-      }
-
-      server {
-        listen 8081;
-        server_name _;
-        location / {
-          proxy_pass http://orchestrator;
-        }
-      }
-
-      server {
-        listen 8082;
-        server_name _;
-        location / {
-          proxy_pass http://router;
-        }
-      }
-
-      server {
-        listen 8083;
-        server_name _;
-        location / {
-          proxy_pass http://spp_adapter;
-        }
-      }
-
-      server {
-        listen 8084;
-        server_name _;
-        location / {
-          proxy_pass http://clickhouse_loader;
-        }
-      }
-
-      server {
-        listen 8085;
-        server_name _;
-        location / {
-          proxy_pass http://kafka_loader;
-        }
-      }
     }
