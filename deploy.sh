@@ -12,6 +12,7 @@ METALLB_MANIFEST_URL="${METALLB_MANIFEST_URL:-https://raw.githubusercontent.com/
 METALLB_MANIFEST_PATH="${METALLB_MANIFEST_PATH:-$ASSETS_DIR/metallb/metallb-native.yaml}"
 METALLB_IP_POOL_NAME="${METALLB_IP_POOL_NAME:-rtb-exchange-pool}"
 METALLB_L2_ADVERTISEMENT_NAME="${METALLB_L2_ADVERTISEMENT_NAME:-rtb-exchange-l2}"
+METALLB_IP_ADDRESS="${METALLB_IP_ADDRESS:-142.93.239.222}"
 
 CERT_MANAGER_VERSION="${CERT_MANAGER_VERSION:-v1.14.4}"
 CERT_MANAGER_MANIFEST_URL="${CERT_MANAGER_MANIFEST_URL:-https://github.com/cert-manager/cert-manager/releases/download/$CERT_MANAGER_VERSION/cert-manager.yaml}"
@@ -361,19 +362,11 @@ detect_metallb_range() {
         return 0
     fi
 
-    if [ -n "${METALLB_IP_ADDRESS:-}" ]; then
+    if [ -n "$METALLB_IP_ADDRESS" ]; then
         echo "${METALLB_IP_ADDRESS}-${METALLB_IP_ADDRESS}"
         return 0
     fi
-
-    local primary_ip
-    primary_ip=$(detect_primary_ipv4)
-
-    if [ -n "$primary_ip" ]; then
-        echo "${primary_ip}-${primary_ip}"
-        return 0
-    fi
-
+    
     echo ""
 }
 
@@ -382,7 +375,7 @@ apply_metallb_config() {
     ip_range=$(detect_metallb_range)
 
     if [ -z "$ip_range" ]; then
-        echo "⚠️  Could not detect IP range for MetalLB automatically."
+        echo "⚠️  MetalLB IP range is not configured."
         echo "   Set METALLB_IP_ADDRESS=<public-ip> or METALLB_IP_RANGE=<from-to> and re-run the script."
         return 1
     fi
@@ -552,7 +545,7 @@ auto_setup_before_deploy() {
         echo "✅ Local registry is running"
     fi
 
-    # Устанавливаем MetalLB для автоматической выдачи внешних IP
+    # Устанавливаем MetalLB для выдачи статического внешнего IP
     ensure_metallb
 
     # Проверяем, что образы существуют в registry
