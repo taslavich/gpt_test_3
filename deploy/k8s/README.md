@@ -31,11 +31,12 @@ Ingress принимает входящие соединения только н
 | `/bid-engine/`         | bid-engine     |
 | `/orchestrator/`       | orchestrator   |
 | `/router/`             | router         |
-| `/spp-adapter/`        | spp-adapter    |
+| `/bidRequest/`         | spp-adapter (основной путь) |
+| `/spp-adapter/`        | spp-adapter (обратная совместимость) |
 | `/kafka-loader/`       | kafka-loader   |
 | `/clickhouse-loader/`  | clickhouse-loader |
 
-Проверка: `curl http://<domain>/healthz` или `curl https://<domain>/router/health -k` (если сертификат тестовый).
+Проверка: `curl http://<domain>/healthz` или `curl https://<domain>/bidRequest/health -k` (если сертификат тестовый).
 
 ### Доступ к SPP Adapter
 
@@ -43,33 +44,25 @@ Ingress принимает входящие соединения только н
 
 ```bash
 ./deploy.sh status   # в конце появится блок "External ingress entrypoint"
-curl -k https://<ingress-ip>/spp-adapter/health
+curl -k https://<ingress-ip>/bidRequest/health
 ```
 
-Если настроен домен (`RTB_DOMAIN`), можно обращаться по имени: `https://<домен>/spp-adapter/...`. Для HTTP достаточно заменить схему и порт: `http://<ingress-ip>/spp-adapter/...`.
+Если настроен домен (`RTB_DOMAIN`), можно обращаться по имени: `https://<домен>/bidRequest/...`. Для HTTP достаточно заменить схему и порт: `http://<ingress-ip>/bidRequest/...`.
 
 ### gRPC-доступ к Router, Orchestrator и Bid Engine
 
-Для gRPC сервисов создаются отдельные ingress-объекты (`<service>-grpc-ingress`), которые публикуют их на том же внешнем IP. Каждый сервис получает собственный hostname:
+Отдельные ingress-объекты больше не требуются: gRPC-запросы принимаются тем же ingress-nginx по HTTPS (порт 443) и маршрутизируются по путям `/<package>.<Service>/<Method>`. Достаточно одной DNS-записи `RTB_DOMAIN`.
 
-| Сервис        | Hostname                        | Порт | Kubernetes Service |
-|---------------|---------------------------------|------|--------------------|
-| Router        | `router.<домен>`                | 443  | `router-service`   |
-| Orchestrator  | `orchestrator.<домен>`          | 443  | `orchestrator-service` |
-| Bid Engine    | `bid-engine.<домен>`            | 443  | `bid-engine-service` |
+* Для Let's Encrypt нужен публичный DNS для самого домена (`RTB_DOMAIN`). Поддомены не требуются.
+* В локальной среде можно добавить запись в `/etc/hosts` (см. `deploy/setup-domain.sh`).
+* Для plaintext gRPC используйте `kubectl port-forward`, если ingress доступен только по TLS.
 
-Ingress завершает TLS (секрет `gateway-tls`) и проксирует HTTP/2 прямо на соответствующий сервис.
-
-* Для выпуска сертификата Let's Encrypt требуется реальный DNS с A/AAAA-записями для `RTB_DOMAIN` и перечисленных поддоменов.
-* В локальных окружениях можно добавить все записи в `/etc/hosts`.
-* Если `RTB_DOMAIN` указывает на IP-адрес, gRPC ingress-ы не создаются автоматически: воспользуйтесь `kubectl port-forward deployment/<service>-deployment <порт>:<порт>`.
-
-Быстрая проверка (после настройки DNS):
+Проверка через `grpcurl` (замените домен на свой):
 
 ```bash
-grpcurl -insecure router.$RTB_DOMAIN:443 list
-grpcurl -insecure orchestrator.$RTB_DOMAIN:443 list
-grpcurl -insecure bid-engine.$RTB_DOMAIN:443 list
+grpcurl -insecure -authority $RTB_DOMAIN $RTB_DOMAIN:443 list dspRouter.DspRouterService
+grpcurl -insecure -authority $RTB_DOMAIN $RTB_DOMAIN:443 list orchestrator.OrchestratorService
+grpcurl -insecure -authority $RTB_DOMAIN $RTB_DOMAIN:443 list bidEngine.BidEngineService
 ```
 
 ### Kafka и Redis из внешней сети
@@ -98,7 +91,7 @@ kubectl port-forward -n exchange svc/kafka-service 9092:9092
 
 ```bash
 curl http://<domain>/healthz
-curl -k https://<domain>/spp-adapter/health
+curl -k https://<domain>/bidRequest/health
 ```
 
 ## MetalLB (автоматическая установка)

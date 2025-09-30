@@ -36,23 +36,23 @@
    ./deploy.sh ingress
    ```
 
-> ❗ Для сертификата Let's Encrypt необходим публичный DNS (A/AAAA-записи для `rtb.example.com`, `router.rtb.example.com`, `orchestrator.rtb.example.com`, `bid-engine.rtb.example.com`). В тестовом окружении можно воспользоваться `deploy/setup-domain.sh` для обновления `/etc/hosts`.
+> ❗ Для сертификата Let's Encrypt необходим публичный DNS (A/AAAA-запись для домена, например `rtb.example.com`). В тестовом окружении можно воспользоваться `deploy/setup-domain.sh` для обновления `/etc/hosts`.
 
 ## Сетевые потоки и безопасность
 
 * **Входящий HTTP/HTTPS** — только через `ingress-nginx` → `gateway-service`. Внешний IP один, порты 80/443.
-* **gRPC доступ** — ingress создаёт отдельные хосты `router.<домен>`, `orchestrator.<домен>`, `bid-engine.<домен>` (порт 443, HTTP/2) и проксирует напрямую на соответствующие сервисы. При `RTB_DOMAIN`, заданном как IP-адрес, эти ingress-ы не создаются (используйте `kubectl port-forward`).
+* **gRPC доступ** — те же IP и порты 80/443. Для gRPC используйте HTTPS (HTTP/2) на `https://<домен>:443` с путями `/dspRouter.DspRouterService/*`, `/orchestrator.OrchestratorService/*`, `/bidEngine.BidEngineService/*`.
 * **Внешние исходящие вызовы** — `router` имеет `NetworkPolicy`, разрешающую HTTP/HTTPS и DNS-запросы во внешние сети, поэтому ответы от DSP и ClickHouse Cloud успешно возвращаются.
 * **Kafka/Redis** не получают отдельный внешний IP; для отладки используйте `kubectl port-forward`.
 
 ## Примеры HTTP API SPP Adapter
 
-Базовый URL: `https://rtb.example.com/spp-adapter` (замените домен). Для локального теста добавьте `-k` к `curl`, если сертификат самоподписанный/тестовый.
+Базовый URL: `https://rtb.example.com/bidRequest` (замените домен). Для локального теста добавьте `-k` к `curl`, если сертификат самоподписанный/тестовый. Путь `/bidRequest/bid` — алиас для v2.5.
 
-### POST `/bid_v_2_4`
+### POST `/bidRequest/v2_4`
 
 ```bash
-curl -k -X POST https://rtb.example.com/spp-adapter/bid_v_2_4 \
+curl -k -X POST https://rtb.example.com/bidRequest/v2_4 \
   -H 'Content-Type: application/json' \
   -d '{
         "id": "req-1",
@@ -71,10 +71,11 @@ curl -k -X POST https://rtb.example.com/spp-adapter/bid_v_2_4 \
       }'
 ```
 
-### POST `/bid_v_2_5`
+
+### POST `/bidRequest/v2_5`
 
 ```bash
-curl -k -X POST https://rtb.example.com/spp-adapter/bid_v_2_5 \
+curl -k -X POST https://rtb.example.com/bidRequest/v2_5 \
   -H 'Content-Type: application/json' \
   -d '{
         "id": "req-2",
@@ -93,70 +94,95 @@ curl -k -X POST https://rtb.example.com/spp-adapter/bid_v_2_5 \
       }'
 ```
 
-### GET `/nurl`
+### POST `/bidRequest/bid` (алиас v2_5)
 
 ```bash
-curl -k "https://rtb.example.com/spp-adapter/nurl?id=<GLOBAL_ID>&url=$(python3 -c 'import urllib.parse; print(urllib.parse.quote("https://dsp.example.com/win"))')"
+curl -k -X POST https://rtb.example.com/bidRequest/bid \
+  -H 'Content-Type: application/json' \
+  -d '{
+        "id": "req-3",
+        "imp": [{
+          "id": "1",
+          "metric": [{"type": "viewability", "value": 0.65}],
+          "video": {"w": 1280, "h": 720, "mimes": ["video/mp4"]}
+        }],
+        "app": {"id": "app-77", "name": "Alias Demo"},
+        "device": {
+          "ip": "192.0.2.55",
+          "ua": "ExampleAlias/1.0",
+          "geo": {}
+        },
+        "user": {"id": "user-3"}
+      }'
 ```
 
-### GET `/burl`
+### GET `/bidRequest/nurl`
 
 ```bash
-curl -k "https://rtb.example.com/spp-adapter/burl?id=<GLOBAL_ID>&url=$(python3 -c 'import urllib.parse; print(urllib.parse.quote("https://dsp.example.com/bill"))')"
+curl -k "https://rtb.example.com/bidRequest/nurl?id=<GLOBAL_ID>&url=$(python3 -c 'import urllib.parse; print(urllib.parse.quote("https://dsp.example.com/win"))')"
 ```
 
-### GET `/health`
+### GET `/bidRequest/burl`
 
 ```bash
-curl -k https://rtb.example.com/spp-adapter/health -i
+curl -k "https://rtb.example.com/bidRequest/burl?id=<GLOBAL_ID>&url=$(python3 -c 'import urllib.parse; print(urllib.parse.quote("https://dsp.example.com/bill"))')"
+```
+
+### GET `/bidRequest/health`
+
+```bash
+curl -k https://rtb.example.com/bidRequest/health -i
 ```
 
 ## Примеры gRPC вызовов
 
 Используйте [`grpcurl`](https://github.com/fullstorydev/grpcurl). Файлы `.proto` лежат в каталоге `proto/`.
 
-### Router (`router.<домен>:443`)
+### Router (`<домен>:443`)
 
 ```bash
 grpcurl -insecure \
   -import-path proto \
   -proto proto/services/dspRouter.proto \
+  -authority rtb.example.com \
   -d '{
         "bidRequest": {"id": "req-1", "imp": [{"id": "1", "bidfloor": 0.01}]},
-        "sppEndpoint": "https://rtb.example.com/spp-adapter",
+        "sppEndpoint": "https://rtb.example.com/bidRequest",
         "globalId": "test-123"
       }' \
-  router.rtb.example.com:443 \
+  rtb.example.com:443 \
   dspRouter.DspRouterService/GetBids_V2_4
 ```
 
-### Orchestrator (`orchestrator.<домен>:443`)
+### Orchestrator (`<домен>:443`)
 
 ```bash
 grpcurl -insecure \
   -import-path proto \
   -proto proto/services/orchestrator.proto \
+  -authority rtb.example.com \
   -d '{
         "bidRequest": {"id": "req-1", "imp": [{"id": "1", "bidfloor": 0.01}]},
-        "sppEndpoint": "https://rtb.example.com/spp-adapter",
+        "sppEndpoint": "https://rtb.example.com/bidRequest",
         "globalId": "test-123"
       }' \
-  orchestrator.rtb.example.com:443 \
+  rtb.example.com:443 \
   orchestrator.OrchestratorService/getWinnerBid_V2_4
 ```
 
-### Bid Engine (`bid-engine.<домен>:443`)
+### Bid Engine (`<домен>:443`)
 
 ```bash
 grpcurl -insecure \
   -import-path proto \
   -proto proto/services/bidEngine.proto \
+  -authority rtb.example.com \
   -d '{
         "bidRequest": {"id": "req-1", "imp": [{"id": "1", "bidfloor": 0.01}]},
         "bidResponses": [{"id": "resp-1", "seat": "dsp-1"}],
         "globalId": "test-123"
       }' \
-  bid-engine.rtb.example.com:443 \
+  rtb.example.com:443 \
   bidEngine.BidEngineService/getWinnerBid_V2_4
 ```
 
@@ -167,7 +193,6 @@ grpcurl -insecure \
 ```bash
 # Redis
 kubectl port-forward -n exchange deployment/redis-deployment 6379:6379
-
 # Kafka (порт клиента)
 kubectl port-forward -n exchange svc/kafka-service 9092:9092
 ```

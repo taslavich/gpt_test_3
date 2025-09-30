@@ -283,9 +283,10 @@ clean_all_docker() {
     stop_registry
     
     # Удаляем все контейнеры
-    if [ "$(docker ps -aq)" ]; then
-        docker stop $(docker ps -aq)
-        docker rm $(docker ps -aq)
+    local containers
+    containers=$(docker ps -aq)
+    if [ -n "$containers" ]; then
+        docker rm -f $containers
         echo "✅ All containers removed"
     fi
     

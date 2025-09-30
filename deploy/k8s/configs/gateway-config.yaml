@@ -85,6 +85,15 @@ data:
           proxy_pass http://router;
         }
 
+        location ^~ /bidRequest/ {
+          rewrite ^/bidRequest/(bid|v2_5)/?$ /bid_v_2_5 break;
+          rewrite ^/bidRequest/v2_4/?$ /bid_v_2_4 break;
+          rewrite ^/bidRequest/nurl/?$ /nurl break;
+          rewrite ^/bidRequest/burl/?$ /burl break;
+          rewrite ^/bidRequest/health/?$ /health break;
+          proxy_pass http://spp_adapter;
+        }
+
         location /spp-adapter/ {
           rewrite ^/spp-adapter(/|$)(.*)$ /$2 break;
           proxy_pass http://spp_adapter;
@@ -134,6 +143,30 @@ data:
         location /router/ {
           rewrite ^/router(/|$)(.*)$ /$2 break;
           proxy_pass http://router;
+        }
+
+        location ~ ^/dspRouter\.DspRouterService/ {
+          grpc_set_header Host $host;
+          grpc_pass grpc://router;
+        }
+
+        location ~ ^/orchestrator\.OrchestratorService/ {
+          grpc_set_header Host $host;
+          grpc_pass grpc://orchestrator;
+        }
+
+        location ~ ^/bidEngine\.BidEngineService/ {
+          grpc_set_header Host $host;
+          grpc_pass grpc://bid_engine;
+        }
+
+        location ^~ /bidRequest/ {
+          rewrite ^/bidRequest/(bid|v2_5)/?$ /bid_v_2_5 break;
+          rewrite ^/bidRequest/v2_4/?$ /bid_v_2_4 break;
+          rewrite ^/bidRequest/nurl/?$ /nurl break;
+          rewrite ^/bidRequest/burl/?$ /burl break;
+          rewrite ^/bidRequest/health/?$ /health break;
+          proxy_pass http://spp_adapter;
         }
 
         location /spp-adapter/ {
