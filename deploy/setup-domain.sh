@@ -1,8 +1,10 @@
 #!/bin/bash
 set -euo pipefail
 
-K8S_NAMESPACE="${K8S_NAMESPACE:-exchange}"
-SERVICE_NAME="${SERVICE_NAME:-gateway-service}"
+K8S_NAMESPACE="${K8S_NAMESPACE:-ingress-nginx}"
+SERVICE_NAME="${SERVICE_NAME:-ingress-nginx-controller}"
+FALLBACK_NAMESPACE="${FALLBACK_NAMESPACE:-exchange}"
+FALLBACK_SERVICE_NAME="${FALLBACK_SERVICE_NAME:-gateway-service}"
 
 usage() {
   cat <<USAGE
@@ -57,6 +59,19 @@ if [ -z "$IP" ]; then
       fi
     else
       IP="$LB_IP"
+    fi
+
+    if [ -z "$IP" ] && [ -n "$FALLBACK_SERVICE_NAME" ]; then
+      echo "ℹ️  ${SERVICE_NAME} не имеет внешнего адреса, пробуем ${FALLBACK_SERVICE_NAME}..." >&2
+      LB_IP=$(kubectl get svc "$FALLBACK_SERVICE_NAME" -n "$FALLBACK_NAMESPACE" -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || true)
+      if [ -z "$LB_IP" ] || [ "$LB_IP" = "<no value>" ]; then
+        LB_HOSTNAME=$(kubectl get svc "$FALLBACK_SERVICE_NAME" -n "$FALLBACK_NAMESPACE" -o jsonpath='{.status.loadBalancer.ingress[0].hostname}' 2>/dev/null || true)
+        if [ -n "$LB_HOSTNAME" ] && [ "$LB_HOSTNAME" != "<no value>" ]; then
+          IP="$LB_HOSTNAME"
+        fi
+      else
+        IP="$LB_IP"
+      fi
     fi
 
     if [ -z "$IP" ]; then
