@@ -191,6 +191,56 @@ apply_template() {
     rm -f "$tmp_file"
 }
 
+resolve_ingress_host() {
+    local ingress_service="${INGRESS_SERVICE_NAME:-ingress-nginx-controller}"
+    local ingress_namespace="${INGRESS_NAMESPACE:-ingress-nginx}"
+    local lb_host=""
+
+    if command -v kubectl >/dev/null 2>&1; then
+        lb_host=$(kubectl get svc "$ingress_service" -n "$ingress_namespace" -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || true)
+        if [ -z "$lb_host" ] || [ "$lb_host" = "<no value>" ]; then
+            lb_host=$(kubectl get svc "$ingress_service" -n "$ingress_namespace" -o jsonpath='{.status.loadBalancer.ingress[0].hostname}' 2>/dev/null || true)
+        fi
+    fi
+
+    if [ -z "$lb_host" ] || [ "$lb_host" = "<no value>" ]; then
+        lb_host="${RTB_DOMAIN:-}"
+    fi
+
+    if [ -z "$lb_host" ]; then
+        lb_host="127.0.0.1"
+    fi
+
+    echo "$lb_host"
+}
+
+print_ingress_usage() {
+    if ! command -v kubectl >/dev/null 2>&1; then
+        return
+    fi
+
+    local ingress_host
+    ingress_host=$(resolve_ingress_host)
+
+    echo ""
+    echo "=== External ingress entrypoint ==="
+    echo "HTTP : http://$ingress_host/"
+    echo "HTTPS: https://$ingress_host/"
+    echo "SPP Adapter health: https://$ingress_host/spp-adapter/health"
+    local domain="${RTB_DOMAIN:-rtb.local}"
+
+    if [[ "$domain" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+        echo "gRPC сервисы : требуется доменное имя (RTB_DOMAIN). При IP используйте \"kubectl port-forward\""
+    else
+        local -a grpc_hosts=("router" "orchestrator" "bid-engine")
+        for host in "${grpc_hosts[@]}"; do
+            echo "${host} gRPC : ${host}.${domain} (порт 443, HTTP/2)"
+        done
+    fi
+    echo ""
+    echo "ℹ️  Все входящие HTTP/HTTPS запросы проходят через ingress-nginx по портам 80/443."
+}
+
 detect_metallb_range() {
     if [ -n "${METALLB_IP_RANGE:-}" ]; then
         echo "$METALLB_IP_RANGE"
@@ -661,6 +711,33 @@ deploy_ingress() {
     export LETSENCRYPT_INGRESS_CLASS="${LETSENCRYPT_INGRESS_CLASS:-$DEFAULT_INGRESS_CLASS}"
     export LETSENCRYPT_CLUSTER_ANNOTATION_LINE='    # cert-manager disabled'
 
+    local -a grpc_entries=(
+        "router:router-service:8082"
+        "orchestrator:orchestrator-service:8081"
+        "bid-engine:bid-engine-service:8080"
+    )
+
+    local domain_is_ip=0
+    if [[ "$domain" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+        domain_is_ip=1
+        export TLS_DNS_ADDITIONAL_LINES="    # gRPC hostnames отключены (RTB_DOMAIN выглядит как IP)"
+        echo "⚠️  RTB_DOMAIN='$domain' выглядит как IP. Для gRPC через ingress потребуется DNS-имя."
+    else
+        local extra_dns=""
+        for entry in "${grpc_entries[@]}"; do
+            local subdomain="${entry%%:*}"
+            local fqdn="${subdomain}.${domain}"
+
+            if [ -z "$extra_dns" ]; then
+                extra_dns="    - ${fqdn}"
+            else
+                extra_dns+=$'\n'"    - ${fqdn}"
+            fi
+        done
+
+        export TLS_DNS_ADDITIONAL_LINES="$extra_dns"
+    fi
+
     local enable_acme=0
     if [ -n "${LETSENCRYPT_EMAIL:-}" ]; then
         if [[ "$domain" =~ \.local$ ]]; then
@@ -696,6 +773,22 @@ deploy_ingress() {
     fi
 
     apply_template "$K8S_DIR/ingress/gateway-ingress.yaml.tpl"
+    if [ $domain_is_ip -eq 0 ]; then
+        for entry in "${grpc_entries[@]}"; do
+            local subdomain="${entry%%:*}"
+            local rest="${entry#*:}"
+            local service="${rest%%:*}"
+            local port="${rest##*:}"
+
+            export GRPC_INGRESS_NAME="${subdomain}-grpc-ingress"
+            export GRPC_FQDN="${subdomain}.${domain}"
+            export GRPC_SERVICE_NAME="$service"
+            export GRPC_SERVICE_PORT="$port"
+
+            apply_template "$K8S_DIR/ingress/grpc-ingress.yaml.tpl"
+        done
+    fi
+    
     echo "✅ Ingress манифест применён"
 }
 
@@ -720,6 +813,8 @@ check_status() {
     echo ""
     echo "=== Ingress ==="
     kubectl get ingress -n "$NAMESPACE" 2>/dev/null || echo "No ingress found"
+
+    print_ingress_usage
 }
 
 # Функция показа логов
@@ -757,28 +852,14 @@ test_endpoints() {
         return 1
     fi
 
-    local ingress_service="ingress-nginx-controller"
-    local ingress_namespace="ingress-nginx"
-    local lb_host
-    lb_host=$(kubectl get svc "$ingress_service" -n "$ingress_namespace" -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || true)
-    if [ -z "$lb_host" ] || [ "$lb_host" = "<no value>" ]; then
-        lb_host=$(kubectl get svc "$ingress_service" -n "$ingress_namespace" -o jsonpath='{.status.loadBalancer.ingress[0].hostname}' 2>/dev/null || true)
-    fi
-
-    local gateway_host="$lb_host"
-    if [ -z "$gateway_host" ] || [ "$gateway_host" = "<no value>" ]; then
-        gateway_host="${RTB_DOMAIN:-}"
-    fi
-    if [ -z "$gateway_host" ]; then
-        gateway_host="127.0.0.1"
-    fi
+    local gateway_host
+    gateway_host=$(resolve_ingress_host)
 
     echo "Ingress endpoint: $gateway_host"
     echo ""
 
     local endpoints=(
         "gateway:http://$gateway_host/healthz"
-        "router:http://$gateway_host/router/health"
         "spp-adapter:http://$gateway_host/spp-adapter/health"
         "https-gateway:https://$gateway_host/healthz"
     )

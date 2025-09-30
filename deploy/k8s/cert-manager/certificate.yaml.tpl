@@ -11,3 +11,4 @@ spec:
   commonName: ${RTB_DOMAIN}
   dnsNames:
     - ${RTB_DOMAIN}
+${TLS_DNS_ADDITIONAL_LINES}
