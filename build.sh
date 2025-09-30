@@ -278,27 +278,78 @@ clean_images() {
 # Функция полной очистки Docker и k3s кеша
 clean_all_docker() {
     echo "🧹 Cleaning all Docker resources..."
-    
+
     # Останавливаем и удаляем registry
     stop_registry
-    
-    # Удаляем все контейнеры
-    if [ "$(docker ps -aq)" ]; then
-        docker stop $(docker ps -aq)
-        docker rm $(docker ps -aq)
+
+    # Если k3s работает, останавливаем его, чтобы во время очистки не стартовали новые контейнеры
+    local k3s_was_running=0
+    if systemctl is-active k3s >/dev/null 2>&1; then
+        k3s_was_running=1
+        echo "🛑 Stopping k3s before Docker cleanup..."
+        sudo systemctl stop k3s || true
+    fi
+
+    # Останавливаем и удаляем все контейнеры
+    local running
+    running=$(docker ps -q)
+    if [ -n "$running" ]; then
+        echo "🛑 Stopping running containers..."
+        docker stop $running || true
+    fi
+
+    local containers
+    containers=$(docker ps -aq)
+    if [ -n "$containers" ]; then
+        echo "🗑 Removing containers..."
+        docker rm -f $containers || true
+    fi
+
+    if [ -z "$(docker ps -aq)" ]; then
         echo "✅ All containers removed"
+    else
+        echo "⚠️ Some containers are still present after cleanup:"
+        docker ps -a
     fi
-    
-    # Удаляем все образы
-    if [ "$(docker images -q)" ]; then
-        docker rmi -f $(docker images -q)
-        echo "✅ All images removed"
+
+    # Удаляем все образы, дополнительно удаляя контейнеры, которые могли появиться между шагами
+    local images
+    mapfile -t images < <(docker images -q | sort -u)
+    if [ ${#images[@]} -gt 0 ]; then
+        echo "🗑 Removing Docker images..."
+        for image in "${images[@]}"; do
+            [ -z "$image" ] && continue
+
+            local dependents
+            dependents=$(docker ps -aq --filter "ancestor=$image")
+            if [ -n "$dependents" ]; then
+                echo "🛑 Found containers using image $image, removing them..."
+                docker rm -f $dependents || true
+            fi
+
+            docker rmi -f "$image" || true
+        done
+        echo "✅ Image cleanup completed"
     fi
-    
+
     # Очищаем volumes и network
-    docker system prune -a --volumes -f
+    docker system prune -a --volumes -f || true
     echo "✅ Docker system cleaned"
-    
+
+    # Возвращаем k3s в исходное состояние
+    if [ $k3s_was_running -eq 1 ]; then
+        echo "🚀 Restarting k3s service..."
+        sudo systemctl start k3s || true
+        echo "⏳ Waiting for k3s to start..."
+        for i in {1..30}; do
+            if kubectl get nodes >/dev/null 2>&1; then
+                echo "✅ k3s is running"
+                break
+            fi
+            sleep 2
+        done
+    fi
+
     # Очищаем кеш k3s/containerd
     echo "🧹 Cleaning k3s cache..."
     if clean_k3s_cache; then
@@ -307,7 +358,7 @@ clean_all_docker() {
         echo "❌ Failed to clean k3s cache"
         return 1
     fi
-    
+
     echo "✅ Full cleanup completed - both Docker and k3s cache are clean"
 }
 
