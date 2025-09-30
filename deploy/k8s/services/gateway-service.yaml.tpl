@@ -2,13 +2,15 @@ apiVersion: v1
 kind: Service
 metadata:
   name: gateway-service
-  namespace: exchange
+  namespace: ${NAMESPACE}
   labels:
     app: gateway
     component: edge
+${GATEWAY_SERVICE_METADATA_EXTRA}
 spec:
-  type: LoadBalancer
-  loadBalancerIP: 142.93.239.222
+  type: ${GATEWAY_SERVICE_TYPE}
+${GATEWAY_SERVICE_LOADBALANCER_IP_LINE}
+${GATEWAY_SERVICE_EXTERNAL_IPS_BLOCK}
   selector:
     app: gateway
     component: edge
@@ -29,4 +31,3 @@ spec:
       protocol: TCP
       port: 6379
       targetPort: 6379
-
