@@ -518,7 +518,6 @@ deploy_redis() {
     local redis_files=(
         "$K8S_DIR/deployments/redis-deployment.yaml"
         "$K8S_DIR/services/redis-service.yaml"
-        "$K8S_DIR/services/redis-service-external.yaml"
     )
 
     for file in "${redis_files[@]}"; do
@@ -541,7 +540,6 @@ deploy_kafka() {
 
     local kafka_files=(
         "$K8S_DIR/services/kafka-service.yaml"
-        "$K8S_DIR/services/kafka-service-external.yaml"
         "$K8S_DIR/deployments/kafka-deployment.yaml"
     )
 
