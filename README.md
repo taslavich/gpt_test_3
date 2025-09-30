@@ -2,6 +2,44 @@
 
 Платформа RTB-аукционов из набора Go-сервисов (Router, Orchestrator, Bid Engine, SSP Adapter, Kafka/Redis/ClickHouse loaders). Репозитория достаточно, чтобы развернуть весь стек в Kubernetes, включая ingress-nginx, cert-manager и MetalLB.
 
+## Локальный запуск через Docker Swarm
+
+1. Соберите Docker-образы для каждого сервиса, указав теги, которые используются в `docker-stack.yaml`:
+   ```bash
+   docker build -f deploy/docker/orchestrator.dockerfile -t rtb/orchestrator:local .
+   docker build -f deploy/docker/bid-engine.dockerfile -t rtb/bid-engine:local .
+   docker build -f deploy/docker/router.dockerfile -t rtb/router:local .
+   docker build -f deploy/docker/spp-adapter.dockerfile -t rtb/spp-adapter:local .
+   docker build -f deploy/docker/kafka-loader.dockerfile -t rtb/kafka-loader:local .
+   docker build -f deploy/docker/clickhouse-loader.dockerfile -t rtb/clickhouse-loader:local .
+   ```
+   При необходимости можно воспользоваться `./build.sh push-local`, чтобы отправить образы во встроенный локальный registry.
+
+2. Заполните переменные окружения в файлах каталога `env/` (значения возьмите из Kubernetes ConfigMap/Secret, заменив адреса сервисов на имена из Docker Swarm).
+
+3. Убедитесь, что файлы `dsp_ rules.json`, `spp_rules.json` и `GeoIP2_City.mmdb` находятся в корне репозитория. Для GeoIP базы перед деплоем задайте абсолютный путь:
+   ```bash
+   export GEOIP_DB_PATH="$(pwd)/GeoIP2_City.mmdb"
+   ```
+
+4. Инициализируйте Swarm (если он ещё не активирован) и примените стек:
+   ```bash
+   docker swarm init    # однократно на машине
+   docker stack deploy -c docker-stack.yaml rtb-exchange
+   ```
+
+5. Следите за состоянием сервисов и логами:
+   ```bash
+   docker service ls
+   docker service ps rtb-exchange_orchestrator
+   docker service logs -f rtb-exchange_spp-adapter
+   ```
+
+6. Для остановки стека выполните `docker stack rm rtb-exchange`.
+
+`docker-stack.yaml` использует Swarm-политику `deploy.restart_policy` для автоматического перезапуска контейнеров при сбоях. Зависимости между сервисами обеспечиваются проверками готовности (healthcheck) Redis и Kafka и внутренними повторами приложений.
+
+
 ## Единый внешний IP и nginx-gateway
 
 Все внешние подключения проходят через `gateway-service` (тип `LoadBalancer`). Он получает **один** публичный IP-адрес (например, `142.93.239.222`) и проксирует трафик к остальным микросервисам по путям и портам.
