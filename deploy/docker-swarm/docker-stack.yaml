@@ -9,8 +9,6 @@ configs:
     file: '../../spp_rules.json'
   ssl_script:
     file: './ssl.sh'
-  geo_db:
-    file: '../../GeoIP2_City.mmdb'
 
 volumes:
   redis_data:
@@ -124,9 +122,8 @@ services:
     env_file:
       - env/spp-adapter.env
       - env/redis.env
-    configs:
-      - source: geo_db
-        target: /GeoIP2_City.mmdb
+    volumes:
+      - ../../GeoIP2_City.mmdb:/GeoIP2_City.mmdb:ro
     deploy:
       restart_policy:
         condition: on-failure
