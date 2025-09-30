@@ -3,9 +3,10 @@ version: '3.8'
 services:
   redis:
     image: redis:alpine
-    ports: ["6379:6379"]
+    ports:
+      - "6379:6379"
     command: redis-server --requirepass redis123
-    
+
   kafka:
     image: apache/kafka:3.7.0
     ports:
@@ -17,11 +18,7 @@ services:
       KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://localhost:9092
       KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
       KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
-      
-      # ВКЛЮЧАЕМ АВТОСОЗДАНИЕ ТОПИКОВ
       KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
-      
-      # НАСТРОЙКИ ДЛЯ CONSUMER GROUPS
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
       KAFKA_OFFSETS_TOPIC_NUM_PARTITIONS: 50
       KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
