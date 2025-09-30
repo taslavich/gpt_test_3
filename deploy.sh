@@ -437,9 +437,6 @@ auto_setup_before_deploy() {
     # Устанавливаем MetalLB для автоматической выдачи внешних IP
     ensure_metallb
 
-    # Устанавливаем ingress-nginx для маршрутизации входящего трафика
-    ensure_ingress_nginx
-
     # Проверяем, что образы существуют в registry
     echo "🔍 Checking if images are available in registry..."
     local images_missing=0

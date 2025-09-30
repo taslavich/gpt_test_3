@@ -17,6 +17,30 @@ data:
       worker_connections 1024;
     }
 
+    stream {
+      # Kafka TCP proxy
+      upstream kafka_backend {
+        server kafka-service.exchange.svc.cluster.local:9092;
+      }
+
+      server {
+        listen 9092;
+        proxy_pass kafka_backend;
+        proxy_timeout 1s;
+      }
+
+      # Redis TCP proxy
+      upstream redis_backend {
+        server redis-service.exchange.svc.cluster.local:6379;
+      }
+
+      server {
+        listen 6379;
+        proxy_pass redis_backend;
+        proxy_timeout 1s;
+      }
+    }
+
     http {
       include       /etc/nginx/mime.types;
       default_type  application/octet-stream;
@@ -123,6 +147,7 @@ data:
         ssl_certificate_key /etc/nginx/tls/tls.key;
         ssl_protocols TLSv1.2 TLSv1.3;
         ssl_prefer_server_ciphers on;
+        ssl_ciphers ECDHE-RSA-AES256-GCM-SHA512:DHE-RSA-AES256-GCM-SHA512:ECDHE-RSA-AES256-GCM-SHA384:DHE-RSA-AES256-GCM-SHA384;
         add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
 
         location = /healthz {
@@ -189,5 +214,4 @@ data:
           return 200 "RTB Exchange gateway is running";
         }
       }
-
     }

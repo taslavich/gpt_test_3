@@ -11,4 +11,5 @@ spec:
       protocol: TCP
       port: 6379
       targetPort: 6379
-  type: ClusterIP
+      nodePort: 31379  # Добавляем для внешнего доступа
+  type: LoadBalancer  # Меняем на LoadBalancer
