@@ -333,17 +333,17 @@ print_ingress_usage() {
     echo "ℹ️  Все входящие HTTP/HTTPS запросы проходят через ingress-nginx по портам 80/443."
 }
 
-detect_metallb_range() {
-    if [ -n "${METALLB_IP_RANGE:-}" ]; then
-        echo "$METALLB_IP_RANGE"
-        return 0
+is_valid_ipv4() {
+    local ip="$1"
+
+    if [[ ! "$ip" =~ ^([0-9]{1,3})\.([0-9]{1,3})\.([0-9]{1,3})\.([0-9]{1,3})$ ]]; then
+        return 1
     fi
 
     if [ -n "$METALLB_IP_ADDRESS" ]; then
         echo "${METALLB_IP_ADDRESS}-${METALLB_IP_ADDRESS}"
         return 0
     fi
-
     echo ""
 }
 
