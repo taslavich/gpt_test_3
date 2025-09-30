@@ -21,7 +21,7 @@ docker stack deploy -c docker-stack.yaml rtb
 echo ""
 echo "✅ Deployment started!"
 echo "📊 Check status: docker service ls"
-echo "🔍 View logs: docker service logs rtb_certbot-setup"
+echo "🔍 View logs: docker service logs rtb_nginx-gateway"
 echo "🌐 Test in 2-3 minutes: curl https://$DOMAIN/health"
 echo ""
 echo "ℹ️  SSL certificates will be obtained automatically on first run."
