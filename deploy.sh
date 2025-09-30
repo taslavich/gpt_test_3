@@ -226,16 +226,14 @@ print_ingress_usage() {
     echo "=== External ingress entrypoint ==="
     echo "HTTP : http://$ingress_host/"
     echo "HTTPS: https://$ingress_host/"
-    echo "SPP Adapter health: https://$ingress_host/spp-adapter/health"
+    echo "Bid requests (v2.5): https://$ingress_host/bidRequest/bid"
+    echo "Health check: https://$ingress_host/bidRequest/health"
     local domain="${RTB_DOMAIN:-rtb.local}"
 
     if [[ "$domain" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-        echo "gRPC сервисы : требуется доменное имя (RTB_DOMAIN). При IP используйте \"kubectl port-forward\""
+        echo "gRPC (router/orchestrator/bid-engine): требуется DNS-имя для TLS. При IP используйте 'kubectl port-forward' или grpcurl --insecure"
     else
-        local -a grpc_hosts=("router" "orchestrator" "bid-engine")
-        for host in "${grpc_hosts[@]}"; do
-            echo "${host} gRPC : ${host}.${domain} (порт 443, HTTP/2)"
-        done
+        echo "gRPC (router/orchestrator/bid-engine): ${domain}:443 (HTTP/2, путь /<package>.<Service>/<Method>)"
     fi
     echo ""
     echo "ℹ️  Все входящие HTTP/HTTPS запросы проходят через ingress-nginx по портам 80/443."
@@ -711,32 +709,7 @@ deploy_ingress() {
     export LETSENCRYPT_INGRESS_CLASS="${LETSENCRYPT_INGRESS_CLASS:-$DEFAULT_INGRESS_CLASS}"
     export LETSENCRYPT_CLUSTER_ANNOTATION_LINE='    # cert-manager disabled'
 
-    local -a grpc_entries=(
-        "router:router-service:8082"
-        "orchestrator:orchestrator-service:8081"
-        "bid-engine:bid-engine-service:8080"
-    )
-
-    local domain_is_ip=0
-    if [[ "$domain" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-        domain_is_ip=1
-        export TLS_DNS_ADDITIONAL_LINES="    # gRPC hostnames отключены (RTB_DOMAIN выглядит как IP)"
-        echo "⚠️  RTB_DOMAIN='$domain' выглядит как IP. Для gRPC через ingress потребуется DNS-имя."
-    else
-        local extra_dns=""
-        for entry in "${grpc_entries[@]}"; do
-            local subdomain="${entry%%:*}"
-            local fqdn="${subdomain}.${domain}"
-
-            if [ -z "$extra_dns" ]; then
-                extra_dns="    - ${fqdn}"
-            else
-                extra_dns+=$'\n'"    - ${fqdn}"
-            fi
-        done
-
-        export TLS_DNS_ADDITIONAL_LINES="$extra_dns"
-    fi
+    export TLS_DNS_ADDITIONAL_LINES="    # дополнительные DNS-имена не требуются"
 
     local enable_acme=0
     if [ -n "${LETSENCRYPT_EMAIL:-}" ]; then
@@ -773,22 +746,6 @@ deploy_ingress() {
     fi
 
     apply_template "$K8S_DIR/ingress/gateway-ingress.yaml.tpl"
-    if [ $domain_is_ip -eq 0 ]; then
-        for entry in "${grpc_entries[@]}"; do
-            local subdomain="${entry%%:*}"
-            local rest="${entry#*:}"
-            local service="${rest%%:*}"
-            local port="${rest##*:}"
-
-            export GRPC_INGRESS_NAME="${subdomain}-grpc-ingress"
-            export GRPC_FQDN="${subdomain}.${domain}"
-            export GRPC_SERVICE_NAME="$service"
-            export GRPC_SERVICE_PORT="$port"
-
-            apply_template "$K8S_DIR/ingress/grpc-ingress.yaml.tpl"
-        done
-    fi
-    
     echo "✅ Ingress манифест применён"
 }
 
@@ -860,7 +817,7 @@ test_endpoints() {
 
     local endpoints=(
         "gateway:http://$gateway_host/healthz"
-        "spp-adapter:http://$gateway_host/spp-adapter/health"
+        "spp-adapter:http://$gateway_host/bidRequest/health"
         "https-gateway:https://$gateway_host/healthz"
     )
 
