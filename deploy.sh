@@ -239,24 +239,142 @@ print_ingress_usage() {
     echo "ℹ️  Все входящие HTTP/HTTPS запросы проходят через ingress-nginx по портам 80/443."
 }
 
+is_valid_ipv4() {
+    local ip="$1"
+
+    if [[ ! "$ip" =~ ^([0-9]{1,3})\.([0-9]{1,3})\.([0-9]{1,3})\.([0-9]{1,3})$ ]]; then
+        return 1
+    fi
+
+    local o1=${BASH_REMATCH[1]} o2=${BASH_REMATCH[2]} o3=${BASH_REMATCH[3]} o4=${BASH_REMATCH[4]}
+
+    for octet in "$o1" "$o2" "$o3" "$o4"; do
+        if ((octet < 0 || octet > 255)); then
+            return 1
+        fi
+    done
+
+    return 0
+}
+
+is_private_ipv4() {
+    local ip="$1"
+
+    case "$ip" in
+        10.* | 127.* | 192.168.* | 169.254.*)
+            return 0
+            ;;
+        172.1[6-9].* | 172.2[0-9].* | 172.3[0-1].*)
+            return 0
+            ;;
+        0.* | 255.*)
+            return 0
+            ;;
+    esac
+
+    return 1
+}
+
+is_public_ipv4() {
+    local ip="$1"
+
+    if ! is_valid_ipv4 "$ip"; then
+        return 1
+    fi
+
+    if is_private_ipv4 "$ip"; then
+        return 1
+    fi
+
+    return 0
+}
+
+detect_primary_ipv4() {
+    local first_private=""
+    local addr_line addr_type addr_value
+
+    if command -v kubectl >/dev/null 2>&1; then
+        local node_addresses
+        node_addresses=$(kubectl get nodes -o jsonpath='{range .items[*].status.addresses[*]}{.type}:{.address}{"\n"}{end}' 2>/dev/null || true)
+
+        while IFS= read -r addr_line; do
+            addr_type="${addr_line%%:*}"
+            addr_value="${addr_line#*:}"
+
+            if [ -z "$addr_value" ] || [ "$addr_value" = "<no value>" ]; then
+                continue
+            fi
+
+            if ! is_valid_ipv4 "$addr_value"; then
+                continue
+            fi
+
+            if is_public_ipv4 "$addr_value"; then
+                echo "$addr_value"
+                return 0
+            fi
+
+            if [ -z "$first_private" ]; then
+                first_private="$addr_value"
+            fi
+        done <<< "$node_addresses"
+    fi
+
+    if command -v ip >/dev/null 2>&1; then
+        local route_ip
+        route_ip=$(ip route get 1.1.1.1 2>/dev/null | awk '/src/ {for (i = 1; i <= NF; i++) if ($i == "src") {print $(i+1); exit}}')
+
+        if is_public_ipv4 "$route_ip"; then
+            echo "$route_ip"
+            return 0
+        fi
+
+        if [ -z "$first_private" ] && is_valid_ipv4 "$route_ip"; then
+            first_private="$route_ip"
+        fi
+    fi
+
+    if command -v hostname >/dev/null 2>&1; then
+        for candidate in $(hostname -I 2>/dev/null); do
+            if is_public_ipv4 "$candidate"; then
+                echo "$candidate"
+                return 0
+            fi
+
+            if [ -z "$first_private" ] && is_valid_ipv4 "$candidate"; then
+                first_private="$candidate"
+            fi
+        done
+    fi
+
+    if [ -n "$first_private" ]; then
+        echo "$first_private"
+        return 0
+    fi
+
+    return 1
+}
+
 detect_metallb_range() {
     if [ -n "${METALLB_IP_RANGE:-}" ]; then
         echo "$METALLB_IP_RANGE"
         return 0
     fi
 
-    if ! command -v kubectl >/dev/null 2>&1; then
-        return 1
+    if [ -n "${METALLB_IP_ADDRESS:-}" ]; then
+        echo "${METALLB_IP_ADDRESS}-${METALLB_IP_ADDRESS}"
+        return 0
     fi
 
-    local node_ip
-    node_ip=$(kubectl get nodes -o jsonpath='{.items[0].status.addresses[?(@.type=="InternalIP")].address}' 2>/dev/null || true)
+    local primary_ip
+    primary_ip=$(detect_primary_ipv4)
 
-    if [[ "$node_ip" =~ ^([0-9]+)\.([0-9]+)\.([0-9]+)\.([0-9]+)$ ]]; then
-        local prefix
-        prefix="${BASH_REMATCH[1]}.${BASH_REMATCH[2]}.${BASH_REMATCH[3]}"
-        echo "${prefix}.240-${prefix}.250"
+    if [ -n "$primary_ip" ]; then
+        echo "${primary_ip}-${primary_ip}"
+        return 0
     fi
+
+    echo ""
 }
 
 apply_metallb_config() {
@@ -265,7 +383,7 @@ apply_metallb_config() {
 
     if [ -z "$ip_range" ]; then
         echo "⚠️  Could not detect IP range for MetalLB automatically."
-        echo "   Set METALLB_IP_RANGE (e.g. 192.168.1.240-192.168.1.250) and re-run the script."
+        echo "   Set METALLB_IP_ADDRESS=<public-ip> or METALLB_IP_RANGE=<from-to> and re-run the script."
         return 1
     fi
 
@@ -518,7 +636,6 @@ deploy_redis() {
     local redis_files=(
         "$K8S_DIR/deployments/redis-deployment.yaml"
         "$K8S_DIR/services/redis-service.yaml"
-        "$K8S_DIR/services/redis-service-external.yaml"
     )
 
     for file in "${redis_files[@]}"; do
@@ -541,7 +658,6 @@ deploy_kafka() {
 
     local kafka_files=(
         "$K8S_DIR/services/kafka-service.yaml"
-        "$K8S_DIR/services/kafka-service-external.yaml"
         "$K8S_DIR/deployments/kafka-deployment.yaml"
     )
 
@@ -611,10 +727,8 @@ deploy_loaders() {
     local loader_files=(
         "$K8S_DIR/deployments/kafka-loader-deployment.yaml"
         "$K8S_DIR/services/kafka-loader-service.yaml"
-        "$K8S_DIR/services/kafka-loader-service-external.yaml"
         "$K8S_DIR/deployments/clickhouse-loader-deployment.yaml"
         "$K8S_DIR/services/clickhouse-loader-service.yaml"
-        "$K8S_DIR/services/clickhouse-loader-service-external.yaml"
     )
 
     for file in "${loader_files[@]}"; do
@@ -622,7 +736,8 @@ deploy_loaders() {
             kubectl apply -f "$file"
             echo "✅ Applied: $(basename "$file")"
         else
-            echo "⚠️ Loader file not found: $file"
+            echo "❌ Loader file not found: $file"
+            return 1
         fi
     done
 
