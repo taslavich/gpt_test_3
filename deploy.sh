@@ -6,12 +6,15 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 K8S_DIR="$SCRIPT_DIR/deploy/k8s"
 ASSETS_DIR="$SCRIPT_DIR/deploy/assets"
 NAMESPACE="exchange"
+export NAMESPACE
 
 METALLB_VERSION="${METALLB_VERSION:-v0.13.12}"
 METALLB_MANIFEST_URL="${METALLB_MANIFEST_URL:-https://raw.githubusercontent.com/metallb/metallb/$METALLB_VERSION/config/manifests/metallb-native.yaml}"
 METALLB_MANIFEST_PATH="${METALLB_MANIFEST_PATH:-$ASSETS_DIR/metallb/metallb-native.yaml}"
 METALLB_IP_POOL_NAME="${METALLB_IP_POOL_NAME:-rtb-exchange-pool}"
 METALLB_L2_ADVERTISEMENT_NAME="${METALLB_L2_ADVERTISEMENT_NAME:-rtb-exchange-l2}"
+METALLB_IP_ADDRESS="${METALLB_IP_ADDRESS:-142.93.239.222}"
+GATEWAY_USE_HOST_IP_MODE=0
 
 CERT_MANAGER_VERSION="${CERT_MANAGER_VERSION:-v1.14.4}"
 CERT_MANAGER_MANIFEST_URL="${CERT_MANAGER_MANIFEST_URL:-https://github.com/cert-manager/cert-manager/releases/download/$CERT_MANAGER_VERSION/cert-manager.yaml}"
@@ -191,6 +194,97 @@ apply_template() {
     rm -f "$tmp_file"
 }
 
+ip_assigned_to_host() {
+    local ip="$1"
+
+    if [ -z "$ip" ]; then
+        return 1
+    fi
+
+    if command -v ip >/dev/null 2>&1; then
+        if ip -o addr show scope global | awk '{print $4}' | cut -d'/' -f1 | grep -Fxq "$ip"; then
+            return 0
+        fi
+    fi
+
+    if command -v ifconfig >/dev/null 2>&1; then
+        if ifconfig | grep -Eo 'inet (addr:)?([0-9]+\.[0-9]+\.[0-9]+\.[0-9]+)' | awk '{print $2}' | grep -Fxq "$ip"; then
+            return 0
+        fi
+    fi
+
+    return 1
+}
+
+metallb_ip_is_host_ip() {
+    if [ -z "${METALLB_IP_ADDRESS:-}" ]; then
+        return 1
+    fi
+
+    if ip_assigned_to_host "$METALLB_IP_ADDRESS"; then
+        return 0
+    fi
+
+    return 1
+}
+
+prepare_gateway_service_template() {
+    local public_ip="${METALLB_IP_ADDRESS:-}"
+
+    if [[ "${GATEWAY_USE_HOST_IP_MODE:-0}" == "1" ]]; then
+        GATEWAY_SERVICE_TYPE="ClusterIP"
+        if [ -n "$public_ip" ]; then
+            GATEWAY_SERVICE_EXTERNAL_IPS_BLOCK="  externalIPs:
+    - $public_ip"
+        else
+            GATEWAY_SERVICE_EXTERNAL_IPS_BLOCK=""
+        fi
+        GATEWAY_SERVICE_LOADBALANCER_IP_LINE=""
+        GATEWAY_SERVICE_METADATA_EXTRA=""
+    else
+        GATEWAY_SERVICE_TYPE="LoadBalancer"
+        if [ -n "$public_ip" ]; then
+            GATEWAY_SERVICE_LOADBALANCER_IP_LINE="  loadBalancerIP: $public_ip"
+        else
+            GATEWAY_SERVICE_LOADBALANCER_IP_LINE=""
+        fi
+        GATEWAY_SERVICE_EXTERNAL_IPS_BLOCK=""
+        GATEWAY_SERVICE_METADATA_EXTRA=""
+    fi
+
+    export GATEWAY_SERVICE_TYPE
+    export GATEWAY_SERVICE_LOADBALANCER_IP_LINE
+    export GATEWAY_SERVICE_EXTERNAL_IPS_BLOCK
+    export GATEWAY_SERVICE_METADATA_EXTRA
+}
+
+wait_for_gateway_load_balancer() {
+    if [[ "${GATEWAY_USE_HOST_IP_MODE:-0}" == "1" ]]; then
+        return 0
+    fi
+
+    local wait_seconds=90
+    local interval=3
+    local elapsed=0
+
+    while [ $elapsed -lt $wait_seconds ]; do
+        local assigned_ip
+        assigned_ip=$(kubectl get svc gateway-service -n "$NAMESPACE" -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || true)
+
+        if [ -n "$assigned_ip" ] && [ "$assigned_ip" != "<no value>" ]; then
+            echo "✅ Gateway LoadBalancer IP: $assigned_ip"
+            return 0
+        fi
+
+        sleep $interval
+        elapsed=$((elapsed + interval))
+    done
+
+    echo "⚠️  Gateway service did not receive a LoadBalancer IP within ${wait_seconds}s"
+    echo "    Check MetalLB configuration or set METALLB_IP_ADDRESS to an available address."
+    return 1
+}
+
 resolve_ingress_host() {
     local ingress_service="${INGRESS_SERVICE_NAME:-ingress-nginx-controller}"
     local ingress_namespace="${INGRESS_NAMESPACE:-ingress-nginx}"
@@ -245,27 +339,27 @@ detect_metallb_range() {
         return 0
     fi
 
-    if ! command -v kubectl >/dev/null 2>&1; then
-        return 1
+    if [ -n "$METALLB_IP_ADDRESS" ]; then
+        echo "${METALLB_IP_ADDRESS}-${METALLB_IP_ADDRESS}"
+        return 0
     fi
 
-    local node_ip
-    node_ip=$(kubectl get nodes -o jsonpath='{.items[0].status.addresses[?(@.type=="InternalIP")].address}' 2>/dev/null || true)
-
-    if [[ "$node_ip" =~ ^([0-9]+)\.([0-9]+)\.([0-9]+)\.([0-9]+)$ ]]; then
-        local prefix
-        prefix="${BASH_REMATCH[1]}.${BASH_REMATCH[2]}.${BASH_REMATCH[3]}"
-        echo "${prefix}.240-${prefix}.250"
-    fi
+    echo ""
 }
 
 apply_metallb_config() {
     local ip_range
     ip_range=$(detect_metallb_range)
 
+    if [[ "${GATEWAY_USE_HOST_IP_MODE:-0}" == "1" ]]; then
+        echo "ℹ️  Skipping MetalLB address pool configuration because $METALLB_IP_ADDRESS belongs to this host."
+        echo "    Services will rely on externalIPs for exposure."
+        return 0
+    fi
+
     if [ -z "$ip_range" ]; then
-        echo "⚠️  Could not detect IP range for MetalLB automatically."
-        echo "   Set METALLB_IP_RANGE (e.g. 192.168.1.240-192.168.1.250) and re-run the script."
+        echo "⚠️  MetalLB IP range is not configured."
+        echo "   Set METALLB_IP_ADDRESS=<public-ip> or METALLB_IP_RANGE=<from-to> and re-run the script."
         return 1
     fi
 
@@ -420,6 +514,14 @@ auto_setup_before_deploy() {
     # Настраиваем k3s если он установлен
     setup_k3s_registry
 
+    if metallb_ip_is_host_ip; then
+        GATEWAY_USE_HOST_IP_MODE=1
+        echo "ℹ️  Public IP $METALLB_IP_ADDRESS is already configured on this host."
+        echo "    Gateway service will use externalIPs without MetalLB address assignment."
+    else
+        GATEWAY_USE_HOST_IP_MODE=0
+    fi
+
     # Проверяем и запускаем registry
     if ! curl -s http://localhost:5000/v2/_catalog >/dev/null; then
         echo "🚀 Starting local registry..."
@@ -434,7 +536,7 @@ auto_setup_before_deploy() {
         echo "✅ Local registry is running"
     fi
 
-    # Устанавливаем MetalLB для автоматической выдачи внешних IP
+    # Устанавливаем MetalLB для выдачи статического внешнего IP (если IP не занят хостом)
     ensure_metallb
 
     # Проверяем, что образы существуют в registry
@@ -518,7 +620,6 @@ deploy_redis() {
     local redis_files=(
         "$K8S_DIR/deployments/redis-deployment.yaml"
         "$K8S_DIR/services/redis-service.yaml"
-        "$K8S_DIR/services/redis-service-external.yaml"
     )
 
     for file in "${redis_files[@]}"; do
@@ -541,7 +642,6 @@ deploy_kafka() {
 
     local kafka_files=(
         "$K8S_DIR/services/kafka-service.yaml"
-        "$K8S_DIR/services/kafka-service-external.yaml"
         "$K8S_DIR/deployments/kafka-deployment.yaml"
     )
 
@@ -611,10 +711,8 @@ deploy_loaders() {
     local loader_files=(
         "$K8S_DIR/deployments/kafka-loader-deployment.yaml"
         "$K8S_DIR/services/kafka-loader-service.yaml"
-        "$K8S_DIR/services/kafka-loader-service-external.yaml"
         "$K8S_DIR/deployments/clickhouse-loader-deployment.yaml"
         "$K8S_DIR/services/clickhouse-loader-service.yaml"
-        "$K8S_DIR/services/clickhouse-loader-service-external.yaml"
     )
 
     for file in "${loader_files[@]}"; do
@@ -622,7 +720,8 @@ deploy_loaders() {
             kubectl apply -f "$file"
             echo "✅ Applied: $(basename "$file")"
         else
-            echo "⚠️ Loader file not found: $file"
+            echo "❌ Loader file not found: $file"
+            return 1
         fi
     done
 
@@ -678,9 +777,9 @@ deploy_gateway() {
 
     local config_file="$K8S_DIR/configs/gateway-config.yaml"
     local deployment_file="$K8S_DIR/deployments/gateway-deployment.yaml"
-    local service_file="$K8S_DIR/services/gateway-service.yaml"
+    local service_template="$K8S_DIR/services/gateway-service.yaml.tpl"
 
-    for file in "$config_file" "$deployment_file" "$service_file"; do
+    for file in "$config_file" "$deployment_file" "$service_template"; do
         if [ ! -f "$file" ]; then
             echo "❌ Gateway file not found: $file"
             return 1
@@ -689,9 +788,18 @@ deploy_gateway() {
 
     kubectl apply -f "$config_file"
     kubectl apply -f "$deployment_file"
-    kubectl apply -f "$service_file"
+    prepare_gateway_service_template
+    apply_template "$service_template"
 
     kubectl rollout status deployment/gateway-deployment -n "$NAMESPACE" --timeout=180s
+    if [[ "${GATEWAY_USE_HOST_IP_MODE:-0}" == "1" ]]; then
+        if [ -n "${METALLB_IP_ADDRESS:-}" ]; then
+            echo "ℹ️  Gateway service exposed via externalIPs (${METALLB_IP_ADDRESS})."
+        else
+            echo "ℹ️  Gateway service exposed without MetalLB load balancer."
+        fi
+    fi
+    wait_for_gateway_load_balancer || true
     echo "✅ External gateway is ready"
 }
 
