@@ -27,18 +27,6 @@ spec:
               containerPort: 80
             - name: https
               containerPort: 443
-            - name: bid-engine
-              containerPort: 8080
-            - name: orchestrator
-              containerPort: 8081
-            - name: router
-              containerPort: 8082
-            - name: spp-adapter
-              containerPort: 8083
-            - name: ch-loader
-              containerPort: 8084
-            - name: kafka-loader
-              containerPort: 8085
           readinessProbe:
             httpGet:
               path: /healthz
