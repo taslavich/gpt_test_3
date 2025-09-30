@@ -37,23 +37,54 @@ Ingress принимает входящие соединения только н
 
 Проверка: `curl http://<domain>/healthz` или `curl https://<domain>/router/health -k` (если сертификат тестовый).
 
-### Внешние IP для системных сервисов
+### Доступ к SPP Adapter
 
-Помимо трафика через ingress, для интеграции с внешними системами добавлены отдельные сервисы типа `LoadBalancer`. MetalLB выдаёт IP-адрес для каждого из них, что позволяет подключаться к сервисам напрямую по их родным портам:
+`spp-adapter` обслуживается через gateway и ingress. Отдельного `LoadBalancer` для него нет намеренно, чтобы весь входящий трафик проходил по портам `80/443`. Для локальных проверок используйте IP/hostname, который выдаёт `ingress-nginx-controller`:
 
-| Service name                         | Порт  | Назначение                                       |
-|-------------------------------------|-------|--------------------------------------------------|
-| `redis-service-external`            | 6379  | Доступ к Redis                                    |
-| `kafka-service-external`            | 9092  | Подключение к Kafka брокеру                      |
-| `kafka-loader-service-external`     | 8085  | HTTP API/отладка Kafka Loader                     |
-| `clickhouse-loader-service-external`| 8084  | HTTP API/отладка ClickHouse Loader                |
-| `bid-engine-service-external`       | 8080  | gRPC-вызовы Bid Engine                            |
-| `orchestrator-service-external`     | 8081  | gRPC-вызовы Orchestrator                          |
-| `router-service-external`           | 8082  | gRPC-вызовы Router                                |
+```bash
+./deploy.sh status   # в конце появится блок "External ingress entrypoint"
+curl -k https://<ingress-ip>/spp-adapter/health
+```
 
-> ℹ️ Порты остаются неизменными внутри и снаружи. При необходимости можно настроить `loadBalancerIP` либо другой пул MetalLB через аннотации в соответствующих сервисах.
+Если настроен домен (`RTB_DOMAIN`), можно обращаться по имени: `https://<домен>/spp-adapter/...`. Для HTTP достаточно заменить схему и порт: `http://<ingress-ip>/spp-adapter/...`.
 
-Bid Engine, Orchestrator и Router по-прежнему доступны через gateway/ingress, но при обращении напрямую по IP они работают как gRPC-серверы. Kafka и Redis также получают внешний IP, что упрощает отладку и интеграцию со сторонними инструментами.
+### gRPC-доступ к Router, Orchestrator и Bid Engine
+
+Для gRPC сервисов создаются отдельные ingress-объекты (`<service>-grpc-ingress`), которые публикуют их на том же внешнем IP. Каждый сервис получает собственный hostname:
+
+| Сервис        | Hostname                        | Порт | Kubernetes Service |
+|---------------|---------------------------------|------|--------------------|
+| Router        | `router.<домен>`                | 443  | `router-service`   |
+| Orchestrator  | `orchestrator.<домен>`          | 443  | `orchestrator-service` |
+| Bid Engine    | `bid-engine.<домен>`            | 443  | `bid-engine-service` |
+
+Ingress завершает TLS (секрет `gateway-tls`) и проксирует HTTP/2 прямо на соответствующий сервис.
+
+* Для выпуска сертификата Let's Encrypt требуется реальный DNS с A/AAAA-записями для `RTB_DOMAIN` и перечисленных поддоменов.
+* В локальных окружениях можно добавить все записи в `/etc/hosts`.
+* Если `RTB_DOMAIN` указывает на IP-адрес, gRPC ingress-ы не создаются автоматически: воспользуйтесь `kubectl port-forward deployment/<service>-deployment <порт>:<порт>`.
+
+Быстрая проверка (после настройки DNS):
+
+```bash
+grpcurl -insecure router.$RTB_DOMAIN:443 list
+grpcurl -insecure orchestrator.$RTB_DOMAIN:443 list
+grpcurl -insecure bid-engine.$RTB_DOMAIN:443 list
+```
+
+### Kafka и Redis из внешней сети
+
+Для Kafka/Redis внешние IP не выдаются: требования безопасности предписывают оставлять единственную точку входа (ingress) на портах `80/443`. Для отладки используйте port-forward:
+
+```bash
+# Redis
+kubectl port-forward -n exchange deployment/redis-deployment 6379:6379
+
+# Kafka (порт клиента 9092)
+kubectl port-forward -n exchange svc/kafka-service 9092:9092
+```
+
+После запуска port-forward клиенты могут подключаться к `localhost:<порт>`.
 
 ## Настройка домена
 
