@@ -115,7 +115,7 @@ data:
           rewrite ^/bidRequest/nurl/?$ /nurl break;
           rewrite ^/bidRequest/burl/?$ /burl break;
           rewrite ^/bidRequest/health/?$ /health break;
-          proxy_pass http://spp_adapter;
+          proxy_pass http://spp_adapter$uri;
         }
 
         location /spp-adapter/ {
