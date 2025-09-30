@@ -523,6 +523,7 @@ deploy_redis() {
     local redis_files=(
         "$K8S_DIR/deployments/redis-deployment.yaml"
         "$K8S_DIR/services/redis-service.yaml"
+        "$K8S_DIR/services/redis-service-external.yaml"
     )
 
     for file in "${redis_files[@]}"; do
@@ -545,6 +546,7 @@ deploy_kafka() {
 
     local kafka_files=(
         "$K8S_DIR/services/kafka-service.yaml"
+        "$K8S_DIR/services/kafka-service-external.yaml"
         "$K8S_DIR/deployments/kafka-deployment.yaml"
     )
 
@@ -614,8 +616,10 @@ deploy_loaders() {
     local loader_files=(
         "$K8S_DIR/deployments/kafka-loader-deployment.yaml"
         "$K8S_DIR/services/kafka-loader-service.yaml"
+        "$K8S_DIR/services/kafka-loader-service-external.yaml"
         "$K8S_DIR/deployments/clickhouse-loader-deployment.yaml"
         "$K8S_DIR/services/clickhouse-loader-service.yaml"
+        "$K8S_DIR/services/clickhouse-loader-service-external.yaml"
     )
 
     for file in "${loader_files[@]}"; do
@@ -658,6 +662,11 @@ deploy_services() {
         else
             echo "❌ Service file not found: $service_file"
             return 1
+        fi
+
+        local external_service_file="$K8S_DIR/services/${service}-service-external.yaml"
+        if [ -f "$external_service_file" ]; then
+            kubectl apply -f "$external_service_file"
         fi
 
         kubectl rollout status "deployment/$deployment_name" -n "$NAMESPACE" --timeout=180s
@@ -779,6 +788,7 @@ deploy_ingress() {
             apply_template "$K8S_DIR/ingress/grpc-ingress.yaml.tpl"
         done
     fi
+    
     echo "✅ Ingress манифест применён"
 }
 
