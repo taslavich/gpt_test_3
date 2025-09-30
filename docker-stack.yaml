@@ -1,0 +1,155 @@
+version: '3.8'
+
+configs:
+  dsp_rules.json:
+    file: './dsp_ rules.json'
+  spp_rules.json:
+    file: './spp_rules.json'
+
+services:
+  redis:
+    image: ${REDIS_IMAGE:-redis:7-alpine}
+    env_file:
+      - env/redis.env
+    command: ["sh", "-c", "redis-server --requirepass \"$${REDIS_PASSWORD}\""]
+    ports:
+      - target: 6379
+        published: 6379
+        protocol: tcp
+        mode: ingress
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli -a \"$${REDIS_PASSWORD}\" ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    deploy:
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+        max_attempts: 3
+        window: 120s
+
+  kafka:
+    image: ${KAFKA_IMAGE:-apache/kafka:3.7.0}
+    env_file:
+      - env/kafka.env
+    ports:
+      - target: 9092
+        published: 9092
+        protocol: tcp
+        mode: ingress
+    volumes:
+      - kafka_data:/tmp/kraft-combined-logs
+    deploy:
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+        max_attempts: 3
+        window: 120s
+
+  orchestrator:
+    image: ${ORCHESTRATOR_IMAGE:-rtb/orchestrator:local}
+    env_file:
+      - env/orchestrator.env
+      - env/redis.env
+    ports:
+      - target: 8081
+        published: 8081
+        protocol: tcp
+        mode: ingress
+    deploy:
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+        max_attempts: 5
+        window: 2m
+
+  bid-engine:
+    image: ${BID_ENGINE_IMAGE:-rtb/bid-engine:local}
+    env_file:
+      - env/bid-engine.env
+      - env/redis.env
+    ports:
+      - target: 8080
+        published: 8080
+        protocol: tcp
+        mode: ingress
+    deploy:
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+        max_attempts: 5
+        window: 2m
+
+  router:
+    image: ${ROUTER_IMAGE:-rtb/router:local}
+    env_file:
+      - env/router.env
+      - env/redis.env
+    configs:
+      - source: dsp_rules.json
+        target: /dsp-rules.json
+      - source: spp_rules.json
+        target: /spp-rules.json
+    ports:
+      - target: 8082
+        published: 8082
+        protocol: tcp
+        mode: ingress
+    deploy:
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+        max_attempts: 5
+        window: 2m
+
+  spp-adapter:
+    image: ${SPP_ADAPTER_IMAGE:-rtb/spp-adapter:local}
+    env_file:
+      - env/spp-adapter.env
+      - env/redis.env
+    volumes:
+      - type: bind
+        source: ${GEOIP_DB_PATH:?Set GEOIP_DB_PATH to absolute path of GeoIP2_City.mmdb}
+        target: /var/lib/geoip/GeoIP2_City.mmdb
+        read_only: true
+    ports:
+      - target: 8083
+        published: 8083
+        protocol: tcp
+        mode: ingress
+    deploy:
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+        max_attempts: 5
+        window: 2m
+
+  kafka-loader:
+    image: ${KAFKA_LOADER_IMAGE:-rtb/kafka-loader:local}
+    env_file:
+      - env/kafka-loader.env
+      - env/redis.env
+    deploy:
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+        max_attempts: 5
+        window: 2m
+
+  clickhouse-loader:
+    image: ${CLICKHOUSE_LOADER_IMAGE:-rtb/clickhouse-loader:local}
+    env_file:
+      - env/clickhouse-loader.env
+    deploy:
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+        max_attempts: 5
+        window: 2m
+
+volumes:
+  redis_data:
+  kafka_data:
