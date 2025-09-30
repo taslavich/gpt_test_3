@@ -12,7 +12,6 @@
 | HTTPS    | 443          | Основные HTTP и gRPC вызовы | см. таблицу ниже |
 | TCP      | 9092         | Kafka broker | stream-прокси на `kafka-service:9092` |
 | TCP      | 6379         | Redis | stream-прокси на `redis-service:6379` |
-
 ### Как задаётся внешний IP MetalLB
 
 Пул MetalLB и сервис `gateway-service` используют один и тот же статический адрес. По умолчанию в репозитории он жёстко задан как `142.93.239.222` в файлах `deploy.sh` и `deploy/k8s/services/gateway-service.yaml`.

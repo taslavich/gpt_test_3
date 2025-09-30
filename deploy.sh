@@ -240,6 +240,122 @@ print_ingress_usage() {
     echo "ℹ️  Все входящие HTTP/HTTPS запросы проходят через ingress-nginx по портам 80/443."
 }
 
+is_valid_ipv4() {
+    local ip="$1"
+
+    if [[ ! "$ip" =~ ^([0-9]{1,3})\.([0-9]{1,3})\.([0-9]{1,3})\.([0-9]{1,3})$ ]]; then
+        return 1
+    fi
+
+    local o1=${BASH_REMATCH[1]} o2=${BASH_REMATCH[2]} o3=${BASH_REMATCH[3]} o4=${BASH_REMATCH[4]}
+
+    for octet in "$o1" "$o2" "$o3" "$o4"; do
+        if ((octet < 0 || octet > 255)); then
+            return 1
+        fi
+    done
+
+    return 0
+}
+
+is_private_ipv4() {
+    local ip="$1"
+
+    case "$ip" in
+        10.* | 127.* | 192.168.* | 169.254.*)
+            return 0
+            ;;
+        172.1[6-9].* | 172.2[0-9].* | 172.3[0-1].*)
+            return 0
+            ;;
+        0.* | 255.*)
+            return 0
+            ;;
+    esac
+
+    return 1
+}
+
+is_public_ipv4() {
+    local ip="$1"
+
+    if ! is_valid_ipv4 "$ip"; then
+        return 1
+    fi
+
+    if is_private_ipv4 "$ip"; then
+        return 1
+    fi
+
+    return 0
+}
+
+detect_primary_ipv4() {
+    local first_private=""
+    local addr_line addr_type addr_value
+
+    if command -v kubectl >/dev/null 2>&1; then
+        local node_addresses
+        node_addresses=$(kubectl get nodes -o jsonpath='{range .items[*].status.addresses[*]}{.type}:{.address}{"\n"}{end}' 2>/dev/null || true)
+
+        while IFS= read -r addr_line; do
+            addr_type="${addr_line%%:*}"
+            addr_value="${addr_line#*:}"
+
+            if [ -z "$addr_value" ] || [ "$addr_value" = "<no value>" ]; then
+                continue
+            fi
+
+            if ! is_valid_ipv4 "$addr_value"; then
+                continue
+            fi
+
+            if is_public_ipv4 "$addr_value"; then
+                echo "$addr_value"
+                return 0
+            fi
+
+            if [ -z "$first_private" ]; then
+                first_private="$addr_value"
+            fi
+        done <<< "$node_addresses"
+    fi
+
+    if command -v ip >/dev/null 2>&1; then
+        local route_ip
+        route_ip=$(ip route get 1.1.1.1 2>/dev/null | awk '/src/ {for (i = 1; i <= NF; i++) if ($i == "src") {print $(i+1); exit}}')
+
+        if is_public_ipv4 "$route_ip"; then
+            echo "$route_ip"
+            return 0
+        fi
+
+        if [ -z "$first_private" ] && is_valid_ipv4 "$route_ip"; then
+            first_private="$route_ip"
+        fi
+    fi
+
+    if command -v hostname >/dev/null 2>&1; then
+        for candidate in $(hostname -I 2>/dev/null); do
+            if is_public_ipv4 "$candidate"; then
+                echo "$candidate"
+                return 0
+            fi
+
+            if [ -z "$first_private" ] && is_valid_ipv4 "$candidate"; then
+                first_private="$candidate"
+            fi
+        done
+    fi
+
+    if [ -n "$first_private" ]; then
+        echo "$first_private"
+        return 0
+    fi
+
+    return 1
+}
+
 detect_metallb_range() {
     if [ -n "${METALLB_IP_RANGE:-}" ]; then
         echo "$METALLB_IP_RANGE"
@@ -250,7 +366,7 @@ detect_metallb_range() {
         echo "${METALLB_IP_ADDRESS}-${METALLB_IP_ADDRESS}"
         return 0
     fi
-
+    
     echo ""
 }
 
