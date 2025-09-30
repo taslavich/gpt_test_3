@@ -348,14 +348,14 @@ is_valid_ipv4() {
 }
 
 apply_metallb_config() {
-    local ip_range
-    ip_range=$(detect_metallb_range)
-
     if [[ "${GATEWAY_USE_HOST_IP_MODE:-0}" == "1" ]]; then
         echo "ℹ️  Skipping MetalLB address pool configuration because $METALLB_IP_ADDRESS belongs to this host."
         echo "    Services will rely on externalIPs for exposure."
         return 0
     fi
+
+    local ip_range
+    ip_range=$(detect_metallb_range)
 
     if [ -z "$ip_range" ]; then
         echo "⚠️  MetalLB IP range is not configured."
