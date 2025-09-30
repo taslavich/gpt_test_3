@@ -4,13 +4,13 @@ configs:
   nginx_conf:
     file: './nginx.conf'
   dsp_rules:
-    file: '../../../dsp_rules.json'
+    file: '../../dsp_rules.json'
   spp_rules:
-    file: '../../../spp_rules.json'
+    file: '../../spp_rules.json'
   ssl_script:
     file: './ssl.sh'
   geo_db:
-    file: '../../../GeoIP2_City.mmdb'
+    file: '../../GeoIP2_City.mmdb'
 
 volumes:
   redis_data:
