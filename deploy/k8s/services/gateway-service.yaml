@@ -7,7 +7,7 @@ metadata:
     app: gateway
     component: edge
 spec:
-  type: LoadBalancer  # Изменяем с ClusterIP на LoadBalancer
+  type: LoadBalancer
   selector:
     app: gateway
     component: edge
@@ -16,9 +16,16 @@ spec:
       protocol: TCP
       port: 80
       targetPort: 80
-      nodePort: 30080  # Добавляем фиксированный nodePort
     - name: https
       protocol: TCP
       port: 443
       targetPort: 443
-      nodePort: 30443  # Добавляем фиксированный nodePort
+    - name: kafka
+      protocol: TCP
+      port: 9092
+      targetPort: 9092
+    - name: redis
+      protocol: TCP
+      port: 6379
+      targetPort: 6379
+
