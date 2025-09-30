@@ -7,7 +7,7 @@ metadata:
     app: orchestrator
     exposure: external
 spec:
-  type: LoadBalancer
+  type: NodePort
   selector:
     app: orchestrator
   ports:
@@ -15,4 +15,5 @@ spec:
       protocol: TCP
       port: 8081
       targetPort: 8081
+      nodePort: 30081
   externalTrafficPolicy: Cluster
