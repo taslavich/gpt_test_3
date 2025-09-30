@@ -1,0 +1,18 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: orchestrator-service-external
+  namespace: exchange
+  labels:
+    app: orchestrator
+    exposure: external
+spec:
+  type: LoadBalancer
+  selector:
+    app: orchestrator
+  ports:
+    - name: grpc
+      protocol: TCP
+      port: 8081
+      targetPort: 8081
+  externalTrafficPolicy: Cluster
