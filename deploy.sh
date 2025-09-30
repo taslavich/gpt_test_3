@@ -245,8 +245,21 @@ detect_metallb_range() {
         return 0
     fi
 
+    if [ -n "${METALLB_IP_ADDRESS:-}" ]; then
+        echo "${METALLB_IP_ADDRESS}-${METALLB_IP_ADDRESS}"
+        return 0
+    fi
+
     if ! command -v kubectl >/dev/null 2>&1; then
         return 1
+    fi
+
+    local external_ip
+    external_ip=$(kubectl get nodes -o jsonpath='{.items[0].status.addresses[?(@.type=="ExternalIP")].address}' 2>/dev/null || true)
+
+    if [[ "$external_ip" =~ ^([0-9]+)\.([0-9]+)\.([0-9]+)\.([0-9]+)$ ]]; then
+        echo "${external_ip}-${external_ip}"
+        return 0
     fi
 
     local node_ip
@@ -265,7 +278,7 @@ apply_metallb_config() {
 
     if [ -z "$ip_range" ]; then
         echo "⚠️  Could not detect IP range for MetalLB automatically."
-        echo "   Set METALLB_IP_RANGE (e.g. 192.168.1.240-192.168.1.250) and re-run the script."
+        echo "   Set METALLB_IP_ADDRESS=<public-ip> or METALLB_IP_RANGE=<from-to> and re-run the script."
         return 1
     fi
 
@@ -609,10 +622,8 @@ deploy_loaders() {
     local loader_files=(
         "$K8S_DIR/deployments/kafka-loader-deployment.yaml"
         "$K8S_DIR/services/kafka-loader-service.yaml"
-        "$K8S_DIR/services/kafka-loader-service-external.yaml"
         "$K8S_DIR/deployments/clickhouse-loader-deployment.yaml"
         "$K8S_DIR/services/clickhouse-loader-service.yaml"
-        "$K8S_DIR/services/clickhouse-loader-service-external.yaml"
     )
 
     for file in "${loader_files[@]}"; do
@@ -620,7 +631,8 @@ deploy_loaders() {
             kubectl apply -f "$file"
             echo "✅ Applied: $(basename "$file")"
         else
-            echo "⚠️ Loader file not found: $file"
+            echo "❌ Loader file not found: $file"
+            return 1
         fi
     done
 
