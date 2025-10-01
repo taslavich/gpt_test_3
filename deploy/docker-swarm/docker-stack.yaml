@@ -83,7 +83,7 @@ services:
         max_attempts: 3
 
   orchestrator:
-    image: ${ORCHESTRATOR_IMAGE:-rtb/orchestrator:local}
+    image: ${ORCHESTRATOR_IMAGE:-localhost:5000/rtb/orchestrator:local}
     env_file:
       - env/orchestrator.env
       - env/redis.env
@@ -94,7 +94,7 @@ services:
         max_attempts: 5
 
   bid-engine:
-    image: ${BID_ENGINE_IMAGE:-rtb/bid-engine:local}
+    image: ${BID_ENGINE_IMAGE:-localhost:5000/rtb/bid-engine:local}
     env_file:
       - env/bid-engine.env
       - env/redis.env
@@ -105,7 +105,7 @@ services:
         max_attempts: 5
 
   router:
-    image: ${ROUTER_IMAGE:-rtb/router:local}
+    image: ${ROUTER_IMAGE:-localhost:5000/rtb/router:local}
     env_file:
       - env/router.env
       - env/redis.env
@@ -121,7 +121,7 @@ services:
         max_attempts: 5
 
   spp-adapter:
-    image: ${SPP_ADAPTER_IMAGE:-rtb/spp-adapter:local}
+    image: ${SPP_ADAPTER_IMAGE:-localhost:5000/rtb/spp-adapter:local}
     env_file:
       - env/spp-adapter.env
       - env/redis.env
@@ -134,7 +134,7 @@ services:
         max_attempts: 5
 
   kafka-loader:
-    image: ${KAFKA_LOADER_IMAGE:-rtb/kafka-loader:local}
+    image: ${KAFKA_LOADER_IMAGE:-localhost:5000/rtb/kafka-loader:local}
     env_file:
       - env/kafka-loader.env
       - env/redis.env
@@ -149,7 +149,7 @@ services:
         condition: on-failure
 
   clickhouse-loader:
-    image: ${CLICKHOUSE_LOADER_IMAGE:-rtb/clickhouse-loader:local}
+    image: ${CLICKHOUSE_LOADER_IMAGE:-localhost:5000/rtb/clickhouse-loader:local}
     env_file:
       - env/clickhouse-loader.env
     healthcheck:
