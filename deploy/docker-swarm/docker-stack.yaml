@@ -7,8 +7,10 @@ configs:
     file: '../../dsp_rules.json'
   spp_rules:
     file: '../../spp_rules.json'
-  ssl_script:
-    file: './ssl.sh'
+  ssl_fullchain:
+    file: './ssl-certs/fullchain.pem'
+  ssl_privkey:
+    file: './ssl-certs/privkey.pem'
 
 volumes:
   redis_data:
@@ -30,10 +32,11 @@ services:
     configs:
       - source: nginx_conf
         target: /etc/nginx/nginx.conf
-      - source: ssl_script
-        target: /opt/ssl.sh
-        mode: 0755
-    command: ["/opt/ssl.sh"]
+      - source: ssl_fullchain
+        target: /etc/ssl/fullchain.pem
+      - source: ssl_privkey
+        target: /etc/ssl/privkey.pem
+    command: ["nginx", "-g", "daemon off;"]
     healthcheck:
       test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost/health || exit 0"]
       interval: 30s
