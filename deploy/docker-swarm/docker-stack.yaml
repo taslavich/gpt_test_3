@@ -51,11 +51,11 @@ services:
         condition: on-failure
         delay: 10s
         max_attempts: 5
-    resources:
-      limits:
-        memory: 1G
-      reservations:
-        memory: 512M
+      resources:  # ← ПЕРЕМЕСТИТЬ resources ВНУТРЬ deploy
+        limits:
+          memory: 1G
+        reservations:
+          memory: 512M
 
   bid-engine:
     image: ${BID_ENGINE_IMAGE:-localhost:5000/rtb/bid-engine:local}
