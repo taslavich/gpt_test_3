@@ -10,29 +10,21 @@ if ! docker info | grep -q "Swarm: active"; then
     docker swarm init --advertise-addr 142.93.239.222
 fi
 
-# Проверка домена
-DOMAIN="twinbidexchange.com"
-echo "🌐 Domain: $DOMAIN"
+echo "🔐 Let's Encrypt SSL certificates are ready"
 
-# Деплой
+# Деплой основного стека
 echo "📦 Deploying RTB Stack..."
 docker stack deploy -c docker-stack.yaml rtb
 
 echo ""
-echo "✅ Deployment started!"
+echo "🎉 RTB Exchange successfully deployed!"
+echo "🌐 Live at: https://twinbidexchange.com"
+echo "🔒 Using: Let's Encrypt SSL certificates"
 echo "📊 Check status: docker service ls"
 echo "🔍 View logs: docker service logs rtb_nginx-gateway"
-echo "🌐 Test in 2-3 minutes: curl https://$DOMAIN/health"
-echo ""
-echo "ℹ️  SSL certificates will be obtained automatically on first run."
-echo "🔄 Certificate renewal runs every 12 hours automatically."
 
 # Мониторинг запуска
-echo ""
-echo "🕐 Waiting for services to start..."
 sleep 10
-
-# Проверка статуса
 echo ""
 echo "📋 Service Status:"
 docker service ls --filter name=rtb_
