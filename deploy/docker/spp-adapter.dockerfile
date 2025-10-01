@@ -18,6 +18,6 @@ RUN addgroup -S app && adduser -S -G app app \
 WORKDIR /app
 COPY --from=build /out/spp-adapter /usr/local/bin/spp-adapter
 COPY --chown=app:app GeoIP2_City.mmdb /GeoIP2_City.mmdb
-# USER app
+USER app
 EXPOSE 8083
 ENTRYPOINT ["/usr/local/bin/spp-adapter"]
