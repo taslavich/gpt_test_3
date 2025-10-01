@@ -17,5 +17,5 @@ RUN addgroup -S app && adduser -S -G app app \
     && apk add --no-cache ca-certificates tzdata
 WORKDIR /app
 COPY --from=build /out/clickhouse-loader /usr/local/bin/clickhouse-loader
-USER app
+# USER app
 ENTRYPOINT ["/usr/local/bin/clickhouse-loader"]
