@@ -17,6 +17,6 @@ RUN addgroup -S app && adduser -S -G app app \
     && apk add --no-cache ca-certificates tzdata
 WORKDIR /app
 COPY --from=build /out/bid-engine /usr/local/bin/bid-engine
-# USER app
+USER app
 EXPOSE 8080
 ENTRYPOINT ["/usr/local/bin/bid-engine"]

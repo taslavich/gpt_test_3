@@ -17,5 +17,5 @@ RUN addgroup -S app && adduser -S -G app app \
     && apk add --no-cache ca-certificates tzdata
 WORKDIR /app
 COPY --from=build /out/kafka-loader /usr/local/bin/kafka-loader
-# USER app
+USER app
 ENTRYPOINT ["/usr/local/bin/kafka-loader"]
