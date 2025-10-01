@@ -10,3 +10,6 @@ registry-data/
 *.db
 *.sqlite
 *.sqlite3
+
+# TLS сертификаты для nginx-gateway (хранятся локально)
+deploy/docker-swarm/ssl-certs/*.pem
