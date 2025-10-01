@@ -1,8 +1,8 @@
 #!/bin/bash
 set -e
 
-REGISTRY="localhost:5000/exchange"
-TAG="latest"
+REGISTRY="localhost:5000/rtb"
+TAG="local"
 SERVICES=("bid-engine" "orchestrator" "router" "spp-adapter" "kafka-loader" "clickhouse-loader")
 REGISTRY_CONTAINER="rtb-registry"
 
