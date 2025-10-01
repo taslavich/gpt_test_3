@@ -3,6 +3,10 @@ version: '3.8'
 configs:
   nginx_conf:
     file: './nginx.conf'
+  dsp_rules:
+    file: '../../dsp_rules.json'
+  spp_rules:
+    file: '../../spp_rules.json'
   ssl_fullchain:
     file: './ssl-certs/fullchain.pem'
   ssl_privkey:
@@ -70,6 +74,11 @@ services:
     image: ${ROUTER_IMAGE:-localhost:5000/rtb/router:local}
     env_file:
       - env/router.env
+    configs:
+      - source: dsp_rules
+        target: /app/config/dsp_rules.json
+      - source: spp_rules
+        target: /app/config/spp_rules.json
     deploy:
       replicas: 1
       restart_policy:
@@ -142,11 +151,11 @@ services:
       - "443:443"
       - "9092:9092"
       - "6379:6379"
-      - "8080:8080"
-      - "8081:8081"
-      - "8082:8082"
+      - "8083:8083"
       - "8084:8084"
       - "8085:8085"
+      - "8087:8087"
+      - "8088:8088"
     configs:
       - source: nginx_conf
         target: /etc/nginx/nginx.conf
