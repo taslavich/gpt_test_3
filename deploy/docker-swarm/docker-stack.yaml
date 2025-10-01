@@ -109,9 +109,9 @@ services:
       - env/router.env
     configs:
       - source: dsp_rules
-        target: /dsp_rules.json
+        target: /app/config/dsp_rules.json
       - source: spp_rules
-        target: /spp_rules.json
+        target: /app/config/spp_rules.json
     deploy:
       replicas: 1
       restart_policy:
@@ -187,11 +187,11 @@ services:
       - "443:443"
       - "9092:9092"
       - "6379:6379"
-      - "8080:8080"
-      - "8081:8081"
-      - "8082:8082"
+      - "8083:8083"
       - "8084:8084"
       - "8085:8085"
+      - "8087:8087"
+      - "8088:8088"
     configs:
       - source: nginx_conf
         target: /etc/nginx/nginx.conf
