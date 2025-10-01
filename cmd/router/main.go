@@ -45,6 +45,20 @@ func main() {
 	fileLoader := filter.NewFileRuleLoader(ruleManager, cfg.DspRulesConfigPath, cfg.SppRulesConfigPath)
 
 	log.Println(cfg.DspRulesConfigPath)
+
+	// ДОБАВИТЬ ОТЛАДКУ - начало
+	if _, err := os.Stat(cfg.DspRulesConfigPath); err != nil {
+		log.Printf("DEBUG: DSP file stat error: %v", err)
+	} else {
+		log.Printf("DEBUG: DSP file exists: %s", cfg.DspRulesConfigPath)
+	}
+
+	if _, err := os.Stat(cfg.SppRulesConfigPath); err != nil {
+		log.Printf("DEBUG: SPP file stat error: %v", err)
+	} else {
+		log.Printf("DEBUG: SPP file exists: %s", cfg.SppRulesConfigPath)
+	}
+
 	if err := fileLoader.LoadDSPRules(); err != nil {
 		log.Printf("Warning: Failed to load dsp filter rules: %v", err)
 	} else {
