@@ -3,10 +3,6 @@ version: '3.8'
 configs:
   nginx_conf:
     file: './nginx.conf'
-  dsp_rules:
-    file: '../../dsp_rules.json'
-  spp_rules:
-    file: '../../spp_rules.json'
   ssl_fullchain:
     file: './ssl-certs/fullchain.pem'
   ssl_privkey:
@@ -51,7 +47,7 @@ services:
         condition: on-failure
         delay: 10s
         max_attempts: 5
-      resources:  # ← ПЕРЕМЕСТИТЬ resources ВНУТРЬ deploy
+      resources:
         limits:
           memory: 1G
         reservations:
@@ -74,11 +70,6 @@ services:
     image: ${ROUTER_IMAGE:-localhost:5000/rtb/router:local}
     env_file:
       - env/router.env
-    configs:
-      - source: dsp_rules
-        target: /dsp-rules.json
-      - source: spp_rules
-        target: /spp-rules.json
     deploy:
       replicas: 1
       restart_policy:
@@ -107,8 +98,6 @@ services:
     image: ${SPP_ADAPTER_IMAGE:-localhost:5000/rtb/spp-adapter:local}
     env_file:
       - env/spp-adapter.env
-    volumes:
-      - ../../GeoIP2_City.mmdb:/GeoIP2_City.mmdb:ro
     deploy:
       replicas: 1
       restart_policy:

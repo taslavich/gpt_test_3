@@ -17,6 +17,8 @@ RUN addgroup -S app && adduser -S -G app app \
     && apk add --no-cache ca-certificates tzdata
 WORKDIR /app
 COPY --from=build /out/router /usr/local/bin/router
+COPY --chown=app:app dsp_rules.json /dsp_rules.json
+COPY --chown=app:app spp_rules.json /spp_rules.json
 USER app
 EXPOSE 8082
 ENTRYPOINT ["/usr/local/bin/router"]
