@@ -4,7 +4,7 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 STACK_FILE="${SCRIPT_DIR}/docker-stack.yaml"
-STACK_NAME="rtb-exchange"
+STACK_NAME="rtb"
 
 echo "🚀 RTB Exchange Docker Swarm First Deployment"
 echo "=============================================="
