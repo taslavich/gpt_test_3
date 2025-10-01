@@ -18,5 +18,5 @@ RUN addgroup -S app && adduser -S -G app app \
 WORKDIR /app
 COPY --from=build /out/bid-engine /usr/local/bin/bid-engine
 USER app
-EXPOSE 8080
+EXPOSE 8084
 ENTRYPOINT ["/usr/local/bin/bid-engine"]

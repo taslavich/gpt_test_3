@@ -19,5 +19,5 @@ WORKDIR /app
 COPY --from=build /out/spp-adapter /usr/local/bin/spp-adapter
 COPY --chown=app:app GeoIP2_City.mmdb /GeoIP2_City.mmdb
 USER app
-EXPOSE 8083
+EXPOSE 8086
 ENTRYPOINT ["/usr/local/bin/spp-adapter"]

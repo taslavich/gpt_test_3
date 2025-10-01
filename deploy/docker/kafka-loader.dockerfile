@@ -18,4 +18,5 @@ RUN addgroup -S app && adduser -S -G app app \
 WORKDIR /app
 COPY --from=build /out/kafka-loader /usr/local/bin/kafka-loader
 USER app
+EXPOSE 8087
 ENTRYPOINT ["/usr/local/bin/kafka-loader"]
