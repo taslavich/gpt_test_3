@@ -1,30 +1,46 @@
 #!/bin/bash
 set -e
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
+STACK_FILE="${SCRIPT_DIR}/docker-stack.yaml"
+STACK_NAME="rtb-exchange"
+
 echo "🚀 RTB Exchange Docker Swarm First Deployment"
 echo "=============================================="
 
-# Проверка Docker Swarm
 if ! docker info | grep -q "Swarm: active"; then
     echo "❌ Docker Swarm not initialized. Initializing..."
-    docker swarm init --advertise-addr 142.93.239.222
+    docker swarm init
 fi
 
-echo "🔐 Let's Encrypt SSL certificates are ready"
+if [ ! -f "${SCRIPT_DIR}/env/redis.env" ]; then
+    echo "❌ Environment files are missing. Please check ${SCRIPT_DIR}/env"
+    exit 1
+fi
 
-# Деплой основного стека
+missing=0
+for required in \
+    "${PROJECT_ROOT}/dsp_rules.json" \
+    "${PROJECT_ROOT}/spp_rules.json" \
+    "${SCRIPT_DIR}/ssl-certs/fullchain.pem" \
+    "${SCRIPT_DIR}/ssl-certs/privkey.pem"; do
+    if [ ! -f "${required}" ]; then
+        echo "❌ Required file not found: ${required}"
+        missing=1
+    fi
+done
+
+if [ "${missing}" -ne 0 ]; then
+    echo "❌ Please make sure all required configuration and certificate files are in place before deploying."
+    exit 1
+fi
+
 echo "📦 Deploying RTB Stack..."
-docker stack deploy -c docker-stack.yaml rtb
+docker stack deploy -c "${STACK_FILE}" "${STACK_NAME}"
 
-echo ""
-echo "🎉 RTB Exchange successfully deployed!"
-echo "🌐 Live at: https://twinbidexchange.com"
-echo "🔒 Using: Let's Encrypt SSL certificates"
-echo "📊 Check status: docker service ls"
-echo "🔍 View logs: docker service logs rtb_nginx-gateway"
+echo
+sleep 5
 
-# Мониторинг запуска
-sleep 10
-echo ""
 echo "📋 Service Status:"
-docker service ls --filter name=rtb_
+docker service ls --filter name="${STACK_NAME}"
