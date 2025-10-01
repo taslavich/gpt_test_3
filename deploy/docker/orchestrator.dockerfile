@@ -17,6 +17,6 @@ RUN addgroup -S app && adduser -S -G app app \
     && apk add --no-cache ca-certificates tzdata
 WORKDIR /app
 COPY --from=build /out/orchestrator /usr/local/bin/orchestrator
-USER app
+# USER app
 EXPOSE 8081
 ENTRYPOINT ["/usr/local/bin/orchestrator"]
