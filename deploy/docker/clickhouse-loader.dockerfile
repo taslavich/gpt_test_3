@@ -18,4 +18,5 @@ RUN addgroup -S app && adduser -S -G app app \
 WORKDIR /app
 COPY --from=build /out/clickhouse-loader /usr/local/bin/clickhouse-loader
 USER app
+EXPOSE 8088
 ENTRYPOINT ["/usr/local/bin/clickhouse-loader"]

@@ -18,5 +18,5 @@ RUN addgroup -S app && adduser -S -G app app \
 WORKDIR /app
 COPY --from=build /out/orchestrator /usr/local/bin/orchestrator
 USER app
-EXPOSE 8081
+EXPOSE 8085
 ENTRYPOINT ["/usr/local/bin/orchestrator"]
