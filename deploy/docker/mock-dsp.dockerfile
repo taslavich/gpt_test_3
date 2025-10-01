@@ -10,14 +10,12 @@ COPY . .
 ARG TARGETOS=linux
 ARG TARGETARCH=amd64
 RUN CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH \
-    go build -trimpath -ldflags='-s -w' -o /out/spp-adapter ./cmd/spp-adapter
+    go build -trimpath -ldflags='-s -w' -o /out/mock-dsp ./cmd/mock-dsp/dsp1
 
 FROM alpine:3.20
 RUN addgroup -S app && adduser -S -G app app \
     && apk add --no-cache ca-certificates tzdata
 WORKDIR /app
-COPY --from=build /out/spp-adapter /usr/local/bin/spp-adapter
-COPY --chown=app:app GeoIP2_City.mmdb /GeoIP2_City.mmdb
+COPY --from=build /out/mock-dsp /usr/local/bin/mock-dsp
 USER app
-EXPOSE 8083
-ENTRYPOINT ["/usr/local/bin/spp-adapter"]
+ENTRYPOINT ["/usr/local/bin/mock-dsp"]
