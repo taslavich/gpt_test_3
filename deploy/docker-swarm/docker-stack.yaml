@@ -3,6 +3,10 @@ version: '3.8'
 configs:
   nginx_conf:
     file: './nginx.conf'
+  dsp_rules:
+    file: '../../dsp_rules.json'
+  spp_rules:
+    file: '../../spp_rules.json'
   ssl_fullchain:
     file: './ssl-certs/fullchain.pem'
   ssl_privkey:
@@ -53,6 +57,39 @@ services:
         reservations:
           memory: 512M
 
+  mock-dsp-1:
+    image: ${MOCK_DSP_IMAGE:-localhost:5000/rtb/mock-dsp:local}
+    env_file:
+      - env/mock-dsp1.env
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: on-failure
+        delay: 10s
+        max_attempts: 5
+
+  mock-dsp-2:
+    image: ${MOCK_DSP_IMAGE:-localhost:5000/rtb/mock-dsp:local}
+    env_file:
+      - env/mock-dsp2.env
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: on-failure
+        delay: 10s
+        max_attempts: 5
+
+  mock-dsp-3:
+    image: ${MOCK_DSP_IMAGE:-localhost:5000/rtb/mock-dsp:local}
+    env_file:
+      - env/mock-dsp3.env
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: on-failure
+        delay: 10s
+        max_attempts: 5
+
   bid-engine:
     image: ${BID_ENGINE_IMAGE:-localhost:5000/rtb/bid-engine:local}
     env_file:
@@ -70,6 +107,11 @@ services:
     image: ${ROUTER_IMAGE:-localhost:5000/rtb/router:local}
     env_file:
       - env/router.env
+    configs:
+      - source: dsp_rules
+        target: /dsp_rules.json
+      - source: spp_rules
+        target: /spp_rules.json
     deploy:
       replicas: 1
       restart_policy:
@@ -78,6 +120,9 @@ services:
         max_attempts: 5
     depends_on:
       - redis
+      - mock-dsp-1
+      - mock-dsp-2
+      - mock-dsp-3
 
   orchestrator:
     image: ${ORCHESTRATOR_IMAGE:-localhost:5000/rtb/orchestrator:local}
