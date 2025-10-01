@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"github.com/redis/go-redis/v9"
 	"gitlab.com/twinbid-exchange/RTB-exchange/internal/config"
@@ -35,7 +36,7 @@ func main() {
 	})
 	defer redisClient.Close()
 
-	if err := redisClient.Ping(ctx).Err(); err != nil {
+	if err := waitForRedis(ctx, redisClient, 10, 2*time.Second); err != nil {
 		log.Fatalf("Failed to connect to Redis: %v", err)
 	}
 	log.Println("✅ Connected to Redis")
@@ -43,21 +44,11 @@ func main() {
 	ruleManager := filter.NewRuleManager()
 
 	fileLoader := filter.NewFileRuleLoader(ruleManager, cfg.DspRulesConfigPath, cfg.SppRulesConfigPath)
-
-	log.Println(cfg.DspRulesConfigPath) // Должно быть "/dsp_rules.json"
-	log.Println(cfg.SppRulesConfigPath) // Должно быть "/spp_rules.json"
-
-	// ДОБАВИТЬ ОТЛАДКУ - начало
-	if _, err := os.Stat(cfg.DspRulesConfigPath); err != nil {
-		log.Printf("DEBUG: DSP file stat error: %v", err)
-	} else {
-		log.Printf("DEBUG: DSP file exists: %s", cfg.DspRulesConfigPath)
+	if err := waitForFile(ctx, cfg.DspRulesConfigPath, 10, time.Second); err != nil {
+		log.Fatalf("DSP rules are not available: %v", err)
 	}
-
-	if _, err := os.Stat(cfg.SppRulesConfigPath); err != nil {
-		log.Printf("DEBUG: SPP file stat error: %v", err)
-	} else {
-		log.Printf("DEBUG: SPP file exists: %s", cfg.SppRulesConfigPath)
+	if err := waitForFile(ctx, cfg.SppRulesConfigPath, 10, time.Second); err != nil {
+		log.Fatalf("SPP rules are not available: %v", err)
 	}
 
 	if err := fileLoader.LoadDSPRules(); err != nil {
@@ -121,4 +112,46 @@ func main() {
 		errChan <- err
 		log.Printf("failed to serve: %v", err)
 	}
+}
+
+func waitForRedis(ctx context.Context, client *redis.Client, attempts int, delay time.Duration) error {
+	var lastErr error
+	for attempt := 1; attempt <= attempts; attempt++ {
+		if err := client.Ping(ctx).Err(); err == nil {
+			return nil
+		} else {
+			lastErr = err
+			log.Printf("Redis is not ready (attempt %d/%d): %v", attempt, attempts, err)
+		}
+
+		select {
+		case <-time.After(delay):
+		case <-ctx.Done():
+			return ctx.Err()
+		}
+	}
+
+	return fmt.Errorf("redis ping failed after %d attempts: %w", attempts, lastErr)
+}
+
+func waitForFile(ctx context.Context, path string, attempts int, delay time.Duration) error {
+	var lastErr error
+	for attempt := 1; attempt <= attempts; attempt++ {
+		if _, err := os.Stat(path); err == nil {
+			return nil
+		} else if os.IsNotExist(err) {
+			lastErr = err
+			log.Printf("File %s not found yet (attempt %d/%d)", path, attempt, attempts)
+		} else {
+			return err
+		}
+
+		select {
+		case <-time.After(delay):
+		case <-ctx.Done():
+			return ctx.Err()
+		}
+	}
+
+	return fmt.Errorf("file %s not found after %d attempts: %w", path, attempts, lastErr)
 }
