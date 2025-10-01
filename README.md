@@ -22,7 +22,6 @@
    ```bash
    export GEOIP_DB_PATH="$(pwd)/GeoIP2_City.mmdb"
    ```
-
 4. Положите действительные TLS-сертификаты (`fullchain.pem` и `privkey.pem`) в `deploy/docker-swarm/ssl-certs/`. Эти файлы не хранятся в репозитории, но требуются при деплое nginx-gateway.
 
 5. Инициализируйте Swarm (если он ещё не активирован) и примените стек (из каталога `deploy/docker-swarm` или с помощью `first-deploy.sh`):
@@ -30,6 +29,7 @@
    docker swarm init    # однократно на машине
    docker stack deploy -c deploy/docker-swarm/docker-stack.yaml rtb-exchange
    ```
+   В каталоге `deploy/docker-swarm/ssl-certs` лежат самоподписанные TLS-файлы для локальной отладки. В продакшене замените их на реальные сертификаты до запуска.
 
 6. Следите за состоянием сервисов и логами:
    ```bash
