@@ -17,6 +17,135 @@ volumes:
   kafka_data:
 
 services:
+  redis:
+    image: redis:7-alpine
+    hostname: redis
+    env_file:
+      - env/redis.env
+    command: ["sh", "-c", "redis-server --requirepass \"$${REDIS_PASSWORD}\""]
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "$${REDIS_PASSWORD}", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 20s
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: on-failure
+        delay: 10s
+        max_attempts: 5
+
+  kafka:
+    image: apache/kafka:3.7.0
+    hostname: kafka
+    env_file:
+      - env/kafka.env
+    volumes:
+      - kafka_data:/tmp/kraft-combined-logs
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: on-failure
+        delay: 10s
+        max_attempts: 5
+    resources:
+      limits:
+        memory: 1G
+      reservations:
+        memory: 512M
+
+  bid-engine:
+    image: ${BID_ENGINE_IMAGE:-localhost:5000/rtb/bid-engine:local}
+    env_file:
+      - env/bid-engine.env
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: on-failure
+        delay: 10s
+        max_attempts: 5
+    depends_on:
+      - redis
+
+  router:
+    image: ${ROUTER_IMAGE:-localhost:5000/rtb/router:local}
+    env_file:
+      - env/router.env
+    configs:
+      - source: dsp_rules
+        target: /dsp-rules.json
+      - source: spp_rules
+        target: /spp-rules.json
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: on-failure
+        delay: 10s
+        max_attempts: 5
+    depends_on:
+      - redis
+
+  orchestrator:
+    image: ${ORCHESTRATOR_IMAGE:-localhost:5000/rtb/orchestrator:local}
+    env_file:
+      - env/orchestrator.env
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: on-failure
+        delay: 10s
+        max_attempts: 5
+    depends_on:
+      - redis
+      - bid-engine
+      - router
+
+  spp-adapter:
+    image: ${SPP_ADAPTER_IMAGE:-localhost:5000/rtb/spp-adapter:local}
+    env_file:
+      - env/spp-adapter.env
+    volumes:
+      - ../../GeoIP2_City.mmdb:/GeoIP2_City.mmdb:ro
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: on-failure
+        delay: 10s
+        max_attempts: 5
+    depends_on:
+      - redis
+      - orchestrator
+
+  kafka-loader:
+    image: ${KAFKA_LOADER_IMAGE:-localhost:5000/rtb/kafka-loader:local}
+    env_file:
+      - env/kafka-loader.env
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: on-failure
+        delay: 10s
+        max_attempts: 5
+    depends_on:
+      - redis
+      - kafka
+
+  clickhouse-loader:
+    image: ${CLICKHOUSE_LOADER_IMAGE:-localhost:5000/rtb/clickhouse-loader:local}
+    env_file:
+      - env/clickhouse-loader.env
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: on-failure
+        delay: 10s
+        max_attempts: 5
+    depends_on:
+      - kafka
+
   nginx-gateway:
     image: nginx:alpine
     ports:
@@ -37,129 +166,18 @@ services:
       - source: ssl_privkey
         target: /etc/ssl/privkey.pem
     command: ["nginx", "-g", "daemon off;"]
-    healthcheck:
-      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost/health || exit 0"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
     deploy:
       replicas: 1
       restart_policy:
         condition: on-failure
-
-  redis:
-    image: redis:7-alpine
-    hostname: redis
-    env_file:
-      - env/redis.env
-    command: ["sh", "-c", "redis-server --requirepass \"$${REDIS_PASSWORD}\""]
-    volumes:
-      - redis_data:/data
-    healthcheck:
-      test: ["CMD", "redis-cli", "-a", "$${REDIS_PASSWORD}", "ping"]
-      interval: 10s
-      timeout: 3s
-      retries: 5
-    deploy:
-      restart_policy:
-        condition: on-failure
-        delay: 5s
-        max_attempts: 3
-
-  kafka:
-    image: apache/kafka:3.7.0
-    hostname: kafka
-    env_file:
-      - env/kafka.env
-    volumes:
-      - kafka_data:/tmp/kraft-combined-logs
-    healthcheck:
-      test: ["CMD", "kafka-topics.sh", "--list", "--bootstrap-server", "localhost:9092"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-    deploy:
-      restart_policy:
-        condition: on-failure
-        delay: 5s
-        max_attempts: 3
-
-  orchestrator:
-    image: ${ORCHESTRATOR_IMAGE:-localhost:5000/rtb/orchestrator:local}
-    env_file:
-      - env/orchestrator.env
-      - env/redis.env
-    deploy:
-      restart_policy:
-        condition: on-failure
-        delay: 5s
+        delay: 10s
         max_attempts: 5
-
-  bid-engine:
-    image: ${BID_ENGINE_IMAGE:-localhost:5000/rtb/bid-engine:local}
-    env_file:
-      - env/bid-engine.env
-      - env/redis.env
-    deploy:
-      restart_policy:
-        condition: on-failure
-        delay: 5s
-        max_attempts: 5
-
-  router:
-    image: ${ROUTER_IMAGE:-localhost:5000/rtb/router:local}
-    env_file:
-      - env/router.env
-      - env/redis.env
-    configs:
-      - source: dsp_rules
-        target: /dsp-rules.json
-      - source: spp_rules
-        target: /spp-rules.json
-    deploy:
-      restart_policy:
-        condition: on-failure
-        delay: 5s
-        max_attempts: 5
-
-  spp-adapter:
-    image: ${SPP_ADAPTER_IMAGE:-localhost:5000/rtb/spp-adapter:local}
-    env_file:
-      - env/spp-adapter.env
-      - env/redis.env
-    volumes:
-      - ../../GeoIP2_City.mmdb:/GeoIP2_City.mmdb:ro
-    deploy:
-      restart_policy:
-        condition: on-failure
-        delay: 5s
-        max_attempts: 5
-
-  kafka-loader:
-    image: ${KAFKA_LOADER_IMAGE:-localhost:5000/rtb/kafka-loader:local}
-    env_file:
-      - env/kafka-loader.env
-      - env/redis.env
-    healthcheck:
-      test: ["CMD", "pgrep", "-f", "kafka-loader"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 40s
-    deploy:
-      restart_policy:
-        condition: on-failure
-
-  clickhouse-loader:
-    image: ${CLICKHOUSE_LOADER_IMAGE:-localhost:5000/rtb/clickhouse-loader:local}
-    env_file:
-      - env/clickhouse-loader.env
-    healthcheck:
-      test: ["CMD", "pgrep", "-f", "clickhouse-loader"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 40s
-    deploy:
-      restart_policy:
-        condition: on-failure
+    depends_on:
+      - redis
+      - kafka
+      - bid-engine
+      - orchestrator
+      - router
+      - spp-adapter
+      - kafka-loader
+      - clickhouse-loader
