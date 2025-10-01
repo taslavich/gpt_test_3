@@ -44,7 +44,8 @@ func main() {
 
 	fileLoader := filter.NewFileRuleLoader(ruleManager, cfg.DspRulesConfigPath, cfg.SppRulesConfigPath)
 
-	log.Println(cfg.DspRulesConfigPath)
+	log.Println(cfg.DspRulesConfigPath) // Должно быть "/dsp_rules.json"
+	log.Println(cfg.SppRulesConfigPath) // Должно быть "/spp_rules.json"
 
 	// ДОБАВИТЬ ОТЛАДКУ - начало
 	if _, err := os.Stat(cfg.DspRulesConfigPath); err != nil {
