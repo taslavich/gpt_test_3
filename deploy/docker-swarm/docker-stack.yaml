@@ -7,10 +7,6 @@ configs:
     file: './ssl-certs/fullchain.pem'
   ssl_privkey:
     file: './ssl-certs/privkey.pem'
-  dsp_rules:
-    file: '../../dsp_rules.json'
-  spp_rules:
-    file: '../../spp_rules.json'
 
 volumes:
   redis_data:
@@ -74,11 +70,6 @@ services:
     image: ${ROUTER_IMAGE:-localhost:5000/rtb/router:local}
     env_file:
       - env/router.env
-    configs:
-    - source: dsp_rules
-      target: /dsp_rules.json
-    - source: spp_rules
-      target: /spp_rules.json
     deploy:
       replicas: 1
       restart_policy:
