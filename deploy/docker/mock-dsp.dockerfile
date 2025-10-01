@@ -10,15 +10,12 @@ COPY . .
 ARG TARGETOS=linux
 ARG TARGETARCH=amd64
 RUN CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH \
-    go build -trimpath -ldflags='-s -w' -o /out/router ./cmd/router
+    go build -trimpath -ldflags='-s -w' -o /out/mock-dsp ./cmd/mock-dsp/dsp1
 
 FROM alpine:3.20
 RUN addgroup -S app && adduser -S -G app app \
     && apk add --no-cache ca-certificates tzdata
 WORKDIR /app
-
-COPY --from=build /out/router /usr/local/bin/router
-
+COPY --from=build /out/mock-dsp /usr/local/bin/mock-dsp
 USER app
-EXPOSE 8083
-ENTRYPOINT ["/usr/local/bin/router"]
+ENTRYPOINT ["/usr/local/bin/mock-dsp"]

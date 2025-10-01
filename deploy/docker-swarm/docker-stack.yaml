@@ -57,6 +57,39 @@ services:
         reservations:
           memory: 512M
 
+  mock-dsp-1:
+    image: ${MOCK_DSP_IMAGE:-localhost:5000/rtb/mock-dsp:local}
+    env_file:
+      - env/mock-dsp1.env
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: on-failure
+        delay: 10s
+        max_attempts: 5
+
+  mock-dsp-2:
+    image: ${MOCK_DSP_IMAGE:-localhost:5000/rtb/mock-dsp:local}
+    env_file:
+      - env/mock-dsp2.env
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: on-failure
+        delay: 10s
+        max_attempts: 5
+
+  mock-dsp-3:
+    image: ${MOCK_DSP_IMAGE:-localhost:5000/rtb/mock-dsp:local}
+    env_file:
+      - env/mock-dsp3.env
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: on-failure
+        delay: 10s
+        max_attempts: 5
+
   bid-engine:
     image: ${BID_ENGINE_IMAGE:-localhost:5000/rtb/bid-engine:local}
     env_file:
@@ -87,6 +120,9 @@ services:
         max_attempts: 5
     depends_on:
       - redis
+      - mock-dsp-1
+      - mock-dsp-2
+      - mock-dsp-3
 
   orchestrator:
     image: ${ORCHESTRATOR_IMAGE:-localhost:5000/rtb/orchestrator:local}
