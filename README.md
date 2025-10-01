@@ -4,38 +4,41 @@
 
 ## Локальный запуск через Docker Swarm
 
-1. Соберите Docker-образы для каждого сервиса, указав теги, которые используются в `docker-stack.yaml`:
+1. Соберите Docker-образы для каждого сервиса, указав теги, которые используются в `docker-stack.yaml` (по умолчанию — `localhost:5000/rtb/<service>:local`):
    ```bash
-   docker build -f deploy/docker/orchestrator.dockerfile -t rtb/orchestrator:local .
-   docker build -f deploy/docker/bid-engine.dockerfile -t rtb/bid-engine:local .
-   docker build -f deploy/docker/router.dockerfile -t rtb/router:local .
-   docker build -f deploy/docker/spp-adapter.dockerfile -t rtb/spp-adapter:local .
-   docker build -f deploy/docker/kafka-loader.dockerfile -t rtb/kafka-loader:local .
-   docker build -f deploy/docker/clickhouse-loader.dockerfile -t rtb/clickhouse-loader:local .
+   docker build -f deploy/docker/orchestrator.dockerfile -t localhost:5000/rtb/orchestrator:local .
+   docker build -f deploy/docker/bid-engine.dockerfile -t localhost:5000/rtb/bid-engine:local .
+   docker build -f deploy/docker/router.dockerfile -t localhost:5000/rtb/router:local .
+   docker build -f deploy/docker/spp-adapter.dockerfile -t localhost:5000/rtb/spp-adapter:local .
+   docker build -f deploy/docker/kafka-loader.dockerfile -t localhost:5000/rtb/kafka-loader:local .
+   docker build -f deploy/docker/clickhouse-loader.dockerfile -t localhost:5000/rtb/clickhouse-loader:local .
    ```
    При необходимости можно воспользоваться `./build.sh push-local`, чтобы отправить образы во встроенный локальный registry.
 
 2. Заполните переменные окружения в файлах каталога `env/` (значения возьмите из Kubernetes ConfigMap/Secret, заменив адреса сервисов на имена из Docker Swarm).
+   Для `router.env` перед деплоем укажите реальные DSP-эндпоинты в переменной `DSP_ENDPOINTS_V_2_4`.
 
-3. Убедитесь, что файлы `dsp_ rules.json`, `spp_rules.json` и `GeoIP2_City.mmdb` находятся в корне репозитория. Для GeoIP базы перед деплоем задайте абсолютный путь:
+3. Убедитесь, что файлы `dsp_rules.json`, `spp_rules.json` и `GeoIP2_City.mmdb` находятся в корне репозитория. Для GeoIP базы перед деплоем задайте абсолютный путь:
    ```bash
    export GEOIP_DB_PATH="$(pwd)/GeoIP2_City.mmdb"
    ```
+4. Положите действительные TLS-сертификаты (`fullchain.pem` и `privkey.pem`) в `deploy/docker-swarm/ssl-certs/`. Эти файлы не хранятся в репозитории, но требуются при деплое nginx-gateway.
 
-4. Инициализируйте Swarm (если он ещё не активирован) и примените стек:
+5. Инициализируйте Swarm (если он ещё не активирован) и примените стек (из каталога `deploy/docker-swarm` или с помощью `first-deploy.sh`):
    ```bash
    docker swarm init    # однократно на машине
-   docker stack deploy -c docker-stack.yaml rtb-exchange
+   docker stack deploy -c deploy/docker-swarm/docker-stack.yaml rtb-exchange
    ```
+   В каталоге `deploy/docker-swarm/ssl-certs` лежат самоподписанные TLS-файлы для локальной отладки. В продакшене замените их на реальные сертификаты до запуска.
 
-5. Следите за состоянием сервисов и логами:
+6. Следите за состоянием сервисов и логами:
    ```bash
    docker service ls
    docker service ps rtb-exchange_orchestrator
    docker service logs -f rtb-exchange_spp-adapter
    ```
 
-6. Для остановки стека выполните `docker stack rm rtb-exchange`.
+7. Для остановки стека выполните `docker stack rm rtb-exchange`.
 
 `docker-stack.yaml` использует Swarm-политику `deploy.restart_policy` для автоматического перезапуска контейнеров при сбоях. Зависимости между сервисами обеспечиваются проверками готовности (healthcheck) Redis и Kafka и внутренними повторами приложений.
 
