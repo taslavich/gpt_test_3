@@ -109,9 +109,9 @@ services:
       - env/router.env
     configs:
       - source: dsp_rules
-        target: /app/config/dsp_rules.json
+        target: /dsp_rules.json
       - source: spp_rules
-        target: /app/config/spp_rules.json
+        target: /spp_rules.json
     deploy:
       replicas: 1
       restart_policy:

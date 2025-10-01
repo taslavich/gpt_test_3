@@ -16,7 +16,6 @@ FROM alpine:3.20
 RUN addgroup -S app && adduser -S -G app app \
     && apk add --no-cache ca-certificates tzdata
 WORKDIR /app
-RUN mkdir -p /app/config && chown app:app /app/config
 
 COPY --from=build /out/router /usr/local/bin/router
 
