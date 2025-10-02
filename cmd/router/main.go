@@ -72,7 +72,7 @@ func main() {
 	var reqCount int64 = 0
 	go func(latency, reqCount int64) {
 		ctx, cancel = context.WithCancel(context.Background())
-		ticker := time.NewTicker(time.Minute)
+		ticker := time.NewTicker(90 * time.Second)
 		defer ticker.Stop()
 		stopCount := 0
 
