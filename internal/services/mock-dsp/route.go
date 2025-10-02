@@ -28,13 +28,15 @@ func InitRoutes(
 	ctx context.Context,
 	httpRouter *chi.Mux,
 	resp *ortb_V2_5.BidResponse,
+	latency *int64,
+	reqCount *int64,
 ) {
 	integration.UseGochiURLParam("path", chi.URLParam)
 
 	httpRouter.With(
 		httpin.NewInput(postBidRequest_V2_5{}),
 	).Post(PostBidURL, func(w http.ResponseWriter, r *http.Request) {
-		postBid_V2_5(ctx, r, w, resp)
+		postBid_V2_5(ctx, r, w, resp, latency, reqCount)
 	})
 
 	httpRouter.Get(GetHealthUrl, func(w http.ResponseWriter, r *http.Request) {
