@@ -15,6 +15,7 @@ configs:
 volumes:
   redis_data:
   kafka_data:
+  nginx_logs:
 
 services:
   mock-dsp-1:
@@ -211,6 +212,3 @@ services:
       - spp-adapter
       - kafka-loader
       - clickhouse-loader
-
-volumes:
-  nginx_logs:
