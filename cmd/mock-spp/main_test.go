@@ -36,10 +36,10 @@ var (
 
 // Конфигурация диагностики
 var (
-	enableDiagnostics = true              // Включить сбор диагностики
-	diagDuration      = 70 * time.Second  // Длительность диагностики (немного больше теста)
-	diagOutputDir     = "./loadtest-diag" // Каталог для диагностических логов
-	processPattern    = "rtb_"            // Шаблон для поиска процессов RTB
+	enableDiagnostics = true                                                                                                                                                                                   // Включить сбор диагностики
+	diagDuration      = 70 * time.Second                                                                                                                                                                       // Длительность диагностики (немного больше теста)
+	diagOutputDir     = "./loadtest-diag"                                                                                                                                                                      // Каталог для диагностических логов
+	processPattern    = "rtb_bid-engine|rtb_orchestrator|rtb_router|rtb_spp-adapter|rtb_kafka-loader|rtb_clickhouse-loader|rtb_mock-dsp-1|rtb_mock-dsp-2|rtb_mock-dsp-3|rtb_redis|rtb_kafka|rtb_nginx-gateway" // Шаблон для поиска процессов RTB
 )
 
 type streamSpec struct {
