@@ -11,6 +11,9 @@ const (
 )
 
 func WrapURL(hostname, originalURL, globalId, isItNurlOrBurl string) string {
+	if originalURL == "" {
+		return ""
+	}
 	encodedURL := url.QueryEscape(originalURL)
 	return fmt.Sprintf("https://%s/%s?id=%s&url=%s",
 		hostname, isItNurlOrBurl, globalId, encodedURL)

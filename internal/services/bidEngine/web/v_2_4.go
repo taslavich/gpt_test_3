@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 	"time"
 
 	"github.com/redis/go-redis/v9"
@@ -13,6 +14,8 @@ import (
 	"gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/proto/types/ortb_V2_4"
 	"gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/proto/types/ortb_V2_5"
 	utils "gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/utils_grpc"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
 
 type Server struct {
@@ -72,9 +75,21 @@ func (s *Server) GetWinnerBid_V2_4(
 	ctx context.Context,
 	req *bidEngineGrpc.BidEngineRequest_V2_4,
 ) (
-	*bidEngineGrpc.BidEngineResponse_V2_4,
-	error,
+	resp *bidEngineGrpc.BidEngineResponse_V2_4,
+	funcErr error,
 ) {
+	defer func() {
+		if r := recover(); r != nil {
+			err := fmt.Errorf("Recovered from panic in GetWinnerBid_V2_5: %v", r)
+			log.Printf(err.Error())
+
+			grpcCode := codes.Internal
+
+			resp = nil
+			funcErr = status.Errorf(grpcCode, err.Error())
+		}
+	}()
+
 	bidResponse, bidResponseByDspPrice := s.GetWinnerBidInternal_V_2_4(
 		ctx,
 		req,
