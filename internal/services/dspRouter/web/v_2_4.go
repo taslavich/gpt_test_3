@@ -44,7 +44,7 @@ type Server struct {
 
 	redisClient *redis.Client
 
-	timeout time.Duration
+	client *http.Client
 
 	dspRouterGrpc.UnimplementedDspRouterServiceServer
 }
@@ -60,6 +60,7 @@ func NewServer(
 	timeout time.Duration,
 
 ) *Server {
+	client := &http.Client{Timeout: timeout}
 	return &Server{
 		ruleManager:   ruleManager,
 		fileLoader:    fileLoader,
@@ -68,7 +69,7 @@ func NewServer(
 		sppConfigPath: sppConfigPath,
 		dspEndpoints:  dspEndpoints,
 		redisClient:   redisClient,
-		timeout:       timeout,
+		client:        client,
 	}
 }
 
@@ -178,9 +179,8 @@ func (s *Server) getBidsFromDSPbyHTTP_V_2_4(req *dspRouterGrpc.DspRouterRequest_
 	if err != nil {
 		return nil, 0, fmt.Sprintf("Can not marshal in GetBids_V2_4: %w", err)
 	}
-	client := &http.Client{Timeout: s.timeout}
 
-	resp, err := client.Post(
+	resp, err := s.client.Post(
 		dspEndpoint,
 		"application/json",
 		bytes.NewBuffer(jsonData),
@@ -189,7 +189,7 @@ func (s *Server) getBidsFromDSPbyHTTP_V_2_4(req *dspRouterGrpc.DspRouterRequest_
 		return nil, 0, fmt.Sprintf("Can not post req to dsps in GetBids_V2_4: %w", err)
 	}
 	defer func() {
-		if retErr := resp.Body.Close(); err != nil {
+		if retErr := resp.Body.Close(); retErr != nil {
 			errMsg = fmt.Sprintf(
 				"Cannot close resp in GetBids_V2_4: %w",
 				retErr,

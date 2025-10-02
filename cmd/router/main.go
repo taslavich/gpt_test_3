@@ -29,6 +29,8 @@ func main() {
 	}
 	log.Println("Config initialized!")
 
+	log.Println("Timeout", cfg.BidResponsesTimeout)
+
 	redisClient := redis.NewClient(&redis.Options{
 		Addr:     fmt.Sprintf("%s:%s", cfg.RedisHost, cfg.RedisPort),
 		Password: cfg.RedisPassword,

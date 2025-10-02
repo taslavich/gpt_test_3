@@ -132,14 +132,12 @@ func (s *Server) getBidsFromDSPbyHTTP_V_2_5(req *dspRouterGrpc.DspRouterRequest_
 	code int,
 	errMsg string,
 ) {
-	client := &http.Client{ /*Timeout: s.timeout*/ }
-
 	jsonData, err := json.Marshal(req.BidRequest)
 	if err != nil {
 		return nil, 0, fmt.Sprintf("Can not marshal in GetBids_V2_5: %w", err)
 	}
 
-	resp, err := client.Post(
+	resp, err := s.client.Post(
 		dspEndpoint,
 		"application/json",
 		bytes.NewBuffer(jsonData),
@@ -148,7 +146,7 @@ func (s *Server) getBidsFromDSPbyHTTP_V_2_5(req *dspRouterGrpc.DspRouterRequest_
 		return nil, 0, fmt.Sprintf("Can not post req to dsps in GetBids_V2_5: %w", err)
 	}
 	defer func() {
-		if retErr := resp.Body.Close(); err != nil {
+		if retErr := resp.Body.Close(); retErr != nil {
 			errMsg = fmt.Sprintf(
 				"Cannot close resp in GetBids_V2_5: %w",
 				retErr,
