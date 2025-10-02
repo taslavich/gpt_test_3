@@ -3,6 +3,7 @@ package orchestratorWeb
 import (
 	"context"
 	"fmt"
+	"log"
 
 	bidEngineGrpc "gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/proto/services/bidEngine"
 	dspRouterGrpc "gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/proto/services/dspRouter"
@@ -18,6 +19,7 @@ func (s *Server) GetWinnerBid_V2_5(
 	*orchestratorGrpc.OrchestratorResponse_V2_5,
 	error,
 ) {
+	log.Println("Got request before GetBids_V2_5 ")
 	getBidsReqCtx, cancel := context.WithTimeout(ctx, s.getBidsTimeout)
 	defer cancel()
 	bids, err := s.dspRouterGrpcClient.GetBids_V2_5(
@@ -45,6 +47,7 @@ func (s *Server) GetWinnerBid_V2_5(
 	getWinnerBidReqCtx, cancel := context.WithTimeout(ctx, s.getWinnerBidTimeout)
 	defer cancel()
 
+	log.Println("Got req before GetWinnerBid_V2_5")
 	winner, err := s.bidEngineGrpcClient.GetWinnerBid_V2_5(
 		getWinnerBidReqCtx,
 		&bidEngineGrpc.BidEngineRequest_V2_5{
@@ -66,6 +69,8 @@ func (s *Server) GetWinnerBid_V2_5(
 
 		return nil, status.Errorf(grpcCode, newErr.Error())
 	}
+
+	log.Println("Success got resp in orch")
 
 	return &orchestratorGrpc.OrchestratorResponse_V2_5{
 		BidResponse: winner.BidResponse,

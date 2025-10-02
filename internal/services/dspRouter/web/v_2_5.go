@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"sync"
 
@@ -22,6 +23,7 @@ func (s *Server) GetBids_V2_5(
 	*dspRouterGrpc.DspRouterResponse_V2_5,
 	error,
 ) {
+	log.Println("Got req in router GetBids_V2_5")
 	originReq := req
 
 	var bdmu sync.Mutex
@@ -39,6 +41,7 @@ func (s *Server) GetBids_V2_5(
 			req *dspRouterGrpc.DspRouterRequest_V2_5,
 			endpoint string,
 		) {
+			log.Println("Before dsp filter")
 			defer wg.Done()
 			s.requestMutex.RLock()
 			filterResult := s.processor.ProcessRequestForDSPV25(endpoint, req.BidRequest)
@@ -48,6 +51,7 @@ func (s *Server) GetBids_V2_5(
 				return
 			}
 
+			log.Println("Before getBidsFromDSPbyHTTP_V_2_5")
 			resp, code, errMsg := s.getBidsFromDSPbyHTTP_V_2_5(req, endpoint)
 
 			dspMetaDataCh <- &DspMetaData{
@@ -56,6 +60,7 @@ func (s *Server) GetBids_V2_5(
 				ErrMsg:      errMsg,
 			}
 
+			log.Println("Before spp filter")
 			if filterRes := s.processor.ProcessResponseForSPPV25(req.SppEndpoint, resp); !filterRes.Allowed {
 				return
 			}
@@ -87,6 +92,14 @@ func (s *Server) GetBids_V2_5(
 	if err := utils.WriteJsonToRedis(ctx, s.redisClient, req.GlobalId, constants.BID_RESPONSES_COLUMN, bidRespsData); err != nil {
 		fmt.Printf("failed to WriteJsonToRedis Bid Responses in GetBids_V2_5: %v", err)
 	}
+
+	log.Println("All success", func() []*ortb_V2_5.BidResponse {
+		responses := make([]*ortb_V2_5.BidResponse, 0)
+		for resp := range responsesCh {
+			responses = append(responses, resp)
+		}
+		return responses
+	}())
 
 	return &dspRouterGrpc.DspRouterResponse_V2_5{
 		BidRequest: originReq.BidRequest,
@@ -144,6 +157,8 @@ func (s *Server) getBidsFromDSPbyHTTP_V_2_5(req *dspRouterGrpc.DspRouterRequest_
 				fmt.Sprintf("Can not unmarshal body from dsps in GetBids_V2_5: %w", err)
 		}
 	}
+
+	log.Println("Got resp", grpcResp)
 
 	return grpcResp,
 		resp.StatusCode,
