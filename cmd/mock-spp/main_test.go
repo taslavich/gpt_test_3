@@ -24,10 +24,11 @@ import (
 
 // Конфигурация теста
 const (
-	sppAdapterURL = "https://twinbidexchange.com/bidRequest/bid_v_2_5"
-	threads       = 100              // Количество параллельных горутин
-	targetRPS     = 10000            // Целевая нагрузка (RPS)
-	testDuration  = 60 * time.Second // Длительность теста
+	sppAdapterURL     = "https://twinbidexchange.com/bidRequest/bid_v_2_5"
+	threads           = 100              // Количество параллельных горутин
+	targetRPS         = 10000            // Целевая нагрузка (RPS)
+	testDuration      = 60 * time.Second // Длительность теста
+	inflightPerWorker = 4                // Одновременных запросов на воркера
 )
 
 var (
@@ -122,6 +123,7 @@ func TestLoadRTBSystem(t *testing.T) {
 	}
 
 	results := make(chan *testResult, maxResults)
+	reporter := newResultReporter(results)
 	var wg sync.WaitGroup
 
 	startTime := time.Now()
@@ -134,7 +136,7 @@ func TestLoadRTBSystem(t *testing.T) {
 			rps++
 		}
 		wg.Add(1)
-		go workerRate(i, rps, results, &wg, stopCh)
+		go workerRate(i, rps, reporter, &wg, stopCh, inflightPerWorker)
 	}
 
 	// Останавливаем через duration
@@ -153,6 +155,12 @@ func TestLoadRTBSystem(t *testing.T) {
 	for result := range results {
 		resultsSlice = append(resultsSlice, result)
 	}
+	if overflow := reporter.FlushOverflow(); len(overflow) > 0 {
+		resultsSlice = append(resultsSlice, overflow...)
+	}
+	if dropped := reporter.TotalOverflow(); dropped > 0 {
+		fmt.Printf("⚠️  Buffered %d results due to full channel, included in final stats\n", dropped)
+	}
 
 	totalTime := time.Since(startTime)
 	analyzeResults(resultsSlice, totalTime)
@@ -166,10 +174,13 @@ func TestLoadRTBSystem(t *testing.T) {
 }
 
 // Воркер с таргетом rps
-func workerRate(id, rps int, results chan<- *testResult, wg *sync.WaitGroup, stopCh <-chan struct{}) {
+func workerRate(_ int, rps int, reporter *resultReporter, wg *sync.WaitGroup, stopCh <-chan struct{}, inflight int) {
 	defer wg.Done()
 	if rps <= 0 {
 		return
+	}
+	if inflight < 1 {
+		inflight = 1
 	}
 
 	interval := time.Second / time.Duration(rps)
@@ -180,18 +191,42 @@ func workerRate(id, rps int, results chan<- *testResult, wg *sync.WaitGroup, sto
 		Timeout: 5 * time.Second,
 	}
 
+	tasks := make(chan struct{}, inflight)
+	var workerWG sync.WaitGroup
+	var once sync.Once
+
+	cleanup := func() {
+		once.Do(func() {
+			close(tasks)
+			workerWG.Wait()
+		})
+	}
+	defer cleanup()
+
+	for i := 0; i < inflight; i++ {
+		workerWG.Add(1)
+		go func() {
+			defer workerWG.Done()
+			for range tasks {
+				start := time.Now()
+				bidRequest := generateBidRequest()
+				result := sendBidRequestWithClient(bidRequest, start, client)
+				reporter.Report(result)
+			}
+		}()
+	}
+
 	for {
 		select {
 		case <-stopCh:
+			cleanup()
 			return
 		case <-ticker.C:
-			start := time.Now()
-			bidRequest := generateBidRequest()
-			result := sendBidRequestWithClient(bidRequest, start, client)
-			// non-blocking send to avoid deadlock if results channel full
 			select {
-			case results <- result:
-			default:
+			case <-stopCh:
+				cleanup()
+				return
+			case tasks <- struct{}{}:
 			}
 		}
 	}
@@ -260,6 +295,45 @@ type testResult struct {
 	latency   time.Duration
 	error     string
 	timestamp time.Time
+}
+
+type resultReporter struct {
+	ch            chan<- *testResult
+	mu            sync.Mutex
+	overflow      []*testResult
+	overflowCount int
+}
+
+func newResultReporter(ch chan<- *testResult) *resultReporter {
+	return &resultReporter{ch: ch}
+}
+
+func (r *resultReporter) Report(result *testResult) {
+	select {
+	case r.ch <- result:
+	default:
+		r.mu.Lock()
+		r.overflow = append(r.overflow, result)
+		r.overflowCount++
+		r.mu.Unlock()
+	}
+}
+
+func (r *resultReporter) FlushOverflow() []*testResult {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if len(r.overflow) == 0 {
+		return nil
+	}
+	out := r.overflow
+	r.overflow = nil
+	return out
+}
+
+func (r *resultReporter) TotalOverflow() int {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.overflowCount
 }
 
 // Анализ результатов
