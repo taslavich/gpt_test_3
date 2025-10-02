@@ -59,15 +59,20 @@ func (s *Server) GetBids_V2_5(
 			endpoint string,
 		) {
 			defer wg.Done()
+			dspFilterStart := time.Now()
 			s.requestMutex.RLock()
 			filterResult := s.processor.ProcessRequestForDSPV25(endpoint, req.BidRequest)
 			s.requestMutex.RUnlock()
-
+			dspFilterEnd := time.Since(dspFilterStart)
+			fmt.Printf("Dsp filter time in ms: %d ms\n", dspFilterEnd.Milliseconds())
 			if !filterResult.Allowed {
 				return
 			}
 
+			reqStart := time.Now()
 			resp, code, errMsg := s.getBidsFromDSPbyHTTP_V_2_5(req, endpoint)
+			reqEnd := time.Since(reqStart)
+			fmt.Printf("Request time in ms: %d ms\n", reqEnd.Milliseconds())
 
 			dspMetaDataCh <- &DspMetaData{
 				DspEndpoint: endpoint,
@@ -75,9 +80,13 @@ func (s *Server) GetBids_V2_5(
 				ErrMsg:      errMsg,
 			}
 
-			if filterRes := s.processor.ProcessResponseForSPPV25(req.SppEndpoint, resp); !filterRes.Allowed {
+			sppFilterStart := time.Now()
+			filterRes := s.processor.ProcessResponseForSPPV25(req.SppEndpoint, resp)
+			if !filterRes.Allowed {
 				return
 			}
+			sppFilterEnd := time.Since(sppFilterStart)
+			fmt.Printf("Spp filter time in ms: %d ms\n", sppFilterEnd.Milliseconds())
 
 			if resp != nil {
 				responsesCh <- resp
@@ -93,6 +102,7 @@ func (s *Server) GetBids_V2_5(
 	close(responsesCh)
 	close(dspMetaDataCh)
 
+	massiveStart := time.Now()
 	dspMetaData := make([]*DspMetaData, 0)
 	for d := range dspMetaDataCh {
 		dspMetaData = append(dspMetaData, d)
@@ -106,6 +116,8 @@ func (s *Server) GetBids_V2_5(
 	if err := utils.WriteJsonToRedis(ctx, s.redisClient, req.GlobalId, constants.BID_RESPONSES_COLUMN, bidRespsData); err != nil {
 		fmt.Printf("failed to WriteJsonToRedis Bid Responses in GetBids_V2_5: %v", err)
 	}
+	massiveEnd := time.Since(massiveStart)
+	fmt.Printf("Massive proccessing time in ms: %d ms\n", massiveEnd.Milliseconds())
 
 	return &dspRouterGrpc.DspRouterResponse_V2_5{
 		BidRequest: originReq.BidRequest,
