@@ -55,9 +55,9 @@ type BiddingEngineConfig struct {
 type RouterConfig struct {
 	HttpServer
 	DSPEndpoints_v_2_4 ListString `yaml:"DSP_ENDPOINTS_V_2_4" env:"DSP_ENDPOINTS_V_2_4"`
-	//SPPEndpoints_v_2_4 ListString        `yaml:"SPP_ENDPOINTS_V_2_4" env:"SPP_ENDPOINTS_V_2_4"`
-	DspRulesConfigPath string `yaml:"DSP_RULES_CONFIG_PATH" env:"DSP_RULES_CONFIG_PATH"`
-	SppRulesConfigPath string `yaml:"SPP_RULES_CONFIG_PATH" env:"SPP_RULES_CONFIG_PATH"`
+	DSPEndpoints_v_2_5 ListString `yaml:"DSP_ENDPOINTS_V_2_5" env:"DSP_ENDPOINTS_V_2_5"`
+	DspRulesConfigPath string     `yaml:"DSP_RULES_CONFIG_PATH" env:"DSP_RULES_CONFIG_PATH"`
+	SppRulesConfigPath string     `yaml:"SPP_RULES_CONFIG_PATH" env:"SPP_RULES_CONFIG_PATH"`
 
 	BidResponsesTimeout time.Duration `yaml:"BID_RESPONSES_TIMEOUT" env:"BID_RESPONSES_TIMEOUT"`
 
