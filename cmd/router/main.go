@@ -7,7 +7,6 @@ import (
 	"net"
 	"os"
 	"os/signal"
-	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -68,48 +67,6 @@ func main() {
 
 	processor := filter.NewFilterProcessor(ruleManager)
 
-	var latency int64 = 0
-	var reqCount int64 = 0
-
-	// Запускаем горутину для сбора метрик
-	go func(latencyPtr, reqCountPtr *int64) {
-		metricsCtx, metricsCancel := context.WithCancel(context.Background())
-		defer metricsCancel()
-
-		ticker := time.NewTicker(90 * time.Second)
-		defer ticker.Stop()
-		stopCount := 0
-
-		for {
-			select {
-			case <-ticker.C:
-				lat := atomic.LoadInt64(latencyPtr)
-				count := atomic.LoadInt64(reqCountPtr)
-
-				// ЗАЩИТА ОТ ДЕЛЕНИЯ НА НОЛЬ
-				if count > 0 {
-					averageLatency := lat / count
-					log.Printf("📊 Metrics Report - TotalLatency: %d, Requests: %d, Average Latency: %d ms",
-						lat, count, averageLatency)
-				} else {
-					log.Printf("📊 Metrics Report - No requests processed yet")
-				}
-
-				stopCount++
-				if stopCount == 2 {
-					// После двух отчетов (180 секунд) завершаем
-					log.Println("📊 Metrics collection completed after 180 seconds")
-					metricsCancel()
-					return
-				}
-
-			case <-metricsCtx.Done():
-				log.Println("📊 Metrics goroutine stopped")
-				return
-			}
-		}
-	}(&latency, &reqCount)
-
 	s := grpc.NewServer()
 	dspRouterGrpc.RegisterDspRouterServiceServer(
 		s,
@@ -123,8 +80,6 @@ func main() {
 			cfg.DSPEndpoints_v_2_5,
 			redisClient,
 			cfg.BidResponsesTimeout,
-			&latency,
-			&reqCount,
 		),
 	)
 

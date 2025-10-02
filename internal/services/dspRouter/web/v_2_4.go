@@ -47,9 +47,6 @@ type Server struct {
 
 	client *http.Client
 
-	latency  *int64
-	reqCount *int64
-
 	dspRouterGrpc.UnimplementedDspRouterServiceServer
 }
 
@@ -63,8 +60,6 @@ func NewServer(
 	dspEndpoints_v_2_5 []string,
 	redisClient *redis.Client,
 	timeout time.Duration,
-	latency *int64,
-	reqCount *int64,
 
 ) *Server {
 	client := &http.Client{Timeout: timeout}
@@ -78,8 +73,6 @@ func NewServer(
 		dspEndpoints_v_2_5: dspEndpoints_v_2_5,
 		redisClient:        redisClient,
 		client:             client,
-		latency:            latency,
-		reqCount:           reqCount,
 	}
 }
 
