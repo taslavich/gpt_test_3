@@ -4,22 +4,26 @@ set -e
 REGISTRY="localhost:5000/rtb"
 TAG="local"
 SERVICES=("bid-engine" "orchestrator" "router" "spp-adapter" "kafka-loader" "clickhouse-loader")
+MOCK_DSP_SERVICES=("mock-dsp-1" "mock-dsp-2" "mock-dsp-3")
+ALL_SERVICES=("${SERVICES[@]}" "${MOCK_DSP_SERVICES[@]}")
 REGISTRY_CONTAINER="rtb-registry"
 
 echo "=== Building Docker Images ==="
 
 usage() {
-    echo "Usage: $0 [all|list|image-name|clean|clean-all|registry-start|registry-stop|registry-status|registry-clean|push-local]"
-    echo "  all           - Build all images (default)"
-    echo "  list          - List available services"
-    echo "  image-name    - Build specific image (e.g., bid-engine)"
-    echo "  clean         - Remove all RTB images from local Docker and registry"
-    echo "  clean-all     - Remove ALL unused Docker images, containers, registry + k3s cache"
-    echo "  registry-start- Start local Docker registry"
-    echo "  registry-stop - Stop local Docker registry"
-    echo "  registry-status - Check registry status"
-    echo "  registry-clean - Clean only registry images"
-    echo "  push-local    - Build and push to local registry"
+    echo "Usage: $0 [all|all-with-mocks|list|image-name|clean|clean-all|registry-start|registry-stop|registry-status|registry-clean|push-local|push-local-with-mocks]"
+    echo "  all                  - Build all main services (default)"
+    echo "  all-with-mocks       - Build all services including mock DSPs"
+    echo "  list                 - List available services"
+    echo "  image-name           - Build specific image (e.g., bid-engine or mock-dsp-1)"
+    echo "  clean                - Remove all RTB images from local Docker and registry"
+    echo "  clean-all            - Remove ALL unused Docker images, containers, registry + k3s cache"
+    echo "  registry-start       - Start local Docker registry"
+    echo "  registry-stop        - Stop local Docker registry"
+    echo "  registry-status      - Check registry status"
+    echo "  registry-clean       - Clean only registry images"
+    echo "  push-local           - Build and push main services to local registry"
+    echo "  push-local-with-mocks - Build and push all services including mock DSPs to local registry"
 }
 
 # Функция для очистки кеша k3s/containerd
@@ -215,7 +219,7 @@ build_image() {
     if [ ! -f "$dockerfile_path" ]; then
         echo "❌ Dockerfile not found: $dockerfile_path"
         echo "Available Dockerfiles:"
-        ls deploy/docker/*.dockerfile 2>/dev/null || echo "No Dockerfiles found in deploy/docker/"
+        ls deploy/docker/*.dockerfile 2>/dev/null || echo "No main service Dockerfiles found in deploy/docker/"
         return 1
     fi
     
@@ -234,22 +238,40 @@ push_to_local() {
     echo "✅ Pushed ${image_name}"
 }
 
-# Функция сборки всех образов
+# Функция сборки всех основных образов
 build_all() {
-    echo "🏗️ Building all services..."
+    echo "🏗️ Building all main services..."
     for service in "${SERVICES[@]}"; do
         build_image "$service"
     done
-    echo "✅ All images built"
+    echo "✅ All main services built"
 }
 
-# Функция пуша всех образов в локальный registry
+# Функция сборки всех образов включая mock DSP
+build_all_with_mocks() {
+    echo "🏗️ Building all services including mock DSPs..."
+    for service in "${ALL_SERVICES[@]}"; do
+        build_image "$service"
+    done
+    echo "✅ All services including mock DSPs built"
+}
+
+# Функция пуша всех основных образов в локальный registry
 push_all_local() {
-    echo "📤 Pushing all images to local registry..."
+    echo "📤 Pushing all main services to local registry..."
     for service in "${SERVICES[@]}"; do
         push_to_local "$service"
     done
-    echo "✅ All images pushed to registry"
+    echo "✅ All main services pushed to registry"
+}
+
+# Функция пуша всех образов включая mock DSP в локальный registry
+push_all_local_with_mocks() {
+    echo "📤 Pushing all services including mock DSPs to local registry..."
+    for service in "${ALL_SERVICES[@]}"; do
+        push_to_local "$service"
+    done
+    echo "✅ All services including mock DSPs pushed to registry"
 }
 
 # Функция очистки registry
@@ -266,7 +288,7 @@ clean_registry() {
 # Функция очистки образов
 clean_images() {
     echo "🧹 Removing RTB images..."
-    for service in "${SERVICES[@]}"; do
+    for service in "${ALL_SERVICES[@]}"; do
         local image_name="${REGISTRY}/${service}:${TAG}"
         if docker image inspect "$image_name" >/dev/null 2>&1; then
             docker rmi "$image_name"
@@ -379,7 +401,7 @@ auto_setup_before_push() {
 
 # Основная функция для push-local
 build_and_push_local() {
-    echo "🏗️ Building and pushing to local registry..."
+    echo "🏗️ Building and pushing main services to local registry..."
     
     # Автоматическая настройка
     auto_setup_before_push
@@ -390,7 +412,24 @@ build_and_push_local() {
     # Пушим в локальный registry
     push_all_local
     
-    echo "✅ All images built and pushed to local registry"
+    echo "✅ All main services built and pushed to local registry"
+    registry_status
+}
+
+# Функция для push-local с mock DSP
+build_and_push_local_with_mocks() {
+    echo "🏗️ Building and pushing all services including mock DSPs to local registry..."
+    
+    # Автоматическая настройка
+    auto_setup_before_push
+    
+    # Собираем образы
+    build_all_with_mocks
+    
+    # Пушим в локальный registry
+    push_all_local_with_mocks
+    
+    echo "✅ All services including mock DSPs built and pushed to local registry"
     registry_status
 }
 
@@ -405,12 +444,28 @@ case "${1:-all}" in
             build_and_push_local
         fi
         ;;
+    "all-with-mocks")
+        build_all_with_mocks
+        echo ""
+        read -p "Push images to local registry? (y/n): " -n 1 -r
+        echo
+        if [[ $REPLY =~ ^[Yy]$ ]]; then
+            build_and_push_local_with_mocks
+        fi
+        ;;
     "push-local")
         build_and_push_local
         ;;
+    "push-local-with-mocks")
+        build_and_push_local_with_mocks
+        ;;
     "list")
-        echo "Available services:"
+        echo "Available main services:"
         for service in "${SERVICES[@]}"; do
+            echo "  - $service"
+        done
+        echo "Available mock DSP services:"
+        for service in "${MOCK_DSP_SERVICES[@]}"; do
             echo "  - $service"
         done
         ;;
@@ -437,7 +492,7 @@ case "${1:-all}" in
         ;;
     *)
         # Assume it's a service name
-        if [[ " ${SERVICES[@]} " =~ " $1 " ]]; then
+        if [[ " ${ALL_SERVICES[@]} " =~ " $1 " ]]; then
             build_image $1
             read -p "Push image to local registry? (y/n): " -n 1 -r
             echo

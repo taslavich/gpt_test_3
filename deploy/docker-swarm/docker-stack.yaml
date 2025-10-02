@@ -17,6 +17,36 @@ volumes:
   kafka_data:
 
 services:
+  mock-dsp-1:
+    image: localhost:5000/rtb/mock-dsp-1:local
+    hostname: mock-dsp-1
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: on-failure
+    env_file:
+      - env/mock-dsp-1.env
+
+  mock-dsp-2:
+    image: localhost:5000/rtb/mock-dsp-2:local
+    hostname: mock-dsp-2
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: on-failure
+    env_file:
+      - env/mock-dsp-2.env
+
+  mock-dsp-3:
+    image: localhost:5000/rtb/mock-dsp-3:local
+    hostname: mock-dsp-3
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: on-failure
+    env_file:
+      - env/mock-dsp-3.env
+
   redis:
     image: redis:7-alpine
     hostname: redis
