@@ -138,12 +138,10 @@ func generateRandomIP() string {
 	return fmt.Sprintf("10.%d.%d.%d", byte(n>>16), byte(n>>8), byte(n))
 }
 
-// Тест производительности (rate-based)
 func TestLoadRTBSystem(t *testing.T) {
-	// Парсим флаги
 	flag.Parse()
 
-	// Устанавливаем URL адаптера (приоритет: флаг > env > значение по умолчанию)
+	// Устанавливаем URL адаптера
 	if sppAdapterURL == "https://twinbidexchange.com/bidRequest/bid_v_2_5" {
 		if envURL := os.Getenv("SPP_ADAPTER_URL"); envURL != "" {
 			sppAdapterURL = envURL
@@ -151,21 +149,14 @@ func TestLoadRTBSystem(t *testing.T) {
 	}
 
 	fmt.Printf("🎯 Using adapter URL: %s\n", sppAdapterURL)
+	fmt.Printf("🔧 Configuration: threads=%d, targetRPS=%d, perWorker=%d, remainder=%d\n",
+		threads, targetRPS, targetRPS/threads, targetRPS%threads)
 
-	// Запускаем диагностику в отдельной горутине
-	if enableDiagnostics {
-		fmt.Println("🚀 Запуск системной диагностики...")
-		go runDiagnostics()
-		// Даем время диагностике запуститься
-		time.Sleep(2 * time.Second)
-	}
-
-	fmt.Printf("Starting load test: threads=%d targetRPS=%d duration=%v inflightPerWorker=%d\n",
-		threads, targetRPS, testDuration, inflightPerWorker)
-
-	// распределяем RPS по воркерам, учитывая остаток
+	// Проверка распределения RPS
 	perWorker := targetRPS / threads
 	remainder := targetRPS % threads
+	fmt.Printf("📊 RPS distribution: %d workers with %d RPS, %d workers with %d RPS\n",
+		threads-remainder, perWorker, remainder, perWorker+1)
 
 	// буфер результатов — targetRPS * duration (максимум). Берём минимум с разумным лимитом.
 	maxResults := targetRPS * int(testDuration.Seconds())
@@ -196,6 +187,7 @@ func TestLoadRTBSystem(t *testing.T) {
 		if i < remainder {
 			rps++
 		}
+		fmt.Printf("👷 Starting worker %d with RPS: %d\n", i, rps)
 		wg.Add(1)
 		go workerRate(i, rps, results, &wg, stopCh)
 	}
@@ -234,7 +226,10 @@ func TestLoadRTBSystem(t *testing.T) {
 // Воркер с пулом задач для увеличения параллелизма
 func workerRate(id, rps int, results chan<- *testResult, wg *sync.WaitGroup, stopCh <-chan struct{}) {
 	defer wg.Done()
+	fmt.Printf("👷 Worker %d started, RPS: %d\n", id, rps)
+
 	if rps <= 0 {
+		fmt.Printf("⚠️ Worker %d has zero RPS, exiting\n", id)
 		return
 	}
 
