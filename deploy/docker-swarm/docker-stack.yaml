@@ -186,6 +186,8 @@ services:
       - "8085:8085"
       - "8087:8087"
       - "8088:8088"
+    volumes:
+      - nginx_logs:/var/log/nginx
     configs:
       - source: nginx_conf
         target: /etc/nginx/nginx.conf
@@ -209,3 +211,6 @@ services:
       - spp-adapter
       - kafka-loader
       - clickhouse-loader
+
+volumes:
+  nginx_logs:
