@@ -4,26 +4,10 @@
     "spp1": {
       "rules": [
         {
-          "field": "bid.price",
-          "condition": "greater_than",
-          "value_type": "float",
-          "value": 1.0
-        },
-        {
-          "field": "bid.array",
-          "condition": "exists",
-          "value_type": "string",
-          "value": ""
-        }
-      ]
-    },
-    "spp2": {
-      "rules": [
-        {
           "field": "bid.adid",
-          "condition": "not_equal",
+          "condition": "equal",
           "value_type": "string",
-          "value": "test-ad"
+          "value": "ADID"
         },
         {
           "field": "bid.id",
