@@ -27,6 +27,7 @@ func postBid_V2_5(
 	w http.ResponseWriter,
 	resp *ortb_V2_5.BidResponse,
 ) {
+	log.Println("Got req")
 	startTime := time.Now()
 	input := r.Context().Value(httpin.Input).(*postBidRequest_V2_5)
 
