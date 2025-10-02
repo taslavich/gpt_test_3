@@ -1,0 +1,120 @@
+=== ss snapshots started at 2025-10-02T15:17:50Z ===
+Command: ss -s
+Interval: 10s
+
+
+--- 2025-10-02T15:17:50Z ---
+Total: 626
+TCP:   184 (estab 42, closed 117, orphaned 0, timewait 7)
+
+Transport Total     IP        IPv6
+RAW	  3         1         2        
+UDP	  5         4         1        
+TCP	  67        40        27       
+INET	  75        45        30       
+FRAG	  0         0         0        
+
+=== ss snapshots started at 2025-10-02T15:40:18Z ===
+Command: ss -s
+Interval: 10s
+
+
+--- 2025-10-02T15:40:18Z ---
+Total: 620
+TCP:   188 (estab 42, closed 121, orphaned 0, timewait 12)
+
+Transport Total     IP        IPv6
+RAW	  3         1         2        
+UDP	  5         4         1        
+TCP	  67        40        27       
+INET	  75        45        30       
+FRAG	  0         0         0        
+
+=== ss snapshots started at 2025-10-02T15:42:11Z ===
+Command: ss -s
+Interval: 10s
+
+
+--- 2025-10-02T15:42:11Z ---
+Total: 619
+TCP:   189 (estab 42, closed 122, orphaned 0, timewait 11)
+
+Transport Total     IP        IPv6
+RAW	  3         1         2        
+UDP	  5         4         1        
+TCP	  67        40        27       
+INET	  75        45        30       
+FRAG	  0         0         0        
+
+
+--- 2025-10-02T15:42:21Z ---
+Total: 818
+TCP:   1149 (estab 142, closed 982, orphaned 0, timewait 469)
+
+Transport Total     IP        IPv6
+RAW	  3         1         2        
+UDP	  103       102       1        
+TCP	  167       140       27       
+INET	  273       243       30       
+FRAG	  0         0         0        
+
+
+--- 2025-10-02T15:42:31Z ---
+Total: 852
+TCP:   1737 (estab 142, closed 1570, orphaned 1, timewait 1015)
+
+Transport Total     IP        IPv6
+RAW	  3         1         2        
+UDP	  103       102       1        
+TCP	  167       140       27       
+INET	  273       243       30       
+FRAG	  0         0         0        
+
+
+--- 2025-10-02T15:42:41Z ---
+Total: 840
+TCP:   2064 (estab 164, closed 1875, orphaned 6, timewait 1400)
+
+Transport Total     IP        IPv6
+RAW	  3         1         2        
+UDP	  103       102       1        
+TCP	  189       162       27       
+INET	  295       265       30       
+FRAG	  0         0         0        
+
+
+--- 2025-10-02T15:42:51Z ---
+Total: 894
+TCP:   2583 (estab 150, closed 2408, orphaned 0, timewait 1887)
+
+Transport Total     IP        IPv6
+RAW	  3         1         2        
+UDP	  103       102       1        
+TCP	  175       148       27       
+INET	  281       251       30       
+FRAG	  0         0         0        
+
+
+--- 2025-10-02T15:43:01Z ---
+Total: 818
+TCP:   3066 (estab 142, closed 2899, orphaned 1, timewait 2435)
+
+Transport Total     IP        IPv6
+RAW	  3         1         2        
+UDP	  103       102       1        
+TCP	  167       140       27       
+INET	  273       243       30       
+FRAG	  0         0         0        
+
+
+--- 2025-10-02T15:43:11Z ---
+Total: 819
+TCP:   3592 (estab 143, closed 3424, orphaned 8, timewait 3043)
+
+Transport Total     IP        IPv6
+RAW	  3         1         2        
+UDP	  103       102       1        
+TCP	  168       141       27       
+INET	  274       244       30       
+FRAG	  0         0         0        
+
