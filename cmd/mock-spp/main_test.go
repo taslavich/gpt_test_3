@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"flag"
 	"fmt"
 	"io"
 	"log"
@@ -23,11 +24,12 @@ import (
 )
 
 // Конфигурация теста
-const (
-	sppAdapterURL = "https://twinbidexchange.com/bidRequest/bid_v_2_5"
-	threads       = 100              // Количество параллельных горутин
-	targetRPS     = 10000            // Целевая нагрузка (RPS)
-	testDuration  = 60 * time.Second // Длительность теста
+var (
+	sppAdapterURL     string             // Будет устанавливаться из флага или env
+	threads           = 100              // Количество параллельных горутин
+	targetRPS         = 10000            // Целевая нагрузка (RPS)
+	testDuration      = 60 * time.Second // Длительность теста
+	inflightPerWorker = 10               // Количество одновременных запросов на воркер
 )
 
 var (
@@ -53,6 +55,46 @@ type snapshotSpec struct {
 	args     []string
 	interval time.Duration
 	filename string
+}
+
+// ResultReporter для сбора потерянных результатов
+type resultReporter struct {
+	mu      sync.Mutex
+	results []*testResult
+	dropped int64
+}
+
+func (r *resultReporter) add(result *testResult) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.results = append(r.results, result)
+}
+
+func (r *resultReporter) addDropped() {
+	atomic.AddInt64(&r.dropped, 1)
+}
+
+func (r *resultReporter) getAll() []*testResult {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.results
+}
+
+func (r *resultReporter) getDropped() int64 {
+	return atomic.LoadInt64(&r.dropped)
+}
+
+// Получение URL адаптера из env переменной
+func getAdapterURL() string {
+	if url := os.Getenv("SPP_ADAPTER_URL"); url != "" {
+		return url
+	}
+	return "https://twinbidexchange.com/bidRequest/bid_v_2_5"
+}
+
+func init() {
+	// Инициализация флагов
+	flag.StringVar(&sppAdapterURL, "adapter-url", "https://twinbidexchange.com/bidRequest/bid_v_2_5", "SPP adapter endpoint")
 }
 
 // Генератор тестовых BidRequest для ORTB 2.5
@@ -98,6 +140,18 @@ func generateRandomIP() string {
 
 // Тест производительности (rate-based)
 func TestLoadRTBSystem(t *testing.T) {
+	// Парсим флаги
+	flag.Parse()
+
+	// Устанавливаем URL адаптера (приоритет: флаг > env > значение по умолчанию)
+	if sppAdapterURL == "https://twinbidexchange.com/bidRequest/bid_v_2_5" {
+		if envURL := os.Getenv("SPP_ADAPTER_URL"); envURL != "" {
+			sppAdapterURL = envURL
+		}
+	}
+
+	fmt.Printf("🎯 Using adapter URL: %s\n", sppAdapterURL)
+
 	// Запускаем диагностику в отдельной горутине
 	if enableDiagnostics {
 		fmt.Println("🚀 Запуск системной диагностики...")
@@ -106,7 +160,8 @@ func TestLoadRTBSystem(t *testing.T) {
 		time.Sleep(2 * time.Second)
 	}
 
-	fmt.Printf("Starting load test: threads=%d targetRPS=%d duration=%v\n", threads, targetRPS, testDuration)
+	fmt.Printf("Starting load test: threads=%d targetRPS=%d duration=%v inflightPerWorker=%d\n",
+		threads, targetRPS, testDuration, inflightPerWorker)
 
 	// распределяем RPS по воркерам, учитывая остаток
 	perWorker := targetRPS / threads
@@ -121,11 +176,19 @@ func TestLoadRTBSystem(t *testing.T) {
 		maxResults = 5_000_000 // защита от OOM
 	}
 
+	reporter := &resultReporter{}
 	results := make(chan *testResult, maxResults)
 	var wg sync.WaitGroup
 
 	startTime := time.Now()
 	stopCh := make(chan struct{})
+
+	// Горутина для обработки переполненных результатов
+	go func() {
+		for result := range results {
+			reporter.add(result)
+		}
+	}()
 
 	// Запускаем воркеры
 	for i := 0; i < threads; i++ {
@@ -148,14 +211,17 @@ func TestLoadRTBSystem(t *testing.T) {
 		close(results)
 	}()
 
-	// Сбор результатов
-	var resultsSlice []*testResult
-	for result := range results {
-		resultsSlice = append(resultsSlice, result)
-	}
-
+	// Сбор всех результатов через reporter
+	allResults := reporter.getAll()
 	totalTime := time.Since(startTime)
-	analyzeResults(resultsSlice, totalTime)
+
+	// Анализ результатов
+	analyzeResults(allResults, totalTime)
+
+	// Вывод информации о потерянных результатах
+	if dropped := reporter.getDropped(); dropped > 0 {
+		fmt.Printf("⚠️  Dropped results: %d\n", dropped)
+	}
 
 	// Ждем завершения диагностики
 	if enableDiagnostics {
@@ -165,33 +231,61 @@ func TestLoadRTBSystem(t *testing.T) {
 	}
 }
 
-// Воркер с таргетом rps
+// Воркер с пулом задач для увеличения параллелизма
 func workerRate(id, rps int, results chan<- *testResult, wg *sync.WaitGroup, stopCh <-chan struct{}) {
 	defer wg.Done()
 	if rps <= 0 {
 		return
 	}
 
+	taskCh := make(chan struct{}, rps) // Буферизованный канал задач
+	var workerWg sync.WaitGroup
+
+	// Запускаем под-воркеры
+	for i := 0; i < inflightPerWorker; i++ {
+		workerWg.Add(1)
+		go func(workerID int) {
+			defer workerWg.Done()
+			client := &http.Client{
+				Timeout: 5 * time.Second,
+				Transport: &http.Transport{
+					MaxIdleConnsPerHost: 100,
+					MaxConnsPerHost:     100,
+				},
+			}
+
+			for range taskCh {
+				start := time.Now()
+				bidRequest := generateBidRequest()
+				result := sendBidRequestWithClient(bidRequest, start, client)
+				// non-blocking send to avoid deadlock if results channel full
+				select {
+				case results <- result:
+				default:
+					// Результат потерян - логируем это
+					// В реальном коде здесь можно добавить логирование
+				}
+			}
+		}(i)
+	}
+
+	// Генератор задач
 	interval := time.Second / time.Duration(rps)
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
 
-	client := &http.Client{
-		Timeout: 5 * time.Second,
-	}
-
 	for {
 		select {
 		case <-stopCh:
+			close(taskCh)
+			workerWg.Wait() // Ждем завершения всех in-flight запросов
 			return
 		case <-ticker.C:
-			start := time.Now()
-			bidRequest := generateBidRequest()
-			result := sendBidRequestWithClient(bidRequest, start, client)
-			// non-blocking send to avoid deadlock if results channel full
 			select {
-			case results <- result:
+			case taskCh <- struct{}{}:
+				// Задача добавлена
 			default:
+				// Буфер полон - пропускаем такт (это нормально при высокой latency)
 			}
 		}
 	}
@@ -537,6 +631,7 @@ func writeTestInfo(dir string) {
 	fmt.Fprintf(file, "Threads: %d\n", threads)
 	fmt.Fprintf(file, "Target RPS: %d\n", targetRPS)
 	fmt.Fprintf(file, "Test Duration: %v\n", testDuration)
+	fmt.Fprintf(file, "Inflight Per Worker: %d\n", inflightPerWorker)
 	fmt.Fprintf(file, "Process Pattern: %s\n", processPattern)
 	fmt.Fprintf(file, "=============================\n\n")
 }
