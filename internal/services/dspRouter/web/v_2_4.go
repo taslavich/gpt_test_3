@@ -79,6 +79,7 @@ func NewServer(
 		redisClient:        redisClient,
 		client:             client,
 		latency:            latency,
+		reqCount:           reqCount,
 	}
 }
 
