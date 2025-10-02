@@ -1,13 +1,19 @@
 package loadtest
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
+	"os"
+	"os/exec"
+	"path/filepath"
 	"sort"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -27,6 +33,27 @@ const (
 var (
 	globalIDCounter uint64
 )
+
+// Конфигурация диагностики
+var (
+	enableDiagnostics = true              // Включить сбор диагностики
+	diagDuration      = 70 * time.Second  // Длительность диагностики (немного больше теста)
+	diagOutputDir     = "./loadtest-diag" // Каталог для диагностических логов
+	processPattern    = "rtb_"            // Шаблон для поиска процессов RTB
+)
+
+type streamSpec struct {
+	name     string
+	args     []string
+	filename string
+}
+
+type snapshotSpec struct {
+	name     string
+	args     []string
+	interval time.Duration
+	filename string
+}
 
 // Генератор тестовых BidRequest для ORTB 2.5
 func generateBidRequest() *ortb_V2_5.BidRequest {
@@ -71,6 +98,14 @@ func generateRandomIP() string {
 
 // Тест производительности (rate-based)
 func TestLoadRTBSystem(t *testing.T) {
+	// Запускаем диагностику в отдельной горутине
+	if enableDiagnostics {
+		fmt.Println("🚀 Запуск системной диагностики...")
+		go runDiagnostics()
+		// Даем время диагностике запуститься
+		time.Sleep(2 * time.Second)
+	}
+
 	fmt.Printf("Starting load test: threads=%d targetRPS=%d duration=%v\n", threads, targetRPS, testDuration)
 
 	// распределяем RPS по воркерам, учитывая остаток
@@ -121,6 +156,13 @@ func TestLoadRTBSystem(t *testing.T) {
 
 	totalTime := time.Since(startTime)
 	analyzeResults(resultsSlice, totalTime)
+
+	// Ждем завершения диагностики
+	if enableDiagnostics {
+		fmt.Println("⏳ Ожидание завершения диагностики...")
+		time.Sleep(5 * time.Second)
+		fmt.Printf("📊 Диагностические логи сохранены в: %s\n", diagOutputDir)
+	}
 }
 
 // Воркер с таргетом rps
@@ -293,4 +335,208 @@ func analyzeResults(results []*testResult, totalTime time.Duration) {
 	} else {
 		fmt.Printf("⚠️  Latency is high: %v\n", avgLatency)
 	}
+}
+
+// ============================
+// ДИАГНОСТИЧЕСКАЯ СИСТЕМА
+// ============================
+
+func runDiagnostics() {
+	if err := os.MkdirAll(diagOutputDir, 0o755); err != nil {
+		log.Printf("❌ Ошибка создания каталога диагностики: %v", err)
+		return
+	}
+
+	pidList := strings.Join(findPIDs(processPattern), ",")
+	ctx, cancel := context.WithTimeout(context.Background(), diagDuration)
+	defer cancel()
+
+	var wg sync.WaitGroup
+
+	streamCmds := []streamSpec{
+		{"top", buildTopArgs(pidList), "top.log"},
+		{"pidstat", buildPidstatArgs(pidList), "pidstat.log"},
+		{"mpstat", []string{"-P", "ALL", "2"}, "mpstat.log"},
+		{"vmstat", []string{"2"}, "vmstat.log"},
+		{"iostat", []string{"-xz", "2"}, "iostat.log"},
+		{"sar", []string{"-n", "DEV", "2"}, "sar-dev.log"},
+		{"sar", []string{"-n", "TCP,ETCP", "2"}, "sar-tcp.log"},
+	}
+
+	for _, spec := range streamCmds {
+		wg.Add(1)
+		go runStream(ctx, &wg, spec, diagOutputDir)
+	}
+
+	snapshotCmds := []snapshotSpec{
+		{"free", []string{"-m"}, 10 * time.Second, "free.log"},
+		{"ss", []string{"-s"}, 10 * time.Second, "ss-summary.log"},
+		{"ss", []string{"-tan", "state", "time-wait"}, 10 * time.Second, "ss-timewait.log"},
+	}
+
+	for _, spec := range snapshotCmds {
+		wg.Add(1)
+		go runSnapshots(ctx, &wg, spec, diagOutputDir)
+	}
+
+	// Записываем информацию о тесте
+	writeTestInfo(diagOutputDir)
+
+	wg.Wait()
+	fmt.Println("✅ Диагностика завершена")
+}
+
+func findPIDs(pattern string) []string {
+	pattern = strings.TrimSpace(pattern)
+	if pattern == "" {
+		return nil
+	}
+	out, err := exec.Command("pgrep", "-f", pattern).Output()
+	if err != nil {
+		log.Printf("⚠️ pgrep не нашёл процессов для %q: %v", pattern, err)
+		return nil
+	}
+	return strings.Fields(string(out))
+}
+
+func buildTopArgs(pidList string) []string {
+	args := []string{"-b", "-H", "-d", "2"}
+	if pidList != "" {
+		args = append(args, "-p", pidList)
+	}
+	return args
+}
+
+func buildPidstatArgs(pidList string) []string {
+	args := []string{"-u", "-r", "-d", "2"}
+	if pidList != "" {
+		args = append(args, "-p", pidList)
+	}
+	return args
+}
+
+func runStream(ctx context.Context, wg *sync.WaitGroup, spec streamSpec, dir string) {
+	defer wg.Done()
+
+	path := filepath.Join(dir, spec.filename)
+	file, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
+	if err != nil {
+		log.Printf("❌ Не удалось открыть %s: %v", path, err)
+		return
+	}
+	defer file.Close()
+
+	// Записываем заголовок
+	fmt.Fprintf(file, "=== %s started at %s ===\n", spec.name, time.Now().Format(time.RFC3339))
+	fmt.Fprintf(file, "Command: %s %s\n\n", spec.name, strings.Join(spec.args, " "))
+
+	cmd := exec.CommandContext(ctx, spec.name, spec.args...)
+	stdout, err := cmd.StdoutPipe()
+	if err != nil {
+		log.Printf("❌ %s stdout: %v", spec.name, err)
+		return
+	}
+	stderr, err := cmd.StderrPipe()
+	if err != nil {
+		log.Printf("❌ %s stderr: %v", spec.name, err)
+		return
+	}
+
+	if err := cmd.Start(); err != nil {
+		log.Printf("❌ %s start: %v", spec.name, err)
+		return
+	}
+
+	var copierWG sync.WaitGroup
+	copierWG.Add(2)
+	go copyStream(&copierWG, file, stdout)
+	go copyStream(&copierWG, file, stderr)
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		if err := cmd.Wait(); err != nil && ctx.Err() == nil {
+			log.Printf("⚠️ %s завершилась с ошибкой: %v", spec.name, err)
+		}
+	}()
+
+	select {
+	case <-ctx.Done():
+		_ = cmd.Process.Signal(os.Interrupt)
+		<-done
+	case <-done:
+	}
+	copierWG.Wait()
+	fmt.Fprintf(file, "\n=== %s finished at %s ===\n\n", spec.name, time.Now().Format(time.RFC3339))
+}
+
+func runSnapshots(ctx context.Context, wg *sync.WaitGroup, spec snapshotSpec, dir string) {
+	defer wg.Done()
+
+	path := filepath.Join(dir, spec.filename)
+	file, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
+	if err != nil {
+		log.Printf("❌ Не удалось открыть %s: %v", path, err)
+		return
+	}
+	defer file.Close()
+
+	// Записываем заголовок
+	fmt.Fprintf(file, "=== %s snapshots started at %s ===\n", spec.name, time.Now().Format(time.RFC3339))
+	fmt.Fprintf(file, "Command: %s %s\n", spec.name, strings.Join(spec.args, " "))
+	fmt.Fprintf(file, "Interval: %v\n\n", spec.interval)
+
+	ticker := time.NewTicker(spec.interval)
+	defer ticker.Stop()
+
+	writeSnapshot(ctx, file, spec)
+	for {
+		select {
+		case <-ctx.Done():
+			fmt.Fprintf(file, "\n=== %s snapshots finished at %s ===\n\n", spec.name, time.Now().Format(time.RFC3339))
+			return
+		case <-ticker.C:
+			writeSnapshot(ctx, file, spec)
+		}
+	}
+}
+
+func writeSnapshot(ctx context.Context, file *os.File, spec snapshotSpec) {
+	fmt.Fprintf(file, "\n--- %s ---\n", time.Now().Format(time.RFC3339))
+	cmd := exec.CommandContext(ctx, spec.name, spec.args...)
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		fmt.Fprintf(file, "❌ ошибка: %v\n", err)
+	}
+	file.Write(output)
+}
+
+func copyStream(wg *sync.WaitGroup, dst *os.File, src io.Reader) {
+	defer wg.Done()
+	scanner := bufio.NewScanner(src)
+	for scanner.Scan() {
+		fmt.Fprintln(dst, scanner.Text())
+	}
+	if err := scanner.Err(); err != nil {
+		log.Printf("⚠️ ошибка чтения потока: %v", err)
+	}
+}
+
+func writeTestInfo(dir string) {
+	path := filepath.Join(dir, "test_info.log")
+	file, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
+	if err != nil {
+		log.Printf("❌ Не удалось записать информацию о тесте: %v", err)
+		return
+	}
+	defer file.Close()
+
+	fmt.Fprintf(file, "=== Load Test Information ===\n")
+	fmt.Fprintf(file, "Start Time: %s\n", time.Now().Format(time.RFC3339))
+	fmt.Fprintf(file, "Target URL: %s\n", sppAdapterURL)
+	fmt.Fprintf(file, "Threads: %d\n", threads)
+	fmt.Fprintf(file, "Target RPS: %d\n", targetRPS)
+	fmt.Fprintf(file, "Test Duration: %v\n", testDuration)
+	fmt.Fprintf(file, "Process Pattern: %s\n", processPattern)
+	fmt.Fprintf(file, "=============================\n\n")
 }
