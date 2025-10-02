@@ -50,8 +50,8 @@ func main() {
 				// ЗАЩИТА ОТ ДЕЛЕНИЯ НА НОЛЬ
 				if count > 0 {
 					averageLatency := lat / count
-					log.Printf("📊 Metrics Report - Requests: %d, Average Latency: %d ns (%.2f ms)",
-						count, averageLatency, float64(averageLatency)/1000000.0)
+					log.Printf("📊 Metrics Report - TotalLatency: %d, Requests: %d, Average Latency: %d ms",
+						lat, count, averageLatency)
 				} else {
 					log.Printf("📊 Metrics Report - No requests processed yet")
 				}
