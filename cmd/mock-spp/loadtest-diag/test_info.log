@@ -1,0 +1,27 @@
+=== Load Test Information ===
+Start Time: 2025-10-02T15:17:50Z
+Target URL: https://twinbidexchange.com/bidRequest/bid_v_2_5
+Threads: 100
+Target RPS: 10000
+Test Duration: 1m0s
+Process Pattern: rtb_
+=============================
+
+=== Load Test Information ===
+Start Time: 2025-10-02T15:40:18Z
+Target URL: https://twinbidexchange.com/bidRequest/bid_v_2_5
+Threads: 100
+Target RPS: 10000
+Test Duration: 1m0s
+Process Pattern: rtb_bid-engine|rtb_orchestrator|rtb_router|rtb_spp-adapter|rtb_kafka-loader|rtb_clickhouse-loader|rtb_mock-dsp-1|rtb_mock-dsp-2|rtb_mock-dsp-3|rtb_redis|rtb_kafka|rtb_nginx-gateway
+=============================
+
+=== Load Test Information ===
+Start Time: 2025-10-02T15:42:11Z
+Target URL: https://twinbidexchange.com/bidRequest/bid_v_2_5
+Threads: 100
+Target RPS: 10000
+Test Duration: 1m0s
+Process Pattern: 
+=============================
+
