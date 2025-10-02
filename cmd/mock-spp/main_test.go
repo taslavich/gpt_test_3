@@ -149,13 +149,23 @@ func TestLoadRTBSystem(t *testing.T) {
 	}
 
 	fmt.Printf("🎯 Using adapter URL: %s\n", sppAdapterURL)
-	fmt.Printf("🔧 Configuration: threads=%d, targetRPS=%d, perWorker=%d, remainder=%d\n",
-		threads, targetRPS, targetRPS/threads, targetRPS%threads)
 
-	// Проверка распределения RPS
+	// Запускаем диагностику в отдельной горутине
+	if enableDiagnostics {
+		fmt.Println("🚀 Запуск системной диагностики...")
+		go runDiagnostics()
+		// Даем время диагностике запуститься
+		time.Sleep(2 * time.Second)
+	}
+
+	fmt.Printf("Starting load test: threads=%d targetRPS=%d duration=%v inflightPerWorker=%d\n",
+		threads, targetRPS, testDuration, inflightPerWorker)
+
+	// распределяем RPS по воркерам, учитывая остаток
 	perWorker := targetRPS / threads
 	remainder := targetRPS % threads
-	fmt.Printf("📊 RPS distribution: %d workers with %d RPS, %d workers with %d RPS\n",
+
+	fmt.Printf("🔧 RPS distribution: %d workers with %d RPS, %d workers with %d RPS\n",
 		threads-remainder, perWorker, remainder, perWorker+1)
 
 	// буфер результатов — targetRPS * duration (максимум). Берём минимум с разумным лимитом.
@@ -187,13 +197,17 @@ func TestLoadRTBSystem(t *testing.T) {
 		if i < remainder {
 			rps++
 		}
-		fmt.Printf("👷 Starting worker %d with RPS: %d\n", i, rps)
 		wg.Add(1)
 		go workerRate(i, rps, results, &wg, stopCh)
 	}
 
+	// Ждем немного чтобы воркеры успели запуститься
+	time.Sleep(100 * time.Millisecond)
+	fmt.Printf("✅ All workers started, test running for %v...\n", testDuration)
+
 	// Останавливаем через duration
 	time.AfterFunc(testDuration, func() {
+		fmt.Println("⏰ Test duration reached, stopping workers...")
 		close(stopCh)
 	})
 
@@ -201,6 +215,7 @@ func TestLoadRTBSystem(t *testing.T) {
 	go func() {
 		wg.Wait()
 		close(results)
+		fmt.Println("✅ All workers completed")
 	}()
 
 	// Сбор всех результатов через reporter
