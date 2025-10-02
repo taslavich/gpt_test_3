@@ -77,6 +77,7 @@ func main() {
 			cfg.DspRulesConfigPath,
 			cfg.SppRulesConfigPath,
 			cfg.DSPEndpoints_v_2_4,
+			cfg.DSPEndpoints_v_2_5,
 			redisClient,
 			cfg.BidResponsesTimeout,
 		),

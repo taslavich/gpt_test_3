@@ -42,13 +42,13 @@ func (s *Server) GetBids_V2_5(
 	var bdmu sync.Mutex
 	var wg sync.WaitGroup
 
-	dspEndpointLen := len(s.dspEndpoints)
+	dspEndpointLen := len(s.dspEndpoints_v_2_5)
 	responsesCh := make(chan *ortb_V2_5.BidResponse, dspEndpointLen)
 	dspMetaDataCh := make(chan *DspMetaData, dspEndpointLen)
 
-	for i := range s.dspEndpoints {
+	for i := range s.dspEndpoints_v_2_5 {
 		wg.Add(1)
-		endpoint := s.dspEndpoints[i]
+		endpoint := s.dspEndpoints_v_2_5[i]
 		go func(
 			mu *sync.Mutex,
 			req *dspRouterGrpc.DspRouterRequest_V2_5,

@@ -40,7 +40,8 @@ type Server struct {
 	reloadMutex  sync.RWMutex
 	requestMutex sync.RWMutex
 
-	dspEndpoints []string
+	dspEndpoints_v_2_4 []string
+	dspEndpoints_v_2_5 []string
 
 	redisClient *redis.Client
 
@@ -55,21 +56,23 @@ func NewServer(
 	processor *filter.FilterProcessor,
 	dspConfigPath string,
 	sppConfigPath string,
-	dspEndpoints []string,
+	dspEndpoints_v_2_4,
+	dspEndpoints_v_2_5 []string,
 	redisClient *redis.Client,
 	timeout time.Duration,
 
 ) *Server {
 	client := &http.Client{Timeout: timeout}
 	return &Server{
-		ruleManager:   ruleManager,
-		fileLoader:    fileLoader,
-		processor:     processor,
-		dspConfigPath: dspConfigPath,
-		sppConfigPath: sppConfigPath,
-		dspEndpoints:  dspEndpoints,
-		redisClient:   redisClient,
-		client:        client,
+		ruleManager:        ruleManager,
+		fileLoader:         fileLoader,
+		processor:          processor,
+		dspConfigPath:      dspConfigPath,
+		sppConfigPath:      sppConfigPath,
+		dspEndpoints_v_2_4: dspEndpoints_v_2_4,
+		dspEndpoints_v_2_5: dspEndpoints_v_2_5,
+		redisClient:        redisClient,
+		client:             client,
 	}
 }
 
@@ -95,13 +98,13 @@ func (s *Server) GetBids_V2_4(
 	var bdmu sync.Mutex
 	var wg sync.WaitGroup
 
-	dspEndpointLen := len(s.dspEndpoints)
+	dspEndpointLen := len(s.dspEndpoints_v_2_4)
 	responsesCh := make(chan *ortb_V2_4.BidResponse, dspEndpointLen)
 	dspMetaDataCh := make(chan *DspMetaData, dspEndpointLen)
 
-	for i := range s.dspEndpoints {
+	for i := range s.dspEndpoints_v_2_4 {
 		wg.Add(1)
-		endpoint := s.dspEndpoints[i]
+		endpoint := s.dspEndpoints_v_2_4[i]
 		go func(
 			mu *sync.Mutex,
 			req *dspRouterGrpc.DspRouterRequest_V2_4,
