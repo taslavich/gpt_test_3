@@ -33,7 +33,7 @@ func postBid_V2_5(
 	startTime := time.Now()
 	defer func() {
 		elapsed := time.Since(startTime)
-		atomic.AddInt64(latency, elapsed.Milliseconds())
+		atomic.AddInt64(latency, elapsed.Microseconds())
 		atomic.AddInt64(reqCount, 1)
 	}()
 
