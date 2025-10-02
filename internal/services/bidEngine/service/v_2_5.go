@@ -31,10 +31,18 @@ func GetWinnerBidInternal_V_2_5(
 	}
 
 	impBids := make(map[string][]*pb.Bid)
-
 	for _, bidResponse := range req.BidResponses {
+		if bidResponse == nil || bidResponse.Seatbid == nil {
+			continue
+		}
 		for _, bid := range bidResponse.Seatbid.Bid {
+			if bid == nil {
+				continue
+			}
 			impID := bid.GetImpid()
+			if impID == "" {
+				continue
+			}
 			impBids[impID] = append(impBids[impID], bid)
 		}
 	}
@@ -78,8 +86,8 @@ func GetWinnerBidInternal_V_2_5(
 			continue
 		}
 
-		wrappedNurl := utils.WrapURL(hostname, *winningBid.Nurl, globalId, utils.NURL)
-		wrappedBurl := utils.WrapURL(hostname, *winningBid.Burl, globalId, utils.BURL)
+		wrappedNurl := utils.WrapURL(hostname, winningBid.GetNurl(), globalId, utils.NURL)
+		wrappedBurl := utils.WrapURL(hostname, winningBid.GetBurl(), globalId, utils.BURL)
 		finalBid := &pb.Bid{
 			Id:    winningBid.Id,
 			Impid: winningBid.Impid,

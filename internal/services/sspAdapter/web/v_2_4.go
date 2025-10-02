@@ -17,6 +17,7 @@ import (
 	"gitlab.com/twinbid-exchange/RTB-exchange/internal/constants"
 	"gitlab.com/twinbid-exchange/RTB-exchange/internal/geoBadIp"
 	orchestratorProto "gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/proto/services/orchestrator"
+	"gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/proto/types/ortb_V2_4"
 	utils "gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/utils_grpc"
 	"google.golang.org/grpc/status"
 )
@@ -35,6 +36,13 @@ func postBid_V2_4(
 	orchestratorClient orchestratorProto.OrchestratorServiceClient,
 	timeout time.Duration,
 ) {
+	defer func() {
+		if r := recover(); r != nil {
+			err := fmt.Errorf("Recovered from panic in postBid_V2_4: %v", r)
+			log.Printf(err.Error())
+			http.Error(w, "", http.StatusInternalServerError)
+		}
+	}()
 	input := r.Context().Value(httpin.Input).(*postBidRequest_V2_4)
 
 	if input.Payload.Device == nil {
@@ -113,7 +121,13 @@ func postBid_V2_4(
 		fmt.Printf("failed to WriteStringToRedis SUCCESS in postBid_V2_4: %w", err)
 	}
 
-	input.Payload.Device.Geo.Country = &countryISO
+	if input.Payload.Device.Geo == nil {
+		input.Payload.Device.Geo = &ortb_V2_4.Geo{
+			Country: &countryISO,
+		}
+	} else {
+		input.Payload.Device.Geo.Country = &countryISO
+	}
 
 	reqCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()

@@ -3,12 +3,14 @@ package orchestratorWeb
 import (
 	"context"
 	"fmt"
+	"log"
 	"time"
 
 	"github.com/redis/go-redis/v9"
 	bidEngineGrpc "gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/proto/services/bidEngine"
 	dspRouterGrpc "gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/proto/services/dspRouter"
 	orchestratorGrpc "gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/proto/services/orchestrator"
+	"gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/proto/types/ortb_V2_4"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
@@ -45,9 +47,20 @@ func (s *Server) GetWinnerBid_V2_4(
 	ctx context.Context,
 	req *orchestratorGrpc.OrchestratorRequest_V2_4,
 ) (
-	*orchestratorGrpc.OrchestratorResponse_V2_4,
-	error,
+	resp *orchestratorGrpc.OrchestratorResponse_V2_4,
+	funcErr error,
 ) {
+	defer func() {
+		if r := recover(); r != nil {
+			err := fmt.Errorf("Recovered from panic in GetWinnerBid_V2_4: %v", r)
+			log.Printf(err.Error())
+
+			grpcCode := codes.Internal
+
+			resp = nil
+			funcErr = status.Errorf(grpcCode, err.Error())
+		}
+	}()
 	getBidsReqCtx, cancel := context.WithTimeout(ctx, s.getBidsTimeout)
 	defer cancel()
 	bids, err := s.dspRouterGrpcClient.GetBids_V2_4(
@@ -70,6 +83,17 @@ func (s *Server) GetWinnerBid_V2_4(
 		}
 
 		return nil, status.Errorf(grpcCode, newErr.Error())
+	}
+
+	if len(bids.BidResponses) == 0 {
+		return &orchestratorGrpc.OrchestratorResponse_V2_4{
+			BidResponse: &ortb_V2_4.BidResponse{
+				Id: req.BidRequest.Id,
+				Seatbid: &ortb_V2_4.SeatBid{
+					Bid: []*ortb_V2_4.Bid{},
+				},
+			},
+		}, nil
 	}
 
 	getWinnerBidReqCtx, cancel := context.WithTimeout(ctx, s.getWinnerBidTimeout)

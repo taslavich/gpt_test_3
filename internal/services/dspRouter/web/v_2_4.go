@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"sync"
 	"time"
@@ -16,6 +17,8 @@ import (
 	dspRouterGrpc "gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/proto/services/dspRouter"
 	"gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/proto/types/ortb_V2_4"
 	utils "gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/utils_grpc"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
 
 type DspMetaData struct {
@@ -73,9 +76,20 @@ func (s *Server) GetBids_V2_4(
 	ctx context.Context,
 	req *dspRouterGrpc.DspRouterRequest_V2_4,
 ) (
-	*dspRouterGrpc.DspRouterResponse_V2_4,
-	error,
+	resp *dspRouterGrpc.DspRouterResponse_V2_4,
+	funcErr error,
 ) {
+	defer func() {
+		if r := recover(); r != nil {
+			err := fmt.Errorf("Recovered from panic in GetBids_V2_4: %v", r)
+			log.Printf(err.Error())
+
+			grpcCode := codes.Internal
+
+			resp = nil
+			funcErr = status.Errorf(grpcCode, err.Error())
+		}
+	}()
 
 	var bdmu sync.Mutex
 	var wg sync.WaitGroup

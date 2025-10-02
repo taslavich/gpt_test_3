@@ -14,16 +14,29 @@ import (
 	dspRouterGrpc "gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/proto/services/dspRouter"
 	"gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/proto/types/ortb_V2_5"
 	utils "gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/utils_grpc"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
 
 func (s *Server) GetBids_V2_5(
 	ctx context.Context,
 	req *dspRouterGrpc.DspRouterRequest_V2_5,
 ) (
-	*dspRouterGrpc.DspRouterResponse_V2_5,
-	error,
+	resp *dspRouterGrpc.DspRouterResponse_V2_5,
+	funcErr error,
 ) {
-	log.Println("Got req in router GetBids_V2_5")
+	defer func() {
+		if r := recover(); r != nil {
+			err := fmt.Errorf("Recovered from panic in GetBids_V2_5: %v", r)
+			log.Printf(err.Error())
+
+			grpcCode := codes.Internal
+
+			resp = nil
+			funcErr = status.Errorf(grpcCode, err.Error())
+		}
+	}()
+	log.Println("Got req in router GetBids_V2_5", req)
 	originReq := req
 
 	var bdmu sync.Mutex
