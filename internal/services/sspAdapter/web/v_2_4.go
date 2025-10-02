@@ -14,11 +14,9 @@ import (
 	grpcRuntime "github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
 	"github.com/redis/go-redis/v9"
 	"github.com/unrolled/render"
-	"gitlab.com/twinbid-exchange/RTB-exchange/internal/constants"
 	"gitlab.com/twinbid-exchange/RTB-exchange/internal/geoBadIp"
 	orchestratorProto "gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/proto/services/orchestrator"
 	"gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/proto/types/ortb_V2_4"
-	utils "gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/utils_grpc"
 	"google.golang.org/grpc/status"
 )
 
@@ -109,18 +107,6 @@ func postBid_V2_4(
 		fmt.Printf("failed to marshal JSON in postBid_V2_4: %w", err)
 	}
 
-	if err := utils.WriteJsonToRedis(ctx, redisClient, globalId, constants.BID_REQUEST_COLUMN, bidReqData); err != nil {
-		fmt.Printf("failed to WriteJsonToRedis Bid Request in postBid_V2_4: %w", err)
-	}
-
-	if err := utils.WriteStringToRedis(ctx, redisClient, globalId, constants.GEO_COLUMN, countryISO); err != nil {
-		fmt.Printf("failed to WriteStringToRedis Geo in postBid_V2_4: %w", err)
-	}
-
-	if err := utils.WriteStringToRedis(ctx, redisClient, globalId, constants.RESULT_COLUMN, constants.UNSUCCESS); err != nil {
-		fmt.Printf("failed to WriteStringToRedis SUCCESS in postBid_V2_4: %w", err)
-	}
-
 	if input.Payload.Device.Geo == nil {
 		input.Payload.Device.Geo = &ortb_V2_4.Geo{
 			Country: &countryISO,
@@ -154,6 +140,8 @@ func postBid_V2_4(
 		log.Printf(err.Error())
 		return
 	}
+	asyncWriteBidDataToRedis(ctx, timeout, redisClient, globalId, bidReqData, countryISO)
+
 	statusCode := http.StatusOK
 	if len(res.BidResponse.Seatbid.Bid) == 0 {
 		statusCode = http.StatusNoContent
