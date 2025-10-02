@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"time"
 
 	"gitlab.com/twinbid-exchange/RTB-exchange/internal/constants"
 	bidEngineGrpc "gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/proto/services/bidEngine"
@@ -20,7 +21,11 @@ func (s *Server) GetWinnerBid_V2_5(
 	resp *bidEngineGrpc.BidEngineResponse_V2_5,
 	funcErr error,
 ) {
+	start := time.Now()
 	defer func() {
+		elapsed := time.Since(start)
+		fmt.Printf("Execution time in ms: %d ms\n", elapsed.Milliseconds())
+
 		if r := recover(); r != nil {
 			err := fmt.Errorf("Recovered from panic in GetWinnerBid_V2_5: %v", r)
 			log.Printf(err.Error())

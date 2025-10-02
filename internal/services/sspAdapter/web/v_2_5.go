@@ -31,7 +31,11 @@ func postBid_V2_5(
 	orchestratorClient orchestratorProto.OrchestratorServiceClient,
 	timeout time.Duration,
 ) {
+	start := time.Now()
 	defer func() {
+		elapsed := time.Since(start)
+		fmt.Printf("Execution time in ms: %d ms\n", elapsed.Milliseconds())
+
 		if r := recover(); r != nil {
 			err := fmt.Errorf("Recovered from panic in postBid_V2_5: %v", r)
 			log.Printf(err.Error())
@@ -39,8 +43,6 @@ func postBid_V2_5(
 		}
 	}()
 	input := r.Context().Value(httpin.Input).(*postBidRequest_V2_5)
-
-	log.Println(input.Payload)
 
 	if input.Payload.Device == nil {
 		err := fmt.Errorf(
@@ -155,8 +157,6 @@ func postBid_V2_5(
 	if len(res.BidResponse.Seatbid.Bid) == 0 {
 		statusCode = http.StatusNoContent
 	}
-
-	log.Println(res)
 
 	if err = rnr.JSON(w, statusCode, postBidResponse_V2_5{
 		BidResponse: res.BidResponse,
