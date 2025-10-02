@@ -31,6 +31,8 @@ func main() {
 	})
 	defer redisClient.Close()
 
+	log.Println(cfg.RedisHost, cfg.RedisPort)
+
 	if err := redisClient.Ping(ctx).Err(); err != nil {
 		log.Fatalf("Failed to connect to Redis: %v", err)
 	}

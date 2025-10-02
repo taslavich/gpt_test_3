@@ -32,6 +32,8 @@ func postBid_V2_5(
 ) {
 	input := r.Context().Value(httpin.Input).(*postBidRequest_V2_5)
 
+	log.Println(input.Payload)
+
 	if input.Payload.Device == nil {
 		err := fmt.Errorf(
 			"There is no device object",
@@ -139,6 +141,8 @@ func postBid_V2_5(
 	if len(res.BidResponse.Seatbid.Bid) == 0 {
 		statusCode = http.StatusNoContent
 	}
+
+	log.Println(res)
 
 	if err = rnr.JSON(w, statusCode, postBidResponse_V2_5{
 		BidResponse: res.BidResponse,
