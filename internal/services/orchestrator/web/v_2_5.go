@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"time"
 
 	bidEngineGrpc "gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/proto/services/bidEngine"
 	dspRouterGrpc "gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/proto/services/dspRouter"
@@ -20,7 +21,11 @@ func (s *Server) GetWinnerBid_V2_5(
 	resp *orchestratorGrpc.OrchestratorResponse_V2_5,
 	funcErr error,
 ) {
+	start := time.Now()
 	defer func() {
+		elapsed := time.Since(start)
+		fmt.Printf("Execution time in ms: %d ms\n", elapsed.Milliseconds())
+
 		if r := recover(); r != nil {
 			err := fmt.Errorf("Recovered from panic in GetWinnerBid_V2_5: %v", r)
 			log.Printf(err.Error())
@@ -31,7 +36,6 @@ func (s *Server) GetWinnerBid_V2_5(
 			funcErr = status.Errorf(grpcCode, err.Error())
 		}
 	}()
-	log.Println("Got request before GetBids_V2_5 ")
 	getBidsReqCtx, cancel := context.WithTimeout(ctx, s.getBidsTimeout)
 	defer cancel()
 	bids, err := s.dspRouterGrpcClient.GetBids_V2_5(
@@ -70,7 +74,6 @@ func (s *Server) GetWinnerBid_V2_5(
 	getWinnerBidReqCtx, cancel := context.WithTimeout(ctx, s.getWinnerBidTimeout)
 	defer cancel()
 
-	log.Println("Got req before GetWinnerBid_V2_5")
 	winner, err := s.bidEngineGrpcClient.GetWinnerBid_V2_5(
 		getWinnerBidReqCtx,
 		&bidEngineGrpc.BidEngineRequest_V2_5{
@@ -92,8 +95,6 @@ func (s *Server) GetWinnerBid_V2_5(
 
 		return nil, status.Errorf(grpcCode, newErr.Error())
 	}
-
-	log.Println("Success got resp in orch")
 
 	return &orchestratorGrpc.OrchestratorResponse_V2_5{
 		BidResponse: winner.BidResponse,
