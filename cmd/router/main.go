@@ -107,6 +107,8 @@ func main() {
 			cfg.DSPEndpoints_v_2_5,
 			redisClient,
 			cfg.BidResponsesTimeout,
+			&latency,
+			&reqCount,
 		),
 	)
 
