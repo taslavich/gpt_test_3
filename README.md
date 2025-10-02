@@ -158,4 +158,24 @@ redis-cli -h 142.93.239.222 -p 6379 PING
 2. Выполните `curl`/`grpcurl`/`kafkacat`/`redis-cli` команды из разделов выше.
 3. Для HTTPS используйте домен, привязанный к ingress (`gateway-ingress`), чтобы задействовать TLS.
 
+## Нагрузочный тест mock SPP
+
+В каталоге `cmd/mock-spp` находится нагрузочный тест, который отправляет ORTB 2.5 `BidRequest` в боевой SSP Adapter. По умолчанию
+он использует публичный HTTPS-эндпоинт `https://twinbidexchange.com/bidRequest/bid_v_2_5`.
+
+### Как задать альтернативный URL
+
+Тест принимает адрес адаптера через флаг `-spp-adapter-url` или переменную окружения `SPP_ADAPTER_URL`. Это позволяет отправлять
+запросы в локальный/внутренний сервис без TLS или nginx.
+
+```bash
+# Прямое обращение к сервису внутри Docker/Kubernetes без TLS
+go test ./cmd/mock-spp -run TestLoadRTBSystem -spp-adapter-url http://rtb_spp-adapter:8086
+
+# Эквивалент с переменной окружения
+SPP_ADAPTER_URL=http://rtb_spp-adapter:8086 go test ./cmd/mock-spp -run TestLoadRTBSystem
+```
+
+Если ни флаг, ни переменная окружения не заданы, используется значение по умолчанию (боевой HTTPS-URL).
+
 Для полного списка gRPC методов и типов обращайтесь к файлам в каталоге `proto/services` и `proto/types`.

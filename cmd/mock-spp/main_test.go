@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"flag"
 	"fmt"
 	"io"
 	"log"
@@ -24,15 +25,23 @@ import (
 
 // Конфигурация теста
 const (
-	sppAdapterURL = "https://twinbidexchange.com/bidRequest/bid_v_2_5"
-	threads       = 100              // Количество параллельных горутин
-	targetRPS     = 10000            // Целевая нагрузка (RPS)
-	testDuration  = 60 * time.Second // Длительность теста
+	defaultSPPAdapterURL = "https://twinbidexchange.com/bidRequest/bid_v_2_5"
+	threads              = 100              // Количество параллельных горутин
+	targetRPS            = 10000            // Целевая нагрузка (RPS)
+	testDuration         = 60 * time.Second // Длительность теста
 )
 
 var (
 	globalIDCounter uint64
+	sppAdapterURL   string
 )
+
+func init() {
+	flag.StringVar(&sppAdapterURL, "spp-adapter-url", defaultSPPAdapterURL, "Target SPP Adapter endpoint")
+	if env := os.Getenv("SPP_ADAPTER_URL"); env != "" {
+		sppAdapterURL = env
+	}
+}
 
 // Конфигурация диагностики
 var (
@@ -90,6 +99,13 @@ func generateBidRequest() *ortb_V2_5.BidRequest {
 func stringPtr(s string) *string { return &s }
 func int32Ptr(i int32) *int32    { return &i }
 
+func currentSPPAdapterURL() string {
+	if sppAdapterURL != "" {
+		return sppAdapterURL
+	}
+	return defaultSPPAdapterURL
+}
+
 func generateRandomIP() string {
 	// Простая генерация приватного IP, быстро меняющаяся
 	n := atomic.AddUint64(&globalIDCounter, 1)
@@ -107,6 +123,7 @@ func TestLoadRTBSystem(t *testing.T) {
 	}
 
 	fmt.Printf("Starting load test: threads=%d targetRPS=%d duration=%v\n", threads, targetRPS, testDuration)
+	fmt.Printf("Target SPP Adapter URL: %s\n", currentSPPAdapterURL())
 
 	// распределяем RPS по воркерам, учитывая остаток
 	perWorker := targetRPS / threads
@@ -212,7 +229,8 @@ func sendBidRequestWithClient(bidRequest *ortb_V2_5.BidRequest, startTime time.T
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	req, err := http.NewRequestWithContext(ctx, "POST", sppAdapterURL, bytes.NewBuffer(jsonData))
+	targetURL := currentSPPAdapterURL()
+	req, err := http.NewRequestWithContext(ctx, "POST", targetURL, bytes.NewBuffer(jsonData))
 	if err != nil {
 		return &testResult{
 			success:   false,
@@ -249,7 +267,7 @@ func sendBidRequestWithClient(bidRequest *ortb_V2_5.BidRequest, startTime time.T
 	return &testResult{
 		success:   false,
 		latency:   latency,
-		error:     fmt.Sprintf("HTTP %d", resp.StatusCode),
+		error:     fmt.Sprintf("HTTP %d (%s)", resp.StatusCode, targetURL),
 		timestamp: startTime,
 	}
 }
@@ -533,7 +551,7 @@ func writeTestInfo(dir string) {
 
 	fmt.Fprintf(file, "=== Load Test Information ===\n")
 	fmt.Fprintf(file, "Start Time: %s\n", time.Now().Format(time.RFC3339))
-	fmt.Fprintf(file, "Target URL: %s\n", sppAdapterURL)
+	fmt.Fprintf(file, "Target URL: %s\n", currentSPPAdapterURL())
 	fmt.Fprintf(file, "Threads: %d\n", threads)
 	fmt.Fprintf(file, "Target RPS: %d\n", targetRPS)
 	fmt.Fprintf(file, "Test Duration: %v\n", testDuration)
