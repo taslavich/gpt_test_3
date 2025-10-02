@@ -4,6 +4,7 @@ import (
 	"context"
 	"log"
 	"net/http"
+	"sync/atomic"
 	"time"
 
 	"github.com/ggicci/httpin"
@@ -26,9 +27,16 @@ func postBid_V2_5(
 	r *http.Request,
 	w http.ResponseWriter,
 	resp *ortb_V2_5.BidResponse,
+	latency *int64,
+	reqCount *int64,
 ) {
-	log.Println("Got req")
 	startTime := time.Now()
+	defer func() {
+		elapsed := time.Since(startTime)
+		atomic.AddInt64(latency, elapsed.Milliseconds())
+		atomic.AddInt64(reqCount, 1)
+	}()
+
 	input := r.Context().Value(httpin.Input).(*postBidRequest_V2_5)
 
 	var statusCode int
@@ -46,7 +54,4 @@ func postBid_V2_5(
 	}); err != nil {
 		log.Printf("[%s] Cannot make HTTP response back: %v\n", resp.GetId(), err)
 	}
-
-	processingTime := time.Since(startTime)
-	log.Printf("[%s] Request processed in %v", resp.GetId(), processingTime)
 }

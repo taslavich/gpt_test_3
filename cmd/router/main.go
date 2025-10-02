@@ -7,6 +7,7 @@ import (
 	"net"
 	"os"
 	"os/signal"
+	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -66,6 +67,32 @@ func main() {
 	}
 
 	processor := filter.NewFilterProcessor(ruleManager)
+
+	var latency int64 = 0
+	var reqCount int64 = 0
+	go func(latency, reqCount int64) {
+		ctx, cancel = context.WithCancel(context.Background())
+		ticker := time.NewTicker(time.Minute)
+		defer ticker.Stop()
+		stopCount := 0
+
+		for {
+			select {
+			case <-ticker.C:
+				lat := atomic.LoadInt64(&latency)
+				count := atomic.LoadInt64(&reqCount)
+
+				log.Println(lat / count)
+				stopCount++
+				if stopCount == 2 {
+					ctx.Done()
+				}
+
+			case <-ctx.Done():
+				return
+			}
+		}
+	}(latency, reqCount)
 
 	s := grpc.NewServer()
 	dspRouterGrpc.RegisterDspRouterServiceServer(
