@@ -9,7 +9,6 @@ import (
 	"log"
 	"net/http"
 	"sync"
-	"sync/atomic"
 	"time"
 
 	"gitlab.com/twinbid-exchange/RTB-exchange/internal/constants"
@@ -30,8 +29,7 @@ func (s *Server) GetBids_V2_5(
 	start := time.Now()
 	defer func() {
 		elapsed := time.Since(start)
-		atomic.AddInt64(s.latency, elapsed.Microseconds())
-		atomic.AddInt64(s.reqCount, 1)
+		fmt.Printf("Execution time in ms: %d ms\n", elapsed.Milliseconds())
 
 		if r := recover(); r != nil {
 			err := fmt.Errorf("Recovered from panic in GetBids_V2_5: %v", r)

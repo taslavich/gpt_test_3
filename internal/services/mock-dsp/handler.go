@@ -4,7 +4,6 @@ import (
 	"context"
 	"log"
 	"net/http"
-	"sync/atomic"
 	"time"
 
 	"github.com/ggicci/httpin"
@@ -27,14 +26,11 @@ func postBid_V2_5(
 	r *http.Request,
 	w http.ResponseWriter,
 	resp *ortb_V2_5.BidResponse,
-	latency *int64,
-	reqCount *int64,
 ) {
 	startTime := time.Now()
 	defer func() {
-		elapsed := time.Since(startTime)
-		atomic.AddInt64(latency, elapsed.Microseconds())
-		atomic.AddInt64(reqCount, 1)
+		processingTime := time.Since(startTime)
+		log.Printf("[%s] Request processed in %v", resp.GetId(), processingTime)
 	}()
 
 	input := r.Context().Value(httpin.Input).(*postBidRequest_V2_5)
