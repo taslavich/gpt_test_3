@@ -26,8 +26,7 @@ func (s *Server) GetBids_V2_5(
 	defer cancel()
 	startTime := time.Now()
 	defer func() {
-		processingTime := time.Since(startTime)
-		log.Printf("Request processed in %v", processingTime)
+		s.logDuration("GetBids_V2_5", startTime)
 	}()
 
 	defer func() {
@@ -45,7 +44,15 @@ func (s *Server) GetBids_V2_5(
 		return nil, fmt.Errorf("Can not marshal in GetBids_V2_5: %w", err)
 	}
 
-	var wg sync.WaitGroup
+	var (
+		wg  sync.WaitGroup
+		sem chan struct{}
+	)
+
+	if s.maxParallelRequests > 0 {
+		sem = make(chan struct{}, s.maxParallelRequests)
+	}
+
 	responsesCh := make(chan *ortb_V2_5.BidResponse, len(s.dspEndpoints_v_2_5))
 	dspMetaDataCh := make(chan *DspMetaData, len(s.dspEndpoints_v_2_5))
 
@@ -55,20 +62,25 @@ func (s *Server) GetBids_V2_5(
 		go func(endpoint string) {
 			defer wg.Done()
 
+			if sem != nil {
+				sem <- struct{}{}
+				defer func() {
+					<-sem
+				}()
+			}
+
 			dspFilterStartTime := time.Now()
 			// Быстрая фильтрация DSP
 			if !s.processor.ProcessRequestForDSPV25(endpoint, req.BidRequest).Allowed {
 				return
 			}
-			dspFilterEndTime := time.Since(dspFilterStartTime)
-			log.Printf("Dsp filter processed in %v", dspFilterEndTime)
+			s.logDurationForEndpoint("DSP filter", endpoint, dspFilterStartTime)
 
 			reqStartTime := time.Now()
 			// HTTP запрос к DSP
 			dspResp, code, errMsg := s.getBidsFromDSPbyHTTP_V_2_5_Optimized(reqCtx, jsonData, endpoint)
 
-			reqEndTime := time.Since(reqStartTime)
-			log.Printf("Http Request processed in %v", reqEndTime)
+			s.logDurationForEndpoint("DSP request", endpoint, reqStartTime)
 
 			// Отправляем метаданные
 			meta := s.metaPool.Get().(*DspMetaData)
@@ -77,13 +89,10 @@ func (s *Server) GetBids_V2_5(
 			meta.ErrMsg = errMsg
 			dspMetaDataCh <- meta
 
-			sppFilterStartTime := time.Now()
 			// Фильтрация ответа SPP
 			if dspResp != nil && s.processor.ProcessResponseForSPPV25(req.SppEndpoint, dspResp).Allowed {
 				responsesCh <- dspResp
 			}
-			sppFilterEndTime := time.Since(sppFilterStartTime)
-			log.Printf("Spp filter processed in %v", sppFilterEndTime)
 		}(endpoint)
 	}
 
@@ -96,7 +105,7 @@ func (s *Server) GetBids_V2_5(
 
 	// Собираем результаты параллельно с ожиданием
 	responses := make([]*ortb_V2_5.BidResponse, 0, len(s.dspEndpoints_v_2_5))
-	dspMetaData := make([]*DspMetaData, 0, len(s.dspEndpoints_v_2_5))
+	dspMetaData := make([]DspMetaData, 0, len(s.dspEndpoints_v_2_5))
 
 	// Используем select для параллельного сбора результатов
 	for responsesCh != nil || dspMetaDataCh != nil {
@@ -111,9 +120,12 @@ func (s *Server) GetBids_V2_5(
 			if !ok {
 				dspMetaDataCh = nil
 			} else {
-				dspMetaData = append(dspMetaData, meta)
-				// Возвращаем в пул после использования
-				defer s.metaPool.Put(meta)
+				dspMetaData = append(dspMetaData, DspMetaData{
+					DspEndpoint: meta.DspEndpoint,
+					Code:        meta.Code,
+					ErrMsg:      meta.ErrMsg,
+				})
+				s.metaPool.Put(meta)
 			}
 		}
 	}
@@ -137,38 +149,36 @@ func (s *Server) getBidsFromDSPbyHTTP_V_2_5_Optimized(ctx context.Context, jsonD
 	buf.Write(jsonData)
 	defer s.bufferPool.Put(buf)
 
-	httpReqInnerStartTime := time.Now()
 	req, err := http.NewRequestWithContext(ctx, "POST", dspEndpoint, buf)
 	if err != nil {
 		return nil, 0, fmt.Sprintf("Create request failed: %v", err)
 	}
 	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Connection", "keep-alive")
 
+	httpReqInnerStartTime := time.Now()
 	resp, err := s.client_v_2_5.Do(req)
 	if err != nil {
 		return nil, 0, fmt.Sprintf("Request failed: %v", err)
 	}
 	defer resp.Body.Close()
-	httpReqInnerEndTime := time.Since(httpReqInnerStartTime)
-	log.Printf("Http Inner processed in %v", httpReqInnerEndTime)
+	s.logDurationForEndpoint("DSP HTTP request", dspEndpoint, httpReqInnerStartTime)
 
-	readingStartTime := time.Now()
-	// Быстрое чтение тела
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, resp.StatusCode, fmt.Sprintf("Read failed: %v", err)
-	}
-
-	// Парсим только при успешном статусе
-	if resp.StatusCode == http.StatusOK || resp.StatusCode == http.StatusNoContent {
-		grpcResp := &ortb_V2_5.BidResponse{}
-		if err := json.Unmarshal(body, grpcResp); err != nil {
-			return nil, resp.StatusCode, fmt.Sprintf("Unmarshal failed: %v", err)
+	switch resp.StatusCode {
+	case http.StatusNoContent:
+		return nil, resp.StatusCode, ""
+	case http.StatusOK:
+		var grpcResp ortb_V2_5.BidResponse
+		dec := json.NewDecoder(resp.Body)
+		if err := dec.Decode(&grpcResp); err != nil {
+			return nil, resp.StatusCode, fmt.Sprintf("Decode failed: %v", err)
 		}
-		return grpcResp, resp.StatusCode, ""
+		return &grpcResp, resp.StatusCode, ""
+	default:
+		body, err := io.ReadAll(io.LimitReader(resp.Body, 4*1024))
+		if err != nil {
+			return nil, resp.StatusCode, fmt.Sprintf("Read failed: %v", err)
+		}
+		return nil, resp.StatusCode, string(body)
 	}
-	readingEndTime := time.Since(readingStartTime)
-	log.Printf("Reading processed in %v", readingEndTime)
-
-	return nil, resp.StatusCode, string(body)
 }

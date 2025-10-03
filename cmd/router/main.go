@@ -16,10 +16,15 @@ import (
 	dspRouterGrpc "gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/proto/services/dspRouter"
 	dspRouterWeb "gitlab.com/twinbid-exchange/RTB-exchange/internal/services/dspRouter/web"
 
+	"go.uber.org/automaxprocs/maxprocs"
 	"google.golang.org/grpc"
 )
 
 func main() {
+	if _, err := maxprocs.Set(); err != nil {
+		log.Printf("automaxprocs setup failed: %v", err)
+	}
+
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
@@ -80,6 +85,8 @@ func main() {
 			cfg.DSPEndpoints_v_2_5,
 			redisClient,
 			cfg.BidResponsesTimeout,
+			cfg.MaxParallelRequests,
+			cfg.Debug,
 		),
 	)
 
