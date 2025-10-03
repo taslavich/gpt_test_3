@@ -21,7 +21,8 @@ func (s *Server) GetBids_V2_5(
 	ctx context.Context,
 	req *dspRouterGrpc.DspRouterRequest_V2_5,
 ) (resp *dspRouterGrpc.DspRouterResponse_V2_5, funcErr error) {
-
+	log.Println("Got request")
+	fmt.Println("Got request")
 	reqCtx, cancel := context.WithTimeout(ctx, s.timeout)
 	defer cancel()
 	startTime := time.Now()

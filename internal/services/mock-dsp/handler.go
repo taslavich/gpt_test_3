@@ -2,6 +2,7 @@ package mockDspWeb
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"net/http"
 	"time"
@@ -31,6 +32,7 @@ func postBid_V2_5(
 	defer func() {
 		processingTime := time.Since(startTime)
 		log.Printf("[%s] Request processed in %v", resp.GetId(), processingTime)
+		fmt.Printf("[%s] Request processed in %v", resp.GetId(), processingTime)
 	}()
 
 	input := r.Context().Value(httpin.Input).(*postBidRequest_V2_5)
