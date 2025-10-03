@@ -22,11 +22,8 @@ func (s *Server) GetBids_V2_5(
 	req *dspRouterGrpc.DspRouterRequest_V2_5,
 ) (resp *dspRouterGrpc.DspRouterResponse_V2_5, funcErr error) {
 	reqCtx, cancel := context.WithTimeout(ctx, s.timeout)
-	defer cancel()
-
-	start := time.Now()
 	defer func() {
-		log.Println("%v", time.Since(start))
+		cancel()
 		if r := recover(); r != nil {
 			err := fmt.Errorf("Recovered from panic in GetBids_V2_5: %v", r)
 			log.Printf(err.Error())
@@ -53,9 +50,11 @@ func (s *Server) GetBids_V2_5(
 		go func(endpoint string) {
 			defer wg.Done()
 
+			t := time.Now()
 			if !s.processor.ProcessRequestForDSPV25(endpoint, req.BidRequest).Allowed {
 				return
 			}
+			log.Println("%v", time.Since(t))
 
 			dspResp, code, errMsg := s.getBidsFromDSPbyHTTP_V_2_5_Optimized(reqCtx, jsonData, endpoint)
 
