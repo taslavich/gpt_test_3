@@ -25,10 +25,6 @@ func (s *Server) GetBids_V2_5(
 	fmt.Println("Got request")
 	reqCtx, cancel := context.WithTimeout(ctx, s.timeout)
 	defer cancel()
-	startTime := time.Now()
-	defer func() {
-		s.logDuration("GetBids_V2_5", startTime)
-	}()
 
 	defer func() {
 		if r := recover(); r != nil {
@@ -39,6 +35,8 @@ func (s *Server) GetBids_V2_5(
 		}
 	}()
 
+	log.Println("Before JSON")
+	fmt.Println("Before JSON")
 	// Предварительная сериализация JSON
 	jsonData, err := json.Marshal(req.BidRequest)
 	if err != nil {
@@ -57,6 +55,8 @@ func (s *Server) GetBids_V2_5(
 	responsesCh := make(chan *ortb_V2_5.BidResponse, len(s.dspEndpoints_v_2_5))
 	dspMetaDataCh := make(chan *DspMetaData, len(s.dspEndpoints_v_2_5))
 
+	log.Println("Before CICLE")
+	fmt.Println("Before CICLE")
 	// Запускаем все DSP параллельно
 	for _, endpoint := range s.dspEndpoints_v_2_5 {
 		wg.Add(1)
