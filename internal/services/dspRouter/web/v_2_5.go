@@ -9,7 +9,6 @@ import (
 	"log"
 	"net/http"
 	"sync"
-	"time"
 
 	dspRouterGrpc "gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/proto/services/dspRouter"
 	"gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/proto/types/ortb_V2_5"
@@ -21,8 +20,6 @@ func (s *Server) GetBids_V2_5(
 	ctx context.Context,
 	req *dspRouterGrpc.DspRouterRequest_V2_5,
 ) (resp *dspRouterGrpc.DspRouterResponse_V2_5, funcErr error) {
-	log.Println("Got request")
-	fmt.Println("Got request")
 	reqCtx, cancel := context.WithTimeout(ctx, s.timeout)
 	defer cancel()
 
@@ -35,9 +32,6 @@ func (s *Server) GetBids_V2_5(
 		}
 	}()
 
-	log.Println("Before JSON")
-	fmt.Println("Before JSON")
-	// Предварительная сериализация JSON
 	jsonData, err := json.Marshal(req.BidRequest)
 	if err != nil {
 		return nil, fmt.Errorf("Can not marshal in GetBids_V2_5: %w", err)
@@ -50,37 +44,17 @@ func (s *Server) GetBids_V2_5(
 	responsesCh := make(chan *ortb_V2_5.BidResponse, len(s.dspEndpoints_v_2_5))
 	dspMetaDataCh := make(chan *DspMetaData, len(s.dspEndpoints_v_2_5))
 
-	log.Println("Before CICLE")
-	fmt.Println("Before CICLE")
 	// Запускаем все DSP параллельно
 	for _, endpoint := range s.dspEndpoints_v_2_5 {
 		wg.Add(1)
-		log.Println("Before GOROTINE")
-		fmt.Println("Before GOROTINE")
 		go func(endpoint string) {
 			defer wg.Done()
 
-			log.Println("Before INNER GOROTINE")
-			fmt.Println("Before INNER GOROTINE")
-
-			dspFilterStartTime := time.Now()
-			// Быстрая фильтрация DSP
-			log.Println("DSP FILTER")
-			fmt.Println("DSP FILTER")
 			if !s.processor.ProcessRequestForDSPV25(endpoint, req.BidRequest).Allowed {
-				log.Println("DSP FILTER NOT")
-				fmt.Println("DSP FILTER NOT")
 				return
 			}
-			log.Println("DSP FILTER YES")
-			fmt.Println("DSP FILTER YES")
-			s.logDurationForEndpoint("DSP filter", endpoint, dspFilterStartTime)
 
-			reqStartTime := time.Now()
-			// HTTP запрос к DSP
 			dspResp, code, errMsg := s.getBidsFromDSPbyHTTP_V_2_5_Optimized(reqCtx, jsonData, endpoint)
-
-			s.logDurationForEndpoint("DSP request", endpoint, reqStartTime)
 
 			// Отправляем метаданные
 			meta := s.metaPool.Get().(*DspMetaData)
@@ -143,8 +117,6 @@ func (s *Server) GetBids_V2_5(
 func (s *Server) getBidsFromDSPbyHTTP_V_2_5_Optimized(ctx context.Context, jsonData []byte, dspEndpoint string) (
 	br *ortb_V2_5.BidResponse, code int, errMsg string) {
 
-	log.Println("HTTP GOT")
-	// Используем пул буферов
 	buf := s.bufferPool.Get().(*bytes.Buffer)
 	buf.Reset()
 	buf.Write(jsonData)
@@ -157,13 +129,11 @@ func (s *Server) getBidsFromDSPbyHTTP_V_2_5_Optimized(ctx context.Context, jsonD
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Connection", "keep-alive")
 
-	httpReqInnerStartTime := time.Now()
 	resp, err := s.client_v_2_5.Do(req)
 	if err != nil {
 		return nil, 0, fmt.Sprintf("Request failed: %v", err)
 	}
 	defer resp.Body.Close()
-	s.logDurationForEndpoint("DSP HTTP request", dspEndpoint, httpReqInnerStartTime)
 
 	switch resp.StatusCode {
 	case http.StatusNoContent:
