@@ -61,6 +61,9 @@ type RouterConfig struct {
 
 	BidResponsesTimeout time.Duration `yaml:"BID_RESPONSES_TIMEOUT" env:"BID_RESPONSES_TIMEOUT"`
 
+	MaxParallelRequests int  `yaml:"MAX_PARALLEL_REQUESTS" env:"MAX_PARALLEL_REQUESTS" env-default:"64"`
+	Debug               bool `yaml:"DEBUG" env:"DEBUG" env-default:"false"`
+
 	RedisConfig
 }
 
