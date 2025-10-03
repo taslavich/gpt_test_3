@@ -3,7 +3,6 @@ package dspRouterWeb
 import (
 	"bytes"
 	"context"
-	"encoding/json"
 	"fmt"
 	"io"
 	"log"
@@ -11,6 +10,7 @@ import (
 	"sync"
 	"time"
 
+	jsoniter "github.com/json-iterator/go"
 	dspRouterGrpc "gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/proto/services/dspRouter"
 	"gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/proto/types/ortb_V2_5"
 	"google.golang.org/grpc/codes"
@@ -32,7 +32,7 @@ func (s *Server) GetBids_V2_5(
 		}
 	}()
 
-	jsonData, err := json.Marshal(req.BidRequest)
+	jsonData, err := jsoniter.Marshal(req.BidRequest)
 	if err != nil {
 		return nil, fmt.Errorf("Can not marshal in GetBids_V2_5: %w", err)
 	}
@@ -138,17 +138,16 @@ func (s *Server) getBidsFromDSPbyHTTP_V_2_5_Optimized(ctx context.Context, buf *
 	case http.StatusNoContent:
 		return nil, resp.StatusCode, ""
 	case http.StatusOK:
+		body, err := io.ReadAll(resp.Body)
+		if err != nil {
+			return nil, resp.StatusCode, fmt.Sprintf("Read body failed: %v", err)
+		}
 		var grpcResp ortb_V2_5.BidResponse
-		dec := json.NewDecoder(resp.Body)
-		if err := dec.Decode(&grpcResp); err != nil {
+		if err := jsoniter.Unmarshal(body, &grpcResp); err != nil {
 			return nil, resp.StatusCode, fmt.Sprintf("Decode failed: %v", err)
 		}
 		return &grpcResp, resp.StatusCode, ""
 	default:
-		body, err := io.ReadAll(io.LimitReader(resp.Body, 4*1024))
-		if err != nil {
-			return nil, resp.StatusCode, fmt.Sprintf("Read failed: %v", err)
-		}
-		return nil, resp.StatusCode, string(body)
+		return nil, resp.StatusCode, "NULL"
 	}
 }
