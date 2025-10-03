@@ -80,9 +80,6 @@ func newHTTPClient(timeout time.Duration) *http.Client {
 	return &http.Client{
 		Transport: transport,
 		Timeout:   time.Millisecond * 5,
-		CheckRedirect: func(req *http.Request, via []*http.Request) error {
-			return http.ErrUseLastResponse // Не следовать редиректам
-		},
 	}
 }
 
