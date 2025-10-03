@@ -45,11 +45,36 @@ type Server struct {
 	client_v_2_5 *http.Client
 	timeout      time.Duration
 
+	maxParallelRequests int
+	debug               bool
+	slowLogThreshold    time.Duration
+
 	// Пулы для снижения аллокаций
 	bufferPool sync.Pool
 	metaPool   sync.Pool
 
 	dspRouterGrpc.UnimplementedDspRouterServiceServer
+}
+
+func newHTTPClient(timeout time.Duration) *http.Client {
+	transport := &http.Transport{
+		Proxy: http.ProxyFromEnvironment,
+		DialContext: (&net.Dialer{
+			Timeout:   300 * time.Millisecond,
+			KeepAlive: 30 * time.Second,
+		}).DialContext,
+		MaxIdleConns:        1024,
+		MaxIdleConnsPerHost: 256,
+		MaxConnsPerHost:     0,
+		IdleConnTimeout:     90 * time.Second,
+		TLSHandshakeTimeout: 500 * time.Millisecond,
+		DisableCompression:  true,
+	}
+
+	return &http.Client{
+		Transport: transport,
+		Timeout:   timeout,
+	}
 }
 
 func NewServer(
@@ -62,50 +87,35 @@ func NewServer(
 	dspEndpoints_v_2_5 []string,
 	redisClient *redis.Client,
 	timeout time.Duration,
+	maxParallelRequests int,
+	debug bool,
 ) *Server {
-	// Оптимизированный транспорт с балансом между скоростью и надежностью
-	transport := &http.Transport{
-		MaxIdleConns:          200,
-		MaxIdleConnsPerHost:   20,
-		MaxConnsPerHost:       10,
-		IdleConnTimeout:       30 * time.Second,
-		TLSHandshakeTimeout:   3 * time.Millisecond,
-		ExpectContinueTimeout: 1 * time.Millisecond,
-		ResponseHeaderTimeout: 10 * time.Millisecond,
-		DisableCompression:    true,
-		DialContext: (&net.Dialer{
-			Timeout:   3 * time.Millisecond,
-			KeepAlive: 30 * time.Second,
-			DualStack: true,
-		}).DialContext,
-		ForceAttemptHTTP2:      false,
-		MaxResponseHeaderBytes: 2048, // Уменьшено
-		ReadBufferSize:         4096,
-		WriteBufferSize:        4096,
+	if timeout <= 0 {
+		timeout = 5 * time.Second
 	}
 
-	client_v_2_4 := &http.Client{
-		Transport: transport,
-		Timeout:   20 * time.Millisecond, // Уменьшено
+	if maxParallelRequests <= 0 {
+		maxParallelRequests = 64
 	}
 
-	client_v_2_5 := &http.Client{
-		Transport: transport,
-		Timeout:   20 * time.Millisecond,
-	}
+	client_v_2_4 := newHTTPClient(timeout)
+	client_v_2_5 := newHTTPClient(timeout)
 
 	return &Server{
-		ruleManager:        ruleManager,
-		fileLoader:         fileLoader,
-		processor:          processor,
-		dspConfigPath:      dspConfigPath,
-		sppConfigPath:      sppConfigPath,
-		dspEndpoints_v_2_4: dspEndpoints_v_2_4,
-		dspEndpoints_v_2_5: dspEndpoints_v_2_5,
-		redisClient:        redisClient,
-		client_v_2_4:       client_v_2_4,
-		client_v_2_5:       client_v_2_5,
-		timeout:            timeout,
+		ruleManager:         ruleManager,
+		fileLoader:          fileLoader,
+		processor:           processor,
+		dspConfigPath:       dspConfigPath,
+		sppConfigPath:       sppConfigPath,
+		dspEndpoints_v_2_4:  dspEndpoints_v_2_4,
+		dspEndpoints_v_2_5:  dspEndpoints_v_2_5,
+		redisClient:         redisClient,
+		client_v_2_4:        client_v_2_4,
+		client_v_2_5:        client_v_2_5,
+		timeout:             timeout,
+		maxParallelRequests: maxParallelRequests,
+		debug:               debug,
+		slowLogThreshold:    50 * time.Millisecond,
 		bufferPool: sync.Pool{
 			New: func() interface{} {
 				return bytes.NewBuffer(make([]byte, 0, 2048))
@@ -119,6 +129,24 @@ func NewServer(
 	}
 }
 
+func (s *Server) shouldLog(duration time.Duration) bool {
+	return s.debug || duration >= s.slowLogThreshold
+}
+
+func (s *Server) logDuration(label string, start time.Time) {
+	duration := time.Since(start)
+	if s.shouldLog(duration) {
+		log.Printf("%s in %v", label, duration)
+	}
+}
+
+func (s *Server) logDurationForEndpoint(prefix, endpoint string, start time.Time) {
+	duration := time.Since(start)
+	if s.shouldLog(duration) {
+		log.Printf("%s %s in %v", prefix, endpoint, duration)
+	}
+}
+
 func (s *Server) GetBids_V2_4(
 	ctx context.Context,
 	req *dspRouterGrpc.DspRouterRequest_V2_4,
@@ -126,6 +154,11 @@ func (s *Server) GetBids_V2_4(
 
 	reqCtx, cancel := context.WithTimeout(ctx, s.timeout)
 	defer cancel()
+
+	startTime := time.Now()
+	defer func() {
+		s.logDuration("GetBids_V2_4", startTime)
+	}()
 
 	defer func() {
 		if r := recover(); r != nil {
@@ -142,7 +175,15 @@ func (s *Server) GetBids_V2_4(
 		return nil, fmt.Errorf("Can not marshal in GetBids_V2_4: %w", err)
 	}
 
-	var wg sync.WaitGroup
+	var (
+		wg  sync.WaitGroup
+		sem chan struct{}
+	)
+
+	if s.maxParallelRequests > 0 {
+		sem = make(chan struct{}, s.maxParallelRequests)
+	}
+
 	responsesCh := make(chan *ortb_V2_4.BidResponse, len(s.dspEndpoints_v_2_4))
 	dspMetaDataCh := make(chan *DspMetaData, len(s.dspEndpoints_v_2_4))
 
@@ -151,6 +192,13 @@ func (s *Server) GetBids_V2_4(
 		wg.Add(1)
 		go func(endpoint string) {
 			defer wg.Done()
+
+			if sem != nil {
+				sem <- struct{}{}
+				defer func() {
+					<-sem
+				}()
+			}
 
 			// Быстрая фильтрация DSP
 			if !s.processor.ProcessRequestForDSPV24(endpoint, req.BidRequest).Allowed {
@@ -183,7 +231,7 @@ func (s *Server) GetBids_V2_4(
 
 	// Собираем результаты параллельно с ожиданием
 	responses := make([]*ortb_V2_4.BidResponse, 0, len(s.dspEndpoints_v_2_4))
-	dspMetaData := make([]*DspMetaData, 0, len(s.dspEndpoints_v_2_4))
+	dspMetaData := make([]DspMetaData, 0, len(s.dspEndpoints_v_2_4))
 
 	// Используем select для параллельного сбора результатов
 	for responsesCh != nil || dspMetaDataCh != nil {
@@ -198,9 +246,12 @@ func (s *Server) GetBids_V2_4(
 			if !ok {
 				dspMetaDataCh = nil
 			} else {
-				dspMetaData = append(dspMetaData, meta)
-				// Возвращаем в пул после использования
-				defer s.metaPool.Put(meta)
+				dspMetaData = append(dspMetaData, DspMetaData{
+					DspEndpoint: meta.DspEndpoint,
+					Code:        meta.Code,
+					ErrMsg:      meta.ErrMsg,
+				})
+				s.metaPool.Put(meta)
 			}
 		}
 	}
@@ -229,32 +280,37 @@ func (s *Server) getBidsFromDSPbyHTTP_V_2_4_Optimized(ctx context.Context, jsonD
 		return nil, 0, fmt.Sprintf("Create request failed: %v", err)
 	}
 	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Connection", "keep-alive")
 
+	httpStart := time.Now()
 	resp, err := s.client_v_2_4.Do(req)
 	if err != nil {
 		return nil, 0, fmt.Sprintf("Request failed: %v", err)
 	}
 	defer resp.Body.Close()
 
-	// Быстрое чтение тела
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, resp.StatusCode, fmt.Sprintf("Read failed: %v", err)
-	}
+	s.logDuration("DSP HTTP request v2_4", httpStart)
 
-	// Парсим только при успешном статусе
-	if resp.StatusCode == http.StatusOK || resp.StatusCode == http.StatusNoContent {
-		grpcResp := &ortb_V2_4.BidResponse{}
-		if err := json.Unmarshal(body, grpcResp); err != nil {
-			return nil, resp.StatusCode, fmt.Sprintf("Unmarshal failed: %v", err)
+	switch resp.StatusCode {
+	case http.StatusNoContent:
+		return nil, resp.StatusCode, ""
+	case http.StatusOK:
+		var grpcResp ortb_V2_4.BidResponse
+		dec := json.NewDecoder(resp.Body)
+		if err := dec.Decode(&grpcResp); err != nil {
+			return nil, resp.StatusCode, fmt.Sprintf("Decode failed: %v", err)
 		}
-		return grpcResp, resp.StatusCode, ""
+		return &grpcResp, resp.StatusCode, ""
+	default:
+		body, err := io.ReadAll(io.LimitReader(resp.Body, 4*1024))
+		if err != nil {
+			return nil, resp.StatusCode, fmt.Sprintf("Read failed: %v", err)
+		}
+		return nil, resp.StatusCode, string(body)
 	}
-
-	return nil, resp.StatusCode, string(body)
 }
 
-func (s *Server) writeMetadataToRedis(ctx context.Context, globalId string, metadata []*DspMetaData) {
+func (s *Server) writeMetadataToRedis(ctx context.Context, globalId string, metadata []DspMetaData) {
 	if len(metadata) == 0 {
 		return
 	}
