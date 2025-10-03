@@ -56,7 +56,10 @@ func (s *Server) GetBids_V2_5(
 
 			t := time.Now()
 			dspResp, code, errMsg := s.getBidsFromDSPbyHTTP_V_2_5_Optimized(reqCtx, jsonData, endpoint)
-			log.Println("%v", time.Since(t))
+			e := time.Since(t).Milliseconds()
+			if e > 5 {
+				log.Println("%v", e)
+			}
 			// Отправляем метаданные
 			meta := s.metaPool.Get().(*DspMetaData)
 			meta.DspEndpoint = endpoint
