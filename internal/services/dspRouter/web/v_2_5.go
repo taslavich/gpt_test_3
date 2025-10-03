@@ -72,9 +72,15 @@ func (s *Server) GetBids_V2_5(
 
 			dspFilterStartTime := time.Now()
 			// Быстрая фильтрация DSP
+			log.Println("DSP FILTER")
+			fmt.Println("DSP FILTER")
 			if !s.processor.ProcessRequestForDSPV25(endpoint, req.BidRequest).Allowed {
+				log.Println("DSP FILTER NOT")
+				fmt.Println("DSP FILTER NOT")
 				return
 			}
+			log.Println("DSP FILTER YES")
+			fmt.Println("DSP FILTER YES")
 			s.logDurationForEndpoint("DSP filter", endpoint, dspFilterStartTime)
 
 			reqStartTime := time.Now()
