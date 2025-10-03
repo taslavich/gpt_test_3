@@ -54,9 +54,7 @@ func (s *Server) GetBids_V2_5(
 				return
 			}
 
-			t := time.Now()
 			dspResp, code, errMsg := s.getBidsFromDSPbyHTTP_V_2_5_Optimized(reqCtx, jsonData, endpoint)
-			log.Println("%v", time.Since(t))
 
 			// Отправляем метаданные
 			meta := s.metaPool.Get().(*DspMetaData)
@@ -83,6 +81,7 @@ func (s *Server) GetBids_V2_5(
 	responses := make([]*ortb_V2_5.BidResponse, 0, len(s.dspEndpoints_v_2_5))
 	dspMetaData := make([]DspMetaData, 0, len(s.dspEndpoints_v_2_5))
 
+	t := time.Now()
 	// Используем select для параллельного сбора результатов
 	for responsesCh != nil || dspMetaDataCh != nil {
 		select {
@@ -107,8 +106,8 @@ func (s *Server) GetBids_V2_5(
 	}
 
 	// Асинхронная запись в Redis
-	go s.writeMetadataToRedis(ctx, req.GlobalId, dspMetaData)
-
+	s.writeMetadataToRedis(ctx, req.GlobalId, dspMetaData)
+	log.Println("%v", time.Since(t))
 	return &dspRouterGrpc.DspRouterResponse_V2_5{
 		BidRequest:   req.BidRequest,
 		BidResponses: responses,
