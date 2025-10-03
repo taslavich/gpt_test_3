@@ -17,20 +17,6 @@ import (
 	"google.golang.org/grpc/status"
 )
 
-var (
-	jsonPool = sync.Pool{
-		New: func() interface{} {
-			return &bytes.Buffer{}
-		},
-	}
-
-	// Pre-allocated headers для reuse
-	defaultHeaders = []struct{ key, value string }{
-		{"Content-Type", "application/json"},
-		{"Connection", "keep-alive"},
-	}
-)
-
 func (s *Server) GetBids_V2_5(
 	ctx context.Context,
 	req *dspRouterGrpc.DspRouterRequest_V2_5,
@@ -46,16 +32,11 @@ func (s *Server) GetBids_V2_5(
 		}
 	}()
 
-	jsonBuf := jsonPool.Get().(*bytes.Buffer)
-	jsonBuf.Reset()
-	defer jsonPool.Put(jsonBuf)
-
-	encoder := json.NewEncoder(jsonBuf)
-	encoder.SetEscapeHTML(false) // Важно: отключаем экранирование
-	if err := encoder.Encode(req.BidRequest); err != nil {
+	jsonData, err := json.Marshal(req.BidRequest)
+	if err != nil {
 		return nil, fmt.Errorf("Can not marshal in GetBids_V2_5: %w", err)
 	}
-	jsonData := jsonBuf.Bytes()
+
 	var (
 		wg sync.WaitGroup
 	)
@@ -80,11 +61,11 @@ func (s *Server) GetBids_V2_5(
 				log.Println("%v", e)
 			}
 			// Отправляем метаданные
-			dspMetaDataCh <- &DspMetaData{
-				DspEndpoint: endpoint,
-				Code:        code,
-				ErrMsg:      errMsg,
-			}
+			meta := s.metaPool.Get().(*DspMetaData)
+			meta.DspEndpoint = endpoint
+			meta.Code = code
+			meta.ErrMsg = errMsg
+			dspMetaDataCh <- meta
 
 			// Фильтрация ответа SPP
 			if dspResp != nil && s.processor.ProcessResponseForSPPV25(req.SppEndpoint, dspResp).Allowed {
@@ -104,12 +85,27 @@ func (s *Server) GetBids_V2_5(
 	responses := make([]*ortb_V2_5.BidResponse, 0, len(s.dspEndpoints_v_2_5))
 	dspMetaData := make([]DspMetaData, 0, len(s.dspEndpoints_v_2_5))
 
-	for resp := range responsesCh {
-		responses = append(responses, resp)
-	}
-
-	for meta := range dspMetaDataCh {
-		dspMetaData = append(dspMetaData, *meta)
+	// Используем select для параллельного сбора результатов
+	for responsesCh != nil || dspMetaDataCh != nil {
+		select {
+		case resp, ok := <-responsesCh:
+			if !ok {
+				responsesCh = nil
+			} else {
+				responses = append(responses, resp)
+			}
+		case meta, ok := <-dspMetaDataCh:
+			if !ok {
+				dspMetaDataCh = nil
+			} else {
+				dspMetaData = append(dspMetaData, DspMetaData{
+					DspEndpoint: meta.DspEndpoint,
+					Code:        meta.Code,
+					ErrMsg:      meta.ErrMsg,
+				})
+				s.metaPool.Put(meta)
+			}
+		}
 	}
 
 	// Асинхронная запись в Redis
