@@ -61,15 +61,15 @@ func newHTTPClient(timeout time.Duration) *http.Client {
 	transport := &http.Transport{
 		Proxy: http.ProxyFromEnvironment,
 		DialContext: (&net.Dialer{
-			Timeout:   3 * time.Second,   // Увеличить для стабильности
-			KeepAlive: 180 * time.Second, // Увеличить keep-alive
+			Timeout:   3 * time.Millisecond, // Увеличить для стабильности
+			KeepAlive: 180 * time.Second,    // Увеличить keep-alive
 			DualStack: true,
 		}).DialContext,
 		MaxIdleConns:          9000, // Увеличить
 		MaxIdleConnsPerHost:   1024, // Увеличить для локальных тестов
 		IdleConnTimeout:       90 * time.Second,
-		TLSHandshakeTimeout:   3 * time.Second, // Увеличить
-		ExpectContinueTimeout: 1 * time.Second,
+		TLSHandshakeTimeout:   10 * time.Millisecond, // Увеличить
+		ExpectContinueTimeout: 10 * time.Second,
 		DisableCompression:    true, // Включить сжатие
 		ForceAttemptHTTP2:     false,
 
