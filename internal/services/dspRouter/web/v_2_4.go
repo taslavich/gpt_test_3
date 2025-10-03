@@ -127,7 +127,10 @@ func (s *Server) GetBids_V2_4(
 				ErrMsg:      errMsg,
 			}
 
-			if filterRes := s.processor.ProcessResponseForSPPV24(req.SppEndpoint, resp); !filterRes.Allowed {
+			s.requestMutex.RLock()
+			filterRes := s.processor.ProcessResponseForSPPV24(req.SppEndpoint, resp)
+			s.requestMutex.RUnlock()
+			if !filterRes.Allowed {
 				return
 			}
 
