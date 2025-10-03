@@ -50,11 +50,9 @@ func (s *Server) GetBids_V2_5(
 		go func(endpoint string) {
 			defer wg.Done()
 
-			t := time.Now()
 			if !s.processor.ProcessRequestForDSPV25(endpoint, req.BidRequest).Allowed {
 				return
 			}
-			log.Println("%v", time.Since(t))
 
 			dspResp, code, errMsg := s.getBidsFromDSPbyHTTP_V_2_5_Optimized(reqCtx, jsonData, endpoint)
 
@@ -65,10 +63,12 @@ func (s *Server) GetBids_V2_5(
 			meta.ErrMsg = errMsg
 			dspMetaDataCh <- meta
 
+			t := time.Now()
 			// Фильтрация ответа SPP
 			if dspResp != nil && s.processor.ProcessResponseForSPPV25(req.SppEndpoint, dspResp).Allowed {
 				responsesCh <- dspResp
 			}
+			log.Println("%v", time.Since(t))
 		}(endpoint)
 	}
 
