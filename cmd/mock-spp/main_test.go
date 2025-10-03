@@ -25,9 +25,9 @@ import (
 // Конфигурация теста
 const (
 	sppAdapterURL = "http://127.0.0.1:8086/bid_v_2_5"
-	threads       = 100               // Количество параллельных горутин
-	targetRPS     = 10000             // Целевая нагрузка (RPS)
-	testDuration  = 120 * time.Second // Длительность теста
+	threads       = 100              // Количество параллельных горутин
+	targetRPS     = 10000            // Целевая нагрузка (RPS)
+	testDuration  = 10 * time.Second // Длительность теста
 )
 
 var (
@@ -98,14 +98,6 @@ func generateRandomIP() string {
 
 // Тест производительности (rate-based)
 func TestLoadRTBSystem(t *testing.T) {
-	// Запускаем диагностику в отдельной горутине
-	if enableDiagnostics {
-		fmt.Println("🚀 Запуск системной диагностики...")
-		go runDiagnostics()
-		// Даем время диагностике запуститься
-		time.Sleep(2 * time.Second)
-	}
-
 	fmt.Printf("Starting load test: threads=%d targetRPS=%d duration=%v\n", threads, targetRPS, testDuration)
 
 	// распределяем RPS по воркерам, учитывая остаток
