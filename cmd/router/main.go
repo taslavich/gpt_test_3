@@ -121,7 +121,7 @@ func main() {
 			cfg.BidResponsesTimeout,
 			cfg.MaxParallelRequests,
 			cfg.Debug,
-			jsonData,
+			resp,
 		),
 	)
 
