@@ -44,13 +44,8 @@ func (s *Server) GetBids_V2_5(
 	}
 
 	var (
-		wg  sync.WaitGroup
-		sem chan struct{}
+		wg sync.WaitGroup
 	)
-
-	if s.maxParallelRequests > 0 {
-		sem = make(chan struct{}, s.maxParallelRequests)
-	}
 
 	responsesCh := make(chan *ortb_V2_5.BidResponse, len(s.dspEndpoints_v_2_5))
 	dspMetaDataCh := make(chan *DspMetaData, len(s.dspEndpoints_v_2_5))
@@ -60,15 +55,13 @@ func (s *Server) GetBids_V2_5(
 	// Запускаем все DSP параллельно
 	for _, endpoint := range s.dspEndpoints_v_2_5 {
 		wg.Add(1)
+		log.Println("Before GOROTINE")
+		fmt.Println("Before GOROTINE")
 		go func(endpoint string) {
 			defer wg.Done()
 
-			if sem != nil {
-				sem <- struct{}{}
-				defer func() {
-					<-sem
-				}()
-			}
+			log.Println("Before INNER GOROTINE")
+			fmt.Println("Before INNER GOROTINE")
 
 			dspFilterStartTime := time.Now()
 			// Быстрая фильтрация DSP
