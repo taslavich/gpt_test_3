@@ -71,7 +71,7 @@ func newHTTPClient(timeout time.Duration) *http.Client {
 		TLSHandshakeTimeout:   3 * time.Second, // Увеличить
 		ExpectContinueTimeout: 1 * time.Second,
 		DisableCompression:    true, // Включить сжатие
-		ForceAttemptHTTP2:     true,
+		ForceAttemptHTTP2:     false,
 
 		// Важные настройки для избежания исчерпания портов
 		MaxConnsPerHost: 0, // 0 = без лимита
