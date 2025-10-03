@@ -50,6 +50,11 @@ func (s *Server) GetBids_V2_5(
 	responsesCh := make(chan *ortb_V2_5.BidResponse, dspEndpointLen)
 	dspMetaDataCh := make(chan *DspMetaData, dspEndpointLen)
 
+	jsonData, err := json.Marshal(req.BidRequest)
+	if err != nil {
+		return nil, fmt.Errorf("Can not marshal in GetBids_V2_5: %w", err)
+	}
+
 	for i := range s.dspEndpoints_v_2_5 {
 		wg.Add(1)
 		endpoint := s.dspEndpoints_v_2_5[i]
@@ -70,7 +75,7 @@ func (s *Server) GetBids_V2_5(
 			}
 
 			reqStart := time.Now()
-			resp, code, errMsg := s.getBidsFromDSPbyHTTP_V_2_5(req, endpoint)
+			resp, code, errMsg := s.getBidsFromDSPbyHTTP_V_2_5(ctx, jsonData, endpoint)
 			reqEnd := time.Since(reqStart)
 			fmt.Printf("Request time in ms: %d ms\n", reqEnd.Milliseconds())
 
@@ -81,7 +86,9 @@ func (s *Server) GetBids_V2_5(
 			}
 
 			sppFilterStart := time.Now()
+			s.requestMutex.RLock()
 			filterRes := s.processor.ProcessResponseForSPPV25(req.SppEndpoint, resp)
+			s.requestMutex.RUnlock()
 			if !filterRes.Allowed {
 				return
 			}
@@ -132,21 +139,18 @@ func (s *Server) GetBids_V2_5(
 	}, nil
 }
 
-func (s *Server) getBidsFromDSPbyHTTP_V_2_5(req *dspRouterGrpc.DspRouterRequest_V2_5, dspEndpoint string) (
+func (s *Server) getBidsFromDSPbyHTTP_V_2_5(ctx context.Context, jsonData []byte, dspEndpoint string) (
 	br *ortb_V2_5.BidResponse,
 	code int,
 	errMsg string,
 ) {
-	jsonData, err := json.Marshal(req.BidRequest)
+	req, err := http.NewRequestWithContext(ctx, "POST", dspEndpoint, bytes.NewBuffer(jsonData))
 	if err != nil {
-		return nil, 0, fmt.Sprintf("Can not marshal in GetBids_V2_5: %w", err)
+		return nil, 0, fmt.Sprintf("Create request failed: %v", err)
 	}
+	req.Header.Set("Content-Type", "application/json")
 
-	resp, err := s.client.Post(
-		dspEndpoint,
-		"application/json",
-		bytes.NewBuffer(jsonData),
-	)
+	resp, err := s.client.Do(req)
 	if err != nil {
 		return nil, 0, fmt.Sprintf("Can not post req to dsps in GetBids_V2_5: %w", err)
 	}
@@ -161,20 +165,17 @@ func (s *Server) getBidsFromDSPbyHTTP_V_2_5(req *dspRouterGrpc.DspRouterRequest_
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return nil, 0, fmt.Sprintf("Can not read body to dsps in GetBids_V2_5: %w", err)
+		return nil, resp.StatusCode, fmt.Sprintf("Read body failed: %v", err)
 	}
 
-	var grpcResp *ortb_V2_5.BidResponse
-	if resp.StatusCode == http.StatusOK || resp.StatusCode == http.StatusNoContent {
-		grpcResp = &ortb_V2_5.BidResponse{}
-		if err := json.Unmarshal(body, grpcResp); err != nil {
-			return nil,
-				resp.StatusCode,
-				fmt.Sprintf("Can not unmarshal body from dsps in GetBids_V2_5: %w", err)
-		}
+	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusNoContent {
+		return nil, resp.StatusCode, string(body)
 	}
 
-	return grpcResp,
-		resp.StatusCode,
-		"NULL"
+	var grpcResp ortb_V2_5.BidResponse
+	if err := json.Unmarshal(body, &grpcResp); err != nil {
+		return nil, resp.StatusCode, fmt.Sprintf("Unmarshal failed: %v", err)
+	}
+
+	return &grpcResp, resp.StatusCode, ""
 }
