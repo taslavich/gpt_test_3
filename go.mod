@@ -5,12 +5,12 @@ go 1.24.0
 toolchain go1.24.6
 
 require (
-        github.com/ggicci/httpin v0.17.0
-        github.com/go-chi/chi v1.5.5
-        github.com/go-chi/chi/v5 v5.2.2
-        github.com/jmoiron/sqlx v1.4.0
-        github.com/unrolled/render v1.7.0
-        go.uber.org/automaxprocs v0.0.0
+	github.com/ggicci/httpin v0.17.0
+	github.com/go-chi/chi v1.5.5
+	github.com/go-chi/chi/v5 v5.2.2
+	github.com/jmoiron/sqlx v1.4.0
+	github.com/unrolled/render v1.7.0
+	go.uber.org/automaxprocs v1.6.0
 )
 
 require (
@@ -58,8 +58,6 @@ require (
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 	olympos.io/encoding/edn v0.0.0-20201019073823-d3554ca0b0a3 // indirect
 )
-
-replace go.uber.org/automaxprocs => ./internal/automaxprocs
 
 require (
 	github.com/ClickHouse/clickhouse-go/v2 v2.40.3

@@ -14,14 +14,14 @@ import (
 	"gitlab.com/twinbid-exchange/RTB-exchange/internal/config"
 	"gitlab.com/twinbid-exchange/RTB-exchange/internal/filter"
 	dspRouterGrpc "gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/proto/services/dspRouter"
+	maxproc "gitlab.com/twinbid-exchange/RTB-exchange/internal/mp"
 	dspRouterWeb "gitlab.com/twinbid-exchange/RTB-exchange/internal/services/dspRouter/web"
 
-	"go.uber.org/automaxprocs/maxprocs"
 	"google.golang.org/grpc"
 )
 
 func main() {
-	if _, err := maxprocs.Set(); err != nil {
+	if _, err := maxproc.Set(); err != nil {
 		log.Printf("automaxprocs setup failed: %v", err)
 	}
 

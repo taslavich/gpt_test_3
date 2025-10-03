@@ -17,8 +17,18 @@ volumes:
   kafka_data:
   nginx_logs:
 
+# В docker-stack.yaml добавить
+networks:
+  rtb-fast:
+    driver: overlay
+    driver_opts:
+      encrypted: "false"
+      com.docker.network.driver.mtu: "1450"
+
 services:
   mock-dsp-1:
+    networks:
+      - rtb-fast
     image: localhost:5000/rtb/mock-dsp-1:local
     hostname: mock-dsp-1
     deploy:
@@ -29,6 +39,8 @@ services:
       - env/mock-dsp-1.env
 
   mock-dsp-2:
+    networks:
+      - rtb-fast
     image: localhost:5000/rtb/mock-dsp-2:local
     hostname: mock-dsp-2
     deploy:
@@ -39,6 +51,8 @@ services:
       - env/mock-dsp-2.env
 
   mock-dsp-3:
+    networks:
+      - rtb-fast
     image: localhost:5000/rtb/mock-dsp-3:local
     hostname: mock-dsp-3
     deploy:
@@ -49,6 +63,8 @@ services:
       - env/mock-dsp-3.env
 
   redis:
+    networks:
+      - rtb-fast
     image: redis:7-alpine
     hostname: redis
     env_file:
@@ -70,6 +86,8 @@ services:
         max_attempts: 5
 
   kafka:
+    networks:
+      - rtb-fast
     image: apache/kafka:3.7.0
     hostname: kafka
     env_file:
@@ -89,6 +107,8 @@ services:
           memory: 512M
 
   bid-engine:
+    networks:
+      - rtb-fast
     image: ${BID_ENGINE_IMAGE:-localhost:5000/rtb/bid-engine:local}
     env_file:
       - env/bid-engine.env
@@ -102,6 +122,8 @@ services:
       - redis
 
   router:
+    networks:
+      - rtb-fast
     image: ${ROUTER_IMAGE:-localhost:5000/rtb/router:local}
     env_file:
       - env/router.env
@@ -120,6 +142,8 @@ services:
       - redis
 
   orchestrator:
+    networks:
+      - rtb-fast
     image: ${ORCHESTRATOR_IMAGE:-localhost:5000/rtb/orchestrator:local}
     env_file:
       - env/orchestrator.env
@@ -135,6 +159,8 @@ services:
       - router
 
   spp-adapter:
+    networks:
+      - rtb-fast
     image: ${SPP_ADAPTER_IMAGE:-localhost:5000/rtb/spp-adapter:local}
     env_file:
       - env/spp-adapter.env
@@ -149,6 +175,8 @@ services:
       - orchestrator
 
   kafka-loader:
+    networks:
+      - rtb-fast
     image: ${KAFKA_LOADER_IMAGE:-localhost:5000/rtb/kafka-loader:local}
     env_file:
       - env/kafka-loader.env
@@ -163,6 +191,8 @@ services:
       - kafka
 
   clickhouse-loader:
+    networks:
+      - rtb-fast
     image: ${CLICKHOUSE_LOADER_IMAGE:-localhost:5000/rtb/clickhouse-loader:local}
     env_file:
       - env/clickhouse-loader.env
@@ -176,6 +206,8 @@ services:
       - kafka
 
   nginx-gateway:
+    networks:
+      - rtb-fast
     image: nginx:alpine
     ports:
       - "80:80"

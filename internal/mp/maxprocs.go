@@ -1,4 +1,4 @@
-package maxprocs
+package maxproc
 
 import (
 	"os"
