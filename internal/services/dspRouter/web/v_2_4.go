@@ -59,30 +59,24 @@ type Server struct {
 
 func newHTTPClient(timeout time.Duration) *http.Client {
 	transport := &http.Transport{
-		Proxy: http.ProxyFromEnvironment,
 		DialContext: (&net.Dialer{
-			Timeout:   3 * time.Second,   // Увеличить для стабильности
-			KeepAlive: 180 * time.Second, // Увеличить keep-alive
-			DualStack: true,
+			Timeout:   100 * time.Millisecond, // Быстрее для локальной сети
+			KeepAlive: 30 * time.Second,
 		}).DialContext,
-		MaxIdleConns:          2048, // Увеличить
-		MaxIdleConnsPerHost:   512,  // Увеличить для локальных тестов
-		IdleConnTimeout:       90 * time.Second,
-		TLSHandshakeTimeout:   3 * time.Second, // Увеличить
-		ExpectContinueTimeout: 1 * time.Second,
-		DisableCompression:    false, // Включить сжатие
-		ForceAttemptHTTP2:     true,
+		MaxIdleConns:        100, // ↓ УМЕНЬШИТЬ в 20 раз!
+		MaxIdleConnsPerHost: 20,  // ↓ УМЕНЬШИТЬ для локальных моков
+		MaxConnsPerHost:     50,  // ← ДОБАВИТЬ лимит!
+		IdleConnTimeout:     30 * time.Second,
+		TLSHandshakeTimeout: 100 * time.Millisecond,
 
-		// Важные настройки для избежания исчерпания портов
-		MaxConnsPerHost: 0, // 0 = без лимита
+		// Важно для снижения нагрузки
+		ResponseHeaderTimeout: 500 * time.Millisecond,
+		ExpectContinueTimeout: 100 * time.Millisecond,
 	}
 
 	return &http.Client{
 		Transport: transport,
 		Timeout:   timeout,
-		CheckRedirect: func(req *http.Request, via []*http.Request) error {
-			return http.ErrUseLastResponse // Не следовать редиректам
-		},
 	}
 }
 
