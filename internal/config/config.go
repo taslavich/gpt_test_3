@@ -132,12 +132,12 @@ type KafkaConfig struct {
 }
 
 type HttpServer struct {
-	Host string `yaml:"HOSTNAME" env:"HOSTNAME" env-default:"127.0.0.1"`
-	Port uint16 `yaml:"PORT" env:"PORT" env-default:"8080"`
+	Host string `yaml:"HOSTNAME" env:"HOSTNAME"`
+	Port uint16 `yaml:"PORT" env:"PORT"`
 }
 
 func getEnvFileNames() []string {
-	return []string{".env.local", ".env"}
+	return []string{"*.env.local", "*.env"}
 }
 
 func LoadConfig[
