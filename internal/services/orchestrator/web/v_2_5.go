@@ -37,8 +37,7 @@ func (s *Server) GetWinnerBid_V2_5(
 	}()
 	getBidsReqCtx, cancel := context.WithTimeout(ctx, s.getBidsTimeout)
 	defer cancel()
-	log.Println("GetBids_V2_5")
-	fmt.Println("GetBids_V2_5")
+
 	bids, err := s.dspRouterGrpcClient.GetBids_V2_5(
 		getBidsReqCtx,
 		&dspRouterGrpc.DspRouterRequest_V2_5{
@@ -60,9 +59,6 @@ func (s *Server) GetWinnerBid_V2_5(
 
 		return nil, status.Errorf(grpcCode, newErr.Error())
 	}
-
-	log.Println("END GetBids_V2_5")
-	fmt.Println("END GetBids_V2_5")
 
 	if len(bids.BidResponses) == 0 {
 		return &orchestratorGrpc.OrchestratorResponse_V2_5{
