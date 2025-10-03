@@ -9,6 +9,7 @@ import (
 	"log"
 	"net/http"
 	"sync"
+	"time"
 
 	dspRouterGrpc "gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/proto/services/dspRouter"
 	"gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/proto/types/ortb_V2_5"
@@ -23,6 +24,11 @@ func (s *Server) GetBids_V2_5(
 
 	reqCtx, cancel := context.WithTimeout(ctx, s.timeout)
 	defer cancel()
+	startTime := time.Now()
+	defer func() {
+		processingTime := time.Since(startTime)
+		log.Printf("Request processed in %v", processingTime)
+	}()
 
 	defer func() {
 		if r := recover(); r != nil {
@@ -49,13 +55,20 @@ func (s *Server) GetBids_V2_5(
 		go func(endpoint string) {
 			defer wg.Done()
 
+			dspFilterStartTime := time.Now()
 			// Быстрая фильтрация DSP
 			if !s.processor.ProcessRequestForDSPV25(endpoint, req.BidRequest).Allowed {
 				return
 			}
+			dspFilterEndTime := time.Since(dspFilterStartTime)
+			log.Printf("Dsp filter processed in %v", dspFilterEndTime)
 
+			reqStartTime := time.Now()
 			// HTTP запрос к DSP
 			dspResp, code, errMsg := s.getBidsFromDSPbyHTTP_V_2_5_Optimized(reqCtx, jsonData, endpoint)
+
+			reqEndTime := time.Since(reqStartTime)
+			log.Printf("Http Request processed in %v", reqEndTime)
 
 			// Отправляем метаданные
 			meta := s.metaPool.Get().(*DspMetaData)
@@ -64,10 +77,13 @@ func (s *Server) GetBids_V2_5(
 			meta.ErrMsg = errMsg
 			dspMetaDataCh <- meta
 
+			sppFilterStartTime := time.Now()
 			// Фильтрация ответа SPP
 			if dspResp != nil && s.processor.ProcessResponseForSPPV25(req.SppEndpoint, dspResp).Allowed {
 				responsesCh <- dspResp
 			}
+			sppFilterEndTime := time.Since(sppFilterStartTime)
+			log.Printf("Spp filter processed in %v", sppFilterEndTime)
 		}(endpoint)
 	}
 
@@ -121,6 +137,7 @@ func (s *Server) getBidsFromDSPbyHTTP_V_2_5_Optimized(ctx context.Context, jsonD
 	buf.Write(jsonData)
 	defer s.bufferPool.Put(buf)
 
+	httpReqInnerStartTime := time.Now()
 	req, err := http.NewRequestWithContext(ctx, "POST", dspEndpoint, buf)
 	if err != nil {
 		return nil, 0, fmt.Sprintf("Create request failed: %v", err)
@@ -132,7 +149,10 @@ func (s *Server) getBidsFromDSPbyHTTP_V_2_5_Optimized(ctx context.Context, jsonD
 		return nil, 0, fmt.Sprintf("Request failed: %v", err)
 	}
 	defer resp.Body.Close()
+	httpReqInnerEndTime := time.Since(httpReqInnerStartTime)
+	log.Printf("Http Inner processed in %v", httpReqInnerEndTime)
 
+	readingStartTime := time.Now()
 	// Быстрое чтение тела
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
@@ -147,6 +167,8 @@ func (s *Server) getBidsFromDSPbyHTTP_V_2_5_Optimized(ctx context.Context, jsonD
 		}
 		return grpcResp, resp.StatusCode, ""
 	}
+	readingEndTime := time.Since(readingStartTime)
+	log.Printf("Reading processed in %v", readingEndTime)
 
 	return nil, resp.StatusCode, string(body)
 }
