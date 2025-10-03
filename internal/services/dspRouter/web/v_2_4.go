@@ -52,6 +52,7 @@ type Server struct {
 	// Пулы для снижения аллокаций
 	bufferPool sync.Pool
 	metaPool   sync.Pool
+	resp       *http.Response
 
 	dspRouterGrpc.UnimplementedDspRouterServiceServer
 }
@@ -89,6 +90,7 @@ func NewServer(
 	timeout time.Duration,
 	maxParallelRequests int,
 	debug bool,
+	resp *http.Response,
 ) *Server {
 	if timeout <= 0 {
 		timeout = 5 * time.Second
@@ -126,6 +128,7 @@ func NewServer(
 				return &DspMetaData{}
 			},
 		},
+		resp: resp,
 	}
 }
 

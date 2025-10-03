@@ -1,10 +1,13 @@
 package dspRouterWeb
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
+	"net/http"
 	"sync"
 	"time"
 
@@ -51,8 +54,9 @@ func (s *Server) GetBids_V2_5(
 				return
 			}
 
+			t := time.Now()
 			dspResp, code, errMsg := s.getBidsFromDSPbyHTTP_V_2_5_Optimized(reqCtx, jsonData, endpoint)
-
+			log.Println("%v", time.Since(t))
 			// Отправляем метаданные
 			meta := s.metaPool.Get().(*DspMetaData)
 			meta.DspEndpoint = endpoint
@@ -78,7 +82,6 @@ func (s *Server) GetBids_V2_5(
 	responses := make([]*ortb_V2_5.BidResponse, 0, len(s.dspEndpoints_v_2_5))
 	dspMetaData := make([]DspMetaData, 0, len(s.dspEndpoints_v_2_5))
 
-	t := time.Now()
 	// Используем select для параллельного сбора результатов
 	for responsesCh != nil || dspMetaDataCh != nil {
 		select {
@@ -104,7 +107,6 @@ func (s *Server) GetBids_V2_5(
 
 	// Асинхронная запись в Redis
 	s.writeMetadataToRedis(ctx, req.GlobalId, dspMetaData)
-	log.Println("%v", time.Since(t))
 	return &dspRouterGrpc.DspRouterResponse_V2_5{
 		BidRequest:   req.BidRequest,
 		BidResponses: responses,
@@ -114,42 +116,40 @@ func (s *Server) GetBids_V2_5(
 
 func (s *Server) getBidsFromDSPbyHTTP_V_2_5_Optimized(ctx context.Context, jsonData []byte, dspEndpoint string) (
 	br *ortb_V2_5.BidResponse, code int, errMsg string) {
-	/*
-		buf := s.bufferPool.Get().(*bytes.Buffer)
-		buf.Reset()
-		buf.Write(jsonData)
-		defer s.bufferPool.Put(buf)
+	buf := s.bufferPool.Get().(*bytes.Buffer)
+	buf.Reset()
+	buf.Write(jsonData)
+	defer s.bufferPool.Put(buf)
 
-		req, err := http.NewRequestWithContext(ctx, "POST", dspEndpoint, buf)
+	req, err := http.NewRequestWithContext(ctx, "POST", dspEndpoint, buf)
+	if err != nil {
+		return nil, 0, fmt.Sprintf("Create request failed: %v", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Connection", "keep-alive")
+
+	/*resp, err := s.client_v_2_5.Do(req)
+	if err != nil {
+		return nil, 0, fmt.Sprintf("Request failed: %v", err)
+	}*/
+	resp := s.resp
+	defer resp.Body.Close()
+
+	switch resp.StatusCode {
+	case http.StatusNoContent:
+		return nil, resp.StatusCode, ""
+	case http.StatusOK:
+		var grpcResp ortb_V2_5.BidResponse
+		dec := json.NewDecoder(resp.Body)
+		if err := dec.Decode(&grpcResp); err != nil {
+			return nil, resp.StatusCode, fmt.Sprintf("Decode failed: %v", err)
+		}
+		return &grpcResp, resp.StatusCode, ""
+	default:
+		body, err := io.ReadAll(io.LimitReader(resp.Body, 4*1024))
 		if err != nil {
-			return nil, 0, fmt.Sprintf("Create request failed: %v", err)
+			return nil, resp.StatusCode, fmt.Sprintf("Read failed: %v", err)
 		}
-		req.Header.Set("Content-Type", "application/json")
-		req.Header.Set("Connection", "keep-alive")
-
-		resp, err := s.client_v_2_5.Do(req)
-		if err != nil {
-			return nil, 0, fmt.Sprintf("Request failed: %v", err)
-		}
-		defer resp.Body.Close()
-
-		switch resp.StatusCode {
-		case http.StatusNoContent:
-			return nil, resp.StatusCode, ""
-		case http.StatusOK:
-			var grpcResp ortb_V2_5.BidResponse
-			dec := json.NewDecoder(resp.Body)
-			if err := dec.Decode(&grpcResp); err != nil {
-				return nil, resp.StatusCode, fmt.Sprintf("Decode failed: %v", err)
-			}
-			return &grpcResp, resp.StatusCode, ""
-		default:
-			body, err := io.ReadAll(io.LimitReader(resp.Body, 4*1024))
-			if err != nil {
-				return nil, resp.StatusCode, fmt.Sprintf("Read failed: %v", err)
-			}
-			return nil, resp.StatusCode, string(body)
-		}
-	*/
-	return &ortb_V2_5.BidResponse{}, 1, ""
+		return nil, resp.StatusCode, string(body)
+	}
 }
