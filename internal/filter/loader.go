@@ -38,9 +38,8 @@ func (fl *FileRuleLoader) LoadDSPRules() error {
 		return fmt.Errorf("DSP config validation failed: %v", err)
 	}
 
-	fl.ruleManager.ClearAllDSPRules()
-
 	for dspID, dspSettings := range config.DSPs {
+		rules := make(map[string]*FilterRule)
 		seenRules := make(map[string]bool)
 
 		for _, simpleRule := range dspSettings.Rules {
@@ -52,13 +51,13 @@ func (fl *FileRuleLoader) LoadDSPRules() error {
 
 			rule, err := parseSimpleRule(simpleRule)
 			if err != nil {
-				return fmt.Errorf("Error parsing rule for DSP %s: %v", dspID, err) //5
+				return fmt.Errorf("Error parsing rule for DSP %s: %v", dspID, err)
 			}
 
-			if err := fl.ruleManager.AddRule(dspID, rule); err != nil {
-				return fmt.Errorf("Error adding rule for DSP %s: %v", dspID, err) //6
-			}
+			rules[rule.ID] = rule
 		}
+
+		fl.ruleManager.SetDSPRules(dspID, rules)
 	}
 
 	return nil
@@ -79,9 +78,8 @@ func (fl *FileRuleLoader) LoadSPPRules() error {
 		return fmt.Errorf("SPP config validation failed: %v", err)
 	}
 
-	fl.ruleManager.ClearAllSPPRules()
-
 	for sppID, sppSettings := range config.SPPs {
+		rules := make(map[string]*FilterRule)
 		seenRules := make(map[string]bool)
 
 		for _, simpleRule := range sppSettings.Rules {
@@ -93,12 +91,13 @@ func (fl *FileRuleLoader) LoadSPPRules() error {
 
 			rule, err := parseSimpleRule(simpleRule)
 			if err != nil {
-				return fmt.Errorf("Error parsing rule for SPP %s: %v", sppID, err) //7
+				return fmt.Errorf("Error parsing rule for SPP %s: %v", sppID, err)
 			}
-			if err := fl.ruleManager.AddSPPRule(sppID, rule); err != nil {
-				return fmt.Errorf("Error adding rule for SPP %s: %v", sppID, err) //8
-			}
+
+			rules[rule.ID] = rule
 		}
+
+		fl.ruleManager.SetSPPRules(sppID, rules)
 	}
 
 	return nil

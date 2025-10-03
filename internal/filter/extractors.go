@@ -5,302 +5,374 @@ import (
 	"gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/proto/types/ortb_V2_5"
 )
 
-// V24BidRequestExtractor экстрактор для ORTB v2.4
-type V24BidRequestExtractor struct {
-	req *ortb_V2_4.BidRequest
+// StatelessV24BidRequestExtractor - stateless экстрактор для ORTB v2.4
+type StatelessV24BidRequestExtractor struct{}
+
+func NewStatelessV24BidRequestExtractor() *StatelessV24BidRequestExtractor {
+	return &StatelessV24BidRequestExtractor{}
 }
 
-func NewV24BidRequestExtractor(req *ortb_V2_4.BidRequest) *V24BidRequestExtractor {
-	return &V24BidRequestExtractor{req: req}
-}
+func (e *StatelessV24BidRequestExtractor) ExtractFieldValue(field FieldType, req interface{}) FieldValue {
+	bidReq := req.(*ortb_V2_4.BidRequest)
 
-func (e *V24BidRequestExtractor) ExtractFieldValue(field FieldType) FieldValue {
 	switch field {
 	case FieldBidFloor:
-		if e.req.Imp != nil {
-			for i := range e.req.Imp {
-				if e.req.Imp[i] != nil && e.req.Imp[i].BidFloor != nil {
-					return NewFloatValue(float64(*e.req.Imp[i].BidFloor))
-				}
-			}
-		}
-		return NewFloatValue(0)
-
+		return e.extractBidFloor(bidReq)
 	case FieldAppID:
-		if e.req.App != nil && e.req.App.Id != nil {
-			return NewStringValue(*e.req.App.Id)
-		}
-		return NewStringValue("")
-
+		return e.extractAppID(bidReq)
 	case FieldSiteID:
-		if e.req.Site != nil && e.req.Site.Id != nil {
-			return NewStringValue(*e.req.Site.Id)
-		}
-		return NewStringValue("")
-
+		return e.extractSiteID(bidReq)
 	case FieldDeviceIP:
-		if e.req.Device != nil && e.req.Device.Ip != nil {
-			return NewStringValue(*e.req.Device.Ip)
-		}
-		return NewStringValue("")
-
+		return e.extractDeviceIP(bidReq)
 	case FieldBannerWidth:
-		if e.req.Imp != nil {
-			for i := range e.req.Imp {
-				if e.req.Imp[i] != nil && e.req.Imp[i].Banner != nil && e.req.Imp[i].Banner.W != nil {
-					return NewIntValue(int(*e.req.Imp[i].Banner.W))
-				}
-			}
-		}
-		return NewIntValue(0)
-
+		return e.extractBannerWidth(bidReq)
 	case FieldBannerHeight:
-		if e.req.Imp != nil {
-			for i := range e.req.Imp {
-				if e.req.Imp[i] != nil && e.req.Imp[i].Banner != nil && e.req.Imp[i].Banner.H != nil {
-					return NewIntValue(int(*e.req.Imp[i].Banner.H))
-				}
-			}
-		}
-		return NewIntValue(0)
-
+		return e.extractBannerHeight(bidReq)
 	case FieldDeviceCountry:
-		if e.req.Device != nil && e.req.Device.Geo != nil && e.req.Device.Geo.Country != nil {
-			return NewStringValue(*e.req.Device.Geo.Country)
-		}
-		return NewStringValue("")
-
+		return e.extractDeviceCountry(bidReq)
 	default:
 		return FieldValue{}
 	}
 }
 
-// V25BidRequestExtractor экстрактор для ORTB v2.5
-type V25BidRequestExtractor struct {
-	req *ortb_V2_5.BidRequest
+func (e *StatelessV24BidRequestExtractor) extractBidFloor(req *ortb_V2_4.BidRequest) FieldValue {
+	if req.Imp == nil {
+		return NewFloatValue(0)
+	}
+	for i := range req.Imp {
+		if req.Imp[i] != nil && req.Imp[i].BidFloor != nil {
+			return NewFloatValue(float64(*req.Imp[i].BidFloor))
+		}
+	}
+	return NewFloatValue(0)
 }
 
-func NewV25BidRequestExtractor(req *ortb_V2_5.BidRequest) *V25BidRequestExtractor {
-	return &V25BidRequestExtractor{req: req}
+func (e *StatelessV24BidRequestExtractor) extractAppID(req *ortb_V2_4.BidRequest) FieldValue {
+	if req.App != nil && req.App.Id != nil {
+		return NewStringValue(*req.App.Id)
+	}
+	return NewStringValue("")
 }
 
-func (e *V25BidRequestExtractor) ExtractFieldValue(field FieldType) FieldValue {
+func (e *StatelessV24BidRequestExtractor) extractSiteID(req *ortb_V2_4.BidRequest) FieldValue {
+	if req.Site != nil && req.Site.Id != nil {
+		return NewStringValue(*req.Site.Id)
+	}
+	return NewStringValue("")
+}
+
+func (e *StatelessV24BidRequestExtractor) extractDeviceIP(req *ortb_V2_4.BidRequest) FieldValue {
+	if req.Device != nil && req.Device.Ip != nil {
+		return NewStringValue(*req.Device.Ip)
+	}
+	return NewStringValue("")
+}
+
+func (e *StatelessV24BidRequestExtractor) extractBannerWidth(req *ortb_V2_4.BidRequest) FieldValue {
+	if req.Imp != nil {
+		for i := range req.Imp {
+			if req.Imp[i] != nil && req.Imp[i].Banner != nil && req.Imp[i].Banner.W != nil {
+				return NewIntValue(int(*req.Imp[i].Banner.W))
+			}
+		}
+	}
+	return NewIntValue(0)
+}
+
+func (e *StatelessV24BidRequestExtractor) extractBannerHeight(req *ortb_V2_4.BidRequest) FieldValue {
+	if req.Imp != nil {
+		for i := range req.Imp {
+			if req.Imp[i] != nil && req.Imp[i].Banner != nil && req.Imp[i].Banner.H != nil {
+				return NewIntValue(int(*req.Imp[i].Banner.H))
+			}
+		}
+	}
+	return NewIntValue(0)
+}
+
+func (e *StatelessV24BidRequestExtractor) extractDeviceCountry(req *ortb_V2_4.BidRequest) FieldValue {
+	if req.Device != nil && req.Device.Geo != nil && req.Device.Geo.Country != nil {
+		return NewStringValue(*req.Device.Geo.Country)
+	}
+	return NewStringValue("")
+}
+
+// StatelessV25BidRequestExtractor - stateless экстрактор для ORTB v2.5
+type StatelessV25BidRequestExtractor struct{}
+
+func NewStatelessV25BidRequestExtractor() *StatelessV25BidRequestExtractor {
+	return &StatelessV25BidRequestExtractor{}
+}
+
+func (e *StatelessV25BidRequestExtractor) ExtractFieldValue(field FieldType, req interface{}) FieldValue {
+	bidReq := req.(*ortb_V2_5.BidRequest)
+
 	switch field {
 	case FieldBidFloor:
-		if e.req.Imp != nil {
-			for i := range e.req.Imp {
-				if e.req.Imp[i] != nil && e.req.Imp[i].BidFloor != nil {
-					return NewFloatValue(float64(*e.req.Imp[i].BidFloor))
-				}
-			}
-		}
-		return NewFloatValue(0)
-
-	case FieldAppID:
-		// V2.5 не имеет App, возвращаем пустое значение
-		return NewStringValue("")
-
-	case FieldSiteID:
-		// V2.5 не имеет Site, возвращаем пустое значение
-		return NewStringValue("")
-
+		return e.extractBidFloor(bidReq)
 	case FieldDeviceIP:
-		if e.req.Device != nil && e.req.Device.Ip != nil {
-			return NewStringValue(*e.req.Device.Ip)
-		}
-		return NewStringValue("")
-
+		return e.extractDeviceIP(bidReq)
 	case FieldBannerWidth:
-		if e.req.Imp != nil {
-			for i := range e.req.Imp {
-				if e.req.Imp[i] != nil && e.req.Imp[i].Banner != nil && e.req.Imp[i].Banner.W != nil {
-					return NewIntValue(int(*e.req.Imp[i].Banner.W))
-				}
-			}
-		}
-		return NewIntValue(0)
-
+		return e.extractBannerWidth(bidReq)
 	case FieldBannerHeight:
-		if e.req.Imp != nil {
-			for i := range e.req.Imp {
-				if e.req.Imp[i] != nil && e.req.Imp[i].Banner != nil && e.req.Imp[i].Banner.H != nil {
-					return NewIntValue(int(*e.req.Imp[i].Banner.H))
-				}
-			}
-		}
-		return NewIntValue(0)
-
+		return e.extractBannerHeight(bidReq)
 	case FieldDeviceCountry:
-		if e.req.Device != nil && e.req.Device.Geo != nil && e.req.Device.Geo.Country != nil {
-			return NewStringValue(*e.req.Device.Geo.Country)
-		}
-		return NewStringValue("")
-
+		return e.extractDeviceCountry(bidReq)
 	default:
 		return FieldValue{}
 	}
 }
 
-// V24BidResponseExtractor экстрактор для BidResponse v2.4
-type V24BidResponseExtractor struct {
-	resp *ortb_V2_4.BidResponse
+func (e *StatelessV25BidRequestExtractor) extractBidFloor(req *ortb_V2_5.BidRequest) FieldValue {
+	if req.Imp == nil {
+		return NewFloatValue(0)
+	}
+	for i := range req.Imp {
+		if req.Imp[i] != nil && req.Imp[i].BidFloor != nil {
+			return NewFloatValue(float64(*req.Imp[i].BidFloor))
+		}
+	}
+	return NewFloatValue(0)
 }
 
-func NewV24BidResponseExtractor(resp *ortb_V2_4.BidResponse) *V24BidResponseExtractor {
-	return &V24BidResponseExtractor{resp: resp}
+func (e *StatelessV25BidRequestExtractor) extractDeviceIP(req *ortb_V2_5.BidRequest) FieldValue {
+	if req.Device != nil && req.Device.Ip != nil {
+		return NewStringValue(*req.Device.Ip)
+	}
+	return NewStringValue("")
 }
 
-func (e *V24BidResponseExtractor) ExtractFieldValue(field FieldType) FieldValue {
+func (e *StatelessV25BidRequestExtractor) extractBannerWidth(req *ortb_V2_5.BidRequest) FieldValue {
+	if req.Imp != nil {
+		for i := range req.Imp {
+			if req.Imp[i] != nil && req.Imp[i].Banner != nil && req.Imp[i].Banner.W != nil {
+				return NewIntValue(int(*req.Imp[i].Banner.W))
+			}
+		}
+	}
+	return NewIntValue(0)
+}
+
+func (e *StatelessV25BidRequestExtractor) extractBannerHeight(req *ortb_V2_5.BidRequest) FieldValue {
+	if req.Imp != nil {
+		for i := range req.Imp {
+			if req.Imp[i] != nil && req.Imp[i].Banner != nil && req.Imp[i].Banner.H != nil {
+				return NewIntValue(int(*req.Imp[i].Banner.H))
+			}
+		}
+	}
+	return NewIntValue(0)
+}
+
+func (e *StatelessV25BidRequestExtractor) extractDeviceCountry(req *ortb_V2_5.BidRequest) FieldValue {
+	if req.Device != nil && req.Device.Geo != nil && req.Device.Geo.Country != nil {
+		return NewStringValue(*req.Device.Geo.Country)
+	}
+	return NewStringValue("")
+}
+
+// StatelessV24BidResponseExtractor - stateless экстрактор для BidResponse v2.4
+type StatelessV24BidResponseExtractor struct{}
+
+func NewStatelessV24BidResponseExtractor() *StatelessV24BidResponseExtractor {
+	return &StatelessV24BidResponseExtractor{}
+}
+
+func (e *StatelessV24BidResponseExtractor) ExtractFieldValue(field FieldType, resp interface{}) FieldValue {
+	bidResp := resp.(*ortb_V2_4.BidResponse)
+
 	switch field {
 	case FieldBidPrice:
-		if e.resp != nil && e.resp.Seatbid != nil && e.resp.Seatbid.Bid != nil {
-			for i := range e.resp.Seatbid.Bid {
-				if e.resp.Seatbid.Bid[i].Price != nil {
-					return NewFloatValue(float64(*e.resp.Seatbid.Bid[i].Price))
-				}
-			}
-		}
-		return NewFloatValue(0)
-
+		return e.extractBidPrice(bidResp)
 	case FieldBidID:
-		if e.resp != nil && e.resp.Seatbid != nil && e.resp.Seatbid.Bid != nil {
-			for i := range e.resp.Seatbid.Bid {
-				if e.resp.Seatbid.Bid[i].Id != nil {
-					return NewStringValue(*e.resp.Seatbid.Bid[i].Id)
-				}
-			}
-		}
-		return NewStringValue("")
-
+		return e.extractBidID(bidResp)
 	case FieldBidAdID:
-		if e.resp != nil && e.resp.Seatbid != nil && e.resp.Seatbid.Bid != nil {
-			for i := range e.resp.Seatbid.Bid {
-				if e.resp.Seatbid.Bid[i].Adid != nil {
-					return NewStringValue(*e.resp.Seatbid.Bid[i].Adid)
-				}
-			}
-		}
-		return NewStringValue("")
-
+		return e.extractBidAdID(bidResp)
 	case FieldBidImpID:
-		if e.resp != nil && e.resp.Seatbid != nil && e.resp.Seatbid.Bid != nil {
-			for i := range e.resp.Seatbid.Bid {
-				if e.resp.Seatbid.Bid[i].Impid != nil {
-					return NewStringValue(*e.resp.Seatbid.Bid[i].Impid)
-				}
-			}
-		}
-		return NewStringValue("")
-
+		return e.extractBidImpID(bidResp)
 	case FieldBidArray:
-		if e.resp != nil && e.resp.Seatbid != nil && e.resp.Seatbid.Bid != nil {
-			return NewStringValue("exists")
-		}
-		return NewStringValue("")
-
+		return e.extractBidArray(bidResp)
 	case FieldBidNurl:
-		if e.resp != nil && e.resp.Seatbid != nil && e.resp.Seatbid.Bid != nil {
-			for i := range e.resp.Seatbid.Bid {
-				if e.resp.Seatbid.Bid[i].Nurl != nil {
-					return NewStringValue(*e.resp.Seatbid.Bid[i].Nurl)
-				}
-			}
-		}
-		return NewStringValue("")
-
+		return e.extractBidNurl(bidResp)
 	case FieldBidBurl:
-		if e.resp != nil && e.resp.Seatbid != nil && e.resp.Seatbid.Bid != nil {
-			for i := range e.resp.Seatbid.Bid {
-				if e.resp.Seatbid.Bid[i].Burl != nil {
-					return NewStringValue(*e.resp.Seatbid.Bid[i].Burl)
-				}
-			}
-		}
-		return NewStringValue("")
-
+		return e.extractBidBurl(bidResp)
 	default:
 		return FieldValue{}
 	}
 }
 
-// V25BidResponseExtractor экстрактор для BidResponse v2.5
-type V25BidResponseExtractor struct {
-	resp *ortb_V2_5.BidResponse
+func (e *StatelessV24BidResponseExtractor) extractBidPrice(resp *ortb_V2_4.BidResponse) FieldValue {
+	if resp != nil && resp.Seatbid != nil && resp.Seatbid.Bid != nil {
+		for i := range resp.Seatbid.Bid {
+			if resp.Seatbid.Bid[i].Price != nil {
+				return NewFloatValue(float64(*resp.Seatbid.Bid[i].Price))
+			}
+		}
+	}
+	return NewFloatValue(0)
 }
 
-func NewV25BidResponseExtractor(resp *ortb_V2_5.BidResponse) *V25BidResponseExtractor {
-	return &V25BidResponseExtractor{resp: resp}
+func (e *StatelessV24BidResponseExtractor) extractBidID(resp *ortb_V2_4.BidResponse) FieldValue {
+	if resp != nil && resp.Seatbid != nil && resp.Seatbid.Bid != nil {
+		for i := range resp.Seatbid.Bid {
+			if resp.Seatbid.Bid[i].Id != nil {
+				return NewStringValue(*resp.Seatbid.Bid[i].Id)
+			}
+		}
+	}
+	return NewStringValue("")
 }
 
-func (e *V25BidResponseExtractor) ExtractFieldValue(field FieldType) FieldValue {
+func (e *StatelessV24BidResponseExtractor) extractBidAdID(resp *ortb_V2_4.BidResponse) FieldValue {
+	if resp != nil && resp.Seatbid != nil && resp.Seatbid.Bid != nil {
+		for i := range resp.Seatbid.Bid {
+			if resp.Seatbid.Bid[i].Adid != nil {
+				return NewStringValue(*resp.Seatbid.Bid[i].Adid)
+			}
+		}
+	}
+	return NewStringValue("")
+}
+
+func (e *StatelessV24BidResponseExtractor) extractBidImpID(resp *ortb_V2_4.BidResponse) FieldValue {
+	if resp != nil && resp.Seatbid != nil && resp.Seatbid.Bid != nil {
+		for i := range resp.Seatbid.Bid {
+			if resp.Seatbid.Bid[i].Impid != nil {
+				return NewStringValue(*resp.Seatbid.Bid[i].Impid)
+			}
+		}
+	}
+	return NewStringValue("")
+}
+
+func (e *StatelessV24BidResponseExtractor) extractBidArray(resp *ortb_V2_4.BidResponse) FieldValue {
+	if resp != nil && resp.Seatbid != nil && resp.Seatbid.Bid != nil {
+		return NewStringValue("exists")
+	}
+	return NewStringValue("")
+}
+
+func (e *StatelessV24BidResponseExtractor) extractBidNurl(resp *ortb_V2_4.BidResponse) FieldValue {
+	if resp != nil && resp.Seatbid != nil && resp.Seatbid.Bid != nil {
+		for i := range resp.Seatbid.Bid {
+			if resp.Seatbid.Bid[i].Nurl != nil {
+				return NewStringValue(*resp.Seatbid.Bid[i].Nurl)
+			}
+		}
+	}
+	return NewStringValue("")
+}
+
+func (e *StatelessV24BidResponseExtractor) extractBidBurl(resp *ortb_V2_4.BidResponse) FieldValue {
+	if resp != nil && resp.Seatbid != nil && resp.Seatbid.Bid != nil {
+		for i := range resp.Seatbid.Bid {
+			if resp.Seatbid.Bid[i].Burl != nil {
+				return NewStringValue(*resp.Seatbid.Bid[i].Burl)
+			}
+		}
+	}
+	return NewStringValue("")
+}
+
+// StatelessV25BidResponseExtractor - stateless экстрактор для BidResponse v2.5
+type StatelessV25BidResponseExtractor struct{}
+
+func NewStatelessV25BidResponseExtractor() *StatelessV25BidResponseExtractor {
+	return &StatelessV25BidResponseExtractor{}
+}
+
+func (e *StatelessV25BidResponseExtractor) ExtractFieldValue(field FieldType, resp interface{}) FieldValue {
+	bidResp := resp.(*ortb_V2_5.BidResponse)
+
 	switch field {
 	case FieldBidPrice:
-		if e.resp != nil && e.resp.Seatbid != nil && e.resp.Seatbid.Bid != nil {
-			for i := range e.resp.Seatbid.Bid {
-				if e.resp.Seatbid.Bid[i].Price != nil {
-					return NewFloatValue(float64(*e.resp.Seatbid.Bid[i].Price))
-				}
-			}
-		}
-		return NewFloatValue(0)
-
+		return e.extractBidPrice(bidResp)
 	case FieldBidID:
-		if e.resp != nil && e.resp.Seatbid != nil && e.resp.Seatbid.Bid != nil {
-			for i := range e.resp.Seatbid.Bid {
-				if e.resp.Seatbid.Bid[i].Id != nil {
-					return NewStringValue(*e.resp.Seatbid.Bid[i].Id)
-				}
-			}
-		}
-		return NewStringValue("")
-
+		return e.extractBidID(bidResp)
 	case FieldBidAdID:
-		if e.resp != nil && e.resp.Seatbid != nil && e.resp.Seatbid.Bid != nil {
-			for i := range e.resp.Seatbid.Bid {
-				if e.resp.Seatbid.Bid[i].Adid != nil {
-					return NewStringValue(*e.resp.Seatbid.Bid[i].Adid)
-				}
-			}
-		}
-		return NewStringValue("")
-
+		return e.extractBidAdID(bidResp)
 	case FieldBidImpID:
-		if e.resp != nil && e.resp.Seatbid != nil && e.resp.Seatbid.Bid != nil {
-			for i := range e.resp.Seatbid.Bid {
-				if e.resp.Seatbid.Bid[i].Impid != nil {
-					return NewStringValue(*e.resp.Seatbid.Bid[i].Impid)
-				}
-			}
-		}
-		return NewStringValue("")
-
+		return e.extractBidImpID(bidResp)
 	case FieldBidArray:
-		if e.resp != nil && e.resp.Seatbid != nil && e.resp.Seatbid.Bid != nil {
-			return NewStringValue("exists")
-		}
-		return NewStringValue("")
-
+		return e.extractBidArray(bidResp)
 	case FieldBidNurl:
-		if e.resp != nil && e.resp.Seatbid != nil && e.resp.Seatbid.Bid != nil {
-			for i := range e.resp.Seatbid.Bid {
-				if e.resp.Seatbid.Bid[i].Nurl != nil {
-					return NewStringValue(*e.resp.Seatbid.Bid[i].Nurl)
-				}
-			}
-		}
-		return NewStringValue("")
-
+		return e.extractBidNurl(bidResp)
 	case FieldBidBurl:
-		if e.resp != nil && e.resp.Seatbid != nil && e.resp.Seatbid.Bid != nil {
-			for i := range e.resp.Seatbid.Bid {
-				if e.resp.Seatbid.Bid[i].Burl != nil {
-					return NewStringValue(*e.resp.Seatbid.Bid[i].Burl)
-				}
-			}
-		}
-		return NewStringValue("")
-
+		return e.extractBidBurl(bidResp)
 	default:
 		return FieldValue{}
 	}
+}
+
+func (e *StatelessV25BidResponseExtractor) extractBidPrice(resp *ortb_V2_5.BidResponse) FieldValue {
+	if resp != nil && resp.Seatbid != nil && resp.Seatbid.Bid != nil {
+		for i := range resp.Seatbid.Bid {
+			if resp.Seatbid.Bid[i].Price != nil {
+				return NewFloatValue(float64(*resp.Seatbid.Bid[i].Price))
+			}
+		}
+	}
+	return NewFloatValue(0)
+}
+
+func (e *StatelessV25BidResponseExtractor) extractBidID(resp *ortb_V2_5.BidResponse) FieldValue {
+	if resp != nil && resp.Seatbid != nil && resp.Seatbid.Bid != nil {
+		for i := range resp.Seatbid.Bid {
+			if resp.Seatbid.Bid[i].Id != nil {
+				return NewStringValue(*resp.Seatbid.Bid[i].Id)
+			}
+		}
+	}
+	return NewStringValue("")
+}
+
+func (e *StatelessV25BidResponseExtractor) extractBidAdID(resp *ortb_V2_5.BidResponse) FieldValue {
+	if resp != nil && resp.Seatbid != nil && resp.Seatbid.Bid != nil {
+		for i := range resp.Seatbid.Bid {
+			if resp.Seatbid.Bid[i].Adid != nil {
+				return NewStringValue(*resp.Seatbid.Bid[i].Adid)
+			}
+		}
+	}
+	return NewStringValue("")
+}
+
+func (e *StatelessV25BidResponseExtractor) extractBidImpID(resp *ortb_V2_5.BidResponse) FieldValue {
+	if resp != nil && resp.Seatbid != nil && resp.Seatbid.Bid != nil {
+		for i := range resp.Seatbid.Bid {
+			if resp.Seatbid.Bid[i].Impid != nil {
+				return NewStringValue(*resp.Seatbid.Bid[i].Impid)
+			}
+		}
+	}
+	return NewStringValue("")
+}
+
+func (e *StatelessV25BidResponseExtractor) extractBidArray(resp *ortb_V2_5.BidResponse) FieldValue {
+	if resp != nil && resp.Seatbid != nil && resp.Seatbid.Bid != nil {
+		return NewStringValue("exists")
+	}
+	return NewStringValue("")
+}
+
+func (e *StatelessV25BidResponseExtractor) extractBidNurl(resp *ortb_V2_5.BidResponse) FieldValue {
+	if resp != nil && resp.Seatbid != nil && resp.Seatbid.Bid != nil {
+		for i := range resp.Seatbid.Bid {
+			if resp.Seatbid.Bid[i].Nurl != nil {
+				return NewStringValue(*resp.Seatbid.Bid[i].Nurl)
+			}
+		}
+	}
+	return NewStringValue("")
+}
+
+func (e *StatelessV25BidResponseExtractor) extractBidBurl(resp *ortb_V2_5.BidResponse) FieldValue {
+	if resp != nil && resp.Seatbid != nil && resp.Seatbid.Bid != nil {
+		for i := range resp.Seatbid.Bid {
+			if resp.Seatbid.Bid[i].Burl != nil {
+				return NewStringValue(*resp.Seatbid.Bid[i].Burl)
+			}
+		}
+	}
+	return NewStringValue("")
 }

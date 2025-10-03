@@ -103,12 +103,12 @@ type FilterResult struct {
 	Allowed bool `json:"allowed"`
 }
 
-// BidRequestExtractor интерфейс для извлечения значений из BidRequest разных версий
+// BidRequestExtractor интерфейс для stateless извлечения значений
 type BidRequestExtractor interface {
-	ExtractFieldValue(field FieldType) FieldValue
+	ExtractFieldValue(field FieldType, req interface{}) FieldValue
 }
 
-// BidResponseExtractor интерфейс для извлечения значений из BidResponse разных версий
+// BidResponseExtractor интерфейс для stateless извлечения значений
 type BidResponseExtractor interface {
-	ExtractFieldValue(field FieldType) FieldValue
+	ExtractFieldValue(field FieldType, resp interface{}) FieldValue
 }

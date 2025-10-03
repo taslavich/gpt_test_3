@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"net"
 	"net/http"
 	"sync"
 	"time"
@@ -29,23 +30,24 @@ type DspMetaData struct {
 
 type Server struct {
 	ruleManager *filter.RuleManager
-
-	fileLoader *filter.FileRuleLoader
+	fileLoader  *filter.FileRuleLoader
+	processor   *filter.OptimizedFilterProcessor
 
 	dspConfigPath string
 	sppConfigPath string
-
-	processor *filter.FilterProcessor
-
-	reloadMutex  sync.RWMutex
-	requestMutex sync.RWMutex
 
 	dspEndpoints_v_2_4 []string
 	dspEndpoints_v_2_5 []string
 
 	redisClient *redis.Client
 
-	client *http.Client
+	client_v_2_4 *http.Client
+	client_v_2_5 *http.Client
+	timeout      time.Duration
+
+	// Пулы для снижения аллокаций
+	bufferPool sync.Pool
+	metaPool   sync.Pool
 
 	dspRouterGrpc.UnimplementedDspRouterServiceServer
 }
@@ -53,16 +55,45 @@ type Server struct {
 func NewServer(
 	ruleManager *filter.RuleManager,
 	fileLoader *filter.FileRuleLoader,
-	processor *filter.FilterProcessor,
+	processor *filter.OptimizedFilterProcessor,
 	dspConfigPath string,
 	sppConfigPath string,
 	dspEndpoints_v_2_4,
 	dspEndpoints_v_2_5 []string,
 	redisClient *redis.Client,
 	timeout time.Duration,
-
 ) *Server {
-	client := &http.Client{Timeout: timeout}
+	// Оптимизированный транспорт с балансом между скоростью и надежностью
+	transport := &http.Transport{
+		MaxIdleConns:          200,
+		MaxIdleConnsPerHost:   20,
+		MaxConnsPerHost:       10,
+		IdleConnTimeout:       30 * time.Second,
+		TLSHandshakeTimeout:   3 * time.Millisecond,
+		ExpectContinueTimeout: 1 * time.Millisecond,
+		ResponseHeaderTimeout: 10 * time.Millisecond,
+		DisableCompression:    true,
+		DialContext: (&net.Dialer{
+			Timeout:   3 * time.Millisecond,
+			KeepAlive: 30 * time.Second,
+			DualStack: true,
+		}).DialContext,
+		ForceAttemptHTTP2:      false,
+		MaxResponseHeaderBytes: 2048, // Уменьшено
+		ReadBufferSize:         4096,
+		WriteBufferSize:        4096,
+	}
+
+	client_v_2_4 := &http.Client{
+		Transport: transport,
+		Timeout:   20 * time.Millisecond, // Уменьшено
+	}
+
+	client_v_2_5 := &http.Client{
+		Transport: transport,
+		Timeout:   20 * time.Millisecond,
+	}
+
 	return &Server{
 		ruleManager:        ruleManager,
 		fileLoader:         fileLoader,
@@ -72,278 +103,171 @@ func NewServer(
 		dspEndpoints_v_2_4: dspEndpoints_v_2_4,
 		dspEndpoints_v_2_5: dspEndpoints_v_2_5,
 		redisClient:        redisClient,
-		client:             client,
+		client_v_2_4:       client_v_2_4,
+		client_v_2_5:       client_v_2_5,
+		timeout:            timeout,
+		bufferPool: sync.Pool{
+			New: func() interface{} {
+				return bytes.NewBuffer(make([]byte, 0, 2048))
+			},
+		},
+		metaPool: sync.Pool{
+			New: func() interface{} {
+				return &DspMetaData{}
+			},
+		},
 	}
 }
 
 func (s *Server) GetBids_V2_4(
 	ctx context.Context,
 	req *dspRouterGrpc.DspRouterRequest_V2_4,
-) (
-	resp *dspRouterGrpc.DspRouterResponse_V2_4,
-	funcErr error,
-) {
+) (resp *dspRouterGrpc.DspRouterResponse_V2_4, funcErr error) {
+
+	reqCtx, cancel := context.WithTimeout(ctx, s.timeout)
+	defer cancel()
+
 	defer func() {
 		if r := recover(); r != nil {
 			err := fmt.Errorf("Recovered from panic in GetBids_V2_4: %v", r)
 			log.Printf(err.Error())
-
-			grpcCode := codes.Internal
-
 			resp = nil
-			funcErr = status.Errorf(grpcCode, err.Error())
+			funcErr = status.Errorf(codes.Internal, err.Error())
 		}
 	}()
 
-	var bdmu sync.Mutex
-	var wg sync.WaitGroup
-
-	dspEndpointLen := len(s.dspEndpoints_v_2_4)
-	responsesCh := make(chan *ortb_V2_4.BidResponse, dspEndpointLen)
-	dspMetaDataCh := make(chan *DspMetaData, dspEndpointLen)
-
-	for i := range s.dspEndpoints_v_2_4 {
-		wg.Add(1)
-		endpoint := s.dspEndpoints_v_2_4[i]
-		go func(
-			mu *sync.Mutex,
-			req *dspRouterGrpc.DspRouterRequest_V2_4,
-			dspEndpoint string,
-		) {
-			defer wg.Done()
-			s.requestMutex.RLock()
-			filterResult := s.processor.ProcessRequestForDSPV24(dspEndpoint, req.BidRequest)
-			s.requestMutex.RUnlock()
-
-			if !filterResult.Allowed {
-				return
-			}
-
-			resp, code, errMsg := s.getBidsFromDSPbyHTTP_V_2_4(req, dspEndpoint, req.SppEndpoint)
-
-			dspMetaDataCh <- &DspMetaData{
-				DspEndpoint: dspEndpoint,
-				Code:        code,
-				ErrMsg:      errMsg,
-			}
-
-			s.requestMutex.RLock()
-			filterRes := s.processor.ProcessResponseForSPPV24(req.SppEndpoint, resp)
-			s.requestMutex.RUnlock()
-			if !filterRes.Allowed {
-				return
-			}
-
-			if resp != nil {
-				responsesCh <- resp
-			}
-		}(
-			&bdmu,
-			req,
-			endpoint,
-		)
-	}
-
-	wg.Wait()
-	close(responsesCh)
-	close(dspMetaDataCh)
-
-	dspMetaData := make([]*DspMetaData, 0)
-	for d := range dspMetaDataCh {
-		dspMetaData = append(dspMetaData, d)
-	}
-
-	bidRespsData, err := json.Marshal(dspMetaData)
-	if err != nil {
-		fmt.Printf("failed to marshal slice in GetBids_V2_4: %w", err)
-	}
-
-	if err := utils.WriteJsonToRedis(ctx, s.redisClient, req.GlobalId, constants.BID_RESPONSES_COLUMN, bidRespsData); err != nil {
-		fmt.Printf("failed to WriteJsonToRedis Bid Responses in GetBids_V2_4: %v", err)
-	}
-
-	return &dspRouterGrpc.DspRouterResponse_V2_4{
-		BidRequest: req.BidRequest,
-		BidResponses: func() []*ortb_V2_4.BidResponse {
-			responses := make([]*ortb_V2_4.BidResponse, 0)
-			for resp := range responsesCh {
-				responses = append(responses, resp)
-			}
-
-			return responses
-		}(),
-		GlobalId: req.GlobalId,
-	}, nil
-}
-
-func (s *Server) getBidsFromDSPbyHTTP_V_2_4(req *dspRouterGrpc.DspRouterRequest_V2_4, dspEndpoint, sppEndpoint string) (
-	br *ortb_V2_4.BidResponse,
-	code int,
-	errMsg string,
-) {
+	// Предварительная сериализация JSON
 	jsonData, err := json.Marshal(req.BidRequest)
 	if err != nil {
-		return nil, 0, fmt.Sprintf("Can not marshal in GetBids_V2_4: %w", err)
+		return nil, fmt.Errorf("Can not marshal in GetBids_V2_4: %w", err)
 	}
 
-	resp, err := s.client.Post(
-		dspEndpoint,
-		"application/json",
-		bytes.NewBuffer(jsonData),
-	)
-	if err != nil {
-		return nil, 0, fmt.Sprintf("Can not post req to dsps in GetBids_V2_4: %w", err)
+	var wg sync.WaitGroup
+	responsesCh := make(chan *ortb_V2_4.BidResponse, len(s.dspEndpoints_v_2_4))
+	dspMetaDataCh := make(chan *DspMetaData, len(s.dspEndpoints_v_2_4))
+
+	// Запускаем все DSP параллельно
+	for _, endpoint := range s.dspEndpoints_v_2_4 {
+		wg.Add(1)
+		go func(endpoint string) {
+			defer wg.Done()
+
+			// Быстрая фильтрация DSP
+			if !s.processor.ProcessRequestForDSPV24(endpoint, req.BidRequest).Allowed {
+				return
+			}
+
+			// HTTP запрос к DSP
+			dspResp, code, errMsg := s.getBidsFromDSPbyHTTP_V_2_4_Optimized(reqCtx, jsonData, endpoint)
+
+			// Отправляем метаданные
+			meta := s.metaPool.Get().(*DspMetaData)
+			meta.DspEndpoint = endpoint
+			meta.Code = code
+			meta.ErrMsg = errMsg
+			dspMetaDataCh <- meta
+
+			// Фильтрация ответа SPP
+			if dspResp != nil && s.processor.ProcessResponseForSPPV24(req.SppEndpoint, dspResp).Allowed {
+				responsesCh <- dspResp
+			}
+		}(endpoint)
 	}
-	defer func() {
-		if retErr := resp.Body.Close(); retErr != nil {
-			errMsg = fmt.Sprintf(
-				"Cannot close resp in GetBids_V2_4: %w",
-				retErr,
-			)
-		}
+
+	// Ждем завершения в отдельной горутине и закрываем каналы
+	go func() {
+		wg.Wait()
+		close(responsesCh)
+		close(dspMetaDataCh)
 	}()
 
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, 0, fmt.Sprintf("Can not read body to dsps in GetBids_V2_4: %w", err)
-	}
+	// Собираем результаты параллельно с ожиданием
+	responses := make([]*ortb_V2_4.BidResponse, 0, len(s.dspEndpoints_v_2_4))
+	dspMetaData := make([]*DspMetaData, 0, len(s.dspEndpoints_v_2_4))
 
-	var grpcResp *ortb_V2_4.BidResponse
-	if resp.StatusCode == http.StatusOK || resp.StatusCode == http.StatusNoContent {
-		grpcResp = &ortb_V2_4.BidResponse{}
-		if err := json.Unmarshal(body, grpcResp); err != nil {
-			return nil,
-				resp.StatusCode,
-				fmt.Sprintf("Can not unmarshal body from dsps in GetBids_V2_4: %w", err)
+	// Используем select для параллельного сбора результатов
+	for responsesCh != nil || dspMetaDataCh != nil {
+		select {
+		case resp, ok := <-responsesCh:
+			if !ok {
+				responsesCh = nil
+			} else {
+				responses = append(responses, resp)
+			}
+		case meta, ok := <-dspMetaDataCh:
+			if !ok {
+				dspMetaDataCh = nil
+			} else {
+				dspMetaData = append(dspMetaData, meta)
+				// Возвращаем в пул после использования
+				defer s.metaPool.Put(meta)
+			}
 		}
 	}
 
-	return grpcResp,
-		resp.StatusCode,
-		"NULL"
-}
+	// Асинхронная запись в Redis чтобы не блокировать ответ
+	go s.writeMetadataToRedis(ctx, req.GlobalId, dspMetaData)
 
-/*func (h *Server) GetDSPRules_V2_4(ctx context.Context, req *dspRouterGrpc.GetRulesRequest) (*dspRouterGrpc.JsonResponse, error) {
-	h.reloadMutex.RLock()
-	defer h.reloadMutex.RUnlock()
-
-	jsonData, err := os.ReadFile(h.dspConfigPath)
-	if err != nil {
-		return nil, status.Errorf(codes.Internal, "Error reading config file: %v", err)
-	}
-
-	var config filter.SimpleRuleConfig
-	if err := json.Unmarshal(jsonData, &config); err != nil {
-		return nil, status.Errorf(codes.Internal, "Error parsing config: %v", err)
-	}
-
-	dspOnlyConfig := map[string]interface{}{
-		"version": config.Version,
-		"dsps":    config.DSPs,
-	}
-
-	dspOnlyJson, err := json.Marshal(dspOnlyConfig)
-	if err != nil {
-		return nil, status.Errorf(codes.Internal, "Error marshaling DSP config: %v", err)
-	}
-
-	return &dspRouterGrpc.JsonResponse{
-		JsonData: dspOnlyJson,
+	return &dspRouterGrpc.DspRouterResponse_V2_4{
+		BidRequest:   req.BidRequest,
+		BidResponses: responses,
+		GlobalId:     req.GlobalId,
 	}, nil
 }
 
-func (h *Server) GetSPPRules_V2_4(ctx context.Context, req *dspRouterGrpc.GetRulesRequest) (*dspRouterGrpc.JsonResponse, error) {
-	h.reloadMutex.RLock()
-	defer h.reloadMutex.RUnlock()
+func (s *Server) getBidsFromDSPbyHTTP_V_2_4_Optimized(ctx context.Context, jsonData []byte, dspEndpoint string) (
+	br *ortb_V2_4.BidResponse, code int, errMsg string) {
 
-	jsonData, err := os.ReadFile(h.sppConfigPath)
+	// Используем пул буферов
+	buf := s.bufferPool.Get().(*bytes.Buffer)
+	buf.Reset()
+	buf.Write(jsonData)
+	defer s.bufferPool.Put(buf)
+
+	req, err := http.NewRequestWithContext(ctx, "POST", dspEndpoint, buf)
 	if err != nil {
-		return nil, status.Errorf(codes.Internal, "Error reading config file: %v", err)
+		return nil, 0, fmt.Sprintf("Create request failed: %v", err)
 	}
+	req.Header.Set("Content-Type", "application/json")
 
-	var config filter.SimpleRuleConfig
-	if err := json.Unmarshal(jsonData, &config); err != nil {
-		return nil, status.Errorf(codes.Internal, "Error parsing config: %v", err)
-	}
-
-	sppOnlyConfig := map[string]interface{}{
-		"version": config.Version,
-		"spps":    config.SPPs,
-	}
-
-	sppOnlyJson, err := json.Marshal(sppOnlyConfig)
+	resp, err := s.client_v_2_4.Do(req)
 	if err != nil {
-		return nil, status.Errorf(codes.Internal, "Error marshaling SPP config: %v", err)
+		return nil, 0, fmt.Sprintf("Request failed: %v", err)
+	}
+	defer resp.Body.Close()
+
+	// Быстрое чтение тела
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, resp.StatusCode, fmt.Sprintf("Read failed: %v", err)
 	}
 
-	return &dspRouterGrpc.JsonResponse{
-		JsonData: sppOnlyJson,
-	}, nil
+	// Парсим только при успешном статусе
+	if resp.StatusCode == http.StatusOK || resp.StatusCode == http.StatusNoContent {
+		grpcResp := &ortb_V2_4.BidResponse{}
+		if err := json.Unmarshal(body, grpcResp); err != nil {
+			return nil, resp.StatusCode, fmt.Sprintf("Unmarshal failed: %v", err)
+		}
+		return grpcResp, resp.StatusCode, ""
+	}
+
+	return nil, resp.StatusCode, string(body)
 }
 
-func (h *Server) UpdateDSPRules_V2_4(ctx context.Context, req *dspRouterGrpc.JsonRequest) (*dspRouterGrpc.UpdateRulesResponse, error) {
-	return h.updateRulesInternal(
-		req.JsonData,
-		h.dspConfigPath,
-		filter.ValidateDSPConfig,
-		h.fileLoader.LoadDSPRules,
-	)
+func (s *Server) writeMetadataToRedis(ctx context.Context, globalId string, metadata []*DspMetaData) {
+	if len(metadata) == 0 {
+		return
+	}
+
+	bidRespsData, err := json.Marshal(metadata)
+	if err != nil {
+		log.Printf("failed to marshal metadata: %v", err)
+		return
+	}
+
+	// Используем background context чтобы не зависеть от основного
+	bgCtx := context.Background()
+	if err := utils.WriteJsonToRedis(bgCtx, s.redisClient, globalId, constants.BID_RESPONSES_COLUMN, bidRespsData); err != nil {
+		log.Printf("failed to WriteJsonToRedis: %v", err)
+	}
 }
-
-func (h *Server) UpdateSPPRules_V2_4(ctx context.Context, req *dspRouterGrpc.JsonRequest) (*dspRouterGrpc.UpdateRulesResponse, error) {
-	return h.updateRulesInternal(
-		req.JsonData,
-		h.sppConfigPath,
-		filter.ValidateSPPConfig,
-		h.fileLoader.LoadSPPRules,
-	)
-}
-
-func (h *Server) updateRulesInternal(
-	jsonData []byte,
-	configPath string,
-	validateFunc func(*filter.SimpleRuleConfig) error,
-	loadFunc func() error,
-) (*dspRouterGrpc.UpdateRulesResponse, error) {
-
-	h.requestMutex.Lock()
-	defer h.requestMutex.Unlock()
-
-	h.reloadMutex.Lock()
-	defer h.reloadMutex.Unlock()
-
-	var config filter.SimpleRuleConfig
-	if err := json.Unmarshal(jsonData, &config); err != nil {
-		return &dspRouterGrpc.UpdateRulesResponse{
-			Success: false,
-			Message: "Invalid JSON format: " + err.Error(),
-		}, nil
-	}
-
-	if err := validateFunc(&config); err != nil {
-		return &dspRouterGrpc.UpdateRulesResponse{
-			Success: false,
-			Message: "Validation error: " + err.Error(),
-		}, nil
-	}
-
-	if err := os.WriteFile(configPath, jsonData, 0644); err != nil {
-		return &dspRouterGrpc.UpdateRulesResponse{
-			Success: false,
-			Message: "Error writing config: " + err.Error(),
-		}, nil
-	}
-
-	if err := loadFunc(); err != nil {
-		return &dspRouterGrpc.UpdateRulesResponse{
-			Success: false,
-			Message: "Error loading new rules: " + err.Error(),
-		}, nil
-	}
-
-	return &dspRouterGrpc.UpdateRulesResponse{
-		Success: true,
-		Message: "Rules updated successfully",
-	}, nil
-}
-*/

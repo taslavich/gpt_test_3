@@ -1,8 +1,9 @@
 package filter
 
 type IntCondition struct {
-	values []int
+	values [2]int // использование array вместо slice
 	cond   ConditionType
+	// Убрать hasValues - оно не используется
 }
 
 func (ic IntCondition) Type() ValueType { return ValueTypeInt }
@@ -11,23 +12,24 @@ func (ic IntCondition) Compare(fieldValue FieldValue) bool {
 		return false
 	}
 
+	fieldInt := fieldValue.Int
 	switch ic.cond {
 	case ConditionEqual:
-		return fieldValue.Int == ic.values[0]
+		return fieldInt == ic.values[0]
 	case ConditionNotEqual:
-		return fieldValue.Int != ic.values[0]
+		return fieldInt != ic.values[0]
 	case ConditionGreaterThan:
-		return fieldValue.Int > ic.values[0]
+		return fieldInt > ic.values[0]
 	case ConditionGreaterEqual:
-		return fieldValue.Int >= ic.values[0]
+		return fieldInt >= ic.values[0]
 	case ConditionLessThan:
-		return fieldValue.Int < ic.values[0]
+		return fieldInt < ic.values[0]
 	case ConditionLessEqual:
-		return fieldValue.Int <= ic.values[0]
+		return fieldInt <= ic.values[0]
 	case ConditionBetween:
-		return fieldValue.Int >= ic.values[0] && fieldValue.Int <= ic.values[1]
+		return fieldInt >= ic.values[0] && fieldInt <= ic.values[1]
 	case ConditionNotBetween:
-		return fieldValue.Int < ic.values[0] || fieldValue.Int > ic.values[1]
+		return fieldInt < ic.values[0] || fieldInt > ic.values[1]
 	case ConditionExists:
 		return true
 	default:
@@ -36,8 +38,8 @@ func (ic IntCondition) Compare(fieldValue FieldValue) bool {
 }
 
 type StringCondition struct {
-	values []string
-	cond   ConditionType
+	value string // одно значение вместо slice
+	cond  ConditionType
 }
 
 func (sc StringCondition) Type() ValueType { return ValueTypeString }
@@ -48,9 +50,9 @@ func (sc StringCondition) Compare(fieldValue FieldValue) bool {
 
 	switch sc.cond {
 	case ConditionEqual:
-		return fieldValue.String == sc.values[0]
+		return fieldValue.String == sc.value
 	case ConditionNotEqual:
-		return fieldValue.String != sc.values[0]
+		return fieldValue.String != sc.value
 	case ConditionExists:
 		return fieldValue.String != ""
 	default:
@@ -59,7 +61,7 @@ func (sc StringCondition) Compare(fieldValue FieldValue) bool {
 }
 
 type FloatCondition struct {
-	values []float64
+	values [2]float64 // использование array вместо slice
 	cond   ConditionType
 }
 
@@ -69,23 +71,24 @@ func (fc FloatCondition) Compare(fieldValue FieldValue) bool {
 		return false
 	}
 
+	fieldFloat := fieldValue.Float
 	switch fc.cond {
 	case ConditionEqual:
-		return fieldValue.Float == fc.values[0]
+		return fieldFloat == fc.values[0]
 	case ConditionNotEqual:
-		return fieldValue.Float != fc.values[0]
+		return fieldFloat != fc.values[0]
 	case ConditionGreaterThan:
-		return fieldValue.Float > fc.values[0]
+		return fieldFloat > fc.values[0]
 	case ConditionGreaterEqual:
-		return fieldValue.Float >= fc.values[0]
+		return fieldFloat >= fc.values[0]
 	case ConditionLessThan:
-		return fieldValue.Float < fc.values[0]
+		return fieldFloat < fc.values[0]
 	case ConditionLessEqual:
-		return fieldValue.Float <= fc.values[0]
+		return fieldFloat <= fc.values[0]
 	case ConditionBetween:
-		return fieldValue.Float >= fc.values[0] && fieldValue.Float <= fc.values[1]
+		return fieldFloat >= fc.values[0] && fieldFloat <= fc.values[1]
 	case ConditionNotBetween:
-		return fieldValue.Float < fc.values[0] || fieldValue.Float > fc.values[1]
+		return fieldFloat < fc.values[0] || fieldFloat > fc.values[1]
 	case ConditionExists:
 		return true
 	default:

@@ -65,7 +65,7 @@ func main() {
 		log.Println("Filter rules loaded successfully")
 	}
 
-	processor := filter.NewFilterProcessor(ruleManager)
+	processor := filter.NewOptimizedFilterProcessor(ruleManager)
 
 	s := grpc.NewServer()
 	dspRouterGrpc.RegisterDspRouterServiceServer(
