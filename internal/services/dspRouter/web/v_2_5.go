@@ -31,6 +31,11 @@ func (s *Server) GetBids_V2_5(
 	responsesCh := make(chan *ortb_V2_5.BidResponse, dspEndpointLen)
 	dspMetaDataCh := make(chan *DspMetaData, dspEndpointLen)
 
+	jsonData, err := json.Marshal(req.BidRequest)
+	if err != nil {
+		return nil, fmt.Errorf("Can not marshal in GetBids_V2_5: %w", err)
+	}
+
 	for i := range s.dspEndpoints_v_2_5 {
 		wg.Add(1)
 		endpoint := s.dspEndpoints_v_2_5[i]
@@ -46,7 +51,7 @@ func (s *Server) GetBids_V2_5(
 				return
 			}
 
-			resp, code, errMsg := s.getBidsFromDSPbyHTTP_V_2_5(req, endpoint)
+			resp, code, errMsg := s.getBidsFromDSPbyHTTP_V_2_5(jsonData, endpoint)
 
 			dspMetaDataCh <- &DspMetaData{
 				DspEndpoint: endpoint,
@@ -99,19 +104,12 @@ func (s *Server) GetBids_V2_5(
 	}, nil
 }
 
-func (s *Server) getBidsFromDSPbyHTTP_V_2_5(req *dspRouterGrpc.DspRouterRequest_V2_5, dspEndpoint string) (
+func (s *Server) getBidsFromDSPbyHTTP_V_2_5(jsonData []byte, dspEndpoint string) (
 	br *ortb_V2_5.BidResponse,
 	code int,
 	errMsg string,
 ) {
-	client := &http.Client{ /*Timeout: s.timeout*/ }
-
-	jsonData, err := json.Marshal(req.BidRequest)
-	if err != nil {
-		return nil, 0, fmt.Sprintf("Can not marshal in GetBids_V2_5: %w", err)
-	}
-
-	resp, err := client.Post(
+	resp, err := s.client_v_2_5.Post(
 		dspEndpoint,
 		"application/json",
 		bytes.NewBuffer(jsonData),
