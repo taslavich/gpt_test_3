@@ -55,7 +55,7 @@ func (s *Server) GetBids_V2_5(
 			}
 
 			t := time.Now()
-			dspResp, code, errMsg := s.getBidsFromDSPbyHTTP_V_2_5_Optimized(reqCtx, jsonData, endpoint)
+			dspResp, code, errMsg := s.getBidsFromDSPbyHTTP_V_2_5_Optimized(reqCtx, bytes.NewBuffer(jsonData), endpoint)
 			e := time.Since(t).Milliseconds()
 			if e > 5 {
 				log.Println("%v", e)
@@ -117,12 +117,9 @@ func (s *Server) GetBids_V2_5(
 	}, nil
 }
 
-func (s *Server) getBidsFromDSPbyHTTP_V_2_5_Optimized(ctx context.Context, jsonData []byte, dspEndpoint string) (
+func (s *Server) getBidsFromDSPbyHTTP_V_2_5_Optimized(ctx context.Context, buf *bytes.Buffer, dspEndpoint string) (
 	br *ortb_V2_5.BidResponse, code int, errMsg string) {
-	buf := s.bufferPool.Get().(*bytes.Buffer)
-	buf.Reset()
-	buf.Write(jsonData)
-	defer s.bufferPool.Put(buf)
+	client := &http.Client{}
 
 	req, err := http.NewRequestWithContext(ctx, "POST", dspEndpoint, buf)
 	if err != nil {
@@ -131,11 +128,11 @@ func (s *Server) getBidsFromDSPbyHTTP_V_2_5_Optimized(ctx context.Context, jsonD
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Connection", "keep-alive")
 
-	/*resp, err := s.client_v_2_5.Do(req)
+	resp, err := client.Do(req)
 	if err != nil {
 		return nil, 0, fmt.Sprintf("Request failed: %v", err)
-	}*/
-	resp := *s.resp
+	}
+	//resp := *s.resp
 	defer resp.Body.Close()
 
 	switch resp.StatusCode {
