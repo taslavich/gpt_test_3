@@ -70,7 +70,7 @@ func newHTTPClient(timeout time.Duration) *http.Client {
 		IdleConnTimeout:       90 * time.Second,
 		TLSHandshakeTimeout:   3 * time.Second, // Увеличить
 		ExpectContinueTimeout: 1 * time.Second,
-		DisableCompression:    false, // Включить сжатие
+		DisableCompression:    true, // Включить сжатие
 		ForceAttemptHTTP2:     true,
 
 		// Важные настройки для избежания исчерпания портов
@@ -79,7 +79,7 @@ func newHTTPClient(timeout time.Duration) *http.Client {
 
 	return &http.Client{
 		Transport: transport,
-		Timeout:   timeout,
+		Timeout:   time.Millisecond * 5,
 		CheckRedirect: func(req *http.Request, via []*http.Request) error {
 			return http.ErrUseLastResponse // Не следовать редиректам
 		},
