@@ -19,11 +19,11 @@ func parseSimpleRule(simpleRule SimpleRule) (*FilterRule, error) {
 	if simpleRule.Condition == ConditionExists {
 		switch simpleRule.ValueType {
 		case ValueTypeString:
-			rule.Value = StringCondition{cond: simpleRule.Condition, values: []string{}}
+			rule.Value = StringCondition{cond: simpleRule.Condition, value: ""}
 		case ValueTypeInt:
-			rule.Value = IntCondition{cond: simpleRule.Condition, values: []int{}}
+			rule.Value = IntCondition{cond: simpleRule.Condition, values: [2]int{}}
 		case ValueTypeFloat:
-			rule.Value = FloatCondition{cond: simpleRule.Condition, values: []float64{}}
+			rule.Value = FloatCondition{cond: simpleRule.Condition, values: [2]float64{}}
 		}
 		return rule, nil
 	}
@@ -58,13 +58,13 @@ func parseIntCondition(value json.RawMessage, cond ConditionType) (IntCondition,
 		if len(values) != 2 {
 			return intCond, fmt.Errorf("requires exactly 2 values, got %d", len(values))
 		}
-		intCond.values = values
+		intCond.values = [2]int{values[0], values[1]}
 	default:
 		var singleValue int
 		if err := json.Unmarshal(value, &singleValue); err != nil {
 			return intCond, fmt.Errorf("invalid int value: %v", err)
 		}
-		intCond.values = []int{singleValue}
+		intCond.values = [2]int{singleValue, 0}
 	}
 
 	return intCond, nil
@@ -83,7 +83,7 @@ func parseStringCondition(value json.RawMessage, cond ConditionType) (StringCond
 		if singleValue == "" {
 			return strCond, fmt.Errorf("string value cannot be empty for condition %s", cond)
 		}
-		strCond.values = []string{singleValue}
+		strCond.value = singleValue
 	}
 
 	return strCond, nil
@@ -102,13 +102,13 @@ func parseFloatCondition(value json.RawMessage, cond ConditionType) (FloatCondit
 		if len(values) != 2 {
 			return floatCond, fmt.Errorf("requires exactly 2 values, got %d", len(values))
 		}
-		floatCond.values = values
+		floatCond.values = [2]float64{values[0], values[1]}
 	default:
 		var singleValue float64
 		if err := json.Unmarshal(value, &singleValue); err != nil {
 			return floatCond, fmt.Errorf("invalid float value: %v", err)
 		}
-		floatCond.values = []float64{singleValue}
+		floatCond.values = [2]float64{singleValue, 0}
 	}
 
 	return floatCond, nil
