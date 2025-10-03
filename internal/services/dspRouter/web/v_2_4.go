@@ -65,8 +65,8 @@ func newHTTPClient(timeout time.Duration) *http.Client {
 			KeepAlive: 180 * time.Second, // Увеличить keep-alive
 			DualStack: true,
 		}).DialContext,
-		MaxIdleConns:          2048, // Увеличить
-		MaxIdleConnsPerHost:   512,  // Увеличить для локальных тестов
+		MaxIdleConns:          9000, // Увеличить
+		MaxIdleConnsPerHost:   1024, // Увеличить для локальных тестов
 		IdleConnTimeout:       90 * time.Second,
 		TLSHandshakeTimeout:   3 * time.Second, // Увеличить
 		ExpectContinueTimeout: 1 * time.Second,
