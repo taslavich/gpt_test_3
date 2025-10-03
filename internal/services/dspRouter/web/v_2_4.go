@@ -61,20 +61,28 @@ func newHTTPClient(timeout time.Duration) *http.Client {
 	transport := &http.Transport{
 		Proxy: http.ProxyFromEnvironment,
 		DialContext: (&net.Dialer{
-			Timeout:   300 * time.Millisecond,
-			KeepAlive: 30 * time.Second,
+			Timeout:   3 * time.Second,   // Увеличить для стабильности
+			KeepAlive: 180 * time.Second, // Увеличить keep-alive
+			DualStack: true,
 		}).DialContext,
-		MaxIdleConns:        1024,
-		MaxIdleConnsPerHost: 256,
-		MaxConnsPerHost:     0,
-		IdleConnTimeout:     90 * time.Second,
-		TLSHandshakeTimeout: 500 * time.Millisecond,
-		DisableCompression:  true,
+		MaxIdleConns:          2048, // Увеличить
+		MaxIdleConnsPerHost:   512,  // Увеличить для локальных тестов
+		IdleConnTimeout:       90 * time.Second,
+		TLSHandshakeTimeout:   3 * time.Second, // Увеличить
+		ExpectContinueTimeout: 1 * time.Second,
+		DisableCompression:    false, // Включить сжатие
+		ForceAttemptHTTP2:     true,
+
+		// Важные настройки для избежания исчерпания портов
+		MaxConnsPerHost: 0, // 0 = без лимита
 	}
 
 	return &http.Client{
 		Transport: transport,
 		Timeout:   timeout,
+		CheckRedirect: func(req *http.Request, via []*http.Request) error {
+			return http.ErrUseLastResponse // Не следовать редиректам
+		},
 	}
 }
 

@@ -79,9 +79,15 @@ func InitHttpRouter() *chi.Mux {
 
 func RunHttpServer(ctx context.Context, router *chi.Mux, host string, port uint16) {
 	httpServerAddr := fmt.Sprintf("%s:%d", host, port)
-	httpServer := http.Server{
-		Addr:    httpServerAddr,
-		Handler: router,
+	httpServer := &http.Server{
+		Addr:         httpServerAddr,
+		Handler:      router,
+		ReadTimeout:  5 * time.Second,
+		WriteTimeout: 10 * time.Second,
+		IdleTimeout:  120 * time.Second,
+
+		// Увеличить лимиты соединений
+		MaxHeaderBytes: 1 << 20, // 1 MB
 	}
 
 	errChan := make(chan error)
