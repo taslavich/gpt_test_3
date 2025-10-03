@@ -9,6 +9,7 @@ import (
 	"log"
 	"net/http"
 	"sync"
+	"time"
 
 	dspRouterGrpc "gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/proto/services/dspRouter"
 	"gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/proto/types/ortb_V2_5"
@@ -23,7 +24,9 @@ func (s *Server) GetBids_V2_5(
 	reqCtx, cancel := context.WithTimeout(ctx, s.timeout)
 	defer cancel()
 
+	start := time.Now()
 	defer func() {
+		log.Println("%v", time.Since(start))
 		if r := recover(); r != nil {
 			err := fmt.Errorf("Recovered from panic in GetBids_V2_5: %v", r)
 			log.Printf(err.Error())
