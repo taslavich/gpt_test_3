@@ -6,150 +6,144 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"log"
 	"net/http"
 	"sync"
 
+	"gitlab.com/twinbid-exchange/RTB-exchange/internal/constants"
 	dspRouterGrpc "gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/proto/services/dspRouter"
 	"gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/proto/types/ortb_V2_5"
-	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/status"
+	utils "gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/utils_grpc"
 )
 
 func (s *Server) GetBids_V2_5(
 	ctx context.Context,
 	req *dspRouterGrpc.DspRouterRequest_V2_5,
-) (resp *dspRouterGrpc.DspRouterResponse_V2_5, funcErr error) {
-	reqCtx, cancel := context.WithTimeout(ctx, s.timeout)
-	defer cancel()
+) (
+	*dspRouterGrpc.DspRouterResponse_V2_5,
+	error,
+) {
+	originReq := req
 
-	defer func() {
-		if r := recover(); r != nil {
-			err := fmt.Errorf("Recovered from panic in GetBids_V2_5: %v", r)
-			log.Printf(err.Error())
-			resp = nil
-			funcErr = status.Errorf(codes.Internal, err.Error())
-		}
-	}()
+	var bdmu sync.Mutex
+	var wg sync.WaitGroup
 
-	jsonData, err := json.Marshal(req.BidRequest)
-	if err != nil {
-		return nil, fmt.Errorf("Can not marshal in GetBids_V2_5: %w", err)
-	}
+	dspEndpointLen := len(s.dspEndpoints_v_2_5)
+	responsesCh := make(chan *ortb_V2_5.BidResponse, dspEndpointLen)
+	dspMetaDataCh := make(chan *DspMetaData, dspEndpointLen)
 
-	var (
-		wg sync.WaitGroup
-	)
-
-	responsesCh := make(chan *ortb_V2_5.BidResponse, len(s.dspEndpoints_v_2_5))
-	dspMetaDataCh := make(chan *DspMetaData, len(s.dspEndpoints_v_2_5))
-
-	// Запускаем все DSP параллельно
-	for _, endpoint := range s.dspEndpoints_v_2_5 {
+	for i := range s.dspEndpoints_v_2_5 {
 		wg.Add(1)
-		go func(endpoint string) {
+		endpoint := s.dspEndpoints_v_2_5[i]
+		go func(
+			mu *sync.Mutex,
+			req *dspRouterGrpc.DspRouterRequest_V2_5,
+			endpoint string,
+		) {
 			defer wg.Done()
+			filterResult := s.processor.ProcessRequestForDSPV25(endpoint, req.BidRequest)
 
-			if !s.processor.ProcessRequestForDSPV25(endpoint, req.BidRequest).Allowed {
+			if !filterResult.Allowed {
 				return
 			}
 
-			dspResp, code, errMsg := s.getBidsFromDSPbyHTTP_V_2_5_Optimized(reqCtx, jsonData, endpoint)
+			resp, code, errMsg := s.getBidsFromDSPbyHTTP_V_2_5(req, endpoint)
 
-			// Отправляем метаданные
-			meta := s.metaPool.Get().(*DspMetaData)
-			meta.DspEndpoint = endpoint
-			meta.Code = code
-			meta.ErrMsg = errMsg
-			dspMetaDataCh <- meta
-
-			// Фильтрация ответа SPP
-			if dspResp != nil && s.processor.ProcessResponseForSPPV25(req.SppEndpoint, dspResp).Allowed {
-				responsesCh <- dspResp
+			dspMetaDataCh <- &DspMetaData{
+				DspEndpoint: endpoint,
+				Code:        code,
+				ErrMsg:      errMsg,
 			}
-		}(endpoint)
+
+			if filterRes := s.processor.ProcessResponseForSPPV25(req.SppEndpoint, resp); !filterRes.Allowed {
+				return
+			}
+
+			if resp != nil {
+				responsesCh <- resp
+			}
+		}(
+			&bdmu,
+			req,
+			endpoint,
+		)
 	}
 
-	// Ждем завершения в отдельной горутине и закрываем каналы
-	go func() {
-		wg.Wait()
-		close(responsesCh)
-		close(dspMetaDataCh)
-	}()
+	wg.Wait()
+	close(responsesCh)
+	close(dspMetaDataCh)
 
-	// Собираем результаты параллельно с ожиданием
-	responses := make([]*ortb_V2_5.BidResponse, 0, len(s.dspEndpoints_v_2_5))
-	dspMetaData := make([]DspMetaData, 0, len(s.dspEndpoints_v_2_5))
-
-	// Используем select для параллельного сбора результатов
-	for responsesCh != nil || dspMetaDataCh != nil {
-		select {
-		case resp, ok := <-responsesCh:
-			if !ok {
-				responsesCh = nil
-			} else {
-				responses = append(responses, resp)
-			}
-		case meta, ok := <-dspMetaDataCh:
-			if !ok {
-				dspMetaDataCh = nil
-			} else {
-				dspMetaData = append(dspMetaData, DspMetaData{
-					DspEndpoint: meta.DspEndpoint,
-					Code:        meta.Code,
-					ErrMsg:      meta.ErrMsg,
-				})
-				s.metaPool.Put(meta)
-			}
-		}
+	dspMetaData := make([]*DspMetaData, 0)
+	for d := range dspMetaDataCh {
+		dspMetaData = append(dspMetaData, d)
 	}
 
-	// Асинхронная запись в Redis
-	go s.writeMetadataToRedis(ctx, req.GlobalId, dspMetaData)
+	bidRespsData, err := json.Marshal(dspMetaData)
+	if err != nil {
+		fmt.Printf("failed to marshal slice in GetBids_V2_5: %w", err)
+	}
+
+	if err := utils.WriteJsonToRedis(ctx, s.redisClient, req.GlobalId, constants.BID_RESPONSES_COLUMN, bidRespsData); err != nil {
+		fmt.Printf("failed to WriteJsonToRedis Bid Responses in GetBids_V2_5: %v", err)
+	}
 
 	return &dspRouterGrpc.DspRouterResponse_V2_5{
-		BidRequest:   req.BidRequest,
-		BidResponses: responses,
-		GlobalId:     req.GlobalId,
+		BidRequest: originReq.BidRequest,
+		BidResponses: func() []*ortb_V2_5.BidResponse {
+			responses := make([]*ortb_V2_5.BidResponse, 0)
+			for resp := range responsesCh {
+				responses = append(responses, resp)
+			}
+			return responses
+		}(),
+		GlobalId: req.GlobalId,
 	}, nil
 }
 
-func (s *Server) getBidsFromDSPbyHTTP_V_2_5_Optimized(ctx context.Context, jsonData []byte, dspEndpoint string) (
-	br *ortb_V2_5.BidResponse, code int, errMsg string) {
+func (s *Server) getBidsFromDSPbyHTTP_V_2_5(req *dspRouterGrpc.DspRouterRequest_V2_5, dspEndpoint string) (
+	br *ortb_V2_5.BidResponse,
+	code int,
+	errMsg string,
+) {
+	client := &http.Client{ /*Timeout: s.timeout*/ }
 
-	buf := s.bufferPool.Get().(*bytes.Buffer)
-	buf.Reset()
-	buf.Write(jsonData)
-	defer s.bufferPool.Put(buf)
-
-	req, err := http.NewRequestWithContext(ctx, "POST", dspEndpoint, buf)
+	jsonData, err := json.Marshal(req.BidRequest)
 	if err != nil {
-		return nil, 0, fmt.Sprintf("Create request failed: %v", err)
+		return nil, 0, fmt.Sprintf("Can not marshal in GetBids_V2_5: %w", err)
 	}
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Connection", "keep-alive")
 
-	resp, err := s.client_v_2_5.Do(req)
+	resp, err := client.Post(
+		dspEndpoint,
+		"application/json",
+		bytes.NewBuffer(jsonData),
+	)
 	if err != nil {
-		return nil, 0, fmt.Sprintf("Request failed: %v", err)
+		return nil, 0, fmt.Sprintf("Can not post req to dsps in GetBids_V2_5: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() {
+		if retErr := resp.Body.Close(); err != nil {
+			errMsg = fmt.Sprintf(
+				"Cannot close resp in GetBids_V2_5: %w",
+				retErr,
+			)
+		}
+	}()
 
-	switch resp.StatusCode {
-	case http.StatusNoContent:
-		return nil, resp.StatusCode, ""
-	case http.StatusOK:
-		var grpcResp ortb_V2_5.BidResponse
-		dec := json.NewDecoder(resp.Body)
-		if err := dec.Decode(&grpcResp); err != nil {
-			return nil, resp.StatusCode, fmt.Sprintf("Decode failed: %v", err)
-		}
-		return &grpcResp, resp.StatusCode, ""
-	default:
-		body, err := io.ReadAll(io.LimitReader(resp.Body, 4*1024))
-		if err != nil {
-			return nil, resp.StatusCode, fmt.Sprintf("Read failed: %v", err)
-		}
-		return nil, resp.StatusCode, string(body)
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, 0, fmt.Sprintf("Can not read body to dsps in GetBids_V2_5: %w", err)
 	}
+
+	var grpcResp *ortb_V2_5.BidResponse
+	if resp.StatusCode == http.StatusOK || resp.StatusCode == http.StatusNoContent {
+		grpcResp = &ortb_V2_5.BidResponse{}
+		if err := json.Unmarshal(body, grpcResp); err != nil {
+			return nil,
+				resp.StatusCode,
+				fmt.Sprintf("Can not unmarshal body from dsps in GetBids_V2_5: %w", err)
+		}
+	}
+
+	return grpcResp,
+		resp.StatusCode,
+		"NULL"
 }
