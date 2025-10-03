@@ -54,7 +54,9 @@ func (s *Server) GetBids_V2_5(
 				return
 			}
 
+			t := time.Now()
 			dspResp, code, errMsg := s.getBidsFromDSPbyHTTP_V_2_5_Optimized(reqCtx, jsonData, endpoint)
+			log.Println("%v", time.Since(t))
 
 			// Отправляем метаданные
 			meta := s.metaPool.Get().(*DspMetaData)
@@ -63,12 +65,10 @@ func (s *Server) GetBids_V2_5(
 			meta.ErrMsg = errMsg
 			dspMetaDataCh <- meta
 
-			t := time.Now()
 			// Фильтрация ответа SPP
 			if dspResp != nil && s.processor.ProcessResponseForSPPV25(req.SppEndpoint, dspResp).Allowed {
 				responsesCh <- dspResp
 			}
-			log.Println("%v", time.Since(t))
 		}(endpoint)
 	}
 
