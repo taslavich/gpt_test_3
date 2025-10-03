@@ -22,6 +22,7 @@ func main() {
 	log.Println("Config initialized!")
 
 	log.Println(cfg.DspName)
+	log.Println("Hello")
 
 	BidId := fmt.Sprint(cfg.DspName, cfg.DspName)
 	Nurl := "Nurl"
