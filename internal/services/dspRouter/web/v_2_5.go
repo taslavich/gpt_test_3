@@ -144,6 +144,7 @@ func (s *Server) GetBids_V2_5(
 func (s *Server) getBidsFromDSPbyHTTP_V_2_5_Optimized(ctx context.Context, jsonData []byte, dspEndpoint string) (
 	br *ortb_V2_5.BidResponse, code int, errMsg string) {
 
+	log.Println("HTTP GOT")
 	// Используем пул буферов
 	buf := s.bufferPool.Get().(*bytes.Buffer)
 	buf.Reset()
