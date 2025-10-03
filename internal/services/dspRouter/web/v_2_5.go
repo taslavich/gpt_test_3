@@ -119,7 +119,6 @@ func (s *Server) GetBids_V2_5(
 
 func (s *Server) getBidsFromDSPbyHTTP_V_2_5_Optimized(ctx context.Context, buf *bytes.Buffer, dspEndpoint string) (
 	br *ortb_V2_5.BidResponse, code int, errMsg string) {
-	client := &http.Client{}
 
 	req, err := http.NewRequestWithContext(ctx, "POST", dspEndpoint, buf)
 	if err != nil {
@@ -128,7 +127,7 @@ func (s *Server) getBidsFromDSPbyHTTP_V_2_5_Optimized(ctx context.Context, buf *
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Connection", "keep-alive")
 
-	resp, err := client.Do(req)
+	resp, err := s.client_v_2_5.Do(req)
 	if err != nil {
 		return nil, 0, fmt.Sprintf("Request failed: %v", err)
 	}
