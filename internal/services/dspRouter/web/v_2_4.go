@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"net"
 	"net/http"
 	"sync"
 	"time"
@@ -57,7 +58,7 @@ type Server struct {
 }
 
 func newHTTPClient(timeout time.Duration) *http.Client {
-	/*transport := &http.Transport{
+	transport := &http.Transport{
 		Proxy: http.ProxyFromEnvironment,
 		DialContext: (&net.Dialer{
 			Timeout:   3 * time.Second,   // Увеличить для стабильности
@@ -71,10 +72,13 @@ func newHTTPClient(timeout time.Duration) *http.Client {
 		ExpectContinueTimeout: 1 * time.Second,
 		DisableCompression:    true, // Включить сжатие
 		ForceAttemptHTTP2:     true,
-	}*/
+
+		// Важные настройки для избежания исчерпания портов
+		MaxConnsPerHost: 0, // 0 = без лимита
+	}
 
 	return &http.Client{
-		Transport: &http.Transport{},
+		Transport: transport,
 		Timeout:   time.Millisecond * 5,
 		CheckRedirect: func(req *http.Request, via []*http.Request) error {
 			return http.ErrUseLastResponse // Не следовать редиректам
