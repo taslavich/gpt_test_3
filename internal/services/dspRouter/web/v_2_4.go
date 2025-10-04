@@ -56,23 +56,27 @@ func newHTTPClient(timeout time.Duration) *http.Client {
 	transport := &http.Transport{
 		Proxy: http.ProxyFromEnvironment,
 		DialContext: (&net.Dialer{
-			Timeout:   3 * time.Second,
-			KeepAlive: 180 * time.Second,
+			Timeout:   50 * time.Millisecond, // ✅ УМЕНЬШИТЬ ДО 50ms
+			KeepAlive: 30 * time.Second,      // ✅ НОРМАЛЬНОЕ ВРЕМЯ
 			DualStack: true,
 		}).DialContext,
-		MaxIdleConns:          2048,
-		MaxIdleConnsPerHost:   512,
-		IdleConnTimeout:       90 * time.Second,
-		TLSHandshakeTimeout:   3 * time.Second,
-		ExpectContinueTimeout: 1 * time.Second,
-		DisableCompression:    false, // включаем сжатие
-		ForceAttemptHTTP2:     true,
-		MaxConnsPerHost:       1024,
+		// ✅ ОПТИМАЛЬНЫЕ НАСТРОЙКИ ДЛЯ 4k RPS
+		MaxIdleConns:          200,
+		MaxIdleConnsPerHost:   50,
+		MaxConnsPerHost:       100, // ✅ ЛИМИТ НА ХОСТ
+		IdleConnTimeout:       30 * time.Second,
+		TLSHandshakeTimeout:   50 * time.Millisecond, // ✅ УМЕНЬШИТЬ
+		ExpectContinueTimeout: 50 * time.Millisecond,
+		DisableCompression:    true,  // ✅ ЛУЧШЕ ДЛЯ ЛОКАЛЬНОЙ СЕТИ
+		ForceAttemptHTTP2:     false, // ✅ HTTP/1.1 БЫСТРЕЕ
+
+		// Важные оптимизации
+		ResponseHeaderTimeout: 100 * time.Millisecond,
 	}
 
-	// Важно: общий таймаут не задаём — дедлайны через ctx у каждого реквеста
 	return &http.Client{
 		Transport: transport,
+		// ✅ НЕ УСТАНАВЛИВАТЬ Timeout - используем только context
 		CheckRedirect: func(req *http.Request, via []*http.Request) error {
 			return http.ErrUseLastResponse
 		},
