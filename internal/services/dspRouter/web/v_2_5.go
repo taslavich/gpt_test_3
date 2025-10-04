@@ -127,12 +127,12 @@ func (s *Server) getBidsFromDSPbyHTTP_V_2_5_Optimized(ctx context.Context, buf *
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Connection", "keep-alive")
 
-	/*resp, err := s.client_v_2_5.Do(req)
+	resp, err := s.client_v_2_5.Do(req)
 	if err != nil {
 		return nil, 0, fmt.Sprintf("Request failed: %v", err)
-	}*/
-	time.Sleep(time.Millisecond * 50)
-	resp := *s.resp
+	}
+	//time.Sleep(time.Millisecond * 50)
+	//resp := *s.resp
 	defer resp.Body.Close()
 
 	switch resp.StatusCode {
