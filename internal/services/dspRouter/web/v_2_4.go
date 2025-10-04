@@ -44,14 +44,6 @@ type Server struct {
 	client_v_2_4 *http.Client
 	client_v_2_5 *http.Client
 	timeout      time.Duration
-
-	maxParallelRequests int
-	debug               bool
-	slowLogThreshold    time.Duration
-
-	// Глобальный лимитер исходящих (на весь процесс)
-	outboundSem chan struct{}
-
 	// Пулы для снижения аллокаций
 	bufferPool sync.Pool
 	metaPool   sync.Pool
@@ -125,21 +117,17 @@ func NewServer(
 	}
 
 	return &Server{
-		ruleManager:         ruleManager,
-		fileLoader:          fileLoader,
-		processor:           processor,
-		dspConfigPath:       dspConfigPath,
-		sppConfigPath:       sppConfigPath,
-		dspEndpoints_v_2_4:  dspEndpoints_v_2_4,
-		dspEndpoints_v_2_5:  dspEndpoints_v_2_5,
-		redisClient:         redisClient,
-		client_v_2_4:        client_v_2_4,
-		client_v_2_5:        client_v_2_5,
-		timeout:             timeout,
-		maxParallelRequests: maxParallelRequests,
-		debug:               debug,
-		slowLogThreshold:    50 * time.Millisecond,
-		outboundSem:         make(chan struct{}, 512),
+		ruleManager:        ruleManager,
+		fileLoader:         fileLoader,
+		processor:          processor,
+		dspConfigPath:      dspConfigPath,
+		sppConfigPath:      sppConfigPath,
+		dspEndpoints_v_2_4: dspEndpoints_v_2_4,
+		dspEndpoints_v_2_5: dspEndpoints_v_2_5,
+		redisClient:        redisClient,
+		client_v_2_4:       client_v_2_4,
+		client_v_2_5:       client_v_2_5,
+		timeout:            timeout,
 		bufferPool: sync.Pool{
 			New: func() interface{} {
 				return bytes.NewBuffer(make([]byte, 0, 2048))
@@ -177,12 +165,8 @@ func (s *Server) GetBids_V2_4(
 	}
 
 	var (
-		wg  sync.WaitGroup
-		sem chan struct{}
+		wg sync.WaitGroup
 	)
-	if s.maxParallelRequests > 0 {
-		sem = make(chan struct{}, s.maxParallelRequests)
-	}
 
 	responsesCh := make(chan *ortb_V2_4.BidResponse, len(s.dspEndpoints_v_2_4))
 	dspMetaDataCh := make(chan *DspMetaData, len(s.dspEndpoints_v_2_4))
@@ -191,11 +175,6 @@ func (s *Server) GetBids_V2_4(
 		wg.Add(1)
 		go func(endpoint string) {
 			defer wg.Done()
-
-			if sem != nil {
-				sem <- struct{}{}
-				defer func() { <-sem }()
-			}
 
 			// Быстрая фильтрация DSP
 			if !s.processor.ProcessRequestForDSPV24(endpoint, req.BidRequest).Allowed {
@@ -264,12 +243,6 @@ func (s *Server) GetBids_V2_4(
 
 func (s *Server) getBidsFromDSPbyHTTP_V_2_4_Optimized(ctx context.Context, jsonData []byte, dspEndpoint string) (
 	br *ortb_V2_4.BidResponse, code int, errMsg string) {
-
-	// Глобальный лимитер исходящих
-	if s.outboundSem != nil {
-		s.outboundSem <- struct{}{}
-		defer func() { <-s.outboundSem }()
-	}
 
 	// Пул буферов
 	buf := s.bufferPool.Get().(*bytes.Buffer)
