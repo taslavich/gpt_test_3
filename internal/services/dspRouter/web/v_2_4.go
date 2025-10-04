@@ -74,12 +74,11 @@ func newHTTPClient(timeout time.Duration) *http.Client {
 		ForceAttemptHTTP2:     true,
 
 		// Важные настройки для избежания исчерпания портов
-		MaxConnsPerHost: 0, // 0 = без лимита
+		MaxConnsPerHost: 1024, // 0 = без лимита
 	}
 
 	return &http.Client{
 		Transport: transport,
-		Timeout:   time.Millisecond * 5,
 		CheckRedirect: func(req *http.Request, via []*http.Request) error {
 			return http.ErrUseLastResponse // Не следовать редиректам
 		},
