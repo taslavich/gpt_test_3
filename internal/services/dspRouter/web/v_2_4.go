@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"net"
 	"net/http"
 	"sync"
 	"time"
@@ -51,8 +52,35 @@ type Server struct {
 	dspRouterGrpc.UnimplementedDspRouterServiceServer
 }
 
-func newHTTPClient(timeout time.Duration) *http.Client {
-	return &http.Client{}
+func NewFastHTTPClient() *http.Client {
+	transport := &http.Transport{
+		Proxy: http.ProxyFromEnvironment,
+		DialContext: (&net.Dialer{
+			Timeout:   20 * time.Millisecond, // TCP соединение за 20ms
+			KeepAlive: 30 * time.Second,      // Keep-alive
+			DualStack: true,
+		}).DialContext,
+
+		// Оптимально для 50ms RTT
+		MaxIdleConns:        200,
+		MaxIdleConnsPerHost: 50,
+		MaxConnsPerHost:     100,
+		IdleConnTimeout:     30 * time.Second,
+
+		// Агрессивные таймауты для 50ms
+		TLSHandshakeTimeout:   20 * time.Millisecond,
+		ExpectContinueTimeout: 10 * time.Millisecond,
+		ResponseHeaderTimeout: 40 * time.Millisecond, // Получение headers за 40ms
+
+		// Оптимизации для скорости
+		DisableCompression: true,  // Быстрее без сжатия при 50ms
+		ForceAttemptHTTP2:  false, // HTTP/1.1 стабильнее для низких latency
+	}
+
+	return &http.Client{
+		Transport: transport,
+		Timeout:   70 * time.Millisecond, // Общий таймаут чуть больше RTT
+	}
 }
 
 func NewServer(
@@ -76,8 +104,8 @@ func NewServer(
 		maxParallelRequests = 64
 	}
 
-	client_v_2_4 := newHTTPClient(timeout)
-	client_v_2_5 := newHTTPClient(timeout)
+	client_v_2_4 := NewFastHTTPClient()
+	client_v_2_5 := NewFastHTTPClient()
 
 	// Глобальный лимит исходящих: консервативно отталкиваемся от
 	// количества DSP и локального лимита; при желании — вынеси в конфиг.
