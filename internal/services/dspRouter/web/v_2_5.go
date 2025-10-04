@@ -1,8 +1,11 @@
 package dspRouterWeb
 
 import (
+	"bytes"
 	"context"
 	"fmt"
+	"log"
+	"net/http"
 	"sync"
 	"time"
 
@@ -110,42 +113,38 @@ func (s *Server) GetBids_V2_5(
 
 func (s *Server) getBidsFromDSPbyHTTP_V_2_5_Optimized(ctx context.Context, jsonData []byte, dspEndpoint string) (
 	br *ortb_V2_5.BidResponse, code int, errMsg string) {
-	/*
-		// Пул буферов — как в v2.4
-		buf := s.bufferPool.Get().(*bytes.Buffer)
-		buf.Reset()
-		buf.Write(jsonData)
-		defer s.bufferPool.Put(buf)
+	// Пул буферов — как в v2.4
+	buf := s.bufferPool.Get().(*bytes.Buffer)
+	buf.Reset()
+	buf.Write(jsonData)
+	defer s.bufferPool.Put(buf)
 
-		req, err := http.NewRequestWithContext(ctx, "POST", dspEndpoint, buf)
-		if err != nil {
-			return nil, 0, fmt.Sprintf("Create request failed: %v", err)
+	req, err := http.NewRequestWithContext(ctx, "POST", dspEndpoint, buf)
+	if err != nil {
+		return nil, 0, fmt.Sprintf("Create request failed: %v", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Connection", "keep-alive")
+
+	t := time.Now()
+	resp, err := s.client_v_2_5.Do(req)
+	log.Println("%v", time.Since(t))
+	if err != nil {
+		return nil, 0, fmt.Errorf("Request failed: %v", err).Error()
+	}
+	defer resp.Body.Close()
+
+	switch resp.StatusCode {
+	case http.StatusNoContent:
+		return nil, resp.StatusCode, ""
+	case http.StatusOK:
+		var grpcResp ortb_V2_5.BidResponse
+		dec := jsoniter.NewDecoder(resp.Body) // без лишних аллокаций
+		if err := dec.Decode(&grpcResp); err != nil {
+			return nil, resp.StatusCode, fmt.Sprintf("decode: %v", err)
 		}
-		req.Header.Set("Content-Type", "application/json")
-		req.Header.Set("Connection", "keep-alive")
-
-		t := time.Now()
-		resp, err := s.client_v_2_5.Do(req)
-		log.Println("%v", time.Since(t))
-		if err != nil {
-			return nil, 0, fmt.Errorf("Request failed: %v", err).Error()
-		}
-		defer resp.Body.Close()
-
-		switch resp.StatusCode {
-		case http.StatusNoContent:
-			return nil, resp.StatusCode, ""
-		case http.StatusOK:
-			var grpcResp ortb_V2_5.BidResponse
-			dec := jsoniter.NewDecoder(resp.Body) // без лишних аллокаций
-			if err := dec.Decode(&grpcResp); err != nil {
-				return nil, resp.StatusCode, fmt.Sprintf("decode: %v", err)
-			}
-			return &grpcResp, resp.StatusCode, ""
-		default:
-			return nil, resp.StatusCode, "NULL"
-		}*/
-
-	time.Sleep(20 * time.Millisecond)
-	return &ortb_V2_5.BidResponse{}, 0, ""
+		return &grpcResp, resp.StatusCode, ""
+	default:
+		return nil, resp.StatusCode, "NULL"
+	}
 }
