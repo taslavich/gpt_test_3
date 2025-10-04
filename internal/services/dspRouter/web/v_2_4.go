@@ -70,7 +70,7 @@ func newHTTPClient(timeout time.Duration) *http.Client {
 		IdleConnTimeout:       90 * time.Second,
 		TLSHandshakeTimeout:   3 * time.Second, // Увеличить
 		ExpectContinueTimeout: 1 * time.Second,
-		DisableCompression:    true, // Включить сжатие
+		DisableCompression:    false, // Включить сжатие
 		ForceAttemptHTTP2:     true,
 
 		// Важные настройки для избежания исчерпания портов
