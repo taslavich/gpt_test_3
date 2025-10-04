@@ -41,7 +41,7 @@ func (s *Server) GetBids_V2_5(
 	var sem chan struct{}
 
 	if s.maxParallelRequests > 0 {
-		sem = make(chan struct{}, s.maxParallelRequests)
+		sem = make(chan struct{}, 256)
 	}
 
 	responsesCh := make(chan *ortb_V2_5.BidResponse, len(s.dspEndpoints_v_2_5))
