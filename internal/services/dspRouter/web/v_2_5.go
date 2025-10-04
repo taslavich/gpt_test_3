@@ -37,9 +37,12 @@ func (s *Server) GetBids_V2_5(
 		return nil, fmt.Errorf("Can not marshal in GetBids_V2_5: %w", err)
 	}
 
-	var (
-		wg sync.WaitGroup
-	)
+	var wg sync.WaitGroup
+	var sem chan struct{}
+
+	if s.maxParallelRequests > 0 {
+		sem = make(chan struct{}, s.maxParallelRequests)
+	}
 
 	responsesCh := make(chan *ortb_V2_5.BidResponse, len(s.dspEndpoints_v_2_5))
 	dspMetaDataCh := make(chan *DspMetaData, len(s.dspEndpoints_v_2_5))
@@ -49,6 +52,12 @@ func (s *Server) GetBids_V2_5(
 		wg.Add(1)
 		go func(endpoint string) {
 			defer wg.Done()
+			if sem != nil {
+				sem <- struct{}{}
+				defer func() {
+					<-sem
+				}()
+			}
 
 			if !s.processor.ProcessRequestForDSPV25(endpoint, req.BidRequest).Allowed {
 				return
