@@ -139,7 +139,7 @@ func NewServer(
 		maxParallelRequests: maxParallelRequests,
 		debug:               debug,
 		slowLogThreshold:    50 * time.Millisecond,
-		outboundSem:         make(chan struct{}, outboundLimit),
+		outboundSem:         make(chan struct{}, 512),
 		bufferPool: sync.Pool{
 			New: func() interface{} {
 				return bytes.NewBuffer(make([]byte, 0, 2048))
@@ -154,24 +154,6 @@ func NewServer(
 	}
 }
 
-func (s *Server) shouldLog(duration time.Duration) bool {
-	return s.debug || duration >= s.slowLogThreshold
-}
-
-func (s *Server) logDuration(label string, start time.Time) {
-	duration := time.Since(start)
-	if s.shouldLog(duration) {
-		log.Printf("%s in %v", label, duration)
-	}
-}
-
-func (s *Server) logDurationForEndpoint(prefix, endpoint string, start time.Time) {
-	duration := time.Since(start)
-	if s.shouldLog(duration) {
-		log.Printf("%s %s in %v", prefix, endpoint, duration)
-	}
-}
-
 func (s *Server) GetBids_V2_4(
 	ctx context.Context,
 	req *dspRouterGrpc.DspRouterRequest_V2_4,
@@ -179,12 +161,6 @@ func (s *Server) GetBids_V2_4(
 
 	reqCtx, cancel := context.WithTimeout(ctx, s.timeout)
 	defer cancel()
-
-	startTime := time.Now()
-	defer func() {
-		s.logDuration("GetBids_V2_4", startTime)
-	}()
-
 	defer func() {
 		if r := recover(); r != nil {
 			err := fmt.Errorf("Recovered from panic in GetBids_V2_4: %v", r)
@@ -308,13 +284,11 @@ func (s *Server) getBidsFromDSPbyHTTP_V_2_4_Optimized(ctx context.Context, jsonD
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Connection", "keep-alive")
 
-	httpStart := time.Now()
 	resp, err := s.client_v_2_4.Do(req)
 	if err != nil {
 		return nil, 0, fmt.Sprintf("Request failed: %v", err)
 	}
 	defer resp.Body.Close()
-	s.logDurationForEndpoint("DSP HTTP v2_4", dspEndpoint, httpStart)
 
 	switch resp.StatusCode {
 	case http.StatusNoContent:
