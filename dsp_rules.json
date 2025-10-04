@@ -1,7 +1,7 @@
 {
   "version": "1.0",
   "dsps": {
-    "http://127.0.0.1:8091/bid_v_2_5": {
+    "http://127.0.0.1:8091/bid": {
       "rules": [
         {
           "field": "banner.w",
