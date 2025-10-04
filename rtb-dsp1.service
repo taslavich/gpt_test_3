@@ -1,0 +1,29 @@
+[Unit]
+Description=RTB Mock DSP 1 Service
+After=network.target
+Wants=network.target
+
+[Service]
+Type=simple
+User=root
+Group=root
+WorkingDirectory=/root/RTB/gpt_test_3  
+ExecStart=/root/RTB/gpt_test_3/cmd/dsp1/dsp1 
+Restart=always
+RestartSec=1
+StartLimitInterval=0
+
+# Environment файл из проекта
+EnvironmentFile=/root/RTB/gpt_test_3/cmd/dsp1/dsp1.env
+
+# Logging
+StandardOutput=append:/var/log/rtb/dsp1.log
+StandardError=append:/var/log/rtb/dsp1.error.log
+SyslogIdentifier=rtb-dsp1
+
+# Security
+NoNewPrivileges=yes
+PrivateTmp=yes
+
+[Install]
+WantedBy=multi-user.target
