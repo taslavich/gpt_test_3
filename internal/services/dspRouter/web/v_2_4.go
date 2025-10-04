@@ -52,11 +52,7 @@ type Server struct {
 }
 
 func newHTTPClient(timeout time.Duration) *http.Client {
-	return &http.Client{
-		CheckRedirect: func(req *http.Request, via []*http.Request) error {
-			return http.ErrUseLastResponse
-		},
-	}
+	return &http.Client{}
 }
 
 func NewServer(
