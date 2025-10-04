@@ -35,13 +35,8 @@ func (s *Server) GetBids_V2_5(
 	}
 
 	var (
-		wg  sync.WaitGroup
-		sem chan struct{}
+		wg sync.WaitGroup
 	)
-	// Пер-запросный лимитер, как в v2.4
-	if s.maxParallelRequests > 0 {
-		sem = make(chan struct{}, 512)
-	}
 
 	responsesCh := make(chan *ortb_V2_5.BidResponse, len(s.dspEndpoints_v_2_5))
 	dspMetaDataCh := make(chan *DspMetaData, len(s.dspEndpoints_v_2_5))
@@ -54,11 +49,6 @@ func (s *Server) GetBids_V2_5(
 		wg.Add(1)
 		go func(endpoint string) {
 			defer wg.Done()
-
-			if sem != nil {
-				sem <- struct{}{}
-				defer func() { <-sem }()
-			}
 
 			dspResp, code, errMsg := s.getBidsFromDSPbyHTTP_V_2_5_Optimized(reqCtx, jsonData, endpoint)
 
@@ -121,12 +111,6 @@ func (s *Server) GetBids_V2_5(
 
 func (s *Server) getBidsFromDSPbyHTTP_V_2_5_Optimized(ctx context.Context, jsonData []byte, dspEndpoint string) (
 	br *ortb_V2_5.BidResponse, code int, errMsg string) {
-
-	// Глобальный лимитер исходящих — общий для всего процесса
-	if s.outboundSem != nil {
-		s.outboundSem <- struct{}{}
-		defer func() { <-s.outboundSem }()
-	}
 
 	// Пул буферов — как в v2.4
 	buf := s.bufferPool.Get().(*bytes.Buffer)
