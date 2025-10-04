@@ -5,7 +5,6 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"log"
 	"net/http"
 	"sync"
 	"time"
@@ -21,12 +20,12 @@ func (s *Server) GetBids_V2_5(
 	ctx context.Context,
 	req *dspRouterGrpc.DspRouterRequest_V2_5,
 ) (resp *dspRouterGrpc.DspRouterResponse_V2_5, funcErr error) {
+
 	reqCtx, cancel := context.WithTimeout(ctx, s.timeout)
 	defer func() {
 		cancel()
 		if r := recover(); r != nil {
 			err := fmt.Errorf("Recovered from panic in GetBids_V2_5: %v", r)
-			log.Printf(err.Error())
 			resp = nil
 			funcErr = status.Errorf(codes.Internal, err.Error())
 		}
@@ -34,14 +33,16 @@ func (s *Server) GetBids_V2_5(
 
 	jsonData, err := jsoniter.Marshal(req.BidRequest)
 	if err != nil {
-		return nil, fmt.Errorf("Can not marshal in GetBids_V2_5: %w", err)
+		return nil, fmt.Errorf("Can not marshal in GetBids_V_2_5: %w", err)
 	}
 
-	var wg sync.WaitGroup
-	var sem chan struct{}
-
+	var (
+		wg  sync.WaitGroup
+		sem chan struct{}
+	)
+	// Пер-запросный лимитер, как в v2.4
 	if s.maxParallelRequests > 0 {
-		sem = make(chan struct{}, 256)
+		sem = make(chan struct{}, s.maxParallelRequests)
 	}
 
 	responsesCh := make(chan *ortb_V2_5.BidResponse, len(s.dspEndpoints_v_2_5))
@@ -49,26 +50,20 @@ func (s *Server) GetBids_V2_5(
 
 	// Запускаем все DSP параллельно
 	for _, endpoint := range s.dspEndpoints_v_2_5 {
+		if !s.processor.ProcessRequestForDSPV25(endpoint, req.BidRequest).Allowed {
+			continue
+		}
 		wg.Add(1)
 		go func(endpoint string) {
 			defer wg.Done()
+
 			if sem != nil {
 				sem <- struct{}{}
-				defer func() {
-					<-sem
-				}()
+				defer func() { <-sem }()
 			}
 
-			if !s.processor.ProcessRequestForDSPV25(endpoint, req.BidRequest).Allowed {
-				return
-			}
+			dspResp, code, errMsg := s.getBidsFromDSPbyHTTP_V_2_5_Optimized(reqCtx, jsonData, endpoint)
 
-			t := time.Now()
-			dspResp, code, errMsg := s.getBidsFromDSPbyHTTP_V_2_5_Optimized(reqCtx, bytes.NewBuffer(jsonData), endpoint)
-			e := time.Since(t).Milliseconds()
-			if e > 5 {
-				log.Println("%v", e)
-			}
 			// Отправляем метаданные
 			meta := s.metaPool.Get().(*DspMetaData)
 			meta.DspEndpoint = endpoint
@@ -83,25 +78,24 @@ func (s *Server) GetBids_V2_5(
 		}(endpoint)
 	}
 
-	// Ждем завершения в отдельной горутине и закрываем каналы
+	// Ждем завершения и закрываем каналы
 	go func() {
 		wg.Wait()
 		close(responsesCh)
 		close(dspMetaDataCh)
 	}()
 
-	// Собираем результаты параллельно с ожиданием
+	// Собираем результаты
 	responses := make([]*ortb_V2_5.BidResponse, 0, len(s.dspEndpoints_v_2_5))
 	dspMetaData := make([]DspMetaData, 0, len(s.dspEndpoints_v_2_5))
 
-	// Используем select для параллельного сбора результатов
 	for responsesCh != nil || dspMetaDataCh != nil {
 		select {
-		case resp, ok := <-responsesCh:
+		case r, ok := <-responsesCh:
 			if !ok {
 				responsesCh = nil
 			} else {
-				responses = append(responses, resp)
+				responses = append(responses, r)
 			}
 		case meta, ok := <-dspMetaDataCh:
 			if !ok {
@@ -119,6 +113,7 @@ func (s *Server) GetBids_V2_5(
 
 	// Асинхронная запись в Redis
 	go s.writeMetadataToRedis(ctx, req.GlobalId, dspMetaData)
+
 	return &dspRouterGrpc.DspRouterResponse_V2_5{
 		BidRequest:   req.BidRequest,
 		BidResponses: responses,
@@ -126,8 +121,20 @@ func (s *Server) GetBids_V2_5(
 	}, nil
 }
 
-func (s *Server) getBidsFromDSPbyHTTP_V_2_5_Optimized(ctx context.Context, buf *bytes.Buffer, dspEndpoint string) (
+func (s *Server) getBidsFromDSPbyHTTP_V_2_5_Optimized(ctx context.Context, jsonData []byte, dspEndpoint string) (
 	br *ortb_V2_5.BidResponse, code int, errMsg string) {
+
+	// Глобальный лимитер исходящих — общий для всего процесса
+	if s.outboundSem != nil {
+		s.outboundSem <- struct{}{}
+		defer func() { <-s.outboundSem }()
+	}
+
+	// Пул буферов — как в v2.4
+	buf := s.bufferPool.Get().(*bytes.Buffer)
+	buf.Reset()
+	buf.Write(jsonData)
+	defer s.bufferPool.Put(buf)
 
 	req, err := http.NewRequestWithContext(ctx, "POST", dspEndpoint, buf)
 	if err != nil {
@@ -136,13 +143,13 @@ func (s *Server) getBidsFromDSPbyHTTP_V_2_5_Optimized(ctx context.Context, buf *
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Connection", "keep-alive")
 
+	httpStart := time.Now()
 	resp, err := s.client_v_2_5.Do(req)
 	if err != nil {
-		return nil, 0, fmt.Sprintf("Request failed: %v", err)
+		return nil, 0, fmt.Errorf("Request failed: %v", err).Error()
 	}
-	//time.Sleep(time.Millisecond * 50)
-	//resp := *s.resp
 	defer resp.Body.Close()
+	s.logDurationForEndpoint("DSP HTTP v2_5", dspEndpoint, httpStart)
 
 	switch resp.StatusCode {
 	case http.StatusNoContent:
@@ -150,11 +157,11 @@ func (s *Server) getBidsFromDSPbyHTTP_V_2_5_Optimized(ctx context.Context, buf *
 	case http.StatusOK:
 		body, err := io.ReadAll(resp.Body)
 		if err != nil {
-			return nil, resp.StatusCode, fmt.Sprintf("Read body failed: %v", err)
+			return nil, resp.StatusCode, fmt.Errorf("Read body failed: %v", err).Error()
 		}
 		var grpcResp ortb_V2_5.BidResponse
 		if err := jsoniter.Unmarshal(body, &grpcResp); err != nil {
-			return nil, resp.StatusCode, fmt.Sprintf("Decode failed: %v", err)
+			return nil, resp.StatusCode, fmt.Errorf("Decode failed: %v", err).Error()
 		}
 		return &grpcResp, resp.StatusCode, ""
 	default:
