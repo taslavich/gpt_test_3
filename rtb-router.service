@@ -1,0 +1,29 @@
+[Unit]
+Description=RTB Router Service
+After=network.target
+Wants=network.target
+
+[Service]
+Type=simple
+User=root
+Group=root
+WorkingDirectory=/root/RTB/gpt_test_3  
+ExecStart=/root/RTB/gpt_test_3/cmd/router/router 
+Restart=always
+RestartSec=1
+StartLimitInterval=0
+
+# Environment файл из проекта
+EnvironmentFile=/root/RTB/gpt_test_3/cmd/router/router.env
+
+# Logging
+StandardOutput=append:/var/log/rtb/router.log
+StandardError=append:/var/log/rtb/router.error.log
+SyslogIdentifier=rtb-router
+
+# Security
+NoNewPrivileges=yes
+PrivateTmp=yes
+
+[Install]
+WantedBy=multi-user.target

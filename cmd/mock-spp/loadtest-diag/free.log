@@ -55,3 +55,432 @@ Swap:              0           0           0
                total        used        free      shared  buff/cache   available
 Mem:            7941        2390         152           7        5713        5551
 Swap:              0           0           0
+=== free snapshots started at 2025-10-02T17:28:36Z ===
+Command: free -m
+Interval: 10s
+
+
+--- 2025-10-02T17:28:36Z ---
+               total        used        free      shared  buff/cache   available
+Mem:            7941        2164         194           7        5896        5776
+Swap:              0           0           0
+=== free snapshots started at 2025-10-02T17:38:14Z ===
+Command: free -m
+Interval: 10s
+
+
+--- 2025-10-02T17:38:14Z ---
+               total        used        free      shared  buff/cache   available
+Mem:            7941        2273         353           7        5628        5667
+Swap:              0           0           0
+=== free snapshots started at 2025-10-02T17:40:54Z ===
+Command: free -m
+Interval: 10s
+
+
+--- 2025-10-02T17:40:54Z ---
+               total        used        free      shared  buff/cache   available
+Mem:            7941        2273         342           7        5639        5667
+Swap:              0           0           0
+=== free snapshots started at 2025-10-02T17:41:20Z ===
+Command: free -m
+Interval: 10s
+
+
+--- 2025-10-02T17:41:20Z ---
+               total        used        free      shared  buff/cache   available
+Mem:            7941        2284         325           7        5646        5657
+Swap:              0           0           0
+
+--- 2025-10-02T17:41:30Z ---
+               total        used        free      shared  buff/cache   available
+Mem:            7941        2288         307           7        5659        5652
+Swap:              0           0           0
+
+--- 2025-10-02T17:41:40Z ---
+               total        used        free      shared  buff/cache   available
+Mem:            7941        2294         285           7        5675        5646
+Swap:              0           0           0
+
+--- 2025-10-02T17:41:50Z ---
+               total        used        free      shared  buff/cache   available
+Mem:            7941        2308         255           7        5692        5633
+Swap:              0           0           0
+
+--- 2025-10-02T17:42:00Z ---
+               total        used        free      shared  buff/cache   available
+Mem:            7941        2322         223           7        5709        5618
+Swap:              0           0           0
+
+--- 2025-10-02T17:42:10Z ---
+               total        used        free      shared  buff/cache   available
+Mem:            7941        2323         209           7        5723        5618
+Swap:              0           0           0
+
+--- 2025-10-02T17:42:20Z ---
+               total        used        free      shared  buff/cache   available
+Mem:            7941        2336         178           7        5741        5605
+Swap:              0           0           0
+=== free snapshots started at 2025-10-02T18:00:20Z ===
+Command: free -m
+Interval: 10s
+
+
+--- 2025-10-02T18:00:20Z ---
+               total        used        free      shared  buff/cache   available
+Mem:            7941        2147         217           7        5890        5793
+Swap:              0           0           0
+
+--- 2025-10-02T18:00:30Z ---
+               total        used        free      shared  buff/cache   available
+Mem:            7941        2201         260           7        5793        5740
+Swap:              0           0           0
+
+--- 2025-10-02T18:00:40Z ---
+               total        used        free      shared  buff/cache   available
+Mem:            7941        2248         212           7        5798        5693
+Swap:              0           0           0
+
+--- 2025-10-02T18:00:50Z ---
+               total        used        free      shared  buff/cache   available
+Mem:            7941        2270         279           7        5705        5670
+Swap:              0           0           0
+
+--- 2025-10-02T18:01:00Z ---
+               total        used        free      shared  buff/cache   available
+Mem:            7941        2308         236           7        5711        5632
+Swap:              0           0           0
+
+--- 2025-10-02T18:01:10Z ---
+               total        used        free      shared  buff/cache   available
+Mem:            7941        2341         198           7        5716        5599
+Swap:              0           0           0
+
+--- 2025-10-02T18:01:20Z ---
+               total        used        free      shared  buff/cache   available
+Mem:            7941        2340         197           7        5721        5600
+Swap:              0           0           0
+=== free snapshots started at 2025-10-02T18:58:09Z ===
+Command: free -m
+Interval: 10s
+
+
+--- 2025-10-02T18:58:09Z ---
+               total        used        free      shared  buff/cache   available
+Mem:            7941        2133         259           7        5862        5807
+Swap:              0           0           0
+
+--- 2025-10-02T18:58:19Z ---
+               total        used        free      shared  buff/cache   available
+Mem:            7941        2125         264           7        5865        5815
+Swap:              0           0           0
+
+--- 2025-10-02T18:58:29Z ---
+               total        used        free      shared  buff/cache   available
+Mem:            7941        2172         213           7        5869        5768
+Swap:              0           0           0
+
+--- 2025-10-02T18:58:39Z ---
+               total        used        free      shared  buff/cache   available
+Mem:            7941        2185         196           7        5873        5755
+Swap:              0           0           0
+
+--- 2025-10-02T18:58:49Z ---
+               total        used        free      shared  buff/cache   available
+Mem:            7941        2199         276           7        5779        5741
+Swap:              0           0           0
+
+--- 2025-10-02T18:58:59Z ---
+               total        used        free      shared  buff/cache   available
+Mem:            7941        2174         298           7        5782        5766
+Swap:              0           0           0
+
+--- 2025-10-02T18:59:09Z ---
+               total        used        free      shared  buff/cache   available
+Mem:            7941        2204         268           7        5786        5736
+Swap:              0           0           0
+=== free snapshots started at 2025-10-02T19:11:32Z ===
+Command: free -m
+Interval: 10s
+
+
+--- 2025-10-02T19:11:32Z ---
+               total        used        free      shared  buff/cache   available
+Mem:            7941        2093         285           7        5876        5847
+Swap:              0           0           0
+
+--- 2025-10-02T19:11:42Z ---
+               total        used        free      shared  buff/cache   available
+Mem:            7941        2144         231           7        5879        5796
+Swap:              0           0           0
+
+--- 2025-10-02T19:11:52Z ---
+               total        used        free      shared  buff/cache   available
+Mem:            7941        2171         204           7        5879        5770
+Swap:              0           0           0
+
+--- 2025-10-02T19:12:02Z ---
+               total        used        free      shared  buff/cache   available
+Mem:            7941        2203         172           7        5879        5738
+Swap:              0           0           0
+
+--- 2025-10-02T19:12:12Z ---
+               total        used        free      shared  buff/cache   available
+Mem:            7941        2177         193           7        5884        5763
+Swap:              0           0           0
+
+--- 2025-10-02T19:12:22Z ---
+               total        used        free      shared  buff/cache   available
+Mem:            7941        2194         272           7        5789        5746
+Swap:              0           0           0
+
+--- 2025-10-02T19:12:32Z ---
+               total        used        free      shared  buff/cache   available
+Mem:            7941        2193         269           7        5792        5747
+Swap:              0           0           0
+=== free snapshots started at 2025-10-02T19:30:52Z ===
+Command: free -m
+Interval: 10s
+
+
+--- 2025-10-02T19:30:52Z ---
+               total        used        free      shared  buff/cache   available
+Mem:            7941        2089         258           7        5908        5852
+Swap:              0           0           0
+
+--- 2025-10-02T19:31:02Z ---
+               total        used        free      shared  buff/cache   available
+Mem:            7941        2109         234           7        5911        5832
+Swap:              0           0           0
+
+--- 2025-10-02T19:31:12Z ---
+               total        used        free      shared  buff/cache   available
+Mem:            7941        2145         194           7        5915        5795
+Swap:              0           0           0
+
+--- 2025-10-02T19:31:22Z ---
+               total        used        free      shared  buff/cache   available
+Mem:            7941        2159         176           7        5920        5781
+Swap:              0           0           0
+
+--- 2025-10-02T19:31:32Z ---
+               total        used        free      shared  buff/cache   available
+Mem:            7941        2176         254           7        5825        5765
+Swap:              0           0           0
+
+--- 2025-10-02T19:31:42Z ---
+               total        used        free      shared  buff/cache   available
+Mem:            7941        2176         249           7        5829        5764
+Swap:              0           0           0
+
+--- 2025-10-02T19:31:52Z ---
+               total        used        free      shared  buff/cache   available
+Mem:            7941        2193         229           7        5832        5747
+Swap:              0           0           0
+=== free snapshots started at 2025-10-02T19:47:52Z ===
+Command: free -m
+Interval: 10s
+
+
+--- 2025-10-02T19:47:52Z ---
+               total        used        free      shared  buff/cache   available
+Mem:            7941        2151         169           7        5934        5789
+Swap:              0           0           0
+
+--- 2025-10-02T19:48:02Z ---
+               total        used        free      shared  buff/cache   available
+Mem:            7941        2165         251           7        5838        5775
+Swap:              0           0           0
+
+--- 2025-10-02T19:48:12Z ---
+               total        used        free      shared  buff/cache   available
+Mem:            7941        2228         185           7        5842        5712
+Swap:              0           0           0
+
+--- 2025-10-02T19:48:22Z ---
+               total        used        free      shared  buff/cache   available
+Mem:            7941        2245         262           7        5747        5695
+Swap:              0           0           0
+
+--- 2025-10-02T19:48:32Z ---
+               total        used        free      shared  buff/cache   available
+Mem:            7941        2286         217           7        5751        5654
+Swap:              0           0           0
+
+--- 2025-10-02T19:48:42Z ---
+               total        used        free      shared  buff/cache   available
+Mem:            7941        2300         199           7        5755        5640
+Swap:              0           0           0
+
+--- 2025-10-02T19:48:52Z ---
+               total        used        free      shared  buff/cache   available
+Mem:            7941        2342         173           7        5759        5598
+Swap:              0           0           0
+=== free snapshots started at 2025-10-02T20:10:24Z ===
+Command: free -m
+Interval: 10s
+
+
+--- 2025-10-02T20:10:24Z ---
+               total        used        free      shared  buff/cache   available
+Mem:            7941        2020         245           7        5990        5921
+Swap:              0           0           0
+
+--- 2025-10-02T20:10:34Z ---
+               total        used        free      shared  buff/cache   available
+Mem:            7941        2120         239           7        5895        5820
+Swap:              0           0           0
+=== free snapshots started at 2025-10-02T20:56:31Z ===
+Command: free -m
+Interval: 10s
+
+
+--- 2025-10-02T20:56:31Z ---
+               total        used        free      shared  buff/cache   available
+Mem:            7941        2095         244           7        5916        5846
+Swap:              0           0           0
+
+--- 2025-10-02T20:56:41Z ---
+               total        used        free      shared  buff/cache   available
+Mem:            7941        2208         225           7        5821        5732
+Swap:              0           0           0
+=== free snapshots started at 2025-10-03T10:27:23Z ===
+Command: free -m
+Interval: 10s
+
+
+--- 2025-10-03T10:27:23Z ---
+               total        used        free      shared  buff/cache   available
+Mem:            7941        2093         264           7        5897        5847
+Swap:              0           0           0
+
+--- 2025-10-03T10:27:33Z ---
+               total        used        free      shared  buff/cache   available
+Mem:            7941        2169         282           7        5803        5771
+Swap:              0           0           0
+=== free snapshots started at 2025-10-03T10:45:30Z ===
+Command: free -m
+Interval: 10s
+
+
+--- 2025-10-03T10:45:30Z ---
+               total        used        free      shared  buff/cache   available
+Mem:            7941        1804         196           7        6254        6136
+Swap:              0           0           0
+
+--- 2025-10-03T10:45:40Z ---
+               total        used        free      shared  buff/cache   available
+Mem:            7941        2096         224           7        5934        5844
+Swap:              0           0           0
+=== free snapshots started at 2025-10-03T11:25:57Z ===
+Command: free -m
+Interval: 10s
+
+
+--- 2025-10-03T11:25:57Z ---
+               total        used        free      shared  buff/cache   available
+Mem:            7941        1571        1047           5        5635        6370
+Swap:              0           0           0
+
+--- 2025-10-03T11:26:07Z ---
+               total        used        free      shared  buff/cache   available
+Mem:            7941        1677         932           5        5643        6263
+Swap:              0           0           0
+=== free snapshots started at 2025-10-03T13:13:04Z ===
+Command: free -m
+Interval: 10s
+
+
+--- 2025-10-03T13:13:04Z ---
+               total        used        free      shared  buff/cache   available
+Mem:            7941         685        5966           4        1550        7255
+Swap:              0           0           0
+
+--- 2025-10-03T13:13:14Z ---
+               total        used        free      shared  buff/cache   available
+Mem:            7941         721        5928           4        1554        7220
+Swap:              0           0           0
+=== free snapshots started at 2025-10-03T13:14:59Z ===
+Command: free -m
+Interval: 10s
+
+
+--- 2025-10-03T13:14:59Z ---
+               total        used        free      shared  buff/cache   available
+Mem:            7941         723        5925           4        1554        7217
+Swap:              0           0           0
+
+--- 2025-10-03T13:15:09Z ---
+               total        used        free      shared  buff/cache   available
+Mem:            7941         736        5911           4        1554        7204
+Swap:              0           0           0
+
+--- 2025-10-03T13:15:19Z ---
+               total        used        free      shared  buff/cache   available
+Mem:            7941         745        5901           4        1555        7195
+Swap:              0           0           0
+=== free snapshots started at 2025-10-03T13:16:06Z ===
+Command: free -m
+Interval: 10s
+
+
+--- 2025-10-03T13:16:06Z ---
+               total        used        free      shared  buff/cache   available
+Mem:            7941         740        5905           4        1557        7201
+Swap:              0           0           0
+
+--- 2025-10-03T13:16:16Z ---
+               total        used        free      shared  buff/cache   available
+Mem:            7941         726        5918           4        1558        7214
+Swap:              0           0           0
+=== free snapshots started at 2025-10-03T13:29:03Z ===
+Command: free -m
+Interval: 10s
+
+
+--- 2025-10-03T13:29:03Z ---
+               total        used        free      shared  buff/cache   available
+Mem:            7941         742        5878           4        1582        7198
+Swap:              0           0           0
+
+--- 2025-10-03T13:29:13Z ---
+               total        used        free      shared  buff/cache   available
+Mem:            7941         751        5868           4        1583        7189
+Swap:              0           0           0
+
+--- 2025-10-03T13:29:23Z ---
+               total        used        free      shared  buff/cache   available
+Mem:            7941         754        5865           4        1583        7186
+Swap:              0           0           0
+
+--- 2025-10-03T13:29:33Z ---
+               total        used        free      shared  buff/cache   available
+Mem:            7941         758        5860           4        1584        7182
+Swap:              0           0           0
+
+--- 2025-10-03T13:29:43Z ---
+               total        used        free      shared  buff/cache   available
+Mem:            7941         765        5853           4        1585        7176
+Swap:              0           0           0
+
+--- 2025-10-03T13:29:53Z ---
+               total        used        free      shared  buff/cache   available
+Mem:            7941         771        5846           4        1585        7169
+Swap:              0           0           0
+
+--- 2025-10-03T13:30:03Z ---
+               total        used        free      shared  buff/cache   available
+Mem:            7941         777        5839           4        1586        7163
+Swap:              0           0           0
+
+=== free snapshots finished at 2025-10-03T13:30:13Z ===
+
+=== free snapshots started at 2025-10-03T16:22:09Z ===
+Command: free -m
+Interval: 10s
+
+
+--- 2025-10-03T16:22:09Z ---
+               total        used        free      shared  buff/cache   available
+Mem:            7941        1444        1286           5        5523        6496
+Swap:              0           0           0

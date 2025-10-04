@@ -1,0 +1,29 @@
+[Unit]
+Description=RTB Mock DSP 2 Service
+After=network.target
+Wants=network.target
+
+[Service]
+Type=simple
+User=root
+Group=root
+WorkingDirectory=/root/RTB/gpt_test_3  
+ExecStart=/root/RTB/gpt_test_3/cmd/dsp2/dsp2 
+Restart=always
+RestartSec=1
+StartLimitInterval=0
+
+# Environment файл из проекта
+EnvironmentFile=/root/RTB/gpt_test_3/cmd/dsp2/dsp2.env
+
+# Logging
+StandardOutput=append:/var/log/rtb/dsp2.log
+StandardError=append:/var/log/rtb/dsp2.error.log
+SyslogIdentifier=rtb-dsp2
+
+# Security
+NoNewPrivileges=yes
+PrivateTmp=yes
+
+[Install]
+WantedBy=multi-user.target
