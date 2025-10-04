@@ -131,7 +131,7 @@ func (s *Server) getBidsFromDSPbyHTTP_V_2_5_Optimized(ctx context.Context, buf *
 	if err != nil {
 		return nil, 0, fmt.Sprintf("Request failed: %v", err)
 	}*/
-	time.Sleep(time.Millisecond * 30)
+	time.Sleep(time.Millisecond * 50)
 	resp := *s.resp
 	defer resp.Body.Close()
 
