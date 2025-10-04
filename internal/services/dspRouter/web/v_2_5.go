@@ -4,8 +4,10 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"log"
 	"net/http"
 	"sync"
+	"time"
 
 	jsoniter "github.com/json-iterator/go"
 	dspRouterGrpc "gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/proto/services/dspRouter"
@@ -125,7 +127,9 @@ func (s *Server) getBidsFromDSPbyHTTP_V_2_5_Optimized(ctx context.Context, jsonD
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Connection", "keep-alive")
 
+	t := time.Now()
 	resp, err := s.client_v_2_5.Do(req)
+	log.Println("%v", time.Since(t))
 	if err != nil {
 		return nil, 0, fmt.Errorf("Request failed: %v", err).Error()
 	}
