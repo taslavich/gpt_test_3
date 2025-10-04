@@ -127,7 +127,10 @@ func postBid_V2_5(
 
 	reqCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
-	log.Println("%v", time.Since(t1))
+	t2 := time.Since(t1).Milliseconds()
+	if t2 > 5 {
+		log.Println("%v", t2)
+	}
 	res, err := orchestratorClient.GetWinnerBid_V2_5(
 		reqCtx,
 		&orchestratorProto.OrchestratorRequest_V2_5{
