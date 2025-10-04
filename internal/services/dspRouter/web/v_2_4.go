@@ -49,6 +49,9 @@ type Server struct {
 	debug               bool
 	slowLogThreshold    time.Duration
 
+	// Глобальный лимитер исходящих (на весь процесс)
+	outboundSem chan struct{}
+
 	// Пулы для снижения аллокаций
 	bufferPool sync.Pool
 	metaPool   sync.Pool
@@ -61,26 +64,25 @@ func newHTTPClient(timeout time.Duration) *http.Client {
 	transport := &http.Transport{
 		Proxy: http.ProxyFromEnvironment,
 		DialContext: (&net.Dialer{
-			Timeout:   3 * time.Second,   // Увеличить для стабильности
-			KeepAlive: 180 * time.Second, // Увеличить keep-alive
+			Timeout:   3 * time.Second,
+			KeepAlive: 180 * time.Second,
 			DualStack: true,
 		}).DialContext,
-		MaxIdleConns:          2048, // Увеличить
-		MaxIdleConnsPerHost:   512,  // Увеличить для локальных тестов
+		MaxIdleConns:          2048,
+		MaxIdleConnsPerHost:   512,
 		IdleConnTimeout:       90 * time.Second,
-		TLSHandshakeTimeout:   3 * time.Second, // Увеличить
+		TLSHandshakeTimeout:   3 * time.Second,
 		ExpectContinueTimeout: 1 * time.Second,
-		DisableCompression:    false, // Включить сжатие
+		DisableCompression:    false, // включаем сжатие
 		ForceAttemptHTTP2:     true,
-
-		// Важные настройки для избежания исчерпания портов
-		MaxConnsPerHost: 1024, // 0 = без лимита
+		MaxConnsPerHost:       1024,
 	}
 
+	// Важно: общий таймаут не задаём — дедлайны через ctx у каждого реквеста
 	return &http.Client{
 		Transport: transport,
 		CheckRedirect: func(req *http.Request, via []*http.Request) error {
-			return http.ErrUseLastResponse // Не следовать редиректам
+			return http.ErrUseLastResponse
 		},
 	}
 }
@@ -102,13 +104,25 @@ func NewServer(
 	if timeout <= 0 {
 		timeout = 5 * time.Second
 	}
-
 	if maxParallelRequests <= 0 {
 		maxParallelRequests = 64
 	}
 
 	client_v_2_4 := newHTTPClient(timeout)
 	client_v_2_5 := newHTTPClient(timeout)
+
+	// Глобальный лимит исходящих: консервативно отталкиваемся от
+	// количества DSP и локального лимита; при желании — вынеси в конфиг.
+	outboundLimit := maxParallelRequests * 2
+	if l := len(dspEndpoints_v_2_4); l > 0 && l*maxParallelRequests > outboundLimit {
+		outboundLimit = l * maxParallelRequests
+	}
+	if l := len(dspEndpoints_v_2_5); l > 0 && l*maxParallelRequests > outboundLimit {
+		outboundLimit = l * maxParallelRequests
+	}
+	if outboundLimit < 256 {
+		outboundLimit = 256
+	}
 
 	return &Server{
 		ruleManager:         ruleManager,
@@ -125,6 +139,7 @@ func NewServer(
 		maxParallelRequests: maxParallelRequests,
 		debug:               debug,
 		slowLogThreshold:    50 * time.Millisecond,
+		outboundSem:         make(chan struct{}, outboundLimit),
 		bufferPool: sync.Pool{
 			New: func() interface{} {
 				return bytes.NewBuffer(make([]byte, 0, 2048))
@@ -189,7 +204,6 @@ func (s *Server) GetBids_V2_4(
 		wg  sync.WaitGroup
 		sem chan struct{}
 	)
-
 	if s.maxParallelRequests > 0 {
 		sem = make(chan struct{}, s.maxParallelRequests)
 	}
@@ -197,7 +211,6 @@ func (s *Server) GetBids_V2_4(
 	responsesCh := make(chan *ortb_V2_4.BidResponse, len(s.dspEndpoints_v_2_4))
 	dspMetaDataCh := make(chan *DspMetaData, len(s.dspEndpoints_v_2_4))
 
-	// Запускаем все DSP параллельно
 	for _, endpoint := range s.dspEndpoints_v_2_4 {
 		wg.Add(1)
 		go func(endpoint string) {
@@ -205,9 +218,7 @@ func (s *Server) GetBids_V2_4(
 
 			if sem != nil {
 				sem <- struct{}{}
-				defer func() {
-					<-sem
-				}()
+				defer func() { <-sem }()
 			}
 
 			// Быстрая фильтрация DSP
@@ -239,18 +250,17 @@ func (s *Server) GetBids_V2_4(
 		close(dspMetaDataCh)
 	}()
 
-	// Собираем результаты параллельно с ожиданием
+	// Собираем результаты
 	responses := make([]*ortb_V2_4.BidResponse, 0, len(s.dspEndpoints_v_2_4))
 	dspMetaData := make([]DspMetaData, 0, len(s.dspEndpoints_v_2_4))
 
-	// Используем select для параллельного сбора результатов
 	for responsesCh != nil || dspMetaDataCh != nil {
 		select {
-		case resp, ok := <-responsesCh:
+		case r, ok := <-responsesCh:
 			if !ok {
 				responsesCh = nil
 			} else {
-				responses = append(responses, resp)
+				responses = append(responses, r)
 			}
 		case meta, ok := <-dspMetaDataCh:
 			if !ok {
@@ -279,7 +289,13 @@ func (s *Server) GetBids_V2_4(
 func (s *Server) getBidsFromDSPbyHTTP_V_2_4_Optimized(ctx context.Context, jsonData []byte, dspEndpoint string) (
 	br *ortb_V2_4.BidResponse, code int, errMsg string) {
 
-	// Используем пул буферов
+	// Глобальный лимитер исходящих
+	if s.outboundSem != nil {
+		s.outboundSem <- struct{}{}
+		defer func() { <-s.outboundSem }()
+	}
+
+	// Пул буферов
 	buf := s.bufferPool.Get().(*bytes.Buffer)
 	buf.Reset()
 	buf.Write(jsonData)
@@ -298,8 +314,7 @@ func (s *Server) getBidsFromDSPbyHTTP_V_2_4_Optimized(ctx context.Context, jsonD
 		return nil, 0, fmt.Sprintf("Request failed: %v", err)
 	}
 	defer resp.Body.Close()
-
-	s.logDuration("DSP HTTP request v2_4", httpStart)
+	s.logDurationForEndpoint("DSP HTTP v2_4", dspEndpoint, httpStart)
 
 	switch resp.StatusCode {
 	case http.StatusNoContent:
@@ -324,14 +339,11 @@ func (s *Server) writeMetadataToRedis(ctx context.Context, globalId string, meta
 	if len(metadata) == 0 {
 		return
 	}
-
 	bidRespsData, err := json.Marshal(metadata)
 	if err != nil {
 		log.Printf("failed to marshal metadata: %v", err)
 		return
 	}
-
-	// Используем background context чтобы не зависеть от основного
 	bgCtx := context.Background()
 	if err := utils.WriteJsonToRedis(bgCtx, s.redisClient, globalId, constants.BID_RESPONSES_COLUMN, bidRespsData); err != nil {
 		log.Printf("failed to WriteJsonToRedis: %v", err)
