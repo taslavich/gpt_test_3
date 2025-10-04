@@ -4,10 +4,8 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	"io"
 	"net/http"
 	"sync"
-	"time"
 
 	jsoniter "github.com/json-iterator/go"
 	dspRouterGrpc "gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/proto/services/dspRouter"
@@ -42,7 +40,7 @@ func (s *Server) GetBids_V2_5(
 	)
 	// Пер-запросный лимитер, как в v2.4
 	if s.maxParallelRequests > 0 {
-		sem = make(chan struct{}, s.maxParallelRequests)
+		sem = make(chan struct{}, 512)
 	}
 
 	responsesCh := make(chan *ortb_V2_5.BidResponse, len(s.dspEndpoints_v_2_5))
@@ -143,25 +141,20 @@ func (s *Server) getBidsFromDSPbyHTTP_V_2_5_Optimized(ctx context.Context, jsonD
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Connection", "keep-alive")
 
-	httpStart := time.Now()
 	resp, err := s.client_v_2_5.Do(req)
 	if err != nil {
 		return nil, 0, fmt.Errorf("Request failed: %v", err).Error()
 	}
 	defer resp.Body.Close()
-	s.logDurationForEndpoint("DSP HTTP v2_5", dspEndpoint, httpStart)
 
 	switch resp.StatusCode {
 	case http.StatusNoContent:
 		return nil, resp.StatusCode, ""
 	case http.StatusOK:
-		body, err := io.ReadAll(resp.Body)
-		if err != nil {
-			return nil, resp.StatusCode, fmt.Errorf("Read body failed: %v", err).Error()
-		}
 		var grpcResp ortb_V2_5.BidResponse
-		if err := jsoniter.Unmarshal(body, &grpcResp); err != nil {
-			return nil, resp.StatusCode, fmt.Errorf("Decode failed: %v", err).Error()
+		dec := jsoniter.NewDecoder(resp.Body) // без лишних аллокаций
+		if err := dec.Decode(&grpcResp); err != nil {
+			return nil, resp.StatusCode, fmt.Sprintf("decode: %v", err)
 		}
 		return &grpcResp, resp.StatusCode, ""
 	default:
