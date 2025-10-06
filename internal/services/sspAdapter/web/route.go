@@ -76,11 +76,15 @@ func InitRoutes(
 		postBid_V2_5(ctx, w, r, redisClient, isBadIp, getCountryISO, orchestratorClient, bidRequestTimeout)
 	})
 
-	httpRouter.Get(GetNurlUrl, func(w http.ResponseWriter, r *http.Request) {
+	httpRouter.With(
+		httpin.NewInput(nurlRequest{}),
+	).Get(GetNurlUrl, func(w http.ResponseWriter, r *http.Request) {
 		getNurl(ctx, w, r, nurlTimeout)
 	})
 
-	httpRouter.Get(GetBurlUrl, func(w http.ResponseWriter, r *http.Request) {
+	httpRouter.With(
+		httpin.NewInput(postBidRequest_V2_5{}),
+	).Get(GetBurlUrl, func(w http.ResponseWriter, r *http.Request) {
 		getBurl(ctx, w, r, redisClient, burlTimeout)
 	})
 
