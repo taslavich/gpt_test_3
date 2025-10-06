@@ -19,7 +19,6 @@ func ProcessKafkaMessages(ctx context.Context, broker, topic string, reader *kaf
 	}
 
 	if !passed {
-		log.Printf("📭 Not enough messages in Kafka (threshold: %d)", batchSize)
 		return 0, nil
 	}
 
