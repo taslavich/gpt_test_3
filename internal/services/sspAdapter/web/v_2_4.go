@@ -24,6 +24,7 @@ import (
 
 var rnr = render.New(render.Options{
 	StreamingJSON: true,
+	UnEscapeHTML:  true,
 })
 
 func postBid_V2_4(
