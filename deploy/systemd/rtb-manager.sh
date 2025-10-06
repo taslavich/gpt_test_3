@@ -4,9 +4,9 @@ PROJECT_DIR="/root/RTB/gpt_test_3"
 
 # Инфраструктурные сервисы
 INFRA_SERVICES=(
-    "redis-server"
-    "kafka-server" 
-    "nginx"
+    "rtb-redis"
+    "rtb-kafka" 
+    "rtb-nginx"
 )
 
 # Основные RTB сервисы
