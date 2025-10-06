@@ -17,9 +17,9 @@ RestartSec=1
 TimeoutStopSec=60
 
 # Logging
-StandardOutput=journal
-StandardError=journal
-SyslogIdentifier=nginx
+StandardOutput=file:/var/log/rtb/kafka.log
+StandardError=file:/var/log/rtb/kafka.error.log
+SyslogIdentifier=rtb-nginx
 
 # Security
 NoNewPrivileges=yes
