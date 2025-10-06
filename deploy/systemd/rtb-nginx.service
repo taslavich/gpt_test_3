@@ -1,0 +1,30 @@
+[Unit]
+Description=NGINX Reverse Proxy for RTB
+After=network.target network-online.target
+Wants=network-online.target
+
+[Service]
+Type=forking
+User=root
+Group=root
+PIDFile=/run/nginx.pid
+ExecStartPre=/usr/local/sbin/nginx -t -c /etc/nginx/nginx.conf
+ExecStart=/usr/local/sbin/nginx -c /etc/nginx/nginx.conf
+ExecReload=/usr/local/sbin/nginx -s reload
+ExecStop=/usr/local/sbin/nginx -s quit
+Restart=always
+RestartSec=1
+TimeoutStopSec=60
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=nginx
+
+# Security
+NoNewPrivileges=yes
+PrivateTmp=yes
+LimitNOFILE=65536
+
+[Install]
+WantedBy=multi-user.target

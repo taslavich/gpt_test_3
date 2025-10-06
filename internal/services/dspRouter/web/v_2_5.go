@@ -101,8 +101,7 @@ func (s *Server) GetBids_V2_5(
 		}
 	}
 
-	// Асинхронная запись в Redis
-	go s.writeMetadataToRedis(ctx, req.GlobalId, dspMetaData)
+	s.writeMetadataToRedis(ctx, req.GlobalId, dspMetaData)
 
 	return &dspRouterGrpc.DspRouterResponse_V2_5{
 		BidRequest:   req.BidRequest,

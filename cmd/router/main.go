@@ -1,14 +1,10 @@
 package main
 
 import (
-	"bytes"
 	"context"
-	"encoding/json"
 	"fmt"
-	"io"
 	"log"
 	"net"
-	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
@@ -18,7 +14,6 @@ import (
 	"gitlab.com/twinbid-exchange/RTB-exchange/internal/config"
 	"gitlab.com/twinbid-exchange/RTB-exchange/internal/filter"
 	dspRouterGrpc "gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/proto/services/dspRouter"
-	"gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/proto/types/ortb_V2_5"
 	maxproc "gitlab.com/twinbid-exchange/RTB-exchange/internal/mp"
 	dspRouterWeb "gitlab.com/twinbid-exchange/RTB-exchange/internal/services/dspRouter/web"
 
@@ -41,7 +36,7 @@ func main() {
 
 	log.Println("Timeout", cfg.BidResponsesTimeout)
 
-	/*redisClient := redis.NewClient(&redis.Options{
+	redisClient := redis.NewClient(&redis.Options{
 		Addr:     fmt.Sprintf("%s:%s", cfg.RedisHost, cfg.RedisPort),
 		Password: cfg.RedisPassword,
 		DB:       cfg.RedisDB,
@@ -51,7 +46,7 @@ func main() {
 	if err := waitForRedis(ctx, redisClient, 10, 2*time.Second); err != nil {
 		log.Fatalf("Failed to connect to Redis: %v", err)
 	}
-	log.Println("✅ Connected to Redis")*/
+	log.Println("✅ Connected to Redis")
 
 	ruleManager := filter.NewRuleManager()
 
@@ -77,35 +72,6 @@ func main() {
 
 	processor := filter.NewOptimizedFilterProcessor(ruleManager)
 
-	name := "DSP1"
-	var price float32 = 0.72
-	BidId := fmt.Sprint(name, name)
-	Nurl := "Nurl"
-	Burl := "Burl"
-	adid := "ADID"
-	jsonData, err := json.Marshal(&ortb_V2_5.BidResponse{
-		Id: &name,
-		Seatbid: &ortb_V2_5.SeatBid{
-			Bid: []*ortb_V2_5.Bid{
-				{
-					Id:    &BidId,
-					Price: &price,
-					Adid:  &adid,
-					Nurl:  &Nurl,
-					Burl:  &Burl,
-				},
-			},
-		},
-	})
-	if err != nil {
-		log.Fatalf("Can not marshal in GetBids_V2_5: %w", err)
-	}
-
-	resp := &http.Response{
-		StatusCode: http.StatusOK,
-		Body:       io.NopCloser(bytes.NewReader(jsonData)),
-	}
-
 	s := grpc.NewServer()
 	dspRouterGrpc.RegisterDspRouterServiceServer(
 		s,
@@ -117,11 +83,9 @@ func main() {
 			cfg.SppRulesConfigPath,
 			cfg.DSPEndpoints_v_2_4,
 			cfg.DSPEndpoints_v_2_5,
-			nil,
+			redisClient,
 			cfg.BidResponsesTimeout,
 			cfg.MaxParallelRequests,
-			cfg.Debug,
-			resp,
 		),
 	)
 
