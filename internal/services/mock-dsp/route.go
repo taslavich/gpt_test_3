@@ -13,6 +13,8 @@ import (
 
 const (
 	PostBidURL   = "/bid"
+	GetNurl      = "/nurl"
+	GetBurl      = "/burl"
 	GetHealthUrl = "/health"
 )
 
@@ -38,6 +40,14 @@ func InitRoutes(
 	})
 
 	httpRouter.Get(GetHealthUrl, func(w http.ResponseWriter, r *http.Request) {
+		getHealth(w)
+	})
+
+	httpRouter.Get(GetNurl, func(w http.ResponseWriter, r *http.Request) {
+		getHealth(w)
+	})
+
+	httpRouter.Get(GetBurl, func(w http.ResponseWriter, r *http.Request) {
 		getHealth(w)
 	})
 }
