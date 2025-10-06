@@ -9,10 +9,10 @@ const (
 	BURL = "burl"
 )
 
-func WrapURL(hostname, originalURL, globalId, isItNurlOrBurl string) string {
+func WrapURL(hostname, originalURL, globalId, nurlOrBurl string) string {
 	if originalURL == "" {
 		return ""
 	}
-	return fmt.Sprintf("https://%s/%s?id=%s&url=%s",
-		hostname, isItNurlOrBurl, globalId, originalURL)
+	return fmt.Sprintf("https://%s/bidRequest/%s?id=%s&url=%s",
+		hostname, nurlOrBurl, globalId, originalURL)
 }
