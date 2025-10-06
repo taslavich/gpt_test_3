@@ -68,19 +68,19 @@ show_status() {
 wait_for_infra() {
     echo "⏳ Waiting for infrastructure services to be ready..."
     
-    # Ждем Redis (на 0.0.0.0:6379)
-    while ! redis-cli -h 0.0.0.0 -p 6379 ping >/dev/null 2>&1; do
+    # Ждем Redis
+    while ! redis-cli ping >/dev/null 2>&1; do
         echo "Waiting for Redis..."
         sleep 2
     done
     echo "✅ Redis is ready"
     
-    # Ждем Kafka с таймаутом и прогрессом (на 0.0.0.0:9092)
+    # Ждем Kafka через localhost (рабочий вариант)
     echo "Waiting for Kafka (this may take a few minutes)..."
-    local kafka_timeout=180  # 3 минуты
+    local kafka_timeout=180
     local kafka_waited=0
     
-    while ! kafka-topics.sh --bootstrap-server 0.0.0.0:9092 --list >/dev/null 2>&1; do
+    while ! /opt/kafka/bin/kafka-topics.sh --bootstrap-server localhost:9092 --list >/dev/null 2>&1; do
         if [ $kafka_waited -ge $kafka_timeout ]; then
             echo "❌ Kafka timeout after ${kafka_timeout}s"
             break
@@ -90,14 +90,14 @@ wait_for_infra() {
         kafka_waited=$((kafka_waited + 5))
     done
     
-    if kafka-topics.sh --bootstrap-server 0.0.0.0:9092 --list >/dev/null 2>&1; then
+    if /opt/kafka/bin/kafka-topics.sh --bootstrap-server localhost:9092 --list >/dev/null 2>&1; then
         echo "✅ Kafka is ready"
     else
         echo "⚠️  Kafka is still initializing..."
     fi
     
-    # Ждем Nginx (на 0.0.0.0:80)
-    while ! curl -s http://0.0.0.0 >/dev/null; do
+    # Ждем Nginx
+    while ! curl -s http://localhost >/dev/null; do
         echo "Waiting for Nginx..."
         sleep 2
     done
@@ -322,8 +322,8 @@ case "$1" in
             echo "❌ Redis: FAILED"
         fi
         
-        # Test Kafka
-        if kafka-topics.sh --bootstrap-server localhost:9092 --list >/dev/null 2>&1; then
+        # Test Kafka (используем localhost)
+        if /opt/kafka/bin/kafka-topics.sh --bootstrap-server localhost:9092 --list >/dev/null 2>&1; then
             echo "✅ Kafka: OK"
         else
             echo "❌ Kafka: FAILED"
