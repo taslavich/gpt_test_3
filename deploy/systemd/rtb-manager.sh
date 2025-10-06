@@ -67,6 +67,8 @@ show_status() {
 
 wait_for_infra() {
     echo "⏳ Waiting for infrastructure services to be ready..."
+    local kafka_timeout=30
+    local kafka_waited=0
     
     # Ждем Redis
     while ! redis-cli ping >/dev/null 2>&1; do
@@ -75,12 +77,23 @@ wait_for_infra() {
     done
     echo "✅ Redis is ready"
     
-    # Ждем Kafka
+    # Ждем Kafka с таймаутом
+    echo "Waiting for Kafka to be ready..."
     while ! kafka-topics.sh --bootstrap-server localhost:9092 --list >/dev/null 2>&1; do
-        echo "Waiting for Kafka..."
+        if [ $kafka_waited -ge $kafka_timeout ]; then
+            echo "❌ Kafka timeout after ${kafka_timeout}s, continuing anyway..."
+            break
+        fi
+        echo "Waiting for Kafka... (${kafka_waited}s)"
         sleep 2
+        kafka_waited=$((kafka_waited + 2))
     done
-    echo "✅ Kafka is ready"
+    
+    if kafka-topics.sh --bootstrap-server localhost:9092 --list >/dev/null 2>&1; then
+        echo "✅ Kafka is ready"
+    else
+        echo "⚠️  Kafka is running but not fully responsive yet"
+    fi
     
     # Ждем Nginx
     while ! curl -s http://localhost >/dev/null; do
