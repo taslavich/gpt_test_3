@@ -18,9 +18,7 @@ TimeoutStopSec=90
 # Logging
 StandardOutput=file:/var/log/rtb/kafka.log
 StandardError=file:/var/log/rtb/kafka.error.log
-LogStdout=yes
-LogStderr=yes
-SyslogIdentifier=kafka-server
+SyslogIdentifier=rtb-kafka
 
 # Security
 NoNewPrivileges=yes

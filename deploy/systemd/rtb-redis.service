@@ -7,20 +7,15 @@ Type=simple
 User=root
 Group=root
 ExecStart=/usr/local/bin/redis-server /etc/redis/redis.conf --daemonize no
-ExecStop=/usr/bin/redis-cli shutdown
+ExecStop=/usr/local/bin/redis-cli shutdown
 Restart=always
-RestartSec=1
+RestartSec=3
 TimeoutStopSec=60
-
-# Environment
-EnvironmentFile=/etc/redis/redis.env
 
 # Logging
 StandardOutput=file:/var/log/rtb/redis.log
 StandardError=file:/var/log/rtb/redis.error.log
-LogStdout=yes
-LogStderr=yes
-SyslogIdentifier=redis-server
+SyslogIdentifier=rtb-redis
 
 # Security
 NoNewPrivileges=yes
