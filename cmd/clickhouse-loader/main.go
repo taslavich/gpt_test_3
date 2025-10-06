@@ -11,9 +11,9 @@ import (
 	"time"
 
 	"github.com/ClickHouse/clickhouse-go/v2"
-	"github.com/segmentio/kafka-go"
 	"gitlab.com/twinbid-exchange/RTB-exchange/internal/config"
 	clickhouse_loader "gitlab.com/twinbid-exchange/RTB-exchange/internal/services/clickhouse-loader"
+	kafka_service "gitlab.com/twinbid-exchange/RTB-exchange/internal/services/kafka"
 )
 
 func main() {
@@ -52,14 +52,10 @@ func main() {
 	}
 	log.Printf("✅ Table %s ready", cfg.Clickhouse.ClickHouseTable)
 
-	kafkaReader := kafka.NewReader(kafka.ReaderConfig{
-		Brokers:  []string{cfg.Kafka.KafkaBroker},
-		Topic:    cfg.Kafka.KafkaTopic,
-		GroupID:  cfg.Kafka.KafkaGroupID,
-		MinBytes: 10e3,
-		MaxBytes: 10e6,
-		MaxWait:  1 * time.Second,
-	})
+	kafkaReader, err := kafka_service.InitKafkaReader(cfg.Kafka)
+	if err != nil {
+		log.Fatalf("Cannot init kafka: %v", err)
+	}
 	defer kafkaReader.Close()
 	log.Println("✅ Kafka reader initialized")
 
@@ -84,7 +80,7 @@ func main() {
 		default:
 			processed, err := clickhouse_loader.ProcessKafkaMessages(
 				ctx,
-				cfg.Kafka.KafkaBroker,
+				cfg.Kafka.KafkaBrokers[0],
 				cfg.Kafka.KafkaTopic,
 				kafkaReader,
 				conn,

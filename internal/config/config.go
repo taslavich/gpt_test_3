@@ -125,10 +125,10 @@ type RedisConfig struct {
 }
 
 type KafkaConfig struct {
-	KafkaBroker      string `yaml:"KAFKA_BROKER" env:"KAFKA_BROKER"`
-	KafkaTopic       string `yaml:"KAFKA_TOPIC" env:"KAFKA_TOPIC"`
-	FlushIntervalSec int    `yaml:"FLUSH_INTERVAL_SEC" env:"FLUSH_INTERVAL_SEC"`
-	KafkaGroupID     string `yaml:"KAFKA_GROUP_ID" env:"KAFKA_GROUP_ID"`
+	KafkaBrokers     []string `yaml:"KAFKA_BROKERS" env:"KAFKA_BROKERS"`
+	KafkaTopic       string   `yaml:"KAFKA_TOPIC" env:"KAFKA_TOPIC"`
+	FlushIntervalSec int      `yaml:"FLUSH_INTERVAL_SEC" env:"FLUSH_INTERVAL_SEC"`
+	KafkaGroupID     string   `yaml:"KAFKA_GROUP_ID" env:"KAFKA_GROUP_ID"`
 }
 
 type HttpServer struct {
