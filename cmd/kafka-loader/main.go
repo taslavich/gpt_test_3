@@ -10,8 +10,8 @@ import (
 	"time"
 
 	"github.com/redis/go-redis/v9"
-	"github.com/segmentio/kafka-go"
 	"gitlab.com/twinbid-exchange/RTB-exchange/internal/config"
+	kafka_service "gitlab.com/twinbid-exchange/RTB-exchange/internal/services/kafka"
 	kafka_loader "gitlab.com/twinbid-exchange/RTB-exchange/internal/services/kafka-loader"
 )
 
@@ -37,20 +37,11 @@ func main() {
 	}
 	log.Println("✅ Connected to Redis")
 
-	kafkaWriter := &kafka.Writer{
-		Addr:         kafka.TCP(cfg.KafkaBroker),
-		Topic:        cfg.KafkaTopic,
-		Balancer:     &kafka.LeastBytes{},
-		Async:        false,
-		BatchTimeout: 100 * time.Millisecond,
+	kafkaWriter, err := kafka_service.CreateKafkaWriter(cfg.KafkaBrokers, cfg.KafkaTopic)
+	if err != nil {
+		log.Fatalf("Cannot init kafka: %v", err)
 	}
 	defer kafkaWriter.Close()
-
-	if err := kafka_loader.EnsureTopicExists(cfg.KafkaBroker, cfg.KafkaTopic); err != nil {
-		log.Fatalf("⚠️ Failed to ensure topic exists: %v", err)
-	} else {
-		log.Printf("✅ Kafka topic %s is ready", cfg.KafkaTopic)
-	}
 
 	log.Println("✅ Kafka writer initialized")
 
