@@ -47,7 +47,6 @@ type Server struct {
 	// Пулы для снижения аллокаций
 	bufferPool sync.Pool
 	metaPool   sync.Pool
-	resp       *http.Response
 
 	dspRouterGrpc.UnimplementedDspRouterServiceServer
 }
@@ -94,8 +93,6 @@ func NewServer(
 	redisClient *redis.Client,
 	timeout time.Duration,
 	maxParallelRequests int,
-	debug bool,
-	resp *http.Response,
 ) *Server {
 	if timeout <= 0 {
 		timeout = 5 * time.Second
@@ -142,7 +139,6 @@ func NewServer(
 				return &DspMetaData{}
 			},
 		},
-		resp: resp,
 	}
 }
 
@@ -235,8 +231,7 @@ func (s *Server) GetBids_V2_4(
 		}
 	}
 
-	// Асинхронная запись в Redis чтобы не блокировать ответ
-	go s.writeMetadataToRedis(ctx, req.GlobalId, dspMetaData)
+	s.writeMetadataToRedis(ctx, req.GlobalId, dspMetaData)
 
 	return &dspRouterGrpc.DspRouterResponse_V2_4{
 		BidRequest:   req.BidRequest,

@@ -1,0 +1,31 @@
+[Unit]
+Description=RTB Kafka Broker (Kraft Mode)
+After=network.target
+Requires=network.target
+
+[Service]
+Type=simple
+User=kafka
+Group=kafka
+WorkingDirectory=/opt/kafka
+
+# Более безопасное выполнение
+ExecStart=/opt/kafka/bin/kafka-server-start.sh /etc/kafka/server.properties
+ExecStop=/opt/kafka/bin/kafka-server-stop.sh
+TimeoutStopSec=180
+Restart=on-failure
+RestartSec=10
+
+# Лимиты ресурсов
+LimitNOFILE=65536
+LimitCORE=infinity
+
+EnvironmentFile=/root/RTB/gpt_test_3/infrastructure/kafka/kafka.env
+
+# Логирование
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=rtb-kafka
+
+[Install]
+WantedBy=multi-user.target
