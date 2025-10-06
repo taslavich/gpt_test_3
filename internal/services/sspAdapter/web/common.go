@@ -23,16 +23,15 @@ func getNurl(
 	input := r.Context().Value(httpin.Input).(*nurlRequest)
 
 	decodedURL, err := url.QueryUnescape(input.DspURL)
-	fixedUrl := fixAllUnicodeEscapes(decodedURL)
 	if err != nil {
 		log.Printf("Failed to decode original URL: %v", err)
 		w.WriteHeader(http.StatusBadRequest)
 	} else {
 		client := &http.Client{Timeout: timeout}
-		resp, err := client.Get(fixedUrl)
+		resp, err := client.Get(decodedURL)
 		if err != nil {
 			log.Printf("Failed to proxy win notice to DSP %s, globalID: %s, error: %w",
-				fixedUrl,
+				decodedURL,
 				input.GlobalId,
 				err,
 			)
@@ -41,7 +40,7 @@ func getNurl(
 		defer resp.Body.Close()
 
 		if resp.StatusCode >= http.StatusBadRequest {
-			log.Printf("DSP %s returned error for win notice: %d", fixedUrl, resp.StatusCode)
+			log.Printf("DSP %s returned error for win notice: %d", decodedURL, resp.StatusCode)
 			w.WriteHeader(resp.StatusCode)
 		}
 	}
@@ -59,17 +58,16 @@ func getBurl(
 	input := r.Context().Value(httpin.Input).(*burlRequest)
 
 	decodedURL, err := url.QueryUnescape(input.DspURL)
-	fixedUrl := fixAllUnicodeEscapes(decodedURL)
 	if err != nil {
 		log.Printf("Failed to decode original URL: %v", err)
 		w.WriteHeader(http.StatusBadRequest)
 	} else {
 		client := &http.Client{Timeout: timeout}
-		resp, err := client.Get(fixedUrl)
+		resp, err := client.Get(decodedURL)
 		if err != nil {
 			log.Printf(
 				"Failed to proxy billable event to DSP %s, globalID: %s, error: %w",
-				fixedUrl,
+				decodedURL,
 				input.GlobalId,
 				err,
 			)
@@ -78,7 +76,7 @@ func getBurl(
 		defer resp.Body.Close()
 
 		if resp.StatusCode >= http.StatusBadRequest {
-			log.Printf("DSP %s returned error for billable event: %d", fixedUrl, resp.StatusCode)
+			log.Printf("DSP %s returned error for billable event: %d", decodedURL, resp.StatusCode)
 			w.WriteHeader(resp.StatusCode)
 		}
 	}
