@@ -83,7 +83,7 @@ func InitRoutes(
 	})
 
 	httpRouter.With(
-		httpin.NewInput(postBidRequest_V2_5{}),
+		httpin.NewInput(burlRequest{}),
 	).Get(GetBurlUrl, func(w http.ResponseWriter, r *http.Request) {
 		getBurl(ctx, w, r, redisClient, burlTimeout)
 	})
