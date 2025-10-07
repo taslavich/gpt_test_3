@@ -74,7 +74,7 @@ func hasData(record types.StatisticsRecord) bool {
 		record.BID_RESPONSE_WINNER_BY_DSP_PRICE != "" ||
 		record.SUCCESS != "" ||
 		record.UUID != "" ||
-		record.TIMESTATMP != ""
+		record.TIMESTAMP != ""
 }
 
 func InsertBatch(chDB *sql.DB, table string, records []types.StatisticsRecord) error {
@@ -116,10 +116,10 @@ func buildDynamicQuery(record types.StatisticsRecord) ([]string, []string, []int
 		values = append(values, record.UUID)
 	}
 
-	if record.TIMESTATMP != "" {
+	if record.TIMESTAMP != "" {
 		columns = append(columns, "timestamp")
 		placeholders = append(placeholders, "?")
-		values = append(values, record.TIMESTATMP)
+		values = append(values, record.TIMESTAMP)
 	}
 
 	if record.BID_REQUEST != "" {
@@ -172,7 +172,7 @@ func CreateTable(chDB *sql.DB, tableName string) error {
 			bid_response_winner String,
 			bid_response_winner_by_dsp_price String,
 			success String
-			updated_at DateTime DEFAULT now(),
+			updated_at DateTime DEFAULT now()
 		) ENGINE = ReplacingMergeTree(updated_at)
 		ORDER BY uuid;
 		SETTINGS index_granularity = 8192
