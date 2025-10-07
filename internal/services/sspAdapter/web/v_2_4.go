@@ -122,6 +122,10 @@ func postBid_V2_4(
 		fmt.Printf("failed to WriteStringToRedis SUCCESS in postBid_V2_4: %w", err)
 	}
 
+	if err := utils.WriteStringToRedis(ctx, redisClient, globalId, constants.TIMESTAMP_COLUMN, time.Now().UTC().String()); err != nil {
+		fmt.Printf("failed to WriteJsonToRedis TimeStamp in postBid_V2_4: %w", err)
+	}
+
 	if input.Payload.Device.Geo == nil {
 		input.Payload.Device.Geo = &ortb_V2_4.Geo{
 			Country: &countryISO,

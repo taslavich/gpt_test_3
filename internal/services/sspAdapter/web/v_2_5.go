@@ -118,7 +118,7 @@ func postBid_V2_5(
 	}
 
 	if err := utils.WriteStringToRedis(ctx, redisClient, globalId, constants.TIMESTAMP_COLUMN, time.Now().UTC().String()); err != nil {
-		fmt.Printf("failed to WriteJsonToRedis Bid Request in postBid_V2_5: %w", err)
+		fmt.Printf("failed to WriteJsonToRedis TimeStamp in postBid_V2_5: %w", err)
 	}
 
 	if input.Payload.Device.Geo == nil {
