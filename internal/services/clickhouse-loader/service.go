@@ -163,20 +163,20 @@ func buildDynamicQuery(record types.StatisticsRecord) ([]string, []string, []int
 
 func CreateTable(chDB *sql.DB, tableName string) error {
 	_, err := chDB.Exec(fmt.Sprintf(`
-		CREATE TABLE IF NOT EXISTS %s (
-			uuid string,
-			timestamp string,
-			bid_request String,
-			geo_column String,
-			bid_responses String,
-			bid_response_winner String,
-			bid_response_winner_by_dsp_price String,
-			success String
-			updated_at DateTime DEFAULT now()
-		) ENGINE = ReplacingMergeTree(updated_at)
-		ORDER BY uuid;
-		SETTINGS index_granularity = 8192
-	`, tableName))
+        CREATE TABLE IF NOT EXISTS %s (
+            uuid String,
+            timestamp String,
+            bid_request String,
+            geo_column String,
+            bid_responses String,
+            bid_response_winner String,
+            bid_response_winner_by_dsp_price String,
+            success String,
+            updated_at DateTime DEFAULT now()
+        ) ENGINE = ReplacingMergeTree(updated_at)
+        ORDER BY uuid
+        SETTINGS index_granularity = 8192
+    `, tableName))
 	return err
 }
 
