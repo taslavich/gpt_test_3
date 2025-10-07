@@ -174,7 +174,7 @@ func CreateTable(chDB *sql.DB, tableName string) error {
             success String,
             updated_at DateTime DEFAULT now()
         ) ENGINE = ReplacingMergeTree(updated_at)
-        ORDER BY uuid
+        ORDER BY (uuid, timestamp)
         SETTINGS index_granularity = 8192
     `, tableName))
 	return err
