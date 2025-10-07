@@ -44,7 +44,6 @@ func ProcessKafkaMessages(ctx context.Context, broker, topic string, reader *kaf
 		if hasData(record) {
 			records = append(records, record)
 			messages = append(messages, msg)
-			log.Printf("📥 Processing message with fields: %s", getNonEmptyFields(record))
 		} else {
 			log.Printf("📭 Skipping empty message")
 		}
@@ -73,31 +72,9 @@ func hasData(record types.StatisticsRecord) bool {
 		record.BID_RESPONSES != "" ||
 		record.BID_RESPONSE_WINNER != "" ||
 		record.BID_RESPONSE_WINNER_BY_DSP_PRICE != "" ||
-		record.SUCCESS != ""
-}
-
-// Возвращает список непустых полей для логирования
-func getNonEmptyFields(record types.StatisticsRecord) string {
-	var fields []string
-	if record.BID_REQUEST != "" {
-		fields = append(fields, "BID_REQUEST")
-	}
-	if record.GEO_COLUMN != "" {
-		fields = append(fields, "GEO_COLUMN")
-	}
-	if record.BID_RESPONSES != "" {
-		fields = append(fields, "BID_RESPONSES")
-	}
-	if record.BID_RESPONSE_WINNER != "" {
-		fields = append(fields, "BID_RESPONSE_WINNER")
-	}
-	if record.BID_RESPONSE_WINNER_BY_DSP_PRICE != "" {
-		fields = append(fields, "BID_RESPONSE_WINNER_BY_DSP_PRICE")
-	}
-	if record.SUCCESS != "" {
-		fields = append(fields, "SUCCESS")
-	}
-	return strings.Join(fields, ", ")
+		record.SUCCESS != "" ||
+		record.UUID != "" ||
+		record.TIMESTATMP != ""
 }
 
 func InsertBatch(chDB *sql.DB, table string, records []types.StatisticsRecord) error {
@@ -132,6 +109,18 @@ func buildDynamicQuery(record types.StatisticsRecord) ([]string, []string, []int
 	var columns []string
 	var placeholders []string
 	var values []interface{}
+
+	if record.UUID != "" {
+		columns = append(columns, "uuid")
+		placeholders = append(placeholders, "?")
+		values = append(values, record.UUID)
+	}
+
+	if record.TIMESTATMP != "" {
+		columns = append(columns, "timestamp")
+		placeholders = append(placeholders, "?")
+		values = append(values, record.TIMESTATMP)
+	}
 
 	if record.BID_REQUEST != "" {
 		columns = append(columns, "bid_request")
@@ -175,15 +164,17 @@ func buildDynamicQuery(record types.StatisticsRecord) ([]string, []string, []int
 func CreateTable(chDB *sql.DB, tableName string) error {
 	_, err := chDB.Exec(fmt.Sprintf(`
 		CREATE TABLE IF NOT EXISTS %s (
-			uuid String DEFAULT generateUUIDv4(),
+			uuid String string,
+			timestamp string,
 			bid_request String,
 			geo_column String,
 			bid_responses String,
 			bid_response_winner String,
 			bid_response_winner_by_dsp_price String,
 			success String
-		) ENGINE = MergeTree()
-		ORDER BY uuid
+			updated_at DateTime DEFAULT now()
+		) ENGINE = ReplacingMergeTree(updated_at)
+		ORDER BY id;
 		SETTINGS index_granularity = 8192
 	`, tableName))
 	return err

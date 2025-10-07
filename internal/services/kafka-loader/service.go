@@ -85,6 +85,14 @@ func ProcessBatch(ctx context.Context, redisClient *redis.Client, kafkaWriter *k
 			fieldsToDelete[key] = append(fieldsToDelete[key], constants.RESULT_COLUMN)
 		}
 
+		if timestamp, exists := data[constants.TIMESTAMP_COLUMN]; exists {
+			record.SUCCESS = timestamp
+			fieldsToDelete[key] = append(fieldsToDelete[key], constants.TIMESTAMP_COLUMN)
+		}
+
+		record.UUID = key
+		fieldsToDelete[key] = append(fieldsToDelete[key], constants.UUID_COLUMN)
+
 		// Проверяем есть ли данные в записи
 		if hasData(record) {
 			jsonData, err := json.Marshal(record)
