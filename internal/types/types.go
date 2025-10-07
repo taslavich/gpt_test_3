@@ -2,7 +2,7 @@ package types
 
 type StatisticsRecord struct {
 	UUID                             string `json:"UUID"`
-	TIMESTATMP                       string `json:"TIMESTAMP"`
+	TIMESTAMP                        string `json:"TIMESTAMP"`
 	BID_REQUEST                      string `json:"BID_REQUEST"`
 	GEO_COLUMN                       string `json:"GEO_COLUMN"`
 	BID_RESPONSES                    string `json:"BID_RESPONSES"`
