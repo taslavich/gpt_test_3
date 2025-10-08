@@ -289,10 +289,27 @@ case "$1" in
         chmod +x ./cmd/dsp2/dsp2
         chmod +x ./cmd/dsp3/dsp3
 
-        # Копируем конфиги в корень для удобства
-        cp ./cmd/router/dsp_rules_v25.json ./
-        cp ./cmd/router/spp_rules_v25.json ./
-        cp ./cmd/spp-adapter/GeoIP2_City.mmdb ./
+        # Копируем конфиги в корень для удобства (исправленные пути)
+        if [ -f "./cmd/router/dsp_rules_v25.json" ]; then
+            cp ./cmd/router/dsp_rules_v25.json ./
+            echo "✅ Copied dsp_rules_v25.json"
+        else
+            echo "⚠️  dsp_rules_v25.json not found"
+        fi
+        
+        if [ -f "./cmd/router/spp_rules_v25.json" ]; then
+            cp ./cmd/router/spp_rules_v25.json ./
+            echo "✅ Copied spp_rules_v25.json"
+        else
+            echo "⚠️  spp_rules_v25.json not found"
+        fi
+        
+        if [ -f "./cmd/spp-adapter/GeoIP2_City.mmdb" ]; then
+            cp ./cmd/spp-adapter/GeoIP2_City.mmdb ./
+            echo "✅ Copied GeoIP2_City.mmdb"
+        else
+            echo "⚠️  GeoIP2_City.mmdb not found"
+        fi
         
         echo "✅ All services built and made executable"
         ;;
