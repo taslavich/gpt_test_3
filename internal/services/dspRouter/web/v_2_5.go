@@ -46,6 +46,7 @@ func (s *Server) GetBids_V2_5(
 	// Запускаем все DSP параллельно
 	for _, endpoint := range s.dspEndpoints_v_2_5 {
 		if !s.processor.ProcessRequestForDSPV25(endpoint, req.BidRequest).Allowed {
+			log.Println("Gor filter")
 			continue
 		}
 		wg.Add(1)
@@ -125,6 +126,7 @@ func (s *Server) getBidsFromDSPbyHTTP_V_2_5_Optimized(ctx context.Context, jsonD
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Connection", "keep-alive")
 
+	log.Println("GOT req inner")
 	t := time.Now()
 	resp, err := s.client_v_2_5.Do(req)
 	log.Println("%v", time.Since(t))

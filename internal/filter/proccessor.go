@@ -1,6 +1,8 @@
 package filter
 
 import (
+	"fmt"
+
 	"gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/proto/types/ortb_V2_4"
 	"gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/proto/types/ortb_V2_5"
 )
@@ -24,20 +26,54 @@ func NewOptimizedFilterProcessor(ruleManager *RuleManager) *OptimizedFilterProce
 	}
 }
 
-// ProcessRequestForDSPV24 обрабатывает BidRequest v2.4 для DSP
-func (fp *OptimizedFilterProcessor) ProcessRequestForDSPV24(dspURL string, req *ortb_V2_4.BidRequest) *FilterResult {
-	if req == nil {
-		return &FilterResult{Allowed: false}
+// processor.go
+
+// Рекурсивная оценка узла дерева правил
+func (fp *OptimizedFilterProcessor) evaluateRuleNode(node *CompiledRuleNode, extractor BidRequestExtractor, req interface{}) bool {
+	switch node.Operator {
+	case "leaf":
+		// Листовой узел - простое правило
+		fieldValue := extractor.ExtractFieldValue(node.Rule.Field, req)
+		return node.Rule.Value.Compare(fieldValue)
+
+	case "and":
+		// AND группа - все дочерние узлы должны быть true
+		for _, child := range node.Children {
+			if !fp.evaluateRuleNode(child, extractor, req) {
+				return false
+			}
+		}
+		return true
+
+	case "or":
+		// OR группа - хотя бы один дочерний узел должен быть true
+		for _, child := range node.Children {
+			if fp.evaluateRuleNode(child, extractor, req) {
+				return true
+			}
+		}
+		return false
+
+	default:
+		return false
 	}
-	return fp.processRequestForDSPOptimized(dspURL, fp.v24ReqExtractor, req)
 }
 
-// ProcessRequestForDSPV25 обрабатывает BidRequest v2.5 для DSP
-func (fp *OptimizedFilterProcessor) ProcessRequestForDSPV25(dspURL string, req *ortb_V2_5.BidRequest) *FilterResult {
-	if req == nil {
-		return &FilterResult{Allowed: false}
+// Оптимизированный метод с рекурсивной проверкой
+func (fp *OptimizedFilterProcessor) processRequestForDSPOptimized(dspURL string, extractor BidRequestExtractor, req interface{}) *FilterResult {
+	ruleSet := fp.ruleManager.GetCompiledRulesForDSP(dspURL)
+	if ruleSet == nil || len(ruleSet.rootNodes) == 0 {
+		return &FilterResult{Allowed: true}
 	}
-	return fp.processRequestForDSPOptimized(dspURL, fp.v25ReqExtractor, req)
+
+	// Все корневые узлы работают по AND
+	for _, rootNode := range ruleSet.rootNodes {
+		if !fp.evaluateRuleNode(rootNode, extractor, req) {
+			return &FilterResult{Allowed: false}
+		}
+	}
+
+	return &FilterResult{Allowed: true}
 }
 
 // ProcessResponseForSPPV24 обрабатывает BidResponse v2.4 для SPP
@@ -45,7 +81,8 @@ func (fp *OptimizedFilterProcessor) ProcessResponseForSPPV24(sppURL string, resp
 	if resp == nil {
 		return &FilterResult{Allowed: false}
 	}
-	return fp.processResponseForSPPOptimized(sppURL, fp.v24RespExtractor, resp)
+	versionedSPPID := fmt.Sprintf("%s|v24", sppURL)
+	return fp.processResponseForSPPOptimized(versionedSPPID, fp.v24RespExtractor, resp)
 }
 
 // ProcessResponseForSPPV25 обрабатывает BidResponse v2.5 для SPP
@@ -53,37 +90,11 @@ func (fp *OptimizedFilterProcessor) ProcessResponseForSPPV25(sppURL string, resp
 	if resp == nil {
 		return &FilterResult{Allowed: false}
 	}
-	return fp.processResponseForSPPOptimized(sppURL, fp.v25RespExtractor, resp)
+	versionedSPPID := fmt.Sprintf("%s|v25", sppURL)
+	return fp.processResponseForSPPOptimized(versionedSPPID, fp.v25RespExtractor, resp)
 }
 
-// Оптимизированный метод с bulk extraction для DSP
-func (fp *OptimizedFilterProcessor) processRequestForDSPOptimized(dspURL string, extractor BidRequestExtractor, req interface{}) *FilterResult {
-	ruleSet := fp.ruleManager.GetCompiledRulesForDSP(dspURL)
-	if ruleSet == nil || len(ruleSet.rules) == 0 {
-		return &FilterResult{Allowed: true}
-	}
-
-	// Bulk extraction: группируем правила по полям для избежания повторного извлечения
-	fieldRules := make(map[FieldType][]*FilterRule)
-	for _, rule := range ruleSet.rules {
-		fieldRules[rule.Field] = append(fieldRules[rule.Field], rule)
-	}
-
-	// Проверяем правила группами по полям
-	for field, rules := range fieldRules {
-		fieldValue := extractor.ExtractFieldValue(field, req)
-
-		for _, rule := range rules {
-			if !rule.Value.Compare(fieldValue) {
-				return &FilterResult{Allowed: false}
-			}
-		}
-	}
-
-	return &FilterResult{Allowed: true}
-}
-
-// Оптимизированный метод с bulk extraction для SPP
+// Оптимизированный метод с рекурсивной проверкой для SPP
 func (fp *OptimizedFilterProcessor) processResponseForSPPOptimized(sppURL string, extractor BidResponseExtractor, resp interface{}) *FilterResult {
 	ruleSet := fp.ruleManager.GetCompiledRulesForSPP(sppURL)
 	autoRules := GetAutoRulesForSPP()
@@ -92,25 +103,40 @@ func (fp *OptimizedFilterProcessor) processResponseForSPPOptimized(sppURL string
 		return &FilterResult{Allowed: true}
 	}
 
-	// Собираем все правила
-	allRules := make([]*FilterRule, 0)
-	if ruleSet != nil {
-		allRules = append(allRules, ruleSet.rules...)
-	}
-	allRules = append(allRules, autoRules...)
+	// Если есть авто-правила, создаем для них корневой узел
+	if len(autoRules) > 0 {
+		autoRootNode := &CompiledRuleNode{
+			Operator: "and",
+			Children: make([]*CompiledRuleNode, 0, len(autoRules)),
+		}
 
-	// Bulk extraction: группируем правила по полям
-	fieldRules := make(map[FieldType][]*FilterRule)
-	for _, rule := range allRules {
-		fieldRules[rule.Field] = append(fieldRules[rule.Field], rule)
-	}
+		for _, rule := range autoRules {
+			autoRootNode.Children = append(autoRootNode.Children, &CompiledRuleNode{
+				Rule:     rule,
+				Operator: "leaf",
+			})
+		}
 
-	// Проверяем правила группами по полям
-	for field, rules := range fieldRules {
-		fieldValue := extractor.ExtractFieldValue(field, resp)
+		// Если есть обычные правила, объединяем с авто-правилами через AND
+		if ruleSet != nil {
+			combinedRoot := &CompiledRuleNode{
+				Operator: "and",
+				Children: append([]*CompiledRuleNode{autoRootNode}, ruleSet.rootNodes...),
+			}
 
-		for _, rule := range rules {
-			if !rule.Value.Compare(fieldValue) {
+			if !fp.evaluateRuleNode(combinedRoot, extractor, resp) {
+				return &FilterResult{Allowed: false}
+			}
+		} else {
+			// Только авто-правила
+			if !fp.evaluateRuleNode(autoRootNode, extractor, resp) {
+				return &FilterResult{Allowed: false}
+			}
+		}
+	} else {
+		// Только обычные правила
+		for _, rootNode := range ruleSet.rootNodes {
+			if !fp.evaluateRuleNode(rootNode, extractor, resp) {
 				return &FilterResult{Allowed: false}
 			}
 		}
@@ -118,3 +144,25 @@ func (fp *OptimizedFilterProcessor) processResponseForSPPOptimized(sppURL string
 
 	return &FilterResult{Allowed: true}
 }
+
+// processor.go
+
+// ProcessRequestForDSPV24 обрабатывает BidRequest v2.4 для DSP
+func (fp *OptimizedFilterProcessor) ProcessRequestForDSPV24(dspURL string, req *ortb_V2_4.BidRequest) *FilterResult {
+	if req == nil {
+		return &FilterResult{Allowed: false}
+	}
+	versionedDSPID := fmt.Sprintf("%s|v24", dspURL)
+	return fp.processRequestForDSPOptimized(versionedDSPID, fp.v24ReqExtractor, req)
+}
+
+// ProcessRequestForDSPV25 обрабатывает BidRequest v2.5 для DSP
+func (fp *OptimizedFilterProcessor) ProcessRequestForDSPV25(dspURL string, req *ortb_V2_5.BidRequest) *FilterResult {
+	if req == nil {
+		return &FilterResult{Allowed: false}
+	}
+	versionedDSPID := fmt.Sprintf("%s|v25", dspURL)
+	return fp.processRequestForDSPOptimized(versionedDSPID, fp.v25ReqExtractor, req)
+}
+
+// Аналогично для SPP...

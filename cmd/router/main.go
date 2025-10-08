@@ -50,12 +50,25 @@ func main() {
 
 	ruleManager := filter.NewRuleManager()
 
-	fileLoader := filter.NewFileRuleLoader(ruleManager, cfg.DspRulesConfigPath, cfg.SppRulesConfigPath)
-	if err := waitForFile(ctx, cfg.DspRulesConfigPath, 10, time.Second); err != nil {
-		log.Fatalf("DSP rules are not available: %v", err)
+	fileLoader := filter.NewFileRuleLoader(
+		ruleManager,
+		cfg.DspRulesConfigPathV24,
+		cfg.DspRulesConfigPathV25,
+		cfg.SppRulesConfigPathV24,
+		cfg.SppRulesConfigPathV25,
+	)
+	if err := waitForFile(ctx, cfg.DspRulesConfigPathV24, 10, time.Second); err != nil {
+		log.Fatalf("DSP V24 rules are not available: %v", err)
 	}
-	if err := waitForFile(ctx, cfg.SppRulesConfigPath, 10, time.Second); err != nil {
-		log.Fatalf("SPP rules are not available: %v", err)
+	if err := waitForFile(ctx, cfg.SppRulesConfigPathV24, 10, time.Second); err != nil {
+		log.Fatalf("SPP V24 rules are not available: %v", err)
+	}
+
+	if err := waitForFile(ctx, cfg.DspRulesConfigPathV25, 10, time.Second); err != nil {
+		log.Fatalf("DSP V25 rules are not available: %v", err)
+	}
+	if err := waitForFile(ctx, cfg.SppRulesConfigPathV25, 10, time.Second); err != nil {
+		log.Fatalf("SPP V25 rules are not available: %v", err)
 	}
 
 	if err := fileLoader.LoadDSPRules(); err != nil {
@@ -79,8 +92,6 @@ func main() {
 			ruleManager,
 			fileLoader,
 			processor,
-			cfg.DspRulesConfigPath,
-			cfg.SppRulesConfigPath,
 			cfg.DSPEndpoints_v_2_4,
 			cfg.DSPEndpoints_v_2_5,
 			redisClient,

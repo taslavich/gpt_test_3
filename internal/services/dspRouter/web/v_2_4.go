@@ -33,9 +33,6 @@ type Server struct {
 	fileLoader  *filter.FileRuleLoader
 	processor   *filter.OptimizedFilterProcessor
 
-	dspConfigPath string
-	sppConfigPath string
-
 	dspEndpoints_v_2_4 []string
 	dspEndpoints_v_2_5 []string
 
@@ -86,8 +83,6 @@ func NewServer(
 	ruleManager *filter.RuleManager,
 	fileLoader *filter.FileRuleLoader,
 	processor *filter.OptimizedFilterProcessor,
-	dspConfigPath string,
-	sppConfigPath string,
 	dspEndpoints_v_2_4,
 	dspEndpoints_v_2_5 []string,
 	redisClient *redis.Client,
@@ -121,8 +116,6 @@ func NewServer(
 		ruleManager:        ruleManager,
 		fileLoader:         fileLoader,
 		processor:          processor,
-		dspConfigPath:      dspConfigPath,
-		sppConfigPath:      sppConfigPath,
 		dspEndpoints_v_2_4: dspEndpoints_v_2_4,
 		dspEndpoints_v_2_5: dspEndpoints_v_2_5,
 		redisClient:        redisClient,

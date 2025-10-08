@@ -90,6 +90,11 @@ func ProcessBatch(ctx context.Context, redisClient *redis.Client, kafkaWriter *k
 			fieldsToDelete[key] = append(fieldsToDelete[key], constants.TIMESTAMP_COLUMN)
 		}
 
+		if spp_domain, exists := data[constants.SPP_DOMAIN_COLUMN]; exists {
+			record.SPP_DOMAIN = spp_domain
+			fieldsToDelete[key] = append(fieldsToDelete[key], constants.SPP_DOMAIN_COLUMN)
+		}
+
 		record.UUID = key
 		fieldsToDelete[key] = append(fieldsToDelete[key], constants.UUID_COLUMN)
 
@@ -135,7 +140,10 @@ func hasData(record types.StatisticsRecord) bool {
 		record.BID_RESPONSES != "" ||
 		record.BID_RESPONSE_WINNER != "" ||
 		record.BID_RESPONSE_WINNER_BY_DSP_PRICE != "" ||
-		record.SUCCESS != ""
+		record.SUCCESS != "" ||
+		record.UUID != "" ||
+		record.TIMESTAMP != "" ||
+		record.SPP_DOMAIN != ""
 }
 
 func EnsureTopicExists(broker string, topic string) error {
