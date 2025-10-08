@@ -290,8 +290,8 @@ case "$1" in
         chmod +x ./cmd/dsp3/dsp3
 
         # Копируем конфиги в корень для удобства
-        cp ./cmd/router/dsp_rules.json ./
-        cp ./cmd/router/spp_rules.json ./
+        cp ./cmd/router/dsp_rules_v25.json ./
+        cp ./cmd/router/spp_rules_v25.json ./
         cp ./cmd/spp-adapter/GeoIP2_City.mmdb ./
         
         echo "✅ All services built and made executable"
