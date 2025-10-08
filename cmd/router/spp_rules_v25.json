@@ -1,29 +1,5 @@
 {
   "version": "1.0",
-  "dsps": {
-    "http://octossp.com/feed/e60c260e-d948-4697-894b-e583944c6661": {
-      "v25": [
-        {
-          "and": [
-            { "field": "bidrequest.id", "condition": "exists", "value_type": "string", "value": "" },
-            { "field": "imp.id",        "condition": "exists", "value_type": "string", "value": "" },
-
-            { "field": "site.id",       "condition": "exists", "value_type": "string", "value": "" },
-            {
-              "or": [
-                { "field": "site.page",   "condition": "exists", "value_type": "string", "value": "" },
-                { "field": "site.domain", "condition": "exists", "value_type": "string", "value": "" }
-              ]
-            },
-
-            { "field": "device.ua",       "condition": "exists", "value_type": "string", "value": "" },
-            { "field": "device.ip",       "condition": "exists", "value_type": "string", "value": "" },
-            { "field": "device.language", "condition": "exists", "value_type": "string", "value": "" },
-
-            { "field": "user.id", "condition": "exists", "value_type": "string", "value": "" }
-          ]
-        }
-      ]
-    }
+  "ssps": {
   }
 }

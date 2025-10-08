@@ -18,6 +18,7 @@ func getNurl(
 	ctx context.Context,
 	w http.ResponseWriter,
 	r *http.Request,
+	redisClient *redis.Client,
 	timeout time.Duration,
 ) {
 	input := r.Context().Value(httpin.Input).(*nurlRequest)
@@ -43,6 +44,10 @@ func getNurl(
 			log.Printf("DSP %s returned error for win notice: %d", decodedURL, resp.StatusCode)
 			w.WriteHeader(resp.StatusCode)
 		}
+	}
+
+	if err := utils.WriteStringToRedis(ctx, redisClient, input.GlobalId, constants.RESULT_COLUMN, constants.SUCCESS); err != nil {
+		fmt.Printf("failed to WriteStringToRedis SUCCESS in getBurl: %w", err)
 	}
 
 	w.WriteHeader(http.StatusOK)

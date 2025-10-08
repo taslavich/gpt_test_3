@@ -24,10 +24,10 @@ const (
 )
 
 type BidEngineRequest_V2_4 struct {
-	state         protoimpl.MessageState   `protogen:"open.v1"`
-	BidRequest    *ortb_V2_4.BidRequest    `protobuf:"bytes,1,opt,name=bidRequest,proto3" json:"bidRequest,omitempty"`
-	BidResponses  []*ortb_V2_4.BidResponse `protobuf:"bytes,2,rep,name=bidResponses,proto3" json:"bidResponses,omitempty"`
-	GlobalId      string                   `protobuf:"bytes,3,opt,name=globalId,proto3" json:"globalId,omitempty"`
+	state         protoimpl.MessageState            `protogen:"open.v1"`
+	BidRequest    *ortb_V2_4.BidRequest             `protobuf:"bytes,1,opt,name=bidRequest,proto3" json:"bidRequest,omitempty"`
+	BidResponses  map[string]*ortb_V2_4.BidResponse `protobuf:"bytes,2,rep,name=bidResponses,proto3" json:"bidResponses,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
+	GlobalId      string                            `protobuf:"bytes,3,opt,name=globalId,proto3" json:"globalId,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -69,7 +69,7 @@ func (x *BidEngineRequest_V2_4) GetBidRequest() *ortb_V2_4.BidRequest {
 	return nil
 }
 
-func (x *BidEngineRequest_V2_4) GetBidResponses() []*ortb_V2_4.BidResponse {
+func (x *BidEngineRequest_V2_4) GetBidResponses() map[string]*ortb_V2_4.BidResponse {
 	if x != nil {
 		return x.BidResponses
 	}
@@ -136,10 +136,10 @@ func (x *BidEngineResponse_V2_4) GetGlobalId() string {
 }
 
 type BidEngineRequest_V2_5 struct {
-	state         protoimpl.MessageState   `protogen:"open.v1"`
-	BidRequest    *ortb_V2_5.BidRequest    `protobuf:"bytes,1,opt,name=bidRequest,proto3" json:"bidRequest,omitempty"`
-	BidResponses  []*ortb_V2_5.BidResponse `protobuf:"bytes,2,rep,name=bidResponses,proto3" json:"bidResponses,omitempty"`
-	GlobalId      string                   `protobuf:"bytes,3,opt,name=globalId,proto3" json:"globalId,omitempty"`
+	state         protoimpl.MessageState            `protogen:"open.v1"`
+	BidRequest    *ortb_V2_5.BidRequest             `protobuf:"bytes,1,opt,name=bidRequest,proto3" json:"bidRequest,omitempty"`
+	BidResponses  map[string]*ortb_V2_5.BidResponse `protobuf:"bytes,2,rep,name=bidResponses,proto3" json:"bidResponses,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
+	GlobalId      string                            `protobuf:"bytes,3,opt,name=globalId,proto3" json:"globalId,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -181,7 +181,7 @@ func (x *BidEngineRequest_V2_5) GetBidRequest() *ortb_V2_5.BidRequest {
 	return nil
 }
 
-func (x *BidEngineRequest_V2_5) GetBidResponses() []*ortb_V2_5.BidResponse {
+func (x *BidEngineRequest_V2_5) GetBidResponses() map[string]*ortb_V2_5.BidResponse {
 	if x != nil {
 		return x.BidResponses
 	}
@@ -251,22 +251,28 @@ var File_services_bidEngine_proto protoreflect.FileDescriptor
 
 const file_services_bidEngine_proto_rawDesc = "" +
 	"\n" +
-	"\x18services/bidEngine.proto\x12\tbidEngine\x1a\x1atypes/ortb_V2_4/ortb.proto\x1a\x1atypes/ortb_V2_5/ortb.proto\"\xa6\x01\n" +
+	"\x18services/bidEngine.proto\x12\tbidEngine\x1a\x1atypes/ortb_V2_4/ortb.proto\x1a\x1atypes/ortb_V2_5/ortb.proto\"\x9b\x02\n" +
 	"\x15BidEngineRequest_V2_4\x125\n" +
 	"\n" +
 	"bidRequest\x18\x01 \x01(\v2\x15.ortb_V2_4.BidRequestR\n" +
-	"bidRequest\x12:\n" +
-	"\fbidResponses\x18\x02 \x03(\v2\x16.ortb_V2_4.BidResponseR\fbidResponses\x12\x1a\n" +
-	"\bglobalId\x18\x03 \x01(\tR\bglobalId\"n\n" +
+	"bidRequest\x12V\n" +
+	"\fbidResponses\x18\x02 \x03(\v22.bidEngine.BidEngineRequest_V2_4.BidResponsesEntryR\fbidResponses\x12\x1a\n" +
+	"\bglobalId\x18\x03 \x01(\tR\bglobalId\x1aW\n" +
+	"\x11BidResponsesEntry\x12\x10\n" +
+	"\x03key\x18\x01 \x01(\tR\x03key\x12,\n" +
+	"\x05value\x18\x02 \x01(\v2\x16.ortb_V2_4.BidResponseR\x05value:\x028\x01\"n\n" +
 	"\x16BidEngineResponse_V2_4\x128\n" +
 	"\vbidResponse\x18\x01 \x01(\v2\x16.ortb_V2_4.BidResponseR\vbidResponse\x12\x1a\n" +
-	"\bglobalId\x18\x02 \x01(\tR\bglobalId\"\xa6\x01\n" +
+	"\bglobalId\x18\x02 \x01(\tR\bglobalId\"\x9b\x02\n" +
 	"\x15BidEngineRequest_V2_5\x125\n" +
 	"\n" +
 	"bidRequest\x18\x01 \x01(\v2\x15.ortb_V2_5.BidRequestR\n" +
-	"bidRequest\x12:\n" +
-	"\fbidResponses\x18\x02 \x03(\v2\x16.ortb_V2_5.BidResponseR\fbidResponses\x12\x1a\n" +
-	"\bglobalId\x18\x03 \x01(\tR\bglobalId\"n\n" +
+	"bidRequest\x12V\n" +
+	"\fbidResponses\x18\x02 \x03(\v22.bidEngine.BidEngineRequest_V2_5.BidResponsesEntryR\fbidResponses\x12\x1a\n" +
+	"\bglobalId\x18\x03 \x01(\tR\bglobalId\x1aW\n" +
+	"\x11BidResponsesEntry\x12\x10\n" +
+	"\x03key\x18\x01 \x01(\tR\x03key\x12,\n" +
+	"\x05value\x18\x02 \x01(\v2\x16.ortb_V2_5.BidResponseR\x05value:\x028\x01\"n\n" +
 	"\x16BidEngineResponse_V2_5\x128\n" +
 	"\vbidResponse\x18\x01 \x01(\v2\x16.ortb_V2_5.BidResponseR\vbidResponse\x12\x1a\n" +
 	"\bglobalId\x18\x02 \x01(\tR\bglobalId2\xca\x01\n" +
@@ -286,33 +292,37 @@ func file_services_bidEngine_proto_rawDescGZIP() []byte {
 	return file_services_bidEngine_proto_rawDescData
 }
 
-var file_services_bidEngine_proto_msgTypes = make([]protoimpl.MessageInfo, 4)
+var file_services_bidEngine_proto_msgTypes = make([]protoimpl.MessageInfo, 6)
 var file_services_bidEngine_proto_goTypes = []any{
 	(*BidEngineRequest_V2_4)(nil),  // 0: bidEngine.BidEngineRequest_V2_4
 	(*BidEngineResponse_V2_4)(nil), // 1: bidEngine.BidEngineResponse_V2_4
 	(*BidEngineRequest_V2_5)(nil),  // 2: bidEngine.BidEngineRequest_V2_5
 	(*BidEngineResponse_V2_5)(nil), // 3: bidEngine.BidEngineResponse_V2_5
-	(*ortb_V2_4.BidRequest)(nil),   // 4: ortb_V2_4.BidRequest
-	(*ortb_V2_4.BidResponse)(nil),  // 5: ortb_V2_4.BidResponse
-	(*ortb_V2_5.BidRequest)(nil),   // 6: ortb_V2_5.BidRequest
-	(*ortb_V2_5.BidResponse)(nil),  // 7: ortb_V2_5.BidResponse
+	nil,                            // 4: bidEngine.BidEngineRequest_V2_4.BidResponsesEntry
+	nil,                            // 5: bidEngine.BidEngineRequest_V2_5.BidResponsesEntry
+	(*ortb_V2_4.BidRequest)(nil),   // 6: ortb_V2_4.BidRequest
+	(*ortb_V2_4.BidResponse)(nil),  // 7: ortb_V2_4.BidResponse
+	(*ortb_V2_5.BidRequest)(nil),   // 8: ortb_V2_5.BidRequest
+	(*ortb_V2_5.BidResponse)(nil),  // 9: ortb_V2_5.BidResponse
 }
 var file_services_bidEngine_proto_depIdxs = []int32{
-	4, // 0: bidEngine.BidEngineRequest_V2_4.bidRequest:type_name -> ortb_V2_4.BidRequest
-	5, // 1: bidEngine.BidEngineRequest_V2_4.bidResponses:type_name -> ortb_V2_4.BidResponse
-	5, // 2: bidEngine.BidEngineResponse_V2_4.bidResponse:type_name -> ortb_V2_4.BidResponse
-	6, // 3: bidEngine.BidEngineRequest_V2_5.bidRequest:type_name -> ortb_V2_5.BidRequest
-	7, // 4: bidEngine.BidEngineRequest_V2_5.bidResponses:type_name -> ortb_V2_5.BidResponse
-	7, // 5: bidEngine.BidEngineResponse_V2_5.bidResponse:type_name -> ortb_V2_5.BidResponse
-	0, // 6: bidEngine.BidEngineService.getWinnerBid_V2_4:input_type -> bidEngine.BidEngineRequest_V2_4
-	2, // 7: bidEngine.BidEngineService.getWinnerBid_V2_5:input_type -> bidEngine.BidEngineRequest_V2_5
-	1, // 8: bidEngine.BidEngineService.getWinnerBid_V2_4:output_type -> bidEngine.BidEngineResponse_V2_4
-	3, // 9: bidEngine.BidEngineService.getWinnerBid_V2_5:output_type -> bidEngine.BidEngineResponse_V2_5
-	8, // [8:10] is the sub-list for method output_type
-	6, // [6:8] is the sub-list for method input_type
-	6, // [6:6] is the sub-list for extension type_name
-	6, // [6:6] is the sub-list for extension extendee
-	0, // [0:6] is the sub-list for field type_name
+	6,  // 0: bidEngine.BidEngineRequest_V2_4.bidRequest:type_name -> ortb_V2_4.BidRequest
+	4,  // 1: bidEngine.BidEngineRequest_V2_4.bidResponses:type_name -> bidEngine.BidEngineRequest_V2_4.BidResponsesEntry
+	7,  // 2: bidEngine.BidEngineResponse_V2_4.bidResponse:type_name -> ortb_V2_4.BidResponse
+	8,  // 3: bidEngine.BidEngineRequest_V2_5.bidRequest:type_name -> ortb_V2_5.BidRequest
+	5,  // 4: bidEngine.BidEngineRequest_V2_5.bidResponses:type_name -> bidEngine.BidEngineRequest_V2_5.BidResponsesEntry
+	9,  // 5: bidEngine.BidEngineResponse_V2_5.bidResponse:type_name -> ortb_V2_5.BidResponse
+	7,  // 6: bidEngine.BidEngineRequest_V2_4.BidResponsesEntry.value:type_name -> ortb_V2_4.BidResponse
+	9,  // 7: bidEngine.BidEngineRequest_V2_5.BidResponsesEntry.value:type_name -> ortb_V2_5.BidResponse
+	0,  // 8: bidEngine.BidEngineService.getWinnerBid_V2_4:input_type -> bidEngine.BidEngineRequest_V2_4
+	2,  // 9: bidEngine.BidEngineService.getWinnerBid_V2_5:input_type -> bidEngine.BidEngineRequest_V2_5
+	1,  // 10: bidEngine.BidEngineService.getWinnerBid_V2_4:output_type -> bidEngine.BidEngineResponse_V2_4
+	3,  // 11: bidEngine.BidEngineService.getWinnerBid_V2_5:output_type -> bidEngine.BidEngineResponse_V2_5
+	10, // [10:12] is the sub-list for method output_type
+	8,  // [8:10] is the sub-list for method input_type
+	8,  // [8:8] is the sub-list for extension type_name
+	8,  // [8:8] is the sub-list for extension extendee
+	0,  // [0:8] is the sub-list for field type_name
 }
 
 func init() { file_services_bidEngine_proto_init() }
@@ -326,7 +336,7 @@ func file_services_bidEngine_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_services_bidEngine_proto_rawDesc), len(file_services_bidEngine_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   4,
+			NumMessages:   6,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

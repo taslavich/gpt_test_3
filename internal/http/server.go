@@ -110,14 +110,3 @@ func RunHttpServer(ctx context.Context, router *chi.Mux, host string, port uint1
 		log.Fatalf("Can't start server: %v", err)
 	}
 }
-
-func GetDomain(r *http.Request) string {
-	scheme := "http"
-	if r.TLS != nil {
-		scheme = "https"
-	}
-
-	host := r.Host
-
-	return scheme + "://" + host
-}

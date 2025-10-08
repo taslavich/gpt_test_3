@@ -5,28 +5,20 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
 	"log"
 	"net"
 	"net/http"
 	"sync"
 	"time"
 
+	jsoniter "github.com/json-iterator/go"
 	"github.com/redis/go-redis/v9"
-	"gitlab.com/twinbid-exchange/RTB-exchange/internal/constants"
 	"gitlab.com/twinbid-exchange/RTB-exchange/internal/filter"
 	dspRouterGrpc "gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/proto/services/dspRouter"
 	"gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/proto/types/ortb_V2_4"
-	utils "gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/utils_grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
-
-type DspMetaData struct {
-	DspEndpoint string
-	Code        int
-	ErrMsg      string
-}
 
 type Server struct {
 	ruleManager *filter.RuleManager
@@ -43,7 +35,6 @@ type Server struct {
 	timeout      time.Duration
 	// Пулы для снижения аллокаций
 	bufferPool sync.Pool
-	metaPool   sync.Pool
 
 	dspRouterGrpc.UnimplementedDspRouterServiceServer
 }
@@ -127,11 +118,6 @@ func NewServer(
 				return bytes.NewBuffer(make([]byte, 0, 2048))
 			},
 		},
-		metaPool: sync.Pool{
-			New: func() interface{} {
-				return &DspMetaData{}
-			},
-		},
 	}
 }
 
@@ -161,70 +147,56 @@ func (s *Server) GetBids_V2_4(
 		wg sync.WaitGroup
 	)
 
-	responsesCh := make(chan *ortb_V2_4.BidResponse, len(s.dspEndpoints_v_2_4))
-	dspMetaDataCh := make(chan *DspMetaData, len(s.dspEndpoints_v_2_4))
+	responsesCh := make(chan *dspDomainResp[ortb_V2_4.BidResponse], len(s.dspEndpoints_v_2_5))
 
-	for _, endpoint := range s.dspEndpoints_v_2_4 {
+	// Запускаем все DSP параллельно
+	for _, endpoint := range s.dspEndpoints_v_2_5 {
+		if !s.processor.ProcessRequestForDSPV24(endpoint, req.BidRequest).Allowed {
+			log.Println("Gor filter")
+			continue
+		}
 		wg.Add(1)
 		go func(endpoint string) {
 			defer wg.Done()
 
-			// Быстрая фильтрация DSP
-			if !s.processor.ProcessRequestForDSPV24(endpoint, req.BidRequest).Allowed {
-				return
+			dspResp, err := s.getBidsFromDSPbyHTTP_V_2_4_Optimized(reqCtx, jsonData, endpoint)
+			if err != nil {
+				log.Printf("Cannot getBidsFromDSPbyHTTP_V_2_4_Optimized: %w", err)
 			}
-
-			// HTTP запрос к DSP
-			dspResp, code, errMsg := s.getBidsFromDSPbyHTTP_V_2_4_Optimized(reqCtx, jsonData, endpoint)
-
-			// Отправляем метаданные
-			meta := s.metaPool.Get().(*DspMetaData)
-			meta.DspEndpoint = endpoint
-			meta.Code = code
-			meta.ErrMsg = errMsg
-			dspMetaDataCh <- meta
 
 			// Фильтрация ответа SPP
 			if dspResp != nil && s.processor.ProcessResponseForSPPV24(req.SppEndpoint, dspResp).Allowed {
-				responsesCh <- dspResp
+				return
+			}
+
+			responsesCh <- &dspDomainResp[ortb_V2_4.BidResponse]{
+				endpoint: endpoint,
+				resp:     dspResp,
 			}
 		}(endpoint)
 	}
 
-	// Ждем завершения в отдельной горутине и закрываем каналы
+	// Ждем завершения и закрываем каналы
 	go func() {
 		wg.Wait()
 		close(responsesCh)
-		close(dspMetaDataCh)
 	}()
 
 	// Собираем результаты
-	responses := make([]*ortb_V2_4.BidResponse, 0, len(s.dspEndpoints_v_2_4))
-	dspMetaData := make([]DspMetaData, 0, len(s.dspEndpoints_v_2_4))
+	responses := make(map[string]*ortb_V2_4.BidResponse, len(s.dspEndpoints_v_2_5))
 
-	for responsesCh != nil || dspMetaDataCh != nil {
+	for responsesCh != nil {
 		select {
 		case r, ok := <-responsesCh:
 			if !ok {
 				responsesCh = nil
 			} else {
-				responses = append(responses, r)
-			}
-		case meta, ok := <-dspMetaDataCh:
-			if !ok {
-				dspMetaDataCh = nil
-			} else {
-				dspMetaData = append(dspMetaData, DspMetaData{
-					DspEndpoint: meta.DspEndpoint,
-					Code:        meta.Code,
-					ErrMsg:      meta.ErrMsg,
-				})
-				s.metaPool.Put(meta)
+				responses[r.endpoint] = r.resp
 			}
 		}
 	}
 
-	s.writeMetadataToRedis(ctx, req.GlobalId, dspMetaData)
+	writeMetadataToRedis(ctx, s.redisClient, req.GlobalId, responses)
 
 	return &dspRouterGrpc.DspRouterResponse_V2_4{
 		BidRequest:   req.BidRequest,
@@ -234,7 +206,7 @@ func (s *Server) GetBids_V2_4(
 }
 
 func (s *Server) getBidsFromDSPbyHTTP_V_2_4_Optimized(ctx context.Context, jsonData []byte, dspEndpoint string) (
-	br *ortb_V2_4.BidResponse, code int, errMsg string) {
+	br *ortb_V2_4.BidResponse, err error) {
 
 	// Пул буферов
 	buf := s.bufferPool.Get().(*bytes.Buffer)
@@ -244,47 +216,24 @@ func (s *Server) getBidsFromDSPbyHTTP_V_2_4_Optimized(ctx context.Context, jsonD
 
 	req, err := http.NewRequestWithContext(ctx, "POST", dspEndpoint, buf)
 	if err != nil {
-		return nil, 0, fmt.Sprintf("Create request failed: %v", err)
+		return nil, fmt.Errorf("Create request failed: %v", err)
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Connection", "keep-alive")
 
 	resp, err := s.client_v_2_4.Do(req)
 	if err != nil {
-		return nil, 0, fmt.Sprintf("Request failed: %v", err)
+		return nil, fmt.Errorf("Request failed: %v", err)
 	}
 	defer resp.Body.Close()
 
-	switch resp.StatusCode {
-	case http.StatusNoContent:
-		return nil, resp.StatusCode, ""
-	case http.StatusOK:
+	if resp.StatusCode == http.StatusNoContent || resp.StatusCode == http.StatusOK {
 		var grpcResp ortb_V2_4.BidResponse
-		dec := json.NewDecoder(resp.Body)
+		dec := jsoniter.NewDecoder(resp.Body) // без лишних аллокаций
 		if err := dec.Decode(&grpcResp); err != nil {
-			return nil, resp.StatusCode, fmt.Sprintf("Decode failed: %v", err)
+			return nil, fmt.Errorf("decode: %v", err)
 		}
-		return &grpcResp, resp.StatusCode, ""
-	default:
-		body, err := io.ReadAll(io.LimitReader(resp.Body, 4*1024))
-		if err != nil {
-			return nil, resp.StatusCode, fmt.Sprintf("Read failed: %v", err)
-		}
-		return nil, resp.StatusCode, string(body)
+		return &grpcResp, nil
 	}
-}
-
-func (s *Server) writeMetadataToRedis(ctx context.Context, globalId string, metadata []DspMetaData) {
-	if len(metadata) == 0 {
-		return
-	}
-	bidRespsData, err := json.Marshal(metadata)
-	if err != nil {
-		log.Printf("failed to marshal metadata: %v", err)
-		return
-	}
-	bgCtx := context.Background()
-	if err := utils.WriteJsonToRedis(bgCtx, s.redisClient, globalId, constants.BID_RESPONSES_COLUMN, bidRespsData); err != nil {
-		log.Printf("failed to WriteJsonToRedis: %v", err)
-	}
+	return nil, nil
 }

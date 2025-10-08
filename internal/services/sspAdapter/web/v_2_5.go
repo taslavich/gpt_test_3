@@ -41,7 +41,7 @@ func postBid_V2_5(
 	}()
 	input := r.Context().Value(httpin.Input).(*postBidRequest_V2_5)
 
-	if input.Payload.Device == nil {
+	if input.Payload.BidRequest.Device == nil {
 		err := fmt.Errorf(
 			"There is no device object",
 		)
@@ -50,7 +50,7 @@ func postBid_V2_5(
 		return
 	}
 
-	deviceIp := input.Payload.Device.Ip
+	deviceIp := input.Payload.BidRequest.Device.Ip
 	if deviceIp == nil {
 		err := fmt.Errorf(
 			"There is no device ip",
@@ -105,6 +105,10 @@ func postBid_V2_5(
 		fmt.Printf("failed to marshal JSON in postBid_V2_5: %w", err)
 	}
 
+	if err := utils.WriteStringToRedis(ctx, redisClient, globalId, constants.SPP_DOMAIN_COLUMN, input.Payload.SppDomain); err != nil {
+		fmt.Printf("failed to WriteStringToRedis Domain in postBid_V2_5: %w", err)
+	}
+
 	if err := utils.WriteJsonToRedis(ctx, redisClient, globalId, constants.BID_REQUEST_COLUMN, bidReqData); err != nil {
 		fmt.Printf("failed to WriteJsonToRedis Bid Request in postBid_V2_5: %w", err)
 	}
@@ -121,12 +125,12 @@ func postBid_V2_5(
 		fmt.Printf("failed to WriteJsonToRedis TimeStamp in postBid_V2_5: %w", err)
 	}
 
-	if input.Payload.Device.Geo == nil {
-		input.Payload.Device.Geo = &ortb_V2_5.Geo{
+	if input.Payload.BidRequest.Device.Geo == nil {
+		input.Payload.BidRequest.Device.Geo = &ortb_V2_5.Geo{
 			Country: &countryISO,
 		}
 	} else {
-		input.Payload.Device.Geo.Country = &countryISO
+		input.Payload.BidRequest.Device.Geo.Country = &countryISO
 	}
 
 	reqCtx, cancel := context.WithTimeout(ctx, timeout)
@@ -138,7 +142,7 @@ func postBid_V2_5(
 	res, err := orchestratorClient.GetWinnerBid_V2_5(
 		reqCtx,
 		&orchestratorProto.OrchestratorRequest_V2_5{
-			BidRequest:  input.Payload,
+			BidRequest:  input.Payload.BidRequest,
 			SppEndpoint: r.Host,
 			GlobalId:    globalId,
 		},
