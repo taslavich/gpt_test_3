@@ -192,19 +192,24 @@ func (e *StatelessV25BidRequestExtractor) ExtractFieldValue(field FieldType, req
 		return e.extractNativeRequestV25(bidReq)
 	case FieldNativeVer:
 		return e.extractNativeVerV25(bidReq)
+	case FieldSiteID:
+		return e.extractSiteID(bidReq)
 	default:
 		return FieldValue{}
 	}
+}
+
+func (e *StatelessV25BidRequestExtractor) extractSiteID(req *ortb_V2_5.BidRequest) FieldValue {
+	if req.Site != nil && req.Site.Id != nil {
+		return NewStringValue(*req.Site.Id)
+	}
+	return NewStringValue("") // для exists: пустая строка == нет значения
 }
 
 func (e *StatelessV25BidRequestExtractor) extractNativeRequestV25(req *ortb_V2_5.BidRequest) FieldValue {
 	if req.Imp != nil {
 		for _, imp := range req.Imp {
 			if imp != nil && imp.Native != nil {
-				if imp.Native.Request != nil {
-					return NewStringValue(*imp.Native.Request)
-				}
-				// Альтернативное поле в некоторых сгенерённых моделях:
 				if imp.Native.Request != nil {
 					return NewStringValue(*imp.Native.Request)
 				}
