@@ -27,6 +27,11 @@ type BidRequest struct {
 	At            *int32                 `protobuf:"varint,2,opt,name=at,proto3,oneof" json:"at,omitempty"`
 	Imp           []*Imp                 `protobuf:"bytes,3,rep,name=imp,proto3" json:"imp,omitempty"`
 	Device        *Device                `protobuf:"bytes,4,opt,name=device,proto3,oneof" json:"device,omitempty"`
+	Site          *Site                  `protobuf:"bytes,5,opt,name=site,proto3,oneof" json:"site,omitempty"`
+	User          *User                  `protobuf:"bytes,6,opt,name=user,proto3,oneof" json:"user,omitempty"`
+	Tmax          *int32                 `protobuf:"varint,7,opt,name=tmax,proto3,oneof" json:"tmax,omitempty"`
+	Cur           []string               `protobuf:"bytes,8,rep,name=cur,proto3" json:"cur,omitempty"`
+	Bcat          []string               `protobuf:"bytes,9,rep,name=bcat,proto3" json:"bcat,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -89,12 +94,53 @@ func (x *BidRequest) GetDevice() *Device {
 	return nil
 }
 
+func (x *BidRequest) GetSite() *Site {
+	if x != nil {
+		return x.Site
+	}
+	return nil
+}
+
+func (x *BidRequest) GetUser() *User {
+	if x != nil {
+		return x.User
+	}
+	return nil
+}
+
+func (x *BidRequest) GetTmax() int32 {
+	if x != nil && x.Tmax != nil {
+		return *x.Tmax
+	}
+	return 0
+}
+
+func (x *BidRequest) GetCur() []string {
+	if x != nil {
+		return x.Cur
+	}
+	return nil
+}
+
+func (x *BidRequest) GetBcat() []string {
+	if x != nil {
+		return x.Bcat
+	}
+	return nil
+}
+
 type Imp struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Id            *string                `protobuf:"bytes,1,opt,name=id,proto3,oneof" json:"id,omitempty"`
 	BidFloor      *float32               `protobuf:"fixed32,2,opt,name=bidFloor,proto3,oneof" json:"bidFloor,omitempty"`
 	Banner        *Banner                `protobuf:"bytes,3,opt,name=banner,proto3,oneof" json:"banner,omitempty"`
 	Native        *Native                `protobuf:"bytes,4,opt,name=native,proto3,oneof" json:"native,omitempty"`
+	Tagid         *string                `protobuf:"bytes,5,opt,name=tagid,proto3,oneof" json:"tagid,omitempty"`
+	Secure        *int32                 `protobuf:"varint,6,opt,name=secure,proto3,oneof" json:"secure,omitempty"`
+	Instl         *int32                 `protobuf:"varint,7,opt,name=instl,proto3,oneof" json:"instl,omitempty"`
+	Bidfloorcur   *string                `protobuf:"bytes,8,opt,name=bidfloorcur,proto3,oneof" json:"bidfloorcur,omitempty"`
+	Video         *Video                 `protobuf:"bytes,9,opt,name=video,proto3,oneof" json:"video,omitempty"`
+	ImpExt        *Ext                   `protobuf:"bytes,10,opt,name=imp_ext,json=impExt,proto3,oneof" json:"imp_ext,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -157,9 +203,54 @@ func (x *Imp) GetNative() *Native {
 	return nil
 }
 
+func (x *Imp) GetTagid() string {
+	if x != nil && x.Tagid != nil {
+		return *x.Tagid
+	}
+	return ""
+}
+
+func (x *Imp) GetSecure() int32 {
+	if x != nil && x.Secure != nil {
+		return *x.Secure
+	}
+	return 0
+}
+
+func (x *Imp) GetInstl() int32 {
+	if x != nil && x.Instl != nil {
+		return *x.Instl
+	}
+	return 0
+}
+
+func (x *Imp) GetBidfloorcur() string {
+	if x != nil && x.Bidfloorcur != nil {
+		return *x.Bidfloorcur
+	}
+	return ""
+}
+
+func (x *Imp) GetVideo() *Video {
+	if x != nil {
+		return x.Video
+	}
+	return nil
+}
+
+func (x *Imp) GetImpExt() *Ext {
+	if x != nil {
+		return x.ImpExt
+	}
+	return nil
+}
+
 type Native struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Request       *string                `protobuf:"bytes,1,opt,name=request,proto3,oneof" json:"request,omitempty"`
+	Ver           *string                `protobuf:"bytes,2,opt,name=ver,proto3,oneof" json:"ver,omitempty"`
+	Api           []int32                `protobuf:"varint,3,rep,packed,name=api,proto3" json:"api,omitempty"`
+	Battr         []int32                `protobuf:"varint,4,rep,packed,name=battr,proto3" json:"battr,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -201,10 +292,38 @@ func (x *Native) GetRequest() string {
 	return ""
 }
 
+func (x *Native) GetVer() string {
+	if x != nil && x.Ver != nil {
+		return *x.Ver
+	}
+	return ""
+}
+
+func (x *Native) GetApi() []int32 {
+	if x != nil {
+		return x.Api
+	}
+	return nil
+}
+
+func (x *Native) GetBattr() []int32 {
+	if x != nil {
+		return x.Battr
+	}
+	return nil
+}
+
 type Banner struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	W             *int32                 `protobuf:"varint,1,opt,name=w,proto3,oneof" json:"w,omitempty"`
 	H             *int32                 `protobuf:"varint,2,opt,name=h,proto3,oneof" json:"h,omitempty"`
+	Btype         []int32                `protobuf:"varint,3,rep,packed,name=btype,proto3" json:"btype,omitempty"`
+	Battr         []int32                `protobuf:"varint,4,rep,packed,name=battr,proto3" json:"battr,omitempty"`
+	Pos           *int32                 `protobuf:"varint,5,opt,name=pos,proto3,oneof" json:"pos,omitempty"`
+	Mimes         []string               `protobuf:"bytes,6,rep,name=mimes,proto3" json:"mimes,omitempty"`
+	Expdir        []int32                `protobuf:"varint,7,rep,packed,name=expdir,proto3" json:"expdir,omitempty"`
+	Api           []int32                `protobuf:"varint,8,rep,packed,name=api,proto3" json:"api,omitempty"`
+	Id            *string                `protobuf:"bytes,9,opt,name=id,proto3,oneof" json:"id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -253,10 +372,63 @@ func (x *Banner) GetH() int32 {
 	return 0
 }
 
+func (x *Banner) GetBtype() []int32 {
+	if x != nil {
+		return x.Btype
+	}
+	return nil
+}
+
+func (x *Banner) GetBattr() []int32 {
+	if x != nil {
+		return x.Battr
+	}
+	return nil
+}
+
+func (x *Banner) GetPos() int32 {
+	if x != nil && x.Pos != nil {
+		return *x.Pos
+	}
+	return 0
+}
+
+func (x *Banner) GetMimes() []string {
+	if x != nil {
+		return x.Mimes
+	}
+	return nil
+}
+
+func (x *Banner) GetExpdir() []int32 {
+	if x != nil {
+		return x.Expdir
+	}
+	return nil
+}
+
+func (x *Banner) GetApi() []int32 {
+	if x != nil {
+		return x.Api
+	}
+	return nil
+}
+
+func (x *Banner) GetId() string {
+	if x != nil && x.Id != nil {
+		return *x.Id
+	}
+	return ""
+}
+
 type Device struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Ip            *string                `protobuf:"bytes,1,opt,name=ip,proto3,oneof" json:"ip,omitempty"`
 	Geo           *Geo                   `protobuf:"bytes,2,opt,name=geo,proto3,oneof" json:"geo,omitempty"`
+	Ua            *string                `protobuf:"bytes,3,opt,name=ua,proto3,oneof" json:"ua,omitempty"`
+	Js            *int32                 `protobuf:"varint,4,opt,name=js,proto3,oneof" json:"js,omitempty"`
+	Language      *string                `protobuf:"bytes,5,opt,name=language,proto3,oneof" json:"language,omitempty"`
+	DeviceExt     *Ext                   `protobuf:"bytes,6,opt,name=device_ext,json=deviceExt,proto3,oneof" json:"device_ext,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -305,9 +477,42 @@ func (x *Device) GetGeo() *Geo {
 	return nil
 }
 
+func (x *Device) GetUa() string {
+	if x != nil && x.Ua != nil {
+		return *x.Ua
+	}
+	return ""
+}
+
+func (x *Device) GetJs() int32 {
+	if x != nil && x.Js != nil {
+		return *x.Js
+	}
+	return 0
+}
+
+func (x *Device) GetLanguage() string {
+	if x != nil && x.Language != nil {
+		return *x.Language
+	}
+	return ""
+}
+
+func (x *Device) GetDeviceExt() *Ext {
+	if x != nil {
+		return x.DeviceExt
+	}
+	return nil
+}
+
 type Geo struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Country       *string                `protobuf:"bytes,1,opt,name=country,proto3,oneof" json:"country,omitempty"`
+	Lat           *float32               `protobuf:"fixed32,2,opt,name=lat,proto3,oneof" json:"lat,omitempty"`
+	Lon           *float32               `protobuf:"fixed32,3,opt,name=lon,proto3,oneof" json:"lon,omitempty"`
+	Region        *string                `protobuf:"bytes,4,opt,name=region,proto3,oneof" json:"region,omitempty"`
+	City          *string                `protobuf:"bytes,5,opt,name=city,proto3,oneof" json:"city,omitempty"`
+	Zip           *string                `protobuf:"bytes,6,opt,name=zip,proto3,oneof" json:"zip,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -349,6 +554,393 @@ func (x *Geo) GetCountry() string {
 	return ""
 }
 
+func (x *Geo) GetLat() float32 {
+	if x != nil && x.Lat != nil {
+		return *x.Lat
+	}
+	return 0
+}
+
+func (x *Geo) GetLon() float32 {
+	if x != nil && x.Lon != nil {
+		return *x.Lon
+	}
+	return 0
+}
+
+func (x *Geo) GetRegion() string {
+	if x != nil && x.Region != nil {
+		return *x.Region
+	}
+	return ""
+}
+
+func (x *Geo) GetCity() string {
+	if x != nil && x.City != nil {
+		return *x.City
+	}
+	return ""
+}
+
+func (x *Geo) GetZip() string {
+	if x != nil && x.Zip != nil {
+		return *x.Zip
+	}
+	return ""
+}
+
+type Site struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Id            *string                `protobuf:"bytes,1,opt,name=id,proto3,oneof" json:"id,omitempty"`
+	Name          *string                `protobuf:"bytes,2,opt,name=name,proto3,oneof" json:"name,omitempty"`
+	Page          *string                `protobuf:"bytes,3,opt,name=page,proto3,oneof" json:"page,omitempty"`
+	Domain        *string                `protobuf:"bytes,4,opt,name=domain,proto3,oneof" json:"domain,omitempty"`
+	Ref           *string                `protobuf:"bytes,5,opt,name=ref,proto3,oneof" json:"ref,omitempty"`
+	Cat           []string               `protobuf:"bytes,6,rep,name=cat,proto3" json:"cat,omitempty"`
+	Publisher     *Publisher             `protobuf:"bytes,7,opt,name=publisher,proto3,oneof" json:"publisher,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *Site) Reset() {
+	*x = Site{}
+	mi := &file_types_ortb_V2_5_ortb_proto_msgTypes[6]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *Site) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*Site) ProtoMessage() {}
+
+func (x *Site) ProtoReflect() protoreflect.Message {
+	mi := &file_types_ortb_V2_5_ortb_proto_msgTypes[6]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use Site.ProtoReflect.Descriptor instead.
+func (*Site) Descriptor() ([]byte, []int) {
+	return file_types_ortb_V2_5_ortb_proto_rawDescGZIP(), []int{6}
+}
+
+func (x *Site) GetId() string {
+	if x != nil && x.Id != nil {
+		return *x.Id
+	}
+	return ""
+}
+
+func (x *Site) GetName() string {
+	if x != nil && x.Name != nil {
+		return *x.Name
+	}
+	return ""
+}
+
+func (x *Site) GetPage() string {
+	if x != nil && x.Page != nil {
+		return *x.Page
+	}
+	return ""
+}
+
+func (x *Site) GetDomain() string {
+	if x != nil && x.Domain != nil {
+		return *x.Domain
+	}
+	return ""
+}
+
+func (x *Site) GetRef() string {
+	if x != nil && x.Ref != nil {
+		return *x.Ref
+	}
+	return ""
+}
+
+func (x *Site) GetCat() []string {
+	if x != nil {
+		return x.Cat
+	}
+	return nil
+}
+
+func (x *Site) GetPublisher() *Publisher {
+	if x != nil {
+		return x.Publisher
+	}
+	return nil
+}
+
+type Publisher struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Id            *string                `protobuf:"bytes,1,opt,name=id,proto3,oneof" json:"id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *Publisher) Reset() {
+	*x = Publisher{}
+	mi := &file_types_ortb_V2_5_ortb_proto_msgTypes[7]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *Publisher) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*Publisher) ProtoMessage() {}
+
+func (x *Publisher) ProtoReflect() protoreflect.Message {
+	mi := &file_types_ortb_V2_5_ortb_proto_msgTypes[7]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use Publisher.ProtoReflect.Descriptor instead.
+func (*Publisher) Descriptor() ([]byte, []int) {
+	return file_types_ortb_V2_5_ortb_proto_rawDescGZIP(), []int{7}
+}
+
+func (x *Publisher) GetId() string {
+	if x != nil && x.Id != nil {
+		return *x.Id
+	}
+	return ""
+}
+
+type User struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Id            *string                `protobuf:"bytes,1,opt,name=id,proto3,oneof" json:"id,omitempty"`
+	Keywords      *string                `protobuf:"bytes,2,opt,name=keywords,proto3,oneof" json:"keywords,omitempty"`
+	Buyeruid      *string                `protobuf:"bytes,3,opt,name=buyeruid,proto3,oneof" json:"buyeruid,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *User) Reset() {
+	*x = User{}
+	mi := &file_types_ortb_V2_5_ortb_proto_msgTypes[8]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *User) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*User) ProtoMessage() {}
+
+func (x *User) ProtoReflect() protoreflect.Message {
+	mi := &file_types_ortb_V2_5_ortb_proto_msgTypes[8]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use User.ProtoReflect.Descriptor instead.
+func (*User) Descriptor() ([]byte, []int) {
+	return file_types_ortb_V2_5_ortb_proto_rawDescGZIP(), []int{8}
+}
+
+func (x *User) GetId() string {
+	if x != nil && x.Id != nil {
+		return *x.Id
+	}
+	return ""
+}
+
+func (x *User) GetKeywords() string {
+	if x != nil && x.Keywords != nil {
+		return *x.Keywords
+	}
+	return ""
+}
+
+func (x *User) GetBuyeruid() string {
+	if x != nil && x.Buyeruid != nil {
+		return *x.Buyeruid
+	}
+	return ""
+}
+
+type Video struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Mimes         []string               `protobuf:"bytes,1,rep,name=mimes,proto3" json:"mimes,omitempty"`
+	Protocols     []int32                `protobuf:"varint,2,rep,packed,name=protocols,proto3" json:"protocols,omitempty"`
+	W             *int32                 `protobuf:"varint,3,opt,name=w,proto3,oneof" json:"w,omitempty"`
+	H             *int32                 `protobuf:"varint,4,opt,name=h,proto3,oneof" json:"h,omitempty"`
+	Linearity     *int32                 `protobuf:"varint,5,opt,name=linearity,proto3,oneof" json:"linearity,omitempty"`
+	Skip          *int32                 `protobuf:"varint,6,opt,name=skip,proto3,oneof" json:"skip,omitempty"`
+	Sequence      *int32                 `protobuf:"varint,7,opt,name=sequence,proto3,oneof" json:"sequence,omitempty"`
+	Boxingallowed *int32                 `protobuf:"varint,8,opt,name=boxingallowed,proto3,oneof" json:"boxingallowed,omitempty"`
+	Placement     *int32                 `protobuf:"varint,9,opt,name=placement,proto3,oneof" json:"placement,omitempty"`
+	Minduration   *int32                 `protobuf:"varint,10,opt,name=minduration,proto3,oneof" json:"minduration,omitempty"`
+	Maxduration   *int32                 `protobuf:"varint,11,opt,name=maxduration,proto3,oneof" json:"maxduration,omitempty"`
+	Startdelay    *int32                 `protobuf:"varint,12,opt,name=startdelay,proto3,oneof" json:"startdelay,omitempty"`
+	Battr         []int32                `protobuf:"varint,13,rep,packed,name=battr,proto3" json:"battr,omitempty"`
+	Api           []int32                `protobuf:"varint,14,rep,packed,name=api,proto3" json:"api,omitempty"`
+	Pos           *int32                 `protobuf:"varint,15,opt,name=pos,proto3,oneof" json:"pos,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *Video) Reset() {
+	*x = Video{}
+	mi := &file_types_ortb_V2_5_ortb_proto_msgTypes[9]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *Video) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*Video) ProtoMessage() {}
+
+func (x *Video) ProtoReflect() protoreflect.Message {
+	mi := &file_types_ortb_V2_5_ortb_proto_msgTypes[9]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use Video.ProtoReflect.Descriptor instead.
+func (*Video) Descriptor() ([]byte, []int) {
+	return file_types_ortb_V2_5_ortb_proto_rawDescGZIP(), []int{9}
+}
+
+func (x *Video) GetMimes() []string {
+	if x != nil {
+		return x.Mimes
+	}
+	return nil
+}
+
+func (x *Video) GetProtocols() []int32 {
+	if x != nil {
+		return x.Protocols
+	}
+	return nil
+}
+
+func (x *Video) GetW() int32 {
+	if x != nil && x.W != nil {
+		return *x.W
+	}
+	return 0
+}
+
+func (x *Video) GetH() int32 {
+	if x != nil && x.H != nil {
+		return *x.H
+	}
+	return 0
+}
+
+func (x *Video) GetLinearity() int32 {
+	if x != nil && x.Linearity != nil {
+		return *x.Linearity
+	}
+	return 0
+}
+
+func (x *Video) GetSkip() int32 {
+	if x != nil && x.Skip != nil {
+		return *x.Skip
+	}
+	return 0
+}
+
+func (x *Video) GetSequence() int32 {
+	if x != nil && x.Sequence != nil {
+		return *x.Sequence
+	}
+	return 0
+}
+
+func (x *Video) GetBoxingallowed() int32 {
+	if x != nil && x.Boxingallowed != nil {
+		return *x.Boxingallowed
+	}
+	return 0
+}
+
+func (x *Video) GetPlacement() int32 {
+	if x != nil && x.Placement != nil {
+		return *x.Placement
+	}
+	return 0
+}
+
+func (x *Video) GetMinduration() int32 {
+	if x != nil && x.Minduration != nil {
+		return *x.Minduration
+	}
+	return 0
+}
+
+func (x *Video) GetMaxduration() int32 {
+	if x != nil && x.Maxduration != nil {
+		return *x.Maxduration
+	}
+	return 0
+}
+
+func (x *Video) GetStartdelay() int32 {
+	if x != nil && x.Startdelay != nil {
+		return *x.Startdelay
+	}
+	return 0
+}
+
+func (x *Video) GetBattr() []int32 {
+	if x != nil {
+		return x.Battr
+	}
+	return nil
+}
+
+func (x *Video) GetApi() []int32 {
+	if x != nil {
+		return x.Api
+	}
+	return nil
+}
+
+func (x *Video) GetPos() int32 {
+	if x != nil && x.Pos != nil {
+		return *x.Pos
+	}
+	return 0
+}
+
 type SeatBid struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Bid           []*Bid                 `protobuf:"bytes,1,rep,name=bid,proto3" json:"bid,omitempty"`
@@ -358,7 +950,7 @@ type SeatBid struct {
 
 func (x *SeatBid) Reset() {
 	*x = SeatBid{}
-	mi := &file_types_ortb_V2_5_ortb_proto_msgTypes[6]
+	mi := &file_types_ortb_V2_5_ortb_proto_msgTypes[10]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -370,7 +962,7 @@ func (x *SeatBid) String() string {
 func (*SeatBid) ProtoMessage() {}
 
 func (x *SeatBid) ProtoReflect() protoreflect.Message {
-	mi := &file_types_ortb_V2_5_ortb_proto_msgTypes[6]
+	mi := &file_types_ortb_V2_5_ortb_proto_msgTypes[10]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -383,7 +975,7 @@ func (x *SeatBid) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SeatBid.ProtoReflect.Descriptor instead.
 func (*SeatBid) Descriptor() ([]byte, []int) {
-	return file_types_ortb_V2_5_ortb_proto_rawDescGZIP(), []int{6}
+	return file_types_ortb_V2_5_ortb_proto_rawDescGZIP(), []int{10}
 }
 
 func (x *SeatBid) GetBid() []*Bid {
@@ -401,13 +993,23 @@ type Bid struct {
 	Adid          *string                `protobuf:"bytes,4,opt,name=adid,proto3,oneof" json:"adid,omitempty"`
 	Nurl          *string                `protobuf:"bytes,5,opt,name=nurl,proto3,oneof" json:"nurl,omitempty"`
 	Burl          *string                `protobuf:"bytes,6,opt,name=burl,proto3,oneof" json:"burl,omitempty"`
+	Adm           *string                `protobuf:"bytes,7,opt,name=adm,proto3,oneof" json:"adm,omitempty"`
+	Adomain       []string               `protobuf:"bytes,8,rep,name=adomain,proto3" json:"adomain,omitempty"`
+	Bundle        *string                `protobuf:"bytes,9,opt,name=bundle,proto3,oneof" json:"bundle,omitempty"`
+	Iurl          *string                `protobuf:"bytes,10,opt,name=iurl,proto3,oneof" json:"iurl,omitempty"`
+	Cid           *string                `protobuf:"bytes,11,opt,name=cid,proto3,oneof" json:"cid,omitempty"`
+	Crid          *string                `protobuf:"bytes,12,opt,name=crid,proto3,oneof" json:"crid,omitempty"`
+	Attr          []int32                `protobuf:"varint,13,rep,packed,name=attr,proto3" json:"attr,omitempty"`
+	Dealid        *string                `protobuf:"bytes,14,opt,name=dealid,proto3,oneof" json:"dealid,omitempty"`
+	W             *int32                 `protobuf:"varint,15,opt,name=w,proto3,oneof" json:"w,omitempty"`
+	H             *int32                 `protobuf:"varint,16,opt,name=h,proto3,oneof" json:"h,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
 func (x *Bid) Reset() {
 	*x = Bid{}
-	mi := &file_types_ortb_V2_5_ortb_proto_msgTypes[7]
+	mi := &file_types_ortb_V2_5_ortb_proto_msgTypes[11]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -419,7 +1021,7 @@ func (x *Bid) String() string {
 func (*Bid) ProtoMessage() {}
 
 func (x *Bid) ProtoReflect() protoreflect.Message {
-	mi := &file_types_ortb_V2_5_ortb_proto_msgTypes[7]
+	mi := &file_types_ortb_V2_5_ortb_proto_msgTypes[11]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -432,7 +1034,7 @@ func (x *Bid) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Bid.ProtoReflect.Descriptor instead.
 func (*Bid) Descriptor() ([]byte, []int) {
-	return file_types_ortb_V2_5_ortb_proto_rawDescGZIP(), []int{7}
+	return file_types_ortb_V2_5_ortb_proto_rawDescGZIP(), []int{11}
 }
 
 func (x *Bid) GetId() string {
@@ -477,17 +1079,90 @@ func (x *Bid) GetBurl() string {
 	return ""
 }
 
+func (x *Bid) GetAdm() string {
+	if x != nil && x.Adm != nil {
+		return *x.Adm
+	}
+	return ""
+}
+
+func (x *Bid) GetAdomain() []string {
+	if x != nil {
+		return x.Adomain
+	}
+	return nil
+}
+
+func (x *Bid) GetBundle() string {
+	if x != nil && x.Bundle != nil {
+		return *x.Bundle
+	}
+	return ""
+}
+
+func (x *Bid) GetIurl() string {
+	if x != nil && x.Iurl != nil {
+		return *x.Iurl
+	}
+	return ""
+}
+
+func (x *Bid) GetCid() string {
+	if x != nil && x.Cid != nil {
+		return *x.Cid
+	}
+	return ""
+}
+
+func (x *Bid) GetCrid() string {
+	if x != nil && x.Crid != nil {
+		return *x.Crid
+	}
+	return ""
+}
+
+func (x *Bid) GetAttr() []int32 {
+	if x != nil {
+		return x.Attr
+	}
+	return nil
+}
+
+func (x *Bid) GetDealid() string {
+	if x != nil && x.Dealid != nil {
+		return *x.Dealid
+	}
+	return ""
+}
+
+func (x *Bid) GetW() int32 {
+	if x != nil && x.W != nil {
+		return *x.W
+	}
+	return 0
+}
+
+func (x *Bid) GetH() int32 {
+	if x != nil && x.H != nil {
+		return *x.H
+	}
+	return 0
+}
+
 type BidResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Id            *string                `protobuf:"bytes,1,opt,name=id,proto3,oneof" json:"id,omitempty"`
 	Seatbid       *SeatBid               `protobuf:"bytes,2,opt,name=seatbid,proto3,oneof" json:"seatbid,omitempty"`
+	Bidid         *string                `protobuf:"bytes,3,opt,name=bidid,proto3,oneof" json:"bidid,omitempty"`
+	Cur           *string                `protobuf:"bytes,4,opt,name=cur,proto3,oneof" json:"cur,omitempty"`
+	Nbr           *int32                 `protobuf:"varint,5,opt,name=nbr,proto3,oneof" json:"nbr,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
 func (x *BidResponse) Reset() {
 	*x = BidResponse{}
-	mi := &file_types_ortb_V2_5_ortb_proto_msgTypes[8]
+	mi := &file_types_ortb_V2_5_ortb_proto_msgTypes[12]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -499,7 +1174,7 @@ func (x *BidResponse) String() string {
 func (*BidResponse) ProtoMessage() {}
 
 func (x *BidResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_types_ortb_V2_5_ortb_proto_msgTypes[8]
+	mi := &file_types_ortb_V2_5_ortb_proto_msgTypes[12]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -512,7 +1187,7 @@ func (x *BidResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use BidResponse.ProtoReflect.Descriptor instead.
 func (*BidResponse) Descriptor() ([]byte, []int) {
-	return file_types_ortb_V2_5_ortb_proto_rawDescGZIP(), []int{8}
+	return file_types_ortb_V2_5_ortb_proto_rawDescGZIP(), []int{12}
 }
 
 func (x *BidResponse) GetId() string {
@@ -529,68 +1204,276 @@ func (x *BidResponse) GetSeatbid() *SeatBid {
 	return nil
 }
 
+func (x *BidResponse) GetBidid() string {
+	if x != nil && x.Bidid != nil {
+		return *x.Bidid
+	}
+	return ""
+}
+
+func (x *BidResponse) GetCur() string {
+	if x != nil && x.Cur != nil {
+		return *x.Cur
+	}
+	return ""
+}
+
+func (x *BidResponse) GetNbr() int32 {
+	if x != nil && x.Nbr != nil {
+		return *x.Nbr
+	}
+	return 0
+}
+
+type Ext struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Values        map[string]string      `protobuf:"bytes,1,rep,name=values,proto3" json:"values,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *Ext) Reset() {
+	*x = Ext{}
+	mi := &file_types_ortb_V2_5_ortb_proto_msgTypes[13]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *Ext) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*Ext) ProtoMessage() {}
+
+func (x *Ext) ProtoReflect() protoreflect.Message {
+	mi := &file_types_ortb_V2_5_ortb_proto_msgTypes[13]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use Ext.ProtoReflect.Descriptor instead.
+func (*Ext) Descriptor() ([]byte, []int) {
+	return file_types_ortb_V2_5_ortb_proto_rawDescGZIP(), []int{13}
+}
+
+func (x *Ext) GetValues() map[string]string {
+	if x != nil {
+		return x.Values
+	}
+	return nil
+}
+
 var File_types_ortb_V2_5_ortb_proto protoreflect.FileDescriptor
 
 const file_types_ortb_V2_5_ortb_proto_rawDesc = "" +
 	"\n" +
-	"\x1atypes/ortb_V2_5/ortb.proto\x12\tortb_V2_5\"\xa1\x01\n" +
+	"\x1atypes/ortb_V2_5/ortb.proto\x12\tortb_V2_5\"\xcf\x02\n" +
 	"\n" +
 	"BidRequest\x12\x13\n" +
 	"\x02id\x18\x01 \x01(\tH\x00R\x02id\x88\x01\x01\x12\x13\n" +
 	"\x02at\x18\x02 \x01(\x05H\x01R\x02at\x88\x01\x01\x12 \n" +
 	"\x03imp\x18\x03 \x03(\v2\x0e.ortb_V2_5.ImpR\x03imp\x12.\n" +
-	"\x06device\x18\x04 \x01(\v2\x11.ortb_V2_5.DeviceH\x02R\x06device\x88\x01\x01B\x05\n" +
+	"\x06device\x18\x04 \x01(\v2\x11.ortb_V2_5.DeviceH\x02R\x06device\x88\x01\x01\x12(\n" +
+	"\x04site\x18\x05 \x01(\v2\x0f.ortb_V2_5.SiteH\x03R\x04site\x88\x01\x01\x12(\n" +
+	"\x04user\x18\x06 \x01(\v2\x0f.ortb_V2_5.UserH\x04R\x04user\x88\x01\x01\x12\x17\n" +
+	"\x04tmax\x18\a \x01(\x05H\x05R\x04tmax\x88\x01\x01\x12\x10\n" +
+	"\x03cur\x18\b \x03(\tR\x03cur\x12\x12\n" +
+	"\x04bcat\x18\t \x03(\tR\x04bcatB\x05\n" +
 	"\x03_idB\x05\n" +
 	"\x03_atB\t\n" +
-	"\a_device\"\xc5\x01\n" +
+	"\a_deviceB\a\n" +
+	"\x05_siteB\a\n" +
+	"\x05_userB\a\n" +
+	"\x05_tmax\"\xdf\x03\n" +
 	"\x03Imp\x12\x13\n" +
 	"\x02id\x18\x01 \x01(\tH\x00R\x02id\x88\x01\x01\x12\x1f\n" +
 	"\bbidFloor\x18\x02 \x01(\x02H\x01R\bbidFloor\x88\x01\x01\x12.\n" +
 	"\x06banner\x18\x03 \x01(\v2\x11.ortb_V2_5.BannerH\x02R\x06banner\x88\x01\x01\x12.\n" +
-	"\x06native\x18\x04 \x01(\v2\x11.ortb_V2_5.NativeH\x03R\x06native\x88\x01\x01B\x05\n" +
+	"\x06native\x18\x04 \x01(\v2\x11.ortb_V2_5.NativeH\x03R\x06native\x88\x01\x01\x12\x19\n" +
+	"\x05tagid\x18\x05 \x01(\tH\x04R\x05tagid\x88\x01\x01\x12\x1b\n" +
+	"\x06secure\x18\x06 \x01(\x05H\x05R\x06secure\x88\x01\x01\x12\x19\n" +
+	"\x05instl\x18\a \x01(\x05H\x06R\x05instl\x88\x01\x01\x12%\n" +
+	"\vbidfloorcur\x18\b \x01(\tH\aR\vbidfloorcur\x88\x01\x01\x12+\n" +
+	"\x05video\x18\t \x01(\v2\x10.ortb_V2_5.VideoH\bR\x05video\x88\x01\x01\x12,\n" +
+	"\aimp_ext\x18\n" +
+	" \x01(\v2\x0e.ortb_V2_5.ExtH\tR\x06impExt\x88\x01\x01B\x05\n" +
 	"\x03_idB\v\n" +
 	"\t_bidFloorB\t\n" +
 	"\a_bannerB\t\n" +
-	"\a_native\"3\n" +
-	"\x06Native\x12\x1d\n" +
-	"\arequest\x18\x01 \x01(\tH\x00R\arequest\x88\x01\x01B\n" +
+	"\a_nativeB\b\n" +
+	"\x06_tagidB\t\n" +
+	"\a_secureB\b\n" +
+	"\x06_instlB\x0e\n" +
+	"\f_bidfloorcurB\b\n" +
+	"\x06_videoB\n" +
 	"\n" +
-	"\b_request\":\n" +
+	"\b_imp_ext\"z\n" +
+	"\x06Native\x12\x1d\n" +
+	"\arequest\x18\x01 \x01(\tH\x00R\arequest\x88\x01\x01\x12\x15\n" +
+	"\x03ver\x18\x02 \x01(\tH\x01R\x03ver\x88\x01\x01\x12\x10\n" +
+	"\x03api\x18\x03 \x03(\x05R\x03api\x12\x14\n" +
+	"\x05battr\x18\x04 \x03(\x05R\x05battrB\n" +
+	"\n" +
+	"\b_requestB\x06\n" +
+	"\x04_ver\"\xe1\x01\n" +
 	"\x06Banner\x12\x11\n" +
 	"\x01w\x18\x01 \x01(\x05H\x00R\x01w\x88\x01\x01\x12\x11\n" +
-	"\x01h\x18\x02 \x01(\x05H\x01R\x01h\x88\x01\x01B\x04\n" +
+	"\x01h\x18\x02 \x01(\x05H\x01R\x01h\x88\x01\x01\x12\x14\n" +
+	"\x05btype\x18\x03 \x03(\x05R\x05btype\x12\x14\n" +
+	"\x05battr\x18\x04 \x03(\x05R\x05battr\x12\x15\n" +
+	"\x03pos\x18\x05 \x01(\x05H\x02R\x03pos\x88\x01\x01\x12\x14\n" +
+	"\x05mimes\x18\x06 \x03(\tR\x05mimes\x12\x16\n" +
+	"\x06expdir\x18\a \x03(\x05R\x06expdir\x12\x10\n" +
+	"\x03api\x18\b \x03(\x05R\x03api\x12\x13\n" +
+	"\x02id\x18\t \x01(\tH\x03R\x02id\x88\x01\x01B\x04\n" +
 	"\x02_wB\x04\n" +
-	"\x02_h\"S\n" +
+	"\x02_hB\x06\n" +
+	"\x04_posB\x05\n" +
+	"\x03_id\"\xfc\x01\n" +
 	"\x06Device\x12\x13\n" +
 	"\x02ip\x18\x01 \x01(\tH\x00R\x02ip\x88\x01\x01\x12%\n" +
-	"\x03geo\x18\x02 \x01(\v2\x0e.ortb_V2_5.GeoH\x01R\x03geo\x88\x01\x01B\x05\n" +
-	"\x03_ipB\x06\n" +
-	"\x04_geo\"0\n" +
-	"\x03Geo\x12\x1d\n" +
-	"\acountry\x18\x01 \x01(\tH\x00R\acountry\x88\x01\x01B\n" +
+	"\x03geo\x18\x02 \x01(\v2\x0e.ortb_V2_5.GeoH\x01R\x03geo\x88\x01\x01\x12\x13\n" +
+	"\x02ua\x18\x03 \x01(\tH\x02R\x02ua\x88\x01\x01\x12\x13\n" +
+	"\x02js\x18\x04 \x01(\x05H\x03R\x02js\x88\x01\x01\x12\x1f\n" +
+	"\blanguage\x18\x05 \x01(\tH\x04R\blanguage\x88\x01\x01\x122\n" +
 	"\n" +
-	"\b_country\"+\n" +
+	"device_ext\x18\x06 \x01(\v2\x0e.ortb_V2_5.ExtH\x05R\tdeviceExt\x88\x01\x01B\x05\n" +
+	"\x03_ipB\x06\n" +
+	"\x04_geoB\x05\n" +
+	"\x03_uaB\x05\n" +
+	"\x03_jsB\v\n" +
+	"\t_languageB\r\n" +
+	"\v_device_ext\"\xd7\x01\n" +
+	"\x03Geo\x12\x1d\n" +
+	"\acountry\x18\x01 \x01(\tH\x00R\acountry\x88\x01\x01\x12\x15\n" +
+	"\x03lat\x18\x02 \x01(\x02H\x01R\x03lat\x88\x01\x01\x12\x15\n" +
+	"\x03lon\x18\x03 \x01(\x02H\x02R\x03lon\x88\x01\x01\x12\x1b\n" +
+	"\x06region\x18\x04 \x01(\tH\x03R\x06region\x88\x01\x01\x12\x17\n" +
+	"\x04city\x18\x05 \x01(\tH\x04R\x04city\x88\x01\x01\x12\x15\n" +
+	"\x03zip\x18\x06 \x01(\tH\x05R\x03zip\x88\x01\x01B\n" +
+	"\n" +
+	"\b_countryB\x06\n" +
+	"\x04_latB\x06\n" +
+	"\x04_lonB\t\n" +
+	"\a_regionB\a\n" +
+	"\x05_cityB\x06\n" +
+	"\x04_zip\"\x86\x02\n" +
+	"\x04Site\x12\x13\n" +
+	"\x02id\x18\x01 \x01(\tH\x00R\x02id\x88\x01\x01\x12\x17\n" +
+	"\x04name\x18\x02 \x01(\tH\x01R\x04name\x88\x01\x01\x12\x17\n" +
+	"\x04page\x18\x03 \x01(\tH\x02R\x04page\x88\x01\x01\x12\x1b\n" +
+	"\x06domain\x18\x04 \x01(\tH\x03R\x06domain\x88\x01\x01\x12\x15\n" +
+	"\x03ref\x18\x05 \x01(\tH\x04R\x03ref\x88\x01\x01\x12\x10\n" +
+	"\x03cat\x18\x06 \x03(\tR\x03cat\x127\n" +
+	"\tpublisher\x18\a \x01(\v2\x14.ortb_V2_5.PublisherH\x05R\tpublisher\x88\x01\x01B\x05\n" +
+	"\x03_idB\a\n" +
+	"\x05_nameB\a\n" +
+	"\x05_pageB\t\n" +
+	"\a_domainB\x06\n" +
+	"\x04_refB\f\n" +
+	"\n" +
+	"_publisher\"'\n" +
+	"\tPublisher\x12\x13\n" +
+	"\x02id\x18\x01 \x01(\tH\x00R\x02id\x88\x01\x01B\x05\n" +
+	"\x03_id\"~\n" +
+	"\x04User\x12\x13\n" +
+	"\x02id\x18\x01 \x01(\tH\x00R\x02id\x88\x01\x01\x12\x1f\n" +
+	"\bkeywords\x18\x02 \x01(\tH\x01R\bkeywords\x88\x01\x01\x12\x1f\n" +
+	"\bbuyeruid\x18\x03 \x01(\tH\x02R\bbuyeruid\x88\x01\x01B\x05\n" +
+	"\x03_idB\v\n" +
+	"\t_keywordsB\v\n" +
+	"\t_buyeruid\"\xc5\x04\n" +
+	"\x05Video\x12\x14\n" +
+	"\x05mimes\x18\x01 \x03(\tR\x05mimes\x12\x1c\n" +
+	"\tprotocols\x18\x02 \x03(\x05R\tprotocols\x12\x11\n" +
+	"\x01w\x18\x03 \x01(\x05H\x00R\x01w\x88\x01\x01\x12\x11\n" +
+	"\x01h\x18\x04 \x01(\x05H\x01R\x01h\x88\x01\x01\x12!\n" +
+	"\tlinearity\x18\x05 \x01(\x05H\x02R\tlinearity\x88\x01\x01\x12\x17\n" +
+	"\x04skip\x18\x06 \x01(\x05H\x03R\x04skip\x88\x01\x01\x12\x1f\n" +
+	"\bsequence\x18\a \x01(\x05H\x04R\bsequence\x88\x01\x01\x12)\n" +
+	"\rboxingallowed\x18\b \x01(\x05H\x05R\rboxingallowed\x88\x01\x01\x12!\n" +
+	"\tplacement\x18\t \x01(\x05H\x06R\tplacement\x88\x01\x01\x12%\n" +
+	"\vminduration\x18\n" +
+	" \x01(\x05H\aR\vminduration\x88\x01\x01\x12%\n" +
+	"\vmaxduration\x18\v \x01(\x05H\bR\vmaxduration\x88\x01\x01\x12#\n" +
+	"\n" +
+	"startdelay\x18\f \x01(\x05H\tR\n" +
+	"startdelay\x88\x01\x01\x12\x14\n" +
+	"\x05battr\x18\r \x03(\x05R\x05battr\x12\x10\n" +
+	"\x03api\x18\x0e \x03(\x05R\x03api\x12\x15\n" +
+	"\x03pos\x18\x0f \x01(\x05H\n" +
+	"R\x03pos\x88\x01\x01B\x04\n" +
+	"\x02_wB\x04\n" +
+	"\x02_hB\f\n" +
+	"\n" +
+	"_linearityB\a\n" +
+	"\x05_skipB\v\n" +
+	"\t_sequenceB\x10\n" +
+	"\x0e_boxingallowedB\f\n" +
+	"\n" +
+	"_placementB\x0e\n" +
+	"\f_mindurationB\x0e\n" +
+	"\f_maxdurationB\r\n" +
+	"\v_startdelayB\x06\n" +
+	"\x04_pos\"+\n" +
 	"\aSeatBid\x12 \n" +
-	"\x03bid\x18\x01 \x03(\v2\x0e.ortb_V2_5.BidR\x03bid\"\xd1\x01\n" +
+	"\x03bid\x18\x01 \x03(\v2\x0e.ortb_V2_5.BidR\x03bid\"\x83\x04\n" +
 	"\x03Bid\x12\x13\n" +
 	"\x02id\x18\x01 \x01(\tH\x00R\x02id\x88\x01\x01\x12\x19\n" +
 	"\x05impid\x18\x02 \x01(\tH\x01R\x05impid\x88\x01\x01\x12\x19\n" +
 	"\x05price\x18\x03 \x01(\x02H\x02R\x05price\x88\x01\x01\x12\x17\n" +
 	"\x04adid\x18\x04 \x01(\tH\x03R\x04adid\x88\x01\x01\x12\x17\n" +
 	"\x04nurl\x18\x05 \x01(\tH\x04R\x04nurl\x88\x01\x01\x12\x17\n" +
-	"\x04burl\x18\x06 \x01(\tH\x05R\x04burl\x88\x01\x01B\x05\n" +
+	"\x04burl\x18\x06 \x01(\tH\x05R\x04burl\x88\x01\x01\x12\x15\n" +
+	"\x03adm\x18\a \x01(\tH\x06R\x03adm\x88\x01\x01\x12\x18\n" +
+	"\aadomain\x18\b \x03(\tR\aadomain\x12\x1b\n" +
+	"\x06bundle\x18\t \x01(\tH\aR\x06bundle\x88\x01\x01\x12\x17\n" +
+	"\x04iurl\x18\n" +
+	" \x01(\tH\bR\x04iurl\x88\x01\x01\x12\x15\n" +
+	"\x03cid\x18\v \x01(\tH\tR\x03cid\x88\x01\x01\x12\x17\n" +
+	"\x04crid\x18\f \x01(\tH\n" +
+	"R\x04crid\x88\x01\x01\x12\x12\n" +
+	"\x04attr\x18\r \x03(\x05R\x04attr\x12\x1b\n" +
+	"\x06dealid\x18\x0e \x01(\tH\vR\x06dealid\x88\x01\x01\x12\x11\n" +
+	"\x01w\x18\x0f \x01(\x05H\fR\x01w\x88\x01\x01\x12\x11\n" +
+	"\x01h\x18\x10 \x01(\x05H\rR\x01h\x88\x01\x01B\x05\n" +
 	"\x03_idB\b\n" +
 	"\x06_impidB\b\n" +
 	"\x06_priceB\a\n" +
 	"\x05_adidB\a\n" +
 	"\x05_nurlB\a\n" +
-	"\x05_burl\"h\n" +
+	"\x05_burlB\x06\n" +
+	"\x04_admB\t\n" +
+	"\a_bundleB\a\n" +
+	"\x05_iurlB\x06\n" +
+	"\x04_cidB\a\n" +
+	"\x05_cridB\t\n" +
+	"\a_dealidB\x04\n" +
+	"\x02_wB\x04\n" +
+	"\x02_h\"\xcb\x01\n" +
 	"\vBidResponse\x12\x13\n" +
 	"\x02id\x18\x01 \x01(\tH\x00R\x02id\x88\x01\x01\x121\n" +
-	"\aseatbid\x18\x02 \x01(\v2\x12.ortb_V2_5.SeatBidH\x01R\aseatbid\x88\x01\x01B\x05\n" +
+	"\aseatbid\x18\x02 \x01(\v2\x12.ortb_V2_5.SeatBidH\x01R\aseatbid\x88\x01\x01\x12\x19\n" +
+	"\x05bidid\x18\x03 \x01(\tH\x02R\x05bidid\x88\x01\x01\x12\x15\n" +
+	"\x03cur\x18\x04 \x01(\tH\x03R\x03cur\x88\x01\x01\x12\x15\n" +
+	"\x03nbr\x18\x05 \x01(\x05H\x04R\x03nbr\x88\x01\x01B\x05\n" +
 	"\x03_idB\n" +
 	"\n" +
-	"\b_seatbidBXZVgitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/proto/types/ortb_V2_5;ortb_V2_5b\x06proto3"
+	"\b_seatbidB\b\n" +
+	"\x06_bididB\x06\n" +
+	"\x04_curB\x06\n" +
+	"\x04_nbr\"t\n" +
+	"\x03Ext\x122\n" +
+	"\x06values\x18\x01 \x03(\v2\x1a.ortb_V2_5.Ext.ValuesEntryR\x06values\x1a9\n" +
+	"\vValuesEntry\x12\x10\n" +
+	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01BXZVgitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/proto/types/ortb_V2_5;ortb_V2_5b\x06proto3"
 
 var (
 	file_types_ortb_V2_5_ortb_proto_rawDescOnce sync.Once
@@ -604,7 +1487,7 @@ func file_types_ortb_V2_5_ortb_proto_rawDescGZIP() []byte {
 	return file_types_ortb_V2_5_ortb_proto_rawDescData
 }
 
-var file_types_ortb_V2_5_ortb_proto_msgTypes = make([]protoimpl.MessageInfo, 9)
+var file_types_ortb_V2_5_ortb_proto_msgTypes = make([]protoimpl.MessageInfo, 15)
 var file_types_ortb_V2_5_ortb_proto_goTypes = []any{
 	(*BidRequest)(nil),  // 0: ortb_V2_5.BidRequest
 	(*Imp)(nil),         // 1: ortb_V2_5.Imp
@@ -612,23 +1495,36 @@ var file_types_ortb_V2_5_ortb_proto_goTypes = []any{
 	(*Banner)(nil),      // 3: ortb_V2_5.Banner
 	(*Device)(nil),      // 4: ortb_V2_5.Device
 	(*Geo)(nil),         // 5: ortb_V2_5.Geo
-	(*SeatBid)(nil),     // 6: ortb_V2_5.SeatBid
-	(*Bid)(nil),         // 7: ortb_V2_5.Bid
-	(*BidResponse)(nil), // 8: ortb_V2_5.BidResponse
+	(*Site)(nil),        // 6: ortb_V2_5.Site
+	(*Publisher)(nil),   // 7: ortb_V2_5.Publisher
+	(*User)(nil),        // 8: ortb_V2_5.User
+	(*Video)(nil),       // 9: ortb_V2_5.Video
+	(*SeatBid)(nil),     // 10: ortb_V2_5.SeatBid
+	(*Bid)(nil),         // 11: ortb_V2_5.Bid
+	(*BidResponse)(nil), // 12: ortb_V2_5.BidResponse
+	(*Ext)(nil),         // 13: ortb_V2_5.Ext
+	nil,                 // 14: ortb_V2_5.Ext.ValuesEntry
 }
 var file_types_ortb_V2_5_ortb_proto_depIdxs = []int32{
-	1, // 0: ortb_V2_5.BidRequest.imp:type_name -> ortb_V2_5.Imp
-	4, // 1: ortb_V2_5.BidRequest.device:type_name -> ortb_V2_5.Device
-	3, // 2: ortb_V2_5.Imp.banner:type_name -> ortb_V2_5.Banner
-	2, // 3: ortb_V2_5.Imp.native:type_name -> ortb_V2_5.Native
-	5, // 4: ortb_V2_5.Device.geo:type_name -> ortb_V2_5.Geo
-	7, // 5: ortb_V2_5.SeatBid.bid:type_name -> ortb_V2_5.Bid
-	6, // 6: ortb_V2_5.BidResponse.seatbid:type_name -> ortb_V2_5.SeatBid
-	7, // [7:7] is the sub-list for method output_type
-	7, // [7:7] is the sub-list for method input_type
-	7, // [7:7] is the sub-list for extension type_name
-	7, // [7:7] is the sub-list for extension extendee
-	0, // [0:7] is the sub-list for field type_name
+	1,  // 0: ortb_V2_5.BidRequest.imp:type_name -> ortb_V2_5.Imp
+	4,  // 1: ortb_V2_5.BidRequest.device:type_name -> ortb_V2_5.Device
+	6,  // 2: ortb_V2_5.BidRequest.site:type_name -> ortb_V2_5.Site
+	8,  // 3: ortb_V2_5.BidRequest.user:type_name -> ortb_V2_5.User
+	3,  // 4: ortb_V2_5.Imp.banner:type_name -> ortb_V2_5.Banner
+	2,  // 5: ortb_V2_5.Imp.native:type_name -> ortb_V2_5.Native
+	9,  // 6: ortb_V2_5.Imp.video:type_name -> ortb_V2_5.Video
+	13, // 7: ortb_V2_5.Imp.imp_ext:type_name -> ortb_V2_5.Ext
+	5,  // 8: ortb_V2_5.Device.geo:type_name -> ortb_V2_5.Geo
+	13, // 9: ortb_V2_5.Device.device_ext:type_name -> ortb_V2_5.Ext
+	7,  // 10: ortb_V2_5.Site.publisher:type_name -> ortb_V2_5.Publisher
+	11, // 11: ortb_V2_5.SeatBid.bid:type_name -> ortb_V2_5.Bid
+	10, // 12: ortb_V2_5.BidResponse.seatbid:type_name -> ortb_V2_5.SeatBid
+	14, // 13: ortb_V2_5.Ext.values:type_name -> ortb_V2_5.Ext.ValuesEntry
+	14, // [14:14] is the sub-list for method output_type
+	14, // [14:14] is the sub-list for method input_type
+	14, // [14:14] is the sub-list for extension type_name
+	14, // [14:14] is the sub-list for extension extendee
+	0,  // [0:14] is the sub-list for field type_name
 }
 
 func init() { file_types_ortb_V2_5_ortb_proto_init() }
@@ -642,15 +1538,19 @@ func file_types_ortb_V2_5_ortb_proto_init() {
 	file_types_ortb_V2_5_ortb_proto_msgTypes[3].OneofWrappers = []any{}
 	file_types_ortb_V2_5_ortb_proto_msgTypes[4].OneofWrappers = []any{}
 	file_types_ortb_V2_5_ortb_proto_msgTypes[5].OneofWrappers = []any{}
+	file_types_ortb_V2_5_ortb_proto_msgTypes[6].OneofWrappers = []any{}
 	file_types_ortb_V2_5_ortb_proto_msgTypes[7].OneofWrappers = []any{}
 	file_types_ortb_V2_5_ortb_proto_msgTypes[8].OneofWrappers = []any{}
+	file_types_ortb_V2_5_ortb_proto_msgTypes[9].OneofWrappers = []any{}
+	file_types_ortb_V2_5_ortb_proto_msgTypes[11].OneofWrappers = []any{}
+	file_types_ortb_V2_5_ortb_proto_msgTypes[12].OneofWrappers = []any{}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_types_ortb_V2_5_ortb_proto_rawDesc), len(file_types_ortb_V2_5_ortb_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   9,
+			NumMessages:   15,
 			NumExtensions: 0,
 			NumServices:   0,
 		},

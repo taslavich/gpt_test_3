@@ -5,6 +5,60 @@ import (
 	"fmt"
 )
 
+func compileRuleNode(node RuleNode) (*CompiledRuleNode, error) {
+	compiled := &CompiledRuleNode{}
+
+	// Если это листовой узел (простое правило)
+	if node.Field != "" {
+		simpleRule := SimpleRule{
+			Field:     node.Field,
+			Condition: node.Condition,
+			ValueType: node.ValueType,
+			Value:     node.Value,
+		}
+
+		rule, err := parseSimpleRule(simpleRule)
+		if err != nil {
+			return nil, err
+		}
+		compiled.Rule = rule
+		compiled.Operator = "leaf"
+		return compiled, nil
+	}
+
+	// Компилируем AND правила (рекурсивно)
+	if len(node.AND) > 0 {
+		compiled.Operator = "and"
+		compiled.Children = make([]*CompiledRuleNode, 0, len(node.AND))
+
+		for _, childNode := range node.AND {
+			child, err := compileRuleNode(childNode)
+			if err != nil {
+				return nil, err
+			}
+			compiled.Children = append(compiled.Children, child)
+		}
+		return compiled, nil
+	}
+
+	// Компилируем OR правила (рекурсивно)
+	if len(node.OR) > 0 {
+		compiled.Operator = "or"
+		compiled.Children = make([]*CompiledRuleNode, 0, len(node.OR))
+
+		for _, childNode := range node.OR {
+			child, err := compileRuleNode(childNode)
+			if err != nil {
+				return nil, err
+			}
+			compiled.Children = append(compiled.Children, child)
+		}
+		return compiled, nil
+	}
+
+	return nil, fmt.Errorf("invalid rule node: must have field, and, or")
+}
+
 func parseSimpleRule(simpleRule SimpleRule) (*FilterRule, error) {
 	if err := ValidateSimpleRule(simpleRule); err != nil {
 		return nil, err

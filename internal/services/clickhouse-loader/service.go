@@ -74,7 +74,8 @@ func hasData(record types.StatisticsRecord) bool {
 		record.BID_RESPONSE_WINNER_BY_DSP_PRICE != "" ||
 		record.SUCCESS != "" ||
 		record.UUID != "" ||
-		record.TIMESTAMP != ""
+		record.TIMESTAMP != "" ||
+		record.SPP_DOMAIN != ""
 }
 
 func InsertBatch(chDB *sql.DB, table string, records []types.StatisticsRecord) error {
@@ -122,6 +123,12 @@ func buildDynamicQuery(record types.StatisticsRecord) ([]string, []string, []int
 		values = append(values, record.TIMESTAMP)
 	}
 
+	if record.SPP_DOMAIN != "" {
+		columns = append(columns, "spp_domain")
+		placeholders = append(placeholders, "?")
+		values = append(values, record.SPP_DOMAIN)
+	}
+
 	if record.BID_REQUEST != "" {
 		columns = append(columns, "bid_request")
 		placeholders = append(placeholders, "?")
@@ -166,6 +173,7 @@ func CreateTable(chDB *sql.DB, tableName string) error {
         CREATE TABLE IF NOT EXISTS %s (
             uuid String,
             timestamp String,
+			spp_domain String,
             bid_request String,
             geo_column String,
             bid_responses String,

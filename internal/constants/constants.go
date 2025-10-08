@@ -8,6 +8,7 @@ const (
 const (
 	UUID_COLUMN                             = "UUID"
 	TIMESTAMP_COLUMN                        = "TIMESTAMP"
+	SPP_DOMAIN_COLUMN                       = "SPP_DOMAIN"
 	BID_REQUEST_COLUMN                      = "BID_REQUEST"
 	GEO_COLUMN                              = "GEO"
 	BID_RESPONSES_COLUMN                    = "BID_RESPONSES"

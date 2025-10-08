@@ -130,14 +130,18 @@ func ValidateDSPConfig(config *SimpleRuleConfig) error {
 		}
 
 		seenRules := make(map[string]bool)
-		for _, simpleRule := range dspSettings.Rules {
-			ruleKey := fmt.Sprintf("%s_%s", simpleRule.Field, simpleRule.Condition)
-			if seenRules[ruleKey] {
-				return fmt.Errorf("duplicate rule for DSP %s: %s", dspID, ruleKey)
-			}
-			seenRules[ruleKey] = true
 
-			if err := ValidateSimpleRule(simpleRule); err != nil {
+		for _, node := range dspSettings.Rules {
+			// Дедуп только для листьев
+			if node.Field != "" {
+				ruleKey := fmt.Sprintf("%s_%s", node.Field, node.Condition)
+				if seenRules[ruleKey] {
+					return fmt.Errorf("duplicate rule for DSP %s: %s", dspID, ruleKey)
+				}
+				seenRules[ruleKey] = true
+			}
+
+			if err := ValidateRuleNode(node); err != nil {
 				return fmt.Errorf("invalid rule for DSP %s: %v", dspID, err)
 			}
 		}
@@ -161,18 +165,62 @@ func ValidateSPPConfig(config *SimpleRuleConfig) error {
 		}
 
 		seenRules := make(map[string]bool)
-		for _, simpleRule := range sppSettings.Rules {
-			ruleKey := fmt.Sprintf("%s_%s", simpleRule.Field, simpleRule.Condition)
-			if seenRules[ruleKey] {
-				return fmt.Errorf("duplicate rule for SPP %s: %s", sppID, ruleKey)
-			}
-			seenRules[ruleKey] = true
 
-			if err := ValidateSimpleRule(simpleRule); err != nil {
+		for _, node := range sppSettings.Rules {
+			if node.Field != "" {
+				ruleKey := fmt.Sprintf("%s_%s", node.Field, node.Condition)
+				if seenRules[ruleKey] {
+					return fmt.Errorf("duplicate rule for SPP %s: %s", sppID, ruleKey)
+				}
+				seenRules[ruleKey] = true
+			}
+
+			if err := ValidateRuleNode(node); err != nil {
 				return fmt.Errorf("invalid rule for SPP %s: %v", sppID, err)
 			}
 		}
 	}
 
 	return nil
+}
+
+// validation.go
+func ValidateRuleNode(node RuleNode) error {
+	// Лист: валидируем как SimpleRule
+	if node.Field != "" {
+		sr := SimpleRule{
+			Field:     node.Field,
+			Condition: node.Condition,
+			ValueType: node.ValueType,
+			Value:     node.Value,
+		}
+		return ValidateSimpleRule(sr)
+	}
+
+	// Нельзя одновременно and и or
+	if len(node.AND) > 0 && len(node.OR) > 0 {
+		return fmt.Errorf("rule node cannot have both 'and' and 'or'")
+	}
+
+	// Рекурсивная проверка and
+	if len(node.AND) > 0 {
+		for i, ch := range node.AND {
+			if err := ValidateRuleNode(ch); err != nil {
+				return fmt.Errorf("and[%d]: %w", i, err)
+			}
+		}
+		return nil
+	}
+
+	// Рекурсивная проверка or
+	if len(node.OR) > 0 {
+		for i, ch := range node.OR {
+			if err := ValidateRuleNode(ch); err != nil {
+				return fmt.Errorf("or[%d]: %w", i, err)
+			}
+		}
+		return nil
+	}
+
+	return fmt.Errorf("invalid rule node: must have field, and, or")
 }

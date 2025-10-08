@@ -4,11 +4,16 @@ import (
 	"sync"
 )
 
+type CompiledRuleNode struct {
+	Rule     *FilterRule         `json:"-"`
+	Operator string              `json:"operator"` // "and", "or", "leaf"
+	Children []*CompiledRuleNode `json:"children,omitempty"`
+}
+
 type CompiledRuleSet struct {
-	rules          []*FilterRule
+	rootNodes      []*CompiledRuleNode
 	requiredFields []FieldType
-	// Для bulk optimization - группировка правил по полям
-	fieldRules map[FieldType][]*FilterRule
+	fieldRules     map[FieldType][]*FilterRule
 }
 
 type RuleManager struct {
@@ -24,27 +29,11 @@ func NewRuleManager() *RuleManager {
 	}
 }
 
-func (rm *RuleManager) compileRules(rules map[string]*FilterRule) *CompiledRuleSet {
-	ruleSlice := make([]*FilterRule, 0, len(rules))
-	fieldsSet := make(map[FieldType]struct{}, len(rules))
-	fieldRules := make(map[FieldType][]*FilterRule)
+func (rm *RuleManager) SetDSPRules(dspID string, rootNodes []*CompiledRuleNode, allRules []*FilterRule) {
+	rm.mu.Lock()
+	defer rm.mu.Unlock()
 
-	for _, rule := range rules {
-		ruleSlice = append(ruleSlice, rule)
-		fieldsSet[rule.Field] = struct{}{}
-		fieldRules[rule.Field] = append(fieldRules[rule.Field], rule)
-	}
-
-	requiredFields := make([]FieldType, 0, len(fieldsSet))
-	for field := range fieldsSet {
-		requiredFields = append(requiredFields, field)
-	}
-
-	return &CompiledRuleSet{
-		rules:          ruleSlice,
-		requiredFields: requiredFields,
-		fieldRules:     fieldRules,
-	}
+	rm.dspRules[dspID] = rm.compileRules(rootNodes, allRules)
 }
 
 // GetFieldRulesForDSP возвращает правила сгруппированные по полям для bulk extraction
@@ -67,21 +56,6 @@ func (rm *RuleManager) GetFieldRulesForSPP(sppID string) map[FieldType][]*Filter
 		return ruleSet.fieldRules
 	}
 	return nil
-}
-
-// Остальные методы остаются без изменений...
-func (rm *RuleManager) SetDSPRules(dspID string, rules map[string]*FilterRule) {
-	rm.mu.Lock()
-	defer rm.mu.Unlock()
-
-	rm.dspRules[dspID] = rm.compileRules(rules)
-}
-
-func (rm *RuleManager) SetSPPRules(sppID string, rules map[string]*FilterRule) {
-	rm.mu.Lock()
-	defer rm.mu.Unlock()
-
-	rm.sppRules[sppID] = rm.compileRules(rules)
 }
 
 func (rm *RuleManager) GetCompiledRulesForDSP(dspID string) *CompiledRuleSet {
@@ -121,11 +95,60 @@ func GetAutoRulesForSPP() []*FilterRule {
 			Condition: ConditionExists,
 			Value:     StringCondition{cond: ConditionExists, value: ""},
 		},
-		{
-			ID:        "auto_burl_exists",
-			Field:     FieldBidBurl,
-			Condition: ConditionExists,
-			Value:     StringCondition{cond: ConditionExists, value: ""},
-		},
 	}
+}
+
+// manager.go
+
+func (rm *RuleManager) compileRules(rootNodes []*CompiledRuleNode, allRules []*FilterRule) *CompiledRuleSet {
+	fieldsSet := make(map[FieldType]struct{}, len(allRules))
+	fieldRules := make(map[FieldType][]*FilterRule)
+
+	for _, rule := range allRules {
+		fieldsSet[rule.Field] = struct{}{}
+		fieldRules[rule.Field] = append(fieldRules[rule.Field], rule)
+	}
+
+	requiredFields := make([]FieldType, 0, len(fieldsSet))
+	for field := range fieldsSet {
+		requiredFields = append(requiredFields, field)
+	}
+
+	return &CompiledRuleSet{
+		rootNodes:      rootNodes,
+		requiredFields: requiredFields,
+		fieldRules:     fieldRules,
+	}
+}
+
+// Добавляем метод для компиляции старых правил (для обратной совместимости)
+func (rm *RuleManager) compileSimpleRules(rules map[string]*FilterRule) *CompiledRuleSet {
+	ruleSlice := make([]*FilterRule, 0, len(rules))
+	for _, rule := range rules {
+		ruleSlice = append(ruleSlice, rule)
+	}
+
+	// Создаем простой корневой узел AND для всех правил
+	rootNode := &CompiledRuleNode{
+		Operator: "and",
+		Children: make([]*CompiledRuleNode, 0, len(ruleSlice)),
+	}
+
+	for _, rule := range ruleSlice {
+		rootNode.Children = append(rootNode.Children, &CompiledRuleNode{
+			Rule:     rule,
+			Operator: "leaf",
+		})
+	}
+
+	rootNodes := []*CompiledRuleNode{rootNode}
+
+	return rm.compileRules(rootNodes, ruleSlice)
+}
+
+func (rm *RuleManager) SetSPPRules(sppID string, rootNodes []*CompiledRuleNode, allRules []*FilterRule) {
+	rm.mu.Lock()
+	defer rm.mu.Unlock()
+
+	rm.sppRules[sppID] = rm.compileRules(rootNodes, allRules)
 }

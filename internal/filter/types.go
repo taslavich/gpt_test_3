@@ -7,6 +7,7 @@ import (
 type FieldType string
 
 const (
+	FieldCountry       FieldType = "country"
 	FieldBidFloor      FieldType = "bidfloor"
 	FieldDeviceCountry FieldType = "device.geo.country"
 	FieldAppID         FieldType = "app.id"
@@ -23,6 +24,79 @@ const (
 	FieldBidImpID    FieldType = "bid.impid"
 	FieldSeatBidSeat FieldType = "seatbid.seat"
 	FieldBidArray    FieldType = "bid.array"
+
+	FieldSitePage          FieldType = "site.page"
+	FieldSiteDomain        FieldType = "site.domain"
+	FieldSitePublisherID   FieldType = "site.publisher.id"
+	FieldDeviceUA          FieldType = "device.ua"
+	FieldDeviceLanguage    FieldType = "device.language"
+	FieldUserID            FieldType = "user.id"
+	FieldUserKeywords      FieldType = "user.keywords"
+	FieldAuctionType       FieldType = "at"
+	FieldTMax              FieldType = "tmax"
+	FieldCurrency          FieldType = "cur"
+	FieldBlockedCategories FieldType = "bcat"
+	FieldImpTagID          FieldType = "imp.tagid"
+	FieldImpSecure         FieldType = "imp.secure"
+	FieldImpInstl          FieldType = "imp.instl"
+
+	FieldBidRequestID   FieldType = "bidrequest.id"
+	FieldBidRequestAt   FieldType = "bidrequest.at"
+	FieldBidRequestTMax FieldType = "bidrequest.tmax"
+	FieldBidRequestCur  FieldType = "bidrequest.cur"
+	FieldBidRequestBCat FieldType = "bidrequest.bcat"
+
+	FieldImpID          FieldType = "imp.id"
+	FieldImpBidFloorCur FieldType = "imp.bidfloorcur"
+	FieldImpVideo       FieldType = "imp.video"
+	FieldImpNative      FieldType = "imp.native"
+
+	FieldBannerBType  FieldType = "banner.btype"
+	FieldBannerBAttr  FieldType = "banner.battr"
+	FieldBannerPos    FieldType = "banner.pos"
+	FieldBannerMimes  FieldType = "banner.mimes"
+	FieldBannerExpDir FieldType = "banner.expdir"
+	FieldBannerAPI    FieldType = "banner.api"
+	FieldBannerID     FieldType = "banner.id"
+
+	// Новые поля для Native
+	FieldNativeRequest FieldType = "native.request"
+	FieldNativeVer     FieldType = "native.ver"
+	FieldNativeAPI     FieldType = "native.api"
+	FieldNativeBAttr   FieldType = "native.battr"
+
+	// Новые поля для Device.Geo
+	FieldGeoLat    FieldType = "device.geo.lat"
+	FieldGeoLon    FieldType = "device.geo.lon"
+	FieldGeoRegion FieldType = "device.geo.region"
+	FieldGeoCity   FieldType = "device.geo.city"
+	FieldGeoZip    FieldType = "device.geo.zip"
+
+	// Новые поля для Site
+	FieldSiteName FieldType = "site.name"
+	FieldSiteRef  FieldType = "site.ref"
+	FieldSiteCat  FieldType = "site.cat"
+
+	// Новые поля для User
+	FieldUserBuyerUID FieldType = "user.buyeruid"
+
+	// Новые поля для BidResponse
+	FieldBidResponseID    FieldType = "bidresponse.id"
+	FieldBidResponseBidID FieldType = "bidresponse.bidid"
+	FieldBidResponseCur   FieldType = "bidresponse.cur"
+	FieldBidResponseNBR   FieldType = "bidresponse.nbr"
+
+	// Новые поля для Bid
+	FieldBidAdm     FieldType = "bid.adm"
+	FieldBidAdomain FieldType = "bid.adomain"
+	FieldBidBundle  FieldType = "bid.bundle"
+	FieldBidIurl    FieldType = "bid.iurl"
+	FieldBidCID     FieldType = "bid.cid"
+	FieldBidCRID    FieldType = "bid.crid"
+	FieldBidAttr    FieldType = "bid.attr"
+	FieldBidDealID  FieldType = "bid.dealid"
+	FieldBidWidth   FieldType = "bid.w"
+	FieldBidHeight  FieldType = "bid.h"
 )
 
 type ValueType string
@@ -84,12 +158,41 @@ type SimpleRuleConfig struct {
 	SPPs    map[string]SPPSettings `json:"spps"`
 }
 
+type RuleNode struct {
+	// Для простых правил
+	Field     FieldType       `json:"field,omitempty"`
+	Condition ConditionType   `json:"condition,omitempty"`
+	ValueType ValueType       `json:"value_type,omitempty"`
+	Value     json.RawMessage `json:"value,omitempty"`
+
+	// Для группировки (рекурсивно)
+	AND []RuleNode `json:"and,omitempty"`
+	OR  []RuleNode `json:"or,omitempty"`
+}
+
 type DSPSettings struct {
-	Rules []SimpleRule `json:"rules"`
+	Rules []RuleNode `json:"rules"`
 }
 
 type SPPSettings struct {
-	Rules []SimpleRule `json:"rules"`
+	Rules []RuleNode `json:"rules"`
+}
+
+// Добавляем структуры для поддержки версий
+type VersionedDSPSettings struct {
+	V24 []RuleNode `json:"v24,omitempty"`
+	V25 []RuleNode `json:"v25,omitempty"`
+}
+
+type VersionedSPPSettings struct {
+	V24 []RuleNode `json:"v24,omitempty"`
+	V25 []RuleNode `json:"v25,omitempty"`
+}
+
+type VersionedRuleConfig struct {
+	Version string                          `json:"version"`
+	DSPs    map[string]VersionedDSPSettings `json:"dsps,omitempty"`
+	SPPs    map[string]VersionedSPPSettings `json:"spps,omitempty"`
 }
 
 type SimpleRule struct {

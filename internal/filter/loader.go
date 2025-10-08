@@ -9,98 +9,133 @@ import (
 )
 
 type FileRuleLoader struct {
-	ruleManager *RuleManager
-	dspFilePath string
-	sppFilePath string
-	watcher     *fsnotify.Watcher
+	ruleManager    *RuleManager
+	dspV24FilePath string
+	dspV25FilePath string
+	sppV24FilePath string
+	sppV25FilePath string
+	watcher        *fsnotify.Watcher
 }
 
-func NewFileRuleLoader(ruleManager *RuleManager, dspFilePath, sppFilePath string) *FileRuleLoader {
+func NewFileRuleLoader(ruleManager *RuleManager, dspV24Path, dspV25Path, sppV24Path, sppV25Path string) *FileRuleLoader {
 	return &FileRuleLoader{
-		ruleManager: ruleManager,
-		dspFilePath: dspFilePath,
-		sppFilePath: sppFilePath,
+		ruleManager:    ruleManager,
+		dspV24FilePath: dspV24Path,
+		dspV25FilePath: dspV25Path,
+		sppV24FilePath: sppV24Path,
+		sppV25FilePath: sppV25Path,
 	}
 }
 
+/************ DSP ************/
+
 func (fl *FileRuleLoader) LoadDSPRules() error {
-	data, err := os.ReadFile(fl.dspFilePath)
+	if err := fl.loadDSPRulesForVersion(fl.dspV24FilePath, "v24"); err != nil {
+		return err
+	}
+	if err := fl.loadDSPRulesForVersion(fl.dspV25FilePath, "v25"); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (fl *FileRuleLoader) loadDSPRulesForVersion(filePath, version string) error {
+	data, err := os.ReadFile(filePath)
 	if err != nil {
 		return err
 	}
 
-	var config SimpleRuleConfig
+	var config VersionedRuleConfig
 	if err := json.Unmarshal(data, &config); err != nil {
 		return err
-	}
-
-	if err := ValidateDSPConfig(&config); err != nil {
-		return fmt.Errorf("DSP config validation failed: %v", err)
 	}
 
 	for dspID, dspSettings := range config.DSPs {
-		rules := make(map[string]*FilterRule)
-		seenRules := make(map[string]bool)
-
-		for _, simpleRule := range dspSettings.Rules {
-			ruleKey := fmt.Sprintf("%s_%s", simpleRule.Field, simpleRule.Condition)
-			if seenRules[ruleKey] {
-				continue
-			}
-			seenRules[ruleKey] = true
-
-			rule, err := parseSimpleRule(simpleRule)
-			if err != nil {
-				return fmt.Errorf("Error parsing rule for DSP %s: %v", dspID, err)
-			}
-
-			rules[rule.ID] = rule
+		var rules []RuleNode
+		switch version {
+		case "v24":
+			rules = dspSettings.V24
+		case "v25":
+			rules = dspSettings.V25
+		default:
+			return fmt.Errorf("unknown version: %s", version)
 		}
 
-		fl.ruleManager.SetDSPRules(dspID, rules)
+		rootNodes := make([]*CompiledRuleNode, 0, len(rules))
+		allRules := make([]*FilterRule, 0)
+		for _, ruleNode := range rules {
+			rootNode, err := compileRuleNode(ruleNode)
+			if err != nil {
+				return fmt.Errorf("Error compiling rule node for DSP %s (%s): %v", dspID, version, err)
+			}
+			rootNodes = append(rootNodes, rootNode)
+			collectAllRules(rootNode, &allRules)
+		}
+		versionedDSPID := fmt.Sprintf("%s|%s", dspID, version)
+		fl.ruleManager.SetDSPRules(versionedDSPID, rootNodes, allRules)
 	}
-
 	return nil
 }
 
+/************ SPP ************/
+
 func (fl *FileRuleLoader) LoadSPPRules() error {
-	data, err := os.ReadFile(fl.sppFilePath)
+	if err := fl.loadSPPRulesForVersion(fl.sppV24FilePath, "v24"); err != nil {
+		return err
+	}
+	if err := fl.loadSPPRulesForVersion(fl.sppV25FilePath, "v25"); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (fl *FileRuleLoader) loadSPPRulesForVersion(filePath, version string) error {
+	data, err := os.ReadFile(filePath)
 	if err != nil {
 		return err
 	}
 
-	var config SimpleRuleConfig
+	var config VersionedRuleConfig
 	if err := json.Unmarshal(data, &config); err != nil {
 		return err
 	}
 
-	if err := ValidateSPPConfig(&config); err != nil {
-		return fmt.Errorf("SPP config validation failed: %v", err)
-	}
-
 	for sppID, sppSettings := range config.SPPs {
-		rules := make(map[string]*FilterRule)
-		seenRules := make(map[string]bool)
-
-		for _, simpleRule := range sppSettings.Rules {
-			ruleKey := fmt.Sprintf("%s_%s", simpleRule.Field, simpleRule.Condition)
-			if seenRules[ruleKey] {
-				continue
-			}
-			seenRules[ruleKey] = true
-
-			rule, err := parseSimpleRule(simpleRule)
-			if err != nil {
-				return fmt.Errorf("Error parsing rule for SPP %s: %v", sppID, err)
-			}
-
-			rules[rule.ID] = rule
+		var rules []RuleNode
+		switch version {
+		case "v24":
+			rules = sppSettings.V24
+		case "v25":
+			rules = sppSettings.V25
+		default:
+			return fmt.Errorf("unknown version: %s", version)
 		}
 
-		fl.ruleManager.SetSPPRules(sppID, rules)
+		rootNodes := make([]*CompiledRuleNode, 0, len(rules))
+		allRules := make([]*FilterRule, 0)
+		for _, ruleNode := range rules {
+			rootNode, err := compileRuleNode(ruleNode)
+			if err != nil {
+				return fmt.Errorf("Error compiling rule node for SPP %s (%s): %v", sppID, version, err)
+			}
+			rootNodes = append(rootNodes, rootNode)
+			collectAllRules(rootNode, &allRules)
+		}
+		versionedSPPID := fmt.Sprintf("%s|%s", sppID, version)
+		fl.ruleManager.SetSPPRules(versionedSPPID, rootNodes, allRules)
 	}
-
 	return nil
+}
+
+/************ Helpers ************/
+
+func collectAllRules(node *CompiledRuleNode, rules *[]*FilterRule) {
+	if node.Rule != nil {
+		*rules = append(*rules, node.Rule)
+	}
+	for _, child := range node.Children {
+		collectAllRules(child, rules)
+	}
 }
 
 func (fl *FileRuleLoader) Close() error {

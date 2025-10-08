@@ -7,6 +7,11 @@ message BidRequest {
     optional int32 at = 2;
     repeated Imp imp = 3;
     optional Device device = 4;
+    optional Site site = 5;
+    optional User user = 6;
+    optional int32 tmax = 7;
+    repeated string cur = 8;
+    repeated string bcat = 9;
 }
 
 message Imp {
@@ -14,24 +19,68 @@ message Imp {
     optional float bidFloor = 2;
     optional Banner banner = 3;
     optional Native native = 4;
+    optional string tagid = 5;
+    optional int32 secure = 6;
+    optional int32 instl = 7;
+    optional string bidfloorcur = 8;
+    optional Ext imp_ext = 9;
 }
 
 message Native {
     optional string request = 1;
+    optional string ver = 2;
+    repeated int32 api = 3;
+    repeated int32 battr = 4;
 }
 
 message Banner {
     optional int32 w = 1;
     optional int32 h = 2;
+    repeated int32 btype = 3;
+    repeated int32 battr = 4;
+    optional int32 pos = 5;
+    repeated string mimes = 6;
+    repeated int32 expdir = 7;
+    repeated int32 api = 8;
+    optional string id = 9;
 }
   
 message Device {
     optional string ip = 1;
     optional Geo geo = 2;
+    optional string ua = 3;
+    optional int32 js = 4;
+    optional string language = 5;
+    optional Ext device_ext = 6;
 }
 
 message Geo {
     optional string country = 1;
+    optional float lat = 2;
+    optional float lon = 3;
+    optional string region = 4;
+    optional string city = 5;
+    optional string zip = 6;
+}
+
+message Site {
+    optional string id = 1;
+    optional string name = 2;
+    optional string page = 3;
+    optional string domain = 4;
+    optional string ref = 5;
+    repeated string cat = 6;
+    optional Publisher publisher = 7;
+}
+
+message Publisher {
+    optional string id = 1;
+}
+
+message User {
+    optional string id = 1;
+    optional string keywords = 2;
+    optional string buyeruid = 3;
 }
 
 message SeatBid {
@@ -44,10 +93,27 @@ message Bid {
     optional float price = 3;
     optional string adid = 4;
     optional string nurl = 5;
-    optional string burl = 6; 
+    optional string burl = 6;
+    optional string adm = 7;
+    repeated string adomain = 8;
+    optional string bundle = 9;
+    optional string iurl = 10;
+    optional string cid = 11;
+    optional string crid = 12;
+    repeated int32 attr = 13;
+    optional string dealid = 14;
+    optional int32 w = 15;
+    optional int32 h = 16;
 }
 
 message BidResponse {
     optional string id = 1;
     optional SeatBid seatbid = 2;
+    optional string bidid = 3;
+    optional string cur = 4;
+    optional int32 nbr = 5;
+}
+
+message Ext {
+    map<string, string> values = 1;
 }
