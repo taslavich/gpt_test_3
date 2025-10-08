@@ -84,10 +84,10 @@ func (x *DspRouterRequest_V2_4) GetGlobalId() string {
 }
 
 type DspRouterResponse_V2_4 struct {
-	state         protoimpl.MessageState   `protogen:"open.v1"`
-	BidRequest    *ortb_V2_4.BidRequest    `protobuf:"bytes,1,opt,name=bidRequest,proto3" json:"bidRequest,omitempty"`
-	BidResponses  []*ortb_V2_4.BidResponse `protobuf:"bytes,2,rep,name=bidResponses,proto3" json:"bidResponses,omitempty"`
-	GlobalId      string                   `protobuf:"bytes,3,opt,name=globalId,proto3" json:"globalId,omitempty"`
+	state         protoimpl.MessageState            `protogen:"open.v1"`
+	BidRequest    *ortb_V2_4.BidRequest             `protobuf:"bytes,1,opt,name=bidRequest,proto3" json:"bidRequest,omitempty"`
+	BidResponses  map[string]*ortb_V2_4.BidResponse `protobuf:"bytes,2,rep,name=bidResponses,proto3" json:"bidResponses,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
+	GlobalId      string                            `protobuf:"bytes,3,opt,name=globalId,proto3" json:"globalId,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -129,7 +129,7 @@ func (x *DspRouterResponse_V2_4) GetBidRequest() *ortb_V2_4.BidRequest {
 	return nil
 }
 
-func (x *DspRouterResponse_V2_4) GetBidResponses() []*ortb_V2_4.BidResponse {
+func (x *DspRouterResponse_V2_4) GetBidResponses() map[string]*ortb_V2_4.BidResponse {
 	if x != nil {
 		return x.BidResponses
 	}
@@ -204,10 +204,10 @@ func (x *DspRouterRequest_V2_5) GetGlobalId() string {
 }
 
 type DspRouterResponse_V2_5 struct {
-	state         protoimpl.MessageState   `protogen:"open.v1"`
-	BidRequest    *ortb_V2_5.BidRequest    `protobuf:"bytes,1,opt,name=bidRequest,proto3" json:"bidRequest,omitempty"`
-	BidResponses  []*ortb_V2_5.BidResponse `protobuf:"bytes,2,rep,name=bidResponses,proto3" json:"bidResponses,omitempty"`
-	GlobalId      string                   `protobuf:"bytes,3,opt,name=globalId,proto3" json:"globalId,omitempty"`
+	state         protoimpl.MessageState            `protogen:"open.v1"`
+	BidRequest    *ortb_V2_5.BidRequest             `protobuf:"bytes,1,opt,name=bidRequest,proto3" json:"bidRequest,omitempty"`
+	BidResponses  map[string]*ortb_V2_5.BidResponse `protobuf:"bytes,2,rep,name=bidResponses,proto3" json:"bidResponses,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
+	GlobalId      string                            `protobuf:"bytes,3,opt,name=globalId,proto3" json:"globalId,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -249,7 +249,7 @@ func (x *DspRouterResponse_V2_5) GetBidRequest() *ortb_V2_5.BidRequest {
 	return nil
 }
 
-func (x *DspRouterResponse_V2_5) GetBidResponses() []*ortb_V2_5.BidResponse {
+func (x *DspRouterResponse_V2_5) GetBidResponses() map[string]*ortb_V2_5.BidResponse {
 	if x != nil {
 		return x.BidResponses
 	}
@@ -263,182 +263,6 @@ func (x *DspRouterResponse_V2_5) GetGlobalId() string {
 	return ""
 }
 
-type GetRulesRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *GetRulesRequest) Reset() {
-	*x = GetRulesRequest{}
-	mi := &file_services_dspRouter_proto_msgTypes[4]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *GetRulesRequest) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*GetRulesRequest) ProtoMessage() {}
-
-func (x *GetRulesRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_services_dspRouter_proto_msgTypes[4]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use GetRulesRequest.ProtoReflect.Descriptor instead.
-func (*GetRulesRequest) Descriptor() ([]byte, []int) {
-	return file_services_dspRouter_proto_rawDescGZIP(), []int{4}
-}
-
-type UpdateRulesResponse struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Success       bool                   `protobuf:"varint,1,opt,name=success,proto3" json:"success,omitempty"`
-	Message       string                 `protobuf:"bytes,2,opt,name=message,proto3" json:"message,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *UpdateRulesResponse) Reset() {
-	*x = UpdateRulesResponse{}
-	mi := &file_services_dspRouter_proto_msgTypes[5]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *UpdateRulesResponse) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*UpdateRulesResponse) ProtoMessage() {}
-
-func (x *UpdateRulesResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_services_dspRouter_proto_msgTypes[5]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use UpdateRulesResponse.ProtoReflect.Descriptor instead.
-func (*UpdateRulesResponse) Descriptor() ([]byte, []int) {
-	return file_services_dspRouter_proto_rawDescGZIP(), []int{5}
-}
-
-func (x *UpdateRulesResponse) GetSuccess() bool {
-	if x != nil {
-		return x.Success
-	}
-	return false
-}
-
-func (x *UpdateRulesResponse) GetMessage() string {
-	if x != nil {
-		return x.Message
-	}
-	return ""
-}
-
-type JsonRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	JsonData      []byte                 `protobuf:"bytes,1,opt,name=json_data,json=jsonData,proto3" json:"json_data,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *JsonRequest) Reset() {
-	*x = JsonRequest{}
-	mi := &file_services_dspRouter_proto_msgTypes[6]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *JsonRequest) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*JsonRequest) ProtoMessage() {}
-
-func (x *JsonRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_services_dspRouter_proto_msgTypes[6]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use JsonRequest.ProtoReflect.Descriptor instead.
-func (*JsonRequest) Descriptor() ([]byte, []int) {
-	return file_services_dspRouter_proto_rawDescGZIP(), []int{6}
-}
-
-func (x *JsonRequest) GetJsonData() []byte {
-	if x != nil {
-		return x.JsonData
-	}
-	return nil
-}
-
-type JsonResponse struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	JsonData      []byte                 `protobuf:"bytes,1,opt,name=json_data,json=jsonData,proto3" json:"json_data,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *JsonResponse) Reset() {
-	*x = JsonResponse{}
-	mi := &file_services_dspRouter_proto_msgTypes[7]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *JsonResponse) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*JsonResponse) ProtoMessage() {}
-
-func (x *JsonResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_services_dspRouter_proto_msgTypes[7]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use JsonResponse.ProtoReflect.Descriptor instead.
-func (*JsonResponse) Descriptor() ([]byte, []int) {
-	return file_services_dspRouter_proto_rawDescGZIP(), []int{7}
-}
-
-func (x *JsonResponse) GetJsonData() []byte {
-	if x != nil {
-		return x.JsonData
-	}
-	return nil
-}
-
 var File_services_dspRouter_proto protoreflect.FileDescriptor
 
 const file_services_dspRouter_proto_rawDesc = "" +
@@ -449,41 +273,33 @@ const file_services_dspRouter_proto_rawDesc = "" +
 	"bidRequest\x18\x01 \x01(\v2\x15.ortb_V2_4.BidRequestR\n" +
 	"bidRequest\x12 \n" +
 	"\vsppEndpoint\x18\x02 \x01(\tR\vsppEndpoint\x12\x1a\n" +
-	"\bglobalId\x18\x03 \x01(\tR\bglobalId\"\xa7\x01\n" +
+	"\bglobalId\x18\x03 \x01(\tR\bglobalId\"\x9d\x02\n" +
 	"\x16DspRouterResponse_V2_4\x125\n" +
 	"\n" +
 	"bidRequest\x18\x01 \x01(\v2\x15.ortb_V2_4.BidRequestR\n" +
-	"bidRequest\x12:\n" +
-	"\fbidResponses\x18\x02 \x03(\v2\x16.ortb_V2_4.BidResponseR\fbidResponses\x12\x1a\n" +
-	"\bglobalId\x18\x03 \x01(\tR\bglobalId\"\x8c\x01\n" +
+	"bidRequest\x12W\n" +
+	"\fbidResponses\x18\x02 \x03(\v23.dspRouter.DspRouterResponse_V2_4.BidResponsesEntryR\fbidResponses\x12\x1a\n" +
+	"\bglobalId\x18\x03 \x01(\tR\bglobalId\x1aW\n" +
+	"\x11BidResponsesEntry\x12\x10\n" +
+	"\x03key\x18\x01 \x01(\tR\x03key\x12,\n" +
+	"\x05value\x18\x02 \x01(\v2\x16.ortb_V2_4.BidResponseR\x05value:\x028\x01\"\x8c\x01\n" +
 	"\x15DspRouterRequest_V2_5\x125\n" +
 	"\n" +
 	"bidRequest\x18\x01 \x01(\v2\x15.ortb_V2_5.BidRequestR\n" +
 	"bidRequest\x12 \n" +
 	"\vsppEndpoint\x18\x02 \x01(\tR\vsppEndpoint\x12\x1a\n" +
-	"\bglobalId\x18\x03 \x01(\tR\bglobalId\"\xa7\x01\n" +
+	"\bglobalId\x18\x03 \x01(\tR\bglobalId\"\x9d\x02\n" +
 	"\x16DspRouterResponse_V2_5\x125\n" +
 	"\n" +
 	"bidRequest\x18\x01 \x01(\v2\x15.ortb_V2_5.BidRequestR\n" +
-	"bidRequest\x12:\n" +
-	"\fbidResponses\x18\x02 \x03(\v2\x16.ortb_V2_5.BidResponseR\fbidResponses\x12\x1a\n" +
-	"\bglobalId\x18\x03 \x01(\tR\bglobalId\"\x11\n" +
-	"\x0fGetRulesRequest\"I\n" +
-	"\x13UpdateRulesResponse\x12\x18\n" +
-	"\asuccess\x18\x01 \x01(\bR\asuccess\x12\x18\n" +
-	"\amessage\x18\x02 \x01(\tR\amessage\"*\n" +
-	"\vJsonRequest\x12\x1b\n" +
-	"\tjson_data\x18\x01 \x01(\fR\bjsonData\"+\n" +
-	"\fJsonResponse\x12\x1b\n" +
-	"\tjson_data\x18\x01 \x01(\fR\bjsonData2\xfe\x04\n" +
+	"bidRequest\x12W\n" +
+	"\fbidResponses\x18\x02 \x03(\v23.dspRouter.DspRouterResponse_V2_5.BidResponsesEntryR\fbidResponses\x12\x1a\n" +
+	"\bglobalId\x18\x03 \x01(\tR\bglobalId\x1aW\n" +
+	"\x11BidResponsesEntry\x12\x10\n" +
+	"\x03key\x18\x01 \x01(\tR\x03key\x12,\n" +
+	"\x05value\x18\x02 \x01(\v2\x16.ortb_V2_5.BidResponseR\x05value:\x028\x012\xbc\x01\n" +
 	"\x10DspRouterService\x12S\n" +
-	"\fGetBids_V2_4\x12 .dspRouter.DspRouterRequest_V2_4\x1a!.dspRouter.DspRouterResponse_V2_4\x12D\n" +
-	"\rGetRules_V2_4\x12\x1a.dspRouter.GetRulesRequest\x1a\x17.dspRouter.JsonResponse\x12G\n" +
-	"\x10GetDSPRules_V2_4\x12\x1a.dspRouter.GetRulesRequest\x1a\x17.dspRouter.JsonResponse\x12G\n" +
-	"\x10GetSPPRules_V2_4\x12\x1a.dspRouter.GetRulesRequest\x1a\x17.dspRouter.JsonResponse\x12J\n" +
-	"\x10UpdateRules_V2_4\x12\x16.dspRouter.JsonRequest\x1a\x1e.dspRouter.UpdateRulesResponse\x12M\n" +
-	"\x13UpdateDSPRules_V2_4\x12\x16.dspRouter.JsonRequest\x1a\x1e.dspRouter.UpdateRulesResponse\x12M\n" +
-	"\x13UpdateSPPRules_V2_4\x12\x16.dspRouter.JsonRequest\x1a\x1e.dspRouter.UpdateRulesResponse\x12S\n" +
+	"\fGetBids_V2_4\x12 .dspRouter.DspRouterRequest_V2_4\x1a!.dspRouter.DspRouterResponse_V2_4\x12S\n" +
 	"\fGetBids_V2_5\x12 .dspRouter.DspRouterRequest_V2_5\x1a!.dspRouter.DspRouterResponse_V2_5B_Z]gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/proto/services/dspRouter;dspRouterGrpcb\x06proto3"
 
 var (
@@ -498,49 +314,37 @@ func file_services_dspRouter_proto_rawDescGZIP() []byte {
 	return file_services_dspRouter_proto_rawDescData
 }
 
-var file_services_dspRouter_proto_msgTypes = make([]protoimpl.MessageInfo, 8)
+var file_services_dspRouter_proto_msgTypes = make([]protoimpl.MessageInfo, 6)
 var file_services_dspRouter_proto_goTypes = []any{
 	(*DspRouterRequest_V2_4)(nil),  // 0: dspRouter.DspRouterRequest_V2_4
 	(*DspRouterResponse_V2_4)(nil), // 1: dspRouter.DspRouterResponse_V2_4
 	(*DspRouterRequest_V2_5)(nil),  // 2: dspRouter.DspRouterRequest_V2_5
 	(*DspRouterResponse_V2_5)(nil), // 3: dspRouter.DspRouterResponse_V2_5
-	(*GetRulesRequest)(nil),        // 4: dspRouter.GetRulesRequest
-	(*UpdateRulesResponse)(nil),    // 5: dspRouter.UpdateRulesResponse
-	(*JsonRequest)(nil),            // 6: dspRouter.JsonRequest
-	(*JsonResponse)(nil),           // 7: dspRouter.JsonResponse
-	(*ortb_V2_4.BidRequest)(nil),   // 8: ortb_V2_4.BidRequest
-	(*ortb_V2_4.BidResponse)(nil),  // 9: ortb_V2_4.BidResponse
-	(*ortb_V2_5.BidRequest)(nil),   // 10: ortb_V2_5.BidRequest
-	(*ortb_V2_5.BidResponse)(nil),  // 11: ortb_V2_5.BidResponse
+	nil,                            // 4: dspRouter.DspRouterResponse_V2_4.BidResponsesEntry
+	nil,                            // 5: dspRouter.DspRouterResponse_V2_5.BidResponsesEntry
+	(*ortb_V2_4.BidRequest)(nil),   // 6: ortb_V2_4.BidRequest
+	(*ortb_V2_5.BidRequest)(nil),   // 7: ortb_V2_5.BidRequest
+	(*ortb_V2_4.BidResponse)(nil),  // 8: ortb_V2_4.BidResponse
+	(*ortb_V2_5.BidResponse)(nil),  // 9: ortb_V2_5.BidResponse
 }
 var file_services_dspRouter_proto_depIdxs = []int32{
-	8,  // 0: dspRouter.DspRouterRequest_V2_4.bidRequest:type_name -> ortb_V2_4.BidRequest
-	8,  // 1: dspRouter.DspRouterResponse_V2_4.bidRequest:type_name -> ortb_V2_4.BidRequest
-	9,  // 2: dspRouter.DspRouterResponse_V2_4.bidResponses:type_name -> ortb_V2_4.BidResponse
-	10, // 3: dspRouter.DspRouterRequest_V2_5.bidRequest:type_name -> ortb_V2_5.BidRequest
-	10, // 4: dspRouter.DspRouterResponse_V2_5.bidRequest:type_name -> ortb_V2_5.BidRequest
-	11, // 5: dspRouter.DspRouterResponse_V2_5.bidResponses:type_name -> ortb_V2_5.BidResponse
-	0,  // 6: dspRouter.DspRouterService.GetBids_V2_4:input_type -> dspRouter.DspRouterRequest_V2_4
-	4,  // 7: dspRouter.DspRouterService.GetRules_V2_4:input_type -> dspRouter.GetRulesRequest
-	4,  // 8: dspRouter.DspRouterService.GetDSPRules_V2_4:input_type -> dspRouter.GetRulesRequest
-	4,  // 9: dspRouter.DspRouterService.GetSPPRules_V2_4:input_type -> dspRouter.GetRulesRequest
-	6,  // 10: dspRouter.DspRouterService.UpdateRules_V2_4:input_type -> dspRouter.JsonRequest
-	6,  // 11: dspRouter.DspRouterService.UpdateDSPRules_V2_4:input_type -> dspRouter.JsonRequest
-	6,  // 12: dspRouter.DspRouterService.UpdateSPPRules_V2_4:input_type -> dspRouter.JsonRequest
-	2,  // 13: dspRouter.DspRouterService.GetBids_V2_5:input_type -> dspRouter.DspRouterRequest_V2_5
-	1,  // 14: dspRouter.DspRouterService.GetBids_V2_4:output_type -> dspRouter.DspRouterResponse_V2_4
-	7,  // 15: dspRouter.DspRouterService.GetRules_V2_4:output_type -> dspRouter.JsonResponse
-	7,  // 16: dspRouter.DspRouterService.GetDSPRules_V2_4:output_type -> dspRouter.JsonResponse
-	7,  // 17: dspRouter.DspRouterService.GetSPPRules_V2_4:output_type -> dspRouter.JsonResponse
-	5,  // 18: dspRouter.DspRouterService.UpdateRules_V2_4:output_type -> dspRouter.UpdateRulesResponse
-	5,  // 19: dspRouter.DspRouterService.UpdateDSPRules_V2_4:output_type -> dspRouter.UpdateRulesResponse
-	5,  // 20: dspRouter.DspRouterService.UpdateSPPRules_V2_4:output_type -> dspRouter.UpdateRulesResponse
-	3,  // 21: dspRouter.DspRouterService.GetBids_V2_5:output_type -> dspRouter.DspRouterResponse_V2_5
-	14, // [14:22] is the sub-list for method output_type
-	6,  // [6:14] is the sub-list for method input_type
-	6,  // [6:6] is the sub-list for extension type_name
-	6,  // [6:6] is the sub-list for extension extendee
-	0,  // [0:6] is the sub-list for field type_name
+	6,  // 0: dspRouter.DspRouterRequest_V2_4.bidRequest:type_name -> ortb_V2_4.BidRequest
+	6,  // 1: dspRouter.DspRouterResponse_V2_4.bidRequest:type_name -> ortb_V2_4.BidRequest
+	4,  // 2: dspRouter.DspRouterResponse_V2_4.bidResponses:type_name -> dspRouter.DspRouterResponse_V2_4.BidResponsesEntry
+	7,  // 3: dspRouter.DspRouterRequest_V2_5.bidRequest:type_name -> ortb_V2_5.BidRequest
+	7,  // 4: dspRouter.DspRouterResponse_V2_5.bidRequest:type_name -> ortb_V2_5.BidRequest
+	5,  // 5: dspRouter.DspRouterResponse_V2_5.bidResponses:type_name -> dspRouter.DspRouterResponse_V2_5.BidResponsesEntry
+	8,  // 6: dspRouter.DspRouterResponse_V2_4.BidResponsesEntry.value:type_name -> ortb_V2_4.BidResponse
+	9,  // 7: dspRouter.DspRouterResponse_V2_5.BidResponsesEntry.value:type_name -> ortb_V2_5.BidResponse
+	0,  // 8: dspRouter.DspRouterService.GetBids_V2_4:input_type -> dspRouter.DspRouterRequest_V2_4
+	2,  // 9: dspRouter.DspRouterService.GetBids_V2_5:input_type -> dspRouter.DspRouterRequest_V2_5
+	1,  // 10: dspRouter.DspRouterService.GetBids_V2_4:output_type -> dspRouter.DspRouterResponse_V2_4
+	3,  // 11: dspRouter.DspRouterService.GetBids_V2_5:output_type -> dspRouter.DspRouterResponse_V2_5
+	10, // [10:12] is the sub-list for method output_type
+	8,  // [8:10] is the sub-list for method input_type
+	8,  // [8:8] is the sub-list for extension type_name
+	8,  // [8:8] is the sub-list for extension extendee
+	0,  // [0:8] is the sub-list for field type_name
 }
 
 func init() { file_services_dspRouter_proto_init() }
@@ -554,7 +358,7 @@ func file_services_dspRouter_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_services_dspRouter_proto_rawDesc), len(file_services_dspRouter_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   8,
+			NumMessages:   6,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

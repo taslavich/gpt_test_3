@@ -26,7 +26,10 @@ const (
 )
 
 type postBidRequest_V2_4 struct {
-	Payload *ortb_V2_4.BidRequest `in:"body=json"`
+	Payload *struct {
+		BidRequest *ortb_V2_4.BidRequest `json:"bid_request"`
+		SppDomain  string                `json:"spp_domain"`
+	} `in:"body=json"`
 }
 
 type postBidResponse_V2_4 struct {
@@ -34,7 +37,10 @@ type postBidResponse_V2_4 struct {
 }
 
 type postBidRequest_V2_5 struct {
-	Payload *ortb_V2_5.BidRequest `in:"body=json"`
+	Payload *struct {
+		BidRequest *ortb_V2_5.BidRequest `json:"bid_request"`
+		SppDomain  string                `json:"spp_domain"`
+	} `in:"body=json"`
 }
 
 type postBidResponse_V2_5 struct {
@@ -79,7 +85,7 @@ func InitRoutes(
 	httpRouter.With(
 		httpin.NewInput(nurlRequest{}),
 	).Get(GetNurlUrl, func(w http.ResponseWriter, r *http.Request) {
-		getNurl(ctx, w, r, nurlTimeout)
+		getNurl(ctx, w, r, redisClient, nurlTimeout)
 	})
 
 	httpRouter.With(

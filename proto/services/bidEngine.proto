@@ -12,7 +12,7 @@ service BidEngineService {
 
 message BidEngineRequest_V2_4 {
   ortb_V2_4.BidRequest bidRequest = 1;
-  repeated ortb_V2_4.BidResponse bidResponses = 2;
+  map<string, ortb_V2_4.BidResponse> bidResponses = 2;
   string globalId = 3;
 }
 
@@ -23,7 +23,7 @@ message BidEngineResponse_V2_4 {
 
 message BidEngineRequest_V2_5 {
   ortb_V2_5.BidRequest bidRequest = 1;
-  repeated ortb_V2_5.BidResponse bidResponses = 2;
+  map<string, ortb_V2_5.BidResponse> bidResponses = 2;
   string globalId = 3;
 }
 

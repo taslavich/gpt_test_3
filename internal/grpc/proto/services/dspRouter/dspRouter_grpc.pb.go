@@ -19,14 +19,8 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	DspRouterService_GetBids_V2_4_FullMethodName        = "/dspRouter.DspRouterService/GetBids_V2_4"
-	DspRouterService_GetRules_V2_4_FullMethodName       = "/dspRouter.DspRouterService/GetRules_V2_4"
-	DspRouterService_GetDSPRules_V2_4_FullMethodName    = "/dspRouter.DspRouterService/GetDSPRules_V2_4"
-	DspRouterService_GetSPPRules_V2_4_FullMethodName    = "/dspRouter.DspRouterService/GetSPPRules_V2_4"
-	DspRouterService_UpdateRules_V2_4_FullMethodName    = "/dspRouter.DspRouterService/UpdateRules_V2_4"
-	DspRouterService_UpdateDSPRules_V2_4_FullMethodName = "/dspRouter.DspRouterService/UpdateDSPRules_V2_4"
-	DspRouterService_UpdateSPPRules_V2_4_FullMethodName = "/dspRouter.DspRouterService/UpdateSPPRules_V2_4"
-	DspRouterService_GetBids_V2_5_FullMethodName        = "/dspRouter.DspRouterService/GetBids_V2_5"
+	DspRouterService_GetBids_V2_4_FullMethodName = "/dspRouter.DspRouterService/GetBids_V2_4"
+	DspRouterService_GetBids_V2_5_FullMethodName = "/dspRouter.DspRouterService/GetBids_V2_5"
 )
 
 // DspRouterServiceClient is the client API for DspRouterService service.
@@ -34,12 +28,6 @@ const (
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 type DspRouterServiceClient interface {
 	GetBids_V2_4(ctx context.Context, in *DspRouterRequest_V2_4, opts ...grpc.CallOption) (*DspRouterResponse_V2_4, error)
-	GetRules_V2_4(ctx context.Context, in *GetRulesRequest, opts ...grpc.CallOption) (*JsonResponse, error)
-	GetDSPRules_V2_4(ctx context.Context, in *GetRulesRequest, opts ...grpc.CallOption) (*JsonResponse, error)
-	GetSPPRules_V2_4(ctx context.Context, in *GetRulesRequest, opts ...grpc.CallOption) (*JsonResponse, error)
-	UpdateRules_V2_4(ctx context.Context, in *JsonRequest, opts ...grpc.CallOption) (*UpdateRulesResponse, error)
-	UpdateDSPRules_V2_4(ctx context.Context, in *JsonRequest, opts ...grpc.CallOption) (*UpdateRulesResponse, error)
-	UpdateSPPRules_V2_4(ctx context.Context, in *JsonRequest, opts ...grpc.CallOption) (*UpdateRulesResponse, error)
 	GetBids_V2_5(ctx context.Context, in *DspRouterRequest_V2_5, opts ...grpc.CallOption) (*DspRouterResponse_V2_5, error)
 }
 
@@ -61,66 +49,6 @@ func (c *dspRouterServiceClient) GetBids_V2_4(ctx context.Context, in *DspRouter
 	return out, nil
 }
 
-func (c *dspRouterServiceClient) GetRules_V2_4(ctx context.Context, in *GetRulesRequest, opts ...grpc.CallOption) (*JsonResponse, error) {
-	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(JsonResponse)
-	err := c.cc.Invoke(ctx, DspRouterService_GetRules_V2_4_FullMethodName, in, out, cOpts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
-}
-
-func (c *dspRouterServiceClient) GetDSPRules_V2_4(ctx context.Context, in *GetRulesRequest, opts ...grpc.CallOption) (*JsonResponse, error) {
-	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(JsonResponse)
-	err := c.cc.Invoke(ctx, DspRouterService_GetDSPRules_V2_4_FullMethodName, in, out, cOpts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
-}
-
-func (c *dspRouterServiceClient) GetSPPRules_V2_4(ctx context.Context, in *GetRulesRequest, opts ...grpc.CallOption) (*JsonResponse, error) {
-	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(JsonResponse)
-	err := c.cc.Invoke(ctx, DspRouterService_GetSPPRules_V2_4_FullMethodName, in, out, cOpts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
-}
-
-func (c *dspRouterServiceClient) UpdateRules_V2_4(ctx context.Context, in *JsonRequest, opts ...grpc.CallOption) (*UpdateRulesResponse, error) {
-	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(UpdateRulesResponse)
-	err := c.cc.Invoke(ctx, DspRouterService_UpdateRules_V2_4_FullMethodName, in, out, cOpts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
-}
-
-func (c *dspRouterServiceClient) UpdateDSPRules_V2_4(ctx context.Context, in *JsonRequest, opts ...grpc.CallOption) (*UpdateRulesResponse, error) {
-	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(UpdateRulesResponse)
-	err := c.cc.Invoke(ctx, DspRouterService_UpdateDSPRules_V2_4_FullMethodName, in, out, cOpts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
-}
-
-func (c *dspRouterServiceClient) UpdateSPPRules_V2_4(ctx context.Context, in *JsonRequest, opts ...grpc.CallOption) (*UpdateRulesResponse, error) {
-	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(UpdateRulesResponse)
-	err := c.cc.Invoke(ctx, DspRouterService_UpdateSPPRules_V2_4_FullMethodName, in, out, cOpts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
-}
-
 func (c *dspRouterServiceClient) GetBids_V2_5(ctx context.Context, in *DspRouterRequest_V2_5, opts ...grpc.CallOption) (*DspRouterResponse_V2_5, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(DspRouterResponse_V2_5)
@@ -136,12 +64,6 @@ func (c *dspRouterServiceClient) GetBids_V2_5(ctx context.Context, in *DspRouter
 // for forward compatibility.
 type DspRouterServiceServer interface {
 	GetBids_V2_4(context.Context, *DspRouterRequest_V2_4) (*DspRouterResponse_V2_4, error)
-	GetRules_V2_4(context.Context, *GetRulesRequest) (*JsonResponse, error)
-	GetDSPRules_V2_4(context.Context, *GetRulesRequest) (*JsonResponse, error)
-	GetSPPRules_V2_4(context.Context, *GetRulesRequest) (*JsonResponse, error)
-	UpdateRules_V2_4(context.Context, *JsonRequest) (*UpdateRulesResponse, error)
-	UpdateDSPRules_V2_4(context.Context, *JsonRequest) (*UpdateRulesResponse, error)
-	UpdateSPPRules_V2_4(context.Context, *JsonRequest) (*UpdateRulesResponse, error)
 	GetBids_V2_5(context.Context, *DspRouterRequest_V2_5) (*DspRouterResponse_V2_5, error)
 	mustEmbedUnimplementedDspRouterServiceServer()
 }
@@ -155,24 +77,6 @@ type UnimplementedDspRouterServiceServer struct{}
 
 func (UnimplementedDspRouterServiceServer) GetBids_V2_4(context.Context, *DspRouterRequest_V2_4) (*DspRouterResponse_V2_4, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetBids_V2_4 not implemented")
-}
-func (UnimplementedDspRouterServiceServer) GetRules_V2_4(context.Context, *GetRulesRequest) (*JsonResponse, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method GetRules_V2_4 not implemented")
-}
-func (UnimplementedDspRouterServiceServer) GetDSPRules_V2_4(context.Context, *GetRulesRequest) (*JsonResponse, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method GetDSPRules_V2_4 not implemented")
-}
-func (UnimplementedDspRouterServiceServer) GetSPPRules_V2_4(context.Context, *GetRulesRequest) (*JsonResponse, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method GetSPPRules_V2_4 not implemented")
-}
-func (UnimplementedDspRouterServiceServer) UpdateRules_V2_4(context.Context, *JsonRequest) (*UpdateRulesResponse, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method UpdateRules_V2_4 not implemented")
-}
-func (UnimplementedDspRouterServiceServer) UpdateDSPRules_V2_4(context.Context, *JsonRequest) (*UpdateRulesResponse, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method UpdateDSPRules_V2_4 not implemented")
-}
-func (UnimplementedDspRouterServiceServer) UpdateSPPRules_V2_4(context.Context, *JsonRequest) (*UpdateRulesResponse, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method UpdateSPPRules_V2_4 not implemented")
 }
 func (UnimplementedDspRouterServiceServer) GetBids_V2_5(context.Context, *DspRouterRequest_V2_5) (*DspRouterResponse_V2_5, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetBids_V2_5 not implemented")
@@ -216,114 +120,6 @@ func _DspRouterService_GetBids_V2_4_Handler(srv interface{}, ctx context.Context
 	return interceptor(ctx, in, info, handler)
 }
 
-func _DspRouterService_GetRules_V2_4_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(GetRulesRequest)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(DspRouterServiceServer).GetRules_V2_4(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: DspRouterService_GetRules_V2_4_FullMethodName,
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(DspRouterServiceServer).GetRules_V2_4(ctx, req.(*GetRulesRequest))
-	}
-	return interceptor(ctx, in, info, handler)
-}
-
-func _DspRouterService_GetDSPRules_V2_4_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(GetRulesRequest)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(DspRouterServiceServer).GetDSPRules_V2_4(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: DspRouterService_GetDSPRules_V2_4_FullMethodName,
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(DspRouterServiceServer).GetDSPRules_V2_4(ctx, req.(*GetRulesRequest))
-	}
-	return interceptor(ctx, in, info, handler)
-}
-
-func _DspRouterService_GetSPPRules_V2_4_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(GetRulesRequest)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(DspRouterServiceServer).GetSPPRules_V2_4(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: DspRouterService_GetSPPRules_V2_4_FullMethodName,
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(DspRouterServiceServer).GetSPPRules_V2_4(ctx, req.(*GetRulesRequest))
-	}
-	return interceptor(ctx, in, info, handler)
-}
-
-func _DspRouterService_UpdateRules_V2_4_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(JsonRequest)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(DspRouterServiceServer).UpdateRules_V2_4(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: DspRouterService_UpdateRules_V2_4_FullMethodName,
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(DspRouterServiceServer).UpdateRules_V2_4(ctx, req.(*JsonRequest))
-	}
-	return interceptor(ctx, in, info, handler)
-}
-
-func _DspRouterService_UpdateDSPRules_V2_4_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(JsonRequest)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(DspRouterServiceServer).UpdateDSPRules_V2_4(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: DspRouterService_UpdateDSPRules_V2_4_FullMethodName,
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(DspRouterServiceServer).UpdateDSPRules_V2_4(ctx, req.(*JsonRequest))
-	}
-	return interceptor(ctx, in, info, handler)
-}
-
-func _DspRouterService_UpdateSPPRules_V2_4_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(JsonRequest)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(DspRouterServiceServer).UpdateSPPRules_V2_4(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: DspRouterService_UpdateSPPRules_V2_4_FullMethodName,
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(DspRouterServiceServer).UpdateSPPRules_V2_4(ctx, req.(*JsonRequest))
-	}
-	return interceptor(ctx, in, info, handler)
-}
-
 func _DspRouterService_GetBids_V2_5_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(DspRouterRequest_V2_5)
 	if err := dec(in); err != nil {
@@ -352,30 +148,6 @@ var DspRouterService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "GetBids_V2_4",
 			Handler:    _DspRouterService_GetBids_V2_4_Handler,
-		},
-		{
-			MethodName: "GetRules_V2_4",
-			Handler:    _DspRouterService_GetRules_V2_4_Handler,
-		},
-		{
-			MethodName: "GetDSPRules_V2_4",
-			Handler:    _DspRouterService_GetDSPRules_V2_4_Handler,
-		},
-		{
-			MethodName: "GetSPPRules_V2_4",
-			Handler:    _DspRouterService_GetSPPRules_V2_4_Handler,
-		},
-		{
-			MethodName: "UpdateRules_V2_4",
-			Handler:    _DspRouterService_UpdateRules_V2_4_Handler,
-		},
-		{
-			MethodName: "UpdateDSPRules_V2_4",
-			Handler:    _DspRouterService_UpdateDSPRules_V2_4_Handler,
-		},
-		{
-			MethodName: "UpdateSPPRules_V2_4",
-			Handler:    _DspRouterService_UpdateSPPRules_V2_4_Handler,
 		},
 		{
 			MethodName: "GetBids_V2_5",
