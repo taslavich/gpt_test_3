@@ -139,8 +139,7 @@ type Imp struct {
 	Secure        *int32                 `protobuf:"varint,6,opt,name=secure,proto3,oneof" json:"secure,omitempty"`
 	Instl         *int32                 `protobuf:"varint,7,opt,name=instl,proto3,oneof" json:"instl,omitempty"`
 	Bidfloorcur   *string                `protobuf:"bytes,8,opt,name=bidfloorcur,proto3,oneof" json:"bidfloorcur,omitempty"`
-	Video         *Video                 `protobuf:"bytes,9,opt,name=video,proto3,oneof" json:"video,omitempty"`
-	ImpExt        *Ext                   `protobuf:"bytes,10,opt,name=imp_ext,json=impExt,proto3,oneof" json:"imp_ext,omitempty"`
+	ImpExt        *Ext                   `protobuf:"bytes,9,opt,name=imp_ext,json=impExt,proto3,oneof" json:"imp_ext,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -229,13 +228,6 @@ func (x *Imp) GetBidfloorcur() string {
 		return *x.Bidfloorcur
 	}
 	return ""
-}
-
-func (x *Imp) GetVideo() *Video {
-	if x != nil {
-		return x.Video
-	}
-	return nil
 }
 
 func (x *Imp) GetImpExt() *Ext {
@@ -785,162 +777,6 @@ func (x *User) GetBuyeruid() string {
 	return ""
 }
 
-type Video struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Mimes         []string               `protobuf:"bytes,1,rep,name=mimes,proto3" json:"mimes,omitempty"`
-	Protocols     []int32                `protobuf:"varint,2,rep,packed,name=protocols,proto3" json:"protocols,omitempty"`
-	W             *int32                 `protobuf:"varint,3,opt,name=w,proto3,oneof" json:"w,omitempty"`
-	H             *int32                 `protobuf:"varint,4,opt,name=h,proto3,oneof" json:"h,omitempty"`
-	Linearity     *int32                 `protobuf:"varint,5,opt,name=linearity,proto3,oneof" json:"linearity,omitempty"`
-	Skip          *int32                 `protobuf:"varint,6,opt,name=skip,proto3,oneof" json:"skip,omitempty"`
-	Sequence      *int32                 `protobuf:"varint,7,opt,name=sequence,proto3,oneof" json:"sequence,omitempty"`
-	Boxingallowed *int32                 `protobuf:"varint,8,opt,name=boxingallowed,proto3,oneof" json:"boxingallowed,omitempty"`
-	Placement     *int32                 `protobuf:"varint,9,opt,name=placement,proto3,oneof" json:"placement,omitempty"`
-	Minduration   *int32                 `protobuf:"varint,10,opt,name=minduration,proto3,oneof" json:"minduration,omitempty"`
-	Maxduration   *int32                 `protobuf:"varint,11,opt,name=maxduration,proto3,oneof" json:"maxduration,omitempty"`
-	Startdelay    *int32                 `protobuf:"varint,12,opt,name=startdelay,proto3,oneof" json:"startdelay,omitempty"`
-	Battr         []int32                `protobuf:"varint,13,rep,packed,name=battr,proto3" json:"battr,omitempty"`
-	Api           []int32                `protobuf:"varint,14,rep,packed,name=api,proto3" json:"api,omitempty"`
-	Pos           *int32                 `protobuf:"varint,15,opt,name=pos,proto3,oneof" json:"pos,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *Video) Reset() {
-	*x = Video{}
-	mi := &file_types_ortb_V2_5_ortb_proto_msgTypes[9]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *Video) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*Video) ProtoMessage() {}
-
-func (x *Video) ProtoReflect() protoreflect.Message {
-	mi := &file_types_ortb_V2_5_ortb_proto_msgTypes[9]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use Video.ProtoReflect.Descriptor instead.
-func (*Video) Descriptor() ([]byte, []int) {
-	return file_types_ortb_V2_5_ortb_proto_rawDescGZIP(), []int{9}
-}
-
-func (x *Video) GetMimes() []string {
-	if x != nil {
-		return x.Mimes
-	}
-	return nil
-}
-
-func (x *Video) GetProtocols() []int32 {
-	if x != nil {
-		return x.Protocols
-	}
-	return nil
-}
-
-func (x *Video) GetW() int32 {
-	if x != nil && x.W != nil {
-		return *x.W
-	}
-	return 0
-}
-
-func (x *Video) GetH() int32 {
-	if x != nil && x.H != nil {
-		return *x.H
-	}
-	return 0
-}
-
-func (x *Video) GetLinearity() int32 {
-	if x != nil && x.Linearity != nil {
-		return *x.Linearity
-	}
-	return 0
-}
-
-func (x *Video) GetSkip() int32 {
-	if x != nil && x.Skip != nil {
-		return *x.Skip
-	}
-	return 0
-}
-
-func (x *Video) GetSequence() int32 {
-	if x != nil && x.Sequence != nil {
-		return *x.Sequence
-	}
-	return 0
-}
-
-func (x *Video) GetBoxingallowed() int32 {
-	if x != nil && x.Boxingallowed != nil {
-		return *x.Boxingallowed
-	}
-	return 0
-}
-
-func (x *Video) GetPlacement() int32 {
-	if x != nil && x.Placement != nil {
-		return *x.Placement
-	}
-	return 0
-}
-
-func (x *Video) GetMinduration() int32 {
-	if x != nil && x.Minduration != nil {
-		return *x.Minduration
-	}
-	return 0
-}
-
-func (x *Video) GetMaxduration() int32 {
-	if x != nil && x.Maxduration != nil {
-		return *x.Maxduration
-	}
-	return 0
-}
-
-func (x *Video) GetStartdelay() int32 {
-	if x != nil && x.Startdelay != nil {
-		return *x.Startdelay
-	}
-	return 0
-}
-
-func (x *Video) GetBattr() []int32 {
-	if x != nil {
-		return x.Battr
-	}
-	return nil
-}
-
-func (x *Video) GetApi() []int32 {
-	if x != nil {
-		return x.Api
-	}
-	return nil
-}
-
-func (x *Video) GetPos() int32 {
-	if x != nil && x.Pos != nil {
-		return *x.Pos
-	}
-	return 0
-}
-
 type SeatBid struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Bid           []*Bid                 `protobuf:"bytes,1,rep,name=bid,proto3" json:"bid,omitempty"`
@@ -950,7 +786,7 @@ type SeatBid struct {
 
 func (x *SeatBid) Reset() {
 	*x = SeatBid{}
-	mi := &file_types_ortb_V2_5_ortb_proto_msgTypes[10]
+	mi := &file_types_ortb_V2_5_ortb_proto_msgTypes[9]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -962,7 +798,7 @@ func (x *SeatBid) String() string {
 func (*SeatBid) ProtoMessage() {}
 
 func (x *SeatBid) ProtoReflect() protoreflect.Message {
-	mi := &file_types_ortb_V2_5_ortb_proto_msgTypes[10]
+	mi := &file_types_ortb_V2_5_ortb_proto_msgTypes[9]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -975,7 +811,7 @@ func (x *SeatBid) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SeatBid.ProtoReflect.Descriptor instead.
 func (*SeatBid) Descriptor() ([]byte, []int) {
-	return file_types_ortb_V2_5_ortb_proto_rawDescGZIP(), []int{10}
+	return file_types_ortb_V2_5_ortb_proto_rawDescGZIP(), []int{9}
 }
 
 func (x *SeatBid) GetBid() []*Bid {
@@ -1009,7 +845,7 @@ type Bid struct {
 
 func (x *Bid) Reset() {
 	*x = Bid{}
-	mi := &file_types_ortb_V2_5_ortb_proto_msgTypes[11]
+	mi := &file_types_ortb_V2_5_ortb_proto_msgTypes[10]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1021,7 +857,7 @@ func (x *Bid) String() string {
 func (*Bid) ProtoMessage() {}
 
 func (x *Bid) ProtoReflect() protoreflect.Message {
-	mi := &file_types_ortb_V2_5_ortb_proto_msgTypes[11]
+	mi := &file_types_ortb_V2_5_ortb_proto_msgTypes[10]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1034,7 +870,7 @@ func (x *Bid) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Bid.ProtoReflect.Descriptor instead.
 func (*Bid) Descriptor() ([]byte, []int) {
-	return file_types_ortb_V2_5_ortb_proto_rawDescGZIP(), []int{11}
+	return file_types_ortb_V2_5_ortb_proto_rawDescGZIP(), []int{10}
 }
 
 func (x *Bid) GetId() string {
@@ -1162,7 +998,7 @@ type BidResponse struct {
 
 func (x *BidResponse) Reset() {
 	*x = BidResponse{}
-	mi := &file_types_ortb_V2_5_ortb_proto_msgTypes[12]
+	mi := &file_types_ortb_V2_5_ortb_proto_msgTypes[11]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1174,7 +1010,7 @@ func (x *BidResponse) String() string {
 func (*BidResponse) ProtoMessage() {}
 
 func (x *BidResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_types_ortb_V2_5_ortb_proto_msgTypes[12]
+	mi := &file_types_ortb_V2_5_ortb_proto_msgTypes[11]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1187,7 +1023,7 @@ func (x *BidResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use BidResponse.ProtoReflect.Descriptor instead.
 func (*BidResponse) Descriptor() ([]byte, []int) {
-	return file_types_ortb_V2_5_ortb_proto_rawDescGZIP(), []int{12}
+	return file_types_ortb_V2_5_ortb_proto_rawDescGZIP(), []int{11}
 }
 
 func (x *BidResponse) GetId() string {
@@ -1234,7 +1070,7 @@ type Ext struct {
 
 func (x *Ext) Reset() {
 	*x = Ext{}
-	mi := &file_types_ortb_V2_5_ortb_proto_msgTypes[13]
+	mi := &file_types_ortb_V2_5_ortb_proto_msgTypes[12]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1246,7 +1082,7 @@ func (x *Ext) String() string {
 func (*Ext) ProtoMessage() {}
 
 func (x *Ext) ProtoReflect() protoreflect.Message {
-	mi := &file_types_ortb_V2_5_ortb_proto_msgTypes[13]
+	mi := &file_types_ortb_V2_5_ortb_proto_msgTypes[12]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1259,7 +1095,7 @@ func (x *Ext) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Ext.ProtoReflect.Descriptor instead.
 func (*Ext) Descriptor() ([]byte, []int) {
-	return file_types_ortb_V2_5_ortb_proto_rawDescGZIP(), []int{13}
+	return file_types_ortb_V2_5_ortb_proto_rawDescGZIP(), []int{12}
 }
 
 func (x *Ext) GetValues() map[string]string {
@@ -1290,7 +1126,7 @@ const file_types_ortb_V2_5_ortb_proto_rawDesc = "" +
 	"\a_deviceB\a\n" +
 	"\x05_siteB\a\n" +
 	"\x05_userB\a\n" +
-	"\x05_tmax\"\xdf\x03\n" +
+	"\x05_tmax\"\xa8\x03\n" +
 	"\x03Imp\x12\x13\n" +
 	"\x02id\x18\x01 \x01(\tH\x00R\x02id\x88\x01\x01\x12\x1f\n" +
 	"\bbidFloor\x18\x02 \x01(\x02H\x01R\bbidFloor\x88\x01\x01\x12.\n" +
@@ -1299,10 +1135,8 @@ const file_types_ortb_V2_5_ortb_proto_rawDesc = "" +
 	"\x05tagid\x18\x05 \x01(\tH\x04R\x05tagid\x88\x01\x01\x12\x1b\n" +
 	"\x06secure\x18\x06 \x01(\x05H\x05R\x06secure\x88\x01\x01\x12\x19\n" +
 	"\x05instl\x18\a \x01(\x05H\x06R\x05instl\x88\x01\x01\x12%\n" +
-	"\vbidfloorcur\x18\b \x01(\tH\aR\vbidfloorcur\x88\x01\x01\x12+\n" +
-	"\x05video\x18\t \x01(\v2\x10.ortb_V2_5.VideoH\bR\x05video\x88\x01\x01\x12,\n" +
-	"\aimp_ext\x18\n" +
-	" \x01(\v2\x0e.ortb_V2_5.ExtH\tR\x06impExt\x88\x01\x01B\x05\n" +
+	"\vbidfloorcur\x18\b \x01(\tH\aR\vbidfloorcur\x88\x01\x01\x12,\n" +
+	"\aimp_ext\x18\t \x01(\v2\x0e.ortb_V2_5.ExtH\bR\x06impExt\x88\x01\x01B\x05\n" +
 	"\x03_idB\v\n" +
 	"\t_bidFloorB\t\n" +
 	"\a_bannerB\t\n" +
@@ -1310,8 +1144,7 @@ const file_types_ortb_V2_5_ortb_proto_rawDesc = "" +
 	"\x06_tagidB\t\n" +
 	"\a_secureB\b\n" +
 	"\x06_instlB\x0e\n" +
-	"\f_bidfloorcurB\b\n" +
-	"\x06_videoB\n" +
+	"\f_bidfloorcurB\n" +
 	"\n" +
 	"\b_imp_ext\"z\n" +
 	"\x06Native\x12\x1d\n" +
@@ -1388,40 +1221,7 @@ const file_types_ortb_V2_5_ortb_proto_rawDesc = "" +
 	"\bbuyeruid\x18\x03 \x01(\tH\x02R\bbuyeruid\x88\x01\x01B\x05\n" +
 	"\x03_idB\v\n" +
 	"\t_keywordsB\v\n" +
-	"\t_buyeruid\"\xc5\x04\n" +
-	"\x05Video\x12\x14\n" +
-	"\x05mimes\x18\x01 \x03(\tR\x05mimes\x12\x1c\n" +
-	"\tprotocols\x18\x02 \x03(\x05R\tprotocols\x12\x11\n" +
-	"\x01w\x18\x03 \x01(\x05H\x00R\x01w\x88\x01\x01\x12\x11\n" +
-	"\x01h\x18\x04 \x01(\x05H\x01R\x01h\x88\x01\x01\x12!\n" +
-	"\tlinearity\x18\x05 \x01(\x05H\x02R\tlinearity\x88\x01\x01\x12\x17\n" +
-	"\x04skip\x18\x06 \x01(\x05H\x03R\x04skip\x88\x01\x01\x12\x1f\n" +
-	"\bsequence\x18\a \x01(\x05H\x04R\bsequence\x88\x01\x01\x12)\n" +
-	"\rboxingallowed\x18\b \x01(\x05H\x05R\rboxingallowed\x88\x01\x01\x12!\n" +
-	"\tplacement\x18\t \x01(\x05H\x06R\tplacement\x88\x01\x01\x12%\n" +
-	"\vminduration\x18\n" +
-	" \x01(\x05H\aR\vminduration\x88\x01\x01\x12%\n" +
-	"\vmaxduration\x18\v \x01(\x05H\bR\vmaxduration\x88\x01\x01\x12#\n" +
-	"\n" +
-	"startdelay\x18\f \x01(\x05H\tR\n" +
-	"startdelay\x88\x01\x01\x12\x14\n" +
-	"\x05battr\x18\r \x03(\x05R\x05battr\x12\x10\n" +
-	"\x03api\x18\x0e \x03(\x05R\x03api\x12\x15\n" +
-	"\x03pos\x18\x0f \x01(\x05H\n" +
-	"R\x03pos\x88\x01\x01B\x04\n" +
-	"\x02_wB\x04\n" +
-	"\x02_hB\f\n" +
-	"\n" +
-	"_linearityB\a\n" +
-	"\x05_skipB\v\n" +
-	"\t_sequenceB\x10\n" +
-	"\x0e_boxingallowedB\f\n" +
-	"\n" +
-	"_placementB\x0e\n" +
-	"\f_mindurationB\x0e\n" +
-	"\f_maxdurationB\r\n" +
-	"\v_startdelayB\x06\n" +
-	"\x04_pos\"+\n" +
+	"\t_buyeruid\"+\n" +
 	"\aSeatBid\x12 \n" +
 	"\x03bid\x18\x01 \x03(\v2\x0e.ortb_V2_5.BidR\x03bid\"\x83\x04\n" +
 	"\x03Bid\x12\x13\n" +
@@ -1487,7 +1287,7 @@ func file_types_ortb_V2_5_ortb_proto_rawDescGZIP() []byte {
 	return file_types_ortb_V2_5_ortb_proto_rawDescData
 }
 
-var file_types_ortb_V2_5_ortb_proto_msgTypes = make([]protoimpl.MessageInfo, 15)
+var file_types_ortb_V2_5_ortb_proto_msgTypes = make([]protoimpl.MessageInfo, 14)
 var file_types_ortb_V2_5_ortb_proto_goTypes = []any{
 	(*BidRequest)(nil),  // 0: ortb_V2_5.BidRequest
 	(*Imp)(nil),         // 1: ortb_V2_5.Imp
@@ -1498,12 +1298,11 @@ var file_types_ortb_V2_5_ortb_proto_goTypes = []any{
 	(*Site)(nil),        // 6: ortb_V2_5.Site
 	(*Publisher)(nil),   // 7: ortb_V2_5.Publisher
 	(*User)(nil),        // 8: ortb_V2_5.User
-	(*Video)(nil),       // 9: ortb_V2_5.Video
-	(*SeatBid)(nil),     // 10: ortb_V2_5.SeatBid
-	(*Bid)(nil),         // 11: ortb_V2_5.Bid
-	(*BidResponse)(nil), // 12: ortb_V2_5.BidResponse
-	(*Ext)(nil),         // 13: ortb_V2_5.Ext
-	nil,                 // 14: ortb_V2_5.Ext.ValuesEntry
+	(*SeatBid)(nil),     // 9: ortb_V2_5.SeatBid
+	(*Bid)(nil),         // 10: ortb_V2_5.Bid
+	(*BidResponse)(nil), // 11: ortb_V2_5.BidResponse
+	(*Ext)(nil),         // 12: ortb_V2_5.Ext
+	nil,                 // 13: ortb_V2_5.Ext.ValuesEntry
 }
 var file_types_ortb_V2_5_ortb_proto_depIdxs = []int32{
 	1,  // 0: ortb_V2_5.BidRequest.imp:type_name -> ortb_V2_5.Imp
@@ -1512,19 +1311,18 @@ var file_types_ortb_V2_5_ortb_proto_depIdxs = []int32{
 	8,  // 3: ortb_V2_5.BidRequest.user:type_name -> ortb_V2_5.User
 	3,  // 4: ortb_V2_5.Imp.banner:type_name -> ortb_V2_5.Banner
 	2,  // 5: ortb_V2_5.Imp.native:type_name -> ortb_V2_5.Native
-	9,  // 6: ortb_V2_5.Imp.video:type_name -> ortb_V2_5.Video
-	13, // 7: ortb_V2_5.Imp.imp_ext:type_name -> ortb_V2_5.Ext
-	5,  // 8: ortb_V2_5.Device.geo:type_name -> ortb_V2_5.Geo
-	13, // 9: ortb_V2_5.Device.device_ext:type_name -> ortb_V2_5.Ext
-	7,  // 10: ortb_V2_5.Site.publisher:type_name -> ortb_V2_5.Publisher
-	11, // 11: ortb_V2_5.SeatBid.bid:type_name -> ortb_V2_5.Bid
-	10, // 12: ortb_V2_5.BidResponse.seatbid:type_name -> ortb_V2_5.SeatBid
-	14, // 13: ortb_V2_5.Ext.values:type_name -> ortb_V2_5.Ext.ValuesEntry
-	14, // [14:14] is the sub-list for method output_type
-	14, // [14:14] is the sub-list for method input_type
-	14, // [14:14] is the sub-list for extension type_name
-	14, // [14:14] is the sub-list for extension extendee
-	0,  // [0:14] is the sub-list for field type_name
+	12, // 6: ortb_V2_5.Imp.imp_ext:type_name -> ortb_V2_5.Ext
+	5,  // 7: ortb_V2_5.Device.geo:type_name -> ortb_V2_5.Geo
+	12, // 8: ortb_V2_5.Device.device_ext:type_name -> ortb_V2_5.Ext
+	7,  // 9: ortb_V2_5.Site.publisher:type_name -> ortb_V2_5.Publisher
+	10, // 10: ortb_V2_5.SeatBid.bid:type_name -> ortb_V2_5.Bid
+	9,  // 11: ortb_V2_5.BidResponse.seatbid:type_name -> ortb_V2_5.SeatBid
+	13, // 12: ortb_V2_5.Ext.values:type_name -> ortb_V2_5.Ext.ValuesEntry
+	13, // [13:13] is the sub-list for method output_type
+	13, // [13:13] is the sub-list for method input_type
+	13, // [13:13] is the sub-list for extension type_name
+	13, // [13:13] is the sub-list for extension extendee
+	0,  // [0:13] is the sub-list for field type_name
 }
 
 func init() { file_types_ortb_V2_5_ortb_proto_init() }
@@ -1541,16 +1339,15 @@ func file_types_ortb_V2_5_ortb_proto_init() {
 	file_types_ortb_V2_5_ortb_proto_msgTypes[6].OneofWrappers = []any{}
 	file_types_ortb_V2_5_ortb_proto_msgTypes[7].OneofWrappers = []any{}
 	file_types_ortb_V2_5_ortb_proto_msgTypes[8].OneofWrappers = []any{}
-	file_types_ortb_V2_5_ortb_proto_msgTypes[9].OneofWrappers = []any{}
+	file_types_ortb_V2_5_ortb_proto_msgTypes[10].OneofWrappers = []any{}
 	file_types_ortb_V2_5_ortb_proto_msgTypes[11].OneofWrappers = []any{}
-	file_types_ortb_V2_5_ortb_proto_msgTypes[12].OneofWrappers = []any{}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_types_ortb_V2_5_ortb_proto_rawDesc), len(file_types_ortb_V2_5_ortb_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   15,
+			NumMessages:   14,
 			NumExtensions: 0,
 			NumServices:   0,
 		},
