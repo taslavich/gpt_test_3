@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"runtime/debug"
 
 	bidEngineGrpc "gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/proto/services/bidEngine"
 	dspRouterGrpc "gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/proto/services/dspRouter"
@@ -23,7 +24,7 @@ func (s *Server) GetWinnerBid_V2_5(
 	defer func() {
 		if r := recover(); r != nil {
 			err := fmt.Errorf("Recovered from panic in GetWinnerBid_V2_5: %v", r)
-			log.Printf(err.Error())
+			log.Printf("Error: %v, Stack: %s", err.Error(), debug.Stack())
 
 			grpcCode := codes.Internal
 
