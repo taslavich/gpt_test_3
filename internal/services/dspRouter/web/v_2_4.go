@@ -175,7 +175,7 @@ func (s *Server) GetBids_V2_4(
 			}
 
 			// Фильтрация ответа SPP
-			if dspResp != nil && s.processor.ProcessResponseForSPPV24(req.SppEndpoint, dspResp).Allowed {
+			if !s.processor.ProcessResponseForSPPV24(req.SppEndpoint, dspResp).Allowed {
 				return
 			}
 
