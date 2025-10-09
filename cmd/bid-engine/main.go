@@ -9,7 +9,6 @@ import (
 	"os/signal"
 	"syscall"
 
-	"github.com/redis/go-redis/v9"
 	"gitlab.com/twinbid-exchange/RTB-exchange/internal/config"
 	bidEngineGrpc "gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/proto/services/bidEngine"
 	bidEngine "gitlab.com/twinbid-exchange/RTB-exchange/internal/services/bidEngine/service"
@@ -28,7 +27,7 @@ func main() {
 	}
 	log.Println("Config initialized!")
 
-	redisClient := redis.NewClient(&redis.Options{
+	/*redisClient := redis.NewClient(&redis.Options{
 		Addr:     fmt.Sprintf("%s:%s", cfg.RedisHost, cfg.RedisPort),
 		Password: cfg.RedisPassword,
 		DB:       cfg.RedisDB,
@@ -38,7 +37,7 @@ func main() {
 	if err := redisClient.Ping(ctx).Err(); err != nil {
 		log.Fatalf("Failed to connect to Redis: %v", err)
 	}
-	log.Println("✅ Connected to Redis")
+	log.Println("✅ Connected to Redis")*/
 
 	lis, err := net.Listen(
 		"tcp",
@@ -56,7 +55,7 @@ func main() {
 		s,
 		bidEngineWeb.NewServer(
 			cfg.ProfitPercent,
-			redisClient,
+			nil,
 			cfg.SystemHostname,
 			bidEngine.GetWinnerBidInternal_V_2_4,
 			bidEngine.GetWinnerBidInternal_V_2_5,
