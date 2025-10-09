@@ -78,7 +78,7 @@ func (s *Server) GetBids_V2_5(
 			}
 
 			// Фильтрация ответа SPP
-			if s.processor.ProcessResponseForSPPV25(req.SppEndpoint, dspResp).Allowed {
+			if !s.processor.ProcessResponseForSPPV25(req.SppEndpoint, dspResp).Allowed {
 				log.Println("Gor SSP filter")
 				return
 			}
