@@ -102,27 +102,27 @@ func postBid_V2_5(
 
 	bidReqData, err := json.Marshal(input.Payload)
 	if err != nil {
-		fmt.Printf("failed to marshal JSON in postBid_V2_5: %w", err)
+		log.Printf("failed to marshal JSON in postBid_V2_5: %w", err)
 	}
 
 	if err := utils.WriteStringToRedis(ctx, redisClient, globalId, constants.SPP_DOMAIN_COLUMN, input.Payload.SppDomain); err != nil {
-		fmt.Printf("failed to WriteStringToRedis Domain in postBid_V2_5: %w", err)
+		log.Printf("failed to WriteStringToRedis Domain in postBid_V2_5: %w", err)
 	}
 
 	if err := utils.WriteJsonToRedis(ctx, redisClient, globalId, constants.BID_REQUEST_COLUMN, bidReqData); err != nil {
-		fmt.Printf("failed to WriteJsonToRedis Bid Request in postBid_V2_5: %w", err)
+		log.Printf("failed to WriteJsonToRedis Bid Request in postBid_V2_5: %w", err)
 	}
 
 	if err := utils.WriteStringToRedis(ctx, redisClient, globalId, constants.GEO_COLUMN, countryISO); err != nil {
-		fmt.Printf("failed to WriteStringToRedis Geo in postBid_V2_5: %w", err)
+		log.Printf("failed to WriteStringToRedis Geo in postBid_V2_5: %w", err)
 	}
 
 	if err := utils.WriteStringToRedis(ctx, redisClient, globalId, constants.RESULT_COLUMN, constants.UNSUCCESS); err != nil {
-		fmt.Printf("failed to WriteStringToRedis SUCCESS in postBid_V2_5: %w", err)
+		log.Printf("failed to WriteStringToRedis SUCCESS in postBid_V2_5: %w", err)
 	}
 
 	if err := utils.WriteStringToRedis(ctx, redisClient, globalId, constants.TIMESTAMP_COLUMN, time.Now().UTC().String()); err != nil {
-		fmt.Printf("failed to WriteJsonToRedis TimeStamp in postBid_V2_5: %w", err)
+		log.Printf("failed to WriteJsonToRedis TimeStamp in postBid_V2_5: %w", err)
 	}
 
 	if input.Payload.BidRequest.Device.Geo == nil {

@@ -2,7 +2,6 @@ package sppAdapterWeb
 
 import (
 	"context"
-	"fmt"
 	"log"
 	"net/http"
 	"net/url"
@@ -47,7 +46,7 @@ func getNurl(
 	}
 
 	if err := utils.WriteStringToRedis(ctx, redisClient, input.GlobalId, constants.RESULT_COLUMN, constants.SUCCESS); err != nil {
-		fmt.Printf("failed to WriteStringToRedis SUCCESS in getBurl: %w", err)
+		log.Printf("failed to WriteStringToRedis SUCCESS in getBurl: %w", err)
 	}
 
 	w.WriteHeader(http.StatusOK)
@@ -87,7 +86,7 @@ func getBurl(
 	}
 
 	if err := utils.WriteStringToRedis(ctx, redisClient, input.GlobalId, constants.RESULT_COLUMN, constants.SUCCESS); err != nil {
-		fmt.Printf("failed to WriteStringToRedis SUCCESS in getBurl: %w", err)
+		log.Printf("failed to WriteStringToRedis SUCCESS in getBurl: %w", err)
 	}
 
 	w.WriteHeader(http.StatusOK)
