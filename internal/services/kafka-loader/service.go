@@ -20,6 +20,7 @@ func ProcessBatch(ctx context.Context, redisClient *redis.Client, kafkaWriter *k
 	}
 
 	if totalKeys < batchSize*2 {
+		log.Println("PASSED")
 		return nil
 	}
 
