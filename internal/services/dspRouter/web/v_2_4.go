@@ -140,17 +140,27 @@ func (s *Server) GetBids_V2_4(
 	// Предварительная сериализация JSON
 	jsonData, err := json.Marshal(req.BidRequest)
 	if err != nil {
-		return nil, fmt.Errorf("Can not marshal in GetBids_V2_4: %w", err)
+		newErr := fmt.Errorf("Can not marshal in GetBids_V_2_4 because got uknown error: %w", err)
+
+		grpcCode := codes.Unknown
+
+		st, ok := status.FromError(err)
+		if !ok {
+			grpcCode = st.Code()
+			newErr = fmt.Errorf("Can not marshal in GetBids_V_2_4 because got error: %w", st.Err())
+		}
+
+		return nil, status.Errorf(grpcCode, newErr.Error())
 	}
 
 	var (
 		wg sync.WaitGroup
 	)
 
-	responsesCh := make(chan *dspDomainResp[ortb_V2_4.BidResponse], len(s.dspEndpoints_v_2_5))
+	responsesCh := make(chan *dspDomainResp[ortb_V2_4.BidResponse], len(s.dspEndpoints_v_2_4))
 
 	// Запускаем все DSP параллельно
-	for _, endpoint := range s.dspEndpoints_v_2_5 {
+	for _, endpoint := range s.dspEndpoints_v_2_4 {
 		if !s.processor.ProcessRequestForDSPV24(endpoint, req.BidRequest).Allowed {
 			log.Println("Gor filter")
 			continue
@@ -183,7 +193,7 @@ func (s *Server) GetBids_V2_4(
 	}()
 
 	// Собираем результаты
-	responses := make(map[string]*ortb_V2_4.BidResponse, len(s.dspEndpoints_v_2_5))
+	responses := make(map[string]*ortb_V2_4.BidResponse, len(s.dspEndpoints_v_2_4))
 
 	for responsesCh != nil {
 		select {

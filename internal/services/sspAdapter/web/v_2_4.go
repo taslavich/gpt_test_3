@@ -145,7 +145,7 @@ func postBid_V2_4(
 		reqCtx,
 		&orchestratorProto.OrchestratorRequest_V2_4{
 			BidRequest:  input.Payload.BidRequest,
-			SppEndpoint: r.Host,
+			SppEndpoint: input.Payload.SppDomain,
 			GlobalId:    globalId,
 		},
 	)

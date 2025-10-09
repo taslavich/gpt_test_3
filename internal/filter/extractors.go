@@ -624,14 +624,20 @@ func (e *StatelessV24BidResponseExtractor) extractBidID(resp *ortb_V2_4.BidRespo
 }
 
 func (e *StatelessV24BidResponseExtractor) extractBidAdID(resp *ortb_V2_4.BidResponse) FieldValue {
-	if resp != nil && resp.Seatbid != nil && resp.Seatbid.Bid != nil {
-		for i := range resp.Seatbid.Bid {
-			if resp.Seatbid.Bid[i].Adid != nil {
-				return NewStringValue(*resp.Seatbid.Bid[i].Adid)
-			}
+	if resp == nil || resp.Seatbid == nil || resp.Seatbid.Bid == nil || len(resp.Seatbid.Bid) == 0 {
+		return NewStringValue("")
+	}
+
+	// Требуем, чтобы у каждого элемента был непустой Adid
+	for i := range resp.Seatbid.Bid {
+		b := resp.Seatbid.Bid[i]
+		if b == nil || b.Adid == nil || *b.Adid == "" {
+			return NewStringValue("") // ломаем "exists", если у любого элемента нет adid
 		}
 	}
-	return NewStringValue("")
+
+	// Все элементы ок — можно вернуть первый (для exists/equals этого достаточно)
+	return NewStringValue(*resp.Seatbid.Bid[0].Adid)
 }
 
 func (e *StatelessV24BidResponseExtractor) extractBidImpID(resp *ortb_V2_4.BidResponse) FieldValue {
@@ -755,14 +761,20 @@ func (e *StatelessV25BidResponseExtractor) extractBidID(resp *ortb_V2_5.BidRespo
 }
 
 func (e *StatelessV25BidResponseExtractor) extractBidAdID(resp *ortb_V2_5.BidResponse) FieldValue {
-	if resp != nil && resp.Seatbid != nil && resp.Seatbid.Bid != nil {
-		for i := range resp.Seatbid.Bid {
-			if resp.Seatbid.Bid[i].Adid != nil {
-				return NewStringValue(*resp.Seatbid.Bid[i].Adid)
-			}
+	if resp == nil || resp.Seatbid == nil || resp.Seatbid.Bid == nil || len(resp.Seatbid.Bid) == 0 {
+		return NewStringValue("")
+	}
+
+	// Требуем, чтобы у каждого элемента был непустой Adid
+	for i := range resp.Seatbid.Bid {
+		b := resp.Seatbid.Bid[i]
+		if b == nil || b.Adid == nil || *b.Adid == "" {
+			return NewStringValue("") // ломаем "exists", если у любого элемента нет adid
 		}
 	}
-	return NewStringValue("")
+
+	// Все элементы ок — можно вернуть первый (для exists/equals этого достаточно)
+	return NewStringValue(*resp.Seatbid.Bid[0].Adid)
 }
 
 func (e *StatelessV25BidResponseExtractor) extractBidImpID(resp *ortb_V2_5.BidResponse) FieldValue {

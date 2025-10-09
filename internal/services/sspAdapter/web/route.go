@@ -28,7 +28,7 @@ const (
 type postBidRequest_V2_4 struct {
 	Payload *struct {
 		BidRequest *ortb_V2_4.BidRequest `json:"bid_request"`
-		SppDomain  string                `json:"spp_domain"`
+		SppDomain  string                `json:"ssp_domain"`
 	} `in:"body=json"`
 }
 
@@ -39,7 +39,7 @@ type postBidResponse_V2_4 struct {
 type postBidRequest_V2_5 struct {
 	Payload *struct {
 		BidRequest *ortb_V2_5.BidRequest `json:"bid_request"`
-		SppDomain  string                `json:"spp_domain"`
+		SppDomain  string                `json:"ssp_domain"`
 	} `in:"body=json"`
 }
 
