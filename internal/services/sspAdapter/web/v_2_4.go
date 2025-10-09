@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"runtime/debug"
 	"time"
 
 	"github.com/ggicci/httpin"
@@ -40,7 +41,7 @@ func postBid_V2_4(
 	defer func() {
 		if r := recover(); r != nil {
 			err := fmt.Errorf("Recovered from panic in postBid_V2_4: %v", r)
-			log.Printf(err.Error())
+			log.Printf("Error: %v, Stack: %s", err.Error(), debug.Stack())
 			http.Error(w, "", http.StatusInternalServerError)
 		}
 	}()

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"runtime/debug"
 	"time"
 
 	"gitlab.com/twinbid-exchange/RTB-exchange/internal/constants"
@@ -28,7 +29,7 @@ func (s *Server) GetWinnerBid_V2_5(
 
 		if r := recover(); r != nil {
 			err := fmt.Errorf("Recovered from panic in GetWinnerBid_V2_5: %v", r)
-			log.Printf(err.Error())
+			log.Printf("Error: %v, Stack: %s", err.Error(), debug.Stack())
 
 			grpcCode := codes.Internal
 

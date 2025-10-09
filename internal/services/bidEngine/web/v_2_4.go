@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"runtime/debug"
 	"time"
 
 	"github.com/redis/go-redis/v9"
@@ -81,7 +82,7 @@ func (s *Server) GetWinnerBid_V2_4(
 	defer func() {
 		if r := recover(); r != nil {
 			err := fmt.Errorf("Recovered from panic in GetWinnerBid_V2_5: %v", r)
-			log.Printf(err.Error())
+			log.Printf("Error: %v, Stack: %s", err.Error(), debug.Stack())
 
 			grpcCode := codes.Internal
 

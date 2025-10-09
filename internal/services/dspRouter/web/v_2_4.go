@@ -8,6 +8,7 @@ import (
 	"log"
 	"net"
 	"net/http"
+	"runtime/debug"
 	"sync"
 	"time"
 
@@ -131,7 +132,7 @@ func (s *Server) GetBids_V2_4(
 	defer func() {
 		if r := recover(); r != nil {
 			err := fmt.Errorf("Recovered from panic in GetBids_V2_4: %v", r)
-			log.Printf(err.Error())
+			log.Printf("Error: %v, Stack: %s", err.Error(), debug.Stack())
 			resp = nil
 			funcErr = status.Errorf(codes.Internal, err.Error())
 		}
