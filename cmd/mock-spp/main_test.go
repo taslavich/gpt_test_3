@@ -55,8 +55,8 @@ type snapshotSpec struct {
 	filename string
 }
 
-// Генератор тестовых BidRequest для ORTB 2.5
-func generateBidRequest() *ortb_V2_5.BidRequest {
+// Генератор тестовых BidRequest для нового формата
+func generateBidRequest() map[string]interface{} {
 	bidFloor := float32(0.5)
 	w := int32(300)
 	h := int32(250)
@@ -64,7 +64,8 @@ func generateBidRequest() *ortb_V2_5.BidRequest {
 
 	id := atomic.AddUint64(&globalIDCounter, 1)
 
-	return &ortb_V2_5.BidRequest{
+	// Создаем ORTB 2.5 BidRequest
+	bidRequest := &ortb_V2_5.BidRequest{
 		Id: stringPtr(fmt.Sprintf("req-%d", id)),
 		At: int32Ptr(1),
 		Imp: []*ortb_V2_5.Imp{
@@ -83,6 +84,12 @@ func generateBidRequest() *ortb_V2_5.BidRequest {
 				Country: &country,
 			},
 		},
+	}
+
+	// Оборачиваем в нужный формат
+	return map[string]interface{}{
+		"bid_request": bidRequest,
+		"ssp_domain":  "example.com",
 	}
 }
 
@@ -190,7 +197,7 @@ func workerRate(id, rps int, results chan<- *testResult, wg *sync.WaitGroup, sto
 }
 
 // Отправка BidRequest с переиспользуемым клиентом
-func sendBidRequestWithClient(bidRequest *ortb_V2_5.BidRequest, startTime time.Time, client *http.Client) *testResult {
+func sendBidRequestWithClient(bidRequest map[string]interface{}, startTime time.Time, client *http.Client) *testResult {
 	jsonData, err := json.Marshal(bidRequest)
 	if err != nil {
 		return &testResult{
