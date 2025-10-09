@@ -19,6 +19,7 @@ func ProcessKafkaMessages(ctx context.Context, broker, topic string, reader *kaf
 	}
 
 	if !passed {
+		log.Println("PASSED")
 		return 0, nil
 	}
 

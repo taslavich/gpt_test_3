@@ -20,7 +20,6 @@ func ProcessBatch(ctx context.Context, redisClient *redis.Client, kafkaWriter *k
 	}
 
 	if totalKeys < batchSize*2 {
-		log.Printf("📭 Not enough stats records found in Redis")
 		return nil
 	}
 
