@@ -91,7 +91,8 @@ func GetWinnerBidInternal_V_2_4(
 		wrappedNurl := utils.WrapURL(hostname, winningBid.GetNurl(), globalId, utils.NURL)
 		var wrappedBurl *string
 		if winningBid.Burl != nil {
-			*wrappedBurl = utils.WrapURL(hostname, winningBid.GetBurl(), globalId, utils.BURL)
+			bufBur := utils.WrapURL(hostname, winningBid.GetBurl(), globalId, utils.BURL)
+			wrappedBurl = &bufBur
 		}
 		finalBid := &pb.Bid{
 			Id:    winningBid.Id,

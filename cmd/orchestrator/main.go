@@ -43,7 +43,6 @@ func main() {
 	o := orchestrator.NewOrchestrator(cfg.UriOfBidEngine, cfg.UriOfDspRouter)
 
 	clients, cancelFunc := o.GetGrpClients()
-	log.Println(clients.DspRouterGrpcClient.GetBids_V2_5(ctx, nil))
 
 	defer cancelFunc()
 
