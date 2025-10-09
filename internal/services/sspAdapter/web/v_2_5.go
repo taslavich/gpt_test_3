@@ -98,6 +98,8 @@ func postBid_V2_5(
 		return
 	}
 
+	log.Printf("COUNTRY: %s", countryISO)
+
 	globalId := uuid.New().String()
 
 	bidReqData, err := json.Marshal(input.Payload)
