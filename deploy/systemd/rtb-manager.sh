@@ -127,7 +127,7 @@ case "$1" in
         echo "🚀 Starting ALL services (infra + core + mocks)..."
         $0 start-infra
         sleep 3
-        $0 start-core
+        #$0 start-core
         sleep 2
         $0 start-mocks
         echo "✅ All services started"
