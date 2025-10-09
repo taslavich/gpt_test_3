@@ -79,6 +79,8 @@ func postBid_V2_5(
 		return
 	}
 
+	log.Printf("COUNTRY: %s", *deviceIp)
+
 	countryISO, err := getCountryISO(*deviceIp)
 	if errors.As(err, geoBadIp.BadIpFormatError) {
 		err := fmt.Errorf(
