@@ -79,9 +79,7 @@ func postBid_V2_5(
 		return
 	}
 
-	log.Printf("IP: %s", *deviceIp)
 	countryISO, err := getCountryISO(*deviceIp)
-	log.Printf("ERROR: %w", err)
 	if errors.As(err, geoBadIp.BadIpFormatError) {
 		err := fmt.Errorf(
 			"Bad format: %w",
@@ -99,8 +97,6 @@ func postBid_V2_5(
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-
-	log.Printf("COUNTRY: %s", countryISO)
 
 	globalId := uuid.New().String()
 
