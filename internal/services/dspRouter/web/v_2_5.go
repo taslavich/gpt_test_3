@@ -43,7 +43,17 @@ func (s *Server) GetBids_V2_5(
 
 	jsonData, err := jsoniter.Marshal(req.BidRequest)
 	if err != nil {
-		return nil, fmt.Errorf("Can not marshal in GetBids_V_2_5: %w", err)
+		newErr := fmt.Errorf("Can not marshal in GetBids_V_2_5 because got uknown error: %w", err)
+
+		grpcCode := codes.Unknown
+
+		st, ok := status.FromError(err)
+		if !ok {
+			grpcCode = st.Code()
+			newErr = fmt.Errorf("Can not marshal in GetBids_V_2_5 because got error: %w", st.Err())
+		}
+
+		return nil, status.Errorf(grpcCode, newErr.Error())
 	}
 
 	var (
@@ -55,7 +65,7 @@ func (s *Server) GetBids_V2_5(
 	// Запускаем все DSP параллельно
 	for _, endpoint := range s.dspEndpoints_v_2_5 {
 		if !s.processor.ProcessRequestForDSPV25(endpoint, req.BidRequest).Allowed {
-			log.Println("Gor filter")
+			log.Println("Gor DSP filter")
 			continue
 		}
 		wg.Add(1)
@@ -69,12 +79,15 @@ func (s *Server) GetBids_V2_5(
 
 			// Фильтрация ответа SPP
 			if s.processor.ProcessResponseForSPPV25(req.SppEndpoint, dspResp).Allowed {
+				log.Println("Gor SSP filter")
 				return
 			}
 
-			responsesCh <- &dspDomainResp[ortb_V2_5.BidResponse]{
-				endpoint: endpoint,
-				resp:     dspResp,
+			if dspResp != nil {
+				responsesCh <- &dspDomainResp[ortb_V2_5.BidResponse]{
+					endpoint: endpoint,
+					resp:     dspResp,
+				}
 			}
 		}(endpoint)
 	}
