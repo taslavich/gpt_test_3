@@ -10,13 +10,13 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/redis/go-redis/v9"
 	"gitlab.com/twinbid-exchange/RTB-exchange/internal/config"
 	"gitlab.com/twinbid-exchange/RTB-exchange/internal/filter"
 	dspRouterGrpc "gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/proto/services/dspRouter"
 	maxproc "gitlab.com/twinbid-exchange/RTB-exchange/internal/mp"
 	dspRouterWeb "gitlab.com/twinbid-exchange/RTB-exchange/internal/services/dspRouter/web"
 
+	"github.com/redis/go-redis/v9"
 	"google.golang.org/grpc"
 )
 
@@ -36,7 +36,7 @@ func main() {
 
 	log.Println("Timeout", cfg.BidResponsesTimeout)
 
-	/*redisClient := redis.NewClient(&redis.Options{
+	redisClient := redis.NewClient(&redis.Options{
 		Addr:     fmt.Sprintf("%s:%s", cfg.RedisHost, cfg.RedisPort),
 		Password: cfg.RedisPassword,
 		DB:       cfg.RedisDB,
@@ -46,7 +46,7 @@ func main() {
 	if err := waitForRedis(ctx, redisClient, 10, 2*time.Second); err != nil {
 		log.Fatalf("Failed to connect to Redis: %v", err)
 	}
-	log.Println("✅ Connected to Redis")*/
+	log.Println("✅ Connected to Redis")
 
 	ruleManager := filter.NewRuleManager()
 
@@ -94,7 +94,7 @@ func main() {
 			processor,
 			cfg.DSPEndpoints_v_2_4,
 			cfg.DSPEndpoints_v_2_5,
-			nil,
+			redisClient,
 			cfg.BidResponsesTimeout,
 			cfg.MaxParallelRequests,
 		),
