@@ -28,6 +28,85 @@ func checkKafkaBrokers(brokers []string) error {
 	return nil
 }
 
+// Новая функция для автоматического создания топика
+func ensureTopicExists(brokers []string, topic string) error {
+	conn, err := kafka.Dial("tcp", brokers[0])
+	if err != nil {
+		return fmt.Errorf("⚠️ Failed to connect to broker %s: %v", brokers[0], err)
+	}
+	defer conn.Close()
+
+	// Получаем контроллера (ведущий брокер)
+	controller, err := conn.Controller()
+	if err != nil {
+		return fmt.Errorf("failed to get controller: %v", err)
+	}
+
+	// Подключаемся к контроллеру для создания темы
+	controllerConn, err := kafka.Dial("tcp", fmt.Sprintf("%s:%d", controller.Host, controller.Port))
+	if err != nil {
+		return fmt.Errorf("failed to connect to controller: %v", err)
+	}
+	defer controllerConn.Close()
+
+	// Получаем список тем
+	partitions, err := controllerConn.ReadPartitions()
+	if err != nil {
+		return fmt.Errorf("failed to read partitions: %v", err)
+	}
+
+	// Проверяем существует ли тема
+	for _, p := range partitions {
+		if p.Topic == topic {
+			log.Printf("✅ Topic %s already exists", topic)
+			return nil
+		}
+	}
+
+	// Для продакшена RTB-статистики
+	retentionHours := 24 // или 72 для 3 дней
+
+	configs := []kafka.ConfigEntry{
+		{
+			ConfigName:  "retention.ms",
+			ConfigValue: fmt.Sprintf("%d", retentionHours*60*60*1000),
+		},
+		{
+			ConfigName:  "retention.bytes",
+			ConfigValue: fmt.Sprintf("%d", 2*1024*1024*1024), // 2 GB
+		},
+		{
+			ConfigName:  "cleanup.policy",
+			ConfigValue: "delete",
+		},
+		{
+			ConfigName:  "segment.bytes",
+			ConfigValue: fmt.Sprintf("%d", 100*1024*1024), // 100 MB сегменты
+		},
+	}
+
+	// Создаем тему если не существует
+	topicConfigs := []kafka.TopicConfig{
+		{
+			Topic:             topic,
+			NumPartitions:     1,
+			ReplicationFactor: 1,
+			ConfigEntries:     configs,
+		},
+	}
+
+	err = controllerConn.CreateTopics(topicConfigs...)
+	if err != nil {
+		return fmt.Errorf("failed to create topic: %v", err)
+	}
+
+	log.Printf("✅ Created topic: %s with %d partitions", topic, 1)
+
+	// Даем время для создания темы
+	time.Sleep(2 * time.Second)
+	return nil
+}
+
 func InitKafkaReader(cfg config.KafkaConfig) (*kafka.Reader, error) {
 	// Сначала проверяем подключение к брокерам
 	log.Printf("🔌 Checking Kafka connection to: %v", cfg.KafkaBrokers)
@@ -37,10 +116,14 @@ func InitKafkaReader(cfg config.KafkaConfig) (*kafka.Reader, error) {
 		return nil, fmt.Errorf("Kafka connection failed: %v", err)
 	}
 
-	// Проверяем существование топика
-	err = checkKafkaTopic(cfg.KafkaBrokers, cfg.KafkaTopic)
+	// Автоматически создаем топик если не существует
+	log.Printf("🔍 Ensuring Kafka topic exists: %s", cfg.KafkaTopic)
+	err = ensureTopicExists(cfg.KafkaBrokers, cfg.KafkaTopic)
 	if err != nil {
-		return nil, fmt.Errorf("Kafka topic check failed: %v", err)
+		return nil, fmt.Errorf("⚠️ Failed to ensure topic exists: %v", err)
+		// Не прерываем выполнение, продолжаем попытку инициализации ридера
+	} else {
+		log.Printf("✅ Kafka topic %s is ready", cfg.KafkaTopic)
 	}
 
 	// Создаем ридер
@@ -57,6 +140,7 @@ func InitKafkaReader(cfg config.KafkaConfig) (*kafka.Reader, error) {
 	return kafkaReader, nil
 }
 
+// Старая функция checkKafkaTopic оставлена для обратной совместимости
 func checkKafkaTopic(brokers []string, topic string) error {
 	conn, err := kafka.Dial("tcp", brokers[0])
 	if err != nil {
