@@ -44,8 +44,8 @@ func NewFastHTTPClient() *http.Client {
 	transport := &http.Transport{
 		Proxy: http.ProxyFromEnvironment,
 		DialContext: (&net.Dialer{
-			Timeout:   20 * time.Millisecond, // TCP соединение за 20ms
-			KeepAlive: 30 * time.Second,      // Keep-alive
+			Timeout:   100 * time.Millisecond, // TCP соединение за 20ms
+			KeepAlive: 30 * time.Second,       // Keep-alive
 			DualStack: true,
 		}).DialContext,
 
@@ -56,9 +56,9 @@ func NewFastHTTPClient() *http.Client {
 		IdleConnTimeout:     30 * time.Second,
 
 		// Агрессивные таймауты для 50ms
-		TLSHandshakeTimeout:   20 * time.Millisecond,
-		ExpectContinueTimeout: 10 * time.Millisecond,
-		ResponseHeaderTimeout: 40 * time.Millisecond, // Получение headers за 40ms
+		TLSHandshakeTimeout:   40 * time.Millisecond,
+		ExpectContinueTimeout: 40 * time.Millisecond,
+		ResponseHeaderTimeout: 80 * time.Millisecond, // Получение headers за 40ms
 
 		// Оптимизации для скорости
 		DisableCompression: true,  // Быстрее без сжатия при 50ms
@@ -67,7 +67,7 @@ func NewFastHTTPClient() *http.Client {
 
 	return &http.Client{
 		Transport: transport,
-		Timeout:   70 * time.Millisecond, // Общий таймаут чуть больше RTT
+		Timeout:   150 * time.Millisecond, // Общий таймаут чуть больше RTT
 	}
 }
 
