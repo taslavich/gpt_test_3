@@ -200,7 +200,7 @@ func (e *StatelessV25BidRequestExtractor) ExtractFieldValue(field FieldType, req
 }
 
 func (e *StatelessV25BidRequestExtractor) extractSiteID(req *ortb_V2_5.BidRequest) FieldValue {
-	if req.Site != nil {
+	if req.Site == nil {
 		return NewStringValue("")
 	}
 	if req.Site.Id != nil {
@@ -246,7 +246,7 @@ func (e *StatelessV25BidRequestExtractor) extractBidFloor(req *ortb_V2_5.BidRequ
 }
 
 func (e *StatelessV25BidRequestExtractor) extractDeviceIP(req *ortb_V2_5.BidRequest) FieldValue {
-	if req.Device != nil {
+	if req.Device == nil {
 		return NewStringValue("")
 	}
 	if req.Device.Ip != nil {
