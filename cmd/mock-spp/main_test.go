@@ -24,7 +24,7 @@ import (
 
 // Конфигурация теста
 const (
-	sppAdapterURL = "https://twinbidexchange.com/bidRequest/bid_v_2_5"
+	sppAdapterURL = "http://0.0.0.0:8086/bid_v_2_5"
 	threads       = 100             // Количество параллельных горутин
 	targetRPS     = 10000           // Целевая нагрузка (RPS)
 	testDuration  = 2 * time.Second // Длительность теста
