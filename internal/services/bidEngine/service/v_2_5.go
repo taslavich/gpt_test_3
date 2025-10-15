@@ -75,8 +75,16 @@ func GetWinnerBidInternal_V_2_5(
 			}
 	}
 
-	seatBid := []*pb.SeatBid{}
-	seatBidByDspPrice := []*pb.SeatBid{}
+	seatBid := []*pb.SeatBid{
+		{
+			Bid: []*ortb_V2_5.Bid{},
+		},
+	}
+	seatBidByDspPrice := []*pb.SeatBid{
+		{
+			Bid: []*ortb_V2_5.Bid{},
+		},
+	}
 
 	for impID, bids := range impBids {
 		sort.Slice(bids, func(i, j int) bool {
