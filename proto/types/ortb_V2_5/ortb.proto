@@ -85,6 +85,7 @@ message User {
 
 message SeatBid {
     repeated Bid bid = 1;
+    optional string seat = 2;  // Добавлено поле seat
 }
 
 message Bid {
@@ -108,7 +109,7 @@ message Bid {
 
 message BidResponse {
     optional string id = 1;
-    optional SeatBid seatbid = 2;
+    repeated SeatBid seatbid = 2;  // Исправлено: repeated вместо optional
     optional string bidid = 3;
     optional string cur = 4;
     optional int32 nbr = 5;

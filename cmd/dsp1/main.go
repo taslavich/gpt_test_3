@@ -33,14 +33,16 @@ func main() {
 		router,
 		&ortb_V2_5.BidResponse{
 			Id: &cfg.DspName,
-			Seatbid: &ortb_V2_5.SeatBid{
-				Bid: []*ortb_V2_5.Bid{
-					{
-						Id:    &BidId,
-						Price: &cfg.Price,
-						Adid:  &cfg.Adid,
-						Nurl:  &Nurl,
-						Burl:  &Burl,
+			Seatbid: []*ortb_V2_5.SeatBid{
+				{
+					Bid: []*ortb_V2_5.Bid{
+						{
+							Id:    &BidId,
+							Price: &cfg.Price,
+							Adid:  &cfg.Adid,
+							Nurl:  &Nurl,
+							Burl:  &Burl,
+						},
 					},
 				},
 			},

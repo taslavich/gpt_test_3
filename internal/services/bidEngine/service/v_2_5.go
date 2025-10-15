@@ -5,6 +5,7 @@ import (
 	"sort"
 
 	bidEngineGrpc "gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/proto/services/bidEngine"
+	"gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/proto/types/ortb_V2_5"
 	pb "gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/proto/types/ortb_V2_5"
 	utils "gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/utils_grpc"
 )
@@ -19,13 +20,17 @@ func GetWinnerBidInternal_V_2_5(
 	if len(req.BidResponses) == 0 {
 		return &pb.BidResponse{
 				Id: req.BidRequest.Id,
-				Seatbid: &pb.SeatBid{
-					Bid: []*pb.Bid{},
+				Seatbid: []*ortb_V2_5.SeatBid{
+					{
+						Bid: []*ortb_V2_5.Bid{},
+					},
 				},
 			}, &pb.BidResponse{
 				Id: req.BidRequest.Id,
-				Seatbid: &pb.SeatBid{
-					Bid: []*pb.Bid{},
+				Seatbid: []*ortb_V2_5.SeatBid{
+					{
+						Bid: []*ortb_V2_5.Bid{},
+					},
 				},
 			}
 	}
@@ -35,32 +40,43 @@ func GetWinnerBidInternal_V_2_5(
 		if bidResponse == nil || bidResponse.Seatbid == nil {
 			continue
 		}
-		for _, bid := range bidResponse.Seatbid.Bid {
-			if bid == nil {
+		for _, seatbid := range bidResponse.Seatbid {
+			if seatbid == nil {
 				continue
 			}
-			impID := bid.GetImpid()
-			if impID == "" {
-				continue
+			for _, bid := range seatbid.Bid {
+				if bid == nil {
+					continue
+				}
+				impID := bid.GetImpid()
+				if impID == "" {
+					continue
+				}
+				impBids[impID] = append(impBids[impID], bid)
 			}
-			impBids[impID] = append(impBids[impID], bid)
 		}
 	}
 
 	if len(impBids) == 0 {
 		return &pb.BidResponse{
-				Id:      req.BidRequest.Id,
-				Seatbid: &pb.SeatBid{Bid: []*pb.Bid{}},
+				Id: req.BidRequest.Id,
+				Seatbid: []*ortb_V2_5.SeatBid{
+					{
+						Bid: []*ortb_V2_5.Bid{},
+					},
+				},
 			}, &pb.BidResponse{
 				Id: req.BidRequest.Id,
-				Seatbid: &pb.SeatBid{
-					Bid: []*pb.Bid{},
+				Seatbid: []*ortb_V2_5.SeatBid{
+					{
+						Bid: []*ortb_V2_5.Bid{},
+					},
 				},
 			}
 	}
 
-	seatBid := &pb.SeatBid{}
-	seatBidByDspPrice := &pb.SeatBid{}
+	seatBid := []*pb.SeatBid{}
+	seatBidByDspPrice := []*pb.SeatBid{}
 
 	for impID, bids := range impBids {
 		sort.Slice(bids, func(i, j int) bool {
@@ -107,8 +123,8 @@ func GetWinnerBidInternal_V_2_5(
 			Price: winningBid.Price,
 		}
 
-		seatBid.Bid = append(seatBid.Bid, finalBid)
-		seatBidByDspPrice.Bid = append(seatBidByDspPrice.Bid, bidByDspPrice)
+		seatBid[0].Bid = append(seatBid[0].Bid, finalBid)
+		seatBidByDspPrice[0].Bid = append(seatBidByDspPrice[0].Bid, bidByDspPrice)
 	}
 
 	bidResponse := &pb.BidResponse{

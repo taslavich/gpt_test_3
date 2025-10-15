@@ -162,7 +162,7 @@ func postBid_V2_5(
 		return
 	}
 	statusCode := http.StatusOK
-	if len(res.BidResponse.Seatbid.Bid) == 0 {
+	if len(res.BidResponse.Seatbid[0].Bid) == 0 {
 		statusCode = http.StatusNoContent
 	}
 
