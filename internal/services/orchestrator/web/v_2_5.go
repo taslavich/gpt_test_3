@@ -61,8 +61,10 @@ func (s *Server) GetWinnerBid_V2_5(
 		return &orchestratorGrpc.OrchestratorResponse_V2_5{
 			BidResponse: &ortb_V2_5.BidResponse{
 				Id: req.BidRequest.Id,
-				Seatbid: &ortb_V2_5.SeatBid{
-					Bid: []*ortb_V2_5.Bid{},
+				Seatbid: []*ortb_V2_5.SeatBid{
+					{
+						Bid: []*ortb_V2_5.Bid{},
+					},
 				},
 			},
 		}, nil

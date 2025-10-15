@@ -40,10 +40,10 @@ func postBid_V2_5(
 	var statusCode int
 
 	if len(input.Payload.Imp) > 0 {
-		resp.Seatbid.Bid[0].Impid = input.Payload.Imp[0].Id
+		resp.Seatbid[0].Bid[0].Impid = input.Payload.Imp[0].Id
 		statusCode = http.StatusOK
 	} else {
-		resp.Seatbid.Bid = []*ortb_V2_5.Bid{}
+		resp.Seatbid[0].Bid = []*ortb_V2_5.Bid{}
 		statusCode = http.StatusNoContent
 	}
 
