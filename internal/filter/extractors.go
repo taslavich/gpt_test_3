@@ -341,7 +341,7 @@ func (e *StatelessV25BidRequestExtractor) extractAuctionType(req *ortb_V2_5.BidR
 	if req.At != nil {
 		return NewIntValue(int(*req.At))
 	}
-	return NewIntValue(2) // default value
+	return NewIntValue(0) // default value
 }
 
 func (e *StatelessV25BidRequestExtractor) extractTMax(req *ortb_V2_5.BidRequest) FieldValue {
