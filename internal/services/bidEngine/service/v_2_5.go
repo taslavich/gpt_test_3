@@ -87,6 +87,9 @@ func GetWinnerBidInternal_V_2_5(
 	}
 
 	for impID, bids := range impBids {
+		if len(bids) == 0 {
+			continue // добавляем защиту
+		}
 		sort.Slice(bids, func(i, j int) bool {
 			return bids[i].GetPrice() > bids[j].GetPrice()
 		})
