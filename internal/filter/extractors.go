@@ -200,7 +200,10 @@ func (e *StatelessV25BidRequestExtractor) ExtractFieldValue(field FieldType, req
 }
 
 func (e *StatelessV25BidRequestExtractor) extractSiteID(req *ortb_V2_5.BidRequest) FieldValue {
-	if req.Site != nil && req.Site.Id != nil {
+	if req.Site != nil {
+		return NewStringValue("")
+	}
+	if req.Site.Id != nil {
 		return NewStringValue(*req.Site.Id)
 	}
 	return NewStringValue("") // для exists: пустая строка == нет значения
@@ -243,7 +246,10 @@ func (e *StatelessV25BidRequestExtractor) extractBidFloor(req *ortb_V2_5.BidRequ
 }
 
 func (e *StatelessV25BidRequestExtractor) extractDeviceIP(req *ortb_V2_5.BidRequest) FieldValue {
-	if req.Device != nil && req.Device.Ip != nil {
+	if req.Device != nil {
+		return NewStringValue("")
+	}
+	if req.Device.Ip != nil {
 		return NewStringValue(*req.Device.Ip)
 	}
 	return NewStringValue("")
@@ -301,7 +307,10 @@ func (e *StatelessV25BidRequestExtractor) extractSitePublisherID(req *ortb_V2_5.
 }
 
 func (e *StatelessV25BidRequestExtractor) extractDeviceUA(req *ortb_V2_5.BidRequest) FieldValue {
-	if req.Device != nil && req.Device.Ua != nil {
+	if req.Device == nil {
+		return NewStringValue("")
+	}
+	if req.Device.Ua != nil {
 		return NewStringValue(*req.Device.Ua)
 	}
 	return NewStringValue("")
