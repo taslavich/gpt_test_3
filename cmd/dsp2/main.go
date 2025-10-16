@@ -40,6 +40,7 @@ func main() {
 							Id:    &BidId,
 							Price: &cfg.Price,
 							Adid:  &cfg.Adid,
+							Adm:   &cfg.Adm,
 							Nurl:  &Nurl,
 							Burl:  &Burl,
 						},
