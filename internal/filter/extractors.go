@@ -701,15 +701,26 @@ func (e *StatelessV25BidResponseExtractor) ExtractFieldValue(field FieldType, re
 
 	switch field {
 	case FieldBidAdID:
-		return e.extractBidAdID(bidResp)
+		return e.extractBidField(bidResp, func(bid *ortb_V2_5.Bid) *string {
+			return bid.Adid
+		})
 	case FieldBidNurl:
-		return e.extractBidNurl(bidResp)
+		return e.extractBidField(bidResp, func(bid *ortb_V2_5.Bid) *string {
+			return bid.Nurl
+		})
+	case FieldBidAdm:
+		return e.extractBidField(bidResp, func(bid *ortb_V2_5.Bid) *string {
+			return bid.Adm
+		})
 	default:
 		return FieldValue{}
 	}
 }
 
-func (e *StatelessV25BidResponseExtractor) extractBidAdID(resp *ortb_V2_5.BidResponse) FieldValue {
+func (e *StatelessV25BidResponseExtractor) extractBidField(
+	resp *ortb_V2_5.BidResponse,
+	fieldExtractor func(*ortb_V2_5.Bid) *string,
+) FieldValue {
 	if resp == nil || resp.Seatbid == nil || len(resp.Seatbid) == 0 {
 		return NewStringValue("")
 	}
@@ -727,43 +738,31 @@ func (e *StatelessV25BidResponseExtractor) extractBidAdID(resp *ortb_V2_5.BidRes
 		return NewStringValue("")
 	}
 
-	// Проверяем, что у ВСЕХ бидов во ВСЕХ seatbid есть Adid
+	// Проверяем, что у ВСЕХ бидов во ВСЕХ seatbid есть нужное поле
 	for _, seatbid := range resp.Seatbid {
 		if seatbid.Bid == nil {
 			continue
 		}
 		for _, bid := range seatbid.Bid {
-			if bid == nil || bid.Adid == nil || *bid.Adid == "" {
-				return NewStringValue("") // ломаем "exists", если у любого элемента нет adid
+			if bid == nil {
+				return NewStringValue("")
+			}
+			fieldValue := fieldExtractor(bid)
+			if fieldValue == nil || *fieldValue == "" {
+				return NewStringValue("") // ломаем "exists", если у любого элемента нет поля
 			}
 		}
 	}
 
 	// Все элементы ок — можно вернуть первый (для exists/equals этого достаточно)
 	for _, seatbid := range resp.Seatbid {
-		if seatbid.Bid != nil && len(seatbid.Bid) > 0 && seatbid.Bid[0].Adid != nil {
-			return NewStringValue(*seatbid.Bid[0].Adid)
-		}
-	}
-
-	return NewStringValue("")
-}
-
-func (e *StatelessV25BidResponseExtractor) extractBidNurl(resp *ortb_V2_5.BidResponse) FieldValue {
-	if resp == nil || resp.Seatbid == nil {
-		return NewStringValue("")
-	}
-
-	// Ищем первый непустой nurl в любом биде любого seatbid
-	for _, seatbid := range resp.Seatbid {
-		if seatbid.Bid == nil {
-			continue
-		}
-		for _, bid := range seatbid.Bid {
-			if bid != nil && bid.Nurl != nil && *bid.Nurl != "" {
-				return NewStringValue(*bid.Nurl)
+		if seatbid.Bid != nil && len(seatbid.Bid) > 0 {
+			fieldValue := fieldExtractor(seatbid.Bid[0])
+			if fieldValue != nil {
+				return NewStringValue(*fieldValue)
 			}
 		}
 	}
+
 	return NewStringValue("")
 }

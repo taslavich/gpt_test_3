@@ -95,10 +95,20 @@ func GetAutoRulesForSPP() []*FilterRule {
 			Condition: ConditionExists,
 			Value:     StringCondition{cond: ConditionExists, value: ""},
 		},
+		{
+			ID:        "auto_adm_exists",
+			Field:     FieldBidAdm,
+			Condition: ConditionExists,
+			Value:     StringCondition{cond: ConditionExists, value: ""},
+		},
+		{
+			ID:        "auto_adid_exists",
+			Field:     FieldBidAdID,
+			Condition: ConditionExists,
+			Value:     StringCondition{cond: ConditionExists, value: ""},
+		},
 	}
 }
-
-// manager.go
 
 func (rm *RuleManager) compileRules(rootNodes []*CompiledRuleNode, allRules []*FilterRule) *CompiledRuleSet {
 	fieldsSet := make(map[FieldType]struct{}, len(allRules))
