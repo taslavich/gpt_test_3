@@ -101,12 +101,6 @@ func GetAutoRulesForSPP() []*FilterRule {
 			Condition: ConditionExists,
 			Value:     StringCondition{cond: ConditionExists, value: ""},
 		},
-		{
-			ID:        "auto_adid_exists",
-			Field:     FieldBidAdID,
-			Condition: ConditionExists,
-			Value:     StringCondition{cond: ConditionExists, value: ""},
-		},
 	}
 }
 

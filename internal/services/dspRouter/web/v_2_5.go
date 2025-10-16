@@ -12,6 +12,7 @@ import (
 
 	jsoniter "github.com/json-iterator/go"
 	"github.com/redis/go-redis/v9"
+	"gitlab.com/twinbid-exchange/RTB-exchange/internal/coder"
 	"gitlab.com/twinbid-exchange/RTB-exchange/internal/constants"
 	dspRouterGrpc "gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/proto/services/dspRouter"
 	"gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/proto/types/ortb_V2_4"
@@ -81,6 +82,17 @@ func (s *Server) GetBids_V2_5(
 			if !s.processor.ProcessResponseForSPPV25(req.SppEndpoint, dspResp).Allowed {
 				log.Printf("Gor SSP filter, domain %s", endpoint)
 				return
+			}
+
+			for i := range dspResp.Seatbid {
+				if dspResp.Seatbid[i] != nil {
+					for j := range dspResp.Seatbid[i].Bid {
+						if dspResp.Seatbid[i].Bid[j].Adid == nil {
+							adid := coder.AdmToAdidCompact(*dspResp.Seatbid[i].Bid[j].Adm)
+							dspResp.Seatbid[i].Bid[j].Adid = &adid
+						}
+					}
+				}
 			}
 
 			if dspResp != nil {
