@@ -1,15 +1,5 @@
 {
   "version": "1.0",
   "spps": {
-    "kamad.net": {
-      "v25": [
-        {
-          "field": "bid.adid", 
-          "condition": "exists", 
-          "value_type": "string", 
-          "value": ""
-        }
-      ]
-    }
   }
 }
