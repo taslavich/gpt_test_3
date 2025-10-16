@@ -25,7 +25,7 @@ func main() {
 	log.Println("Hello")
 
 	BidId := fmt.Sprint(cfg.DspName, cfg.DspName)
-	//Nurl := "http://0.0.0.0:8090/nurl"
+	Nurl := "http://0.0.0.0:8090/nurl"
 	//Burl := "http://0.0.0.0:8090/burl"
 	router := httpServer.InitHttpRouter()
 	mockDspWeb.InitRoutes(
@@ -41,6 +41,7 @@ func main() {
 							Price: &cfg.Price,
 							Adid:  &cfg.Adid,
 							Adm:   &cfg.Adm,
+							Nurl:  &Nurl,
 						},
 					},
 				},
