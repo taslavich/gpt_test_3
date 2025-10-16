@@ -117,6 +117,7 @@ type MockDspConfig struct {
 	DspName string  `env:"DSP_NAME"`
 	Price   float32 `env:"PRICE"`
 	Adid    string  `env:"ADID"`
+	Adm     string  `env:"ADM"`
 }
 
 type RedisConfig struct {
