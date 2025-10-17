@@ -35,7 +35,13 @@ func postBid_V2_5(
 	var input *postBidRequest_V2_5
 	defer func() {
 		if r := recover(); r != nil {
-			err := fmt.Errorf("Recovered from panic in postBid_V2_5: %v, req: %s, stack %s", r, input.Payload, string(debug.Stack()))
+			var payloadInfo string
+			if input != nil && input.Payload != nil {
+				payloadInfo = fmt.Sprintf("%+v", input.Payload)
+			} else {
+				payloadInfo = "nil payload"
+			}
+			err := fmt.Errorf("Recovered from panic in postBid_V2_5: %v, req: %s, stack %s", r, payloadInfo, string(debug.Stack()))
 			log.Printf(err.Error())
 			http.Error(w, "", http.StatusInternalServerError)
 		}
