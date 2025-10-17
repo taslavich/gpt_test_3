@@ -55,6 +55,14 @@ func postBid_V2_5(
 		return
 	}
 
+	// Добавить эту проверку
+	if input.Payload.BidRequest == nil {
+		err := fmt.Errorf("Invalid request: bid_request is required")
+		log.Printf(err.Error())
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
 	if input.Payload.BidRequest.Device == nil {
 		err := fmt.Errorf(
 			"There is no device object",
