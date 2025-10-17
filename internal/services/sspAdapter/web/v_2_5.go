@@ -48,7 +48,7 @@ func postBid_V2_5(
 	}()
 	input = r.Context().Value(httpin.Input).(*postBidRequest_V2_5)
 
-	if input == nil || input.Payload == nil {
+	/*if input == nil || input.Payload == nil {
 		err := fmt.Errorf("Invalid request: payload is nil or missing")
 		log.Printf(err.Error())
 		http.Error(w, err.Error(), http.StatusBadRequest)
@@ -58,6 +58,14 @@ func postBid_V2_5(
 	// Добавить эту проверку
 	if input.Payload.BidRequest == nil {
 		err := fmt.Errorf("Invalid request: bid_request is required")
+		log.Printf(err.Error())
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}*/
+
+	// Добавить эту проверку
+	if input.Payload.SppDomain == "" {
+		err := fmt.Errorf("Invalid request: ssp_domain is required")
 		log.Printf(err.Error())
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
