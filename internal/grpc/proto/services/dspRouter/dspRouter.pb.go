@@ -7,7 +7,6 @@
 package dspRouterGrpc
 
 import (
-	ortb_V2_4 "gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/proto/types/ortb_V2_4"
 	ortb_V2_5 "gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/proto/types/ortb_V2_5"
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
@@ -23,126 +22,6 @@ const (
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
 
-type DspRouterRequest_V2_4 struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	BidRequest    *ortb_V2_4.BidRequest  `protobuf:"bytes,1,opt,name=bidRequest,proto3" json:"bidRequest,omitempty"`
-	SppEndpoint   string                 `protobuf:"bytes,2,opt,name=sppEndpoint,proto3" json:"sppEndpoint,omitempty"`
-	GlobalId      string                 `protobuf:"bytes,3,opt,name=globalId,proto3" json:"globalId,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *DspRouterRequest_V2_4) Reset() {
-	*x = DspRouterRequest_V2_4{}
-	mi := &file_services_dspRouter_proto_msgTypes[0]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *DspRouterRequest_V2_4) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*DspRouterRequest_V2_4) ProtoMessage() {}
-
-func (x *DspRouterRequest_V2_4) ProtoReflect() protoreflect.Message {
-	mi := &file_services_dspRouter_proto_msgTypes[0]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use DspRouterRequest_V2_4.ProtoReflect.Descriptor instead.
-func (*DspRouterRequest_V2_4) Descriptor() ([]byte, []int) {
-	return file_services_dspRouter_proto_rawDescGZIP(), []int{0}
-}
-
-func (x *DspRouterRequest_V2_4) GetBidRequest() *ortb_V2_4.BidRequest {
-	if x != nil {
-		return x.BidRequest
-	}
-	return nil
-}
-
-func (x *DspRouterRequest_V2_4) GetSppEndpoint() string {
-	if x != nil {
-		return x.SppEndpoint
-	}
-	return ""
-}
-
-func (x *DspRouterRequest_V2_4) GetGlobalId() string {
-	if x != nil {
-		return x.GlobalId
-	}
-	return ""
-}
-
-type DspRouterResponse_V2_4 struct {
-	state         protoimpl.MessageState            `protogen:"open.v1"`
-	BidRequest    *ortb_V2_4.BidRequest             `protobuf:"bytes,1,opt,name=bidRequest,proto3" json:"bidRequest,omitempty"`
-	BidResponses  map[string]*ortb_V2_4.BidResponse `protobuf:"bytes,2,rep,name=bidResponses,proto3" json:"bidResponses,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
-	GlobalId      string                            `protobuf:"bytes,3,opt,name=globalId,proto3" json:"globalId,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *DspRouterResponse_V2_4) Reset() {
-	*x = DspRouterResponse_V2_4{}
-	mi := &file_services_dspRouter_proto_msgTypes[1]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *DspRouterResponse_V2_4) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*DspRouterResponse_V2_4) ProtoMessage() {}
-
-func (x *DspRouterResponse_V2_4) ProtoReflect() protoreflect.Message {
-	mi := &file_services_dspRouter_proto_msgTypes[1]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use DspRouterResponse_V2_4.ProtoReflect.Descriptor instead.
-func (*DspRouterResponse_V2_4) Descriptor() ([]byte, []int) {
-	return file_services_dspRouter_proto_rawDescGZIP(), []int{1}
-}
-
-func (x *DspRouterResponse_V2_4) GetBidRequest() *ortb_V2_4.BidRequest {
-	if x != nil {
-		return x.BidRequest
-	}
-	return nil
-}
-
-func (x *DspRouterResponse_V2_4) GetBidResponses() map[string]*ortb_V2_4.BidResponse {
-	if x != nil {
-		return x.BidResponses
-	}
-	return nil
-}
-
-func (x *DspRouterResponse_V2_4) GetGlobalId() string {
-	if x != nil {
-		return x.GlobalId
-	}
-	return ""
-}
-
 type DspRouterRequest_V2_5 struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	BidRequest    *ortb_V2_5.BidRequest  `protobuf:"bytes,1,opt,name=bidRequest,proto3" json:"bidRequest,omitempty"`
@@ -154,7 +33,7 @@ type DspRouterRequest_V2_5 struct {
 
 func (x *DspRouterRequest_V2_5) Reset() {
 	*x = DspRouterRequest_V2_5{}
-	mi := &file_services_dspRouter_proto_msgTypes[2]
+	mi := &file_services_dspRouter_proto_msgTypes[0]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -166,7 +45,7 @@ func (x *DspRouterRequest_V2_5) String() string {
 func (*DspRouterRequest_V2_5) ProtoMessage() {}
 
 func (x *DspRouterRequest_V2_5) ProtoReflect() protoreflect.Message {
-	mi := &file_services_dspRouter_proto_msgTypes[2]
+	mi := &file_services_dspRouter_proto_msgTypes[0]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -179,7 +58,7 @@ func (x *DspRouterRequest_V2_5) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DspRouterRequest_V2_5.ProtoReflect.Descriptor instead.
 func (*DspRouterRequest_V2_5) Descriptor() ([]byte, []int) {
-	return file_services_dspRouter_proto_rawDescGZIP(), []int{2}
+	return file_services_dspRouter_proto_rawDescGZIP(), []int{0}
 }
 
 func (x *DspRouterRequest_V2_5) GetBidRequest() *ortb_V2_5.BidRequest {
@@ -214,7 +93,7 @@ type DspRouterResponse_V2_5 struct {
 
 func (x *DspRouterResponse_V2_5) Reset() {
 	*x = DspRouterResponse_V2_5{}
-	mi := &file_services_dspRouter_proto_msgTypes[3]
+	mi := &file_services_dspRouter_proto_msgTypes[1]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -226,7 +105,7 @@ func (x *DspRouterResponse_V2_5) String() string {
 func (*DspRouterResponse_V2_5) ProtoMessage() {}
 
 func (x *DspRouterResponse_V2_5) ProtoReflect() protoreflect.Message {
-	mi := &file_services_dspRouter_proto_msgTypes[3]
+	mi := &file_services_dspRouter_proto_msgTypes[1]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -239,7 +118,7 @@ func (x *DspRouterResponse_V2_5) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DspRouterResponse_V2_5.ProtoReflect.Descriptor instead.
 func (*DspRouterResponse_V2_5) Descriptor() ([]byte, []int) {
-	return file_services_dspRouter_proto_rawDescGZIP(), []int{3}
+	return file_services_dspRouter_proto_rawDescGZIP(), []int{1}
 }
 
 func (x *DspRouterResponse_V2_5) GetBidRequest() *ortb_V2_5.BidRequest {
@@ -267,22 +146,7 @@ var File_services_dspRouter_proto protoreflect.FileDescriptor
 
 const file_services_dspRouter_proto_rawDesc = "" +
 	"\n" +
-	"\x18services/dspRouter.proto\x12\tdspRouter\x1a\x1atypes/ortb_V2_4/ortb.proto\x1a\x1atypes/ortb_V2_5/ortb.proto\"\x8c\x01\n" +
-	"\x15DspRouterRequest_V2_4\x125\n" +
-	"\n" +
-	"bidRequest\x18\x01 \x01(\v2\x15.ortb_V2_4.BidRequestR\n" +
-	"bidRequest\x12 \n" +
-	"\vsppEndpoint\x18\x02 \x01(\tR\vsppEndpoint\x12\x1a\n" +
-	"\bglobalId\x18\x03 \x01(\tR\bglobalId\"\x9d\x02\n" +
-	"\x16DspRouterResponse_V2_4\x125\n" +
-	"\n" +
-	"bidRequest\x18\x01 \x01(\v2\x15.ortb_V2_4.BidRequestR\n" +
-	"bidRequest\x12W\n" +
-	"\fbidResponses\x18\x02 \x03(\v23.dspRouter.DspRouterResponse_V2_4.BidResponsesEntryR\fbidResponses\x12\x1a\n" +
-	"\bglobalId\x18\x03 \x01(\tR\bglobalId\x1aW\n" +
-	"\x11BidResponsesEntry\x12\x10\n" +
-	"\x03key\x18\x01 \x01(\tR\x03key\x12,\n" +
-	"\x05value\x18\x02 \x01(\v2\x16.ortb_V2_4.BidResponseR\x05value:\x028\x01\"\x8c\x01\n" +
+	"\x18services/dspRouter.proto\x12\tdspRouter\x1a\x1atypes/ortb_V2_5/ortb.proto\"\x8c\x01\n" +
 	"\x15DspRouterRequest_V2_5\x125\n" +
 	"\n" +
 	"bidRequest\x18\x01 \x01(\v2\x15.ortb_V2_5.BidRequestR\n" +
@@ -297,9 +161,8 @@ const file_services_dspRouter_proto_rawDesc = "" +
 	"\bglobalId\x18\x03 \x01(\tR\bglobalId\x1aW\n" +
 	"\x11BidResponsesEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12,\n" +
-	"\x05value\x18\x02 \x01(\v2\x16.ortb_V2_5.BidResponseR\x05value:\x028\x012\xbc\x01\n" +
+	"\x05value\x18\x02 \x01(\v2\x16.ortb_V2_5.BidResponseR\x05value:\x028\x012g\n" +
 	"\x10DspRouterService\x12S\n" +
-	"\fGetBids_V2_4\x12 .dspRouter.DspRouterRequest_V2_4\x1a!.dspRouter.DspRouterResponse_V2_4\x12S\n" +
 	"\fGetBids_V2_5\x12 .dspRouter.DspRouterRequest_V2_5\x1a!.dspRouter.DspRouterResponse_V2_5B_Z]gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/proto/services/dspRouter;dspRouterGrpcb\x06proto3"
 
 var (
@@ -314,37 +177,26 @@ func file_services_dspRouter_proto_rawDescGZIP() []byte {
 	return file_services_dspRouter_proto_rawDescData
 }
 
-var file_services_dspRouter_proto_msgTypes = make([]protoimpl.MessageInfo, 6)
+var file_services_dspRouter_proto_msgTypes = make([]protoimpl.MessageInfo, 3)
 var file_services_dspRouter_proto_goTypes = []any{
-	(*DspRouterRequest_V2_4)(nil),  // 0: dspRouter.DspRouterRequest_V2_4
-	(*DspRouterResponse_V2_4)(nil), // 1: dspRouter.DspRouterResponse_V2_4
-	(*DspRouterRequest_V2_5)(nil),  // 2: dspRouter.DspRouterRequest_V2_5
-	(*DspRouterResponse_V2_5)(nil), // 3: dspRouter.DspRouterResponse_V2_5
-	nil,                            // 4: dspRouter.DspRouterResponse_V2_4.BidResponsesEntry
-	nil,                            // 5: dspRouter.DspRouterResponse_V2_5.BidResponsesEntry
-	(*ortb_V2_4.BidRequest)(nil),   // 6: ortb_V2_4.BidRequest
-	(*ortb_V2_5.BidRequest)(nil),   // 7: ortb_V2_5.BidRequest
-	(*ortb_V2_4.BidResponse)(nil),  // 8: ortb_V2_4.BidResponse
-	(*ortb_V2_5.BidResponse)(nil),  // 9: ortb_V2_5.BidResponse
+	(*DspRouterRequest_V2_5)(nil),  // 0: dspRouter.DspRouterRequest_V2_5
+	(*DspRouterResponse_V2_5)(nil), // 1: dspRouter.DspRouterResponse_V2_5
+	nil,                            // 2: dspRouter.DspRouterResponse_V2_5.BidResponsesEntry
+	(*ortb_V2_5.BidRequest)(nil),   // 3: ortb_V2_5.BidRequest
+	(*ortb_V2_5.BidResponse)(nil),  // 4: ortb_V2_5.BidResponse
 }
 var file_services_dspRouter_proto_depIdxs = []int32{
-	6,  // 0: dspRouter.DspRouterRequest_V2_4.bidRequest:type_name -> ortb_V2_4.BidRequest
-	6,  // 1: dspRouter.DspRouterResponse_V2_4.bidRequest:type_name -> ortb_V2_4.BidRequest
-	4,  // 2: dspRouter.DspRouterResponse_V2_4.bidResponses:type_name -> dspRouter.DspRouterResponse_V2_4.BidResponsesEntry
-	7,  // 3: dspRouter.DspRouterRequest_V2_5.bidRequest:type_name -> ortb_V2_5.BidRequest
-	7,  // 4: dspRouter.DspRouterResponse_V2_5.bidRequest:type_name -> ortb_V2_5.BidRequest
-	5,  // 5: dspRouter.DspRouterResponse_V2_5.bidResponses:type_name -> dspRouter.DspRouterResponse_V2_5.BidResponsesEntry
-	8,  // 6: dspRouter.DspRouterResponse_V2_4.BidResponsesEntry.value:type_name -> ortb_V2_4.BidResponse
-	9,  // 7: dspRouter.DspRouterResponse_V2_5.BidResponsesEntry.value:type_name -> ortb_V2_5.BidResponse
-	0,  // 8: dspRouter.DspRouterService.GetBids_V2_4:input_type -> dspRouter.DspRouterRequest_V2_4
-	2,  // 9: dspRouter.DspRouterService.GetBids_V2_5:input_type -> dspRouter.DspRouterRequest_V2_5
-	1,  // 10: dspRouter.DspRouterService.GetBids_V2_4:output_type -> dspRouter.DspRouterResponse_V2_4
-	3,  // 11: dspRouter.DspRouterService.GetBids_V2_5:output_type -> dspRouter.DspRouterResponse_V2_5
-	10, // [10:12] is the sub-list for method output_type
-	8,  // [8:10] is the sub-list for method input_type
-	8,  // [8:8] is the sub-list for extension type_name
-	8,  // [8:8] is the sub-list for extension extendee
-	0,  // [0:8] is the sub-list for field type_name
+	3, // 0: dspRouter.DspRouterRequest_V2_5.bidRequest:type_name -> ortb_V2_5.BidRequest
+	3, // 1: dspRouter.DspRouterResponse_V2_5.bidRequest:type_name -> ortb_V2_5.BidRequest
+	2, // 2: dspRouter.DspRouterResponse_V2_5.bidResponses:type_name -> dspRouter.DspRouterResponse_V2_5.BidResponsesEntry
+	4, // 3: dspRouter.DspRouterResponse_V2_5.BidResponsesEntry.value:type_name -> ortb_V2_5.BidResponse
+	0, // 4: dspRouter.DspRouterService.GetBids_V2_5:input_type -> dspRouter.DspRouterRequest_V2_5
+	1, // 5: dspRouter.DspRouterService.GetBids_V2_5:output_type -> dspRouter.DspRouterResponse_V2_5
+	5, // [5:6] is the sub-list for method output_type
+	4, // [4:5] is the sub-list for method input_type
+	4, // [4:4] is the sub-list for extension type_name
+	4, // [4:4] is the sub-list for extension extendee
+	0, // [0:4] is the sub-list for field type_name
 }
 
 func init() { file_services_dspRouter_proto_init() }
@@ -358,7 +210,7 @@ func file_services_dspRouter_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_services_dspRouter_proto_rawDesc), len(file_services_dspRouter_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   6,
+			NumMessages:   3,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

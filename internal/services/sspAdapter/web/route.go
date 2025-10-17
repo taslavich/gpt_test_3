@@ -6,17 +6,21 @@ import (
 	"time"
 
 	orchestratorProto "gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/proto/services/orchestrator"
-	"gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/proto/types/ortb_V2_4"
 	"gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/proto/types/ortb_V2_5"
 
 	"github.com/ggicci/httpin"
 	"github.com/ggicci/httpin/integration"
 	"github.com/go-chi/chi/v5"
 	"github.com/redis/go-redis/v9"
+	"github.com/unrolled/render"
 )
 
+var rnr = render.New(render.Options{
+	StreamingJSON: true,
+	UnEscapeHTML:  true,
+})
+
 const (
-	PostBid_V_2_4_URL = "/bid_v_2_4"
 	PostBid_V_2_5_URL = "/bid_v_2_5"
 
 	GetNurlUrl = "/nurl"
@@ -24,17 +28,6 @@ const (
 
 	GetHealthUrl = "/health"
 )
-
-type postBidRequest_V2_4 struct {
-	Payload *struct {
-		BidRequest *ortb_V2_4.BidRequest `json:"bid_request"`
-		SppDomain  string                `json:"ssp_domain"`
-	} `in:"body=json"`
-}
-
-type postBidResponse_V2_4 struct {
-	*ortb_V2_4.BidResponse
-}
 
 type postBidRequest_V2_5 struct {
 	Payload *struct {
@@ -69,12 +62,6 @@ func InitRoutes(
 	burlTimeout time.Duration,
 ) {
 	integration.UseGochiURLParam("path", chi.URLParam)
-
-	httpRouter.With(
-		httpin.NewInput(postBidRequest_V2_4{}),
-	).Post(PostBid_V_2_4_URL, func(w http.ResponseWriter, r *http.Request) {
-		postBid_V2_4(ctx, w, r, redisClient, isBadIp, getCountryISO, orchestratorClient, bidRequestTimeout)
-	})
 
 	httpRouter.With(
 		httpin.NewInput(postBidRequest_V2_5{}),

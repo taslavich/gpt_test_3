@@ -8,12 +8,52 @@ import (
 	"runtime/debug"
 	"time"
 
+	"github.com/redis/go-redis/v9"
 	"gitlab.com/twinbid-exchange/RTB-exchange/internal/constants"
 	bidEngineGrpc "gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/proto/services/bidEngine"
+	pb "gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/proto/services/bidEngine"
+	"gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/proto/types/ortb_V2_5"
 	utils "gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/utils_grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
+
+type Server struct {
+	ProfitPercent float32
+	redisClient   *redis.Client
+	timeout       time.Duration
+	hostname      string
+
+	GetWinnerBidInternal_V_2_5 func(
+		ctx context.Context,
+		req *bidEngineGrpc.BidEngineRequest_V2_5,
+		profitPercent float32,
+		globalId string,
+		hostname string,
+	) (*ortb_V2_5.BidResponse, *ortb_V2_5.BidResponse)
+
+	pb.BidEngineServiceServer
+}
+
+func NewServer(
+	ProfitPercent float32,
+	redisClient *redis.Client,
+	hostname string,
+	GetWinnerBidInternal_V_2_5 func(
+		ctx context.Context,
+		req *bidEngineGrpc.BidEngineRequest_V2_5,
+		profitPercent float32,
+		globalId string,
+		hostname string,
+	) (*ortb_V2_5.BidResponse, *ortb_V2_5.BidResponse),
+) *Server {
+	return &Server{
+		ProfitPercent:              ProfitPercent,
+		redisClient:                redisClient,
+		hostname:                   hostname,
+		GetWinnerBidInternal_V_2_5: GetWinnerBidInternal_V_2_5,
+	}
+}
 
 func (s *Server) GetWinnerBid_V2_5(
 	ctx context.Context,
@@ -28,8 +68,8 @@ func (s *Server) GetWinnerBid_V2_5(
 		log.Printf("Execution time in ms: %d ms\n", elapsed.Milliseconds())
 
 		if r := recover(); r != nil {
-			err := fmt.Errorf("Recovered from panic in GetWinnerBid_V2_5: %v", r)
-			log.Printf("Error: %v, Stack: %s", err.Error(), debug.Stack())
+			err := fmt.Errorf("Recovered from panic in GetWinnerBid_V2_5: %v, %s", r, string(debug.Stack()))
+			log.Printf("Error: %v", err.Error())
 
 			grpcCode := codes.Internal
 

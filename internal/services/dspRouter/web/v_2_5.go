@@ -6,7 +6,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"net"
 	"net/http"
+	"runtime/debug"
 	"sync"
 	"time"
 
@@ -14,6 +16,7 @@ import (
 	"github.com/redis/go-redis/v9"
 	"gitlab.com/twinbid-exchange/RTB-exchange/internal/coder"
 	"gitlab.com/twinbid-exchange/RTB-exchange/internal/constants"
+	"gitlab.com/twinbid-exchange/RTB-exchange/internal/filter"
 	dspRouterGrpc "gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/proto/services/dspRouter"
 	"gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/proto/types/ortb_V2_4"
 	"gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/proto/types/ortb_V2_5"
@@ -21,6 +24,104 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
+
+type Server struct {
+	ruleManager *filter.RuleManager
+	fileLoader  *filter.FileRuleLoader
+	processor   *filter.OptimizedFilterProcessor
+
+	dspEndpoints_v_2_4 []string
+	dspEndpoints_v_2_5 []string
+
+	redisClient *redis.Client
+
+	client_v_2_5 *http.Client
+	timeout      time.Duration
+	// Пулы для снижения аллокаций
+	bufferPool sync.Pool
+
+	dspRouterGrpc.UnimplementedDspRouterServiceServer
+}
+
+func NewFastHTTPClient() *http.Client {
+	transport := &http.Transport{
+		Proxy: http.ProxyFromEnvironment,
+		DialContext: (&net.Dialer{
+			Timeout:   100 * time.Millisecond, // TCP соединение за 20ms
+			KeepAlive: 30 * time.Second,       // Keep-alive
+			DualStack: true,
+		}).DialContext,
+
+		// Оптимально для 50ms RTT
+		MaxIdleConns:        200,
+		MaxIdleConnsPerHost: 50,
+		MaxConnsPerHost:     100,
+		IdleConnTimeout:     30 * time.Second,
+
+		// Агрессивные таймауты для 50ms
+		TLSHandshakeTimeout:   40 * time.Millisecond,
+		ExpectContinueTimeout: 40 * time.Millisecond,
+		ResponseHeaderTimeout: 80 * time.Millisecond, // Получение headers за 40ms
+
+		// Оптимизации для скорости
+		DisableCompression: true,  // Быстрее без сжатия при 50ms
+		ForceAttemptHTTP2:  false, // HTTP/1.1 стабильнее для низких latency
+	}
+
+	return &http.Client{
+		Transport: transport,
+		Timeout:   150 * time.Millisecond, // Общий таймаут чуть больше RTT
+	}
+}
+
+func NewServer(
+	ruleManager *filter.RuleManager,
+	fileLoader *filter.FileRuleLoader,
+	processor *filter.OptimizedFilterProcessor,
+	dspEndpoints_v_2_4,
+	dspEndpoints_v_2_5 []string,
+	redisClient *redis.Client,
+	timeout time.Duration,
+	maxParallelRequests int,
+) *Server {
+	if timeout <= 0 {
+		timeout = 5 * time.Second
+	}
+	if maxParallelRequests <= 0 {
+		maxParallelRequests = 64
+	}
+
+	client_v_2_5 := NewFastHTTPClient()
+
+	// Глобальный лимит исходящих: консервативно отталкиваемся от
+	// количества DSP и локального лимита; при желании — вынеси в конфиг.
+	outboundLimit := maxParallelRequests * 2
+	if l := len(dspEndpoints_v_2_4); l > 0 && l*maxParallelRequests > outboundLimit {
+		outboundLimit = l * maxParallelRequests
+	}
+	if l := len(dspEndpoints_v_2_5); l > 0 && l*maxParallelRequests > outboundLimit {
+		outboundLimit = l * maxParallelRequests
+	}
+	if outboundLimit < 256 {
+		outboundLimit = 256
+	}
+
+	return &Server{
+		ruleManager:        ruleManager,
+		fileLoader:         fileLoader,
+		processor:          processor,
+		dspEndpoints_v_2_4: dspEndpoints_v_2_4,
+		dspEndpoints_v_2_5: dspEndpoints_v_2_5,
+		redisClient:        redisClient,
+		client_v_2_5:       client_v_2_5,
+		timeout:            timeout,
+		bufferPool: sync.Pool{
+			New: func() interface{} {
+				return bytes.NewBuffer(make([]byte, 0, 2048))
+			},
+		},
+	}
+}
 
 type dspDomainResp[T ortb_V2_5.BidResponse | ortb_V2_4.BidResponse] struct {
 	endpoint string
@@ -36,7 +137,7 @@ func (s *Server) GetBids_V2_5(
 	defer func() {
 		cancel()
 		if r := recover(); r != nil {
-			err := fmt.Errorf("Recovered from panic in GetBids_V2_5: %v", r)
+			err := fmt.Errorf("Recovered from panic in GetBids_V2_5: %v, %s", r, string(debug.Stack()))
 			resp = nil
 			funcErr = status.Errorf(codes.Internal, err.Error())
 		}

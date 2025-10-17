@@ -19,7 +19,6 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	OrchestratorService_GetWinnerBid_V2_4_FullMethodName = "/orchestrator.OrchestratorService/getWinnerBid_V2_4"
 	OrchestratorService_GetWinnerBid_V2_5_FullMethodName = "/orchestrator.OrchestratorService/getWinnerBid_V2_5"
 )
 
@@ -27,7 +26,6 @@ const (
 //
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 type OrchestratorServiceClient interface {
-	GetWinnerBid_V2_4(ctx context.Context, in *OrchestratorRequest_V2_4, opts ...grpc.CallOption) (*OrchestratorResponse_V2_4, error)
 	GetWinnerBid_V2_5(ctx context.Context, in *OrchestratorRequest_V2_5, opts ...grpc.CallOption) (*OrchestratorResponse_V2_5, error)
 }
 
@@ -37,16 +35,6 @@ type orchestratorServiceClient struct {
 
 func NewOrchestratorServiceClient(cc grpc.ClientConnInterface) OrchestratorServiceClient {
 	return &orchestratorServiceClient{cc}
-}
-
-func (c *orchestratorServiceClient) GetWinnerBid_V2_4(ctx context.Context, in *OrchestratorRequest_V2_4, opts ...grpc.CallOption) (*OrchestratorResponse_V2_4, error) {
-	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(OrchestratorResponse_V2_4)
-	err := c.cc.Invoke(ctx, OrchestratorService_GetWinnerBid_V2_4_FullMethodName, in, out, cOpts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
 }
 
 func (c *orchestratorServiceClient) GetWinnerBid_V2_5(ctx context.Context, in *OrchestratorRequest_V2_5, opts ...grpc.CallOption) (*OrchestratorResponse_V2_5, error) {
@@ -63,7 +51,6 @@ func (c *orchestratorServiceClient) GetWinnerBid_V2_5(ctx context.Context, in *O
 // All implementations must embed UnimplementedOrchestratorServiceServer
 // for forward compatibility.
 type OrchestratorServiceServer interface {
-	GetWinnerBid_V2_4(context.Context, *OrchestratorRequest_V2_4) (*OrchestratorResponse_V2_4, error)
 	GetWinnerBid_V2_5(context.Context, *OrchestratorRequest_V2_5) (*OrchestratorResponse_V2_5, error)
 	mustEmbedUnimplementedOrchestratorServiceServer()
 }
@@ -75,9 +62,6 @@ type OrchestratorServiceServer interface {
 // pointer dereference when methods are called.
 type UnimplementedOrchestratorServiceServer struct{}
 
-func (UnimplementedOrchestratorServiceServer) GetWinnerBid_V2_4(context.Context, *OrchestratorRequest_V2_4) (*OrchestratorResponse_V2_4, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method GetWinnerBid_V2_4 not implemented")
-}
 func (UnimplementedOrchestratorServiceServer) GetWinnerBid_V2_5(context.Context, *OrchestratorRequest_V2_5) (*OrchestratorResponse_V2_5, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetWinnerBid_V2_5 not implemented")
 }
@@ -100,24 +84,6 @@ func RegisterOrchestratorServiceServer(s grpc.ServiceRegistrar, srv Orchestrator
 		t.testEmbeddedByValue()
 	}
 	s.RegisterService(&OrchestratorService_ServiceDesc, srv)
-}
-
-func _OrchestratorService_GetWinnerBid_V2_4_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(OrchestratorRequest_V2_4)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(OrchestratorServiceServer).GetWinnerBid_V2_4(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: OrchestratorService_GetWinnerBid_V2_4_FullMethodName,
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(OrchestratorServiceServer).GetWinnerBid_V2_4(ctx, req.(*OrchestratorRequest_V2_4))
-	}
-	return interceptor(ctx, in, info, handler)
 }
 
 func _OrchestratorService_GetWinnerBid_V2_5_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
@@ -145,10 +111,6 @@ var OrchestratorService_ServiceDesc = grpc.ServiceDesc{
 	ServiceName: "orchestrator.OrchestratorService",
 	HandlerType: (*OrchestratorServiceServer)(nil),
 	Methods: []grpc.MethodDesc{
-		{
-			MethodName: "getWinnerBid_V2_4",
-			Handler:    _OrchestratorService_GetWinnerBid_V2_4_Handler,
-		},
 		{
 			MethodName: "getWinnerBid_V2_5",
 			Handler:    _OrchestratorService_GetWinnerBid_V2_5_Handler,

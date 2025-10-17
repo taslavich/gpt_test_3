@@ -58,7 +58,6 @@ func main() {
 			cfg.ProfitPercent,
 			redisClient,
 			cfg.SystemHostname,
-			bidEngine.GetWinnerBidInternal_V_2_4,
 			bidEngine.GetWinnerBidInternal_V_2_5,
 		),
 	)
