@@ -27,12 +27,7 @@ func NewFileRuleLoader(ruleManager *RuleManager, dspV24Path, dspV25Path, sppV24P
 	}
 }
 
-/************ DSP ************/
-
 func (fl *FileRuleLoader) LoadDSPRules() error {
-	if err := fl.loadDSPRulesForVersion(fl.dspV24FilePath, "v24"); err != nil {
-		return err
-	}
 	if err := fl.loadDSPRulesForVersion(fl.dspV25FilePath, "v25"); err != nil {
 		return err
 	}
@@ -53,8 +48,6 @@ func (fl *FileRuleLoader) loadDSPRulesForVersion(filePath, version string) error
 	for dspID, dspSettings := range config.DSPs {
 		var rules []RuleNode
 		switch version {
-		case "v24":
-			rules = dspSettings.V24
 		case "v25":
 			rules = dspSettings.V25
 		default:
@@ -77,12 +70,7 @@ func (fl *FileRuleLoader) loadDSPRulesForVersion(filePath, version string) error
 	return nil
 }
 
-/************ SPP ************/
-
 func (fl *FileRuleLoader) LoadSPPRules() error {
-	if err := fl.loadSPPRulesForVersion(fl.sppV24FilePath, "v24"); err != nil {
-		return err
-	}
 	if err := fl.loadSPPRulesForVersion(fl.sppV25FilePath, "v25"); err != nil {
 		return err
 	}
@@ -103,8 +91,6 @@ func (fl *FileRuleLoader) loadSPPRulesForVersion(filePath, version string) error
 	for sppID, sppSettings := range config.SPPs {
 		var rules []RuleNode
 		switch version {
-		case "v24":
-			rules = sppSettings.V24
 		case "v25":
 			rules = sppSettings.V25
 		default:
@@ -126,8 +112,6 @@ func (fl *FileRuleLoader) loadSPPRulesForVersion(filePath, version string) error
 	}
 	return nil
 }
-
-/************ Helpers ************/
 
 func collectAllRules(node *CompiledRuleNode, rules *[]*FilterRule) {
 	if node.Rule != nil {

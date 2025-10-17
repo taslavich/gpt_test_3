@@ -19,7 +19,6 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	BidEngineService_GetWinnerBid_V2_4_FullMethodName = "/bidEngine.BidEngineService/getWinnerBid_V2_4"
 	BidEngineService_GetWinnerBid_V2_5_FullMethodName = "/bidEngine.BidEngineService/getWinnerBid_V2_5"
 )
 
@@ -27,7 +26,6 @@ const (
 //
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 type BidEngineServiceClient interface {
-	GetWinnerBid_V2_4(ctx context.Context, in *BidEngineRequest_V2_4, opts ...grpc.CallOption) (*BidEngineResponse_V2_4, error)
 	GetWinnerBid_V2_5(ctx context.Context, in *BidEngineRequest_V2_5, opts ...grpc.CallOption) (*BidEngineResponse_V2_5, error)
 }
 
@@ -37,16 +35,6 @@ type bidEngineServiceClient struct {
 
 func NewBidEngineServiceClient(cc grpc.ClientConnInterface) BidEngineServiceClient {
 	return &bidEngineServiceClient{cc}
-}
-
-func (c *bidEngineServiceClient) GetWinnerBid_V2_4(ctx context.Context, in *BidEngineRequest_V2_4, opts ...grpc.CallOption) (*BidEngineResponse_V2_4, error) {
-	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(BidEngineResponse_V2_4)
-	err := c.cc.Invoke(ctx, BidEngineService_GetWinnerBid_V2_4_FullMethodName, in, out, cOpts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
 }
 
 func (c *bidEngineServiceClient) GetWinnerBid_V2_5(ctx context.Context, in *BidEngineRequest_V2_5, opts ...grpc.CallOption) (*BidEngineResponse_V2_5, error) {
@@ -63,7 +51,6 @@ func (c *bidEngineServiceClient) GetWinnerBid_V2_5(ctx context.Context, in *BidE
 // All implementations must embed UnimplementedBidEngineServiceServer
 // for forward compatibility.
 type BidEngineServiceServer interface {
-	GetWinnerBid_V2_4(context.Context, *BidEngineRequest_V2_4) (*BidEngineResponse_V2_4, error)
 	GetWinnerBid_V2_5(context.Context, *BidEngineRequest_V2_5) (*BidEngineResponse_V2_5, error)
 	mustEmbedUnimplementedBidEngineServiceServer()
 }
@@ -75,9 +62,6 @@ type BidEngineServiceServer interface {
 // pointer dereference when methods are called.
 type UnimplementedBidEngineServiceServer struct{}
 
-func (UnimplementedBidEngineServiceServer) GetWinnerBid_V2_4(context.Context, *BidEngineRequest_V2_4) (*BidEngineResponse_V2_4, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method GetWinnerBid_V2_4 not implemented")
-}
 func (UnimplementedBidEngineServiceServer) GetWinnerBid_V2_5(context.Context, *BidEngineRequest_V2_5) (*BidEngineResponse_V2_5, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetWinnerBid_V2_5 not implemented")
 }
@@ -100,24 +84,6 @@ func RegisterBidEngineServiceServer(s grpc.ServiceRegistrar, srv BidEngineServic
 		t.testEmbeddedByValue()
 	}
 	s.RegisterService(&BidEngineService_ServiceDesc, srv)
-}
-
-func _BidEngineService_GetWinnerBid_V2_4_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(BidEngineRequest_V2_4)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(BidEngineServiceServer).GetWinnerBid_V2_4(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: BidEngineService_GetWinnerBid_V2_4_FullMethodName,
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(BidEngineServiceServer).GetWinnerBid_V2_4(ctx, req.(*BidEngineRequest_V2_4))
-	}
-	return interceptor(ctx, in, info, handler)
 }
 
 func _BidEngineService_GetWinnerBid_V2_5_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
@@ -145,10 +111,6 @@ var BidEngineService_ServiceDesc = grpc.ServiceDesc{
 	ServiceName: "bidEngine.BidEngineService",
 	HandlerType: (*BidEngineServiceServer)(nil),
 	Methods: []grpc.MethodDesc{
-		{
-			MethodName: "getWinnerBid_V2_4",
-			Handler:    _BidEngineService_GetWinnerBid_V2_4_Handler,
-		},
 		{
 			MethodName: "getWinnerBid_V2_5",
 			Handler:    _BidEngineService_GetWinnerBid_V2_5_Handler,

@@ -2,8 +2,10 @@ package bidEngine
 
 import (
 	"context"
+	"fmt"
 	"sort"
 
+	"gitlab.com/twinbid-exchange/RTB-exchange/internal/constants"
 	bidEngineGrpc "gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/proto/services/bidEngine"
 	"gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/proto/types/ortb_V2_5"
 	pb "gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/proto/types/ortb_V2_5"
@@ -149,4 +151,48 @@ func GetWinnerBidInternal_V_2_5(
 	}
 
 	return bidResponse, bidResponseByDspPrice
+}
+
+func applyPriceConstraintsAndPercent(dspPrice, bidFloor, profitPercent float32) (
+	finalDspPrice float32,
+	finalProfitPercent float32,
+	err error,
+) {
+	if bidFloor == constants.NEGATIVE_BIDFLOOR {
+		bidFloor = constants.ZERO_BIDFLOOR
+	}
+
+	if dspPrice < bidFloor {
+		return 0, 0, fmt.Errorf("DSP Price is lower thand bid floor")
+	}
+
+	finalDspPrice = dspPrice - dspPrice*profitPercent
+	finalProfitPercent = profitPercent
+
+	if finalDspPrice < bidFloor {
+		finalDspPrice, finalProfitPercent = findGoodPriceViaPercent(
+			dspPrice,
+			bidFloor,
+			profitPercent,
+		)
+	}
+
+	return finalDspPrice, finalProfitPercent, nil
+}
+
+func findGoodPriceViaPercent(
+	DspPrice, bidFloor, profitPercent float32,
+) (
+	finalDspPrice float32,
+	finalProfitPercent float32,
+) {
+	finalDspPrice = -1
+	for finalProfitPercent = profitPercent; finalProfitPercent >= 0; finalProfitPercent = finalProfitPercent - EPS {
+		finalDspPrice = DspPrice - DspPrice*finalProfitPercent
+		if finalDspPrice >= bidFloor {
+			break
+		}
+	}
+
+	return finalDspPrice, finalProfitPercent
 }

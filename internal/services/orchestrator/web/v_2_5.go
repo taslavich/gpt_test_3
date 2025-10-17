@@ -5,7 +5,9 @@ import (
 	"fmt"
 	"log"
 	"runtime/debug"
+	"time"
 
+	"github.com/redis/go-redis/v9"
 	bidEngineGrpc "gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/proto/services/bidEngine"
 	dspRouterGrpc "gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/proto/services/dspRouter"
 	orchestratorGrpc "gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/proto/services/orchestrator"
@@ -13,6 +15,34 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
+
+type Server struct {
+	bidEngineGrpcClient bidEngineGrpc.BidEngineServiceClient
+	dspRouterGrpcClient dspRouterGrpc.DspRouterServiceClient
+
+	redisClient *redis.Client
+
+	getBidsTimeout      time.Duration
+	getWinnerBidTimeout time.Duration
+
+	orchestratorGrpc.UnimplementedOrchestratorServiceServer
+}
+
+func NewServer(
+	bidEngineGrpcClient bidEngineGrpc.BidEngineServiceClient,
+	dspRouterGrpcClient dspRouterGrpc.DspRouterServiceClient,
+	redisClient *redis.Client,
+	getBidsTimeout,
+	getWinnerBidTimeout time.Duration,
+) *Server {
+	return &Server{
+		bidEngineGrpcClient: bidEngineGrpcClient,
+		dspRouterGrpcClient: dspRouterGrpcClient,
+		redisClient:         redisClient,
+		getBidsTimeout:      getBidsTimeout,
+		getWinnerBidTimeout: getWinnerBidTimeout,
+	}
+}
 
 func (s *Server) GetWinnerBid_V2_5(
 	ctx context.Context,
@@ -23,8 +53,8 @@ func (s *Server) GetWinnerBid_V2_5(
 ) {
 	defer func() {
 		if r := recover(); r != nil {
-			err := fmt.Errorf("Recovered from panic in GetWinnerBid_V2_5: %v", r)
-			log.Printf("Error: %v, Stack: %s", err.Error(), debug.Stack())
+			err := fmt.Errorf("Recovered from panic in GetWinnerBid_V2_5: %v, %s", r, string(debug.Stack()))
+			log.Printf("Error: %v", err.Error())
 
 			grpcCode := codes.Internal
 

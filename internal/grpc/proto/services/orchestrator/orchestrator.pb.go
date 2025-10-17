@@ -7,7 +7,6 @@
 package orchestratorGrpc
 
 import (
-	ortb_V2_4 "gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/proto/types/ortb_V2_4"
 	ortb_V2_5 "gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/proto/types/ortb_V2_5"
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
@@ -23,118 +22,6 @@ const (
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
 
-type OrchestratorRequest_V2_4 struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	BidRequest    *ortb_V2_4.BidRequest  `protobuf:"bytes,1,opt,name=bidRequest,proto3" json:"bidRequest,omitempty"`
-	SppEndpoint   string                 `protobuf:"bytes,2,opt,name=sppEndpoint,proto3" json:"sppEndpoint,omitempty"`
-	GlobalId      string                 `protobuf:"bytes,3,opt,name=globalId,proto3" json:"globalId,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *OrchestratorRequest_V2_4) Reset() {
-	*x = OrchestratorRequest_V2_4{}
-	mi := &file_services_orchestrator_proto_msgTypes[0]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *OrchestratorRequest_V2_4) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*OrchestratorRequest_V2_4) ProtoMessage() {}
-
-func (x *OrchestratorRequest_V2_4) ProtoReflect() protoreflect.Message {
-	mi := &file_services_orchestrator_proto_msgTypes[0]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use OrchestratorRequest_V2_4.ProtoReflect.Descriptor instead.
-func (*OrchestratorRequest_V2_4) Descriptor() ([]byte, []int) {
-	return file_services_orchestrator_proto_rawDescGZIP(), []int{0}
-}
-
-func (x *OrchestratorRequest_V2_4) GetBidRequest() *ortb_V2_4.BidRequest {
-	if x != nil {
-		return x.BidRequest
-	}
-	return nil
-}
-
-func (x *OrchestratorRequest_V2_4) GetSppEndpoint() string {
-	if x != nil {
-		return x.SppEndpoint
-	}
-	return ""
-}
-
-func (x *OrchestratorRequest_V2_4) GetGlobalId() string {
-	if x != nil {
-		return x.GlobalId
-	}
-	return ""
-}
-
-type OrchestratorResponse_V2_4 struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	BidResponse   *ortb_V2_4.BidResponse `protobuf:"bytes,1,opt,name=bidResponse,proto3" json:"bidResponse,omitempty"`
-	GlobalId      string                 `protobuf:"bytes,3,opt,name=globalId,proto3" json:"globalId,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *OrchestratorResponse_V2_4) Reset() {
-	*x = OrchestratorResponse_V2_4{}
-	mi := &file_services_orchestrator_proto_msgTypes[1]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *OrchestratorResponse_V2_4) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*OrchestratorResponse_V2_4) ProtoMessage() {}
-
-func (x *OrchestratorResponse_V2_4) ProtoReflect() protoreflect.Message {
-	mi := &file_services_orchestrator_proto_msgTypes[1]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use OrchestratorResponse_V2_4.ProtoReflect.Descriptor instead.
-func (*OrchestratorResponse_V2_4) Descriptor() ([]byte, []int) {
-	return file_services_orchestrator_proto_rawDescGZIP(), []int{1}
-}
-
-func (x *OrchestratorResponse_V2_4) GetBidResponse() *ortb_V2_4.BidResponse {
-	if x != nil {
-		return x.BidResponse
-	}
-	return nil
-}
-
-func (x *OrchestratorResponse_V2_4) GetGlobalId() string {
-	if x != nil {
-		return x.GlobalId
-	}
-	return ""
-}
-
 type OrchestratorRequest_V2_5 struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	BidRequest    *ortb_V2_5.BidRequest  `protobuf:"bytes,1,opt,name=bidRequest,proto3" json:"bidRequest,omitempty"`
@@ -146,7 +33,7 @@ type OrchestratorRequest_V2_5 struct {
 
 func (x *OrchestratorRequest_V2_5) Reset() {
 	*x = OrchestratorRequest_V2_5{}
-	mi := &file_services_orchestrator_proto_msgTypes[2]
+	mi := &file_services_orchestrator_proto_msgTypes[0]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -158,7 +45,7 @@ func (x *OrchestratorRequest_V2_5) String() string {
 func (*OrchestratorRequest_V2_5) ProtoMessage() {}
 
 func (x *OrchestratorRequest_V2_5) ProtoReflect() protoreflect.Message {
-	mi := &file_services_orchestrator_proto_msgTypes[2]
+	mi := &file_services_orchestrator_proto_msgTypes[0]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -171,7 +58,7 @@ func (x *OrchestratorRequest_V2_5) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use OrchestratorRequest_V2_5.ProtoReflect.Descriptor instead.
 func (*OrchestratorRequest_V2_5) Descriptor() ([]byte, []int) {
-	return file_services_orchestrator_proto_rawDescGZIP(), []int{2}
+	return file_services_orchestrator_proto_rawDescGZIP(), []int{0}
 }
 
 func (x *OrchestratorRequest_V2_5) GetBidRequest() *ortb_V2_5.BidRequest {
@@ -205,7 +92,7 @@ type OrchestratorResponse_V2_5 struct {
 
 func (x *OrchestratorResponse_V2_5) Reset() {
 	*x = OrchestratorResponse_V2_5{}
-	mi := &file_services_orchestrator_proto_msgTypes[3]
+	mi := &file_services_orchestrator_proto_msgTypes[1]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -217,7 +104,7 @@ func (x *OrchestratorResponse_V2_5) String() string {
 func (*OrchestratorResponse_V2_5) ProtoMessage() {}
 
 func (x *OrchestratorResponse_V2_5) ProtoReflect() protoreflect.Message {
-	mi := &file_services_orchestrator_proto_msgTypes[3]
+	mi := &file_services_orchestrator_proto_msgTypes[1]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -230,7 +117,7 @@ func (x *OrchestratorResponse_V2_5) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use OrchestratorResponse_V2_5.ProtoReflect.Descriptor instead.
 func (*OrchestratorResponse_V2_5) Descriptor() ([]byte, []int) {
-	return file_services_orchestrator_proto_rawDescGZIP(), []int{3}
+	return file_services_orchestrator_proto_rawDescGZIP(), []int{1}
 }
 
 func (x *OrchestratorResponse_V2_5) GetBidResponse() *ortb_V2_5.BidResponse {
@@ -251,16 +138,7 @@ var File_services_orchestrator_proto protoreflect.FileDescriptor
 
 const file_services_orchestrator_proto_rawDesc = "" +
 	"\n" +
-	"\x1bservices/orchestrator.proto\x12\forchestrator\x1a\x1atypes/ortb_V2_4/ortb.proto\x1a\x1atypes/ortb_V2_5/ortb.proto\"\x8f\x01\n" +
-	"\x18OrchestratorRequest_V2_4\x125\n" +
-	"\n" +
-	"bidRequest\x18\x01 \x01(\v2\x15.ortb_V2_4.BidRequestR\n" +
-	"bidRequest\x12 \n" +
-	"\vsppEndpoint\x18\x02 \x01(\tR\vsppEndpoint\x12\x1a\n" +
-	"\bglobalId\x18\x03 \x01(\tR\bglobalId\"q\n" +
-	"\x19OrchestratorResponse_V2_4\x128\n" +
-	"\vbidResponse\x18\x01 \x01(\v2\x16.ortb_V2_4.BidResponseR\vbidResponse\x12\x1a\n" +
-	"\bglobalId\x18\x03 \x01(\tR\bglobalId\"\x8f\x01\n" +
+	"\x1bservices/orchestrator.proto\x12\forchestrator\x1a\x1atypes/ortb_V2_5/ortb.proto\"\x8f\x01\n" +
 	"\x18OrchestratorRequest_V2_5\x125\n" +
 	"\n" +
 	"bidRequest\x18\x01 \x01(\v2\x15.ortb_V2_5.BidRequestR\n" +
@@ -269,9 +147,8 @@ const file_services_orchestrator_proto_rawDesc = "" +
 	"\bglobalId\x18\x03 \x01(\tR\bglobalId\"q\n" +
 	"\x19OrchestratorResponse_V2_5\x128\n" +
 	"\vbidResponse\x18\x01 \x01(\v2\x16.ortb_V2_5.BidResponseR\vbidResponse\x12\x1a\n" +
-	"\bglobalId\x18\x03 \x01(\tR\bglobalId2\xe5\x01\n" +
+	"\bglobalId\x18\x03 \x01(\tR\bglobalId2}\n" +
 	"\x13OrchestratorService\x12f\n" +
-	"\x11getWinnerBid_V2_4\x12&.orchestrator.OrchestratorRequest_V2_4\x1a'.orchestrator.OrchestratorResponse_V2_4\"\x00\x12f\n" +
 	"\x11getWinnerBid_V2_5\x12&.orchestrator.OrchestratorRequest_V2_5\x1a'.orchestrator.OrchestratorResponse_V2_5\"\x00BeZcgitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/proto/services/orchestrator;orchestratorGrpcb\x06proto3"
 
 var (
@@ -286,31 +163,23 @@ func file_services_orchestrator_proto_rawDescGZIP() []byte {
 	return file_services_orchestrator_proto_rawDescData
 }
 
-var file_services_orchestrator_proto_msgTypes = make([]protoimpl.MessageInfo, 4)
+var file_services_orchestrator_proto_msgTypes = make([]protoimpl.MessageInfo, 2)
 var file_services_orchestrator_proto_goTypes = []any{
-	(*OrchestratorRequest_V2_4)(nil),  // 0: orchestrator.OrchestratorRequest_V2_4
-	(*OrchestratorResponse_V2_4)(nil), // 1: orchestrator.OrchestratorResponse_V2_4
-	(*OrchestratorRequest_V2_5)(nil),  // 2: orchestrator.OrchestratorRequest_V2_5
-	(*OrchestratorResponse_V2_5)(nil), // 3: orchestrator.OrchestratorResponse_V2_5
-	(*ortb_V2_4.BidRequest)(nil),      // 4: ortb_V2_4.BidRequest
-	(*ortb_V2_4.BidResponse)(nil),     // 5: ortb_V2_4.BidResponse
-	(*ortb_V2_5.BidRequest)(nil),      // 6: ortb_V2_5.BidRequest
-	(*ortb_V2_5.BidResponse)(nil),     // 7: ortb_V2_5.BidResponse
+	(*OrchestratorRequest_V2_5)(nil),  // 0: orchestrator.OrchestratorRequest_V2_5
+	(*OrchestratorResponse_V2_5)(nil), // 1: orchestrator.OrchestratorResponse_V2_5
+	(*ortb_V2_5.BidRequest)(nil),      // 2: ortb_V2_5.BidRequest
+	(*ortb_V2_5.BidResponse)(nil),     // 3: ortb_V2_5.BidResponse
 }
 var file_services_orchestrator_proto_depIdxs = []int32{
-	4, // 0: orchestrator.OrchestratorRequest_V2_4.bidRequest:type_name -> ortb_V2_4.BidRequest
-	5, // 1: orchestrator.OrchestratorResponse_V2_4.bidResponse:type_name -> ortb_V2_4.BidResponse
-	6, // 2: orchestrator.OrchestratorRequest_V2_5.bidRequest:type_name -> ortb_V2_5.BidRequest
-	7, // 3: orchestrator.OrchestratorResponse_V2_5.bidResponse:type_name -> ortb_V2_5.BidResponse
-	0, // 4: orchestrator.OrchestratorService.getWinnerBid_V2_4:input_type -> orchestrator.OrchestratorRequest_V2_4
-	2, // 5: orchestrator.OrchestratorService.getWinnerBid_V2_5:input_type -> orchestrator.OrchestratorRequest_V2_5
-	1, // 6: orchestrator.OrchestratorService.getWinnerBid_V2_4:output_type -> orchestrator.OrchestratorResponse_V2_4
-	3, // 7: orchestrator.OrchestratorService.getWinnerBid_V2_5:output_type -> orchestrator.OrchestratorResponse_V2_5
-	6, // [6:8] is the sub-list for method output_type
-	4, // [4:6] is the sub-list for method input_type
-	4, // [4:4] is the sub-list for extension type_name
-	4, // [4:4] is the sub-list for extension extendee
-	0, // [0:4] is the sub-list for field type_name
+	2, // 0: orchestrator.OrchestratorRequest_V2_5.bidRequest:type_name -> ortb_V2_5.BidRequest
+	3, // 1: orchestrator.OrchestratorResponse_V2_5.bidResponse:type_name -> ortb_V2_5.BidResponse
+	0, // 2: orchestrator.OrchestratorService.getWinnerBid_V2_5:input_type -> orchestrator.OrchestratorRequest_V2_5
+	1, // 3: orchestrator.OrchestratorService.getWinnerBid_V2_5:output_type -> orchestrator.OrchestratorResponse_V2_5
+	3, // [3:4] is the sub-list for method output_type
+	2, // [2:3] is the sub-list for method input_type
+	2, // [2:2] is the sub-list for extension type_name
+	2, // [2:2] is the sub-list for extension extendee
+	0, // [0:2] is the sub-list for field type_name
 }
 
 func init() { file_services_orchestrator_proto_init() }
@@ -324,7 +193,7 @@ func file_services_orchestrator_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_services_orchestrator_proto_rawDesc), len(file_services_orchestrator_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   4,
+			NumMessages:   2,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

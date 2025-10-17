@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"runtime/debug"
 	"time"
 
 	"github.com/ggicci/httpin"
@@ -31,15 +32,15 @@ func postBid_V2_5(
 	orchestratorClient orchestratorProto.OrchestratorServiceClient,
 	timeout time.Duration,
 ) {
-	t1 := time.Now()
+	var input *postBidRequest_V2_5
 	defer func() {
 		if r := recover(); r != nil {
-			err := fmt.Errorf("Recovered from panic in postBid_V2_5: %v", r)
+			err := fmt.Errorf("Recovered from panic in postBid_V2_5: %v, req: %s, stack %s", r, input.Payload, string(debug.Stack()))
 			log.Printf(err.Error())
 			http.Error(w, "", http.StatusInternalServerError)
 		}
 	}()
-	input := r.Context().Value(httpin.Input).(*postBidRequest_V2_5)
+	input = r.Context().Value(httpin.Input).(*postBidRequest_V2_5)
 
 	if input.Payload.BidRequest.Device == nil {
 		err := fmt.Errorf(
@@ -135,10 +136,7 @@ func postBid_V2_5(
 
 	reqCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
-	t2 := time.Since(t1).Milliseconds()
-	if t2 > 5 {
-		log.Println("%v", t2)
-	}
+
 	res, err := orchestratorClient.GetWinnerBid_V2_5(
 		reqCtx,
 		&orchestratorProto.OrchestratorRequest_V2_5{

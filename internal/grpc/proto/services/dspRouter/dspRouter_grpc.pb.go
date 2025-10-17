@@ -19,7 +19,6 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	DspRouterService_GetBids_V2_4_FullMethodName = "/dspRouter.DspRouterService/GetBids_V2_4"
 	DspRouterService_GetBids_V2_5_FullMethodName = "/dspRouter.DspRouterService/GetBids_V2_5"
 )
 
@@ -27,7 +26,6 @@ const (
 //
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 type DspRouterServiceClient interface {
-	GetBids_V2_4(ctx context.Context, in *DspRouterRequest_V2_4, opts ...grpc.CallOption) (*DspRouterResponse_V2_4, error)
 	GetBids_V2_5(ctx context.Context, in *DspRouterRequest_V2_5, opts ...grpc.CallOption) (*DspRouterResponse_V2_5, error)
 }
 
@@ -37,16 +35,6 @@ type dspRouterServiceClient struct {
 
 func NewDspRouterServiceClient(cc grpc.ClientConnInterface) DspRouterServiceClient {
 	return &dspRouterServiceClient{cc}
-}
-
-func (c *dspRouterServiceClient) GetBids_V2_4(ctx context.Context, in *DspRouterRequest_V2_4, opts ...grpc.CallOption) (*DspRouterResponse_V2_4, error) {
-	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(DspRouterResponse_V2_4)
-	err := c.cc.Invoke(ctx, DspRouterService_GetBids_V2_4_FullMethodName, in, out, cOpts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
 }
 
 func (c *dspRouterServiceClient) GetBids_V2_5(ctx context.Context, in *DspRouterRequest_V2_5, opts ...grpc.CallOption) (*DspRouterResponse_V2_5, error) {
@@ -63,7 +51,6 @@ func (c *dspRouterServiceClient) GetBids_V2_5(ctx context.Context, in *DspRouter
 // All implementations must embed UnimplementedDspRouterServiceServer
 // for forward compatibility.
 type DspRouterServiceServer interface {
-	GetBids_V2_4(context.Context, *DspRouterRequest_V2_4) (*DspRouterResponse_V2_4, error)
 	GetBids_V2_5(context.Context, *DspRouterRequest_V2_5) (*DspRouterResponse_V2_5, error)
 	mustEmbedUnimplementedDspRouterServiceServer()
 }
@@ -75,9 +62,6 @@ type DspRouterServiceServer interface {
 // pointer dereference when methods are called.
 type UnimplementedDspRouterServiceServer struct{}
 
-func (UnimplementedDspRouterServiceServer) GetBids_V2_4(context.Context, *DspRouterRequest_V2_4) (*DspRouterResponse_V2_4, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method GetBids_V2_4 not implemented")
-}
 func (UnimplementedDspRouterServiceServer) GetBids_V2_5(context.Context, *DspRouterRequest_V2_5) (*DspRouterResponse_V2_5, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetBids_V2_5 not implemented")
 }
@@ -100,24 +84,6 @@ func RegisterDspRouterServiceServer(s grpc.ServiceRegistrar, srv DspRouterServic
 		t.testEmbeddedByValue()
 	}
 	s.RegisterService(&DspRouterService_ServiceDesc, srv)
-}
-
-func _DspRouterService_GetBids_V2_4_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(DspRouterRequest_V2_4)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(DspRouterServiceServer).GetBids_V2_4(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: DspRouterService_GetBids_V2_4_FullMethodName,
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(DspRouterServiceServer).GetBids_V2_4(ctx, req.(*DspRouterRequest_V2_4))
-	}
-	return interceptor(ctx, in, info, handler)
 }
 
 func _DspRouterService_GetBids_V2_5_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
@@ -145,10 +111,6 @@ var DspRouterService_ServiceDesc = grpc.ServiceDesc{
 	ServiceName: "dspRouter.DspRouterService",
 	HandlerType: (*DspRouterServiceServer)(nil),
 	Methods: []grpc.MethodDesc{
-		{
-			MethodName: "GetBids_V2_4",
-			Handler:    _DspRouterService_GetBids_V2_4_Handler,
-		},
 		{
 			MethodName: "GetBids_V2_5",
 			Handler:    _DspRouterService_GetBids_V2_5_Handler,

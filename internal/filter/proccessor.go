@@ -3,25 +3,24 @@ package filter
 import (
 	"fmt"
 
-	"gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/proto/types/ortb_V2_4"
 	"gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/proto/types/ortb_V2_5"
 )
 
 type OptimizedFilterProcessor struct {
 	ruleManager *RuleManager
 	// Stateless экстракторы (создаются один раз)
-	v24ReqExtractor  *StatelessV24BidRequestExtractor
+	v24ReqExtractor  *struct{}
 	v25ReqExtractor  *StatelessV25BidRequestExtractor
-	v24RespExtractor *StatelessV24BidResponseExtractor
+	v24RespExtractor *struct{}
 	v25RespExtractor *StatelessV25BidResponseExtractor
 }
 
 func NewOptimizedFilterProcessor(ruleManager *RuleManager) *OptimizedFilterProcessor {
 	return &OptimizedFilterProcessor{
 		ruleManager:      ruleManager,
-		v24ReqExtractor:  NewStatelessV24BidRequestExtractor(),
+		v24ReqExtractor:  nil,
 		v25ReqExtractor:  NewStatelessV25BidRequestExtractor(),
-		v24RespExtractor: NewStatelessV24BidResponseExtractor(),
+		v24RespExtractor: nil,
 		v25RespExtractor: NewStatelessV25BidResponseExtractor(),
 	}
 }
@@ -74,15 +73,6 @@ func (fp *OptimizedFilterProcessor) processRequestForDSPOptimized(dspURL string,
 	}
 
 	return &FilterResult{Allowed: true}
-}
-
-// ProcessResponseForSPPV24 обрабатывает BidResponse v2.4 для SPP
-func (fp *OptimizedFilterProcessor) ProcessResponseForSPPV24(sppURL string, resp *ortb_V2_4.BidResponse) *FilterResult {
-	if resp == nil {
-		return &FilterResult{Allowed: false}
-	}
-	versionedSPPID := fmt.Sprintf("%s|v24", sppURL)
-	return fp.processResponseForSPPOptimized(versionedSPPID, fp.v24RespExtractor, resp)
 }
 
 // ProcessResponseForSPPV25 обрабатывает BidResponse v2.5 для SPP
@@ -145,17 +135,6 @@ func (fp *OptimizedFilterProcessor) processResponseForSPPOptimized(sppURL string
 	return &FilterResult{Allowed: true}
 }
 
-// processor.go
-
-// ProcessRequestForDSPV24 обрабатывает BidRequest v2.4 для DSP
-func (fp *OptimizedFilterProcessor) ProcessRequestForDSPV24(dspURL string, req *ortb_V2_4.BidRequest) *FilterResult {
-	if req == nil {
-		return &FilterResult{Allowed: false}
-	}
-	versionedDSPID := fmt.Sprintf("%s|v24", dspURL)
-	return fp.processRequestForDSPOptimized(versionedDSPID, fp.v24ReqExtractor, req)
-}
-
 // ProcessRequestForDSPV25 обрабатывает BidRequest v2.5 для DSP
 func (fp *OptimizedFilterProcessor) ProcessRequestForDSPV25(dspURL string, req *ortb_V2_5.BidRequest) *FilterResult {
 	if req == nil {
@@ -164,5 +143,3 @@ func (fp *OptimizedFilterProcessor) ProcessRequestForDSPV25(dspURL string, req *
 	versionedDSPID := fmt.Sprintf("%s|v25", dspURL)
 	return fp.processRequestForDSPOptimized(versionedDSPID, fp.v25ReqExtractor, req)
 }
-
-// Аналогично для SPP...
