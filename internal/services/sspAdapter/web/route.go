@@ -31,8 +31,8 @@ const (
 
 type postBidRequest_V2_5 struct {
 	Payload *struct {
-		BidRequest *ortb_V2_5.BidRequest `json:"bid_request"`
-		SppDomain  string                `json:"ssp_domain"`
+		BidRequest *ortb_V2_5.BidRequest `json:"bid_request" required:"true"`
+		SppDomain  string                `json:"ssp_domain" required:"true"`
 	} `in:"body=json"`
 }
 
@@ -41,13 +41,13 @@ type postBidResponse_V2_5 struct {
 }
 
 type nurlRequest struct {
-	GlobalId string `in:"query=id"`
-	DspURL   string `in:"query=url"`
+	GlobalId string `in:"query=id" required:"true"`
+	DspURL   string `in:"query=url" required:"true"`
 }
 
 type burlRequest struct {
-	GlobalId string `in:"query=id"`
-	DspURL   string `in:"query=url"`
+	GlobalId string `in:"query=id" required:"true"`
+	DspURL   string `in:"query=url" required:"true"`
 }
 
 func InitRoutes(
