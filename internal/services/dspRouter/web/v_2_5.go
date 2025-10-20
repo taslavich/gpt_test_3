@@ -143,6 +143,9 @@ func (s *Server) GetBids_V2_5(
 		}
 	}()
 
+	sspDomain := req.BidRequest.GetSspDomain()
+	req.BidRequest.SspDomain = nil
+
 	jsonData, err := jsoniter.Marshal(req.BidRequest)
 	if err != nil {
 		newErr := fmt.Errorf("Can not marshal in GetBids_V_2_5 because got uknown error: %w", err)
@@ -173,9 +176,6 @@ func (s *Server) GetBids_V2_5(
 		wg.Add(1)
 		go func(endpoint string) {
 			defer wg.Done()
-
-			sspDomain := req.BidRequest.GetSspDomain()
-			req.BidRequest.SspDomain = nil
 
 			dspResp, err := s.getBidsFromDSPbyHTTP_V_2_5_Optimized(reqCtx, jsonData, endpoint)
 			if err != nil {
