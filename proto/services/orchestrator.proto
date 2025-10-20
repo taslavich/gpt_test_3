@@ -10,11 +10,10 @@ service OrchestratorService {
 
 message OrchestratorRequest_V2_5 {
   ortb_V2_5.BidRequest bidRequest = 1;
-  string sppEndpoint = 2;
-  string globalId = 3;
+  string globalId = 2;
 }
 
 message OrchestratorResponse_V2_5 {
   ortb_V2_5.BidResponse bidResponse = 1;
-  string globalId = 3;
+  string globalId = 2;
 }

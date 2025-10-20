@@ -10,8 +10,7 @@ service DspRouterService {
 
 message DspRouterRequest_V2_5 {
   ortb_V2_5.BidRequest bidRequest = 1;
-  string sppEndpoint = 2;
-  string globalId = 3;
+  string globalId = 2;
 }
 
 message DspRouterResponse_V2_5 {

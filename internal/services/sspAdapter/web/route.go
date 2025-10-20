@@ -32,7 +32,6 @@ const (
 type postBidRequest_V2_5 struct {
 	Payload *struct {
 		BidRequest *ortb_V2_5.BidRequest `json:"bid_request" required:"true"`
-		SppDomain  string                `json:"ssp_domain" required:"true"`
 	} `in:"body=json"`
 }
 

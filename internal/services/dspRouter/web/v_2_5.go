@@ -174,13 +174,16 @@ func (s *Server) GetBids_V2_5(
 		go func(endpoint string) {
 			defer wg.Done()
 
+			sspDomain := req.BidRequest.GetSppEndpoint()
+			req.BidRequest.SppEndpoint = nil
+
 			dspResp, err := s.getBidsFromDSPbyHTTP_V_2_5_Optimized(reqCtx, jsonData, endpoint)
 			if err != nil {
 				log.Printf("Cannot getBidsFromDSPbyHTTP_V_2_5_Optimized: %w", err)
 			}
 
 			// Фильтрация ответа SPP
-			if !s.processor.ProcessResponseForSPPV25(req.SppEndpoint, dspResp).Allowed {
+			if !s.processor.ProcessResponseForSPPV25(sspDomain, dspResp).Allowed {
 				log.Printf("Gor SSP filter, domain %s", endpoint)
 				return
 			}
