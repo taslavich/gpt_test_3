@@ -13,6 +13,6 @@ func WrapURL(hostname, originalURL, globalId, nurlOrBurl string) string {
 	if originalURL == "" {
 		return ""
 	}
-	return fmt.Sprintf("https://%s/bidRequest/%s?id=%s&url=%s",
+	return fmt.Sprintf("https://%s:8086/%s?id=%s&url=%s",
 		hostname, nurlOrBurl, globalId, originalURL)
 }
