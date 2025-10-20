@@ -56,14 +56,6 @@ func postBid_V2_5(
 	}
 
 	// Добавить эту проверку
-	if input.Payload.BidRequest == nil {
-		err := fmt.Errorf("Invalid request: bid_request is required")
-		log.Printf(err.Error())
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
-	}
-
-	// Добавить эту проверку
 	if input.Payload.BidRequest.SppEndpoint == nil {
 		err := fmt.Errorf("Invalid request: ssp_domain is required")
 		log.Printf(err.Error())
