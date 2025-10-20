@@ -125,6 +125,7 @@ func GetWinnerBidInternal_V_2_5(
 			Id:    winningBid.Id,
 			Impid: winningBid.Impid,
 			Price: &finalPrice,
+			Adm:   winningBid.Adm,
 			Adid:  winningBid.Adid,
 			Nurl:  &wrappedNurl,
 			Burl:  wrappedBurl,
