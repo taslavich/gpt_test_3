@@ -174,8 +174,8 @@ func (s *Server) GetBids_V2_5(
 		go func(endpoint string) {
 			defer wg.Done()
 
-			sspDomain := req.BidRequest.GetSppEndpoint()
-			req.BidRequest.SppEndpoint = nil
+			sspDomain := req.BidRequest.GetSspDomain()
+			req.BidRequest.SspDomain = nil
 
 			dspResp, err := s.getBidsFromDSPbyHTTP_V_2_5_Optimized(reqCtx, jsonData, endpoint)
 			if err != nil {

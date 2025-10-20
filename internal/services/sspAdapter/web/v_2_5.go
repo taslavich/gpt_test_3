@@ -56,7 +56,7 @@ func postBid_V2_5(
 	}
 
 	// Добавить эту проверку
-	if input.Payload.SppEndpoint == nil {
+	if input.Payload.SspDomain == nil {
 		err := fmt.Errorf("Invalid request: ssp_domain is required")
 		log.Printf(err.Error())
 		http.Error(w, err.Error(), http.StatusBadRequest)
@@ -127,7 +127,7 @@ func postBid_V2_5(
 		log.Printf("failed to marshal JSON in postBid_V2_5: %w", err)
 	}
 
-	if err := utils.WriteStringToRedis(ctx, redisClient, globalId, constants.SPP_DOMAIN_COLUMN, input.Payload.BidRequest.GetSppEndpoint()); err != nil {
+	if err := utils.WriteStringToRedis(ctx, redisClient, globalId, constants.SPP_DOMAIN_COLUMN, input.Payload.BidRequest.GetSspDomain()); err != nil {
 		log.Printf("failed to WriteStringToRedis Domain in postBid_V2_5: %w", err)
 	}
 
