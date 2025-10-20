@@ -79,93 +79,60 @@ func hasData(record types.StatisticsRecord) bool {
 }
 
 func InsertBatch(chDB *sql.DB, table string, records []types.StatisticsRecord) error {
-	tx, err := chDB.Begin()
-	if err != nil {
-		return err
-	}
-	defer tx.Rollback()
-
-	// Динамически строим запрос на основе непустых полей
-	for _, record := range records {
-		columns, placeholders, values := buildDynamicQuery(record)
-		if len(columns) == 0 {
-			continue // Пропускаем полностью пустые записи
-		}
-
-		query := fmt.Sprintf(`
-			INSERT INTO %s (%s) VALUES (%s)
-		`, table, strings.Join(columns, ", "), strings.Join(placeholders, ", "))
-
-		_, err := tx.ExecContext(context.Background(), query, values...)
-		if err != nil {
-			return fmt.Errorf("failed to insert record: %v", err)
-		}
+	if len(records) == 0 {
+		return nil
 	}
 
-	return tx.Commit()
-}
+	// Определяем все возможные колонки
+	allColumns := []string{
+		"uuid", "timestamp", "spp_domain", "bid_request", "geo_column",
+		"bid_responses", "bid_response_winner", "bid_response_winner_by_dsp_price", "success",
+	}
 
-// Строит динамический запрос на основе непустых полей
-func buildDynamicQuery(record types.StatisticsRecord) ([]string, []string, []interface{}) {
-	var columns []string
-	var placeholders []string
+	// Строим один INSERT запрос для всех записей
+	query := fmt.Sprintf(`
+		INSERT INTO %s (%s) VALUES 
+	`, table, strings.Join(allColumns, ", "))
+
+	var valuePlaceholders []string
 	var values []interface{}
 
-	if record.UUID != "" {
-		columns = append(columns, "uuid")
-		placeholders = append(placeholders, "?")
-		values = append(values, record.UUID)
+	for _, record := range records {
+		// Для каждой записи добавляем значения для всех колонок
+		// Если поле пустое - используем пустую строку
+		valuePlaceholders = append(valuePlaceholders, "(?, ?, ?, ?, ?, ?, ?, ?, ?)")
+
+		values = append(values,
+			coalesceEmpty(record.UUID),
+			coalesceEmpty(record.TIMESTAMP),
+			coalesceEmpty(record.SPP_DOMAIN),
+			coalesceEmpty(record.BID_REQUEST),
+			coalesceEmpty(record.GEO_COLUMN),
+			coalesceEmpty(record.BID_RESPONSES),
+			coalesceEmpty(record.BID_RESPONSE_WINNER),
+			coalesceEmpty(record.BID_RESPONSE_WINNER_BY_DSP_PRICE),
+			coalesceEmpty(record.SUCCESS),
+		)
 	}
 
-	if record.TIMESTAMP != "" {
-		columns = append(columns, "timestamp")
-		placeholders = append(placeholders, "?")
-		values = append(values, record.TIMESTAMP)
+	query += strings.Join(valuePlaceholders, ", ")
+
+	// Выполняем один batch insert
+	_, err := chDB.Exec(query, values...)
+	if err != nil {
+		return fmt.Errorf("failed to insert batch: %v", err)
 	}
 
-	if record.SPP_DOMAIN != "" {
-		columns = append(columns, "spp_domain")
-		placeholders = append(placeholders, "?")
-		values = append(values, record.SPP_DOMAIN)
-	}
+	log.Printf("📊 Inserted %d records with single batch query", len(records))
+	return nil
+}
 
-	if record.BID_REQUEST != "" {
-		columns = append(columns, "bid_request")
-		placeholders = append(placeholders, "?")
-		values = append(values, record.BID_REQUEST)
+// Вспомогательная функция для обработки пустых значений
+func coalesceEmpty(s string) string {
+	if s == "" {
+		return ""
 	}
-
-	if record.GEO_COLUMN != "" {
-		columns = append(columns, "geo_column")
-		placeholders = append(placeholders, "?")
-		values = append(values, record.GEO_COLUMN)
-	}
-
-	if record.BID_RESPONSES != "" {
-		columns = append(columns, "bid_responses")
-		placeholders = append(placeholders, "?")
-		values = append(values, record.BID_RESPONSES)
-	}
-
-	if record.BID_RESPONSE_WINNER != "" {
-		columns = append(columns, "bid_response_winner")
-		placeholders = append(placeholders, "?")
-		values = append(values, record.BID_RESPONSE_WINNER)
-	}
-
-	if record.BID_RESPONSE_WINNER_BY_DSP_PRICE != "" {
-		columns = append(columns, "bid_response_winner_by_dsp_price")
-		placeholders = append(placeholders, "?")
-		values = append(values, record.BID_RESPONSE_WINNER_BY_DSP_PRICE)
-	}
-
-	if record.SUCCESS != "" {
-		columns = append(columns, "success")
-		placeholders = append(placeholders, "?")
-		values = append(values, record.SUCCESS)
-	}
-
-	return columns, placeholders, values
+	return s
 }
 
 func CreateTable(chDB *sql.DB, tableName string) error {
@@ -188,7 +155,6 @@ func CreateTable(chDB *sql.DB, tableName string) error {
 	return err
 }
 
-// Остальные функции без изменений...
 func checkMessageCount(ctx context.Context, broker, topic string, minThreshold int) (bool, error) {
 	conn, err := kafka.Dial("tcp", broker)
 	if err != nil {
