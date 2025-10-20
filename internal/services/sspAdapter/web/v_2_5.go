@@ -56,14 +56,14 @@ func postBid_V2_5(
 	}
 
 	// Добавить эту проверку
-	if input.Payload.BidRequest.SppEndpoint == nil {
+	if input.Payload.SppEndpoint == nil {
 		err := fmt.Errorf("Invalid request: ssp_domain is required")
 		log.Printf(err.Error())
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
-	if input.Payload.BidRequest.Device == nil {
+	if input.Payload.Device == nil {
 		err := fmt.Errorf(
 			"There is no device object",
 		)
