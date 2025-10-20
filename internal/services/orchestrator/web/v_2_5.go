@@ -68,9 +68,8 @@ func (s *Server) GetWinnerBid_V2_5(
 	bids, err := s.dspRouterGrpcClient.GetBids_V2_5(
 		getBidsReqCtx,
 		&dspRouterGrpc.DspRouterRequest_V2_5{
-			BidRequest:  req.BidRequest,
-			SppEndpoint: req.SppEndpoint,
-			GlobalId:    req.GlobalId,
+			BidRequest: req.BidRequest,
+			GlobalId:   req.GlobalId,
 		},
 	)
 	if err != nil {

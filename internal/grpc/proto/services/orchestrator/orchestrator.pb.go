@@ -25,8 +25,7 @@ const (
 type OrchestratorRequest_V2_5 struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	BidRequest    *ortb_V2_5.BidRequest  `protobuf:"bytes,1,opt,name=bidRequest,proto3" json:"bidRequest,omitempty"`
-	SppEndpoint   string                 `protobuf:"bytes,2,opt,name=sppEndpoint,proto3" json:"sppEndpoint,omitempty"`
-	GlobalId      string                 `protobuf:"bytes,3,opt,name=globalId,proto3" json:"globalId,omitempty"`
+	GlobalId      string                 `protobuf:"bytes,2,opt,name=globalId,proto3" json:"globalId,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -68,13 +67,6 @@ func (x *OrchestratorRequest_V2_5) GetBidRequest() *ortb_V2_5.BidRequest {
 	return nil
 }
 
-func (x *OrchestratorRequest_V2_5) GetSppEndpoint() string {
-	if x != nil {
-		return x.SppEndpoint
-	}
-	return ""
-}
-
 func (x *OrchestratorRequest_V2_5) GetGlobalId() string {
 	if x != nil {
 		return x.GlobalId
@@ -85,7 +77,7 @@ func (x *OrchestratorRequest_V2_5) GetGlobalId() string {
 type OrchestratorResponse_V2_5 struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	BidResponse   *ortb_V2_5.BidResponse `protobuf:"bytes,1,opt,name=bidResponse,proto3" json:"bidResponse,omitempty"`
-	GlobalId      string                 `protobuf:"bytes,3,opt,name=globalId,proto3" json:"globalId,omitempty"`
+	GlobalId      string                 `protobuf:"bytes,2,opt,name=globalId,proto3" json:"globalId,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -138,16 +130,15 @@ var File_services_orchestrator_proto protoreflect.FileDescriptor
 
 const file_services_orchestrator_proto_rawDesc = "" +
 	"\n" +
-	"\x1bservices/orchestrator.proto\x12\forchestrator\x1a\x1atypes/ortb_V2_5/ortb.proto\"\x8f\x01\n" +
+	"\x1bservices/orchestrator.proto\x12\forchestrator\x1a\x1atypes/ortb_V2_5/ortb.proto\"m\n" +
 	"\x18OrchestratorRequest_V2_5\x125\n" +
 	"\n" +
 	"bidRequest\x18\x01 \x01(\v2\x15.ortb_V2_5.BidRequestR\n" +
-	"bidRequest\x12 \n" +
-	"\vsppEndpoint\x18\x02 \x01(\tR\vsppEndpoint\x12\x1a\n" +
-	"\bglobalId\x18\x03 \x01(\tR\bglobalId\"q\n" +
+	"bidRequest\x12\x1a\n" +
+	"\bglobalId\x18\x02 \x01(\tR\bglobalId\"q\n" +
 	"\x19OrchestratorResponse_V2_5\x128\n" +
 	"\vbidResponse\x18\x01 \x01(\v2\x16.ortb_V2_5.BidResponseR\vbidResponse\x12\x1a\n" +
-	"\bglobalId\x18\x03 \x01(\tR\bglobalId2}\n" +
+	"\bglobalId\x18\x02 \x01(\tR\bglobalId2}\n" +
 	"\x13OrchestratorService\x12f\n" +
 	"\x11getWinnerBid_V2_5\x12&.orchestrator.OrchestratorRequest_V2_5\x1a'.orchestrator.OrchestratorResponse_V2_5\"\x00BeZcgitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/proto/services/orchestrator;orchestratorGrpcb\x06proto3"
 
