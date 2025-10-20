@@ -7,14 +7,10 @@ import (
 type FieldType string
 
 const (
-	FieldCountry       FieldType = "country"
-	FieldBidFloor      FieldType = "bidfloor"
 	FieldDeviceCountry FieldType = "device.geo.country"
 	FieldAppID         FieldType = "app.id"
 	FieldSiteID        FieldType = "site.id"
 	FieldDeviceIP      FieldType = "device.ip"
-	FieldBannerWidth   FieldType = "banner.w"
-	FieldBannerHeight  FieldType = "banner.h"
 	FieldBidNurl       FieldType = "bid.nurl"
 	FieldBidBurl       FieldType = "bid.burl"
 
@@ -25,20 +21,13 @@ const (
 	FieldSeatBidSeat FieldType = "seatbid.seat"
 	FieldBidArray    FieldType = "bid.array"
 
-	FieldSitePage          FieldType = "site.page"
-	FieldSiteDomain        FieldType = "site.domain"
-	FieldSitePublisherID   FieldType = "site.publisher.id"
-	FieldDeviceUA          FieldType = "device.ua"
-	FieldDeviceLanguage    FieldType = "device.language"
-	FieldUserID            FieldType = "user.id"
-	FieldUserKeywords      FieldType = "user.keywords"
-	FieldAuctionType       FieldType = "at"
-	FieldTMax              FieldType = "tmax"
-	FieldCurrency          FieldType = "cur"
-	FieldBlockedCategories FieldType = "bcat"
-	FieldImpTagID          FieldType = "imp.tagid"
-	FieldImpSecure         FieldType = "imp.secure"
-	FieldImpInstl          FieldType = "imp.instl"
+	FieldSitePage       FieldType = "site.page"
+	FieldSiteDomain     FieldType = "site.domain"
+	FieldDeviceUA       FieldType = "device.ua"
+	FieldDeviceLanguage FieldType = "device.language"
+	FieldUserID         FieldType = "user.id"
+	FieldAuctionType    FieldType = "at"
+	FieldTMax           FieldType = "tmax"
 
 	FieldBidRequestID   FieldType = "bidrequest.id"
 	FieldBidRequestAt   FieldType = "bidrequest.at"
@@ -46,57 +35,19 @@ const (
 	FieldBidRequestCur  FieldType = "bidrequest.cur"
 	FieldBidRequestBCat FieldType = "bidrequest.bcat"
 
-	FieldImpID          FieldType = "imp.id"
-	FieldImpBidFloorCur FieldType = "imp.bidfloorcur"
-	FieldImpVideo       FieldType = "imp.video"
-	FieldImpNative      FieldType = "imp.native"
-
-	FieldBannerBType  FieldType = "banner.btype"
-	FieldBannerBAttr  FieldType = "banner.battr"
-	FieldBannerPos    FieldType = "banner.pos"
-	FieldBannerMimes  FieldType = "banner.mimes"
-	FieldBannerExpDir FieldType = "banner.expdir"
-	FieldBannerAPI    FieldType = "banner.api"
-	FieldBannerID     FieldType = "banner.id"
-
-	// Новые поля для Native
-	FieldNativeRequest FieldType = "native.request"
-	FieldNativeVer     FieldType = "native.ver"
-	FieldNativeAPI     FieldType = "native.api"
-	FieldNativeBAttr   FieldType = "native.battr"
-
-	// Новые поля для Device.Geo
-	FieldGeoLat    FieldType = "device.geo.lat"
-	FieldGeoLon    FieldType = "device.geo.lon"
-	FieldGeoRegion FieldType = "device.geo.region"
-	FieldGeoCity   FieldType = "device.geo.city"
-	FieldGeoZip    FieldType = "device.geo.zip"
+	FieldImpID FieldType = "imp.id"
 
 	// Новые поля для Site
 	FieldSiteName FieldType = "site.name"
 	FieldSiteRef  FieldType = "site.ref"
 	FieldSiteCat  FieldType = "site.cat"
 
-	// Новые поля для User
-	FieldUserBuyerUID FieldType = "user.buyeruid"
-
 	// Новые поля для BidResponse
 	FieldBidResponseID    FieldType = "bidresponse.id"
 	FieldBidResponseBidID FieldType = "bidresponse.bidid"
-	FieldBidResponseCur   FieldType = "bidresponse.cur"
-	FieldBidResponseNBR   FieldType = "bidresponse.nbr"
 
 	// Новые поля для Bid
-	FieldBidAdm     FieldType = "bid.adm"
-	FieldBidAdomain FieldType = "bid.adomain"
-	FieldBidBundle  FieldType = "bid.bundle"
-	FieldBidIurl    FieldType = "bid.iurl"
-	FieldBidCID     FieldType = "bid.cid"
-	FieldBidCRID    FieldType = "bid.crid"
-	FieldBidAttr    FieldType = "bid.attr"
-	FieldBidDealID  FieldType = "bid.dealid"
-	FieldBidWidth   FieldType = "bid.w"
-	FieldBidHeight  FieldType = "bid.h"
+	FieldBidAdm FieldType = "bid.adm"
 )
 
 type ValueType string

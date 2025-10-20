@@ -31,7 +31,7 @@ const (
 
 type postBidRequest_V2_5 struct {
 	Payload *struct {
-		BidRequest *ortb_V2_5.BidRequest `json:"bid_request" required:"true"`
+		BidRequest *ortb_V2_5.BidRequest
 	} `in:"body=json"`
 }
 
