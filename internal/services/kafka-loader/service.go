@@ -24,9 +24,9 @@ func ProcessBatch(ctx context.Context, redisClient *redis.Client, kafkaWriter *k
 		return nil
 	}
 
-	allKeys, err := redisClient.Keys(ctx, "stats:*").Result()
+	allKeys, err := redisClient.Keys(ctx, "*").Result()
 	if err != nil {
-		return fmt.Errorf("failed to get stats keys: %v", err)
+		return fmt.Errorf("failed to get keys: %v", err)
 	}
 
 	uuids := allKeys[:batchSize]
@@ -73,11 +73,6 @@ func ProcessBatch(ctx context.Context, redisClient *redis.Client, kafkaWriter *k
 		if bidResponseWinner, exists := data[constants.BID_RESPONSE_WINNER_COLUMN]; exists {
 			record.BID_RESPONSE_WINNER = bidResponseWinner
 			fieldsToDelete[key] = append(fieldsToDelete[key], constants.BID_RESPONSE_WINNER_COLUMN)
-		}
-
-		if bidResponseWinnerByDspPrice, exists := data[constants.BID_RESPONSE_WINNER_BY_DSP_PRICE_COLUMN]; exists {
-			record.BID_RESPONSE_WINNER_BY_DSP_PRICE = bidResponseWinnerByDspPrice
-			fieldsToDelete[key] = append(fieldsToDelete[key], constants.BID_RESPONSE_WINNER_BY_DSP_PRICE_COLUMN)
 		}
 
 		if success, exists := data[constants.RESULT_COLUMN]; exists {
@@ -139,7 +134,6 @@ func hasData(record types.StatisticsRecord) bool {
 		record.GEO_COLUMN != "" ||
 		record.BID_RESPONSES != "" ||
 		record.BID_RESPONSE_WINNER != "" ||
-		record.BID_RESPONSE_WINNER_BY_DSP_PRICE != "" ||
 		record.SUCCESS != "" ||
 		record.UUID != "" ||
 		record.TIMESTAMP != "" ||

@@ -6,18 +6,17 @@ const (
 )
 
 const (
-	UUID_COLUMN                             = "UUID"
-	TIMESTAMP_COLUMN                        = "TIMESTAMP"
-	SPP_DOMAIN_COLUMN                       = "SPP_DOMAIN"
-	BID_REQUEST_COLUMN                      = "BID_REQUEST"
-	GEO_COLUMN                              = "GEO"
-	BID_RESPONSES_COLUMN                    = "BID_RESPONSES"
-	BID_RESPONSE_WINNER_COLUMN              = "BID_RESPONSE_WINNER"
-	BID_RESPONSE_WINNER_BY_DSP_PRICE_COLUMN = "BID_RESPONSE_WINNER_BY_DSP_PRICE"
-	RESULT_COLUMN                           = "RESULT"
+	UUID_COLUMN                = "UUID"
+	TIMESTAMP_COLUMN           = "TIMESTAMP"
+	SPP_DOMAIN_COLUMN          = "SPP_DOMAIN"
+	BID_REQUEST_COLUMN         = "BID_REQUEST"
+	GEO_COLUMN                 = "GEO"
+	BID_RESPONSES_COLUMN       = "BID_RESPONSES"
+	BID_RESPONSE_WINNER_COLUMN = "BID_RESPONSE_WINNER"
+	RESULT_COLUMN              = "RESULT"
 )
 
 const (
-	UNSUCCESS = "UNSUCCESS"
-	SUCCESS   = "SUCCESS"
+	UNSUCCESS = "0"
+	SUCCESS   = "1"
 )

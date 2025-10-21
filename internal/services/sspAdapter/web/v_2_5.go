@@ -143,7 +143,7 @@ func postBid_V2_5(
 		log.Printf("failed to WriteStringToRedis SUCCESS in postBid_V2_5: %w", err)
 	}
 
-	if err := utils.WriteStringToRedis(ctx, redisClient, globalId, constants.TIMESTAMP_COLUMN, time.Now().UTC().String()); err != nil {
+	if err := utils.WriteStringToRedis(ctx, redisClient, globalId, constants.TIMESTAMP_COLUMN, time.Now().UTC().Format("2006-01-02 15:04:05.000")); err != nil {
 		log.Printf("failed to WriteJsonToRedis TimeStamp in postBid_V2_5: %w", err)
 	}
 

@@ -14,6 +14,7 @@ import (
 	pb "gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/proto/services/bidEngine"
 	"gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/proto/types/ortb_V2_5"
 	utils "gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/utils_grpc"
+	clickhouse_types "gitlab.com/twinbid-exchange/RTB-exchange/internal/types/clickhouse"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
@@ -30,7 +31,7 @@ type Server struct {
 		profitPercent float32,
 		globalId string,
 		hostname string,
-	) (*ortb_V2_5.BidResponse, *ortb_V2_5.BidResponse)
+	) (*ortb_V2_5.BidResponse, *clickhouse_types.BidResponse)
 
 	pb.BidEngineServiceServer
 }
@@ -45,7 +46,7 @@ func NewServer(
 		profitPercent float32,
 		globalId string,
 		hostname string,
-	) (*ortb_V2_5.BidResponse, *ortb_V2_5.BidResponse),
+	) (*ortb_V2_5.BidResponse, *clickhouse_types.BidResponse),
 ) *Server {
 	return &Server{
 		ProfitPercent:              ProfitPercent,
@@ -77,7 +78,7 @@ func (s *Server) GetWinnerBid_V2_5(
 			funcErr = status.Errorf(grpcCode, err.Error())
 		}
 	}()
-	bidResponse, bidResponseByDspPrice := s.GetWinnerBidInternal_V_2_5(
+	bidResponse, clickhouseBidResponse := s.GetWinnerBidInternal_V_2_5(
 		ctx,
 		req,
 		s.ProfitPercent,
@@ -85,22 +86,13 @@ func (s *Server) GetWinnerBid_V2_5(
 		s.hostname,
 	)
 
-	data, err := json.Marshal(bidResponse)
+	clickhouseData, err := json.Marshal(clickhouseBidResponse)
 	if err != nil {
 		log.Printf("failed to marshal JSON in GetWinnerBidInternal: %w", err)
 	}
 
-	if err := utils.WriteJsonToRedis(ctx, s.redisClient, req.GlobalId, constants.BID_RESPONSE_WINNER_COLUMN, data); err != nil {
+	if err := utils.WriteJsonToRedis(ctx, s.redisClient, req.GlobalId, constants.BID_RESPONSE_WINNER_COLUMN, clickhouseData); err != nil {
 		log.Printf("failed to WriteJsonToRedis Bid BID_RESPONSE_WINNER in GetWinnerBidInternal: %w", err)
-	}
-
-	dataByDspPrice, err := json.Marshal(bidResponseByDspPrice)
-	if err != nil {
-		log.Printf("failed to marshal JSON in GetWinnerBidInternal: %w", err)
-	}
-
-	if err := utils.WriteJsonToRedis(ctx, s.redisClient, req.GlobalId, constants.BID_RESPONSE_WINNER_BY_DSP_PRICE_COLUMN, dataByDspPrice); err != nil {
-		log.Printf("failed to WriteJsonToRedis Bid BID_RESPONSE_WINNER_BY_DSP_PRICE_COLUMN in GetWinnerBidInternal: %w", err)
 	}
 
 	return &bidEngineGrpc.BidEngineResponse_V2_5{
