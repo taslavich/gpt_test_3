@@ -53,7 +53,7 @@ func ProcessKafkaMessages(ctx context.Context, broker, topic string, reader *kaf
 		return 0, nil
 	}
 
-	if err := InsertBatch(chDB, table, records); err != nil {
+	if err := GiveBatch(chDB, table, records); err != nil {
 		return 0, fmt.Errorf("failed to insert batch: %v", err)
 	}
 
@@ -63,6 +63,71 @@ func ProcessKafkaMessages(ctx context.Context, broker, topic string, reader *kaf
 
 	log.Printf("✅ Successfully processed %d messages to ClickHouse", len(records))
 	return len(records), nil
+}
+
+func GiveBatch(chDB *sql.DB, table string, records []types.StatisticsRecord) error {
+	if len(records) == 0 {
+		return nil
+	}
+
+	// Разделяем записи на INSERT и UPDATE
+	var insertRecords []types.StatisticsRecord
+	var updateRecords []types.StatisticsRecord
+
+	for _, record := range records {
+		if record.SUCCESS == "1" && record.UUID != "" {
+			updateRecords = append(updateRecords, record)
+		} else {
+			insertRecords = append(insertRecords, record)
+		}
+	}
+
+	// Выполняем INSERT для обычных записей
+	if len(insertRecords) > 0 {
+		if err := insertBatch(chDB, table, insertRecords); err != nil {
+			return fmt.Errorf("failed to insert records: %v", err)
+		}
+	}
+
+	// Выполняем UPDATE только для поля success
+	if len(updateRecords) > 0 {
+		if err := updateSuccessBatch(chDB, table, updateRecords); err != nil {
+			return fmt.Errorf("failed to update success records: %v", err)
+		}
+	}
+
+	log.Printf("📊 Processed %d records (%d inserted, %d success updated)",
+		len(records), len(insertRecords), len(updateRecords))
+	return nil
+}
+
+func updateSuccessBatch(chDB *sql.DB, table string, records []types.StatisticsRecord) error {
+	// Группируем обновления по UUID для избежания дубликатов
+	uuidUpdates := make(map[string]string)
+	for _, record := range records {
+		if record.UUID != "" && record.SUCCESS == "1" {
+			uuidUpdates[record.UUID] = record.SUCCESS
+		}
+	}
+
+	// Выполняем UPDATE для каждого UUID
+	for uuid, success := range uuidUpdates {
+		query := fmt.Sprintf(`
+			ALTER TABLE %s 
+			UPDATE 
+				success = ?
+			WHERE uuid = ?
+		`, table)
+
+		_, err := chDB.Exec(query, success, uuid)
+		if err != nil {
+			log.Printf("⚠️ Failed to update success for UUID %s: %v", uuid, err)
+			continue
+		}
+	}
+
+	log.Printf("🔄 Updated success for %d unique records", len(uuidUpdates))
+	return nil
 }
 
 // Проверяет есть ли хотя бы одно непустое поле
@@ -77,7 +142,7 @@ func hasData(record types.StatisticsRecord) bool {
 		record.SPP_DOMAIN != ""
 }
 
-func InsertBatch(chDB *sql.DB, table string, records []types.StatisticsRecord) error {
+func insertBatch(chDB *sql.DB, table string, records []types.StatisticsRecord) error {
 	if len(records) == 0 {
 		return nil
 	}
@@ -143,10 +208,8 @@ func CreateTable(chDB *sql.DB, tableName string) error {
             geo_column String,
             bid_responses String,
             bid_response_winner String,
-            success Bool,
-            updated_at DateTime DEFAULT now()
-        ) ENGINE = ReplacingMergeTree(updated_at)
-        ORDER BY (uuid, timestamp)
+            success Bool
+        ) ORDER BY (uuid, timestamp)
         SETTINGS index_granularity = 8192
     `, tableName))
 	return err
