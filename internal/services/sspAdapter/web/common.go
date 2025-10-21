@@ -42,6 +42,7 @@ func getNurl(
 		if resp.StatusCode >= http.StatusBadRequest {
 			log.Printf("DSP %s returned error for win notice: %d", decodedURL, resp.StatusCode)
 			w.WriteHeader(resp.StatusCode)
+			return
 		}
 	}
 
@@ -82,11 +83,8 @@ func getBurl(
 		if resp.StatusCode >= http.StatusBadRequest {
 			log.Printf("DSP %s returned error for billable event: %d", decodedURL, resp.StatusCode)
 			w.WriteHeader(resp.StatusCode)
+			return
 		}
-	}
-
-	if err := utils.WriteStringToRedis(ctx, redisClient, input.GlobalId, constants.RESULT_COLUMN, constants.SUCCESS); err != nil {
-		log.Printf("failed to WriteStringToRedis SUCCESS in getBurl: %w", err)
 	}
 
 	w.WriteHeader(http.StatusOK)

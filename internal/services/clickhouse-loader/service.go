@@ -71,7 +71,6 @@ func hasData(record types.StatisticsRecord) bool {
 		record.GEO_COLUMN != "" ||
 		record.BID_RESPONSES != "" ||
 		record.BID_RESPONSE_WINNER != "" ||
-		record.BID_RESPONSE_WINNER_BY_DSP_PRICE != "" ||
 		record.SUCCESS != "" ||
 		record.UUID != "" ||
 		record.TIMESTAMP != "" ||
@@ -86,7 +85,7 @@ func InsertBatch(chDB *sql.DB, table string, records []types.StatisticsRecord) e
 	// Определяем все возможные колонки
 	allColumns := []string{
 		"uuid", "timestamp", "spp_domain", "bid_request", "geo_column",
-		"bid_responses", "bid_response_winner", "bid_response_winner_by_dsp_price", "success",
+		"bid_responses", "bid_response_winner", "success",
 	}
 
 	// Строим один INSERT запрос для всех записей
@@ -100,7 +99,7 @@ func InsertBatch(chDB *sql.DB, table string, records []types.StatisticsRecord) e
 	for _, record := range records {
 		// Для каждой записи добавляем значения для всех колонок
 		// Если поле пустое - используем пустую строку
-		valuePlaceholders = append(valuePlaceholders, "(?, ?, ?, ?, ?, ?, ?, ?, ?)")
+		valuePlaceholders = append(valuePlaceholders, "(?, ?, ?, ?, ?, ?, ?, ?)")
 
 		values = append(values,
 			coalesceEmpty(record.UUID),
@@ -110,7 +109,6 @@ func InsertBatch(chDB *sql.DB, table string, records []types.StatisticsRecord) e
 			coalesceEmpty(record.GEO_COLUMN),
 			coalesceEmpty(record.BID_RESPONSES),
 			coalesceEmpty(record.BID_RESPONSE_WINNER),
-			coalesceEmpty(record.BID_RESPONSE_WINNER_BY_DSP_PRICE),
 			coalesceEmpty(record.SUCCESS),
 		)
 	}
@@ -138,15 +136,14 @@ func coalesceEmpty(s string) string {
 func CreateTable(chDB *sql.DB, tableName string) error {
 	_, err := chDB.Exec(fmt.Sprintf(`
         CREATE TABLE IF NOT EXISTS %s (
-            uuid String,
-            timestamp String,
+            uuid UUID,
+            timestamp DateTime64(3),
 			spp_domain String,
             bid_request String,
             geo_column String,
             bid_responses String,
             bid_response_winner String,
-            bid_response_winner_by_dsp_price String,
-            success String,
+            success Bool,
             updated_at DateTime DEFAULT now()
         ) ENGINE = ReplacingMergeTree(updated_at)
         ORDER BY (uuid, timestamp)

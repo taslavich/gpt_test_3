@@ -8,8 +8,8 @@ import (
 	"gitlab.com/twinbid-exchange/RTB-exchange/internal/constants"
 	bidEngineGrpc "gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/proto/services/bidEngine"
 	"gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/proto/types/ortb_V2_5"
-	pb "gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/proto/types/ortb_V2_5"
 	utils "gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/utils_grpc"
+	clickhouse_types "gitlab.com/twinbid-exchange/RTB-exchange/internal/types/clickhouse"
 )
 
 func GetWinnerBidInternal_V_2_5(
@@ -18,27 +18,32 @@ func GetWinnerBidInternal_V_2_5(
 	profitPercent float32,
 	globalId string,
 	hostname string,
-) (*pb.BidResponse, *pb.BidResponse) {
+) (*ortb_V2_5.BidResponse, *clickhouse_types.BidResponse) {
 	if len(req.BidResponses) == 0 {
-		return &pb.BidResponse{
+		return &ortb_V2_5.BidResponse{
 				Id: req.BidRequest.Id,
 				Seatbid: []*ortb_V2_5.SeatBid{
 					{
 						Bid: []*ortb_V2_5.Bid{},
 					},
 				},
-			}, &pb.BidResponse{
+			}, &clickhouse_types.BidResponse{
 				Id: req.BidRequest.Id,
-				Seatbid: []*ortb_V2_5.SeatBid{
+				Seatbid: []*clickhouse_types.SeatBid{
 					{
-						Bid: []*ortb_V2_5.Bid{},
+						Bid: []*clickhouse_types.Bid{},
 					},
 				},
 			}
 	}
 
-	impBids := make(map[string][]*pb.Bid)
-	for _, bidResponse := range req.BidResponses {
+	type bidWithDomain struct {
+		bid    *ortb_V2_5.Bid
+		domain string
+	}
+
+	impBids := make(map[string][]*bidWithDomain)
+	for domain, bidResponse := range req.BidResponses {
 		if bidResponse == nil || bidResponse.Seatbid == nil {
 			continue
 		}
@@ -54,37 +59,40 @@ func GetWinnerBidInternal_V_2_5(
 				if impID == "" {
 					continue
 				}
-				impBids[impID] = append(impBids[impID], bid)
+				impBids[impID] = append(impBids[impID], &bidWithDomain{
+					bid:    bid,
+					domain: domain,
+				})
 			}
 		}
 	}
 
 	if len(impBids) == 0 {
-		return &pb.BidResponse{
+		return &ortb_V2_5.BidResponse{
 				Id: req.BidRequest.Id,
 				Seatbid: []*ortb_V2_5.SeatBid{
 					{
 						Bid: []*ortb_V2_5.Bid{},
 					},
 				},
-			}, &pb.BidResponse{
+			}, &clickhouse_types.BidResponse{
 				Id: req.BidRequest.Id,
-				Seatbid: []*ortb_V2_5.SeatBid{
+				Seatbid: []*clickhouse_types.SeatBid{
 					{
-						Bid: []*ortb_V2_5.Bid{},
+						Bid: []*clickhouse_types.Bid{},
 					},
 				},
 			}
 	}
 
-	seatBid := []*pb.SeatBid{
+	seatBid := []*ortb_V2_5.SeatBid{
 		{
 			Bid: []*ortb_V2_5.Bid{},
 		},
 	}
-	seatBidByDspPrice := []*pb.SeatBid{
+	clickhouseSeatBid := []*clickhouse_types.SeatBid{
 		{
-			Bid: []*ortb_V2_5.Bid{},
+			Bid: []*clickhouse_types.Bid{},
 		},
 	}
 
@@ -93,10 +101,12 @@ func GetWinnerBidInternal_V_2_5(
 			continue // добавляем защиту
 		}
 		sort.Slice(bids, func(i, j int) bool {
-			return bids[i].GetPrice() > bids[j].GetPrice()
+			return bids[i].bid.GetPrice() > bids[j].bid.GetPrice()
 		})
 
-		winningBid := bids[0]
+		winningBidWithDomain := bids[0] // ← ИЗМЕНЕНО
+		winningBid := winningBidWithDomain.bid
+		winningDomain := winningBidWithDomain.domain
 
 		var bidFloor float32 = 0
 		for _, imp := range req.BidRequest.Imp {
@@ -121,7 +131,7 @@ func GetWinnerBidInternal_V_2_5(
 			bufBur := utils.WrapURL(hostname, winningBid.GetBurl(), globalId, utils.BURL)
 			wrappedBurl = &bufBur
 		}
-		finalBid := &pb.Bid{
+		finalBid := &ortb_V2_5.Bid{
 			Id:    winningBid.Id,
 			Impid: winningBid.Impid,
 			Price: &finalPrice,
@@ -131,27 +141,30 @@ func GetWinnerBidInternal_V_2_5(
 			Burl:  wrappedBurl,
 		}
 
-		bidByDspPrice := &pb.Bid{
-			Id:    winningBid.Id,
-			Impid: winningBid.Impid,
-			Price: winningBid.Price,
+		clickhouseBid := &clickhouse_types.Bid{
+			DspDomain: &winningDomain,
+			Id:        winningBid.Id,
+			Impid:     winningBid.Impid,
+			Price:     &finalPrice,
+			DspPrice:  winningBid.Price,
+			Adid:      winningBid.Adid,
 		}
 
 		seatBid[0].Bid = append(seatBid[0].Bid, finalBid)
-		seatBidByDspPrice[0].Bid = append(seatBidByDspPrice[0].Bid, bidByDspPrice)
+		clickhouseSeatBid[0].Bid = append(clickhouseSeatBid[0].Bid, clickhouseBid)
 	}
 
-	bidResponse := &pb.BidResponse{
+	bidResponse := &ortb_V2_5.BidResponse{
 		Id:      req.BidRequest.Id,
 		Seatbid: seatBid,
 	}
 
-	bidResponseByDspPrice := &pb.BidResponse{
+	clickhouseBidResponse := &clickhouse_types.BidResponse{
 		Id:      req.BidRequest.Id,
-		Seatbid: seatBidByDspPrice,
+		Seatbid: clickhouseSeatBid,
 	}
 
-	return bidResponse, bidResponseByDspPrice
+	return bidResponse, clickhouseBidResponse
 }
 
 func applyPriceConstraintsAndPercent(dspPrice, bidFloor, profitPercent float32) (
