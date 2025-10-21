@@ -177,7 +177,7 @@ func (s *Server) GetBids_V2_5(
 	)
 
 	codesCh := make(chan *dspDomainCode, len(s.dspEndpoints_v_2_5))
-	responsesCh := make(chan *dspDomainResp, len(s.dspEndpoints_v_2_4))
+	responsesCh := make(chan *dspDomainResp, len(s.dspEndpoints_v_2_5))
 
 	// Запускаем все DSP параллельно
 	for _, endpoint := range s.dspEndpoints_v_2_5 {
