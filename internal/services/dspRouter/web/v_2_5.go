@@ -137,6 +137,13 @@ func (s *Server) GetBids_V2_5(
 	req *dspRouterGrpc.DspRouterRequest_V2_5,
 ) (resp *dspRouterGrpc.DspRouterResponse_V2_5, funcErr error) {
 
+	startTime := time.Now()
+	log.Printf("🚀 GetBids_V2_5 STARTED, server timeout: %v", s.timeout)
+
+	defer func() {
+		log.Printf("✅ GetBids_V2_5 COMPLETED in %v", time.Since(startTime))
+	}()
+
 	reqCtx, cancel := context.WithTimeout(ctx, s.timeout)
 	defer func() {
 		cancel()
