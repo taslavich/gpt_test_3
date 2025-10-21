@@ -200,7 +200,7 @@ func (s *Server) GetBids_V2_5(
 
 			// Фильтрация ответа SPP
 			if !s.processor.ProcessResponseForSPPV25(sspDomain, dspResp).Allowed {
-				log.Printf("Gor SSP filter, domain %s", endpoint)
+				log.Printf("Gor SSP filter, domain %s, resp: %w", endpoint, dspResp)
 				return
 			}
 
