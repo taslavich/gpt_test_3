@@ -260,7 +260,7 @@ func (s *Server) getBidsFromDSPbyHTTP_V_2_5(ctx context.Context, jsonData []byte
 
 	resp, err := s.client_v_2_5.Do(req)
 	if err != nil {
-		return nil, 0, fmt.Errorf("Request failed: %v", err)
+		return nil, 1, fmt.Errorf("Request failed: %v", err)
 	}
 	defer resp.Body.Close()
 
@@ -268,7 +268,7 @@ func (s *Server) getBidsFromDSPbyHTTP_V_2_5(ctx context.Context, jsonData []byte
 		var grpcResp ortb_V2_5.BidResponse
 		dec := jsoniter.NewDecoder(resp.Body) // без лишних аллокаций
 		if err := dec.Decode(&grpcResp); err != nil {
-			return nil, 0, fmt.Errorf("decode: %v", err)
+			return nil, 3, fmt.Errorf("decode: %v", err)
 		}
 		return &grpcResp, resp.StatusCode, nil
 	}
