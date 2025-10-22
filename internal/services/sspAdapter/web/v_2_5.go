@@ -50,7 +50,7 @@ func postBid_V2_5(
 
 	if input == nil || input.Payload == nil {
 		err := fmt.Errorf("Invalid request: payload is nil or missing")
-		log.Printf(err.Error())
+		log.Print(err.Error(), r.Host)
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
@@ -58,7 +58,7 @@ func postBid_V2_5(
 	// Добавить эту проверку
 	if input.Payload.SspDomain == nil {
 		err := fmt.Errorf("Invalid request: ssp_domain is required")
-		log.Printf(err.Error())
+		log.Print(err.Error(), r.Host)
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
@@ -67,7 +67,7 @@ func postBid_V2_5(
 		err := fmt.Errorf(
 			"There is no device object",
 		)
-		log.Printf(err.Error())
+		log.Print(err.Error(), r.Host)
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
@@ -77,7 +77,7 @@ func postBid_V2_5(
 		err := fmt.Errorf(
 			"There is no device ip",
 		)
-		log.Printf(err.Error())
+		log.Print(err.Error(), r.Host)
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
@@ -88,7 +88,7 @@ func postBid_V2_5(
 			"There an server error while isBadIp: %w",
 			err,
 		)
-		log.Printf(err.Error())
+		log.Print(err.Error(), r.Host)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	} else if err != nil && bad == true {
@@ -96,7 +96,7 @@ func postBid_V2_5(
 			"Ip is bad: %w",
 			err,
 		)
-		log.Printf(err.Error())
+		log.Print(err.Error(), r.Host)
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
@@ -107,7 +107,7 @@ func postBid_V2_5(
 			"Bad format: %w",
 			err,
 		)
-		log.Printf(err.Error())
+		log.Print(err.Error(), r.Host)
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	} else if errors.As(err, geoBadIp.InnerLookupIpError) {
@@ -115,7 +115,7 @@ func postBid_V2_5(
 			"There an server error while getCountryISO: %w",
 			err,
 		)
-		log.Printf(err.Error())
+		log.Print(err.Error(), r.Host)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -181,7 +181,8 @@ func postBid_V2_5(
 	}
 	statusCode := http.StatusOK
 	if len(res.BidResponse.Seatbid[0].Bid) == 0 {
-		statusCode = http.StatusNoContent
+		w.WriteHeader(http.StatusNoContent) // ← ПРАВИЛЬНО
+		return
 	}
 
 	if err = rnr.JSON(w, statusCode, postBidResponse_V2_5{
