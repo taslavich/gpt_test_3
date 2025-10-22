@@ -46,30 +46,24 @@ func NewFastHTTPClient() *http.Client {
 	transport := &http.Transport{
 		Proxy: http.ProxyFromEnvironment,
 		DialContext: (&net.Dialer{
-			Timeout:   100 * time.Millisecond, // TCP соединение за 20ms
-			KeepAlive: 30 * time.Second,       // Keep-alive
+			Timeout:   5 * time.Second, // Уменьшаем с 30s до 5s
+			KeepAlive: 30 * time.Second,
 			DualStack: true,
 		}).DialContext,
 
-		// Оптимально для 50ms RTT
-		MaxIdleConns:        200,
-		MaxIdleConnsPerHost: 50,
-		MaxConnsPerHost:     100,
-		IdleConnTimeout:     30 * time.Second,
+		// Пул соединений - ОБЯЗАТЕЛЬНО оставить!
+		MaxIdleConns:        500,
+		MaxIdleConnsPerHost: 100,
+		MaxConnsPerHost:     200,
+		IdleConnTimeout:     30 * time.Second, // ОБЯЗАТЕЛЬНО оставить!
 
-		// Агрессивные таймауты для 50ms
-		TLSHandshakeTimeout:   40 * time.Millisecond,
-		ExpectContinueTimeout: 40 * time.Millisecond,
-		ResponseHeaderTimeout: 80 * time.Millisecond, // Получение headers за 40ms
-
-		// Оптимизации для скорости
-		DisableCompression: true,  // Быстрее без сжатия при 50ms
-		ForceAttemptHTTP2:  false, // HTTP/1.1 стабильнее для низких latency
+		DisableCompression: true,
+		ForceAttemptHTTP2:  false,
 	}
 
 	return &http.Client{
 		Transport: transport,
-		Timeout:   150 * time.Millisecond, // Общий таймаут чуть больше RTT
+		Timeout:   150 * time.Millisecond, // Главный таймаут
 	}
 }
 
@@ -84,7 +78,7 @@ func NewServer(
 	maxParallelRequests int,
 ) *Server {
 	if timeout <= 0 {
-		timeout = 5 * time.Second
+		timeout = 150 * time.Millisecond
 	}
 	if maxParallelRequests <= 0 {
 		maxParallelRequests = 64
@@ -136,13 +130,6 @@ func (s *Server) GetBids_V2_5(
 	ctx context.Context,
 	req *dspRouterGrpc.DspRouterRequest_V2_5,
 ) (resp *dspRouterGrpc.DspRouterResponse_V2_5, funcErr error) {
-
-	startTime := time.Now()
-	log.Printf("🚀 GetBids_V2_5 STARTED, server timeout: %v", s.timeout)
-
-	defer func() {
-		log.Printf("✅ GetBids_V2_5 COMPLETED in %v", time.Since(startTime))
-	}()
 
 	reqCtx, cancel := context.WithTimeout(ctx, s.timeout)
 	defer func() {
@@ -271,10 +258,7 @@ func (s *Server) getBidsFromDSPbyHTTP_V_2_5(ctx context.Context, jsonData []byte
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Connection", "keep-alive")
 
-	log.Println("GOT req inner")
-	t := time.Now()
 	resp, err := s.client_v_2_5.Do(req)
-	log.Println("%v", time.Since(t))
 	if err != nil {
 		return nil, 0, fmt.Errorf("Request failed: %v", err)
 	}
