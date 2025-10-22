@@ -276,9 +276,6 @@ func (s *Server) getBidsFromDSPbyHTTP_V_2_5(ctx context.Context, jsonData []byte
 }
 
 func writeMetadataToRedis(ctx context.Context, redisClient *redis.Client, globalId string, data map[string]int) {
-	if len(data) == 0 {
-		return
-	}
 	bidRespsData, err := json.Marshal(data)
 	if err != nil {
 		log.Printf("failed to marshal data: %v", err)
