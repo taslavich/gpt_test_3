@@ -70,63 +70,120 @@ func GiveBatch(chDB *sql.DB, table string, records []types.StatisticsRecord) err
 		return nil
 	}
 
-	// Разделяем записи на INSERT и UPDATE
-	var insertRecords []types.StatisticsRecord
-	var updateRecords []types.StatisticsRecord
+	// Группируем записи по UUID (последняя версия побеждает)
+	latestRecords := make(map[string]types.StatisticsRecord)
+	var noUUIDRecords []types.StatisticsRecord
 
 	for _, record := range records {
-		if record.SUCCESS == "1" && record.UUID != "" {
-			updateRecords = append(updateRecords, record)
+		if record.UUID == "" {
+			// Записи без UUID собираем отдельно
+			noUUIDRecords = append(noUUIDRecords, record)
+			continue
+		}
+
+		// Объединяем данные: непустые поля из новой записи заменяют старые
+		if existing, exists := latestRecords[record.UUID]; exists {
+			merged := mergeRecords(existing, record)
+			latestRecords[record.UUID] = merged
 		} else {
-			insertRecords = append(insertRecords, record)
+			latestRecords[record.UUID] = record
 		}
 	}
 
-	// Выполняем INSERT для обычных записей
-	if len(insertRecords) > 0 {
-		if err := insertBatch(chDB, table, insertRecords); err != nil {
-			return fmt.Errorf("failed to insert records: %v", err)
-		}
+	// Batch вставка записей с UUID
+	var batchRecords []types.StatisticsRecord
+	for _, record := range latestRecords {
+		batchRecords = append(batchRecords, record)
 	}
 
-	// Выполняем UPDATE только для поля success
-	if len(updateRecords) > 0 {
-		if err := updateSuccessBatch(chDB, table, updateRecords); err != nil {
-			return fmt.Errorf("failed to update success records: %v", err)
-		}
+	// Добавляем записи без UUID
+	if len(noUUIDRecords) > 0 {
+		batchRecords = append(batchRecords, noUUIDRecords...)
 	}
 
-	log.Printf("📊 Processed %d records (%d inserted, %d success updated)",
-		len(records), len(insertRecords), len(updateRecords))
+	if err := insertBatch(chDB, table, batchRecords); err != nil {
+		return fmt.Errorf("failed to insert batch: %v", err)
+	}
+
+	log.Printf("📊 Processed %d records (%d with UUID, %d without UUID)",
+		len(batchRecords), len(latestRecords), len(noUUIDRecords))
 	return nil
 }
 
-func updateSuccessBatch(chDB *sql.DB, table string, records []types.StatisticsRecord) error {
-	// Группируем обновления по UUID для избежания дубликатов
-	uuidUpdates := make(map[string]string)
+// Объединяет записи: непустые поля из новой записи заменяют старые
+func mergeRecords(oldRecord, newRecord types.StatisticsRecord) types.StatisticsRecord {
+	result := oldRecord // Начинаем со старой записи
+
+	// Обновляем только те поля, которые в новой записи не пустые
+	if newRecord.TIMESTAMP != "" {
+		result.TIMESTAMP = newRecord.TIMESTAMP
+	}
+	if newRecord.SPP_DOMAIN != "" {
+		result.SPP_DOMAIN = newRecord.SPP_DOMAIN
+	}
+	if newRecord.BID_REQUEST != "" {
+		result.BID_REQUEST = newRecord.BID_REQUEST
+	}
+	if newRecord.GEO_COLUMN != "" {
+		result.GEO_COLUMN = newRecord.GEO_COLUMN
+	}
+	if newRecord.BID_RESPONSES != "" {
+		result.BID_RESPONSES = newRecord.BID_RESPONSES
+	}
+	if newRecord.BID_RESPONSE_WINNER != "" {
+		result.BID_RESPONSE_WINNER = newRecord.BID_RESPONSE_WINNER
+	}
+	if newRecord.SUCCESS != "" {
+		result.SUCCESS = newRecord.SUCCESS
+	}
+
+	return result
+}
+
+func insertBatch(chDB *sql.DB, table string, records []types.StatisticsRecord) error {
+	if len(records) == 0 {
+		return nil
+	}
+
+	query := fmt.Sprintf(`
+		INSERT INTO %s (uuid, timestamp, spp_domain, bid_request, geo_column, bid_responses, bid_response_winner, success)
+		VALUES 
+	`, table)
+
+	var valuePlaceholders []string
+	var values []interface{}
+
 	for _, record := range records {
-		if record.UUID != "" && record.SUCCESS == "1" {
-			uuidUpdates[record.UUID] = record.SUCCESS
+		valuePlaceholders = append(valuePlaceholders, "(?, ?, ?, ?, ?, ?, ?, ?)")
+
+		// ПРАВИЛЬНАЯ конвертация SUCCESS string в bool
+		var successBool bool
+		if record.SUCCESS == "1" {
+			successBool = true
+		} else {
+			successBool = false // "0", "", или любое другое значение = false
 		}
+
+		values = append(values,
+			coalesceEmpty(record.UUID),
+			coalesceEmpty(record.TIMESTAMP),
+			coalesceEmpty(record.SPP_DOMAIN),
+			coalesceEmpty(record.BID_REQUEST),
+			coalesceEmpty(record.GEO_COLUMN),
+			coalesceEmpty(record.BID_RESPONSES),
+			coalesceEmpty(record.BID_RESPONSE_WINNER),
+			successBool,
+		)
 	}
 
-	// Выполняем UPDATE для каждого UUID
-	for uuid, success := range uuidUpdates {
-		query := fmt.Sprintf(`
-			ALTER TABLE %s 
-			UPDATE 
-				success = ?
-			WHERE uuid = ?
-		`, table)
+	query += strings.Join(valuePlaceholders, ", ")
 
-		_, err := chDB.Exec(query, success, uuid)
-		if err != nil {
-			log.Printf("⚠️ Failed to update success for UUID %s: %v", uuid, err)
-			continue
-		}
+	_, err := chDB.Exec(query, values...)
+	if err != nil {
+		return fmt.Errorf("failed to insert batch: %v", err)
 	}
 
-	log.Printf("🔄 Updated success for %d unique records", len(uuidUpdates))
+	log.Printf("📊 Inserted %d records with single batch query", len(records))
 	return nil
 }
 
@@ -142,54 +199,6 @@ func hasData(record types.StatisticsRecord) bool {
 		record.SPP_DOMAIN != ""
 }
 
-func insertBatch(chDB *sql.DB, table string, records []types.StatisticsRecord) error {
-	if len(records) == 0 {
-		return nil
-	}
-
-	// Определяем все возможные колонки
-	allColumns := []string{
-		"uuid", "timestamp", "spp_domain", "bid_request", "geo_column",
-		"bid_responses", "bid_response_winner", "success",
-	}
-
-	// Строим один INSERT запрос для всех записей
-	query := fmt.Sprintf(`
-		INSERT INTO %s (%s) VALUES 
-	`, table, strings.Join(allColumns, ", "))
-
-	var valuePlaceholders []string
-	var values []interface{}
-
-	for _, record := range records {
-		// Для каждой записи добавляем значения для всех колонок
-		// Если поле пустое - используем пустую строку
-		valuePlaceholders = append(valuePlaceholders, "(?, ?, ?, ?, ?, ?, ?, ?)")
-
-		values = append(values,
-			coalesceEmpty(record.UUID),
-			coalesceEmpty(record.TIMESTAMP),
-			coalesceEmpty(record.SPP_DOMAIN),
-			coalesceEmpty(record.BID_REQUEST),
-			coalesceEmpty(record.GEO_COLUMN),
-			coalesceEmpty(record.BID_RESPONSES),
-			coalesceEmpty(record.BID_RESPONSE_WINNER),
-			coalesceEmpty(record.SUCCESS),
-		)
-	}
-
-	query += strings.Join(valuePlaceholders, ", ")
-
-	// Выполняем один batch insert
-	_, err := chDB.Exec(query, values...)
-	if err != nil {
-		return fmt.Errorf("failed to insert batch: %v", err)
-	}
-
-	log.Printf("📊 Inserted %d records with single batch query", len(records))
-	return nil
-}
-
 // Вспомогательная функция для обработки пустых значений
 func coalesceEmpty(s string) string {
 	if s == "" {
@@ -203,13 +212,16 @@ func CreateTable(chDB *sql.DB, tableName string) error {
         CREATE TABLE IF NOT EXISTS %s (
             uuid UUID,
             timestamp DateTime64(3),
-			spp_domain String,
+            spp_domain String,
             bid_request String,
             geo_column String,
             bid_responses String,
             bid_response_winner String,
-            success Bool
-        ) ORDER BY (uuid, timestamp)
+            success Bool,
+            _version UInt64 MATERIALIZED toUnixTimestamp64Milli(now64())
+        ) ENGINE = ReplacingMergeTree(_version)
+        ORDER BY uuid
+        PRIMARY KEY uuid
         SETTINGS index_granularity = 8192
     `, tableName))
 	return err
