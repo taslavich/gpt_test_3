@@ -53,7 +53,8 @@ func ProcessKafkaMessages(ctx context.Context, broker, topic string, reader *kaf
 		return 0, nil
 	}
 
-	if err := GiveBatch(chDB, table, records); err != nil {
+	// Убираем вызов GiveBatch и напрямую вставляем batch
+	if err := insertBatch(chDB, table, records); err != nil {
 		return 0, fmt.Errorf("failed to insert batch: %v", err)
 	}
 
@@ -65,80 +66,7 @@ func ProcessKafkaMessages(ctx context.Context, broker, topic string, reader *kaf
 	return len(records), nil
 }
 
-func GiveBatch(chDB *sql.DB, table string, records []types.StatisticsRecord) error {
-	if len(records) == 0 {
-		return nil
-	}
-
-	// Группируем записи по UUID (последняя версия побеждает)
-	latestRecords := make(map[string]types.StatisticsRecord)
-	var noUUIDRecords []types.StatisticsRecord
-
-	for _, record := range records {
-		if record.UUID == "" {
-			// Записи без UUID собираем отдельно
-			noUUIDRecords = append(noUUIDRecords, record)
-			continue
-		}
-
-		// Объединяем данные: непустые поля из новой записи заменяют старые
-		if existing, exists := latestRecords[record.UUID]; exists {
-			merged := mergeRecords(existing, record)
-			latestRecords[record.UUID] = merged
-		} else {
-			latestRecords[record.UUID] = record
-		}
-	}
-
-	// Batch вставка записей с UUID
-	var batchRecords []types.StatisticsRecord
-	for _, record := range latestRecords {
-		batchRecords = append(batchRecords, record)
-	}
-
-	// Добавляем записи без UUID
-	if len(noUUIDRecords) > 0 {
-		batchRecords = append(batchRecords, noUUIDRecords...)
-	}
-
-	if err := insertBatch(chDB, table, batchRecords); err != nil {
-		return fmt.Errorf("failed to insert batch: %v", err)
-	}
-
-	log.Printf("📊 Processed %d records (%d with UUID, %d without UUID)",
-		len(batchRecords), len(latestRecords), len(noUUIDRecords))
-	return nil
-}
-
-// Объединяет записи: непустые поля из новой записи заменяют старые
-func mergeRecords(oldRecord, newRecord types.StatisticsRecord) types.StatisticsRecord {
-	result := oldRecord // Начинаем со старой записи
-
-	// Обновляем только те поля, которые в новой записи не пустые
-	if newRecord.TIMESTAMP != "" {
-		result.TIMESTAMP = newRecord.TIMESTAMP
-	}
-	if newRecord.SPP_DOMAIN != "" {
-		result.SPP_DOMAIN = newRecord.SPP_DOMAIN
-	}
-	if newRecord.BID_REQUEST != "" {
-		result.BID_REQUEST = newRecord.BID_REQUEST
-	}
-	if newRecord.GEO_COLUMN != "" {
-		result.GEO_COLUMN = newRecord.GEO_COLUMN
-	}
-	if newRecord.BID_RESPONSES != "" {
-		result.BID_RESPONSES = newRecord.BID_RESPONSES
-	}
-	if newRecord.BID_RESPONSE_WINNER != "" {
-		result.BID_RESPONSE_WINNER = newRecord.BID_RESPONSE_WINNER
-	}
-	if newRecord.SUCCESS != "" {
-		result.SUCCESS = newRecord.SUCCESS
-	}
-
-	return result
-}
+// Убираем функцию GiveBatch и mergeRecords, так как они больше не нужны
 
 func insertBatch(chDB *sql.DB, table string, records []types.StatisticsRecord) error {
 	if len(records) == 0 {
