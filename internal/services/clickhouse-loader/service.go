@@ -66,8 +66,6 @@ func ProcessKafkaMessages(ctx context.Context, broker, topic string, reader *kaf
 	return len(records), nil
 }
 
-// Убираем функцию GiveBatch и mergeRecords, так как они больше не нужны
-
 func insertBatch(chDB *sql.DB, table string, records []types.StatisticsRecord) error {
 	if len(records) == 0 {
 		return nil
@@ -146,9 +144,9 @@ func CreateTable(chDB *sql.DB, tableName string) error {
             bid_responses String,
             bid_response_winner String,
             success Bool,
-            _version UInt64 MATERIALIZED toUnixTimestamp64Milli(now64())
-        ) ENGINE = ReplacingMergeTree(_version)
-        ORDER BY uuid
+            updated_at DateTime64(3) DEFAULT now64()
+        ) ENGINE = ReplacingMergeTree(updated_at)
+        ORDER BY (uuid, updated_at)
         PRIMARY KEY uuid
         SETTINGS index_granularity = 8192
     `, tableName))
