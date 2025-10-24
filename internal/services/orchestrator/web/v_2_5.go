@@ -2,16 +2,20 @@ package orchestratorWeb
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log"
 	"runtime/debug"
 	"time"
 
 	"github.com/redis/go-redis/v9"
+	"gitlab.com/twinbid-exchange/RTB-exchange/internal/constants"
 	bidEngineGrpc "gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/proto/services/bidEngine"
 	dspRouterGrpc "gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/proto/services/dspRouter"
 	orchestratorGrpc "gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/proto/services/orchestrator"
 	"gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/proto/types/ortb_V2_5"
+	utils "gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/utils_grpc"
+	clickhouse_types "gitlab.com/twinbid-exchange/RTB-exchange/internal/types/clickhouse"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
@@ -87,6 +91,22 @@ func (s *Server) GetWinnerBid_V2_5(
 	}
 
 	if len(bids.BidResponses) == 0 {
+		clickhouseData, err := json.Marshal(&clickhouse_types.BidResponse{
+			Id: req.BidRequest.Id,
+			Seatbid: []*clickhouse_types.SeatBid{
+				{
+					Bid: []*clickhouse_types.Bid{},
+				},
+			},
+		})
+		if err != nil {
+			log.Printf("failed to marshal JSON in GetWinnerBidInternal: %w", err)
+		}
+
+		if err := utils.WriteJsonToRedis(ctx, s.redisClient, req.GlobalId, constants.BID_RESPONSE_WINNER_COLUMN, clickhouseData); err != nil {
+			log.Printf("failed to WriteJsonToRedis Bid BID_RESPONSE_WINNER in GetWinnerBidInternal: %w", err)
+		}
+
 		return &orchestratorGrpc.OrchestratorResponse_V2_5{
 			BidResponse: &ortb_V2_5.BidResponse{
 				Id: req.BidRequest.Id,
