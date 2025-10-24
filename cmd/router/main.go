@@ -97,6 +97,7 @@ func main() {
 			redisClient,
 			cfg.BidResponsesTimeout,
 			cfg.MaxParallelRequests,
+			cfg.SspNotDsp,
 		),
 	)
 
