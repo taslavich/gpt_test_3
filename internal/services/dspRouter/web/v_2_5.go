@@ -15,6 +15,7 @@ import (
 	jsoniter "github.com/json-iterator/go"
 	"github.com/redis/go-redis/v9"
 	"gitlab.com/twinbid-exchange/RTB-exchange/internal/coder"
+	"gitlab.com/twinbid-exchange/RTB-exchange/internal/config"
 	"gitlab.com/twinbid-exchange/RTB-exchange/internal/constants"
 	"gitlab.com/twinbid-exchange/RTB-exchange/internal/filter"
 	dspRouterGrpc "gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/proto/services/dspRouter"
@@ -38,6 +39,8 @@ type Server struct {
 	timeout      time.Duration
 	// Пулы для снижения аллокаций
 	bufferPool sync.Pool
+
+	sspNotDsp config.MapStringToString
 
 	dspRouterGrpc.UnimplementedDspRouterServiceServer
 }
@@ -76,6 +79,7 @@ func NewServer(
 	redisClient *redis.Client,
 	timeout time.Duration,
 	maxParallelRequests int,
+	sspNotDsp config.MapStringToString,
 ) *Server {
 	if timeout <= 0 {
 		timeout = 150 * time.Millisecond
@@ -113,6 +117,7 @@ func NewServer(
 				return bytes.NewBuffer(make([]byte, 0, 2048))
 			},
 		},
+		sspNotDsp: sspNotDsp,
 	}
 }
 
@@ -144,6 +149,8 @@ func (s *Server) GetBids_V2_5(
 	sspDomain := req.BidRequest.GetSspDomain()
 	req.BidRequest.SspDomain = nil
 
+	notDsp := s.sspNotDsp[sspDomain]
+
 	jsonData, err := jsoniter.Marshal(req.BidRequest)
 	if err != nil {
 		newErr := fmt.Errorf("Can not marshal in GetBids_V_2_5 because got uknown error: %w", err)
@@ -168,8 +175,12 @@ func (s *Server) GetBids_V2_5(
 
 	// Запускаем все DSP параллельно
 	for _, endpoint := range s.dspEndpoints_v_2_5 {
+		if endpoint == notDsp {
+			continue
+		}
+
 		if !s.processor.ProcessRequestForDSPV25(endpoint, req.BidRequest).Allowed {
-			log.Println("Gor DSP filter")
+			//log.Println("Gor DSP filter")
 			continue
 		}
 		wg.Add(1)
@@ -181,7 +192,7 @@ func (s *Server) GetBids_V2_5(
 				log.Printf(
 					"Cannot getBidsFromDSPbyHTTP_V_2_5, bid request id: %s,ssp_domain: %s, dsp_domain: %s, error: %w",
 					req.BidRequest.GetId(),
-					req.BidRequest.GetSspDomain(),
+					sspDomain,
 					endpoint,
 					err,
 				)
@@ -194,7 +205,7 @@ func (s *Server) GetBids_V2_5(
 
 			// Фильтрация ответа SPP
 			if !s.processor.ProcessResponseForSPPV25(sspDomain, dspResp).Allowed {
-				log.Printf("Gor SSP filter, domain %s, resp: %w", endpoint, dspResp)
+				//log.Printf("Gor SSP filter, domain %s, resp: %w", endpoint, dspResp)
 				return
 			}
 
