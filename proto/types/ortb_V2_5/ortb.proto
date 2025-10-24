@@ -17,7 +17,7 @@ message BidRequest {
 
 message Imp {
     optional string id = 1;
-    optional float bidFloor = 2;
+    optional float bidfloor = 2;
     optional Banner banner = 3;
     optional Native native = 4;
     optional string tagid = 5;

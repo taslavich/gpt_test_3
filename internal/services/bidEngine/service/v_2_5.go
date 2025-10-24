@@ -105,7 +105,7 @@ func GetWinnerBidInternal_V_2_5(
 		var bidFloor float32 = 0
 		for _, imp := range req.BidRequest.Imp {
 			if imp.GetId() == impID {
-				bidFloor = imp.GetBidFloor()
+				bidFloor = imp.GetBidfloor()
 				break
 			}
 		}

@@ -71,7 +71,7 @@ func generateBidRequest() map[string]interface{} {
 		Imp: []*ortb_V2_5.Imp{
 			{
 				Id:       stringPtr("imp-1"),
-				BidFloor: &bidFloor,
+				Bidfloor: &bidFloor,
 				Banner: &ortb_V2_5.Banner{
 					W: &w,
 					H: &h,
