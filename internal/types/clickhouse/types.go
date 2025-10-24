@@ -3,6 +3,7 @@ package clickhouse_types
 type BidResponse struct {
 	Id      *string `json:"id,omitempty"`
 	Seatbid []*SeatBid
+	Error   string
 }
 
 type SeatBid struct {

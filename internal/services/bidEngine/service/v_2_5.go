@@ -3,7 +3,6 @@ package bidEngine
 import (
 	"context"
 	"fmt"
-	"log"
 	"sort"
 
 	"gitlab.com/twinbid-exchange/RTB-exchange/internal/constants"
@@ -20,25 +19,6 @@ func GetWinnerBidInternal_V_2_5(
 	globalId string,
 	hostname string,
 ) (*ortb_V2_5.BidResponse, *clickhouse_types.BidResponse) {
-	if len(req.BidResponses) == 0 {
-		log.Printf("Got len of BidResponses = 0, bid request id: %s", req.BidRequest.GetId())
-		return &ortb_V2_5.BidResponse{
-				Id: req.BidRequest.Id,
-				Seatbid: []*ortb_V2_5.SeatBid{
-					{
-						Bid: []*ortb_V2_5.Bid{},
-					},
-				},
-			}, &clickhouse_types.BidResponse{
-				Id: req.BidRequest.Id,
-				Seatbid: []*clickhouse_types.SeatBid{
-					{
-						Bid: []*clickhouse_types.Bid{},
-					},
-				},
-			}
-	}
-
 	type bidWithDomain struct {
 		bid    *ortb_V2_5.Bid
 		domain string
@@ -70,7 +50,6 @@ func GetWinnerBidInternal_V_2_5(
 	}
 
 	if len(impBids) == 0 {
-		log.Printf("Got len of impBids = 0, bid request id: %s", req.BidRequest.GetId())
 		return &ortb_V2_5.BidResponse{
 				Id: req.BidRequest.Id,
 				Seatbid: []*ortb_V2_5.SeatBid{
@@ -85,6 +64,7 @@ func GetWinnerBidInternal_V_2_5(
 						Bid: []*clickhouse_types.Bid{},
 					},
 				},
+				Error: fmt.Sprintf("Got len of impBids = 0, bid request id: %s", req.BidRequest.GetId()),
 			}
 	}
 
@@ -99,6 +79,7 @@ func GetWinnerBidInternal_V_2_5(
 		},
 	}
 
+	var errStr string = "None"
 	for impID, bids := range impBids {
 		if len(bids) == 0 {
 			continue // добавляем защиту
@@ -125,7 +106,7 @@ func GetWinnerBidInternal_V_2_5(
 			profitPercent,
 		)
 		if err != nil {
-			log.Printf("❌ DEBUG: Skipping bid due to price constraints: %v", err)
+			errStr = fmt.Sprintf(err.Error())
 			continue
 		}
 
@@ -166,6 +147,7 @@ func GetWinnerBidInternal_V_2_5(
 	clickhouseBidResponse := &clickhouse_types.BidResponse{
 		Id:      req.BidRequest.Id,
 		Seatbid: clickhouseSeatBid,
+		Error:   errStr,
 	}
 
 	return bidResponse, clickhouseBidResponse
