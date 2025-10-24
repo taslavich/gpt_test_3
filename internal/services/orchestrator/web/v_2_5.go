@@ -98,6 +98,7 @@ func (s *Server) GetWinnerBid_V2_5(
 					Bid: []*clickhouse_types.Bid{},
 				},
 			},
+			Error: fmt.Sprintf("Got len of BidResponses = 0, bid request id: %s", req.BidRequest.GetId()),
 		})
 		if err != nil {
 			log.Printf("failed to marshal JSON in GetWinnerBidInternal: %w", err)
@@ -106,8 +107,6 @@ func (s *Server) GetWinnerBid_V2_5(
 		if err := utils.WriteJsonToRedis(ctx, s.redisClient, req.GlobalId, constants.BID_RESPONSE_WINNER_COLUMN, clickhouseData); err != nil {
 			log.Printf("failed to WriteJsonToRedis Bid BID_RESPONSE_WINNER in GetWinnerBidInternal: %w", err)
 		}
-
-		log.Printf("Got len of impBids = 0, bid request id: %s", req.BidRequest.GetId())
 
 		return &orchestratorGrpc.OrchestratorResponse_V2_5{
 			BidResponse: &ortb_V2_5.BidResponse{
