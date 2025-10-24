@@ -107,6 +107,8 @@ func (s *Server) GetWinnerBid_V2_5(
 			log.Printf("failed to WriteJsonToRedis Bid BID_RESPONSE_WINNER in GetWinnerBidInternal: %w", err)
 		}
 
+		log.Printf("Got len of impBids = 0, bid request id: %s", req.BidRequest.GetId())
+
 		return &orchestratorGrpc.OrchestratorResponse_V2_5{
 			BidResponse: &ortb_V2_5.BidResponse{
 				Id: req.BidRequest.Id,

@@ -3,6 +3,7 @@ package bidEngine
 import (
 	"context"
 	"fmt"
+	"log"
 	"sort"
 
 	"gitlab.com/twinbid-exchange/RTB-exchange/internal/constants"
@@ -20,6 +21,7 @@ func GetWinnerBidInternal_V_2_5(
 	hostname string,
 ) (*ortb_V2_5.BidResponse, *clickhouse_types.BidResponse) {
 	if len(req.BidResponses) == 0 {
+		log.Printf("Got len of BidResponses = 0, bid request id: %s", req.BidRequest.GetId())
 		return &ortb_V2_5.BidResponse{
 				Id: req.BidRequest.Id,
 				Seatbid: []*ortb_V2_5.SeatBid{
@@ -68,6 +70,7 @@ func GetWinnerBidInternal_V_2_5(
 	}
 
 	if len(impBids) == 0 {
+		log.Printf("Got len of impBids = 0, bid request id: %s", req.BidRequest.GetId())
 		return &ortb_V2_5.BidResponse{
 				Id: req.BidRequest.Id,
 				Seatbid: []*ortb_V2_5.SeatBid{
