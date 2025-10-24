@@ -22,32 +22,34 @@ func getNurl(
 ) {
 	input := r.Context().Value(httpin.Input).(*nurlRequest)
 
+	if err := utils.WriteStringToRedis(ctx, redisClient, input.GlobalId, constants.RESULT_COLUMN, constants.SUCCESS); err != nil {
+		log.Printf("failed to WriteStringToRedis SUCCESS in getBurl: %w", err)
+	}
+
 	decodedURL, err := url.QueryUnescape(input.DspURL)
 	if err != nil {
 		log.Printf("Failed to decode original URL: %v", err)
 		w.WriteHeader(http.StatusBadRequest)
-	} else {
-		client := &http.Client{Timeout: timeout}
-		resp, err := client.Get(decodedURL)
-		if err != nil {
-			log.Printf("Failed to proxy win notice to DSP %s, globalID: %s, error: %w",
-				decodedURL,
-				input.GlobalId,
-				err,
-			)
-			return
-		}
-		defer resp.Body.Close()
-
-		if resp.StatusCode >= http.StatusBadRequest {
-			log.Printf("DSP %s returned error for win notice: %d", decodedURL, resp.StatusCode)
-			w.WriteHeader(resp.StatusCode)
-			return
-		}
+		return
 	}
 
-	if err := utils.WriteStringToRedis(ctx, redisClient, input.GlobalId, constants.RESULT_COLUMN, constants.SUCCESS); err != nil {
-		log.Printf("failed to WriteStringToRedis SUCCESS in getBurl: %w", err)
+	client := &http.Client{Timeout: timeout}
+	resp, err := client.Get(decodedURL)
+	if err != nil {
+		log.Printf("Failed to proxy win notice to DSP %s, globalID: %s, error: %w",
+			decodedURL,
+			input.GlobalId,
+			err,
+		)
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode >= http.StatusBadRequest {
+		log.Printf("DSP %s returned error for win notice: %d", decodedURL, resp.StatusCode)
+		w.WriteHeader(resp.StatusCode)
+		return
 	}
 
 	w.WriteHeader(http.StatusOK)
@@ -66,25 +68,27 @@ func getBurl(
 	if err != nil {
 		log.Printf("Failed to decode original URL: %v", err)
 		w.WriteHeader(http.StatusBadRequest)
-	} else {
-		client := &http.Client{Timeout: timeout}
-		resp, err := client.Get(decodedURL)
-		if err != nil {
-			log.Printf(
-				"Failed to proxy billable event to DSP %s, globalID: %s, error: %w",
-				decodedURL,
-				input.GlobalId,
-				err,
-			)
-			return
-		}
-		defer resp.Body.Close()
+		return
+	}
 
-		if resp.StatusCode >= http.StatusBadRequest {
-			log.Printf("DSP %s returned error for billable event: %d", decodedURL, resp.StatusCode)
-			w.WriteHeader(resp.StatusCode)
-			return
-		}
+	client := &http.Client{Timeout: timeout}
+	resp, err := client.Get(decodedURL)
+	if err != nil {
+		log.Printf(
+			"Failed to proxy billable event to DSP %s, globalID: %s, error: %w",
+			decodedURL,
+			input.GlobalId,
+			err,
+		)
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode >= http.StatusBadRequest {
+		log.Printf("DSP %s returned error for billable event: %d", decodedURL, resp.StatusCode)
+		w.WriteHeader(resp.StatusCode)
+		return
 	}
 
 	w.WriteHeader(http.StatusOK)
