@@ -125,6 +125,7 @@ func GetWinnerBidInternal_V_2_5(
 			profitPercent,
 		)
 		if err != nil {
+			log.Printf("❌ DEBUG: Skipping bid due to price constraints: %v", err)
 			continue
 		}
 
