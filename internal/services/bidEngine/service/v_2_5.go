@@ -3,6 +3,7 @@ package bidEngine
 import (
 	"context"
 	"fmt"
+	"math/rand"
 	"sort"
 
 	"gitlab.com/twinbid-exchange/RTB-exchange/internal/constants"
@@ -12,6 +13,12 @@ import (
 	clickhouse_types "gitlab.com/twinbid-exchange/RTB-exchange/internal/types/clickhouse"
 )
 
+func getRandomProfitPercent() float32 {
+	percentages := [3]float32{0.10, 0.15, 0.20} // 10%, 15%, 20%
+	randomIndex := rand.Intn(3)                 // 0, 1 или 2
+	return percentages[randomIndex]
+}
+
 func GetWinnerBidInternal_V_2_5(
 	ctx context.Context,
 	req *bidEngineGrpc.BidEngineRequest_V2_5,
@@ -19,6 +26,9 @@ func GetWinnerBidInternal_V_2_5(
 	globalId string,
 	hostname string,
 ) (*ortb_V2_5.BidResponse, *clickhouse_types.BidResponse) {
+	////////////
+	profitPercent = getRandomProfitPercent()
+	//////////////
 	type bidWithDomain struct {
 		bid    *ortb_V2_5.Bid
 		domain string
