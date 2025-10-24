@@ -140,7 +140,7 @@ func (x *BidRequest) GetSspDomain() string {
 type Imp struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Id            *string                `protobuf:"bytes,1,opt,name=id,proto3,oneof" json:"id,omitempty"`
-	BidFloor      *float32               `protobuf:"fixed32,2,opt,name=bidFloor,proto3,oneof" json:"bidFloor,omitempty"`
+	Bidfloor      *float32               `protobuf:"fixed32,2,opt,name=bidfloor,proto3,oneof" json:"bidfloor,omitempty"`
 	Banner        *Banner                `protobuf:"bytes,3,opt,name=banner,proto3,oneof" json:"banner,omitempty"`
 	Native        *Native                `protobuf:"bytes,4,opt,name=native,proto3,oneof" json:"native,omitempty"`
 	Tagid         *string                `protobuf:"bytes,5,opt,name=tagid,proto3,oneof" json:"tagid,omitempty"`
@@ -189,9 +189,9 @@ func (x *Imp) GetId() string {
 	return ""
 }
 
-func (x *Imp) GetBidFloor() float32 {
-	if x != nil && x.BidFloor != nil {
-		return *x.BidFloor
+func (x *Imp) GetBidfloor() float32 {
+	if x != nil && x.Bidfloor != nil {
+		return *x.Bidfloor
 	}
 	return 0
 }
@@ -1149,7 +1149,7 @@ const file_types_ortb_V2_5_ortb_proto_rawDesc = "" +
 	"\v_ssp_domain\"\xa8\x03\n" +
 	"\x03Imp\x12\x13\n" +
 	"\x02id\x18\x01 \x01(\tH\x00R\x02id\x88\x01\x01\x12\x1f\n" +
-	"\bbidFloor\x18\x02 \x01(\x02H\x01R\bbidFloor\x88\x01\x01\x12.\n" +
+	"\bbidfloor\x18\x02 \x01(\x02H\x01R\bbidfloor\x88\x01\x01\x12.\n" +
 	"\x06banner\x18\x03 \x01(\v2\x11.ortb_V2_5.BannerH\x02R\x06banner\x88\x01\x01\x12.\n" +
 	"\x06native\x18\x04 \x01(\v2\x11.ortb_V2_5.NativeH\x03R\x06native\x88\x01\x01\x12\x19\n" +
 	"\x05tagid\x18\x05 \x01(\tH\x04R\x05tagid\x88\x01\x01\x12\x1b\n" +
@@ -1158,7 +1158,7 @@ const file_types_ortb_V2_5_ortb_proto_rawDesc = "" +
 	"\vbidfloorcur\x18\b \x01(\tH\aR\vbidfloorcur\x88\x01\x01\x12,\n" +
 	"\aimp_ext\x18\t \x01(\v2\x0e.ortb_V2_5.ExtH\bR\x06impExt\x88\x01\x01B\x05\n" +
 	"\x03_idB\v\n" +
-	"\t_bidFloorB\t\n" +
+	"\t_bidfloorB\t\n" +
 	"\a_bannerB\t\n" +
 	"\a_nativeB\b\n" +
 	"\x06_tagidB\t\n" +
