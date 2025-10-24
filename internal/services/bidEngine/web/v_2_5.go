@@ -95,6 +95,8 @@ func (s *Server) GetWinnerBid_V2_5(
 		log.Printf("failed to WriteJsonToRedis Bid BID_RESPONSE_WINNER in GetWinnerBidInternal: %w", err)
 	}
 
+	log.Printf("len of clickhouseData %w, bid request id: %s", len(clickhouseBidResponse.Seatbid), req.BidRequest.GetId())
+
 	return &bidEngineGrpc.BidEngineResponse_V2_5{
 		BidResponse: bidResponse,
 	}, nil
