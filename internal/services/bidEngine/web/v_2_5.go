@@ -63,11 +63,7 @@ func (s *Server) GetWinnerBid_V2_5(
 	resp *bidEngineGrpc.BidEngineResponse_V2_5,
 	funcErr error,
 ) {
-	start := time.Now()
 	defer func() {
-		elapsed := time.Since(start)
-		log.Printf("Execution time in ms: %d ms\n", elapsed.Milliseconds())
-
 		if r := recover(); r != nil {
 			err := fmt.Errorf("Recovered from panic in GetWinnerBid_V2_5: %v, %s", r, string(debug.Stack()))
 			log.Printf("Error: %v", err.Error())
@@ -95,7 +91,7 @@ func (s *Server) GetWinnerBid_V2_5(
 		log.Printf("failed to WriteJsonToRedis Bid BID_RESPONSE_WINNER in GetWinnerBidInternal: %w", err)
 	}
 
-	log.Printf("len of clickhouseData %w, bid request id: %s", len(clickhouseBidResponse.Seatbid), req.BidRequest.GetId())
+	log.Printf("len of clickhouseData %w, bid request id: %s", len(clickhouseBidResponse.Seatbid[0].Bid), req.BidRequest.GetId())
 
 	return &bidEngineGrpc.BidEngineResponse_V2_5{
 		BidResponse: bidResponse,
