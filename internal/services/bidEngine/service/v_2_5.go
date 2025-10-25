@@ -14,8 +14,8 @@ import (
 )
 
 func getRandomProfitPercent() float32 {
-	percentages := [3]float32{0.10, 0.15, 0.20} // 10%, 15%, 20%
-	randomIndex := rand.Intn(3)                 // 0, 1 или 2
+	percentages := [4]float32{0.05, 0.10, 0.15, 0.20} // 5%, 10%, 15%, 20%
+	randomIndex := rand.Intn(4)                       // 0, 1, 2 или 3
 	return percentages[randomIndex]
 }
 
