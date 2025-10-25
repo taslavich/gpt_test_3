@@ -261,7 +261,7 @@ func TestVeryLongContent(t *testing.T) {
 	t.Logf("Very long content: %d → %d bytes", len(longAdm), len(adid))
 }
 
-func TestMain(t *testing.T) {
+/*func TestMain(t *testing.T) {
 	adm := "https://u-48702.daleelerah.info/api/rtb-pops/go?id=30931019512640203&sig=4d01045f858a4fb48e486f9151159b&u=aHR0cHM6Ly9kYWNsbGFkcy5jb20vZ2V0Lz9zcG90X2lkPTE0Mjc0NDMmY2F0PTI1JnN1YmlkPTE5NjI4MzAyNDcmdXRtX3NvdXJjZT17c291cmNlX2lkfSZ0Yl91cmw9aHR0cHMlM0ElMkYlMkZkYWxlZWxlcmFoLmluZm8lMkZwb3AtZ28lMkY1NDcwNw%3D%3D"
 	adid := AdmToAdidCompact(adm)
 	log.Print(adid)
@@ -274,4 +274,15 @@ func TestMain(t *testing.T) {
 	if strings.EqualFold(adm, testAdm) {
 		log.Printf("YES")
 	}
+}*/
+
+func TestMain(t *testing.T) {
+
+	adid := "1910097"
+	testAdm, err := AdidToAdmCompact(adid)
+	if err != nil {
+		log.Fatalf("PIZDEC")
+	}
+
+	log.Print(testAdm)
 }

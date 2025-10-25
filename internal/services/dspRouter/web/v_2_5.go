@@ -212,7 +212,7 @@ func (s *Server) GetBids_V2_5(
 			for i := range dspResp.Seatbid {
 				if dspResp.Seatbid[i] != nil {
 					for j := range dspResp.Seatbid[i].Bid {
-						if dspResp.Seatbid[i].Bid[j].Adid == nil && dspResp.Seatbid[i].Bid[j].Adm != nil {
+						if dspResp.Seatbid[i].Bid[j].Adm != nil {
 							adid := coder.AdmToAdidCompact(*dspResp.Seatbid[i].Bid[j].Adm)
 							dspResp.Seatbid[i].Bid[j].Adid = &adid
 						}
