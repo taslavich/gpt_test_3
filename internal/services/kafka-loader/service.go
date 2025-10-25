@@ -19,7 +19,7 @@ func ProcessBatch(ctx context.Context, redisClient *redis.Client, kafkaWriter *k
 		return fmt.Errorf("failed to get total keys count: %v", err)
 	}
 
-	if totalKeys < batchSize*2 {
+	if totalKeys < batchSize {
 		return nil
 	}
 
