@@ -144,7 +144,8 @@ func CreateTable(chDB *sql.DB, tableName string) error {
             bid_responses String,
             bid_response_winner String,
             success Bool,
-            updated_at DateTime64(3) DEFAULT now64()
+            updated_at DateTime64(3) DEFAULT now64(),
+			INDEX idx_updated_at_minmax updated_at TYPE minmax GRANULARITY 1
         ) ENGINE = ReplacingMergeTree(updated_at)
         ORDER BY (uuid, updated_at)
         PRIMARY KEY uuid
