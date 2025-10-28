@@ -23,6 +23,7 @@ var rnr = render.New(render.Options{
 const (
 	PostBid_V_2_5_URL = "/bid_v_2_5"
 
+	GetAdmUrl  = "/adm"
 	GetNurlUrl = "/nurl"
 	GetBurlUrl = "/burl"
 
@@ -39,12 +40,7 @@ type postBidResponse_V2_5 struct {
 	*ortb_V2_5.BidResponse
 }
 
-type nurlRequest struct {
-	GlobalId string `in:"query=id" required:"true"`
-	DspURL   string `in:"query=url" required:"true"`
-}
-
-type burlRequest struct {
+type admNurlBurlRequest struct {
 	GlobalId string `in:"query=id" required:"true"`
 	DspURL   string `in:"query=url" required:"true"`
 }
@@ -57,6 +53,7 @@ func InitRoutes(
 	getCountryISO func(ipStr string) (string, error),
 	orchestratorClient orchestratorProto.OrchestratorServiceClient,
 	bidRequestTimeout,
+	admTimeout,
 	nurlTimeout,
 	burlTimeout time.Duration,
 ) {
@@ -69,15 +66,21 @@ func InitRoutes(
 	})
 
 	httpRouter.With(
-		httpin.NewInput(nurlRequest{}),
+		httpin.NewInput(admNurlBurlRequest{}),
+	).Get(GetAdmUrl, func(w http.ResponseWriter, r *http.Request) {
+		getAdm(ctx, w, r, redisClient, admTimeout)
+	})
+
+	httpRouter.With(
+		httpin.NewInput(admNurlBurlRequest{}),
 	).Get(GetNurlUrl, func(w http.ResponseWriter, r *http.Request) {
 		getNurl(ctx, w, r, redisClient, nurlTimeout)
 	})
 
 	httpRouter.With(
-		httpin.NewInput(burlRequest{}),
+		httpin.NewInput(admNurlBurlRequest{}),
 	).Get(GetBurlUrl, func(w http.ResponseWriter, r *http.Request) {
-		getBurl(ctx, w, r, redisClient, burlTimeout)
+		getBurl(ctx, w, r, burlTimeout)
 	})
 
 	httpRouter.Get(GetHealthUrl, func(w http.ResponseWriter, r *http.Request) {

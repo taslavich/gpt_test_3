@@ -69,6 +69,7 @@ func main() {
 		geoIp.GetCountryISO,
 		client,
 		cfg.GetWinnerBidTimeout,
+		cfg.AdmTimeout,
 		cfg.NurlTimeout,
 		cfg.BurlTimeout,
 	)

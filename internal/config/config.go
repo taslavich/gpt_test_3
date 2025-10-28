@@ -83,6 +83,7 @@ type OrchestratorConfig struct {
 type SppAdapterConfig struct {
 	HttpServer
 	UriOfOrchestrator   string        `yaml:"URI_OF_ORCHESTRATOR" env:"URI_OF_ORCHESTRATOR"`
+	AdmTimeout          time.Duration `yaml:"ADM_TIMEOUT" env:"ADM_TIMEOUT"`
 	NurlTimeout         time.Duration `yaml:"NURL_TIMEOUT" env:"NURL_TIMEOUT"`
 	BurlTimeout         time.Duration `yaml:"BURL_TIMEOUT" env:"BURL_TIMEOUT"`
 	GetWinnerBidTimeout time.Duration `yaml:"GET_WINNER_BID_TIMEOUT" env:"GET_WINNER_BID_TIMEOUT"`

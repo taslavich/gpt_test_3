@@ -72,7 +72,7 @@ func insertBatch(chDB *sql.DB, table string, records []types.StatisticsRecord) e
 	}
 
 	query := fmt.Sprintf(`
-		INSERT INTO %s (uuid, timestamp, spp_domain, bid_request, geo_column, bid_responses, bid_response_winner, success)
+		INSERT INTO %s (uuid, timestamp, spp_domain, bid_request, geo_column, bid_responses, bid_response_winner, nurl, adm)
 		VALUES 
 	`, table)
 
@@ -80,14 +80,21 @@ func insertBatch(chDB *sql.DB, table string, records []types.StatisticsRecord) e
 	var values []interface{}
 
 	for _, record := range records {
-		valuePlaceholders = append(valuePlaceholders, "(?, ?, ?, ?, ?, ?, ?, ?)")
+		valuePlaceholders = append(valuePlaceholders, "(?, ?, ?, ?, ?, ?, ?, ?, ?)")
 
 		// ПРАВИЛЬНАЯ конвертация SUCCESS string в bool
-		var successBool bool
-		if record.SUCCESS == "1" {
-			successBool = true
+		var nurlBool bool
+		if record.NURL == "1" {
+			nurlBool = true
 		} else {
-			successBool = false // "0", "", или любое другое значение = false
+			nurlBool = false // "0", "", или любое другое значение = false
+		}
+
+		var admBool bool
+		if record.NURL == "1" {
+			admBool = true
+		} else {
+			admBool = false // "0", "", или любое другое значение = false
 		}
 
 		values = append(values,
@@ -98,7 +105,8 @@ func insertBatch(chDB *sql.DB, table string, records []types.StatisticsRecord) e
 			coalesceEmpty(record.GEO_COLUMN),
 			coalesceEmpty(record.BID_RESPONSES),
 			coalesceEmpty(record.BID_RESPONSE_WINNER),
-			successBool,
+			nurlBool,
+			admBool,
 		)
 	}
 
@@ -119,7 +127,8 @@ func hasData(record types.StatisticsRecord) bool {
 		record.GEO_COLUMN != "" ||
 		record.BID_RESPONSES != "" ||
 		record.BID_RESPONSE_WINNER != "" ||
-		record.SUCCESS != "" ||
+		record.NURL != "" ||
+		record.ADM != "" ||
 		record.UUID != "" ||
 		record.TIMESTAMP != "" ||
 		record.SPP_DOMAIN != ""
@@ -143,7 +152,8 @@ func CreateTable(chDB *sql.DB, tableName string) error {
             geo_column String,
             bid_responses String,
             bid_response_winner String,
-            success Bool,
+            nurl Bool,
+			adm Bool,
             updated_at DateTime64(3) DEFAULT now64(),
 			INDEX idx_updated_at_minmax updated_at TYPE minmax GRANULARITY 1
         ) ENGINE = ReplacingMergeTree(updated_at)
