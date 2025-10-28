@@ -27,7 +27,7 @@ func GetWinnerBidInternal_V_2_5(
 	hostname string,
 ) (*ortb_V2_5.BidResponse, *clickhouse_types.BidResponse) {
 	////////////
-	profitPercent = getRandomProfitPercent()
+	///profitPercent = getRandomProfitPercent()
 	//////////////
 	type bidWithDomain struct {
 		bid    *ortb_V2_5.Bid
