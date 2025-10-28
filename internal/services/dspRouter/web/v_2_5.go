@@ -278,7 +278,7 @@ func (s *Server) getBidsFromDSPbyHTTP_V_2_5(ctx context.Context, jsonData []byte
 	}
 	defer resp.Body.Close()
 
-	if resp.StatusCode == http.StatusNoContent || resp.StatusCode == http.StatusOK {
+	if resp.StatusCode == http.StatusOK {
 		var grpcResp ortb_V2_5.BidResponse
 		dec := jsoniter.NewDecoder(resp.Body) // без лишних аллокаций
 		if err := dec.Decode(&grpcResp); err != nil {

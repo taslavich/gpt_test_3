@@ -2,7 +2,7 @@ package constants
 
 const (
 	NEGATIVE_BIDFLOOR = -1
-	ZERO_BIDFLOOR
+	ZERO_BIDFLOOR     = 0
 )
 
 const (
@@ -13,10 +13,11 @@ const (
 	GEO_COLUMN                 = "GEO"
 	BID_RESPONSES_COLUMN       = "BID_RESPONSES"
 	BID_RESPONSE_WINNER_COLUMN = "BID_RESPONSE_WINNER"
-	RESULT_COLUMN              = "RESULT"
+	NURL_COLUMN                = "NURL"
+	ADM_COLUMN                 = "ADM"
 )
 
 const (
-	UNSUCCESS = "0"
-	SUCCESS   = "1"
+	FALSE = "0"
+	TRUE  = "1"
 )

@@ -120,6 +120,7 @@ func GetWinnerBidInternal_V_2_5(
 			continue
 		}
 
+		wrappedAdm := utils.WrapURL(hostname, winningBid.GetAdm(), globalId, utils.ADM)
 		wrappedNurl := utils.WrapURL(hostname, winningBid.GetNurl(), globalId, utils.NURL)
 		var wrappedBurl *string
 		if winningBid.Burl != nil {
@@ -130,7 +131,7 @@ func GetWinnerBidInternal_V_2_5(
 			Id:    winningBid.Id,
 			Impid: winningBid.Impid,
 			Price: &finalPrice,
-			Adm:   winningBid.Adm,
+			Adm:   &wrappedAdm,
 			Adid:  winningBid.Adid,
 			Nurl:  &wrappedNurl,
 			Burl:  wrappedBurl,

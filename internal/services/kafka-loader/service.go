@@ -74,9 +74,14 @@ func ProcessBatch(ctx context.Context, redisClient *redis.Client, kafkaWriter *k
 			fieldsToDelete[key] = append(fieldsToDelete[key], constants.BID_RESPONSE_WINNER_COLUMN)
 		}
 
-		if success, exists := data[constants.RESULT_COLUMN]; exists {
-			record.SUCCESS = success
-			fieldsToDelete[key] = append(fieldsToDelete[key], constants.RESULT_COLUMN)
+		if nurl, exists := data[constants.NURL_COLUMN]; exists {
+			record.NURL = nurl
+			fieldsToDelete[key] = append(fieldsToDelete[key], constants.NURL_COLUMN)
+		}
+
+		if adm, exists := data[constants.ADM_COLUMN]; exists {
+			record.ADM = adm
+			fieldsToDelete[key] = append(fieldsToDelete[key], constants.ADM_COLUMN)
 		}
 
 		if timestamp, exists := data[constants.TIMESTAMP_COLUMN]; exists {
@@ -133,7 +138,8 @@ func hasData(record types.StatisticsRecord) bool {
 		record.GEO_COLUMN != "" ||
 		record.BID_RESPONSES != "" ||
 		record.BID_RESPONSE_WINNER != "" ||
-		record.SUCCESS != "" ||
+		record.NURL != "" ||
+		record.ADM != "" ||
 		record.UUID != "" ||
 		record.TIMESTAMP != "" ||
 		record.SPP_DOMAIN != ""
