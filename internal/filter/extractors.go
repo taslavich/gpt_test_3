@@ -35,9 +35,18 @@ func (e *StatelessV25BidRequestExtractor) ExtractFieldValue(field FieldType, req
 		return e.extractImpID(bidReq)
 	case FieldSiteID:
 		return e.extractSiteID(bidReq)
+	case FieldBidRequestCur:
+		return e.extractBidRequestCur(bidReq)
 	default:
 		return FieldValue{}
 	}
+}
+
+func (e *StatelessV25BidRequestExtractor) extractBidRequestCur(req *ortb_V2_5.BidRequest) FieldValue {
+	if req.Cur != nil {
+		return NewStringValue(*req.Id)
+	}
+	return NewStringValue("")
 }
 
 func (e *StatelessV25BidRequestExtractor) extractSiteID(req *ortb_V2_5.BidRequest) FieldValue {
