@@ -25,6 +25,8 @@ const (
 
 	GetAdmUrl  = "/adm"
 	GetNurlUrl = "/nurl"
+
+	GetHealthUrl = "/health"
 )
 
 type postBidRequest_V2_5 struct {
@@ -74,5 +76,9 @@ func InitRoutes(
 		httpin.NewInput(admNurlRequest{}),
 	).Get(GetNurlUrl, func(w http.ResponseWriter, r *http.Request) {
 		getNurl(ctx, w, r, redisClient, nurlTimeout)
+	})
+
+	httpRouter.Get(GetHealthUrl, func(w http.ResponseWriter, r *http.Request) {
+		getHealth(w)
 	})
 }
