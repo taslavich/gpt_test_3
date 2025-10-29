@@ -52,7 +52,6 @@ func postBid_V2_5(
 	ssp_domain, ok := sspFeeds[input.Feed]
 	if !ok {
 		err := fmt.Errorf("Busy")
-		log.Print(err.Error(), r.Host)
 		http.Error(w, err.Error(), http.StatusForbidden)
 		return
 	}
