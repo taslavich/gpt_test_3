@@ -128,11 +128,7 @@ func GetWinnerBidInternal_V_2_5(
 
 		wrappedAdm := utils.WrapURL(hostname, winningBid.GetAdm(), globalId, utils.ADM)
 		wrappedNurl := utils.WrapURL(hostname, winningBid.GetNurl(), globalId, utils.NURL)
-		var wrappedBurl *string
-		if winningBid.Burl != nil {
-			bufBur := utils.WrapURL(hostname, winningBid.GetBurl(), globalId, utils.BURL)
-			wrappedBurl = &bufBur
-		}
+
 		finalBid := &ortb_V2_5.Bid{
 			Id:    winningBid.Id,
 			Impid: winningBid.Impid,
@@ -140,7 +136,6 @@ func GetWinnerBidInternal_V_2_5(
 			Adm:   &wrappedAdm,
 			Adid:  winningBid.Adid,
 			Nurl:  &wrappedNurl,
-			Burl:  wrappedBurl,
 		}
 
 		clickhouseBid := &clickhouse_types.Bid{
