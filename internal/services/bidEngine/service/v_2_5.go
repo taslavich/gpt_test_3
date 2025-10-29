@@ -122,7 +122,7 @@ func GetWinnerBidInternal_V_2_5(
 			profitPercent,
 		)
 		if err != nil {
-			errStr = fmt.Sprintf(err.Error())
+			errStr = err.Error()
 			continue
 		}
 
