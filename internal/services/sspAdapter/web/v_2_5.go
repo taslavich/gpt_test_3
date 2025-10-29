@@ -55,9 +55,6 @@ func postBid_V2_5(
 		log.Print(err.Error(), r.Host)
 		http.Error(w, err.Error(), http.StatusForbidden)
 		return
-	} else if ok {
-		w.WriteHeader(http.StatusResetContent)
-		return
 	}
 
 	if input == nil || input.Payload == nil {
