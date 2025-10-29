@@ -26,9 +26,6 @@ func getAdm(
 		log.Printf("failed to WriteStringToRedis ADM in getAdm: %w", err)
 	}
 
-	log.Printf("--%s--", input.DspURL)
-	w.WriteHeader(http.StatusOK)
-	return
 	decodedURL, err := url.QueryUnescape(input.DspURL)
 	if err != nil {
 		log.Printf("in getAdm Failed to decode original URL: %v", err)
