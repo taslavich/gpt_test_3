@@ -146,10 +146,7 @@ func (s *Server) GetBids_V2_5(
 		}
 	}()
 
-	sspDomain := req.BidRequest.GetSspDomain()
-	req.BidRequest.SspDomain = nil
-
-	notDsp := s.sspNotDsp[sspDomain]
+	notDsp := s.sspNotDsp[req.SspDomain]
 
 	jsonData, err := jsoniter.Marshal(req.BidRequest)
 	if err != nil {
@@ -192,7 +189,7 @@ func (s *Server) GetBids_V2_5(
 				log.Printf(
 					"Cannot getBidsFromDSPbyHTTP_V_2_5, bid request id: %s,ssp_domain: %s, dsp_domain: %s, error: %w",
 					req.BidRequest.GetId(),
-					sspDomain,
+					req.SspDomain,
 					endpoint,
 					err,
 				)
@@ -204,7 +201,7 @@ func (s *Server) GetBids_V2_5(
 			}
 
 			// Фильтрация ответа SPP
-			if !s.processor.ProcessResponseForSPPV25(sspDomain, dspResp).Allowed {
+			if !s.processor.ProcessResponseForSPPV25(req.SspDomain, dspResp).Allowed {
 				//log.Printf("Gor SSP filter, domain %s, resp: %w", endpoint, dspResp)
 				return
 			}

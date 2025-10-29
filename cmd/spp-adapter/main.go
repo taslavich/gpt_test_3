@@ -72,6 +72,7 @@ func main() {
 		cfg.AdmTimeout,
 		cfg.NurlTimeout,
 		cfg.BurlTimeout,
+		cfg.SspFeeds,
 	)
 	log.Println("HTTP routes initialized")
 

@@ -12,7 +12,6 @@ message BidRequest {
     optional int32 tmax = 7;
     repeated string cur = 8;
     repeated string bcat = 9;
-    optional string ssp_domain = 10;
 }
 
 message Imp {

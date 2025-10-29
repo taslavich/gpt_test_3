@@ -31,6 +31,7 @@ const (
 )
 
 type postBidRequest_V2_5 struct {
+	Feed    string `in:"query=feed" required:"true"`
 	Payload *struct {
 		*ortb_V2_5.BidRequest
 	} `in:"body=json"`
@@ -56,13 +57,14 @@ func InitRoutes(
 	admTimeout,
 	nurlTimeout,
 	burlTimeout time.Duration,
+	sspFeeds map[string]string,
 ) {
 	integration.UseGochiURLParam("path", chi.URLParam)
 
 	httpRouter.With(
 		httpin.NewInput(postBidRequest_V2_5{}),
 	).Post(PostBid_V_2_5_URL, func(w http.ResponseWriter, r *http.Request) {
-		postBid_V2_5(ctx, w, r, redisClient, isBadIp, getCountryISO, orchestratorClient, bidRequestTimeout)
+		postBid_V2_5(ctx, w, r, redisClient, isBadIp, getCountryISO, orchestratorClient, bidRequestTimeout, sspFeeds)
 	})
 
 	httpRouter.With(

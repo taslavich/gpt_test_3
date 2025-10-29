@@ -74,6 +74,7 @@ func (s *Server) GetWinnerBid_V2_5(
 		&dspRouterGrpc.DspRouterRequest_V2_5{
 			BidRequest: req.BidRequest,
 			GlobalId:   req.GlobalId,
+			SspDomain:  req.SspDomain,
 		},
 	)
 	if err != nil {
