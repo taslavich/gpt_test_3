@@ -25,9 +25,6 @@ const (
 
 	GetAdmUrl  = "/adm"
 	GetNurlUrl = "/nurl"
-	GetBurlUrl = "/burl"
-
-	GetHealthUrl = "/health"
 )
 
 type postBidRequest_V2_5 struct {
@@ -41,7 +38,7 @@ type postBidResponse_V2_5 struct {
 	*ortb_V2_5.BidResponse
 }
 
-type admNurlBurlRequest struct {
+type admNurlRequest struct {
 	GlobalId string `in:"query=id" required:"true"`
 	DspURL   string `in:"query=url" required:"true"`
 }
@@ -68,24 +65,14 @@ func InitRoutes(
 	})
 
 	httpRouter.With(
-		httpin.NewInput(admNurlBurlRequest{}),
+		httpin.NewInput(admNurlRequest{}),
 	).Get(GetAdmUrl, func(w http.ResponseWriter, r *http.Request) {
 		getAdm(ctx, w, r, redisClient, admTimeout)
 	})
 
 	httpRouter.With(
-		httpin.NewInput(admNurlBurlRequest{}),
+		httpin.NewInput(admNurlRequest{}),
 	).Get(GetNurlUrl, func(w http.ResponseWriter, r *http.Request) {
 		getNurl(ctx, w, r, redisClient, nurlTimeout)
-	})
-
-	httpRouter.With(
-		httpin.NewInput(admNurlBurlRequest{}),
-	).Get(GetBurlUrl, func(w http.ResponseWriter, r *http.Request) {
-		getBurl(ctx, w, r, burlTimeout)
-	})
-
-	httpRouter.Get(GetHealthUrl, func(w http.ResponseWriter, r *http.Request) {
-		getHealth(w)
 	})
 }

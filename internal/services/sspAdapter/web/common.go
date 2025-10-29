@@ -20,12 +20,15 @@ func getAdm(
 	redisClient *redis.Client,
 	timeout time.Duration,
 ) {
-	input := r.Context().Value(httpin.Input).(*admNurlBurlRequest)
+	input := r.Context().Value(httpin.Input).(*admNurlRequest)
 
 	if err := utils.WriteStringToRedis(ctx, redisClient, input.GlobalId, constants.ADM_COLUMN, constants.TRUE); err != nil {
 		log.Printf("failed to WriteStringToRedis ADM in getAdm: %w", err)
 	}
 
+	log.Printf("--%s--", input.DspURL)
+	w.WriteHeader(http.StatusOK)
+	return
 	decodedURL, err := url.QueryUnescape(input.DspURL)
 	if err != nil {
 		log.Printf("in getAdm Failed to decode original URL: %v", err)
@@ -33,26 +36,8 @@ func getAdm(
 		return
 	}
 
-	client := &http.Client{Timeout: timeout}
-	resp, err := client.Get(decodedURL)
-	if err != nil {
-		log.Printf("in getAdm Failed to proxy win notice to DSP %s, globalID: %s, error: %w",
-			decodedURL,
-			input.GlobalId,
-			err,
-		)
-		w.WriteHeader(http.StatusInternalServerError)
-		return
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode >= http.StatusBadRequest {
-		log.Printf("in getAdm DSP %s returned error for win notice: %d", decodedURL, resp.StatusCode)
-		w.WriteHeader(resp.StatusCode)
-		return
-	}
-
-	w.WriteHeader(http.StatusOK)
+	http.Redirect(w, r, decodedURL, http.StatusFound)
+	return
 }
 
 func getNurl(
@@ -62,7 +47,7 @@ func getNurl(
 	redisClient *redis.Client,
 	timeout time.Duration,
 ) {
-	input := r.Context().Value(httpin.Input).(*admNurlBurlRequest)
+	input := r.Context().Value(httpin.Input).(*admNurlRequest)
 
 	if err := utils.WriteStringToRedis(ctx, redisClient, input.GlobalId, constants.NURL_COLUMN, constants.TRUE); err != nil {
 		log.Printf("failed to WriteStringToRedis SUCCESS in getNurl: %w", err)
@@ -75,68 +60,6 @@ func getNurl(
 		return
 	}
 
-	client := &http.Client{Timeout: timeout}
-	resp, err := client.Get(decodedURL)
-	if err != nil {
-		log.Printf("in getNurl Failed to proxy win notice to DSP %s, globalID: %s, error: %w",
-			decodedURL,
-			input.GlobalId,
-			err,
-		)
-		w.WriteHeader(http.StatusInternalServerError)
-		return
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode >= http.StatusBadRequest {
-		log.Printf("in getNurl DSP %s returned error for win notice: %d", decodedURL, resp.StatusCode)
-		w.WriteHeader(resp.StatusCode)
-		return
-	}
-
-	w.WriteHeader(http.StatusOK)
-}
-
-func getBurl(
-	ctx context.Context,
-	w http.ResponseWriter,
-	r *http.Request,
-	timeout time.Duration,
-) {
-	input := r.Context().Value(httpin.Input).(*admNurlBurlRequest)
-
-	decodedURL, err := url.QueryUnescape(input.DspURL)
-	if err != nil {
-		log.Printf("in getBurl Failed to decode original URL: %v", err)
-		w.WriteHeader(http.StatusBadRequest)
-		return
-	}
-
-	client := &http.Client{Timeout: timeout}
-	resp, err := client.Get(decodedURL)
-	if err != nil {
-		log.Printf(
-			"in getBurl Failed to proxy billable event to DSP %s, globalID: %s, error: %w",
-			decodedURL,
-			input.GlobalId,
-			err,
-		)
-		w.WriteHeader(http.StatusInternalServerError)
-		return
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode >= http.StatusBadRequest {
-		log.Printf("in getBurl DSP %s returned error for billable event: %d", decodedURL, resp.StatusCode)
-		w.WriteHeader(resp.StatusCode)
-		return
-	}
-
-	w.WriteHeader(http.StatusOK)
-}
-
-func getHealth(
-	w http.ResponseWriter,
-) {
-	w.WriteHeader(http.StatusNoContent)
+	http.Redirect(w, r, decodedURL, http.StatusFound)
+	return
 }

@@ -2,6 +2,7 @@ package utils
 
 import (
 	"fmt"
+	"net/url"
 )
 
 const (
@@ -11,9 +12,7 @@ const (
 )
 
 func WrapURL(hostname, originalURL, globalId, admOrnurlOrBurl string) string {
-	if originalURL == "" {
-		return ""
-	}
+	encodeUrl := url.QueryEscape(originalURL)
 	return fmt.Sprintf("http://%s:8086/%s?id=%s&url=%s",
-		hostname, admOrnurlOrBurl, globalId, originalURL)
+		hostname, admOrnurlOrBurl, globalId, encodeUrl)
 }
