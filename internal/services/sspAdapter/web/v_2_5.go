@@ -31,6 +31,7 @@ func postBid_V2_5(
 	getCountryISO func(ipStr string) (string, error),
 	orchestratorClient orchestratorProto.OrchestratorServiceClient,
 	timeout time.Duration,
+	sspFeeds map[string]string,
 ) {
 	var input *postBidRequest_V2_5
 	defer func() {
@@ -48,16 +49,19 @@ func postBid_V2_5(
 	}()
 	input = r.Context().Value(httpin.Input).(*postBidRequest_V2_5)
 
-	if input == nil || input.Payload == nil {
-		err := fmt.Errorf("Invalid request: payload is nil or missing")
+	ssp_domain, ok := sspFeeds[input.Feed]
+	if !ok {
+		err := fmt.Errorf("Busy")
 		log.Print(err.Error(), r.Host)
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		http.Error(w, err.Error(), http.StatusForbidden)
+		return
+	} else if ok {
+		w.WriteHeader(http.StatusResetContent)
 		return
 	}
 
-	// Добавить эту проверку
-	if input.Payload.SspDomain == nil {
-		err := fmt.Errorf("Invalid request: ssp_domain is required")
+	if input == nil || input.Payload == nil {
+		err := fmt.Errorf("Invalid request: payload is nil or missing")
 		log.Print(err.Error(), r.Host)
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
@@ -127,7 +131,7 @@ func postBid_V2_5(
 		log.Printf("failed to marshal JSON in postBid_V2_5: %w", err)
 	}
 
-	if err := utils.WriteStringToRedis(ctx, redisClient, globalId, constants.SPP_DOMAIN_COLUMN, input.Payload.BidRequest.GetSspDomain()); err != nil {
+	if err := utils.WriteStringToRedis(ctx, redisClient, globalId, constants.SPP_DOMAIN_COLUMN, ssp_domain); err != nil {
 		log.Printf("failed to WriteStringToRedis Domain in postBid_V2_5: %w", err)
 	}
 
@@ -167,6 +171,7 @@ func postBid_V2_5(
 		&orchestratorProto.OrchestratorRequest_V2_5{
 			BidRequest: input.Payload.BidRequest,
 			GlobalId:   globalId,
+			SspDomain:  ssp_domain,
 		},
 	)
 	if err != nil {

@@ -11,6 +11,7 @@ service DspRouterService {
 message DspRouterRequest_V2_5 {
   ortb_V2_5.BidRequest bidRequest = 1;
   string globalId = 2;
+  string ssp_domain = 3;
 }
 
 message DspRouterResponse_V2_5 {

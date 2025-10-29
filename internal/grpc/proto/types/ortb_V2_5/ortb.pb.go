@@ -32,7 +32,6 @@ type BidRequest struct {
 	Tmax          *int32                 `protobuf:"varint,7,opt,name=tmax,proto3,oneof" json:"tmax,omitempty"`
 	Cur           []string               `protobuf:"bytes,8,rep,name=cur,proto3" json:"cur,omitempty"`
 	Bcat          []string               `protobuf:"bytes,9,rep,name=bcat,proto3" json:"bcat,omitempty"`
-	SspDomain     *string                `protobuf:"bytes,10,opt,name=ssp_domain,json=sspDomain,proto3,oneof" json:"ssp_domain,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -128,13 +127,6 @@ func (x *BidRequest) GetBcat() []string {
 		return x.Bcat
 	}
 	return nil
-}
-
-func (x *BidRequest) GetSspDomain() string {
-	if x != nil && x.SspDomain != nil {
-		return *x.SspDomain
-	}
-	return ""
 }
 
 type Imp struct {
@@ -1125,7 +1117,7 @@ var File_types_ortb_V2_5_ortb_proto protoreflect.FileDescriptor
 
 const file_types_ortb_V2_5_ortb_proto_rawDesc = "" +
 	"\n" +
-	"\x1atypes/ortb_V2_5/ortb.proto\x12\tortb_V2_5\"\x82\x03\n" +
+	"\x1atypes/ortb_V2_5/ortb.proto\x12\tortb_V2_5\"\xcf\x02\n" +
 	"\n" +
 	"BidRequest\x12\x13\n" +
 	"\x02id\x18\x01 \x01(\tH\x00R\x02id\x88\x01\x01\x12\x13\n" +
@@ -1136,17 +1128,13 @@ const file_types_ortb_V2_5_ortb_proto_rawDesc = "" +
 	"\x04user\x18\x06 \x01(\v2\x0f.ortb_V2_5.UserH\x04R\x04user\x88\x01\x01\x12\x17\n" +
 	"\x04tmax\x18\a \x01(\x05H\x05R\x04tmax\x88\x01\x01\x12\x10\n" +
 	"\x03cur\x18\b \x03(\tR\x03cur\x12\x12\n" +
-	"\x04bcat\x18\t \x03(\tR\x04bcat\x12\"\n" +
-	"\n" +
-	"ssp_domain\x18\n" +
-	" \x01(\tH\x06R\tsspDomain\x88\x01\x01B\x05\n" +
+	"\x04bcat\x18\t \x03(\tR\x04bcatB\x05\n" +
 	"\x03_idB\x05\n" +
 	"\x03_atB\t\n" +
 	"\a_deviceB\a\n" +
 	"\x05_siteB\a\n" +
 	"\x05_userB\a\n" +
-	"\x05_tmaxB\r\n" +
-	"\v_ssp_domain\"\xa8\x03\n" +
+	"\x05_tmax\"\xa8\x03\n" +
 	"\x03Imp\x12\x13\n" +
 	"\x02id\x18\x01 \x01(\tH\x00R\x02id\x88\x01\x01\x12\x1f\n" +
 	"\bbidfloor\x18\x02 \x01(\x02H\x01R\bbidfloor\x88\x01\x01\x12.\n" +

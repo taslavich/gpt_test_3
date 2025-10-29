@@ -14,9 +14,11 @@ import (
 	pb "gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/proto/services/bidEngine"
 	"gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/proto/types/ortb_V2_5"
 	utils "gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/utils_grpc"
+	bidEngine "gitlab.com/twinbid-exchange/RTB-exchange/internal/services/bidEngine/service"
 	clickhouse_types "gitlab.com/twinbid-exchange/RTB-exchange/internal/types/clickhouse"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+	emptypb "google.golang.org/protobuf/types/known/emptypb"
 )
 
 type Server struct {
@@ -94,4 +96,23 @@ func (s *Server) GetWinnerBid_V2_5(
 	return &bidEngineGrpc.BidEngineResponse_V2_5{
 		BidResponse: bidResponse,
 	}, nil
+}
+
+func (s *Server) ChangeSspGeoPercentsMap(ctx context.Context, req *bidEngineGrpc.SspGeoPercentsRequest_V2_5) (*emptypb.Empty, error) {
+	for sspDomain, externalGeoMap := range req.Changes {
+		if _, ok := bidEngine.SspGeoPercents[sspDomain]; !ok {
+			bidEngine.SspGeoPercents[sspDomain] = make(map[string]float32)
+		}
+
+		for externalGeo, externalDelta := range externalGeoMap.Values {
+			if percent, ok := bidEngine.SspGeoPercents[sspDomain][externalGeo]; ok {
+				bidEngine.SspGeoPercents[sspDomain][externalGeo] = percent + externalDelta
+				continue
+			}
+
+			bidEngine.SspGeoPercents[sspDomain][externalGeo] = s.ProfitPercent + externalDelta
+		}
+	}
+
+	return nil, nil
 }

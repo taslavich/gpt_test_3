@@ -82,12 +82,13 @@ type OrchestratorConfig struct {
 
 type SppAdapterConfig struct {
 	HttpServer
-	UriOfOrchestrator   string        `yaml:"URI_OF_ORCHESTRATOR" env:"URI_OF_ORCHESTRATOR"`
-	AdmTimeout          time.Duration `yaml:"ADM_TIMEOUT" env:"ADM_TIMEOUT"`
-	NurlTimeout         time.Duration `yaml:"NURL_TIMEOUT" env:"NURL_TIMEOUT"`
-	BurlTimeout         time.Duration `yaml:"BURL_TIMEOUT" env:"BURL_TIMEOUT"`
-	GetWinnerBidTimeout time.Duration `yaml:"GET_WINNER_BID_TIMEOUT" env:"GET_WINNER_BID_TIMEOUT"`
-	GeoIpDbPath         string        `yaml:"GEO_IP_DB_PATH" env:"GEO_IP_DB_PATH"`
+	UriOfOrchestrator   string            `yaml:"URI_OF_ORCHESTRATOR" env:"URI_OF_ORCHESTRATOR"`
+	AdmTimeout          time.Duration     `yaml:"ADM_TIMEOUT" env:"ADM_TIMEOUT"`
+	NurlTimeout         time.Duration     `yaml:"NURL_TIMEOUT" env:"NURL_TIMEOUT"`
+	BurlTimeout         time.Duration     `yaml:"BURL_TIMEOUT" env:"BURL_TIMEOUT"`
+	GetWinnerBidTimeout time.Duration     `yaml:"GET_WINNER_BID_TIMEOUT" env:"GET_WINNER_BID_TIMEOUT"`
+	GeoIpDbPath         string            `yaml:"GEO_IP_DB_PATH" env:"GEO_IP_DB_PATH"`
+	SspFeeds            MapStringToString `yaml:"SSP_FEEDS" env:"SSP_FEEDS"`
 
 	RedisConfig
 }
@@ -106,6 +107,11 @@ type ClickhouseConfig struct {
 	Host            string `yaml:"CLICKHOUSE_HOST" env:"CLICKHOUSE_HOST" env-default:"hntzp0jsnf.europe-west4.gcp.clickhouse.cloud"`
 	Port            string `yaml:"CLICKHOUSE_PORT" env:"CLICKHOUSE_PORT" env-default:"9440"`
 	Database        string `yaml:"CLICKHOUSE_DB" env:"CLICKHOUSE_DB" env-default:"rtb"`
+}
+
+type PercenterConfig struct {
+	Clickhouse     ClickhouseConfig
+	UriOfBidEngine string `yaml:"URI_OF_BID_ENGINE" env:"URI_OF_BID_ENGINE"`
 }
 
 type ClickhouseLoaderConfig struct {
@@ -152,7 +158,8 @@ func LoadConfig[
 		OrchestratorConfig |
 		KafkaLoaderConfig |
 		ClickhouseLoaderConfig |
-		MockDspConfig,
+		MockDspConfig |
+		PercenterConfig,
 ](ctx context.Context) (*T, error) {
 	for _, fileName := range getEnvFileNames() {
 		err := godotenv.Load(fileName)

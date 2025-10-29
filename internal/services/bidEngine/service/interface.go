@@ -9,3 +9,5 @@ const (
 	IMP_DEFAULT    = 0
 	MAX_BID_NUMBER = 0
 )
+
+var SspGeoPercents map[string]map[string]float32

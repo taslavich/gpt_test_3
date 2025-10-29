@@ -1,6 +1,12 @@
 package percenter
 
-import "time"
+import (
+	"time"
+
+	bidEngineGrpc "gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/proto/services/bidEngine"
+)
+
+var _ IPercenter = (*TPercenter)(nil)
 
 type Bid struct {
 	Price    float32 `json:"price"`
@@ -37,4 +43,15 @@ type AggregatedData struct {
 	Domain string
 	Geo    string
 	Frofit []float64
+}
+
+type TPercenter struct {
+	addressOfBidEngine string
+}
+
+type IPercenter interface {
+	GetGrpClient() (
+		bidEngineGrpc.BidEngineServiceClient,
+		func() error,
+	)
 }
