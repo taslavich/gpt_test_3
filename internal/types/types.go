@@ -8,6 +8,6 @@ type StatisticsRecord struct {
 	GEO_COLUMN          string `json:"GEO_COLUMN"`
 	BID_RESPONSES       string `json:"BID_RESPONSES"`
 	BID_RESPONSE_WINNER string `json:"BID_RESPONSE_WINNER"`
-	NURL                string `json:"NURL"`
+	ADM_IP              string `json:"ADM_IP"`
 	ADM                 string `json:"ADM"`
 }
