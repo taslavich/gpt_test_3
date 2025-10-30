@@ -24,7 +24,7 @@ func GetWinnerBidInternal_V_2_5(
 	req *bidEngineGrpc.BidEngineRequest_V2_5,
 	profitPercent float32,
 	globalId string,
-	hostname string,
+	callbackHost utils.CallbackHost,
 ) (*ortb_V2_5.BidResponse, *clickhouse_types.BidResponse) {
 	////////////
 	///profitPercent = getRandomProfitPercent()
@@ -126,8 +126,8 @@ func GetWinnerBidInternal_V_2_5(
 			continue
 		}
 
-		wrappedAdm := utils.WrapURL(hostname, winningBid.GetAdm(), globalId, utils.ADM)
-		wrappedNurl := utils.WrapURL(hostname, winningBid.GetNurl(), globalId, utils.NURL)
+		wrappedAdm := utils.WrapURL(callbackHost, winningBid.GetAdm(), globalId, utils.ADM)
+		wrappedNurl := utils.WrapURL(callbackHost, winningBid.GetNurl(), globalId, utils.NURL)
 
 		finalBid := &ortb_V2_5.Bid{
 			Id:    winningBid.Id,

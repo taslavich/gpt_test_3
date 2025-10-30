@@ -12,6 +12,7 @@ import (
 	"github.com/redis/go-redis/v9"
 	"gitlab.com/twinbid-exchange/RTB-exchange/internal/config"
 	bidEngineGrpc "gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/proto/services/bidEngine"
+	utils "gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/utils_grpc"
 	bidEngine "gitlab.com/twinbid-exchange/RTB-exchange/internal/services/bidEngine/service"
 	bidEngineWeb "gitlab.com/twinbid-exchange/RTB-exchange/internal/services/bidEngine/web"
 
@@ -52,12 +53,18 @@ func main() {
 		log.Fatalf("failed to listen: %v", err)
 	}
 	s := grpc.NewServer()
+	callbackHost := utils.CallbackHost{
+		Scheme: cfg.SystemScheme,
+		Host:   cfg.SystemHostname,
+		Port:   cfg.SystemPort,
+	}
+
 	bidEngineGrpc.RegisterBidEngineServiceServer(
 		s,
 		bidEngineWeb.NewServer(
 			cfg.ProfitPercent,
 			redisClient,
-			cfg.SystemHostname,
+			callbackHost,
 			bidEngine.GetWinnerBidInternal_V_2_5,
 		),
 	)
