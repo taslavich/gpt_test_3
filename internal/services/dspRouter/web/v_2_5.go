@@ -178,6 +178,10 @@ func (s *Server) GetBids_V2_5(
 
 		if !s.processor.ProcessRequestForDSPV25(endpoint, req.BidRequest).Allowed {
 			//log.Println("Gor DSP filter")
+			codesCh <- &dspDomainCode{
+				endpoint: endpoint,
+				code:     -1,
+			}
 			continue
 		}
 		wg.Add(1)
@@ -203,6 +207,7 @@ func (s *Server) GetBids_V2_5(
 			// Фильтрация ответа SPP
 			if !s.processor.ProcessResponseForSPPV25(req.SspDomain, dspResp).Allowed {
 				//log.Printf("Gor SSP filter, domain %s, resp: %w", endpoint, dspResp)
+
 				return
 			}
 
