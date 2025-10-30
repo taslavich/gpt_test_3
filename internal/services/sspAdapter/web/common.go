@@ -4,7 +4,6 @@ import (
 	"context"
 	"log"
 	"net/http"
-	"net/url"
 	"time"
 
 	"github.com/ggicci/httpin"
@@ -30,7 +29,7 @@ func getAdm(
 		log.Printf("failed to WriteStringToRedis ADM_IP in getAdm: %w", err)
 	}
 
-	decodedURL, err := url.QueryUnescape(input.DspURL)
+	decodedURL, err := utils.DecodeWrappedURL(utils.ADM, input.DspURL)
 	if err != nil {
 		log.Printf("in getAdm Failed to decode original URL: %v", err)
 		w.WriteHeader(http.StatusBadRequest)
@@ -49,7 +48,7 @@ func getNurl(
 ) {
 	input := r.Context().Value(httpin.Input).(*admNurlRequest)
 
-	decodedURL, err := url.QueryUnescape(input.DspURL)
+	decodedURL, err := utils.DecodeWrappedURL(utils.NURL, input.DspURL)
 	if err != nil {
 		log.Printf("in getNurl Failed to decode original URL: %v", err)
 		w.WriteHeader(http.StatusBadRequest)

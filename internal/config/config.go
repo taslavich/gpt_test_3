@@ -49,6 +49,8 @@ type BiddingEngineConfig struct {
 	HttpServer
 	ProfitPercent  float32 `yaml:"PROFIT_PERCENT" env:"PROFIT_PERCENT" env-default:"0.2"`
 	SystemHostname string  `yaml:"SYSTEM_HOSTNAME" env:"SYSTEM_HOSTNAME"`
+	SystemScheme   string  `yaml:"SYSTEM_SCHEME" env:"SYSTEM_SCHEME" env-default:"https"`
+	SystemPort     uint16  `yaml:"SYSTEM_PORT" env:"SYSTEM_PORT" env-default:"8086"`
 	RedisConfig
 }
 
