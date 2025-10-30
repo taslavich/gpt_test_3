@@ -13,7 +13,7 @@ const (
 	GEO_COLUMN                 = "GEO"
 	BID_RESPONSES_COLUMN       = "BID_RESPONSES"
 	BID_RESPONSE_WINNER_COLUMN = "BID_RESPONSE_WINNER"
-	NURL_COLUMN                = "NURL"
+	ADM_IP_COLUMN              = "ADM_IP"
 	ADM_COLUMN                 = "ADM"
 )
 

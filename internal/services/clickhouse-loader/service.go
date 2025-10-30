@@ -72,7 +72,7 @@ func insertBatch(chDB *sql.DB, table string, records []types.StatisticsRecord) e
 	}
 
 	query := fmt.Sprintf(`
-		INSERT INTO %s (uuid, timestamp, spp_domain, bid_request, geo_column, bid_responses, bid_response_winner, nurl, adm)
+		INSERT INTO %s (uuid, timestamp, spp_domain, bid_request, geo_column, bid_responses, bid_response_winner, adm_ip, adm)
 		VALUES 
 	`, table)
 
@@ -82,16 +82,8 @@ func insertBatch(chDB *sql.DB, table string, records []types.StatisticsRecord) e
 	for _, record := range records {
 		valuePlaceholders = append(valuePlaceholders, "(?, ?, ?, ?, ?, ?, ?, ?, ?)")
 
-		// ПРАВИЛЬНАЯ конвертация SUCCESS string в bool
-		var nurlBool bool
-		if record.NURL == "1" {
-			nurlBool = true
-		} else {
-			nurlBool = false // "0", "", или любое другое значение = false
-		}
-
 		var admBool bool
-		if record.NURL == "1" {
+		if record.ADM == "1" {
 			admBool = true
 		} else {
 			admBool = false // "0", "", или любое другое значение = false
@@ -105,7 +97,7 @@ func insertBatch(chDB *sql.DB, table string, records []types.StatisticsRecord) e
 			coalesceEmpty(record.GEO_COLUMN),
 			coalesceEmpty(record.BID_RESPONSES),
 			coalesceEmpty(record.BID_RESPONSE_WINNER),
-			nurlBool,
+			coalesceEmpty(record.ADM_IP),
 			admBool,
 		)
 	}
@@ -127,7 +119,7 @@ func hasData(record types.StatisticsRecord) bool {
 		record.GEO_COLUMN != "" ||
 		record.BID_RESPONSES != "" ||
 		record.BID_RESPONSE_WINNER != "" ||
-		record.NURL != "" ||
+		record.ADM_IP != "" ||
 		record.ADM != "" ||
 		record.UUID != "" ||
 		record.TIMESTAMP != "" ||
@@ -152,7 +144,7 @@ func CreateTable(chDB *sql.DB, tableName string) error {
             geo_column String,
             bid_responses String,
             bid_response_winner String,
-            nurl Bool,
+            adm_ip String,
 			adm Bool,
             updated_at DateTime64(3) DEFAULT now64(),
 			INDEX idx_updated_at_minmax updated_at TYPE minmax GRANULARITY 1

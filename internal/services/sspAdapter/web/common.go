@@ -26,6 +26,10 @@ func getAdm(
 		log.Printf("failed to WriteStringToRedis ADM in getAdm: %w", err)
 	}
 
+	if err := utils.WriteStringToRedis(ctx, redisClient, input.GlobalId, constants.ADM_IP_COLUMN, r.RemoteAddr); err != nil {
+		log.Printf("failed to WriteStringToRedis ADM_IP in getAdm: %w", err)
+	}
+
 	decodedURL, err := url.QueryUnescape(input.DspURL)
 	if err != nil {
 		log.Printf("in getAdm Failed to decode original URL: %v", err)
@@ -44,10 +48,6 @@ func getNurl(
 	timeout time.Duration,
 ) {
 	input := r.Context().Value(httpin.Input).(*admNurlRequest)
-
-	if err := utils.WriteStringToRedis(ctx, redisClient, input.GlobalId, constants.NURL_COLUMN, constants.TRUE); err != nil {
-		log.Printf("failed to WriteStringToRedis SUCCESS in getNurl: %w", err)
-	}
 
 	decodedURL, err := url.QueryUnescape(input.DspURL)
 	if err != nil {

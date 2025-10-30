@@ -139,10 +139,6 @@ func postBid_V2_5(
 		log.Printf("failed to WriteStringToRedis Geo in postBid_V2_5: %w", err)
 	}
 
-	if err := utils.WriteStringToRedis(ctx, redisClient, globalId, constants.NURL_COLUMN, constants.FALSE); err != nil {
-		log.Printf("failed to WriteStringToRedis NURL in postBid_V2_5: %w", err)
-	}
-
 	if err := utils.WriteStringToRedis(ctx, redisClient, globalId, constants.ADM_COLUMN, constants.FALSE); err != nil {
 		log.Printf("failed to WriteStringToRedis ADM in postBid_V2_5: %w", err)
 	}
