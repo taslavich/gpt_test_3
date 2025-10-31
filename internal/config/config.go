@@ -85,10 +85,19 @@ type SppAdapterConfig struct {
 	UriOfOrchestrator   string            `yaml:"URI_OF_ORCHESTRATOR" env:"URI_OF_ORCHESTRATOR"`
 	AdmTimeout          time.Duration     `yaml:"ADM_TIMEOUT" env:"ADM_TIMEOUT"`
 	NurlTimeout         time.Duration     `yaml:"NURL_TIMEOUT" env:"NURL_TIMEOUT"`
-	BurlTimeout         time.Duration     `yaml:"BURL_TIMEOUT" env:"BURL_TIMEOUT"`
 	GetWinnerBidTimeout time.Duration     `yaml:"GET_WINNER_BID_TIMEOUT" env:"GET_WINNER_BID_TIMEOUT"`
 	GeoIpDbPath         string            `yaml:"GEO_IP_DB_PATH" env:"GEO_IP_DB_PATH"`
 	SspFeeds            MapStringToString `yaml:"SSP_FEEDS" env:"SSP_FEEDS"`
+
+	RedisConfig
+}
+
+type AdmAdapterConfig struct {
+	HttpServer
+	AdmTimeout  time.Duration `yaml:"ADM_TIMEOUT" env:"ADM_TIMEOUT"`
+	NurlTimeout time.Duration `yaml:"NURL_TIMEOUT" env:"NURL_TIMEOUT"`
+	FullChain   string        `yaml:"FULLCHAIN_PEM" env:"FULLCHAIN_PEM"`
+	PrivKey     string        `yaml:"PRIVKEY_PEM" env:"PRIVKEY_PEM"`
 
 	RedisConfig
 }
@@ -159,7 +168,8 @@ func LoadConfig[
 		KafkaLoaderConfig |
 		ClickhouseLoaderConfig |
 		MockDspConfig |
-		PercenterConfig,
+		PercenterConfig |
+		AdmAdapterConfig,
 ](ctx context.Context) (*T, error) {
 	for _, fileName := range getEnvFileNames() {
 		err := godotenv.Load(fileName)

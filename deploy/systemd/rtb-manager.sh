@@ -17,6 +17,7 @@ CORE_SERVICES=(
     "rtb-spp-adapter"
     "rtb-clickhouse-loader"
     "rtb-kafka-loader"
+    "rtb-adm-adapter"
 )
 
 # Mock сервисы
@@ -272,6 +273,7 @@ case "$1" in
         go build -o ./cmd/orchestrator/orchestrator ./cmd/orchestrator
         go build -o ./cmd/router/router ./cmd/router
         go build -o ./cmd/spp-adapter/spp-adapter ./cmd/spp-adapter
+        go build -o ./cmd/adm-adapter/adm-adapter ./cmd/adm-adapter
         go build -o ./cmd/clickhouse-loader/clickhouse-loader ./cmd/clickhouse-loader
         go build -o ./cmd/kafka-loader/kafka-loader ./cmd/kafka-loader
         go build -o ./cmd/dsp1/dsp1 ./cmd/dsp1
@@ -283,6 +285,7 @@ case "$1" in
         chmod +x ./cmd/orchestrator/orchestrator
         chmod +x ./cmd/router/router
         chmod +x ./cmd/spp-adapter/spp-adapter
+        chmod +x ./cmd/adm-adapter/adm-adapter
         chmod +x ./cmd/clickhouse-loader/clickhouse-loader
         chmod +x ./cmd/kafka-loader/kafka-loader
         chmod +x ./cmd/dsp1/dsp1
@@ -309,6 +312,20 @@ case "$1" in
             echo "✅ Copied GeoIP2_City.mmdb"
         else
             echo "⚠️  GeoIP2_City.mmdb not found"
+        fi
+
+        if [ -f "./cmd/adm-adapter/fullchain.pem" ]; then
+            cp ./cmd/adm-adapter/fullchain.pem ./
+            echo "✅ Copied fullchain.pem"
+        else
+            echo "⚠️  fullchain.pem not found"
+        fi
+
+        if [ -f "./cmd/adm-adapter/privkey.pem" ]; then
+            cp ./cmd/adm-adapter/privkey.pem ./
+            echo "✅ Copied privkey.pem"
+        else
+            echo "⚠️  privkey.pem not found"
         fi
         
         echo "✅ All services built and made executable"

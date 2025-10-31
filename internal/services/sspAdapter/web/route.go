@@ -45,17 +45,14 @@ type admNurlRequest struct {
 	DspURL   string `in:"query=url" required:"true"`
 }
 
-func InitRoutes(
+func InitHttpRoutes(
 	ctx context.Context,
 	httpRouter *chi.Mux,
 	redisClient *redis.Client,
 	isBadIp func(ipStr string) (bool, error),
 	getCountryISO func(ipStr string) (string, error),
 	orchestratorClient orchestratorProto.OrchestratorServiceClient,
-	bidRequestTimeout,
-	admTimeout,
-	nurlTimeout,
-	burlTimeout time.Duration,
+	bidRequestTimeout time.Duration,
 	sspFeeds map[string]string,
 ) {
 	integration.UseGochiURLParam("path", chi.URLParam)
@@ -65,6 +62,16 @@ func InitRoutes(
 	).Post(PostBid_V_2_5_URL, func(w http.ResponseWriter, r *http.Request) {
 		postBid_V2_5(ctx, w, r, redisClient, isBadIp, getCountryISO, orchestratorClient, bidRequestTimeout, sspFeeds)
 	})
+}
+
+func InitHttpsRoutes(
+	ctx context.Context,
+	httpRouter *chi.Mux,
+	redisClient *redis.Client,
+	admTimeout,
+	nurlTimeout time.Duration,
+) {
+	integration.UseGochiURLParam("path", chi.URLParam)
 
 	httpRouter.With(
 		httpin.NewInput(admNurlRequest{}),
@@ -75,10 +82,6 @@ func InitRoutes(
 	httpRouter.With(
 		httpin.NewInput(admNurlRequest{}),
 	).Get(GetNurlUrl, func(w http.ResponseWriter, r *http.Request) {
-		getNurl(ctx, w, r, redisClient, nurlTimeout)
-	})
-
-	httpRouter.Get(GetHealthUrl, func(w http.ResponseWriter, r *http.Request) {
-		getHealth(w)
+		getNurl(w, r)
 	})
 }

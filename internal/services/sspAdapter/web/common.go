@@ -30,22 +30,21 @@ func getAdm(
 		log.Printf("failed to WriteStringToRedis ADM_IP in getAdm: %w", err)
 	}
 
-	decodedURL, err := url.QueryUnescape(input.DspURL)
+	_, err := url.QueryUnescape(input.DspURL)
 	if err != nil {
 		log.Printf("in getAdm Failed to decode original URL: %v", err)
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
 
-	http.Redirect(w, r, decodedURL, http.StatusFound)
+	w.WriteHeader(http.StatusResetContent)
+
+	//http.Redirect(w, r, decodedURL, http.StatusFound)
 }
 
 func getNurl(
-	ctx context.Context,
 	w http.ResponseWriter,
 	r *http.Request,
-	redisClient *redis.Client,
-	timeout time.Duration,
 ) {
 	input := r.Context().Value(httpin.Input).(*admNurlRequest)
 
@@ -57,10 +56,4 @@ func getNurl(
 	}
 
 	http.Redirect(w, r, decodedURL, http.StatusFound)
-}
-
-func getHealth(
-	w http.ResponseWriter,
-) {
-	w.WriteHeader(http.StatusNoContent)
 }
