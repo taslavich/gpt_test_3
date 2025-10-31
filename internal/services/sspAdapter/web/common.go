@@ -1,20 +1,24 @@
 package sppAdapterWeb
 
 import (
+	"context"
 	"log"
 	"net/http"
 	"net/url"
 
 	"github.com/ggicci/httpin"
+	"github.com/redis/go-redis/v9"
+	"gitlab.com/twinbid-exchange/RTB-exchange/internal/constants"
+	utils "gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/utils_grpc"
 )
 
 func getAdm(
-	//ctx context.Context,
+	ctx context.Context,
 	w http.ResponseWriter,
 	r *http.Request,
-	//redisClient *redis.Client,
+	redisClient *redis.Client,
 ) {
-	/*input := r.Context().Value(httpin.Input).(*admNurlRequest)
+	input := r.Context().Value(httpin.Input).(*admNurlRequest)
 
 	decodedURL, err := url.QueryUnescape(input.DspURL)
 	if err != nil {
@@ -31,7 +35,7 @@ func getAdm(
 		log.Printf("failed to WriteStringToRedis ADM_IP in getAdm: %w", err)
 	}
 
-	http.Redirect(w, r, decodedURL, http.StatusFound)*/
+	http.Redirect(w, r, decodedURL, http.StatusFound)
 }
 
 func getNurl(
