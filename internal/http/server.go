@@ -122,11 +122,11 @@ func RunHttpServer(ctx context.Context, router *chi.Mux, host string, port uint1
 	}
 }
 
-// ===== OCSP инфраструктура (обновление stapling вне хендшейка) =====
+/***************  OCSP INFRA (VALIDATED STAPLING)  ***************/
 
 type servedCert struct {
 	mu   sync.RWMutex
-	cert tls.Certificate   // актуальная копия (включая OCSPStaple)
+	cert tls.Certificate   // актуальная копия (может иметь OCSPStaple)
 	leaf *x509.Certificate // parsed leaf
 	iss  *x509.Certificate // parsed issuer (первый intermediate из fullchain)
 }
@@ -139,23 +139,22 @@ func loadFullchain(pair tls.Certificate) (leaf, issuer *x509.Certificate) {
 	return
 }
 
-// Периодически обновляет OCSP-staple для pair (если доступен OCSP сервер)
+// Обновляем OCSP stapling в фоне. Штаплим ТОЛЬКО валидный (Status=Good, не просрочен).
 func refreshOCSP(ctx context.Context, sc *servedCert, every time.Duration) {
-	ticker := time.NewTicker(every)
-	defer ticker.Stop()
-
+	tk := time.NewTicker(every)
+	defer tk.Stop()
 	client := &http.Client{Timeout: 5 * time.Second}
 
 	for {
 		select {
-		case <-ticker.C:
+		case <-tk.C:
 			sc.mu.RLock()
 			leaf, iss := sc.leaf, sc.iss
 			sc.mu.RUnlock()
-
 			if leaf == nil || iss == nil || len(leaf.OCSPServer) == 0 {
 				continue
 			}
+
 			reqBytes, err := ocsp.CreateRequest(leaf, iss, &ocsp.RequestOptions{})
 			if err != nil {
 				continue
@@ -173,7 +172,12 @@ func refreshOCSP(ctx context.Context, sc *servedCert, every time.Duration) {
 			body, _ := io.ReadAll(resp.Body)
 			resp.Body.Close()
 
-			// Обновляем staple вкопии сертификата
+			parsed, err := ocsp.ParseResponseForCert(body, leaf, iss)
+			if err != nil || parsed == nil || parsed.Status != ocsp.Good || time.Now().After(parsed.NextUpdate) {
+				// не штаплим некорректный/просроченный ответ
+				continue
+			}
+
 			sc.mu.Lock()
 			c := sc.cert
 			c.OCSPStaple = body
@@ -186,14 +190,19 @@ func refreshOCSP(ctx context.Context, sc *servedCert, every time.Duration) {
 	}
 }
 
-// ===== Выбор сертификата: RSA-first, ECDSA — fallback =====
+/***************  TLS HELPERS  ***************/
 
+func generateSessionTicketKey() [32]byte {
+	var k [32]byte
+	_, _ = rand.Read(k[:])
+	return k
+}
+
+// RSA по умолчанию, ECDSA — fallback. Даёт максимум совместимости.
 func selectCertificateRSAFirst(hello *tls.ClientHelloInfo, ecdsaCert, rsaCert *tls.Certificate) *tls.Certificate {
-	// Без SNI — максимально совместимый RSA
 	if hello == nil || hello.ServerName == "" {
 		return rsaCert
 	}
-	// Если клиент поддерживает RSA-схемы подписи — отдадим RSA (шире совместимость)
 	for _, s := range hello.SignatureSchemes {
 		switch s {
 		case tls.PKCS1WithSHA256, tls.PKCS1WithSHA384, tls.PKCS1WithSHA512,
@@ -202,22 +211,31 @@ func selectCertificateRSAFirst(hello *tls.ClientHelloInfo, ecdsaCert, rsaCert *t
 			return rsaCert
 		}
 	}
-	// Иначе пробуем ECDSA
 	return ecdsaCert
 }
 
-// ===== Session ticket key rotation =====
-
-func generateSessionTicketKey() [32]byte {
-	var key [32]byte
-	_, err := rand.Read(key[:])
-	if err != nil {
-		log.Printf("Failed to generate session ticket key: %v", err)
+// Грубая эвристика "нужен ли режим legacy":
+// 1) клиент явно объявил TLS1.0/1.1; или
+// 2) клиент не объявляет современные сигнатуры (есть только SHA1).
+func needLegacyTLS(hello *tls.ClientHelloInfo) bool {
+	for _, v := range hello.SupportedVersions {
+		if v == tls.VersionTLS10 || v == tls.VersionTLS11 {
+			return true
+		}
 	}
-	return key
+	hasModern := false
+	for _, s := range hello.SignatureSchemes {
+		if s == tls.PKCS1WithSHA256 || s == tls.PSSWithSHA256 || s == tls.ECDSAWithP256AndSHA256 ||
+			s == tls.PKCS1WithSHA384 || s == tls.PSSWithSHA384 || s == tls.ECDSAWithP384AndSHA384 ||
+			s == tls.PKCS1WithSHA512 || s == tls.PSSWithSHA512 || s == tls.ECDSAWithP521AndSHA512 {
+			hasModern = true
+			break
+		}
+	}
+	return !hasModern
 }
 
-// ===== HTTPS сервер с поправками совместимости TLS =====
+/***************  HTTPS SERVER (BASE + LEGACY PROFILES)  ***************/
 
 func RunHttpsServerOptimized(
 	ctx context.Context,
@@ -239,7 +257,7 @@ func RunHttpsServerOptimized(
 		srv := &http.Server{
 			Addr:              redirectAddr,
 			Handler:           h,
-			ReadHeaderTimeout: 30 * time.Second,
+			ReadHeaderTimeout: 5 * time.Second,
 		}
 
 		log.Printf("Starting HTTP→HTTPS redirect on http://%s/", redirectAddr)
@@ -257,46 +275,39 @@ func RunHttpsServerOptimized(
 		}
 	}()
 
-	// GC/Memory — по желанию, оставим как было
-	debug.SetGCPercent(10)
-	debug.SetMemoryLimit(256 * 1024 * 1024)
+	// Стабильные настройки GC (избегаем лишних пауз во время хендшейков)
+	debug.SetGCPercent(50)
+	debug.SetMemoryLimit(0)
 	runtime.GOMAXPROCS(runtime.NumCPU())
 
-	// systemd socket activation (если есть)
-	if listeners, err := activation.Listeners(); err == nil && len(listeners) > 0 {
-		log.Println("Using systemd socket activation (will wrap in TLS below)")
-	}
-
-	// 1) Грузим ОТДЕЛЬНО два fullchain-серта (leaf+intermediate)
-	ecdsaPair, err := tls.LoadX509KeyPair(ecdsaCertFile, ecdsaKeyFile) // должен быть fullchain
+	// Загружаем ОБА fullchain сертификата
+	ecdsaPair, err := tls.LoadX509KeyPair(ecdsaCertFile, ecdsaKeyFile)
 	if err != nil {
 		log.Fatalf("Failed to load ECDSA certificate: %v", err)
 	}
-	rsaPair, err := tls.LoadX509KeyPair(rsaCertFile, rsaKeyFile) // должен быть fullchain
+	rsaPair, err := tls.LoadX509KeyPair(rsaCertFile, rsaKeyFile)
 	if err != nil {
 		log.Fatalf("Failed to load RSA certificate: %v", err)
 	}
 
-	// 2) Разбираем leaf/issuer и готовим «живые» копии
 	ecdsaServ := &servedCert{cert: ecdsaPair}
 	ecdsaServ.leaf, ecdsaServ.iss = loadFullchain(ecdsaPair)
-
 	rsaServ := &servedCert{cert: rsaPair}
 	rsaServ.leaf, rsaServ.iss = loadFullchain(rsaPair)
 
-	// 3) Обновление OCSP stapling вне хендшейка (уменьшает timeouts/EOF)
+	// Валидированный OCSP stapling — в фоне
 	go refreshOCSP(ctx, ecdsaServ, 12*time.Hour)
 	go refreshOCSP(ctx, rsaServ, 12*time.Hour)
 
-	// 4) Ротация session ticket key (для 0-RTT/резюмпшена TLS, снижает латентность)
-	sessionTicketKey := generateSessionTicketKey()
+	// Ticket key rotation (для резюмпшена)
+	ticketKey := generateSessionTicketKey()
 	go func() {
 		t := time.NewTicker(24 * time.Hour)
 		defer t.Stop()
 		for {
 			select {
 			case <-t.C:
-				sessionTicketKey = generateSessionTicketKey()
+				ticketKey = generateSessionTicketKey()
 				log.Println("Rotated TLS session ticket key")
 			case <-ctx.Done():
 				return
@@ -304,141 +315,131 @@ func RunHttpsServerOptimized(
 		}
 	}()
 
-	// 5) TLS-конфиг: только TLS1.2/1.3, современные шифры, ALPN h2+h1.1
-	tlsConfig := &tls.Config{
-		MinVersion: tls.VersionTLS12,
-		MaxVersion: tls.VersionTLS13,
+	// Базовый профиль: TLS1.2/1.3, современные шифры, h2+h1.1
+	baseGetCert := func(hello *tls.ClientHelloInfo) (*tls.Certificate, error) {
+		ecdsaServ.mu.RLock()
+		ecdsa := ecdsaServ.cert
+		ecdsaServ.mu.RUnlock()
+		rsaServ.mu.RLock()
+		rsa := rsaServ.cert
+		rsaServ.mu.RUnlock()
+		return selectCertificateRSAFirst(hello, &ecdsa, &rsa), nil
+	}
 
-		// Современные кривые с максимальной совместимостью
-		CurvePreferences: []tls.CurveID{
-			tls.X25519, tls.CurveP256,
-		},
-
-		// Набор шифров без CBC/3DES (они не помогают совместимости, но ухудшают безопасность)
+	baseCfg := &tls.Config{
+		MinVersion:       tls.VersionTLS12,
+		MaxVersion:       tls.VersionTLS13,
+		CurvePreferences: []tls.CurveID{tls.X25519, tls.CurveP256},
 		CipherSuites: []uint16{
+			// RSA
 			tls.TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256,
 			tls.TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384,
 			tls.TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305,
-
+			// ECDSA
 			tls.TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256,
 			tls.TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384,
 			tls.TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305,
 		},
-
-		// Сертификаты будут отдаваться через GetCertificate (ниже), чтобы выбрать RSA/ECDSA
-		// Certificates здесь можно не указывать либо указать как fallback
-		// Certificates: []tls.Certificate{rsaPair, ecdsaPair},
-
-		NextProtos: []string{"h2", "http/1.1"},
-
-		// Резюмпшен: включены session tickets, ключ — наш
-		SessionTicketsDisabled: false,
-		SessionTicketKey:       sessionTicketKey,
-
-		// Порядок шифров сервера применим только к TLS1.2 (для 1.3 игнорируется)
-		PreferServerCipherSuites: true,
-
-		// Выбор сертификата: RSA-first
-		GetCertificate: func(hello *tls.ClientHelloInfo) (*tls.Certificate, error) {
-			ecdsaServ.mu.RLock()
-			ecdsa := ecdsaServ.cert
-			ecdsaServ.mu.RUnlock()
-
-			rsaServ.mu.RLock()
-			rsa := rsaServ.cert
-			rsaServ.mu.RUnlock()
-
-			return selectCertificateRSAFirst(hello, &ecdsa, &rsa), nil
-		},
+		NextProtos:               []string{"h2", "http/1.1"},
+		SessionTicketsDisabled:   false,
+		SessionTicketKey:         ticketKey,
+		PreferServerCipherSuites: true,                       // влияет только на TLS1.2
+		Certificates:             []tls.Certificate{rsaPair}, // fallback, если GetCertificate не сработает
+		GetCertificate:           baseGetCert,
 	}
 
-	httpServerAddr := fmt.Sprintf("%s:%d", host, port)
+	// Legacy-профиль: включаем TLS1.0/1.1 + CBC/3DES, только http/1.1
+	legacyCfg := baseCfg.Clone()
+	legacyCfg.MinVersion = tls.VersionTLS10
+	legacyCfg.CipherSuites = append(legacyCfg.CipherSuites,
+		tls.TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA,
+		tls.TLS_ECDHE_RSA_WITH_AES_256_CBC_SHA,
+		tls.TLS_RSA_WITH_AES_128_CBC_SHA,
+		tls.TLS_RSA_WITH_AES_256_CBC_SHA,
+		tls.TLS_RSA_WITH_3DES_EDE_CBC_SHA, // последний шанс для очень старых клиентов
+	)
+	legacyCfg.NextProtos = []string{"http/1.1"} // HTTP/2 требует TLS1.2+
 
-	// 6) Оптимизированный net.Listen с аккуратными сокет-опциями
+	// Автовыбор профиля: если клиент "пахнет" старым — отдаём legacy, иначе базовый
+	baseCfg.GetConfigForClient = func(hello *tls.ClientHelloInfo) (*tls.Config, error) {
+		if needLegacyTLS(hello) {
+			return legacyCfg, nil
+		}
+		return nil, nil // остаёмся на baseCfg
+	}
+
+	addr := fmt.Sprintf("%s:%d", host, port)
+
+	// Минимально-инвазивные сокет-настройки (без TFO и экзотики)
 	lc := net.ListenConfig{
 		Control: func(network, address string, c syscall.RawConn) error {
 			return c.Control(func(fd uintptr) {
-				// Буферы (512KB)
-				_ = syscall.SetsockoptInt(int(fd), syscall.SOL_SOCKET, syscall.SO_RCVBUF, 512*1024)
-				_ = syscall.SetsockoptInt(int(fd), syscall.SOL_SOCKET, syscall.SO_SNDBUF, 512*1024)
-				// Reuse addr
 				_ = syscall.SetsockoptInt(int(fd), syscall.SOL_SOCKET, syscall.SO_REUSEADDR, 1)
-				// Nagle off
-				_ = syscall.SetsockoptInt(int(fd), syscall.SOL_TCP, syscall.TCP_NODELAY, 1)
-				// Keepalive
 				_ = syscall.SetsockoptInt(int(fd), syscall.SOL_SOCKET, syscall.SO_KEEPALIVE, 1)
 				_ = syscall.SetsockoptInt(int(fd), syscall.SOL_TCP, syscall.TCP_KEEPIDLE, 30)
 				_ = syscall.SetsockoptInt(int(fd), syscall.SOL_TCP, syscall.TCP_KEEPINTVL, 10)
 				_ = syscall.SetsockoptInt(int(fd), syscall.SOL_TCP, syscall.TCP_KEEPCNT, 6)
-				// TCP Fast Open (сервер): TCP_FASTOPEN = 23 (0x17) — значение зависит от ядра
-				_ = syscall.SetsockoptInt(int(fd), syscall.SOL_TCP, 0x17, 1)
-				// ВАЖНО: SO_ACCEPTCONN/TCP_MAXSEG руками не настраиваем — убрано.
+				_ = syscall.SetsockoptInt(int(fd), syscall.SOL_TCP, syscall.TCP_NODELAY, 1)
+				// TFO отключён: часто даёт редкие EOF из-за middlebox’ов
 			})
 		},
 	}
 
 	errorLog := log.New(os.Stderr, "HTTP: ", log.LstdFlags)
-	server := &http.Server{
-		Addr:    httpServerAddr,
-		Handler: router,
-
-		// Важные таймауты (с запасом для медленного TLS/мобилок)
-		ReadHeaderTimeout: 30 * time.Second,
+	srv := &http.Server{
+		Addr:              addr,
+		Handler:           router,
+		ReadHeaderTimeout: 10 * time.Second,
 		ReadTimeout:       45 * time.Second,
 		WriteTimeout:      45 * time.Second,
 		IdleTimeout:       300 * time.Second,
-
-		MaxHeaderBytes: 1 << 20, // 1MB
-		TLSConfig:      tlsConfig,
-		ErrorLog:       errorLog,
+		MaxHeaderBytes:    1 << 20,
+		TLSConfig:         baseCfg, // legacy будет выбран через GetConfigForClient
+		ErrorLog:          errorLog,
 	}
 
-	errChan := make(chan error, 1)
+	errCh := make(chan error, 1)
 	go func() {
 		stop := make(chan os.Signal, 1)
 		signal.Notify(stop, os.Interrupt, syscall.SIGTERM)
 		select {
 		case <-stop:
 			log.Println("Shutting down gracefully...")
-			shutdownCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+			ctxSh, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 			defer cancel()
-			if err := server.Shutdown(shutdownCtx); err != nil {
-				log.Printf("Graceful shutdown failed: %v", err)
-			}
-		case err := <-errChan:
+			_ = srv.Shutdown(ctxSh)
+		case err := <-errCh:
 			log.Printf("Server error: %v", err)
 		case <-ctx.Done():
-			_ = server.Shutdown(context.Background())
+			_ = srv.Shutdown(context.Background())
 		}
 	}()
 
-	log.Printf("Starting optimized HTTPS server on https://%s/", httpServerAddr)
-	log.Printf("TLS features: RSA-first + ECDSA, TLS1.2/1.3, OCSP stapling (async), HTTP/2, TFO")
+	log.Printf("HTTPS listening on https://%s/ | base TLS1.2/1.3 + legacy TLS1.0/1.1 (auto), RSA-first, OCSP(valid)", addr)
 
-	// systemd socket activation
+	// systemd socket activation (если юзается)
 	if listeners, err := activation.Listeners(); err == nil && len(listeners) > 0 {
 		log.Println("Using systemd socket activation")
-		tlsListener := tls.NewListener(listeners[0], server.TLSConfig)
-		if err := server.Serve(tlsListener); err != nil && !errors.Is(err, http.ErrServerClosed) {
-			errChan <- err
+		tlsL := tls.NewListener(listeners[0], srv.TLSConfig)
+		if err := srv.Serve(tlsL); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			errCh <- err
 		}
 		return
 	}
 
-	ln, err := lc.Listen(ctx, "tcp", httpServerAddr)
+	ln, err := lc.Listen(ctx, "tcp", addr)
 	if err != nil {
-		log.Fatalf("Failed to create optimized listener: %v", err)
+		log.Fatalf("Failed to listen: %v", err)
 	}
 	defer ln.Close()
 
-	tlsListener := tls.NewListener(ln, server.TLSConfig)
-	if err := server.Serve(tlsListener); err != nil && !errors.Is(err, http.ErrServerClosed) {
+	tlsLn := tls.NewListener(ln, srv.TLSConfig)
+	if err := srv.Serve(tlsLn); err != nil && !errors.Is(err, http.ErrServerClosed) {
 		select {
-		case errChan <- err:
+		case errCh <- err:
 		default:
-			log.Fatalf("Can't start optimized HTTPS server: %v", err)
+			log.Fatalf("Can't start HTTPS server: %v", err)
 		}
 	}
-
 	log.Println("Server stopped")
 }
