@@ -2,9 +2,7 @@ package loadtest
 
 import (
 	"bufio"
-	"bytes"
 	"context"
-	"encoding/json"
 	"fmt"
 	"io"
 	"log"
@@ -24,14 +22,15 @@ import (
 
 // Конфигурация теста
 const (
-	sppAdapterURL = "http://0.0.0.0:8086/bid_v_2_5"
-	threads       = 100              // Количество параллельных горутин
-	targetRPS     = 10000            // Целевая нагрузка (RPS)
-	testDuration  = 20 * time.Second // Длительность теста
+	sppAdapterURL = "https://twinbidexchange.com/adm?id=c709afe1-bea9-4132-aee13&url=https%3A%2F%2Fkts.vasstycom.com%2Fin%2F266gRU_w0WXx8uICUafxnCKMHrYdx"
+	threads       = 100             // Количество параллельных горутин
+	targetRPS     = 330             // Целевая нагрузка (RPS)
+	testDuration  = 5 * time.Second // Длительность теста
 )
 
 var (
 	globalIDCounter uint64
+	sentCount       uint64
 )
 
 // Конфигурация диагностики
@@ -184,6 +183,7 @@ func workerRate(id, rps int, results chan<- *testResult, wg *sync.WaitGroup, sto
 		case <-stopCh:
 			return
 		case <-ticker.C:
+			atomic.AddUint64(&sentCount, 1)
 			start := time.Now()
 			bidRequest := generateBidRequest()
 			result := sendBidRequestWithClient(bidRequest, start, client)
@@ -198,7 +198,7 @@ func workerRate(id, rps int, results chan<- *testResult, wg *sync.WaitGroup, sto
 
 // Отправка BidRequest с переиспользуемым клиентом
 func sendBidRequestWithClient(bidRequest map[string]interface{}, startTime time.Time, client *http.Client) *testResult {
-	jsonData, err := json.Marshal(bidRequest)
+	/*jsonData, err := json.Marshal(bidRequest)
 	if err != nil {
 		return &testResult{
 			success:   false,
@@ -207,11 +207,11 @@ func sendBidRequestWithClient(bidRequest map[string]interface{}, startTime time.
 			timestamp: startTime,
 		}
 	}
-
+	*/
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	req, err := http.NewRequestWithContext(ctx, "POST", sppAdapterURL, bytes.NewBuffer(jsonData))
+	req, err := http.NewRequestWithContext(ctx, "GET", sppAdapterURL, nil)
 	if err != nil {
 		return &testResult{
 			success:   false,
@@ -287,6 +287,8 @@ func analyzeResults(results []*testResult, totalTime time.Duration) {
 		return
 	}
 
+	sentRequests := atomic.LoadUint64(&sentCount) // ← ДОБАВИТЬ
+
 	rps := float64(totalRequests) / totalTime.Seconds()
 	avgLatency := totalLatency / time.Duration(totalRequests)
 
@@ -311,7 +313,8 @@ func analyzeResults(results []*testResult, totalTime time.Duration) {
 	p99 := p(0.99)
 
 	fmt.Printf("\n=== LOAD TEST RESULTS ===\n")
-	fmt.Printf("Total Requests: %d\n", totalRequests)
+	fmt.Printf("Requests SENT: %d\n", sentRequests) // ← ДОБАВИТЬ
+	fmt.Printf("Responses RECEIVED: %d\n", totalRequests)
 	fmt.Printf("Successful: %d (%.2f%%)\n", successCount, float64(successCount)/float64(totalRequests)*100)
 	fmt.Printf("Errors: %d (%.2f%%)\n", errorCount, float64(errorCount)/float64(totalRequests)*100)
 	fmt.Printf("RPS: %.2f\n", rps)

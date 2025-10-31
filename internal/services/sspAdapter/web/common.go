@@ -8,6 +8,8 @@ import (
 
 	"github.com/ggicci/httpin"
 	"github.com/redis/go-redis/v9"
+	"gitlab.com/twinbid-exchange/RTB-exchange/internal/constants"
+	utils "gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/utils_grpc"
 )
 
 func getAdm(
@@ -18,22 +20,22 @@ func getAdm(
 ) {
 	input := r.Context().Value(httpin.Input).(*admNurlRequest)
 
-	_, err := url.QueryUnescape(input.DspURL)
+	decodedURL, err := url.QueryUnescape(input.DspURL)
 	if err != nil {
 		log.Printf("in getAdm Failed to decode original URL: %v", err)
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
-	/*
-		if err := utils.WriteStringToRedis(ctx, redisClient, input.GlobalId, constants.ADM_COLUMN, constants.TRUE); err != nil {
-			log.Printf("failed to WriteStringToRedis ADM in getAdm: %w", err)
-		}
 
-		if err := utils.WriteStringToRedis(ctx, redisClient, input.GlobalId, constants.ADM_IP_COLUMN, r.RemoteAddr); err != nil {
-			log.Printf("failed to WriteStringToRedis ADM_IP in getAdm: %w", err)
-		}*/
+	if err := utils.WriteStringToRedis(ctx, redisClient, input.GlobalId, constants.ADM_COLUMN, constants.TRUE); err != nil {
+		log.Printf("failed to WriteStringToRedis ADM in getAdm: %w", err)
+	}
 
-	//http.Redirect(w, r, decodedURL, http.StatusFound)
+	if err := utils.WriteStringToRedis(ctx, redisClient, input.GlobalId, constants.ADM_IP_COLUMN, r.RemoteAddr); err != nil {
+		log.Printf("failed to WriteStringToRedis ADM_IP in getAdm: %w", err)
+	}
+
+	http.Redirect(w, r, decodedURL, http.StatusFound)
 }
 
 func getNurl(
