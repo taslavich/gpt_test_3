@@ -5,7 +5,6 @@ import (
 	"log"
 	"net/http"
 	"net/url"
-	"time"
 
 	"github.com/ggicci/httpin"
 	"github.com/redis/go-redis/v9"
@@ -18,9 +17,15 @@ func getAdm(
 	w http.ResponseWriter,
 	r *http.Request,
 	redisClient *redis.Client,
-	timeout time.Duration,
 ) {
 	input := r.Context().Value(httpin.Input).(*admNurlRequest)
+
+	decodedURL, err := url.QueryUnescape(input.DspURL)
+	if err != nil {
+		log.Printf("in getAdm Failed to decode original URL: %v", err)
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
 
 	if err := utils.WriteStringToRedis(ctx, redisClient, input.GlobalId, constants.ADM_COLUMN, constants.TRUE); err != nil {
 		log.Printf("failed to WriteStringToRedis ADM in getAdm: %w", err)
@@ -30,16 +35,7 @@ func getAdm(
 		log.Printf("failed to WriteStringToRedis ADM_IP in getAdm: %w", err)
 	}
 
-	_, err := url.QueryUnescape(input.DspURL)
-	if err != nil {
-		log.Printf("in getAdm Failed to decode original URL: %v", err)
-		w.WriteHeader(http.StatusBadRequest)
-		return
-	}
-
-	w.WriteHeader(http.StatusResetContent)
-
-	//http.Redirect(w, r, decodedURL, http.StatusFound)
+	http.Redirect(w, r, decodedURL, http.StatusFound)
 }
 
 func getNurl(
