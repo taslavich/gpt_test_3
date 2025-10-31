@@ -72,11 +72,11 @@ func InitHttpsRoutes(
 	nurlTimeout time.Duration,
 ) {
 	integration.UseGochiURLParam("path", chi.URLParam)
-
-	httpRouter.With(
+	/*With(
 		httpin.NewInput(admNurlRequest{}),
-	).Get(GetAdmUrl, func(w http.ResponseWriter, r *http.Request) {
-		getAdm(ctx, w, r, redisClient)
+	)*/
+	httpRouter.Get(GetAdmUrl, func(w http.ResponseWriter, r *http.Request) {
+		getAdm(w, r)
 	})
 
 	httpRouter.With(
