@@ -6,8 +6,8 @@ PROJECT_DIR="/root/RTB/gpt_test_3"
 INFRA_SERVICES=(
     "rtb-redis"
     "rtb-kafka" 
-    "rtb-nginx"
 )
+//"rtb-nginx"
 
 # Основные RTB сервисы
 CORE_SERVICES=(
@@ -98,11 +98,11 @@ wait_for_infra() {
     fi
     
     # Ждем Nginx
-    while ! curl -s http://localhost >/dev/null; do
-        echo "Waiting for Nginx..."
-        sleep 2
-    done
-    echo "✅ Nginx is ready"
+    #while ! curl -s http://localhost >/dev/null; do
+    #    echo "Waiting for Nginx..."
+    #    sleep 2
+    #done
+   # echo "✅ Nginx is ready"
 }
 
 case "$1" in
@@ -204,7 +204,7 @@ case "$1" in
         case "$service" in
             redis-server) log_file="redis.log" ;;
             kafka-server) log_file="kafka.log" ;;
-            nginx) log_file="nginx.log" ;;
+            #nginx) log_file="nginx.log" ;;
             *) log_file="${service#rtb-}.log" ;;
         esac
         
@@ -222,7 +222,7 @@ case "$1" in
         case "$service" in
             redis-server) error_file="redis.error.log" ;;
             kafka-server) error_file="kafka.error.log" ;;
-            nginx) error_file="nginx.error.log" ;;
+            #nginx) error_file="nginx.error.log" ;;
             *) error_file="${service#rtb-}.error.log" ;;
         esac
         
@@ -364,11 +364,11 @@ case "$1" in
         fi
         
         # Test Nginx
-        if curl -s http://localhost >/dev/null; then
-            echo "✅ Nginx: OK"
-        else
-            echo "❌ Nginx: FAILED"
-        fi
+        #if curl -s http://localhost >/dev/null; then
+        #    echo "✅ Nginx: OK"
+        #else
+         #   echo "❌ Nginx: FAILED"
+       # fi
         ;;
     *)
         echo "Usage: $0 {start|start-infra|start-core|start-mocks|stop|stop-infra|stop-core|stop-mocks|restart|restart-core|status|status-infra|status-core|status-mocks|logs|errors|enable|enable-infra|enable-core|enable-mocks|disable|build|update|deploy|test-infra}"
