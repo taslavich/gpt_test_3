@@ -76,7 +76,7 @@ func InitHttpsRoutes(
 	httpRouter.With(
 		httpin.NewInput(admNurlRequest{}),
 	).Get(GetAdmUrl, func(w http.ResponseWriter, r *http.Request) {
-		getAdm(ctx, w, r, redisClient, admTimeout)
+		getAdm(ctx, w, r, redisClient)
 	})
 
 	httpRouter.With(
