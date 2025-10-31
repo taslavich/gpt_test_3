@@ -72,7 +72,7 @@ func InitHttpRouter() *chi.Mux {
 	httpRouter.Use(middleware.Timeout(60 * time.Second))
 	httpRouter.Mount("/debug", middleware.Profiler())
 
-	httpRouter.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {})
+	httpRouter.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusNoContent) })
 
 	return httpRouter
 }
@@ -108,5 +108,39 @@ func RunHttpServer(ctx context.Context, router *chi.Mux, host string, port uint1
 	if err := httpServer.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 		errChan <- err
 		log.Fatalf("Can't start server: %v", err)
+	}
+}
+
+func RunHttpsServer(ctx context.Context, router *chi.Mux, host string, port uint16, certFile, keyFile string) {
+	httpServerAddr := fmt.Sprintf("%s:%d", host, port)
+	httpServer := &http.Server{
+		Addr:         httpServerAddr,
+		Handler:      router,
+		ReadTimeout:  5 * time.Second,
+		WriteTimeout: 10 * time.Second,
+		IdleTimeout:  120 * time.Second,
+
+		// Увеличить лимиты соединений
+		MaxHeaderBytes: 1 << 20, // 1 MB
+	}
+
+	errChan := make(chan error)
+	go func() {
+		stop := make(chan os.Signal, 1)
+		signal.Notify(stop, os.Interrupt, syscall.SIGTERM)
+
+		select {
+		case <-stop:
+			log.Println("Shutting down gracefully...")
+			httpServer.Shutdown(ctx)
+		case err := <-errChan:
+			log.Fatalf("Server crashed: %v", err)
+		}
+	}()
+
+	log.Printf("Start listening to https://%s/", httpServerAddr)
+	if err := httpServer.ListenAndServeTLS(certFile, keyFile); err != nil && !errors.Is(err, http.ErrServerClosed) {
+		errChan <- err
+		log.Fatalf("Can't start HTTPS server: %v", err)
 	}
 }

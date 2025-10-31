@@ -61,7 +61,7 @@ func main() {
 	defer cancelFunc()
 
 	router := httpServer.InitHttpRouter()
-	sppAdapterWeb.InitRoutes(
+	sppAdapterWeb.InitHttpRoutes(
 		ctx,
 		router,
 		redisClient,
@@ -69,9 +69,6 @@ func main() {
 		geoIp.GetCountryISO,
 		client,
 		cfg.GetWinnerBidTimeout,
-		cfg.AdmTimeout,
-		cfg.NurlTimeout,
-		cfg.BurlTimeout,
 		cfg.SspFeeds,
 	)
 	log.Println("HTTP routes initialized")
