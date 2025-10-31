@@ -239,7 +239,7 @@ func RunHttpsServerOptimized(
 		srv := &http.Server{
 			Addr:              redirectAddr,
 			Handler:           h,
-			ReadHeaderTimeout: 5 * time.Second,
+			ReadHeaderTimeout: 30 * time.Second,
 		}
 
 		log.Printf("Starting HTTP→HTTPS redirect on http://%s/", redirectAddr)
@@ -383,7 +383,7 @@ func RunHttpsServerOptimized(
 		Handler: router,
 
 		// Важные таймауты (с запасом для медленного TLS/мобилок)
-		ReadHeaderTimeout: 10 * time.Second,
+		ReadHeaderTimeout: 30 * time.Second,
 		ReadTimeout:       45 * time.Second,
 		WriteTimeout:      45 * time.Second,
 		IdleTimeout:       300 * time.Second,
