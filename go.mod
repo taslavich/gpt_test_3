@@ -65,6 +65,7 @@ require (
 
 require (
 	github.com/ClickHouse/clickhouse-go/v2 v2.40.3
+	github.com/coreos/go-systemd v0.0.0-20191104093116-d3cd4ed1dbcf
 	github.com/fsnotify/fsnotify v1.9.0 // indirect
 	github.com/ggicci/owl v0.7.0 // indirect
 	github.com/google/uuid v1.6.0
