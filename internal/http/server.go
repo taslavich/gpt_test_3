@@ -227,9 +227,6 @@ func RunHttpsServerOptimized(
 
 		// 4. Умный выбор сертификата с OCSP Stapling
 		GetCertificate: func(hello *tls.ClientHelloInfo) (*tls.Certificate, error) {
-			// ДОБАВЛЕНО: Детальное логирование для диагностики
-			logTLSDetails(hello)
-
 			cert := selectCertificate(hello, &ecdsaCert, &rsaCert)
 
 			// Асинхронное обновление OCSP
@@ -328,7 +325,6 @@ func RunHttpsServerOptimized(
 
 		// ДОБАВЛЕНО: ConnContext для мониторинга
 		ConnContext: func(ctx context.Context, c net.Conn) context.Context {
-			log.Printf("New connection from %s", c.RemoteAddr())
 			return ctx
 		},
 	}
@@ -390,15 +386,6 @@ func RunHttpsServerOptimized(
 	log.Println("Server stopped")
 }
 
-// ДОБАВЛЕНО: Функция для детального логирования TLS
-func logTLSDetails(hello *tls.ClientHelloInfo) {
-	log.Printf("TLS Client: %s, SNI: %s, Versions: %v, Ciphers: %d",
-		hello.Conn.RemoteAddr(),
-		hello.ServerName,
-		hello.SupportedVersions,
-		len(hello.CipherSuites))
-}
-
 // ДОБАВЛЕНО: OCSP с контекстом
 func getOCSPStapleWithContext(ctx context.Context, cert *x509.Certificate) ([]byte, error) {
 	if len(cert.OCSPServer) == 0 {
@@ -438,10 +425,6 @@ func generateSessionTicketKey() [32]byte {
 
 // Функция выбора сертификата
 func selectCertificate(hello *tls.ClientHelloInfo, ecdsaCert, rsaCert *tls.Certificate) *tls.Certificate {
-	// Логируем попытку соединения (для дебага)
-	log.Printf("TLS connection attempt from %s, SNI: %s, Ciphers: %d",
-		hello.Conn.RemoteAddr(), hello.ServerName, len(hello.CipherSuites))
-
 	// Если клиент явно поддерживает ECDSA - отдаем ECDSA
 	for _, suite := range hello.CipherSuites {
 		if suite == tls.TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256 ||
