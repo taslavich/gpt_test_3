@@ -7,7 +7,7 @@ INFRA_SERVICES=(
     "rtb-redis"
     "rtb-kafka" 
 )
-//"rtb-nginx"
+#"rtb-nginx"
 
 # Основные RTB сервисы
 CORE_SERVICES=(
