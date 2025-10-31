@@ -126,14 +126,14 @@ func GetWinnerBidInternal_V_2_5(
 			continue
 		}
 
-		wrappedAdm := utils.WrapURL(hostname, winningBid.GetAdm(), globalId, utils.ADM)
+		//wrappedAdm := utils.WrapURL(hostname, winningBid.GetAdm(), globalId, utils.ADM)
 		wrappedNurl := utils.WrapURL(hostname, winningBid.GetNurl(), globalId, utils.NURL)
 
 		finalBid := &ortb_V2_5.Bid{
 			Id:    winningBid.Id,
 			Impid: winningBid.Impid,
 			Price: &finalPrice,
-			Adm:   &wrappedAdm,
+			Adm:   winningBid.Adm,
 			Adid:  winningBid.Adid,
 			Nurl:  &wrappedNurl,
 		}
