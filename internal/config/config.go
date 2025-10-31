@@ -94,10 +94,12 @@ type SppAdapterConfig struct {
 
 type AdmAdapterConfig struct {
 	HttpServer
-	AdmTimeout  time.Duration `yaml:"ADM_TIMEOUT" env:"ADM_TIMEOUT"`
-	NurlTimeout time.Duration `yaml:"NURL_TIMEOUT" env:"NURL_TIMEOUT"`
-	FullChain   string        `yaml:"FULLCHAIN_PEM" env:"FULLCHAIN_PEM"`
-	PrivKey     string        `yaml:"PRIVKEY_PEM" env:"PRIVKEY_PEM"`
+	AdmTimeout   time.Duration `yaml:"ADM_TIMEOUT" env:"ADM_TIMEOUT"`
+	NurlTimeout  time.Duration `yaml:"NURL_TIMEOUT" env:"NURL_TIMEOUT"`
+	FullChain    string        `yaml:"FULLCHAIN_PEM" env:"FULLCHAIN_PEM"`
+	PrivKey      string        `yaml:"PRIVKEY_PEM" env:"PRIVKEY_PEM"`
+	RsaFullChain string        `yaml:"RSA_FULLCHAIN_PEM" env:"RSA_FULLCHAIN_PEM"`
+	RsaPrivKey   string        `yaml:"RSA_PRIVKEY_PEM" env:"RSA_PRIVKEY_PEM"`
 
 	RedisConfig
 }

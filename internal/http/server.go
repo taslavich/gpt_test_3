@@ -89,6 +89,40 @@ func InitHttpRouter() *chi.Mux {
 	return httpRouter
 }
 
+func RunHttpServer(ctx context.Context, router *chi.Mux, host string, port uint16) {
+	httpServerAddr := fmt.Sprintf("%s:%d", host, port)
+	httpServer := &http.Server{
+		Addr:         httpServerAddr,
+		Handler:      router,
+		ReadTimeout:  5 * time.Second,
+		WriteTimeout: 10 * time.Second,
+		IdleTimeout:  120 * time.Second,
+
+		// Увеличить лимиты соединений
+		MaxHeaderBytes: 1 << 20, // 1 MB
+	}
+
+	errChan := make(chan error)
+	go func() {
+		stop := make(chan os.Signal, 1)
+		signal.Notify(stop, os.Interrupt, syscall.SIGTERM)
+
+		select {
+		case <-stop:
+			log.Println("Shutting down gracefully...")
+			httpServer.Shutdown(ctx)
+		case err := <-errChan:
+			log.Fatalf("Server crashed: %v", err)
+		}
+	}()
+
+	log.Printf("Start listening to http://%s/", httpServerAddr)
+	if err := httpServer.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+		errChan <- err
+		log.Fatalf("Can't start server: %v", err)
+	}
+}
+
 func RunHttpsServerOptimized(
 	ctx context.Context,
 	router *chi.Mux,

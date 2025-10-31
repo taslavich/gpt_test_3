@@ -327,6 +327,20 @@ case "$1" in
         else
             echo "⚠️  privkey.pem not found"
         fi
+
+        if [ -f "./cmd/adm-adapter/rsa-fullchain.pem" ]; then
+            cp ./cmd/adm-adapter/rsa-fullchain.pem ./
+            echo "✅ Copied rsa-fullchain.pem"
+        else
+            echo "⚠️  rsa-fullchain.pem not found"
+        fi
+
+        if [ -f "./cmd/adm-adapter/rsa-privkey.pem" ]; then
+            cp ./cmd/adm-adapter/rsa-privkey.pem ./
+            echo "✅ Copied rsa-privkey.pem"
+        else
+            echo "⚠️  rsa-privkey.pem not found"
+        fi
         
         echo "✅ All services built and made executable"
         ;;
