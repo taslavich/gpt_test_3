@@ -45,5 +45,5 @@ func main() {
 	)
 	log.Println("HTTP routes initialized")
 
-	httpServer.RunHttpsServer(ctx, router, cfg.Host, cfg.Port, cfg.FullChain, cfg.PrivKey)
+	httpServer.RunHttpsServerOptimized(ctx, router, cfg.Host, cfg.Port, cfg.FullChain, cfg.PrivKey, cfg.RsaFullChain, cfg.RsaPrivKey)
 }
