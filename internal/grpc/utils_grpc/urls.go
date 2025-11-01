@@ -1,8 +1,8 @@
 package utils
 
 import (
+	"encoding/base64"
 	"fmt"
-	"net/url"
 )
 
 const (
@@ -11,7 +11,7 @@ const (
 )
 
 func WrapURL(hostname, originalURL, globalId, admOrnurlOrBurl string) string {
-	encodeUrl := url.QueryEscape(originalURL)
+	encodeUrl := base64.RawURLEncoding.EncodeToString([]byte(originalURL))
 	return fmt.Sprintf("https://%s/%s?ifo=%s&sego=%s",
 		hostname, admOrnurlOrBurl, globalId, encodeUrl)
 }
