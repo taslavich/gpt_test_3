@@ -2,7 +2,6 @@ package sppAdapterWeb
 
 import (
 	"context"
-	"encoding/base64"
 	"log"
 	"net/http"
 	"net/url"
@@ -21,17 +20,9 @@ func getAdm(
 ) {
 	input := r.Context().Value(httpin.Input).(*admNurlRequest)
 
-	decodedURL, err := base64.RawURLEncoding.DecodeString(input.DspURL)
+	decodedURL, err := url.QueryUnescape(input.DspURL)
 	if err != nil {
 		log.Printf("in getAdm Failed to decode original URL: %v", err)
-		w.WriteHeader(http.StatusBadRequest)
-		return
-	}
-
-	endpoint := string(decodedURL)
-
-	if _, err := url.ParseRequestURI(endpoint); err != nil {
-		log.Printf("in getAdm Invalid redirect URL: --%s-- , %v", endpoint, err)
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
@@ -44,11 +35,7 @@ func getAdm(
 		log.Printf("failed to WriteStringToRedis ADM_IP in getAdm: %w", err)
 	}
 
-	// Так надежнее - покрываем все возможные случаи
-	w.Header().Set("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0")
-	w.Header().Set("Pragma", "no-cache")
-	w.Header().Set("Expires", "0")
-	http.Redirect(w, r, endpoint, http.StatusTemporaryRedirect)
+	http.Redirect(w, r, decodedURL, http.StatusFound)
 }
 
 func getNurl(
