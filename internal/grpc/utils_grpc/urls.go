@@ -6,13 +6,12 @@ import (
 )
 
 const (
-	NURL = "nurl"
-	BURL = "burl"
-	ADM  = "adm"
+	NURL = "sun"
+	ADM  = "in"
 )
 
 func WrapURL(hostname, originalURL, globalId, admOrnurlOrBurl string) string {
 	encodeUrl := url.QueryEscape(originalURL)
-	return fmt.Sprintf("https://%s/%s?id=%s&url=%s",
+	return fmt.Sprintf("https://%s/%s?ifo=%s&sego=%s",
 		hostname, admOrnurlOrBurl, globalId, encodeUrl)
 }

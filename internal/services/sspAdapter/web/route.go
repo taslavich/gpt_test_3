@@ -23,10 +23,8 @@ var rnr = render.New(render.Options{
 const (
 	PostBid_V_2_5_URL = "/bid_v_2_5"
 
-	GetAdmUrl  = "/adm"
-	GetNurlUrl = "/nurl"
-
-	GetHealthUrl = "/health"
+	GetAdmUrl  = "/in"
+	GetNurlUrl = "/sun"
 )
 
 type postBidRequest_V2_5 struct {
@@ -41,8 +39,8 @@ type postBidResponse_V2_5 struct {
 }
 
 type admNurlRequest struct {
-	GlobalId string `in:"query=id" required:"true"`
-	DspURL   string `in:"query=url" required:"true"`
+	GlobalId string `in:"query=ifo" required:"true"`
+	DspURL   string `in:"query=sego" required:"true"`
 }
 
 func InitHttpRoutes(
