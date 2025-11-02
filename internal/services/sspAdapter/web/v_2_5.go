@@ -23,7 +23,7 @@ import (
 )
 
 func checkRegion(countryISO string) error {
-	allowed := []string{"RU", "US", "PL", "JP", "CN"}
+	allowed := []string{"RU", "US", "AR", "CN", "VN", "BD", "AZ", "IN", "ZA", "DE", "TH", "UA", "GB", "MY", "PK", "TR", "KZ", "UZ"}
 	for _, region := range allowed {
 		if countryISO == region {
 			return nil
