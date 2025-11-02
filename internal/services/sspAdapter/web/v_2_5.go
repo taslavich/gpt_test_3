@@ -124,18 +124,22 @@ func postBid_V2_5(
 		return
 	}
 
+	success := false
 	for i := range goodGeos {
-		if countryISO != goodGeos[i] {
-			err := fmt.Errorf(
-				"Bad CountryISO: %w",
-				err,
-			)
-			log.Print(err.Error(), r.Host)
-			http.Error(w, err.Error(), http.StatusBadRequest)
-			return
-		} else {
+		if countryISO == goodGeos[i] {
+			success = true
 			break
 		}
+	}
+
+	if !success {
+		err := fmt.Errorf(
+			"Bad CountryISO: %w",
+			err,
+		)
+		log.Print(err.Error(), r.Host)
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
 	}
 
 	globalId := uuid.New().String()
