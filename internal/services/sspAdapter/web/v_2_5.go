@@ -22,8 +22,15 @@ import (
 	"google.golang.org/grpc/status"
 )
 
-var goodGeos = []string{
-	"RU", "US", "PL", "JP", "CN",
+func checkRegion(countryISO string) error {
+	allowed := []string{"RU", "US", "PL", "JP"}
+	for _, region := range allowed {
+		if countryISO == region {
+			return nil
+		}
+	}
+
+	return fmt.Errorf("region %s not allowed", countryISO)
 }
 
 func postBid_V2_5(
@@ -124,21 +131,8 @@ func postBid_V2_5(
 		return
 	}
 
-	success := false
-	for i := range goodGeos {
-		if countryISO == goodGeos[i] {
-			success = true
-			break
-		}
-	}
-
-	if !success {
-		err := fmt.Errorf(
-			"Bad CountryISO: %w",
-			err,
-		)
-		log.Print(err.Error(), r.Host)
-		http.Error(w, err.Error(), http.StatusBadRequest)
+	if err := checkRegion(countryISO); err != nil {
+		http.Error(w, err.Error(), http.StatusForbidden)
 		return
 	}
 
