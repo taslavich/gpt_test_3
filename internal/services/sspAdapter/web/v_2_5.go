@@ -22,6 +22,10 @@ import (
 	"google.golang.org/grpc/status"
 )
 
+var goodGeos = []string{
+	"RU", "US", "PL", "JP", "CN",
+}
+
 func postBid_V2_5(
 	ctx context.Context,
 	w http.ResponseWriter,
@@ -118,6 +122,20 @@ func postBid_V2_5(
 		log.Print(err.Error(), r.Host)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
+	}
+
+	for i := range goodGeos {
+		if countryISO != goodGeos[i] {
+			err := fmt.Errorf(
+				"Bad CountryISO: %w",
+				err,
+			)
+			log.Print(err.Error(), r.Host)
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		} else {
+			break
+		}
 	}
 
 	globalId := uuid.New().String()
