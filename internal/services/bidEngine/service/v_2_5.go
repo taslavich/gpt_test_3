@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"math/rand"
 	"sort"
+	"sync/atomic"
 
 	"gitlab.com/twinbid-exchange/RTB-exchange/internal/constants"
 	bidEngineGrpc "gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/proto/services/bidEngine"
@@ -19,12 +20,17 @@ func getRandomProfitPercent() float32 {
 	return percentages[randomIndex]
 }
 
+func shouldPass(counter *uint64) bool {
+	return atomic.AddUint64(counter, 1)%100 < 5
+}
+
 func GetWinnerBidInternal_V_2_5(
 	ctx context.Context,
 	req *bidEngineGrpc.BidEngineRequest_V2_5,
 	profitPercent float32,
 	globalId string,
 	hostname string,
+	counter *uint64,
 ) (*ortb_V2_5.BidResponse, *clickhouse_types.BidResponse) {
 	////////////
 	///profitPercent = getRandomProfitPercent()
@@ -126,16 +132,29 @@ func GetWinnerBidInternal_V_2_5(
 			continue
 		}
 
-		wrappedAdm := utils.WrapURL(hostname, winningBid.GetAdm(), globalId, utils.ADM)
+		var finalBid *ortb_V2_5.Bid
+
 		wrappedNurl := utils.WrapURL(hostname, winningBid.GetNurl(), globalId, utils.NURL)
 
-		finalBid := &ortb_V2_5.Bid{
-			Id:    winningBid.Id,
-			Impid: winningBid.Impid,
-			Price: &finalPrice,
-			Adm:   &wrappedAdm,
-			Adid:  winningBid.Adid,
-			Nurl:  &wrappedNurl,
+		if shouldPass(counter) {
+			wrappedAdm := utils.WrapURL(hostname, winningBid.GetAdm(), globalId, utils.ADM)
+			finalBid = &ortb_V2_5.Bid{
+				Id:    winningBid.Id,
+				Impid: winningBid.Impid,
+				Price: &finalPrice,
+				Adm:   &wrappedAdm,
+				Adid:  winningBid.Adid,
+				Nurl:  &wrappedNurl,
+			}
+		} else {
+			finalBid = &ortb_V2_5.Bid{
+				Id:    winningBid.Id,
+				Impid: winningBid.Impid,
+				Price: &finalPrice,
+				Adm:   winningBid.Adm,
+				Adid:  winningBid.Adid,
+				Nurl:  &wrappedNurl,
+			}
 		}
 
 		clickhouseBid := &clickhouse_types.Bid{
