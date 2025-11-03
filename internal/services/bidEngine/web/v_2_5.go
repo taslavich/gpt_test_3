@@ -26,6 +26,7 @@ type Server struct {
 	redisClient   *redis.Client
 	timeout       time.Duration
 	hostname      string
+	counter       *uint64
 
 	GetWinnerBidInternal_V_2_5 func(
 		ctx context.Context,
@@ -33,6 +34,7 @@ type Server struct {
 		profitPercent float32,
 		globalId string,
 		hostname string,
+		counter *uint64,
 	) (*ortb_V2_5.BidResponse, *clickhouse_types.BidResponse)
 
 	pb.BidEngineServiceServer
@@ -48,13 +50,16 @@ func NewServer(
 		profitPercent float32,
 		globalId string,
 		hostname string,
+		counter *uint64,
 	) (*ortb_V2_5.BidResponse, *clickhouse_types.BidResponse),
 ) *Server {
+	var counter uint64 = 0
 	return &Server{
 		ProfitPercent:              ProfitPercent,
 		redisClient:                redisClient,
 		hostname:                   hostname,
 		GetWinnerBidInternal_V_2_5: GetWinnerBidInternal_V_2_5,
+		counter:                    &counter,
 	}
 }
 
@@ -82,6 +87,7 @@ func (s *Server) GetWinnerBid_V2_5(
 		s.ProfitPercent,
 		req.GlobalId,
 		s.hostname,
+		s.counter,
 	)
 
 	clickhouseData, err := json.Marshal(clickhouseBidResponse)
