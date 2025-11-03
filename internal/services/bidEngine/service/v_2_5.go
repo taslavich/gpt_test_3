@@ -122,6 +122,10 @@ func GetWinnerBidInternal_V_2_5(
 			}
 		}
 
+		if winningDomain == "http://ortbtwinbidexadlt.hilltopadsfeed.com/ask" {
+			profitPercent = 0.8
+		}
+
 		finalPrice, _, err := applyPriceConstraintsAndPercent(
 			winningBid.GetPrice(),
 			bidFloor,
