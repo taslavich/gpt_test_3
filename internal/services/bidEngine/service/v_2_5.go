@@ -126,10 +126,6 @@ func GetWinnerBidInternal_V_2_5(
 			profitPercent = 0.70
 		}
 
-		if winningDomain == "http://pop.zog.link/bid-request?token=h6dKfdh544FHD83" && req.SspDomain == "galaksion.com" {
-			profitPercent = 0.40
-		}
-
 		finalPrice, _, err := applyPriceConstraintsAndPercent(
 			winningBid.GetPrice(),
 			bidFloor,
