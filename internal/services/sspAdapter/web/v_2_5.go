@@ -131,10 +131,10 @@ func postBid_V2_5(
 		return
 	}
 
-	if err := checkRegion(countryISO); err != nil {
+	/*if err := checkRegion(countryISO); err != nil {
 		http.Error(w, err.Error(), http.StatusForbidden)
 		return
-	}
+	}*/
 
 	globalId := uuid.New().String()
 
