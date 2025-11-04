@@ -306,6 +306,13 @@ case "$1" in
         else
             echo "⚠️  spp_rules_v25.json not found"
         fi
+
+        if [ -f "./cmd/router/firehol_level1.netset" ]; then
+            cp ./cmd/router/firehol_level1.netset ./
+            echo "✅ Copied firehol_level1.netset"
+        else
+            echo "⚠️  firehol_level1.netset not found"
+        fi
         
         if [ -f "./cmd/spp-adapter/GeoIP2_City.mmdb" ]; then
             cp ./cmd/spp-adapter/GeoIP2_City.mmdb ./

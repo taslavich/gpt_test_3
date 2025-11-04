@@ -182,7 +182,7 @@ func (s *Server) GetBids_V2_5(
 			continue
 		}
 
-		if !s.processor.ProcessRequestForDSPV25(endpoint, req.BidRequest).Allowed { //|| !innerFilterMap[endpoint](req.BidRequest) {
+		if !s.processor.ProcessRequestForDSPV25(endpoint, req.BidRequest).Allowed { //&& !innerFilterMap[endpoint](req.BidRequest) {
 			//log.Println("Gor DSP filter")
 			codesCh <- &dspDomainCode{
 				endpoint: endpoint,
