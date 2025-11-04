@@ -90,19 +90,25 @@ func main() {
 	processor := filter.NewOptimizedFilterProcessor(ruleManager)
 
 	s := grpc.NewServer()
+	routerServer := dspRouterWeb.NewServer(
+		ruleManager,
+		fileLoader,
+		processor,
+		cfg.DSPEndpoints_v_2_4,
+		cfg.DSPEndpoints_v_2_5,
+		redisClient,
+		cfg.BidResponsesTimeout,
+		cfg.MaxParallelRequests,
+		cfg.SspNotDsp,
+	)
+
+	if err := routerServer.LoadNetset(cfg.AllowedIpDbPath); err != nil {
+		log.Fatalf("Failed to load netset: %v", err)
+	}
+
 	dspRouterGrpc.RegisterDspRouterServiceServer(
 		s,
-		dspRouterWeb.NewServer(
-			ruleManager,
-			fileLoader,
-			processor,
-			cfg.DSPEndpoints_v_2_4,
-			cfg.DSPEndpoints_v_2_5,
-			redisClient,
-			cfg.BidResponsesTimeout,
-			cfg.MaxParallelRequests,
-			cfg.SspNotDsp,
-		),
+		routerServer,
 	)
 
 	errChan := make(chan error)

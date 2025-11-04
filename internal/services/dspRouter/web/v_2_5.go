@@ -14,6 +14,7 @@ import (
 
 	jsoniter "github.com/json-iterator/go"
 	"github.com/redis/go-redis/v9"
+	"github.com/yl2chen/cidranger"
 	"gitlab.com/twinbid-exchange/RTB-exchange/internal/coder"
 	"gitlab.com/twinbid-exchange/RTB-exchange/internal/config"
 	"gitlab.com/twinbid-exchange/RTB-exchange/internal/constants"
@@ -41,6 +42,8 @@ type Server struct {
 	bufferPool sync.Pool
 
 	sspNotDsp config.MapStringToString
+
+	ranger cidranger.Ranger
 
 	dspRouterGrpc.UnimplementedDspRouterServiceServer
 }
@@ -103,6 +106,8 @@ func NewServer(
 		outboundLimit = 256
 	}
 
+	rang := cidranger.NewPCTrieRanger()
+
 	return &Server{
 		ruleManager:        ruleManager,
 		fileLoader:         fileLoader,
@@ -118,6 +123,7 @@ func NewServer(
 			},
 		},
 		sspNotDsp: sspNotDsp,
+		ranger:    rang,
 	}
 }
 
@@ -176,7 +182,7 @@ func (s *Server) GetBids_V2_5(
 			continue
 		}
 
-		if !s.processor.ProcessRequestForDSPV25(endpoint, req.BidRequest).Allowed {
+		if !s.processor.ProcessRequestForDSPV25(endpoint, req.BidRequest).Allowed { //|| !innerFilterMap[endpoint](req.BidRequest) {
 			//log.Println("Gor DSP filter")
 			codesCh <- &dspDomainCode{
 				endpoint: endpoint,
@@ -184,6 +190,7 @@ func (s *Server) GetBids_V2_5(
 			}
 			continue
 		}
+
 		wg.Add(1)
 		go func(endpoint string) {
 			defer wg.Done()
