@@ -148,7 +148,7 @@ func (s *Server) GetBids_V2_5(
 		if r := recover(); r != nil {
 			err := fmt.Errorf("Recovered from panic in GetBids_V2_5: %v, %s", r, string(debug.Stack()))
 			resp = nil
-			funcErr = status.Errorf(codes.Internal, err.Error())
+			funcErr = status.Error(codes.Internal, err.Error())
 		}
 	}()
 
@@ -156,17 +156,17 @@ func (s *Server) GetBids_V2_5(
 
 	jsonData, err := jsoniter.Marshal(req.BidRequest)
 	if err != nil {
-		newErr := fmt.Errorf("Can not marshal in GetBids_V_2_5 because got uknown error: %w", err)
+		newErr := fmt.Errorf("Can not marshal in GetBids_V_2_5 because got uknown error: %v", err)
 
 		grpcCode := codes.Unknown
 
 		st, ok := status.FromError(err)
 		if !ok {
 			grpcCode = st.Code()
-			newErr = fmt.Errorf("Can not marshal in GetBids_V_2_5 because got error: %w", st.Err())
+			newErr = fmt.Errorf("Can not marshal in GetBids_V_2_5 because got error: %v", st.Err())
 		}
 
-		return nil, status.Errorf(grpcCode, newErr.Error())
+		return nil, status.Error(grpcCode, newErr.Error())
 	}
 
 	var (
@@ -182,7 +182,7 @@ func (s *Server) GetBids_V2_5(
 			continue
 		}
 
-		if !s.processor.ProcessRequestForDSPV25(endpoint, req.BidRequest).Allowed { //&& !innerFilterMap[endpoint](req.BidRequest) {
+		if !s.processor.ProcessRequestForDSPV25(endpoint, req.BidRequest).Allowed && !innerFilterMap[endpoint](req.BidRequest, s.ranger) {
 			//log.Println("Gor DSP filter")
 			codesCh <- &dspDomainCode{
 				endpoint: endpoint,
@@ -198,7 +198,7 @@ func (s *Server) GetBids_V2_5(
 			dspResp, code, err := s.getBidsFromDSPbyHTTP_V_2_5(reqCtx, jsonData, endpoint)
 			if err != nil {
 				log.Printf(
-					"Cannot getBidsFromDSPbyHTTP_V_2_5, bid request id: %s,ssp_domain: %s, dsp_domain: %s, error: %w",
+					"Cannot getBidsFromDSPbyHTTP_V_2_5, bid request id: %s,ssp_domain: %s, dsp_domain: %s, error: %v",
 					req.BidRequest.GetId(),
 					req.SspDomain,
 					endpoint,

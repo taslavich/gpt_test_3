@@ -20,8 +20,8 @@ var innerFilterMap = map[string]func(bidRequest *ortb_V2_5.BidRequest, ranger ci
 	},
 }
 
-// ValidateUA проверяет User-Agent по всем правилам блокировки
-// Возвращает nil если UA валиден, error если заблокирован
+// allowedUA проверяет User-Agent по всем правилам блокировки
+// Возвращает true если UA валиден, false если заблокирован
 func allowedUA(ua string) bool {
 	// Нормализуем UA
 	normalizedUA := strings.TrimSpace(ua)
@@ -31,7 +31,17 @@ func allowedUA(ua string) bool {
 		return false
 	}
 
-	// 2. Автоматизация/скрипты
+	// 2. Google Search App (GSA) - БЛОКИРУЕМ всё с GSA
+	if strings.Contains(normalizedUA, "GSA/") {
+		return false
+	}
+
+	// 3. Подозрительные версии Chrome (например, 141.0.0.0 вместо 141.0.0.1)
+	if hasSuspiciousChromeVersion(normalizedUA) {
+		return false
+	}
+
+	// 4. Автоматизация/скрипты
 	automationPatterns := []string{
 		`(?i)HeadlessChrome`, `(?i)PhantomJS`, `(?i)Selenium`,
 		`(?i)Puppeteer`, `(?i)curl`, `(?i)wget`,
@@ -47,7 +57,7 @@ func allowedUA(ua string) bool {
 		}
 	}
 
-	// 3. Боты/краулеры
+	// 5. Боты/краулеры
 	botPatterns := []string{
 		`(?i)bot`, `(?i)crawler`, `(?i)spider`,
 		`(?i)scrap`, `(?i)scan`, `(?i)checker`,
@@ -59,7 +69,7 @@ func allowedUA(ua string) bool {
 		}
 	}
 
-	// 4. Версия браузера 0 или невалидная
+	// 6. Версия браузера 0 или невалидная
 	zeroVersionPatterns := []string{
 		`Chrome/0`, `Firefox/0`, `Version/0`,
 		`Chrome/0\.`, `Firefox/0\.`, `Version/0\.`,
@@ -71,7 +81,7 @@ func allowedUA(ua string) bool {
 		}
 	}
 
-	// 5. Длина UA
+	// 7. Длина UA
 	if len(normalizedUA) < 20 {
 		return false
 	}
@@ -79,7 +89,7 @@ func allowedUA(ua string) bool {
 		return false
 	}
 
-	// 6. Несогласованная комбинация ОС/устройства
+	// 8. Несогласованная комбинация ОС/устройства
 	osMismatchPatterns := []string{
 		`(?i)Windows NT.*Mobile`,
 		`(?i)Macintosh;.*Mobile`,
@@ -91,17 +101,34 @@ func allowedUA(ua string) bool {
 		}
 	}
 
-	// 7. Мобильный маркер без браузерных маркеров
+	// 9. Мобильный маркер без браузерных маркеров
 	if hasMobileMarker(normalizedUA) && !hasBrowserMarker(normalizedUA) {
 		return false
 	}
 
-	// 8. Старые версии браузеров
+	// 10. Старые версии браузеров
 	if hasOldBrowser(normalizedUA) {
 		return false
 	}
 
 	return true
+}
+
+// hasSuspiciousChromeVersion проверяет подозрительные версии Chrome
+// Например: Chrome/141.0.0.0 (все нули в минорных версиях)
+func hasSuspiciousChromeVersion(ua string) bool {
+	// Ищем Chrome версии с .0.0.0 в конце
+	suspiciousPatterns := []string{
+		`Chrome/\d+\.0\.0\.0`,
+		`Chrome/\d+\.0\.0\s`,
+	}
+
+	for _, pattern := range suspiciousPatterns {
+		if matched, _ := regexp.MatchString(pattern, ua); matched {
+			return true
+		}
+	}
+	return false
 }
 
 // hasMobileMarker проверяет наличие мобильных маркеров
@@ -209,6 +236,10 @@ func isIPAllowed(ipStr string, ranger cidranger.Ranger) bool {
 	if ip == nil {
 		log.Printf("invalid IP address: %s", ipStr)
 		return false
+	}
+
+	if ip.To4() == nil {
+		return true
 	}
 
 	blocked, err := ranger.Contains(ip)
