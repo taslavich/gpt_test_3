@@ -14,9 +14,9 @@ import (
 	"gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/proto/types/ortb_V2_5"
 )
 
-var innerFilterMap = map[string]func(bidRequest *ortb_V2_5.BidRequest) bool{
-	"http://ortbtwinbidexadlt.hilltopadsfeed.com/ask": func(bidRequest *ortb_V2_5.BidRequest) bool {
-		return allowedUA(bidRequest.GetDevice().GetUa()) && i
+var innerFilterMap = map[string]func(bidRequest *ortb_V2_5.BidRequest, ranger cidranger.Ranger) bool{
+	"http://ortbtwinbidexadlt.hilltopadsfeed.com/ask": func(bidRequest *ortb_V2_5.BidRequest, ranger cidranger.Ranger) bool {
+		return allowedUA(bidRequest.GetDevice().GetUa()) && isIPAllowed(bidRequest.GetDevice().GetIp(), ranger)
 	},
 }
 
@@ -204,14 +204,14 @@ func (s *Server) LoadNetset(filename string) error {
 	return nil
 }
 
-func (s *Server) isIPAllowed(ipStr string) bool {
+func isIPAllowed(ipStr string, ranger cidranger.Ranger) bool {
 	ip := net.ParseIP(ipStr)
 	if ip == nil {
 		log.Printf("invalid IP address: %s", ipStr)
 		return false
 	}
 
-	blocked, err := s.ranger.Contains(ip)
+	blocked, err := ranger.Contains(ip)
 	if err != nil {
 		log.Printf("IP lookup error for %s: %v", ipStr, err)
 		return false
