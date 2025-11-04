@@ -78,5 +78,6 @@ require (
 	github.com/redis/go-redis/v9 v9.14.0
 	github.com/segmentio/kafka-go v0.4.49
 	github.com/spf13/viper v1.21.0
+	github.com/yl2chen/cidranger v1.0.2
 	golang.org/x/sys v0.36.0 // indirect
 )
