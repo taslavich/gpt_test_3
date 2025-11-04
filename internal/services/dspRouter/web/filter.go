@@ -20,6 +20,16 @@ var innerFilterMap = map[string]func(bidRequest *ortb_V2_5.BidRequest, ranger ci
 	},
 }
 
+func Allowed(endpoint string, bidRequest *ortb_V2_5.BidRequest, ranger cidranger.Ranger) bool {
+	val, ok := innerFilterMap[endpoint]
+
+	if !ok {
+		return true
+	} else {
+		return val(bidRequest, ranger)
+	}
+}
+
 // allowedUA проверяет User-Agent по всем правилам блокировки
 // Возвращает true если UA валиден, false если заблокирован
 func allowedUA(ua string) bool {
