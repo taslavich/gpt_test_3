@@ -18,4 +18,5 @@ message DspRouterResponse_V2_5 {
   ortb_V2_5.BidRequest bidRequest = 1;
   map<string, ortb_V2_5.BidResponse> bidResponses = 2;
   string globalId = 3;
+  string ssp_domain = 4;
 }
