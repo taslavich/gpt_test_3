@@ -260,6 +260,7 @@ func (s *Server) GetBids_V2_5(
 		BidRequest:   req.BidRequest,
 		BidResponses: responses,
 		GlobalId:     req.GlobalId,
+		SspDomain:    req.SspDomain,
 	}, nil
 }
 
