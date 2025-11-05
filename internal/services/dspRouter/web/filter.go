@@ -24,6 +24,9 @@ var innerFilterMap = map[string]func(bidRequest *ortb_V2_5.BidRequest, ranger ci
 	"http://u625267.pophandler.net/rtb/?async=1&code_type=1&js=1&rtbRequest=1&sid=940499": func(bidRequest *ortb_V2_5.BidRequest, ranger cidranger.Ranger) bool {
 		return !HasIpv6(bidRequest)
 	},
+	"http://clkrtb.com/v2/rtb/exchange/2f3a896e373f98cd488ad48b916ae50faab81aa094ced28c4a68a469bf860025": func(bidRequest *ortb_V2_5.BidRequest, ranger cidranger.Ranger) bool {
+		return allowedUA(bidRequest.GetDevice().GetUa()) && isIPAllowed(bidRequest.GetDevice().GetIp(), ranger, bidRequest) && AllowedSite(bidRequest)
+	},
 }
 
 func HasIpv6(bidRequest *ortb_V2_5.BidRequest) bool {
