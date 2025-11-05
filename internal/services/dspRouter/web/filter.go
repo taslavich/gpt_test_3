@@ -51,6 +51,14 @@ func allowedUA(ua string) bool {
 		return false
 	}
 
+	if hasSuspiciousIOSBuild(normalizedUA) {
+		return false
+	}
+
+	if hasMismatchedOSBrowser(normalizedUA) {
+		return false
+	}
+
 	// 4. Автоматизация/скрипты
 	automationPatterns := []string{
 		`(?i)HeadlessChrome`, `(?i)PhantomJS`, `(?i)Selenium`,
@@ -185,6 +193,70 @@ func hasOldBrowser(ua string) bool {
 	// Safari < 10
 	if safariVersion := extractVersion(ua, `Version/(\d+)`); safariVersion > 0 && safariVersion < 10 {
 		return true
+	}
+
+	return false
+}
+
+// hasSuspiciousIOSBuild проверяет подозрительные iOS build tokens
+// Например: Mobile/15E148 с новыми версиями iOS
+func hasSuspiciousIOSBuild(ua string) bool {
+	// Проверяем старый build token с новыми версиями iOS
+	if strings.Contains(ua, "Mobile/15E148") {
+		// Если iOS версия >= 18, а build token старый - подозрительно
+		iosVersion := extractVersion(ua, `iPhone OS (\d+)`)
+		if iosVersion >= 18 {
+			return true
+		}
+	}
+	return false
+}
+
+// hasMismatchedOSBrowser проверяет несоответствия версий ОС и браузеров
+func hasMismatchedOSBrowser(ua string) bool {
+	// Проверяем Android + Chrome несоответствия
+	if strings.Contains(ua, "Android") {
+		androidVersion := extractVersion(ua, `Android (\d+)`)
+		chromeVersion := extractVersion(ua, `Chrome/(\d+)`)
+
+		// Слишком новый Chrome на старом Android
+		if androidVersion > 0 && chromeVersion > 0 {
+			if androidVersion <= 8 && chromeVersion >= 120 {
+				return true
+			}
+			if androidVersion <= 9 && chromeVersion >= 130 {
+				return true
+			}
+		}
+	}
+
+	// Проверяем iOS + Safari несоответствия
+	if strings.Contains(ua, "iPhone OS") || strings.Contains(ua, "CPU OS") {
+		iosVersion := extractVersion(ua, `OS (\d+)`)
+		safariVersion := extractVersion(ua, `Version/(\d+)`)
+
+		// Слишком новый Safari на старом iOS
+		if iosVersion > 0 && safariVersion > 0 {
+			if iosVersion <= 12 && safariVersion >= 15 {
+				return true
+			}
+			if iosVersion <= 14 && safariVersion >= 18 {
+				return true
+			}
+		}
+	}
+
+	if strings.Contains(ua, "Macintosh") && strings.Contains(ua, "Safari") {
+		macVersion := extractVersion(ua, `Mac OS X (\d+)_(\d+)`)
+		safariVersion := extractVersion(ua, `Version/(\d+)`)
+
+		// Если Safari версия значительно новее macOS
+		if macVersion > 0 && safariVersion > 0 {
+			// macOS 10.15 + Safari 26 = подозрительно
+			if macVersion <= 10 && safariVersion >= 20 {
+				return true
+			}
+		}
 	}
 
 	return false

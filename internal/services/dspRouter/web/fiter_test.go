@@ -28,6 +28,26 @@ func TestAllowedUA(t *testing.T) {
 		{"Normal Chrome Android", "Mozilla/5.0 (Linux; Android 10; SM-G973F) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.1 Mobile Safari/537.36", true},
 		{"Normal Firefox", "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:120.0) Gecko/20100101 Firefox/120.0", true},
 		{"Normal Safari", "Mozilla/5.0 (iPhone; CPU iPhone OS 16_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.6 Mobile/15E148 Safari/604.1", true},
+
+		// НОВЫЕ ТЕСТЫ ДЛЯ ПОДОЗРИТЕЛЬНЫХ iOS BUILD TOKENS
+		{"Suspicious iOS build token", "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1", false},
+		{"Suspicious iOS build token iOS 20", "Mozilla/5.0 (iPhone; CPU iPhone OS 20_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/20.0 Mobile/15E148 Safari/604.1", false},
+		{"Normal iOS build token", "Mozilla/5.0 (iPhone; CPU iPhone OS 14_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/14.0 Mobile/15E148 Safari/604.1", true},
+
+		// НОВЫЕ ТЕСТЫ ДЛЯ НЕСООТВЕТСТВИЙ ОС/БРАУЗЕРОВ (согласно ТЗ пункт 4)
+		{"Mismatched Android Chrome - Android 8 + Chrome 130", "Mozilla/5.0 (Linux; Android 8; SM-G973F) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Mobile Safari/537.36", false},
+		{"Mismatched Android Chrome - Android 9 + Chrome 133", "Mozilla/5.0 (Linux; Android 9; SM-G973F) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Mobile Safari/537.36", false},
+		{"Normal Android Chrome - Android 10 + Chrome 141", "Mozilla/5.0 (Linux; Android 10; SM-G973F) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.1 Mobile Safari/537.36", true},
+		{"Normal Android Chrome - Android 11 + Chrome 141", "Mozilla/5.0 (Linux; Android 11; SM-G973F) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.1 Mobile Safari/537.36", true},
+		{"Mismatched iOS Safari - iOS 12 + Safari 15", "Mozilla/5.0 (iPhone; CPU iPhone OS 12_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/15.0 Mobile/15E148 Safari/604.1", false},
+		{"Mismatched iOS Safari - iOS 14 + Safari 18", "Mozilla/5.0 (iPhone; CPU iPhone OS 14_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1", false},
+
+		// ДОПОЛНИТЕЛЬНЫЕ ТЕСТЫ ДЛЯ ПОЛНОГО ПОКРЫТИЯ ТЗ
+		// Пункт 1: iOS 26 со старым build token
+		{"iOS 26 with old build token", "Mozilla/5.0 (iPhone; CPU iPhone OS 26_0_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.0 Mobile/15E148 Safari/604.1", false},
+
+		// Пункт 3: Mac Safari version mismatch - НУЖНО ДОБАВИТЬ ЛОГИКУ В ФУНКЦИЮ!
+		{"Mac Safari version mismatch", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.0.1 Safari/605.1.15", false},
 	}
 
 	for _, tt := range tests {
