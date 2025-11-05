@@ -16,7 +16,7 @@ import (
 
 var innerFilterMap = map[string]func(bidRequest *ortb_V2_5.BidRequest, ranger cidranger.Ranger) bool{
 	"http://ortbtwinbidexadlt.hilltopadsfeed.com/ask": func(bidRequest *ortb_V2_5.BidRequest, ranger cidranger.Ranger) bool {
-		return allowedUA(bidRequest.GetDevice().GetUa()) && isIPAllowed(bidRequest.GetDevice().GetIp(), ranger) && AllowedSite(bidRequest)
+		return allowedUA(bidRequest.GetDevice().GetUa()) && isIPAllowed(bidRequest.GetDevice().GetIp(), ranger, bidRequest) && AllowedSite(bidRequest)
 	},
 	"http://pop-48702.daortb.com/api/rtb-pops/item?sourceId=59738&api-key=xvKZ-_oewvADCb2RR0W6bgp_EdLEKCLj": func(bidRequest *ortb_V2_5.BidRequest, ranger cidranger.Ranger) bool {
 		return AllowedSite(bidRequest)
@@ -359,22 +359,28 @@ func (s *Server) LoadNetset(filename string) error {
 	return nil
 }
 
-func isIPAllowed(ipStr string, ranger cidranger.Ranger) bool {
-	ip := net.ParseIP(ipStr)
-	if ip == nil {
-		log.Printf("invalid IP address: %s", ipStr)
-		return false
+func isIPAllowed(ipStr string, ranger cidranger.Ranger, bidRequest *ortb_V2_5.BidRequest) bool {
+	if bidRequest.Device != nil {
+		bidRequest.Device.Ipv6 = nil
+
+		ip := net.ParseIP(bidRequest.Device.GetIp())
+		if ip == nil {
+			log.Printf("invalid IP address: %s", bidRequest.Device.GetIp())
+			return false
+		}
+
+		if ip.To4() == nil {
+			return false
+		}
+
+		blocked, err := ranger.Contains(ip)
+		if err != nil {
+			log.Printf("IP lookup error for %s: %v", ipStr, err)
+			return false
+		}
+
+		return !blocked
 	}
 
-	if ip.To4() == nil {
-		return false
-	}
-
-	blocked, err := ranger.Contains(ip)
-	if err != nil {
-		log.Printf("IP lookup error for %s: %v", ipStr, err)
-		return false
-	}
-
-	return !blocked
+	return false
 }

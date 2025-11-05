@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/yl2chen/cidranger"
+	"gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/proto/types/ortb_V2_5"
 )
 
 func TestAllowedUA(t *testing.T) {
@@ -108,7 +109,7 @@ func TestIsIPAllowed(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := isIPAllowed(tt.ip, ranger)
+			result := isIPAllowed(tt.ip, ranger, &ortb_V2_5.BidRequest{})
 			if result != tt.expected {
 				t.Errorf("isIPAllowed(%q) = %v, want %v", tt.ip, result, tt.expected)
 			}
