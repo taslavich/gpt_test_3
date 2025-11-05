@@ -14,6 +14,17 @@ import (
 	clickhouse_types "gitlab.com/twinbid-exchange/RTB-exchange/internal/types/clickhouse"
 )
 
+func higherPercentRegion(countryISO string) bool {
+	higher := []string{"ID", "JP", "VN"}
+	for _, region := range higher {
+		if countryISO == region {
+			return true
+		}
+	}
+
+	return false
+}
+
 func getRandomProfitPercent() float32 {
 	percentages := [11]float32{0.20, 0.21, 0.22, 0.23, 0.24, 0.25, 0.26, 0.27, 0.28, 0.29, 0.30} // 20% - 30% (1)
 	randomIndex := rand.Intn(11)                                                                 // 0 - 10 (1)
@@ -122,17 +133,21 @@ func GetWinnerBidInternal_V_2_5(
 			}
 		}
 
-		if winningDomain == "http://ortbtwinbidexadlt.hilltopadsfeed.com/ask" {
-			profitPercent = 0.70
+		if higherPercentRegion(req.BidRequest.Device.Geo.GetCountry()) {
+			profitPercent = 0.80
+		} else {
+			if winningDomain == "http://ortbtwinbidexadlt.hilltopadsfeed.com/ask" {
+				profitPercent = 0.70
+			}
 		}
 
-		if winningDomain == "http://pop.zog.link/bid-request?token=h6dKfdh544FHD83" && req.SspDomain == "galaksion.com" {
+		/*if winningDomain == "http://pop.zog.link/bid-request?token=h6dKfdh544FHD83" && req.SspDomain == "galaksion.com" {
 			profitPercent = 0.30
 		}
 
 		if winningDomain == "http://pop-48702.daortb.com/api/rtb-pops/item?sourceId=59738&api-key=xvKZ-_oewvADCb2RR0W6bgp_EdLEKCLj" && req.SspDomain == "galaksion.com" {
 			profitPercent = 0.40
-		}
+		}*/
 
 		finalPrice, _, err := applyPriceConstraintsAndPercent(
 			winningBid.GetPrice(),
