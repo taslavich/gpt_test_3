@@ -17,32 +17,11 @@ message BidRequest {
 message Imp {
     optional string id = 1;
     optional float bidfloor = 2;
-    optional Banner banner = 3;
-    optional Native native = 4;
-    optional string tagid = 5;
-    optional int32 secure = 6;
-    optional int32 instl = 7;
-    optional string bidfloorcur = 8;
-    optional Ext imp_ext = 9;
-}
-
-message Native {
-    optional string request = 1;
-    optional string ver = 2;
-    repeated int32 api = 3;
-    repeated int32 battr = 4;
-}
-
-message Banner {
-    optional int32 w = 1;
-    optional int32 h = 2;
-    repeated int32 btype = 3;
-    repeated int32 battr = 4;
-    optional int32 pos = 5;
-    repeated string mimes = 6;
-    repeated int32 expdir = 7;
-    repeated int32 api = 8;
-    optional string id = 9;
+    optional string tagid = 3;
+    optional int32 secure = 4;
+    optional int32 instl = 5;
+    optional string bidfloorcur = 6;
+    optional Ext imp_ext = 7;
 }
   
 message Device {
@@ -52,6 +31,7 @@ message Device {
     optional int32 js = 4;
     optional string language = 5;
     optional Ext device_ext = 6;
+    optional string ipv6 = 7;
 }
 
 message Geo {
