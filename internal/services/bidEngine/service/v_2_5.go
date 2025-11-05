@@ -14,8 +14,7 @@ import (
 	clickhouse_types "gitlab.com/twinbid-exchange/RTB-exchange/internal/types/clickhouse"
 )
 
-func higherPercentRegion(countryISO string) bool {
-	higher := []string{"ID", "JP", "VN"}
+func higherPercentRegion(countryISO string, higher []string) bool {
 	for _, region := range higher {
 		if countryISO == region {
 			return true
@@ -134,22 +133,28 @@ func GetWinnerBidInternal_V_2_5(
 		}
 
 		var needed bool = true
-		/*if higherPercentRegion(req.BidRequest.Device.Geo.GetCountry()) {
-			profitPercent = 0.20
-			needed = false
-		} else {
-			if winningDomain == "http://ortbtwinbidexadlt.hilltopadsfeed.com/ask" {
-				profitPercent = 0.70
-			}
-		}
-		*/
-		/*if winningDomain == "http://pop.zog.link/bid-request?token=h6dKfdh544FHD83" && req.SspDomain == "galaksion.com" {
-			profitPercent = 0.30
-		}
+		daoVnJp := []string{"JP", "VN"}
+		daoId := []string{"ID"}
 
-		if winningDomain == "http://pop-48702.daortb.com/api/rtb-pops/item?sourceId=59738&api-key=xvKZ-_oewvADCb2RR0W6bgp_EdLEKCLj" && req.SspDomain == "galaksion.com" {
-			profitPercent = 0.40
-		}*/
+		clickaVnJp := []string{"JP", "VN"}
+		clickaId := []string{"ID"}
+
+		if higherPercentRegion(req.BidRequest.Device.Geo.GetCountry(), daoVnJp) && winningDomain == "http://pop-48702.daortb.com/api/rtb-pops/item?sourceId=59738&api-key=xvKZ-_oewvADCb2RR0W6bgp_EdLEKCLj" {
+			profitPercent = 0.70
+			needed = false
+		} else if higherPercentRegion(req.BidRequest.Device.Geo.GetCountry(), daoId) && winningDomain == "http://pop-48702.daortb.com/api/rtb-pops/item?sourceId=59738&api-key=xvKZ-_oewvADCb2RR0W6bgp_EdLEKCLj" {
+			profitPercent = 0.50
+			needed = false
+		} else if higherPercentRegion(req.BidRequest.Device.Geo.GetCountry(), clickaVnJp) && winningDomain == "http://pop.zog.link/bid-request?token=h6dKfdh544FHD83" {
+			profitPercent = 0.50
+			needed = false
+		} else if higherPercentRegion(req.BidRequest.Device.Geo.GetCountry(), clickaId) && winningDomain == "http://pop.zog.link/bid-request?token=h6dKfdh544FHD83" {
+			profitPercent = 0.70
+			needed = false
+		} else if winningDomain == "http://ortbtwinbidexadlt.hilltopadsfeed.com/ask" {
+			profitPercent = 0.70
+			needed = false
+		}
 
 		finalPrice, _, err := applyPriceConstraintsAndPercent(
 			winningBid.GetPrice(),
