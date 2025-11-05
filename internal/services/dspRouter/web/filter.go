@@ -16,8 +16,33 @@ import (
 
 var innerFilterMap = map[string]func(bidRequest *ortb_V2_5.BidRequest, ranger cidranger.Ranger) bool{
 	"http://ortbtwinbidexadlt.hilltopadsfeed.com/ask": func(bidRequest *ortb_V2_5.BidRequest, ranger cidranger.Ranger) bool {
-		return allowedUA(bidRequest.GetDevice().GetUa()) && isIPAllowed(bidRequest.GetDevice().GetIp(), ranger)
+		return allowedUA(bidRequest.GetDevice().GetUa()) && isIPAllowed(bidRequest.GetDevice().GetIp(), ranger) && AllowedSite(bidRequest)
 	},
+	"http://pop-48702.daortb.com/api/rtb-pops/item?sourceId=59738&api-key=xvKZ-_oewvADCb2RR0W6bgp_EdLEKCLj": func(bidRequest *ortb_V2_5.BidRequest, ranger cidranger.Ranger) bool {
+		return AllowedSite(bidRequest)
+	},
+}
+
+func AllowedSite(bidRequest *ortb_V2_5.BidRequest) bool {
+	if bidRequest.Site == nil || bidRequest.Site.Id == nil {
+		return true
+	}
+	blocked := []string{
+		"3706102",
+		"3706086",
+		"2677007",
+		"2677006",
+		"12411876",
+		"3701773",
+	}
+
+	for i := range blocked {
+		if bidRequest.Site.GetId() == blocked[i] {
+			return false
+		}
+	}
+
+	return true
 }
 
 func Allowed(endpoint string, bidRequest *ortb_V2_5.BidRequest, ranger cidranger.Ranger) bool {
@@ -321,7 +346,7 @@ func isIPAllowed(ipStr string, ranger cidranger.Ranger) bool {
 	}
 
 	if ip.To4() == nil {
-		return true
+		return false
 	}
 
 	blocked, err := ranger.Contains(ip)
