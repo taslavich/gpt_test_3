@@ -87,6 +87,16 @@
           ]
         }
       ]
+    },
+    "http://ssp.rtb.events/108/bid?id=698a3a9ec45c44af82b00f758e3d2315": {
+      "v25": [
+        {
+          "and": [
+            { "field": "device.ua",     "condition": "exists", "value_type": "string", "value": "" },
+            { "field": "device.ip",     "condition": "exists", "value_type": "string", "value": "" }
+          ]
+        }
+      ]
     }
   }
 }
