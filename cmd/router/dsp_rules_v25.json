@@ -97,6 +97,16 @@
           ]
         }
       ]
+    },
+    "http://clkrtb.com/v2/rtb/exchange/2f3a896e373f98cd488ad48b916ae50faab81aa094ced28c4a68a469bf860025": {
+      "v25": [
+        {
+          "and": [
+            { "field": "device.ua",     "condition": "exists", "value_type": "string", "value": "" },
+            { "field": "device.ip",     "condition": "exists", "value_type": "string", "value": "" }
+          ]
+        }
+      ]
     }
   }
 }
