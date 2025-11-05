@@ -134,15 +134,15 @@ func GetWinnerBidInternal_V_2_5(
 		}
 
 		var needed bool = true
-		if higherPercentRegion(req.BidRequest.Device.Geo.GetCountry()) {
-			profitPercent = 0.80
+		/*if higherPercentRegion(req.BidRequest.Device.Geo.GetCountry()) {
+			profitPercent = 0.20
 			needed = false
 		} else {
 			if winningDomain == "http://ortbtwinbidexadlt.hilltopadsfeed.com/ask" {
 				profitPercent = 0.70
 			}
 		}
-
+		*/
 		/*if winningDomain == "http://pop.zog.link/bid-request?token=h6dKfdh544FHD83" && req.SspDomain == "galaksion.com" {
 			profitPercent = 0.30
 		}
