@@ -133,8 +133,10 @@ func GetWinnerBidInternal_V_2_5(
 			}
 		}
 
+		var needed bool = true
 		if higherPercentRegion(req.BidRequest.Device.Geo.GetCountry()) {
 			profitPercent = 0.80
+			needed = false
 		} else {
 			if winningDomain == "http://ortbtwinbidexadlt.hilltopadsfeed.com/ask" {
 				profitPercent = 0.70
@@ -153,6 +155,7 @@ func GetWinnerBidInternal_V_2_5(
 			winningBid.GetPrice(),
 			bidFloor,
 			profitPercent,
+			needed,
 		)
 		if err != nil {
 			errStr = err.Error()
@@ -211,7 +214,7 @@ func GetWinnerBidInternal_V_2_5(
 	return bidResponse, clickhouseBidResponse
 }
 
-func applyPriceConstraintsAndPercent(dspPrice, bidFloor, profitPercent float32) (
+func applyPriceConstraintsAndPercent(dspPrice, bidFloor, profitPercent float32, needed bool) (
 	finalDspPrice float32,
 	finalProfitPercent float32,
 	err error,
@@ -227,7 +230,7 @@ func applyPriceConstraintsAndPercent(dspPrice, bidFloor, profitPercent float32) 
 	finalDspPrice = dspPrice - dspPrice*profitPercent
 	finalProfitPercent = profitPercent
 
-	if finalDspPrice < bidFloor {
+	if finalDspPrice < bidFloor && needed {
 		finalDspPrice, finalProfitPercent = findGoodPriceViaPercent(
 			dspPrice,
 			bidFloor,
