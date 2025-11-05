@@ -8,7 +8,7 @@ import (
 	"github.com/redis/go-redis/v9"
 )
 
-const RedisKeyTTL = 30 * time.Second
+const RedisKeyTTL = 5 * time.Minute
 
 func WriteStringToRedis(ctx context.Context, redisClient *redis.Client, uuid, column string, data string) error {
 	pipe := redisClient.Pipeline()
