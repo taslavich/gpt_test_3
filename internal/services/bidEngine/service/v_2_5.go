@@ -129,7 +129,11 @@ func GetWinnerBidInternal_V_2_5(
 		if winningDomain == "http://pop.zog.link/bid-request?token=h6dKfdh544FHD83" && req.SspDomain == "galaksion.com" {
 			profitPercent = 0.30
 		}
-
+		/*
+			if winningDomain == "http://pop-48702.daortb.com/api/rtb-pops/item?sourceId=59738&api-key=xvKZ-_oewvADCb2RR0W6bgp_EdLEKCLj" && req.SspDomain == "galaksion.com" {
+				profitPercent = 0.40
+			}
+		*/
 		finalPrice, _, err := applyPriceConstraintsAndPercent(
 			winningBid.GetPrice(),
 			bidFloor,
