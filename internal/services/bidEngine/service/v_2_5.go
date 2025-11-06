@@ -105,12 +105,6 @@ func GetWinnerBidInternal_V_2_5(
 		},
 	}
 
-	/*if geoMap, ok := SspGeoPercents[req.GetBidRequest().GetSspDomain()]; ok {
-		if percent, hasGeo := geoMap[req.GetBidRequest().GetDevice().GetGeo().GetCountry()]; hasGeo {
-			profitPercent = percent
-		}
-	}*/
-
 	var errStr string = "None"
 	for impID, bids := range impBids {
 		if len(bids) == 0 {
@@ -129,6 +123,14 @@ func GetWinnerBidInternal_V_2_5(
 			if imp.GetId() == impID {
 				bidFloor = imp.GetBidfloor()
 				break
+			}
+		}
+
+		if geoMap, ok := SspGeoPercents[req.SspDomain]; !ok {
+			geoMap, ok := SspGeoPercents[LEFT]
+			!ok{}
+			if percent, hasGeo := geoMap[req.GetBidRequest().GetDevice().GetGeo().GetCountry()]; hasGeo {
+				profitPercent = percent
 			}
 		}
 
