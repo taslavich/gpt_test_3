@@ -40,10 +40,10 @@ func main() {
 	}
 	log.Println("✅ Connected to Redis")
 
-	/*if err := bidEngine.InitSspGeoPercentsLogic(cfg.SspGeoDspPercentsFilePath); err != nil {
+	if err := bidEngine.InitSspGeoPercentsLogic(cfg.SspGeoDspPercentsFilePath); err != nil {
 		log.Fatalf("Failed to InitSspGeoPercentsLogic: %v", err)
 	}
-	*/
+
 	lis, err := net.Listen(
 		"tcp",
 		fmt.Sprintf(
