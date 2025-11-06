@@ -14,9 +14,9 @@ import (
 	clickhouse_types "gitlab.com/twinbid-exchange/RTB-exchange/internal/types/clickhouse"
 )
 
-func higherPercentRegion(countryISO string, higher []string) bool {
-	for _, region := range higher {
-		if countryISO == region {
+func IsInStringSlice(variable string, list []string) bool {
+	for _, target := range list {
+		if variable == target {
 			return true
 		}
 	}
@@ -139,19 +139,25 @@ func GetWinnerBidInternal_V_2_5(
 		clickaVnJpId := []string{"JP", "VN", "ID"}
 		clickaMyMlBdPh := []string{"MY", "ML", "BD", "PH"}
 
-		if higherPercentRegion(req.BidRequest.Device.Geo.GetCountry(), daoVnJpId) && winningDomain == "http://pop-48702.daortb.com/api/rtb-pops/item?sourceId=59738&api-key=xvKZ-_oewvADCb2RR0W6bgp_EdLEKCLj" {
+		if IsInStringSlice(req.BidRequest.Device.Geo.GetCountry(), daoVnJpId) && winningDomain == "http://pop-48702.daortb.com/api/rtb-pops/item?sourceId=59738&api-key=xvKZ-_oewvADCb2RR0W6bgp_EdLEKCLj" {
 			profitPercent = 0.70
 			needed = false
-		} else if higherPercentRegion(req.BidRequest.Device.Geo.GetCountry(), daoMyMlBdPh) && winningDomain == "http://pop-48702.daortb.com/api/rtb-pops/item?sourceId=59738&api-key=xvKZ-_oewvADCb2RR0W6bgp_EdLEKCLj" {
+		} else if IsInStringSlice(req.BidRequest.Device.Geo.GetCountry(), daoMyMlBdPh) && winningDomain == "http://pop-48702.daortb.com/api/rtb-pops/item?sourceId=59738&api-key=xvKZ-_oewvADCb2RR0W6bgp_EdLEKCLj" {
 			profitPercent = 0.50
 			needed = false
-		} else if higherPercentRegion(req.BidRequest.Device.Geo.GetCountry(), clickaVnJpId) && winningDomain == "http://pop.zog.link/bid-request?token=h6dKfdh544FHD83" {
+		} else if IsInStringSlice(req.BidRequest.Device.Geo.GetCountry(), clickaVnJpId) && winningDomain == "http://pop.zog.link/bid-request?token=h6dKfdh544FHD83" {
 			profitPercent = 0.70
 			needed = false
-		} else if higherPercentRegion(req.BidRequest.Device.Geo.GetCountry(), clickaMyMlBdPh) && winningDomain == "http://pop.zog.link/bid-request?token=h6dKfdh544FHD83" {
+		} else if IsInStringSlice(req.BidRequest.Device.Geo.GetCountry(), clickaMyMlBdPh) && winningDomain == "http://pop.zog.link/bid-request?token=h6dKfdh544FHD83" {
 			profitPercent = 0.50
 			needed = false
 		} else if winningDomain == "http://ortbtwinbidexadlt.hilltopadsfeed.com/ask" {
+			profitPercent = 0.70
+			needed = false
+		} else if req.SspDomain == "octoclick.com" && winningDomain == "http://pop-48702.daortb.com/api/rtb-pops/item?sourceId=59738&api-key=xvKZ-_oewvADCb2RR0W6bgp_EdLEKCLj" {
+			profitPercent = 0.80
+			needed = false
+		} else if winningDomain == "http://ortbtwinbidexadlt.hilltopadsfeed.com/ask" && req.SspDomain == "mybid.com" {
 			profitPercent = 0.70
 			needed = false
 		}

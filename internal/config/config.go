@@ -21,9 +21,44 @@ func (m *MapStringToString) SetValue(value string) error {
 
 	pairs := strings.Split(value, ",")
 	for _, pair := range pairs {
-		kv := strings.SplitN(pair, "=", 2)
-		if len(kv) == 2 {
-			(*m)[strings.TrimSpace(kv[0])] = strings.TrimSpace(kv[1])
+		// Ищем только ПЕРВЫЙ знак = как разделитель ключ-значение
+		idx := strings.Index(pair, "=")
+		if idx == -1 {
+			continue // пропускаем некорректные пары
+		}
+
+		key := strings.TrimSpace(pair[:idx])
+		valueStr := strings.TrimSpace(pair[idx+1:])
+		(*m)[key] = valueStr
+	}
+	return nil
+}
+
+// Кастомный тип для map[string][]string
+type MapStringToStringSlice map[string][]string
+
+func (m *MapStringToStringSlice) SetValue(value string) error {
+	*m = make(MapStringToStringSlice)
+	if value == "" {
+		return nil
+	}
+
+	pairs := strings.Split(value, ",")
+	for _, pair := range pairs {
+		// Ищем только ПЕРВЫЙ знак = как разделитель ключ-значение
+		idx := strings.Index(pair, "=")
+		if idx == -1 {
+			continue // пропускаем некорректные пары
+		}
+
+		key := strings.TrimSpace(pair[:idx])
+		valueStr := strings.TrimSpace(pair[idx+1:])
+
+		// Разделяем URL по |
+		urls := strings.Split(valueStr, "|")
+		(*m)[key] = make([]string, len(urls))
+		for i, url := range urls {
+			(*m)[key][i] = strings.TrimSpace(url)
 		}
 	}
 	return nil
@@ -55,14 +90,14 @@ type BiddingEngineConfig struct {
 
 type RouterConfig struct {
 	HttpServer
-	DSPEndpoints_v_2_4    ListString        `yaml:"DSP_ENDPOINTS_V_2_4" env:"DSP_ENDPOINTS_V_2_4"`
-	DSPEndpoints_v_2_5    ListString        `yaml:"DSP_ENDPOINTS_V_2_5" env:"DSP_ENDPOINTS_V_2_5"`
-	SspNotDsp             MapStringToString `yaml:"SSP_NOT_DSP" env:"SSP_NOT_DSP"`
-	DspRulesConfigPathV24 string            `yaml:"DSP_RULES_CONFIG_PATH" env:"DSP_RULES_CONFIG_PATH_V_24"`
-	SppRulesConfigPathV24 string            `yaml:"SPP_RULES_CONFIG_PATH" env:"SPP_RULES_CONFIG_PATH_V_24"`
-	DspRulesConfigPathV25 string            `yaml:"DSP_RULES_CONFIG_PATH" env:"DSP_RULES_CONFIG_PATH_V_25"`
-	SppRulesConfigPathV25 string            `yaml:"SPP_RULES_CONFIG_PATH" env:"SPP_RULES_CONFIG_PATH_V_25"`
-	AllowedIpDbPath       string            `yaml:"ALLOWED_IP_DB_PATH" env:"ALLOWED_IP_DB_PATH"`
+	DSPEndpoints_v_2_4    ListString             `yaml:"DSP_ENDPOINTS_V_2_4" env:"DSP_ENDPOINTS_V_2_4"`
+	DSPEndpoints_v_2_5    ListString             `yaml:"DSP_ENDPOINTS_V_2_5" env:"DSP_ENDPOINTS_V_2_5"`
+	SspNotDsp             MapStringToStringSlice `yaml:"SSP_NOT_DSP" env:"SSP_NOT_DSP"`
+	DspRulesConfigPathV24 string                 `yaml:"DSP_RULES_CONFIG_PATH" env:"DSP_RULES_CONFIG_PATH_V_24"`
+	SppRulesConfigPathV24 string                 `yaml:"SPP_RULES_CONFIG_PATH" env:"SPP_RULES_CONFIG_PATH_V_24"`
+	DspRulesConfigPathV25 string                 `yaml:"DSP_RULES_CONFIG_PATH" env:"DSP_RULES_CONFIG_PATH_V_25"`
+	SppRulesConfigPathV25 string                 `yaml:"SPP_RULES_CONFIG_PATH" env:"SPP_RULES_CONFIG_PATH_V_25"`
+	AllowedIpDbPath       string                 `yaml:"ALLOWED_IP_DB_PATH" env:"ALLOWED_IP_DB_PATH"`
 
 	BidResponsesTimeout time.Duration `yaml:"BID_RESPONSES_TIMEOUT" env:"BID_RESPONSES_TIMEOUT"`
 
