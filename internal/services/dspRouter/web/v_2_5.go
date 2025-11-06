@@ -22,6 +22,7 @@ import (
 	dspRouterGrpc "gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/proto/services/dspRouter"
 	"gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/proto/types/ortb_V2_5"
 	utils "gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/utils_grpc"
+	bidEngine "gitlab.com/twinbid-exchange/RTB-exchange/internal/services/bidEngine/service"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
@@ -41,7 +42,7 @@ type Server struct {
 	// Пулы для снижения аллокаций
 	bufferPool sync.Pool
 
-	sspNotDsp config.MapStringToString
+	sspNotDsp config.MapStringToStringSlice
 
 	ranger cidranger.Ranger
 
@@ -82,7 +83,7 @@ func NewServer(
 	redisClient *redis.Client,
 	timeout time.Duration,
 	maxParallelRequests int,
-	sspNotDsp config.MapStringToString,
+	sspNotDsp config.MapStringToStringSlice,
 ) *Server {
 	if timeout <= 0 {
 		timeout = 150 * time.Millisecond
@@ -178,8 +179,14 @@ func (s *Server) GetBids_V2_5(
 
 	// Запускаем все DSP параллельно
 	for _, endpoint := range s.dspEndpoints_v_2_5 {
-		if endpoint == notDsp {
+		if bidEngine.IsInStringSlice(endpoint, notDsp) {
 			continue
+		}
+
+		if endpoint == "http://ortbtwinbidexadlt.hilltopadsfeed.com/ask" {
+			if req.SspDomain != "mybid.com" {
+				continue
+			}
 		}
 
 		if !s.processor.ProcessRequestForDSPV25(endpoint, req.BidRequest).Allowed || !Allowed(endpoint, req.BidRequest, s.ranger) {
