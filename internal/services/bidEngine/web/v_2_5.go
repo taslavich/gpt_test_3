@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"os"
 	"runtime/debug"
 	"time"
 
@@ -114,6 +115,16 @@ func (s *Server) ChangeSspGeoDspPercentsMap(ctx context.Context, req *bidEngineG
 	err = json.Unmarshal(jsonBytes, &bidEngine.SspGeoPercents)
 	if err != nil {
 		return nil, status.Errorf(codes.InvalidArgument, "failed to parse JSON: %v", err)
+	}
+
+	fileData, err := json.MarshalIndent(bidEngine.SspGeoPercents, "", "  ")
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "failed to marshal data for file: %v", err)
+	}
+
+	err = os.WriteFile(bidEngine.SspGeoDspPercentsFilePath, fileData, 0644)
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "failed to write file %s: %v", bidEngine.SspGeoDspPercentsFilePath, err)
 	}
 
 	return nil, nil
