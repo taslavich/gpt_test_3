@@ -20,7 +20,6 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/emptypb"
-	"google.golang.org/protobuf/types/known/structpb"
 )
 
 type Server struct {
@@ -107,41 +106,16 @@ func (s *Server) GetWinnerBid_V2_5(
 }
 
 func (s *Server) SetSspGeoPercentsMap(ctx context.Context, req *bidEngineGrpc.SspGeoDspPercentsRequest_V2_5) (*emptypb.Empty, error) {
-	// Конвертируем structpb.Struct в нашу структуру мап
-	convertedMap := make(map[string]map[string]map[string]float32)
+	// Парсим JSON напрямую
+	var inputMap map[string]map[string]map[string]float32
 
-	for sspKey, sspValue := range req.Changes.Fields {
-		sspMap := sspValue.GetStructValue()
-		if sspMap == nil {
-			return nil, status.Errorf(codes.InvalidArgument, "invalid SSP value type for key: %s", sspKey)
-		}
-
-		convertedMap[sspKey] = make(map[string]map[string]float32)
-
-		for geoKey, geoValue := range sspMap.Fields {
-			geoMap := geoValue.GetStructValue()
-			if geoMap == nil {
-				return nil, status.Errorf(codes.InvalidArgument, "invalid geo value type for key: %s.%s", sspKey, geoKey)
-			}
-
-			convertedMap[sspKey][geoKey] = make(map[string]float32)
-
-			for dspKey, dspValue := range geoMap.Fields {
-				dspNumber := dspValue.GetNumberValue()
-				// GetNumberValue() возвращает 0 если не число, поэтому проверяем тип
-				if dspValue.GetKind() == nil || dspValue.GetNumberValue() == 0 && !isNumberType(dspValue) {
-					return nil, status.Errorf(codes.InvalidArgument, "invalid DSP value type for key: %s.%s.%s", sspKey, geoKey, dspKey)
-				}
-				convertedMap[sspKey][geoKey][dspKey] = float32(dspNumber)
-			}
-		}
+	err := json.Unmarshal([]byte(req.JsonData), &inputMap)
+	if err != nil {
+		return nil, status.Errorf(codes.InvalidArgument, "invalid JSON format: %v", err)
 	}
 
-	// Теперь присваиваем в глобальную переменную
-	bidEngine.SspGeoPercents = convertedMap
-
 	// Сохраняем в файл
-	fileData, err := json.MarshalIndent(bidEngine.SspGeoPercents, "", "  ")
+	fileData, err := json.MarshalIndent(inputMap, "", "  ")
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "failed to marshal data for file: %v", err)
 	}
@@ -151,38 +125,19 @@ func (s *Server) SetSspGeoPercentsMap(ctx context.Context, req *bidEngineGrpc.Ss
 		return nil, status.Errorf(codes.Internal, "failed to write file %s: %v", bidEngine.SspGeoDspPercentsFilePath, err)
 	}
 
+	bidEngine.SspGeoPercents = inputMap
+
+	log.Printf("Successfully updated SspGeoPercents with %d SSP entries", len(inputMap))
 	return nil, nil
 }
 
-// Вспомогательная функция для проверки числового типа
-func isNumberType(v *structpb.Value) bool {
-	switch v.GetKind().(type) {
-	case *structpb.Value_NumberValue:
-		return true
-	default:
-		return false
-	}
-}
-
 func (s *Server) GetSspGeoPercentsMap(context.Context, *emptypb.Empty) (*bidEngineGrpc.SspGeoDspPercentsResponse_V2_5, error) {
-	// Создаем structpb.Struct из нашей мапы
 	jsonBytes, err := json.Marshal(bidEngine.SspGeoPercents)
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "failed to marshal data to JSON: %v", err)
 	}
 
-	var jsonMap map[string]interface{}
-	err = json.Unmarshal(jsonBytes, &jsonMap)
-	if err != nil {
-		return nil, status.Errorf(codes.Internal, "failed to unmarshal JSON: %v", err)
-	}
-
-	changes, err := structpb.NewStruct(jsonMap)
-	if err != nil {
-		return nil, status.Errorf(codes.Internal, "failed to create struct: %v", err)
-	}
-
 	return &bidEngineGrpc.SspGeoDspPercentsResponse_V2_5{
-		Changes: changes,
+		JsonData: string(jsonBytes),
 	}, nil
 }
