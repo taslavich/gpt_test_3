@@ -126,15 +126,6 @@ func GetWinnerBidInternal_V_2_5(
 			}
 		}
 
-		/*if geoMap, ok := SspGeoPercents[req.SspDomain]; !ok {
-			if geoMap, ok := SspGeoPercents[LEFT]; !ok{
-
-			}
-			if percent, hasGeo := geoMap[req.GetBidRequest().GetDevice().GetGeo().GetCountry()]; hasGeo {
-				profitPercent = percent
-			}
-		}*/
-
 		var needed bool = true
 		daoVnJpId := []string{"JP", "VN", "ID"}
 		daoMyMlBdPh := []string{"MY", "ML", "BD", "PH"}
@@ -161,7 +152,7 @@ func GetWinnerBidInternal_V_2_5(
 			profitPercent = 0.80
 			needed = false
 		} else if winningDomain == "http://ortbtwinbidexadlt.hilltopadsfeed.com/ask" && (req.SspDomain == "mybid.com" || req.SspDomain == "kadam.net") {
-			profitPercent = 0.50
+			profitPercent = 0.20
 			needed = false
 		}
 

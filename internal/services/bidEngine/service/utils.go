@@ -8,6 +8,7 @@ import (
 
 const (
 	LEFT = "LEFT"
+	ANY = "ANY"
 )
 
 var SspGeoPercents map[string]map[string]map[string]float32
@@ -26,4 +27,47 @@ func InitSspGeoPercentsLogic(filename string) error {
 	}
 
 	return nil
+}
+
+func GetGeoDspPercent(ssp, geo, dsp string, percentsMap map[string]map[string]map[string]float32, defaultPercent float32) float32 {
+	if percentsMap == nil {
+		return defaultPercent
+	}
+
+	// 1. Ищем SSP уровень
+	if sspMap, sspExists := percentsMap[ANY]
+	sspMap, sspExists := percentsMap[ssp]
+	if !sspExists {
+		// Пробуем ANY для SSP
+		sspMap, sspExists = percentsMap["ANY"]
+		if !sspExists {
+			return defaultPercent
+		}
+	}
+
+	// 2. Ищем GEO уровень
+	geoMap, geoExists := sspMap[geo]
+	if !geoExists {
+		// Пробуем ANY для GEO
+		geoMap, geoExists = sspMap["ANY"]
+		if !geoExists {
+			return defaultPercent
+		}
+	}
+
+	// 3. Ищем DSP уровень
+	percent, dspExists := geoMap[dsp]
+	if !dspExists {
+		// Пробуем ANY для DSP
+		percent, dspExists = geoMap["ANY"]
+		if !dspExists {
+			// Пробуем LEFT для DSP
+			percent, dspExists = geoMap["LEFT"]
+			if !dspExists {
+				return defaultPercent
+			}
+		}
+	}
+
+	return percent
 }
