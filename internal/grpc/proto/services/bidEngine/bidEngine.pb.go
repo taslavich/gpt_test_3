@@ -11,6 +11,7 @@ import (
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
 	emptypb "google.golang.org/protobuf/types/known/emptypb"
+	structpb "google.golang.org/protobuf/types/known/structpb"
 	reflect "reflect"
 	sync "sync"
 	unsafe "unsafe"
@@ -143,27 +144,27 @@ func (x *BidEngineResponse_V2_5) GetGlobalId() string {
 	return ""
 }
 
-type SspGeoPercentsRequest_V2_5 struct {
-	state         protoimpl.MessageState       `protogen:"open.v1"`
-	Changes       map[string]*MapStringToFloat `protobuf:"bytes,1,rep,name=changes,proto3" json:"changes,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
+type SspGeoDspPercentsRequest_V2_5 struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Changes       *structpb.Struct       `protobuf:"bytes,1,opt,name=changes,proto3" json:"changes,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
-func (x *SspGeoPercentsRequest_V2_5) Reset() {
-	*x = SspGeoPercentsRequest_V2_5{}
+func (x *SspGeoDspPercentsRequest_V2_5) Reset() {
+	*x = SspGeoDspPercentsRequest_V2_5{}
 	mi := &file_services_bidEngine_proto_msgTypes[2]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
 
-func (x *SspGeoPercentsRequest_V2_5) String() string {
+func (x *SspGeoDspPercentsRequest_V2_5) String() string {
 	return protoimpl.X.MessageStringOf(x)
 }
 
-func (*SspGeoPercentsRequest_V2_5) ProtoMessage() {}
+func (*SspGeoDspPercentsRequest_V2_5) ProtoMessage() {}
 
-func (x *SspGeoPercentsRequest_V2_5) ProtoReflect() protoreflect.Message {
+func (x *SspGeoDspPercentsRequest_V2_5) ProtoReflect() protoreflect.Message {
 	mi := &file_services_bidEngine_proto_msgTypes[2]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
@@ -175,39 +176,39 @@ func (x *SspGeoPercentsRequest_V2_5) ProtoReflect() protoreflect.Message {
 	return mi.MessageOf(x)
 }
 
-// Deprecated: Use SspGeoPercentsRequest_V2_5.ProtoReflect.Descriptor instead.
-func (*SspGeoPercentsRequest_V2_5) Descriptor() ([]byte, []int) {
+// Deprecated: Use SspGeoDspPercentsRequest_V2_5.ProtoReflect.Descriptor instead.
+func (*SspGeoDspPercentsRequest_V2_5) Descriptor() ([]byte, []int) {
 	return file_services_bidEngine_proto_rawDescGZIP(), []int{2}
 }
 
-func (x *SspGeoPercentsRequest_V2_5) GetChanges() map[string]*MapStringToFloat {
+func (x *SspGeoDspPercentsRequest_V2_5) GetChanges() *structpb.Struct {
 	if x != nil {
 		return x.Changes
 	}
 	return nil
 }
 
-type MapStringToFloat struct {
+type SspGeoDspPercentsResponse_V2_5 struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	Values        map[string]float32     `protobuf:"bytes,1,rep,name=values,proto3" json:"values,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"fixed32,2,opt,name=value"`
+	Changes       *structpb.Struct       `protobuf:"bytes,1,opt,name=changes,proto3" json:"changes,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
-func (x *MapStringToFloat) Reset() {
-	*x = MapStringToFloat{}
+func (x *SspGeoDspPercentsResponse_V2_5) Reset() {
+	*x = SspGeoDspPercentsResponse_V2_5{}
 	mi := &file_services_bidEngine_proto_msgTypes[3]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
 
-func (x *MapStringToFloat) String() string {
+func (x *SspGeoDspPercentsResponse_V2_5) String() string {
 	return protoimpl.X.MessageStringOf(x)
 }
 
-func (*MapStringToFloat) ProtoMessage() {}
+func (*SspGeoDspPercentsResponse_V2_5) ProtoMessage() {}
 
-func (x *MapStringToFloat) ProtoReflect() protoreflect.Message {
+func (x *SspGeoDspPercentsResponse_V2_5) ProtoReflect() protoreflect.Message {
 	mi := &file_services_bidEngine_proto_msgTypes[3]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
@@ -219,14 +220,14 @@ func (x *MapStringToFloat) ProtoReflect() protoreflect.Message {
 	return mi.MessageOf(x)
 }
 
-// Deprecated: Use MapStringToFloat.ProtoReflect.Descriptor instead.
-func (*MapStringToFloat) Descriptor() ([]byte, []int) {
+// Deprecated: Use SspGeoDspPercentsResponse_V2_5.ProtoReflect.Descriptor instead.
+func (*SspGeoDspPercentsResponse_V2_5) Descriptor() ([]byte, []int) {
 	return file_services_bidEngine_proto_rawDescGZIP(), []int{3}
 }
 
-func (x *MapStringToFloat) GetValues() map[string]float32 {
+func (x *SspGeoDspPercentsResponse_V2_5) GetChanges() *structpb.Struct {
 	if x != nil {
-		return x.Values
+		return x.Changes
 	}
 	return nil
 }
@@ -235,7 +236,7 @@ var File_services_bidEngine_proto protoreflect.FileDescriptor
 
 const file_services_bidEngine_proto_rawDesc = "" +
 	"\n" +
-	"\x18services/bidEngine.proto\x12\tbidEngine\x1a\x1atypes/ortb_V2_5/ortb.proto\x1a\x1bgoogle/protobuf/empty.proto\"\xba\x02\n" +
+	"\x18services/bidEngine.proto\x12\tbidEngine\x1a\x1atypes/ortb_V2_5/ortb.proto\x1a\x1bgoogle/protobuf/empty.proto\x1a\x1cgoogle/protobuf/struct.proto\"\xba\x02\n" +
 	"\x15BidEngineRequest_V2_5\x125\n" +
 	"\n" +
 	"bidRequest\x18\x01 \x01(\v2\x15.ortb_V2_5.BidRequestR\n" +
@@ -249,20 +250,15 @@ const file_services_bidEngine_proto_rawDesc = "" +
 	"\x05value\x18\x02 \x01(\v2\x16.ortb_V2_5.BidResponseR\x05value:\x028\x01\"n\n" +
 	"\x16BidEngineResponse_V2_5\x128\n" +
 	"\vbidResponse\x18\x01 \x01(\v2\x16.ortb_V2_5.BidResponseR\vbidResponse\x12\x1a\n" +
-	"\bglobalId\x18\x02 \x01(\tR\bglobalId\"\xc3\x01\n" +
-	"\x1aSspGeoPercentsRequest_V2_5\x12L\n" +
-	"\achanges\x18\x01 \x03(\v22.bidEngine.SspGeoPercentsRequest_V2_5.ChangesEntryR\achanges\x1aW\n" +
-	"\fChangesEntry\x12\x10\n" +
-	"\x03key\x18\x01 \x01(\tR\x03key\x121\n" +
-	"\x05value\x18\x02 \x01(\v2\x1b.bidEngine.MapStringToFloatR\x05value:\x028\x01\"\x8e\x01\n" +
-	"\x10MapStringToFloat\x12?\n" +
-	"\x06values\x18\x01 \x03(\v2'.bidEngine.MapStringToFloat.ValuesEntryR\x06values\x1a9\n" +
-	"\vValuesEntry\x12\x10\n" +
-	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\x02R\x05value:\x028\x012\xc8\x01\n" +
+	"\bglobalId\x18\x02 \x01(\tR\bglobalId\"R\n" +
+	"\x1dSspGeoDspPercentsRequest_V2_5\x121\n" +
+	"\achanges\x18\x01 \x01(\v2\x17.google.protobuf.StructR\achanges\"S\n" +
+	"\x1eSspGeoDspPercentsResponse_V2_5\x121\n" +
+	"\achanges\x18\x01 \x01(\v2\x17.google.protobuf.StructR\achanges2\xa3\x02\n" +
 	"\x10BidEngineService\x12Z\n" +
 	"\x11getWinnerBid_V2_5\x12 .bidEngine.BidEngineRequest_V2_5\x1a!.bidEngine.BidEngineResponse_V2_5\"\x00\x12X\n" +
-	"\x17ChangeSspGeoPercentsMap\x12%.bidEngine.SspGeoPercentsRequest_V2_5\x1a\x16.google.protobuf.EmptyB_Z]gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/proto/services/bidEngine;bidEngineGrpcb\x06proto3"
+	"\x14SetSspGeoPercentsMap\x12(.bidEngine.SspGeoDspPercentsRequest_V2_5\x1a\x16.google.protobuf.Empty\x12Y\n" +
+	"\x14GetSspGeoPercentsMap\x12\x16.google.protobuf.Empty\x1a).bidEngine.SspGeoDspPercentsResponse_V2_5B_Z]gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/proto/services/bidEngine;bidEngineGrpcb\x06proto3"
 
 var (
 	file_services_bidEngine_proto_rawDescOnce sync.Once
@@ -276,36 +272,36 @@ func file_services_bidEngine_proto_rawDescGZIP() []byte {
 	return file_services_bidEngine_proto_rawDescData
 }
 
-var file_services_bidEngine_proto_msgTypes = make([]protoimpl.MessageInfo, 7)
+var file_services_bidEngine_proto_msgTypes = make([]protoimpl.MessageInfo, 5)
 var file_services_bidEngine_proto_goTypes = []any{
-	(*BidEngineRequest_V2_5)(nil),      // 0: bidEngine.BidEngineRequest_V2_5
-	(*BidEngineResponse_V2_5)(nil),     // 1: bidEngine.BidEngineResponse_V2_5
-	(*SspGeoPercentsRequest_V2_5)(nil), // 2: bidEngine.SspGeoPercentsRequest_V2_5
-	(*MapStringToFloat)(nil),           // 3: bidEngine.MapStringToFloat
-	nil,                                // 4: bidEngine.BidEngineRequest_V2_5.BidResponsesEntry
-	nil,                                // 5: bidEngine.SspGeoPercentsRequest_V2_5.ChangesEntry
-	nil,                                // 6: bidEngine.MapStringToFloat.ValuesEntry
-	(*ortb_V2_5.BidRequest)(nil),       // 7: ortb_V2_5.BidRequest
-	(*ortb_V2_5.BidResponse)(nil),      // 8: ortb_V2_5.BidResponse
-	(*emptypb.Empty)(nil),              // 9: google.protobuf.Empty
+	(*BidEngineRequest_V2_5)(nil),          // 0: bidEngine.BidEngineRequest_V2_5
+	(*BidEngineResponse_V2_5)(nil),         // 1: bidEngine.BidEngineResponse_V2_5
+	(*SspGeoDspPercentsRequest_V2_5)(nil),  // 2: bidEngine.SspGeoDspPercentsRequest_V2_5
+	(*SspGeoDspPercentsResponse_V2_5)(nil), // 3: bidEngine.SspGeoDspPercentsResponse_V2_5
+	nil,                                    // 4: bidEngine.BidEngineRequest_V2_5.BidResponsesEntry
+	(*ortb_V2_5.BidRequest)(nil),           // 5: ortb_V2_5.BidRequest
+	(*ortb_V2_5.BidResponse)(nil),          // 6: ortb_V2_5.BidResponse
+	(*structpb.Struct)(nil),                // 7: google.protobuf.Struct
+	(*emptypb.Empty)(nil),                  // 8: google.protobuf.Empty
 }
 var file_services_bidEngine_proto_depIdxs = []int32{
-	7, // 0: bidEngine.BidEngineRequest_V2_5.bidRequest:type_name -> ortb_V2_5.BidRequest
+	5, // 0: bidEngine.BidEngineRequest_V2_5.bidRequest:type_name -> ortb_V2_5.BidRequest
 	4, // 1: bidEngine.BidEngineRequest_V2_5.bidResponses:type_name -> bidEngine.BidEngineRequest_V2_5.BidResponsesEntry
-	8, // 2: bidEngine.BidEngineResponse_V2_5.bidResponse:type_name -> ortb_V2_5.BidResponse
-	5, // 3: bidEngine.SspGeoPercentsRequest_V2_5.changes:type_name -> bidEngine.SspGeoPercentsRequest_V2_5.ChangesEntry
-	6, // 4: bidEngine.MapStringToFloat.values:type_name -> bidEngine.MapStringToFloat.ValuesEntry
-	8, // 5: bidEngine.BidEngineRequest_V2_5.BidResponsesEntry.value:type_name -> ortb_V2_5.BidResponse
-	3, // 6: bidEngine.SspGeoPercentsRequest_V2_5.ChangesEntry.value:type_name -> bidEngine.MapStringToFloat
-	0, // 7: bidEngine.BidEngineService.getWinnerBid_V2_5:input_type -> bidEngine.BidEngineRequest_V2_5
-	2, // 8: bidEngine.BidEngineService.ChangeSspGeoPercentsMap:input_type -> bidEngine.SspGeoPercentsRequest_V2_5
+	6, // 2: bidEngine.BidEngineResponse_V2_5.bidResponse:type_name -> ortb_V2_5.BidResponse
+	7, // 3: bidEngine.SspGeoDspPercentsRequest_V2_5.changes:type_name -> google.protobuf.Struct
+	7, // 4: bidEngine.SspGeoDspPercentsResponse_V2_5.changes:type_name -> google.protobuf.Struct
+	6, // 5: bidEngine.BidEngineRequest_V2_5.BidResponsesEntry.value:type_name -> ortb_V2_5.BidResponse
+	0, // 6: bidEngine.BidEngineService.getWinnerBid_V2_5:input_type -> bidEngine.BidEngineRequest_V2_5
+	2, // 7: bidEngine.BidEngineService.SetSspGeoPercentsMap:input_type -> bidEngine.SspGeoDspPercentsRequest_V2_5
+	8, // 8: bidEngine.BidEngineService.GetSspGeoPercentsMap:input_type -> google.protobuf.Empty
 	1, // 9: bidEngine.BidEngineService.getWinnerBid_V2_5:output_type -> bidEngine.BidEngineResponse_V2_5
-	9, // 10: bidEngine.BidEngineService.ChangeSspGeoPercentsMap:output_type -> google.protobuf.Empty
-	9, // [9:11] is the sub-list for method output_type
-	7, // [7:9] is the sub-list for method input_type
-	7, // [7:7] is the sub-list for extension type_name
-	7, // [7:7] is the sub-list for extension extendee
-	0, // [0:7] is the sub-list for field type_name
+	8, // 10: bidEngine.BidEngineService.SetSspGeoPercentsMap:output_type -> google.protobuf.Empty
+	3, // 11: bidEngine.BidEngineService.GetSspGeoPercentsMap:output_type -> bidEngine.SspGeoDspPercentsResponse_V2_5
+	9, // [9:12] is the sub-list for method output_type
+	6, // [6:9] is the sub-list for method input_type
+	6, // [6:6] is the sub-list for extension type_name
+	6, // [6:6] is the sub-list for extension extendee
+	0, // [0:6] is the sub-list for field type_name
 }
 
 func init() { file_services_bidEngine_proto_init() }
@@ -319,7 +315,7 @@ func file_services_bidEngine_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_services_bidEngine_proto_rawDesc), len(file_services_bidEngine_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   7,
+			NumMessages:   5,
 			NumExtensions: 0,
 			NumServices:   1,
 		},
