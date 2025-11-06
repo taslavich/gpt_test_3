@@ -160,8 +160,8 @@ func GetWinnerBidInternal_V_2_5(
 		} else if req.SspDomain == "octoclick.com" && winningDomain == "http://pop-48702.daortb.com/api/rtb-pops/item?sourceId=59738&api-key=xvKZ-_oewvADCb2RR0W6bgp_EdLEKCLj" {
 			profitPercent = 0.80
 			needed = false
-		} else if winningDomain == "http://ortbtwinbidexadlt.hilltopadsfeed.com/ask" && req.SspDomain == "mybid.com" {
-			profitPercent = 0.70
+		} else if winningDomain == "http://ortbtwinbidexadlt.hilltopadsfeed.com/ask" && (req.SspDomain == "mybid.com" || req.SspDomain == "kadam.net") {
+			profitPercent = 0.50
 			needed = false
 		}
 
