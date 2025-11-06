@@ -107,9 +107,9 @@ func (s *Server) GetWinnerBid_V2_5(
 }
 
 func (s *Server) ChangeSspGeoDspPercentsMap(ctx context.Context, req *bidEngineGrpc.SspGeoDspPercentsRequest_V2_5) (*emptypb.Empty, error) {
-	jsonBytes, err := req.Changes.MarshalJSON()
+	jsonBytes, err := json.Marshal(req.Changes.Fields)
 	if err != nil {
-		return nil, status.Errorf(codes.InvalidArgument, "failed to marshal struct to JSON: %v", err)
+		return nil, status.Errorf(codes.InvalidArgument, "failed to marshal fields to JSON: %v", err)
 	}
 
 	err = json.Unmarshal(jsonBytes, &bidEngine.SspGeoPercents)
