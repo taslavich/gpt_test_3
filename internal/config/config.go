@@ -47,8 +47,9 @@ func (l *ListString) SetValue(value string) error {
 
 type BiddingEngineConfig struct {
 	HttpServer
-	ProfitPercent  float32 `yaml:"PROFIT_PERCENT" env:"PROFIT_PERCENT" env-default:"0.2"`
-	SystemHostname string  `yaml:"SYSTEM_HOSTNAME" env:"SYSTEM_HOSTNAME"`
+	ProfitPercent             float32 `yaml:"PROFIT_PERCENT" env:"PROFIT_PERCENT" env-default:"0.2"`
+	SystemHostname            string  `yaml:"SYSTEM_HOSTNAME" env:"SYSTEM_HOSTNAME"`
+	SspGeoDspPercentsFilePath string  `yaml:"SSP_GEO_DSP_PERCENTS_FILE_PATH" env:"SSP_GEO_DSP_PERCENTS_FILE_PATH"`
 	RedisConfig
 }
 

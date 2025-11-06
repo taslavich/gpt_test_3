@@ -18,7 +18,7 @@ import (
 	clickhouse_types "gitlab.com/twinbid-exchange/RTB-exchange/internal/types/clickhouse"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
-	emptypb "google.golang.org/protobuf/types/known/emptypb"
+	"google.golang.org/protobuf/types/known/emptypb"
 )
 
 type Server struct {
@@ -104,8 +104,18 @@ func (s *Server) GetWinnerBid_V2_5(
 	}, nil
 }
 
-func (s *Server) ChangeSspGeoPercentsMap(ctx context.Context, req *bidEngineGrpc.SspGeoPercentsRequest_V2_5) (*emptypb.Empty, error) {
-	for sspDomain, externalGeoMap := range req.Changes {
+func (s *Server) ChangeSspGeoDspPercentsMap(ctx context.Context, req *bidEngineGrpc.SspGeoDspPercentsRequest_V2_5) (*emptypb.Empty, error) {
+	jsonBytes, err := req.Changes.MarshalJSON()
+	if err != nil {
+		return nil, status.Errorf(codes.InvalidArgument, "failed to marshal struct to JSON: %v", err)
+	}
+
+	err = json.Unmarshal(jsonBytes, &bidEngine.SspGeoPercents)
+	if err != nil {
+		return nil, status.Errorf(codes.InvalidArgument, "failed to parse JSON: %v", err)
+	}
+
+	/*for sspDomain, externalGeoMap := range req.Changes {
 		if _, ok := bidEngine.SspGeoPercents[sspDomain]; !ok {
 			bidEngine.SspGeoPercents[sspDomain] = make(map[string]float32)
 		}
@@ -118,7 +128,15 @@ func (s *Server) ChangeSspGeoPercentsMap(ctx context.Context, req *bidEngineGrpc
 
 			bidEngine.SspGeoPercents[sspDomain][externalGeo] = s.ProfitPercent + externalDelta
 		}
-	}
+	}*/
 
 	return nil, nil
 }
+
+/*func (s *Server) GetSspGeoPercentsMap(context.Context, *emptypb.Empty) (*bidEngineGrpc.SspGeoDspPercentsResponse_V2_5, error) {
+	jsonBytes, err := json.Marshal(&bidEngine.SspGeoPercents)
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "failed to marshal data to JSON: %v", err)
+	}
+}
+*/

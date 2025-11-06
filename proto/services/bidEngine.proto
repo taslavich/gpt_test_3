@@ -4,10 +4,12 @@ option go_package = "gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/prot
 
 import "types/ortb_V2_5/ortb.proto";
 import "google/protobuf/empty.proto";
+import "google/protobuf/struct.proto";
 
 service BidEngineService {
   rpc getWinnerBid_V2_5(BidEngineRequest_V2_5) returns (BidEngineResponse_V2_5) {};
-  rpc ChangeSspGeoPercentsMap(SspGeoPercentsRequest_V2_5) returns (google.protobuf.Empty);
+  rpc SetSspGeoPercentsMap(SspGeoDspPercentsRequest_V2_5) returns (google.protobuf.Empty);
+  rpc GetSspGeoPercentsMap(google.protobuf.Empty) returns (SspGeoDspPercentsResponse_V2_5);
 }
 
 message BidEngineRequest_V2_5 {
@@ -22,10 +24,10 @@ message BidEngineResponse_V2_5 {
   string globalId = 2;
 }
 
-message SspGeoPercentsRequest_V2_5 {
-  map<string, MapStringToFloat> changes = 1;
+message SspGeoDspPercentsRequest_V2_5 {
+  google.protobuf.Struct changes = 1;
 }
 
-message MapStringToFloat {
-  map<string, float> values = 1;
+message SspGeoDspPercentsResponse_V2_5 {
+    google.protobuf.Struct changes = 1;
 }
