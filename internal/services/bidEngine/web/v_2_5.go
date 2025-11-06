@@ -19,6 +19,7 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/emptypb"
+	"google.golang.org/protobuf/types/known/structpb"
 )
 
 type Server struct {
@@ -115,28 +116,22 @@ func (s *Server) ChangeSspGeoDspPercentsMap(ctx context.Context, req *bidEngineG
 		return nil, status.Errorf(codes.InvalidArgument, "failed to parse JSON: %v", err)
 	}
 
-	/*for sspDomain, externalGeoMap := range req.Changes {
-		if _, ok := bidEngine.SspGeoPercents[sspDomain]; !ok {
-			bidEngine.SspGeoPercents[sspDomain] = make(map[string]float32)
-		}
-
-		for externalGeo, externalDelta := range externalGeoMap.Values {
-			if percent, ok := bidEngine.SspGeoPercents[sspDomain][externalGeo]; ok {
-				bidEngine.SspGeoPercents[sspDomain][externalGeo] = percent + externalDelta
-				continue
-			}
-
-			bidEngine.SspGeoPercents[sspDomain][externalGeo] = s.ProfitPercent + externalDelta
-		}
-	}*/
-
 	return nil, nil
 }
 
-/*func (s *Server) GetSspGeoPercentsMap(context.Context, *emptypb.Empty) (*bidEngineGrpc.SspGeoDspPercentsResponse_V2_5, error) {
-	jsonBytes, err := json.Marshal(&bidEngine.SspGeoPercents)
+func (s *Server) GetSspGeoPercentsMap(context.Context, *emptypb.Empty) (*bidEngineGrpc.SspGeoDspPercentsResponse_V2_5, error) {
+	jsonBytes, err := json.Marshal(bidEngine.SspGeoPercents)
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "failed to marshal data to JSON: %v", err)
 	}
+
+	changes := &structpb.Struct{}
+	err = changes.UnmarshalJSON(jsonBytes)
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "failed to create struct from JSON: %v", err)
+	}
+
+	return &pb.SspGeoDspPercentsResponse_V2_5{
+		Changes: changes,
+	}, nil
 }
-*/
