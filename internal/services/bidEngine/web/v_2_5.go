@@ -147,6 +147,18 @@ func (s *Server) SetSspGeoPercentsMap(ctx context.Context, req *bidEngineGrpc.Ss
 }
 
 func (s *Server) GetSspGeoPercentsMap(context.Context, *emptypb.Empty) (*bidEngineGrpc.SspGeoDspPercentsResponse_V2_5, error) {
+	log.Printf("=== DEBUG GetSspGeoPercentsMap ===")
+	log.Printf("SspGeoPercents == nil: %t", bidEngine.SspGeoPercents == nil)
+	log.Printf("SspGeoPercents length: %d", len(bidEngine.SspGeoPercents))
+	log.Printf("SspGeoPercents: %+v", bidEngine.SspGeoPercents)
+
+	if bidEngine.SspGeoPercents == nil {
+		log.Printf("SspGeoPercents is NIL!")
+		return &bidEngineGrpc.SspGeoDspPercentsResponse_V2_5{
+			JsonData: "{}",
+		}, nil
+	}
+
 	jsonBytes, err := json.Marshal(bidEngine.SspGeoPercents)
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "failed to marshal data to JSON: %v", err)
