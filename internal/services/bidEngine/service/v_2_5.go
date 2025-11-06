@@ -126,13 +126,14 @@ func GetWinnerBidInternal_V_2_5(
 			}
 		}
 
-		if geoMap, ok := SspGeoPercents[req.SspDomain]; !ok {
-			geoMap, ok := SspGeoPercents[LEFT]
-			!ok{}
+		/*if geoMap, ok := SspGeoPercents[req.SspDomain]; !ok {
+			if geoMap, ok := SspGeoPercents[LEFT]; !ok{
+
+			}
 			if percent, hasGeo := geoMap[req.GetBidRequest().GetDevice().GetGeo().GetCountry()]; hasGeo {
 				profitPercent = percent
 			}
-		}
+		}*/
 
 		var needed bool = true
 		daoVnJpId := []string{"JP", "VN", "ID"}
