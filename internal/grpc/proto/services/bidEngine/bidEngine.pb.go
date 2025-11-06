@@ -11,7 +11,6 @@ import (
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
 	emptypb "google.golang.org/protobuf/types/known/emptypb"
-	structpb "google.golang.org/protobuf/types/known/structpb"
 	reflect "reflect"
 	sync "sync"
 	unsafe "unsafe"
@@ -146,7 +145,7 @@ func (x *BidEngineResponse_V2_5) GetGlobalId() string {
 
 type SspGeoDspPercentsRequest_V2_5 struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	Changes       *structpb.Struct       `protobuf:"bytes,1,opt,name=changes,proto3" json:"changes,omitempty"`
+	JsonData      string                 `protobuf:"bytes,1,opt,name=json_data,json=jsonData,proto3" json:"json_data,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -181,16 +180,16 @@ func (*SspGeoDspPercentsRequest_V2_5) Descriptor() ([]byte, []int) {
 	return file_services_bidEngine_proto_rawDescGZIP(), []int{2}
 }
 
-func (x *SspGeoDspPercentsRequest_V2_5) GetChanges() *structpb.Struct {
+func (x *SspGeoDspPercentsRequest_V2_5) GetJsonData() string {
 	if x != nil {
-		return x.Changes
+		return x.JsonData
 	}
-	return nil
+	return ""
 }
 
 type SspGeoDspPercentsResponse_V2_5 struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	Changes       *structpb.Struct       `protobuf:"bytes,1,opt,name=changes,proto3" json:"changes,omitempty"`
+	JsonData      string                 `protobuf:"bytes,1,opt,name=json_data,json=jsonData,proto3" json:"json_data,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -225,18 +224,18 @@ func (*SspGeoDspPercentsResponse_V2_5) Descriptor() ([]byte, []int) {
 	return file_services_bidEngine_proto_rawDescGZIP(), []int{3}
 }
 
-func (x *SspGeoDspPercentsResponse_V2_5) GetChanges() *structpb.Struct {
+func (x *SspGeoDspPercentsResponse_V2_5) GetJsonData() string {
 	if x != nil {
-		return x.Changes
+		return x.JsonData
 	}
-	return nil
+	return ""
 }
 
 var File_services_bidEngine_proto protoreflect.FileDescriptor
 
 const file_services_bidEngine_proto_rawDesc = "" +
 	"\n" +
-	"\x18services/bidEngine.proto\x12\tbidEngine\x1a\x1atypes/ortb_V2_5/ortb.proto\x1a\x1bgoogle/protobuf/empty.proto\x1a\x1cgoogle/protobuf/struct.proto\"\xba\x02\n" +
+	"\x18services/bidEngine.proto\x12\tbidEngine\x1a\x1atypes/ortb_V2_5/ortb.proto\x1a\x1bgoogle/protobuf/empty.proto\"\xba\x02\n" +
 	"\x15BidEngineRequest_V2_5\x125\n" +
 	"\n" +
 	"bidRequest\x18\x01 \x01(\v2\x15.ortb_V2_5.BidRequestR\n" +
@@ -250,11 +249,11 @@ const file_services_bidEngine_proto_rawDesc = "" +
 	"\x05value\x18\x02 \x01(\v2\x16.ortb_V2_5.BidResponseR\x05value:\x028\x01\"n\n" +
 	"\x16BidEngineResponse_V2_5\x128\n" +
 	"\vbidResponse\x18\x01 \x01(\v2\x16.ortb_V2_5.BidResponseR\vbidResponse\x12\x1a\n" +
-	"\bglobalId\x18\x02 \x01(\tR\bglobalId\"R\n" +
-	"\x1dSspGeoDspPercentsRequest_V2_5\x121\n" +
-	"\achanges\x18\x01 \x01(\v2\x17.google.protobuf.StructR\achanges\"S\n" +
-	"\x1eSspGeoDspPercentsResponse_V2_5\x121\n" +
-	"\achanges\x18\x01 \x01(\v2\x17.google.protobuf.StructR\achanges2\xa3\x02\n" +
+	"\bglobalId\x18\x02 \x01(\tR\bglobalId\"<\n" +
+	"\x1dSspGeoDspPercentsRequest_V2_5\x12\x1b\n" +
+	"\tjson_data\x18\x01 \x01(\tR\bjsonData\"=\n" +
+	"\x1eSspGeoDspPercentsResponse_V2_5\x12\x1b\n" +
+	"\tjson_data\x18\x01 \x01(\tR\bjsonData2\xa3\x02\n" +
 	"\x10BidEngineService\x12Z\n" +
 	"\x11getWinnerBid_V2_5\x12 .bidEngine.BidEngineRequest_V2_5\x1a!.bidEngine.BidEngineResponse_V2_5\"\x00\x12X\n" +
 	"\x14SetSspGeoPercentsMap\x12(.bidEngine.SspGeoDspPercentsRequest_V2_5\x1a\x16.google.protobuf.Empty\x12Y\n" +
@@ -281,27 +280,24 @@ var file_services_bidEngine_proto_goTypes = []any{
 	nil,                                    // 4: bidEngine.BidEngineRequest_V2_5.BidResponsesEntry
 	(*ortb_V2_5.BidRequest)(nil),           // 5: ortb_V2_5.BidRequest
 	(*ortb_V2_5.BidResponse)(nil),          // 6: ortb_V2_5.BidResponse
-	(*structpb.Struct)(nil),                // 7: google.protobuf.Struct
-	(*emptypb.Empty)(nil),                  // 8: google.protobuf.Empty
+	(*emptypb.Empty)(nil),                  // 7: google.protobuf.Empty
 }
 var file_services_bidEngine_proto_depIdxs = []int32{
 	5, // 0: bidEngine.BidEngineRequest_V2_5.bidRequest:type_name -> ortb_V2_5.BidRequest
 	4, // 1: bidEngine.BidEngineRequest_V2_5.bidResponses:type_name -> bidEngine.BidEngineRequest_V2_5.BidResponsesEntry
 	6, // 2: bidEngine.BidEngineResponse_V2_5.bidResponse:type_name -> ortb_V2_5.BidResponse
-	7, // 3: bidEngine.SspGeoDspPercentsRequest_V2_5.changes:type_name -> google.protobuf.Struct
-	7, // 4: bidEngine.SspGeoDspPercentsResponse_V2_5.changes:type_name -> google.protobuf.Struct
-	6, // 5: bidEngine.BidEngineRequest_V2_5.BidResponsesEntry.value:type_name -> ortb_V2_5.BidResponse
-	0, // 6: bidEngine.BidEngineService.getWinnerBid_V2_5:input_type -> bidEngine.BidEngineRequest_V2_5
-	2, // 7: bidEngine.BidEngineService.SetSspGeoPercentsMap:input_type -> bidEngine.SspGeoDspPercentsRequest_V2_5
-	8, // 8: bidEngine.BidEngineService.GetSspGeoPercentsMap:input_type -> google.protobuf.Empty
-	1, // 9: bidEngine.BidEngineService.getWinnerBid_V2_5:output_type -> bidEngine.BidEngineResponse_V2_5
-	8, // 10: bidEngine.BidEngineService.SetSspGeoPercentsMap:output_type -> google.protobuf.Empty
-	3, // 11: bidEngine.BidEngineService.GetSspGeoPercentsMap:output_type -> bidEngine.SspGeoDspPercentsResponse_V2_5
-	9, // [9:12] is the sub-list for method output_type
-	6, // [6:9] is the sub-list for method input_type
-	6, // [6:6] is the sub-list for extension type_name
-	6, // [6:6] is the sub-list for extension extendee
-	0, // [0:6] is the sub-list for field type_name
+	6, // 3: bidEngine.BidEngineRequest_V2_5.BidResponsesEntry.value:type_name -> ortb_V2_5.BidResponse
+	0, // 4: bidEngine.BidEngineService.getWinnerBid_V2_5:input_type -> bidEngine.BidEngineRequest_V2_5
+	2, // 5: bidEngine.BidEngineService.SetSspGeoPercentsMap:input_type -> bidEngine.SspGeoDspPercentsRequest_V2_5
+	7, // 6: bidEngine.BidEngineService.GetSspGeoPercentsMap:input_type -> google.protobuf.Empty
+	1, // 7: bidEngine.BidEngineService.getWinnerBid_V2_5:output_type -> bidEngine.BidEngineResponse_V2_5
+	7, // 8: bidEngine.BidEngineService.SetSspGeoPercentsMap:output_type -> google.protobuf.Empty
+	3, // 9: bidEngine.BidEngineService.GetSspGeoPercentsMap:output_type -> bidEngine.SspGeoDspPercentsResponse_V2_5
+	7, // [7:10] is the sub-list for method output_type
+	4, // [4:7] is the sub-list for method input_type
+	4, // [4:4] is the sub-list for extension type_name
+	4, // [4:4] is the sub-list for extension extendee
+	0, // [0:4] is the sub-list for field type_name
 }
 
 func init() { file_services_bidEngine_proto_init() }
