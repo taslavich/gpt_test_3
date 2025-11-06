@@ -106,6 +106,14 @@ func (s *Server) GetWinnerBid_V2_5(
 }
 
 func (s *Server) SetSspGeoPercentsMap(ctx context.Context, req *bidEngineGrpc.SspGeoDspPercentsRequest_V2_5) (*emptypb.Empty, error) {
+	// Добавим отладку
+	log.Printf("Received JsonData: '%s'", req.JsonData)
+	log.Printf("JsonData length: %d", len(req.JsonData))
+
+	if req.JsonData == "" {
+		return nil, status.Errorf(codes.InvalidArgument, "json_data is empty")
+	}
+
 	// Парсим JSON напрямую
 	var inputMap map[string]map[string]map[string]float32
 
