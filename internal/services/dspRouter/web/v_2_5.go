@@ -184,7 +184,7 @@ func (s *Server) GetBids_V2_5(
 		}
 
 		if endpoint == "http://ortbtwinbidexadlt.hilltopadsfeed.com/ask" {
-			if req.SspDomain != "mybid.com" {
+			if req.SspDomain != "mybid.com" || req.SspDomain != "kadam.net" {
 				continue
 			}
 		}
