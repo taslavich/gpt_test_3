@@ -136,13 +136,19 @@ func (s *Server) GetSspGeoPercentsMap(context.Context, *emptypb.Empty) (*bidEngi
 		return nil, status.Errorf(codes.Internal, "failed to marshal data to JSON: %v", err)
 	}
 
-	changes := &structpb.Struct{}
-	err = changes.UnmarshalJSON(jsonBytes)
+	// Этот блок УБИРАЕТ fields!
+	var jsonMap map[string]interface{}
+	err = json.Unmarshal(jsonBytes, &jsonMap)
 	if err != nil {
-		return nil, status.Errorf(codes.Internal, "failed to create struct from JSON: %v", err)
+		return nil, status.Errorf(codes.Internal, "failed to unmarshal JSON: %v", err)
 	}
 
-	return &pb.SspGeoDspPercentsResponse_V2_5{
+	changes, err := structpb.NewStruct(jsonMap)
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "failed to create struct: %v", err)
+	}
+
+	return &bidEngineGrpc.SspGeoDspPercentsResponse_V2_5{
 		Changes: changes,
 	}, nil
 }
