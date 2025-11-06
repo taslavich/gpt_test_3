@@ -6,6 +6,10 @@ import (
 	"os"
 )
 
+const (
+	LEFT = "LEFT"
+)
+
 var SspGeoPercents map[string]map[string]map[string]float32
 var SspGeoDspPercentsFilePath string
 
