@@ -11,3 +11,8 @@ type StatisticsRecord struct {
 	ADM_IP              string `json:"ADM_IP"`
 	ADM                 string `json:"ADM"`
 }
+
+type PercentAndBidfloor struct {
+	Percent  float32 `json:"percent"`
+	Bidfloor bool    `json:"bidfloor"`
+}

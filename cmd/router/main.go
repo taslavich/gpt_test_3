@@ -13,6 +13,7 @@ import (
 	"gitlab.com/twinbid-exchange/RTB-exchange/internal/config"
 	"gitlab.com/twinbid-exchange/RTB-exchange/internal/filter"
 	dspRouterGrpc "gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/proto/services/dspRouter"
+	utils "gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/utils_grpc"
 	maxproc "gitlab.com/twinbid-exchange/RTB-exchange/internal/mp"
 	dspRouterWeb "gitlab.com/twinbid-exchange/RTB-exchange/internal/services/dspRouter/web"
 
@@ -89,6 +90,11 @@ func main() {
 
 	processor := filter.NewOptimizedFilterProcessor(ruleManager)
 
+	sspGeoDspMap, err := utils.InitSspGeoDspMap[bool](cfg.SspGeoDspLinksFilePath)
+	if err != nil {
+		log.Fatalf("Failed to InitSspGeoPercentsLogic: %v", err)
+	}
+
 	s := grpc.NewServer()
 	routerServer := dspRouterWeb.NewServer(
 		ruleManager,
@@ -100,6 +106,8 @@ func main() {
 		cfg.BidResponsesTimeout,
 		cfg.MaxParallelRequests,
 		cfg.SspNotDsp,
+		cfg.SspGeoDspLinksFilePath,
+		sspGeoDspMap,
 	)
 
 	if err := routerServer.LoadNetset(cfg.AllowedIpDbPath); err != nil {

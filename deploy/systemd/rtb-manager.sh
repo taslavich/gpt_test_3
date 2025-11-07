@@ -328,6 +328,13 @@ case "$1" in
             echo "⚠️  sspGeoDspPersents.json not found"
         fi
 
+        if [ -f "./cmd/router/sspGeoDspLinks.json" ]; then
+            cp ./cmd/router/sspGeoDspLinks.json ./
+            echo "✅ Copied sspGeoDspLinks.json"
+        else
+            echo "⚠️  sspGeoDspLinks.json not found"
+        fi
+
         if [ -f "./cmd/adm-adapter/fullchain.pem" ]; then
             cp ./cmd/adm-adapter/fullchain.pem ./
             echo "✅ Copied fullchain.pem"
