@@ -49,10 +49,6 @@ func main() {
 	}
 	log.Println("✅ Connected to Redis")
 
-	for k, v := range cfg.SspNotDsp {
-		log.Println(k, "--", v)
-	}
-
 	ruleManager := filter.NewRuleManager()
 
 	fileLoader := filter.NewFileRuleLoader(
