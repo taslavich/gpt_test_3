@@ -209,7 +209,7 @@ func (s *Server) GetBids_V2_5(
 			}
 
 			if endpoint == "http://pop-48702.daortb.com/api/rtb-pops/item?sourceId=59738&api-key=xvKZ-_oewvADCb2RR0W6bgp_EdLEKCLj" {
-				if req.SspDomain != "mybid.com" {
+				if req.SspDomain != "galaksion.com" {
 					codesCh <- &dspDomainCode{
 						domain: domain,
 						code:   -2,

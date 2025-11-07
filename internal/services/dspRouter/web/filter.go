@@ -19,7 +19,7 @@ var innerFilterMap = map[string]func(bidRequest *ortb_V2_5.BidRequest, ranger ci
 		return allowedUA(bidRequest.GetDevice().GetUa()) && isIPAllowed(bidRequest.GetDevice().GetIp(), ranger, bidRequest) && AllowedSite(bidRequest)
 	},
 	"http://pop-48702.daortb.com/api/rtb-pops/item?sourceId=59738&api-key=xvKZ-_oewvADCb2RR0W6bgp_EdLEKCLj": func(bidRequest *ortb_V2_5.BidRequest, ranger cidranger.Ranger) bool {
-		return AllowedSite(bidRequest)
+		return AllowedSite(bidRequest) && allowedUA(bidRequest.GetDevice().GetUa())
 	},
 	"http://u625267.pophandler.net/rtb/?async=1&code_type=1&js=1&rtbRequest=1&sid=940499": func(bidRequest *ortb_V2_5.BidRequest, ranger cidranger.Ranger) bool {
 		return !HasIpv6(bidRequest)
