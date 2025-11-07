@@ -191,17 +191,29 @@ func (s *Server) GetBids_V2_5(
 			endpoint := endpoint
 			domain := domain
 			if utils.IsInStringSlice(endpoint, notDsp) {
+				codesCh <- &dspDomainCode{
+					domain: domain,
+					code:   -4,
+				}
 				continue
 			}
 
 			if endpoint == "http://ortbtwinbidexadlt.hilltopadsfeed.com/ask" {
 				if req.SspDomain != "mybid.com" || req.SspDomain != "kadam.net" {
+					codesCh <- &dspDomainCode{
+						domain: domain,
+						code:   -3,
+					}
 					continue
 				}
 			}
 
 			if endpoint == "http://pop-48702.daortb.com/api/rtb-pops/item?sourceId=59738&api-key=xvKZ-_oewvADCb2RR0W6bgp_EdLEKCLj" {
 				if req.SspDomain != "mybid.com" {
+					codesCh <- &dspDomainCode{
+						domain: domain,
+						code:   -2,
+					}
 					continue
 				}
 			}
@@ -260,6 +272,11 @@ func (s *Server) GetBids_V2_5(
 					}
 				}
 			}(endpoint)
+		}
+	} else {
+		codesCh <- &dspDomainCode{
+			domain: "ALL",
+			code:   -10,
 		}
 	}
 
