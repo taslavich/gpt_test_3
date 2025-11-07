@@ -100,8 +100,6 @@ func NewServer(
 
 	client_v_2_5 := NewFastHTTPClient()
 
-	// Глобальный лимит исходящих: консервативно отталкиваемся от
-	// количества DSP и локального лимита; при желании — вынеси в конфиг.
 	outboundLimit := maxParallelRequests * 2
 	if l := len(dspEndpoints_v_2_4); l > 0 && l*maxParallelRequests > outboundLimit {
 		outboundLimit = l * maxParallelRequests
@@ -161,7 +159,7 @@ func (s *Server) GetBids_V2_5(
 		}
 	}()
 
-	notDsp := s.sspNotDsp[req.SspDomain]
+	//notDsp := s.sspNotDsp[req.SspDomain]
 
 	jsonData, err := jsoniter.Marshal(req.BidRequest)
 	if err != nil {
@@ -185,100 +183,108 @@ func (s *Server) GetBids_V2_5(
 	codesCh := make(chan *dspDomainCode, len(s.dspEndpoints_v_2_5))
 	responsesCh := make(chan *dspDomainResp, len(s.dspEndpoints_v_2_5))
 
-	if req.BidRequest.Device.Geo.GetCountry() != "ID" || req.BidRequest.Device.Geo.GetCountry() != "PH" {
-		// Запускаем все DSP параллельно
-		for endpoint, domain := range s.dspEndpoints_v_2_5 {
-			endpoint := endpoint
-			domain := domain
-			if utils.IsInStringSlice(endpoint, notDsp) {
+	/*if req.BidRequest.Device.Geo.GetCountry() != "ID" || req.BidRequest.Device.Geo.GetCountry() != "PH" {*/
+	// Запускаем все DSP параллельно
+	for endpoint, domain := range s.dspEndpoints_v_2_5 {
+		endpoint := endpoint
+		domain := domain
+		/*if utils.IsInStringSlice(endpoint, notDsp) {
+			codesCh <- &dspDomainCode{
+				domain: domain,
+				code:   -4,
+			}
+			continue
+		}
+
+		if endpoint == "http://ortbtwinbidexadlt.hilltopadsfeed.com/ask" {
+			if req.SspDomain != "mybid.com" || req.SspDomain != "kadam.net" {
 				codesCh <- &dspDomainCode{
 					domain: domain,
-					code:   -4,
+					code:   -3,
 				}
 				continue
 			}
+		}
 
-			if endpoint == "http://ortbtwinbidexadlt.hilltopadsfeed.com/ask" {
-				if req.SspDomain != "mybid.com" || req.SspDomain != "kadam.net" {
-					codesCh <- &dspDomainCode{
-						domain: domain,
-						code:   -3,
-					}
-					continue
-				}
-			}
-
-			if endpoint == "http://pop-48702.daortb.com/api/rtb-pops/item?sourceId=59738&api-key=xvKZ-_oewvADCb2RR0W6bgp_EdLEKCLj" {
-				if req.SspDomain != "mybid.com" {
-					codesCh <- &dspDomainCode{
-						domain: domain,
-						code:   -2,
-					}
-					continue
-				}
-			}
-
-			if !s.processor.ProcessRequestForDSPV25(endpoint, req.BidRequest).Allowed || !Allowed(endpoint, req.BidRequest, s.ranger) {
-				//log.Println("Gor DSP filter")
+		if endpoint == "http://pop-48702.daortb.com/api/rtb-pops/item?sourceId=59738&api-key=xvKZ-_oewvADCb2RR0W6bgp_EdLEKCLj" {
+			if req.SspDomain != "mybid.com" {
 				codesCh <- &dspDomainCode{
 					domain: domain,
-					code:   -1,
+					code:   -2,
 				}
 				continue
 			}
+		}*/
 
-			wg.Add(1)
-			go func(endpoint string) {
-				defer wg.Done()
+		if !utils.GetValueFomSspGeoDspMap(req.SspDomain, req.BidRequest.Device.Geo.GetCountry(), domain, s.linkMap, false) {
+			codesCh <- &dspDomainCode{
+				domain: domain,
+				code:   -2,
+			}
+			continue
+		}
 
-				dspResp, code, err := s.getBidsFromDSPbyHTTP_V_2_5(reqCtx, jsonData, endpoint)
-				if err != nil {
-					log.Printf(
-						"Cannot getBidsFromDSPbyHTTP_V_2_5, bid request id: %s,ssp_domain: %s, dsp_domain: %s, error: %v",
-						req.BidRequest.GetId(),
-						req.SspDomain,
-						endpoint,
-						err,
-					)
-				}
+		if !s.processor.ProcessRequestForDSPV25(endpoint, req.BidRequest).Allowed || !Allowed(endpoint, req.BidRequest, s.ranger) {
+			//log.Println("Gor DSP filter")
+			codesCh <- &dspDomainCode{
+				domain: domain,
+				code:   -1,
+			}
+			continue
+		}
 
-				codesCh <- &dspDomainCode{
-					domain: domain,
-					code:   code,
-				}
+		wg.Add(1)
+		go func(endpoint string) {
+			defer wg.Done()
 
-				// Фильтрация ответа SPP
-				if !s.processor.ProcessResponseForSPPV25(req.SspDomain, dspResp).Allowed {
-					//log.Printf("Gor SSP filter, domain %s, resp: %w", endpoint, dspResp)
+			dspResp, code, err := s.getBidsFromDSPbyHTTP_V_2_5(reqCtx, jsonData, endpoint)
+			if err != nil {
+				log.Printf(
+					"Cannot getBidsFromDSPbyHTTP_V_2_5, bid request id: %s,ssp_domain: %s, dsp_domain: %s, error: %v",
+					req.BidRequest.GetId(),
+					req.SspDomain,
+					endpoint,
+					err,
+				)
+			}
 
-					return
-				}
+			codesCh <- &dspDomainCode{
+				domain: domain,
+				code:   code,
+			}
 
-				for i := range dspResp.Seatbid {
-					if dspResp.Seatbid[i] != nil {
-						for j := range dspResp.Seatbid[i].Bid {
-							if dspResp.Seatbid[i].Bid[j].Adm != nil {
-								adid := coder.AdmToAdidCompact(*dspResp.Seatbid[i].Bid[j].Adm)
-								dspResp.Seatbid[i].Bid[j].Adid = &adid
-							}
+			// Фильтрация ответа SPP
+			if !s.processor.ProcessResponseForSPPV25(req.SspDomain, dspResp).Allowed {
+				//log.Printf("Gor SSP filter, domain %s, resp: %w", endpoint, dspResp)
+
+				return
+			}
+
+			for i := range dspResp.Seatbid {
+				if dspResp.Seatbid[i] != nil {
+					for j := range dspResp.Seatbid[i].Bid {
+						if dspResp.Seatbid[i].Bid[j].Adm != nil {
+							adid := coder.AdmToAdidCompact(*dspResp.Seatbid[i].Bid[j].Adm)
+							dspResp.Seatbid[i].Bid[j].Adid = &adid
 						}
 					}
 				}
+			}
 
-				if dspResp != nil {
-					responsesCh <- &dspDomainResp{
-						domain: domain,
-						resp:   dspResp,
-					}
+			if dspResp != nil {
+				responsesCh <- &dspDomainResp{
+					domain: domain,
+					resp:   dspResp,
 				}
-			}(endpoint)
-		}
-	} else {
+			}
+		}(endpoint)
+	}
+	/*} else {
 		codesCh <- &dspDomainCode{
 			domain: "ALL",
 			code:   -10,
 		}
-	}
+	}*/
 
 	go func() {
 		wg.Wait()

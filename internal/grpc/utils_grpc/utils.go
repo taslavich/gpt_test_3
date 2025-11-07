@@ -25,10 +25,6 @@ func IsInStringSlice(variable string, list []string) bool {
 	return false
 }
 
-// TO DO IN EACH SERVICE
-var SspGeoPercents map[string]map[string]map[string]*types.PercentAndBidfloor
-var SspGeoDspPercentsFilePath string
-
 func InitSspGeoDspMap[T *types.PercentAndBidfloor | bool](filename string) (map[string]map[string]map[string]T, error) {
 	data, err := os.ReadFile(filename)
 	if err != nil {
