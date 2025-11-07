@@ -185,7 +185,7 @@ func (s *Server) GetBids_V2_5(
 	codesCh := make(chan *dspDomainCode, len(s.dspEndpoints_v_2_5))
 	responsesCh := make(chan *dspDomainResp, len(s.dspEndpoints_v_2_5))
 
-	if req.BidRequest.Device.Geo.GetCountry() != "ID" || req.BidRequest.Device.Geo.GetCountry() != "PH" {
+
 		// Запускаем все DSP параллельно
 		for endpoint, domain := range s.dspEndpoints_v_2_5 {
 			endpoint := endpoint
@@ -206,6 +206,14 @@ func (s *Server) GetBids_V2_5(
 					}
 					continue
 				}
+			}
+
+			if (req.BidRequest.Device.Geo.GetCountry() != "ID" || req.BidRequest.Device.Geo.GetCountry() != "PH") && endpoint != "http://pop-48702.daortb.com/api/rtb-pops/item?sourceId=59738&api-key=xvKZ-_oewvADCb2RR0W6bgp_EdLEKCLj" {
+				codesCh <- &dspDomainCode{
+					domain: domain,
+					code:   -3,
+				}
+				continue
 			}
 
 			if endpoint == "http://pop-48702.daortb.com/api/rtb-pops/item?sourceId=59738&api-key=xvKZ-_oewvADCb2RR0W6bgp_EdLEKCLj" {
