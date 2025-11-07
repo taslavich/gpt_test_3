@@ -161,7 +161,7 @@ func (s *Server) GetBids_V2_5(
 		}
 	}()
 
-	notDsp := s.sspNotDsp[req.SspDomain]
+	//notDsp := s.sspNotDsp[req.SspDomain]
 
 	jsonData, err := jsoniter.Marshal(req.BidRequest)
 	if err != nil {
@@ -189,7 +189,7 @@ func (s *Server) GetBids_V2_5(
 	for endpoint, domain := range s.dspEndpoints_v_2_5 {
 		endpoint := endpoint
 		domain := domain
-		if (req.BidRequest.Device.Geo.GetCountry() == "ID" || req.BidRequest.Device.Geo.GetCountry() == "PH") && (endpoint != "http://pop-48702.daortb.com/api/rtb-pops/item?sourceId=59738&api-key=xvKZ-_oewvADCb2RR0W6bgp_EdLEKCLj" || endpoint == "http://ortbtwinbidexadlt.hilltopadsfeed.com/ask") {
+		/*if (req.BidRequest.Device.Geo.GetCountry() == "ID" || req.BidRequest.Device.Geo.GetCountry() == "PH") && (endpoint != "http://pop-48702.daortb.com/api/rtb-pops/item?sourceId=59738&api-key=xvKZ-_oewvADCb2RR0W6bgp_EdLEKCLj" || endpoint == "http://ortbtwinbidexadlt.hilltopadsfeed.com/ask") {
 			codesCh <- &dspDomainCode{
 				domain: domain,
 				code:   -5,
@@ -213,17 +213,15 @@ func (s *Server) GetBids_V2_5(
 				}
 				continue
 			}
-		}
+		}*/
 
-		/*
-			if !utils.GetValueFomSspGeoDspMap(req.SspDomain, req.BidRequest.Device.Geo.GetCountry(), domain, s.linkMap, false) {
-				codesCh <- &dspDomainCode{
-					domain: domain,
-					code:   -2,
-				}
-				continue
+		if !utils.GetValueFomSspGeoDspMap(req.SspDomain, req.BidRequest.Device.Geo.GetCountry(), domain, s.linkMap, false) {
+			codesCh <- &dspDomainCode{
+				domain: domain,
+				code:   -2,
 			}
-		*/
+			continue
+		}
 
 		if !s.processor.ProcessRequestForDSPV25(endpoint, req.BidRequest).Allowed || !Allowed(endpoint, req.BidRequest, s.ranger) {
 			//log.Println("Gor DSP filter")

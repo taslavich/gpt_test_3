@@ -113,18 +113,18 @@ func GetWinnerBidInternal_V_2_5(
 			}
 		}
 
-		/*value := utils.GetValueFomSspGeoDspMap(req.SspDomain, req.BidRequest.Device.Geo.GetCountry(), winningDomain, percentMap, &types.PercentAndBidfloor{
+		value := utils.GetValueFomSspGeoDspMap(req.SspDomain, req.BidRequest.Device.Geo.GetCountry(), winningDomain, percentMap, &types.PercentAndBidfloor{
 			Percent:  profitPercent,
 			Bidfloor: true,
-		})*/
+		})
 
 		finalPrice, _, err := applyPriceConstraintsAndPercent(
 			winningBid.GetPrice(),
 			bidFloor,
-			/*value.Percent,
-			value.Bidfloor,*/
-			profitPercent,
-			true,
+			value.Percent,
+			value.Bidfloor,
+			/*profitPercent,
+			true,*/
 		)
 		if err != nil {
 			errStr = err.Error()
