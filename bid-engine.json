@@ -1,0 +1,15 @@
+{
+  "galaksion.com": {
+    "ID": {
+      "dsp_dao.ad": {"percent": 0.25, "bidfloor": false}
+    },
+    "ALL": {
+      "ALL": {"percent": 0.20, "bidfloor": false}
+    }
+  },
+  "ALL": {
+    "ALL": {
+        "ALL": {"percent": 0.20, "bidfloor": false}
+    }
+  }
+}
