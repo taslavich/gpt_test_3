@@ -223,14 +223,14 @@ func (s *Server) GetBids_V2_5(
 			continue
 		}
 
-		/*if !s.processor.ProcessRequestForDSPV25(endpoint, req.BidRequest).Allowed || !Allowed(endpoint, req.BidRequest, s.ranger) {
+		if !s.processor.ProcessRequestForDSPV25(endpoint, req.BidRequest).Allowed || !Allowed(endpoint, req.BidRequest, s.ranger) {
 			//log.Println("Gor DSP filter")
 			codesCh <- &dspDomainCode{
 				domain: domain,
 				code:   -1,
 			}
 			continue
-		}*/
+		}
 
 		wg.Add(1)
 		go func(endpoint string) {
