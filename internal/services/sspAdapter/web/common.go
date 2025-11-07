@@ -27,11 +27,11 @@ func getAdm(
 		return
 	}
 
-	if err := utils.WriteStringToRedis(ctx, redisClient, input.GlobalId, constants.ADM_COLUMN, constants.TRUE); err != nil {
+	if err := utils.WriteStringToRedis(ctx, redisClient, input.GlobalId, constants.ADM_COLUMN, constants.TRUE, true); err != nil {
 		log.Printf("failed to WriteStringToRedis ADM in getAdm: %w", err)
 	}
 
-	if err := utils.WriteStringToRedis(ctx, redisClient, input.GlobalId, constants.ADM_IP_COLUMN, r.RemoteAddr); err != nil {
+	if err := utils.WriteStringToRedis(ctx, redisClient, input.GlobalId, constants.ADM_IP_COLUMN, r.RemoteAddr, true); err != nil {
 		log.Printf("failed to WriteStringToRedis ADM_IP in getAdm: %w", err)
 	}
 

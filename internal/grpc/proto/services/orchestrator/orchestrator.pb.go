@@ -27,6 +27,7 @@ type OrchestratorRequest_V2_5 struct {
 	BidRequest    *ortb_V2_5.BidRequest  `protobuf:"bytes,1,opt,name=bidRequest,proto3" json:"bidRequest,omitempty"`
 	GlobalId      string                 `protobuf:"bytes,2,opt,name=globalId,proto3" json:"globalId,omitempty"`
 	SspDomain     string                 `protobuf:"bytes,3,opt,name=ssp_domain,json=sspDomain,proto3" json:"ssp_domain,omitempty"`
+	Logged        bool                   `protobuf:"varint,4,opt,name=logged,proto3" json:"logged,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -80,6 +81,13 @@ func (x *OrchestratorRequest_V2_5) GetSspDomain() string {
 		return x.SspDomain
 	}
 	return ""
+}
+
+func (x *OrchestratorRequest_V2_5) GetLogged() bool {
+	if x != nil {
+		return x.Logged
+	}
+	return false
 }
 
 type OrchestratorResponse_V2_5 struct {
@@ -138,14 +146,15 @@ var File_services_orchestrator_proto protoreflect.FileDescriptor
 
 const file_services_orchestrator_proto_rawDesc = "" +
 	"\n" +
-	"\x1bservices/orchestrator.proto\x12\forchestrator\x1a\x1atypes/ortb_V2_5/ortb.proto\"\x8c\x01\n" +
+	"\x1bservices/orchestrator.proto\x12\forchestrator\x1a\x1atypes/ortb_V2_5/ortb.proto\"\xa4\x01\n" +
 	"\x18OrchestratorRequest_V2_5\x125\n" +
 	"\n" +
 	"bidRequest\x18\x01 \x01(\v2\x15.ortb_V2_5.BidRequestR\n" +
 	"bidRequest\x12\x1a\n" +
 	"\bglobalId\x18\x02 \x01(\tR\bglobalId\x12\x1d\n" +
 	"\n" +
-	"ssp_domain\x18\x03 \x01(\tR\tsspDomain\"q\n" +
+	"ssp_domain\x18\x03 \x01(\tR\tsspDomain\x12\x16\n" +
+	"\x06logged\x18\x04 \x01(\bR\x06logged\"q\n" +
 	"\x19OrchestratorResponse_V2_5\x128\n" +
 	"\vbidResponse\x18\x01 \x01(\v2\x16.ortb_V2_5.BidResponseR\vbidResponse\x12\x1a\n" +
 	"\bglobalId\x18\x02 \x01(\tR\bglobalId2}\n" +

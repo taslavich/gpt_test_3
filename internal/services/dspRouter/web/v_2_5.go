@@ -189,7 +189,7 @@ func (s *Server) GetBids_V2_5(
 	for endpoint, domain := range s.dspEndpoints_v_2_5 {
 		endpoint := endpoint
 		domain := domain
-		if (req.BidRequest.Device.Geo.GetCountry() == "ID" || req.BidRequest.Device.Geo.GetCountry() == "PH") && endpoint != "http://pop-48702.daortb.com/api/rtb-pops/item?sourceId=59738&api-key=xvKZ-_oewvADCb2RR0W6bgp_EdLEKCLj" {
+		if (req.BidRequest.Device.Geo.GetCountry() == "ID" || req.BidRequest.Device.Geo.GetCountry() == "PH") && (endpoint != "http://pop-48702.daortb.com/api/rtb-pops/item?sourceId=59738&api-key=xvKZ-_oewvADCb2RR0W6bgp_EdLEKCLj" || endpoint == "http://ortbtwinbidexadlt.hilltopadsfeed.com/ask") {
 			codesCh <- &dspDomainCode{
 				domain: domain,
 				code:   -5,
@@ -205,17 +205,7 @@ func (s *Server) GetBids_V2_5(
 			continue
 		}
 
-		if endpoint == "http://ortbtwinbidexadlt.hilltopadsfeed.com/ask" {
-			if req.SspDomain != "mybid.com" || req.SspDomain != "kadam.net" {
-				codesCh <- &dspDomainCode{
-					domain: domain,
-					code:   -3,
-				}
-				continue
-			}
-		}
-
-		if endpoint == "http://pop-48702.daortb.com/api/rtb-pops/item?sourceId=59738&api-key=xvKZ-_oewvADCb2RR0W6bgp_EdLEKCLj" {
+		if endpoint == "http://pop-48702.daortb.com/api/rtb-pops/item?sourceId=59738&api-key=xvKZ-_oewvADCb2RR0W6bgp_EdLEKCLj" || endpoint == "http://ortbtwinbidexadlt.hilltopadsfeed.com/ask" {
 			if req.SspDomain != "galaksion.com" {
 				codesCh <- &dspDomainCode{
 					domain: domain,
@@ -302,7 +292,7 @@ func (s *Server) GetBids_V2_5(
 		clickResponses[c.domain] = c.code
 	}
 
-	writeMetadataToRedis(ctx, s.redisClient, req.GlobalId, clickResponses)
+	writeMetadataToRedis(ctx, s.redisClient, req.GlobalId, clickResponses, req.Logged)
 
 	responses := make(map[string]*ortb_V2_5.BidResponse)
 	for r := range responsesCh {
@@ -377,14 +367,14 @@ func (s *Server) SetSspGeoLinksMap(ctx context.Context, req *dspRouterGrpc.SspGe
 	return nil, nil
 }
 
-func writeMetadataToRedis(ctx context.Context, redisClient *redis.Client, globalId string, data map[string]int) {
+func writeMetadataToRedis(ctx context.Context, redisClient *redis.Client, globalId string, data map[string]int, logged bool) {
 	bidRespsData, err := json.Marshal(data)
 	if err != nil {
 		log.Printf("failed to marshal data: %v", err)
 		return
 	}
 	bgCtx := context.Background()
-	if err := utils.WriteJsonToRedis(bgCtx, redisClient, globalId, constants.BID_RESPONSES_COLUMN, bidRespsData); err != nil {
+	if err := utils.WriteJsonToRedis(bgCtx, redisClient, globalId, constants.BID_RESPONSES_COLUMN, bidRespsData, logged); err != nil {
 		log.Printf("failed to WriteJsonToRedis: %v", err)
 	}
 }

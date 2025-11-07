@@ -27,7 +27,6 @@ type Server struct {
 	redisClient     *redis.Client
 	timeout         time.Duration
 	hostname        string
-	counter         *uint64
 	percentFilename string
 	percentMap      map[string]map[string]map[string]*types.PercentAndBidfloor
 
@@ -37,8 +36,8 @@ type Server struct {
 		profitPercent float32,
 		globalId string,
 		hostname string,
-		counter *uint64,
 		percentMap map[string]map[string]map[string]*types.PercentAndBidfloor,
+		logged bool,
 	) (*ortb_V2_5.BidResponse, *clickhouse_types.BidResponse)
 
 	pb.BidEngineServiceServer
@@ -54,19 +53,17 @@ func NewServer(
 		profitPercent float32,
 		globalId string,
 		hostname string,
-		counter *uint64,
 		percentMap map[string]map[string]map[string]*types.PercentAndBidfloor,
+		logged bool,
 	) (*ortb_V2_5.BidResponse, *clickhouse_types.BidResponse),
 	percentFilename string,
 	percentMap map[string]map[string]map[string]*types.PercentAndBidfloor,
 ) *Server {
-	var counter uint64 = 0
 	return &Server{
 		ProfitPercent:              ProfitPercent,
 		redisClient:                redisClient,
 		hostname:                   hostname,
 		GetWinnerBidInternal_V_2_5: GetWinnerBidInternal_V_2_5,
-		counter:                    &counter,
 		percentFilename:            percentFilename,
 		percentMap:                 percentMap,
 	}
@@ -96,8 +93,8 @@ func (s *Server) GetWinnerBid_V2_5(
 		s.ProfitPercent,
 		req.GlobalId,
 		s.hostname,
-		s.counter,
 		s.percentMap,
+		req.Logged,
 	)
 
 	clickhouseData, err := json.Marshal(clickhouseBidResponse)
@@ -105,7 +102,7 @@ func (s *Server) GetWinnerBid_V2_5(
 		log.Printf("failed to marshal JSON in GetWinnerBidInternal: %w", err)
 	}
 
-	if err := utils.WriteJsonToRedis(ctx, s.redisClient, req.GlobalId, constants.BID_RESPONSE_WINNER_COLUMN, clickhouseData); err != nil {
+	if err := utils.WriteJsonToRedis(ctx, s.redisClient, req.GlobalId, constants.BID_RESPONSE_WINNER_COLUMN, clickhouseData, req.Logged); err != nil {
 		log.Printf("failed to WriteJsonToRedis Bid BID_RESPONSE_WINNER in GetWinnerBidInternal: %w", err)
 	}
 

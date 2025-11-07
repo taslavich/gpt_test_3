@@ -10,7 +10,11 @@ import (
 
 const RedisKeyTTL = 5 * time.Minute
 
-func WriteStringToRedis(ctx context.Context, redisClient *redis.Client, uuid, column string, data string) error {
+func WriteStringToRedis(ctx context.Context, redisClient *redis.Client, uuid, column string, data string, logged bool) error {
+	if !logged {
+		return nil
+	}
+
 	pipe := redisClient.Pipeline()
 	pipe.HSet(ctx, uuid, column, data)
 	pipe.Expire(ctx, uuid, RedisKeyTTL) // Ключ умрет через 2 минуты
@@ -21,7 +25,11 @@ func WriteStringToRedis(ctx context.Context, redisClient *redis.Client, uuid, co
 	return nil
 }
 
-func WriteJsonToRedis(ctx context.Context, redisClient *redis.Client, uuid, column string, data []byte) error {
+func WriteJsonToRedis(ctx context.Context, redisClient *redis.Client, uuid, column string, data []byte, logged bool) error {
+	if !logged {
+		return nil
+	}
+
 	pipe := redisClient.Pipeline()
 	pipe.HSet(ctx, uuid, column, data)
 	pipe.Expire(ctx, uuid, RedisKeyTTL) // Ключ умрет через 2 минуты
@@ -32,7 +40,11 @@ func WriteJsonToRedis(ctx context.Context, redisClient *redis.Client, uuid, colu
 	return nil
 }
 
-func WriteFloat32ToRedis(ctx context.Context, redisClient *redis.Client, uuid, column string, data float32) error {
+func WriteFloat32ToRedis(ctx context.Context, redisClient *redis.Client, uuid, column string, data float32, logged bool) error {
+	if !logged {
+		return nil
+	}
+
 	pipe := redisClient.Pipeline()
 	pipe.HSet(ctx, uuid, column, data)
 	pipe.Expire(ctx, uuid, RedisKeyTTL) // Ключ умрет через 2 минуты

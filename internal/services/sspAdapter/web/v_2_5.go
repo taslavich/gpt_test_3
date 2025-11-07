@@ -8,6 +8,7 @@ import (
 	"log"
 	"net/http"
 	"runtime/debug"
+	"sync/atomic"
 	"time"
 
 	"github.com/ggicci/httpin"
@@ -33,6 +34,10 @@ func checkRegion(countryISO string) error {
 	return fmt.Errorf("region %s not allowed", countryISO)
 }
 
+func shouldPass(counter *uint64) bool {
+	return atomic.AddUint64(counter, 1)%100 < 5
+}
+
 func postBid_V2_5(
 	ctx context.Context,
 	w http.ResponseWriter,
@@ -43,6 +48,7 @@ func postBid_V2_5(
 	orchestratorClient orchestratorProto.OrchestratorServiceClient,
 	timeout time.Duration,
 	sspFeeds map[string]string,
+	counter *uint64,
 ) {
 	var input *postBidRequest_V2_5
 	defer func() {
@@ -136,6 +142,8 @@ func postBid_V2_5(
 		return
 	}*/
 
+	logged := shouldPass(counter)
+
 	globalId := uuid.New().String()
 
 	bidReqData, err := json.Marshal(input.Payload)
@@ -143,23 +151,23 @@ func postBid_V2_5(
 		log.Printf("failed to marshal JSON in postBid_V2_5: %w", err)
 	}
 
-	if err := utils.WriteStringToRedis(ctx, redisClient, globalId, constants.SPP_DOMAIN_COLUMN, ssp_domain); err != nil {
+	if err := utils.WriteStringToRedis(ctx, redisClient, globalId, constants.SPP_DOMAIN_COLUMN, ssp_domain, logged); err != nil {
 		log.Printf("failed to WriteStringToRedis Domain in postBid_V2_5: %w", err)
 	}
 
-	if err := utils.WriteJsonToRedis(ctx, redisClient, globalId, constants.BID_REQUEST_COLUMN, bidReqData); err != nil {
+	if err := utils.WriteJsonToRedis(ctx, redisClient, globalId, constants.BID_REQUEST_COLUMN, bidReqData, logged); err != nil {
 		log.Printf("failed to WriteJsonToRedis Bid Request in postBid_V2_5: %w", err)
 	}
 
-	if err := utils.WriteStringToRedis(ctx, redisClient, globalId, constants.GEO_COLUMN, countryISO); err != nil {
+	if err := utils.WriteStringToRedis(ctx, redisClient, globalId, constants.GEO_COLUMN, countryISO, logged); err != nil {
 		log.Printf("failed to WriteStringToRedis Geo in postBid_V2_5: %w", err)
 	}
 
-	if err := utils.WriteStringToRedis(ctx, redisClient, globalId, constants.ADM_COLUMN, constants.FALSE); err != nil {
+	if err := utils.WriteStringToRedis(ctx, redisClient, globalId, constants.ADM_COLUMN, constants.FALSE, logged); err != nil {
 		log.Printf("failed to WriteStringToRedis ADM in postBid_V2_5: %w", err)
 	}
 
-	if err := utils.WriteStringToRedis(ctx, redisClient, globalId, constants.TIMESTAMP_COLUMN, time.Now().UTC().Format("2006-01-02 15:04:05.000")); err != nil {
+	if err := utils.WriteStringToRedis(ctx, redisClient, globalId, constants.TIMESTAMP_COLUMN, time.Now().UTC().Format("2006-01-02 15:04:05.000"), logged); err != nil {
 		log.Printf("failed to WriteJsonToRedis TimeStamp in postBid_V2_5: %w", err)
 	}
 
@@ -180,6 +188,7 @@ func postBid_V2_5(
 			BidRequest: input.Payload.BidRequest,
 			GlobalId:   globalId,
 			SspDomain:  ssp_domain,
+			Logged:     logged,
 		},
 	)
 	if err != nil {
