@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"math/rand"
 	"sort"
-	"sync/atomic"
 
 	"gitlab.com/twinbid-exchange/RTB-exchange/internal/constants"
 	bidEngineGrpc "gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/proto/services/bidEngine"
@@ -21,18 +20,14 @@ func getRandomProfitPercent() float32 {
 	return percentages[randomIndex]
 }
 
-func shouldPass(counter *uint64) bool {
-	return atomic.AddUint64(counter, 1)%100 < 5
-}
-
 func GetWinnerBidInternal_V_2_5(
 	ctx context.Context,
 	req *bidEngineGrpc.BidEngineRequest_V2_5,
 	profitPercent float32,
 	globalId string,
 	hostname string,
-	counter *uint64,
 	percentMap map[string]map[string]map[string]*types.PercentAndBidfloor,
+	logged bool,
 ) (*ortb_V2_5.BidResponse, *clickhouse_types.BidResponse) {
 	////////////
 	///profitPercent = getRandomProfitPercent()
@@ -140,7 +135,7 @@ func GetWinnerBidInternal_V_2_5(
 
 		wrappedNurl := utils.WrapURL(hostname, winningBid.GetNurl(), globalId, utils.NURL)
 
-		if shouldPass(counter) {
+		if logged {
 			wrappedAdm := utils.WrapURL(hostname, winningBid.GetAdm(), globalId, utils.ADM)
 			finalBid = &ortb_V2_5.Bid{
 				Id:    winningBid.Id,

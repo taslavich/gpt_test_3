@@ -29,6 +29,7 @@ type BidEngineRequest_V2_5 struct {
 	BidResponses  map[string]*ortb_V2_5.BidResponse `protobuf:"bytes,2,rep,name=bidResponses,proto3" json:"bidResponses,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
 	GlobalId      string                            `protobuf:"bytes,3,opt,name=globalId,proto3" json:"globalId,omitempty"`
 	SspDomain     string                            `protobuf:"bytes,4,opt,name=ssp_domain,json=sspDomain,proto3" json:"ssp_domain,omitempty"`
+	Logged        bool                              `protobuf:"varint,5,opt,name=logged,proto3" json:"logged,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -89,6 +90,13 @@ func (x *BidEngineRequest_V2_5) GetSspDomain() string {
 		return x.SspDomain
 	}
 	return ""
+}
+
+func (x *BidEngineRequest_V2_5) GetLogged() bool {
+	if x != nil {
+		return x.Logged
+	}
+	return false
 }
 
 type BidEngineResponse_V2_5 struct {
@@ -235,7 +243,7 @@ var File_services_bidEngine_proto protoreflect.FileDescriptor
 
 const file_services_bidEngine_proto_rawDesc = "" +
 	"\n" +
-	"\x18services/bidEngine.proto\x12\tbidEngine\x1a\x1atypes/ortb_V2_5/ortb.proto\x1a\x1bgoogle/protobuf/empty.proto\"\xba\x02\n" +
+	"\x18services/bidEngine.proto\x12\tbidEngine\x1a\x1atypes/ortb_V2_5/ortb.proto\x1a\x1bgoogle/protobuf/empty.proto\"\xd2\x02\n" +
 	"\x15BidEngineRequest_V2_5\x125\n" +
 	"\n" +
 	"bidRequest\x18\x01 \x01(\v2\x15.ortb_V2_5.BidRequestR\n" +
@@ -243,7 +251,8 @@ const file_services_bidEngine_proto_rawDesc = "" +
 	"\fbidResponses\x18\x02 \x03(\v22.bidEngine.BidEngineRequest_V2_5.BidResponsesEntryR\fbidResponses\x12\x1a\n" +
 	"\bglobalId\x18\x03 \x01(\tR\bglobalId\x12\x1d\n" +
 	"\n" +
-	"ssp_domain\x18\x04 \x01(\tR\tsspDomain\x1aW\n" +
+	"ssp_domain\x18\x04 \x01(\tR\tsspDomain\x12\x16\n" +
+	"\x06logged\x18\x05 \x01(\bR\x06logged\x1aW\n" +
 	"\x11BidResponsesEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12,\n" +
 	"\x05value\x18\x02 \x01(\v2\x16.ortb_V2_5.BidResponseR\x05value:\x028\x01\"n\n" +

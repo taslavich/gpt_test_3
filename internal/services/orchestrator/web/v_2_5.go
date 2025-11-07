@@ -75,6 +75,7 @@ func (s *Server) GetWinnerBid_V2_5(
 			BidRequest: req.BidRequest,
 			GlobalId:   req.GlobalId,
 			SspDomain:  req.SspDomain,
+			Logged:     req.Logged,
 		},
 	)
 	if err != nil {
@@ -105,7 +106,7 @@ func (s *Server) GetWinnerBid_V2_5(
 			log.Printf("failed to marshal JSON in GetWinnerBidInternal: %w", err)
 		}
 
-		if err := utils.WriteJsonToRedis(ctx, s.redisClient, req.GlobalId, constants.BID_RESPONSE_WINNER_COLUMN, clickhouseData); err != nil {
+		if err := utils.WriteJsonToRedis(ctx, s.redisClient, req.GlobalId, constants.BID_RESPONSE_WINNER_COLUMN, clickhouseData, req.Logged); err != nil {
 			log.Printf("failed to WriteJsonToRedis Bid BID_RESPONSE_WINNER in GetWinnerBidInternal: %w", err)
 		}
 
@@ -131,6 +132,7 @@ func (s *Server) GetWinnerBid_V2_5(
 			BidResponses: bids.BidResponses,
 			GlobalId:     bids.GlobalId,
 			SspDomain:    bids.SspDomain,
+			Logged:       req.Logged,
 		},
 	)
 	if err != nil {

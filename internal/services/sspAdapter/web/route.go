@@ -53,12 +53,13 @@ func InitHttpRoutes(
 	bidRequestTimeout time.Duration,
 	sspFeeds map[string]string,
 ) {
+	var counter uint64 = 0
 	integration.UseGochiURLParam("path", chi.URLParam)
 
 	httpRouter.With(
 		httpin.NewInput(postBidRequest_V2_5{}),
 	).Post(PostBid_V_2_5_URL, func(w http.ResponseWriter, r *http.Request) {
-		postBid_V2_5(ctx, w, r, redisClient, isBadIp, getCountryISO, orchestratorClient, bidRequestTimeout, sspFeeds)
+		postBid_V2_5(ctx, w, r, redisClient, isBadIp, getCountryISO, orchestratorClient, bidRequestTimeout, sspFeeds, &counter)
 	})
 }
 
