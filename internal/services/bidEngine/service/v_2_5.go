@@ -11,6 +11,7 @@ import (
 	bidEngineGrpc "gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/proto/services/bidEngine"
 	"gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/proto/types/ortb_V2_5"
 	utils "gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/utils_grpc"
+	"gitlab.com/twinbid-exchange/RTB-exchange/internal/types"
 	clickhouse_types "gitlab.com/twinbid-exchange/RTB-exchange/internal/types/clickhouse"
 )
 
@@ -31,6 +32,7 @@ func GetWinnerBidInternal_V_2_5(
 	globalId string,
 	hostname string,
 	counter *uint64,
+	percentMap map[string]map[string]map[string]*types.PercentAndBidfloor,
 ) (*ortb_V2_5.BidResponse, *clickhouse_types.BidResponse) {
 	////////////
 	///profitPercent = getRandomProfitPercent()
@@ -116,18 +118,23 @@ func GetWinnerBidInternal_V_2_5(
 			}
 		}
 
-		var needed bool = true
+		//var needed bool = true
 
-		if winningDomain == "dsp_hilltopads.com" {
+		value := utils.GetValueFomSspGeoDspMap(req.SspDomain, req.BidRequest.Device.Geo.GetCountry(), winningDomain, percentMap, &types.PercentAndBidfloor{
+			Percent:  profitPercent,
+			Bidfloor: true,
+		})
+
+		/*if winningDomain == "dsp_hilltopads.com" {
 			profitPercent = 0.70
 			needed = false
-		}
+		}*/
 
 		finalPrice, _, err := applyPriceConstraintsAndPercent(
 			winningBid.GetPrice(),
 			bidFloor,
-			profitPercent,
-			needed,
+			value.Percent,
+			value.Bidfloor,
 		)
 		if err != nil {
 			errStr = err.Error()

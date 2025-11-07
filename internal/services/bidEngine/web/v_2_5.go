@@ -38,6 +38,7 @@ type Server struct {
 		globalId string,
 		hostname string,
 		counter *uint64,
+		percentMap map[string]map[string]map[string]*types.PercentAndBidfloor,
 	) (*ortb_V2_5.BidResponse, *clickhouse_types.BidResponse)
 
 	pb.BidEngineServiceServer
@@ -54,6 +55,7 @@ func NewServer(
 		globalId string,
 		hostname string,
 		counter *uint64,
+		percentMap map[string]map[string]map[string]*types.PercentAndBidfloor,
 	) (*ortb_V2_5.BidResponse, *clickhouse_types.BidResponse),
 	percentFilename string,
 	percentMap map[string]map[string]map[string]*types.PercentAndBidfloor,
@@ -95,6 +97,7 @@ func (s *Server) GetWinnerBid_V2_5(
 		req.GlobalId,
 		s.hostname,
 		s.counter,
+		s.percentMap,
 	)
 
 	clickhouseData, err := json.Marshal(clickhouseBidResponse)
