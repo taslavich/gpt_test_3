@@ -1,0 +1,13 @@
+{
+  "mybid.com,kadam.net": {
+    "ALL": {
+      "dsp_hilltopads.com": true
+    }
+  },
+  "ALL": {
+    "ALL": {
+      "dsp_hilltopads.com": false,
+       "ALL": true
+    }  
+  }
+}
