@@ -12,8 +12,10 @@ import (
 	"github.com/redis/go-redis/v9"
 	"gitlab.com/twinbid-exchange/RTB-exchange/internal/config"
 	bidEngineGrpc "gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/proto/services/bidEngine"
+	utils "gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/utils_grpc"
 	bidEngine "gitlab.com/twinbid-exchange/RTB-exchange/internal/services/bidEngine/service"
 	bidEngineWeb "gitlab.com/twinbid-exchange/RTB-exchange/internal/services/bidEngine/web"
+	"gitlab.com/twinbid-exchange/RTB-exchange/internal/types"
 
 	"google.golang.org/grpc"
 )
@@ -40,7 +42,8 @@ func main() {
 	}
 	log.Println("✅ Connected to Redis")
 
-	if err := bidEngine.InitSspGeoPercentsLogic(cfg.SspGeoDspPercentsFilePath); err != nil {
+	sspGeoDspMap, err := utils.InitSspGeoDspMap[*types.PercentAndBidfloor](cfg.SspGeoDspPercentsFilePath)
+	if err != nil {
 		log.Fatalf("Failed to InitSspGeoPercentsLogic: %v", err)
 	}
 
@@ -63,6 +66,8 @@ func main() {
 			redisClient,
 			cfg.SystemHostname,
 			bidEngine.GetWinnerBidInternal_V_2_5,
+			cfg.SspGeoDspPercentsFilePath,
+			sspGeoDspMap,
 		),
 	)
 

@@ -90,14 +90,15 @@ type BiddingEngineConfig struct {
 
 type RouterConfig struct {
 	HttpServer
-	DSPEndpoints_v_2_4    ListString             `yaml:"DSP_ENDPOINTS_V_2_4" env:"DSP_ENDPOINTS_V_2_4"`
-	DSPEndpoints_v_2_5    ListString             `yaml:"DSP_ENDPOINTS_V_2_5" env:"DSP_ENDPOINTS_V_2_5"`
-	SspNotDsp             MapStringToStringSlice `yaml:"SSP_NOT_DSP" env:"SSP_NOT_DSP"`
-	DspRulesConfigPathV24 string                 `yaml:"DSP_RULES_CONFIG_PATH" env:"DSP_RULES_CONFIG_PATH_V_24"`
-	SppRulesConfigPathV24 string                 `yaml:"SPP_RULES_CONFIG_PATH" env:"SPP_RULES_CONFIG_PATH_V_24"`
-	DspRulesConfigPathV25 string                 `yaml:"DSP_RULES_CONFIG_PATH" env:"DSP_RULES_CONFIG_PATH_V_25"`
-	SppRulesConfigPathV25 string                 `yaml:"SPP_RULES_CONFIG_PATH" env:"SPP_RULES_CONFIG_PATH_V_25"`
-	AllowedIpDbPath       string                 `yaml:"ALLOWED_IP_DB_PATH" env:"ALLOWED_IP_DB_PATH"`
+	DSPEndpoints_v_2_4     ListString             `yaml:"DSP_ENDPOINTS_V_2_4" env:"DSP_ENDPOINTS_V_2_4"`
+	DSPEndpoints_v_2_5     MapStringToString      `yaml:"DSP_ENDPOINTS_V_2_5" env:"DSP_ENDPOINTS_V_2_5"`
+	SspNotDsp              MapStringToStringSlice `yaml:"SSP_NOT_DSP" env:"SSP_NOT_DSP"`
+	DspRulesConfigPathV24  string                 `yaml:"DSP_RULES_CONFIG_PATH" env:"DSP_RULES_CONFIG_PATH_V_24"`
+	SppRulesConfigPathV24  string                 `yaml:"SPP_RULES_CONFIG_PATH" env:"SPP_RULES_CONFIG_PATH_V_24"`
+	DspRulesConfigPathV25  string                 `yaml:"DSP_RULES_CONFIG_PATH" env:"DSP_RULES_CONFIG_PATH_V_25"`
+	SppRulesConfigPathV25  string                 `yaml:"SPP_RULES_CONFIG_PATH" env:"SPP_RULES_CONFIG_PATH_V_25"`
+	AllowedIpDbPath        string                 `yaml:"ALLOWED_IP_DB_PATH" env:"ALLOWED_IP_DB_PATH"`
+	SspGeoDspLinksFilePath string                 `yaml:"SSP_GEO_DSP_LINKS_FILE_PATH" env:"SSP_GEO_DSP_LINKS_FILE_PATH"`
 
 	BidResponsesTimeout time.Duration `yaml:"BID_RESPONSES_TIMEOUT" env:"BID_RESPONSES_TIMEOUT"`
 

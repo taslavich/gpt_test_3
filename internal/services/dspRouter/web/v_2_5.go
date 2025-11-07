@@ -8,6 +8,7 @@ import (
 	"log"
 	"net"
 	"net/http"
+	"os"
 	"runtime/debug"
 	"sync"
 	"time"
@@ -22,9 +23,9 @@ import (
 	dspRouterGrpc "gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/proto/services/dspRouter"
 	"gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/proto/types/ortb_V2_5"
 	utils "gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/utils_grpc"
-	bidEngine "gitlab.com/twinbid-exchange/RTB-exchange/internal/services/bidEngine/service"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/types/known/emptypb"
 )
 
 type Server struct {
@@ -33,7 +34,7 @@ type Server struct {
 	processor   *filter.OptimizedFilterProcessor
 
 	dspEndpoints_v_2_4 []string
-	dspEndpoints_v_2_5 []string
+	dspEndpoints_v_2_5 config.MapStringToString
 
 	redisClient *redis.Client
 
@@ -45,6 +46,9 @@ type Server struct {
 	sspNotDsp config.MapStringToStringSlice
 
 	ranger cidranger.Ranger
+
+	linkFilename string
+	linkMap      map[string]map[string]map[string]bool
 
 	dspRouterGrpc.UnimplementedDspRouterServiceServer
 }
@@ -78,12 +82,14 @@ func NewServer(
 	ruleManager *filter.RuleManager,
 	fileLoader *filter.FileRuleLoader,
 	processor *filter.OptimizedFilterProcessor,
-	dspEndpoints_v_2_4,
-	dspEndpoints_v_2_5 []string,
+	dspEndpoints_v_2_4 []string,
+	dspEndpoints_v_2_5 config.MapStringToString,
 	redisClient *redis.Client,
 	timeout time.Duration,
 	maxParallelRequests int,
 	sspNotDsp config.MapStringToStringSlice,
+	linkFilename string,
+	linkMap map[string]map[string]map[string]bool,
 ) *Server {
 	if timeout <= 0 {
 		timeout = 150 * time.Millisecond
@@ -123,19 +129,21 @@ func NewServer(
 				return bytes.NewBuffer(make([]byte, 0, 2048))
 			},
 		},
-		sspNotDsp: sspNotDsp,
-		ranger:    rang,
+		sspNotDsp:    sspNotDsp,
+		ranger:       rang,
+		linkFilename: linkFilename,
+		linkMap:      linkMap,
 	}
 }
 
 type dspDomainResp struct {
-	endpoint string
-	resp     *ortb_V2_5.BidResponse
+	domain string
+	resp   *ortb_V2_5.BidResponse
 }
 
 type dspDomainCode struct {
-	endpoint string
-	code     int
+	domain string
+	code   int
 }
 
 func (s *Server) GetBids_V2_5(
@@ -177,78 +185,82 @@ func (s *Server) GetBids_V2_5(
 	codesCh := make(chan *dspDomainCode, len(s.dspEndpoints_v_2_5))
 	responsesCh := make(chan *dspDomainResp, len(s.dspEndpoints_v_2_5))
 
-	// Запускаем все DSP параллельно
-	for _, endpoint := range s.dspEndpoints_v_2_5 {
-		if bidEngine.IsInStringSlice(endpoint, notDsp) {
-			continue
-		}
-
-		if endpoint == "http://ortbtwinbidexadlt.hilltopadsfeed.com/ask" {
-			if req.SspDomain != "mybid.com" || req.SspDomain != "kadam.net" {
+	if req.BidRequest.Device.Geo.GetCountry() != "ID" || req.BidRequest.Device.Geo.GetCountry() != "PH" {
+		// Запускаем все DSP параллельно
+		for endpoint, domain := range s.dspEndpoints_v_2_5 {
+			endpoint := endpoint
+			domain := domain
+			if utils.IsInStringSlice(endpoint, notDsp) {
 				continue
 			}
-		}
 
-		if endpoint == "http://pop-48702.daortb.com/api/rtb-pops/item?sourceId=59738&api-key=xvKZ-_oewvADCb2RR0W6bgp_EdLEKCLj" {
-			if req.SspDomain != "mybid.com" {
+			if endpoint == "http://ortbtwinbidexadlt.hilltopadsfeed.com/ask" {
+				if req.SspDomain != "mybid.com" || req.SspDomain != "kadam.net" {
+					continue
+				}
+			}
+
+			if endpoint == "http://pop-48702.daortb.com/api/rtb-pops/item?sourceId=59738&api-key=xvKZ-_oewvADCb2RR0W6bgp_EdLEKCLj" {
+				if req.SspDomain != "mybid.com" {
+					continue
+				}
+			}
+
+			if !s.processor.ProcessRequestForDSPV25(endpoint, req.BidRequest).Allowed || !Allowed(endpoint, req.BidRequest, s.ranger) {
+				//log.Println("Gor DSP filter")
+				codesCh <- &dspDomainCode{
+					domain: domain,
+					code:   -1,
+				}
 				continue
 			}
-		}
 
-		if !s.processor.ProcessRequestForDSPV25(endpoint, req.BidRequest).Allowed || !Allowed(endpoint, req.BidRequest, s.ranger) {
-			//log.Println("Gor DSP filter")
-			codesCh <- &dspDomainCode{
-				endpoint: endpoint,
-				code:     -1,
-			}
-			continue
-		}
+			wg.Add(1)
+			go func(endpoint string) {
+				defer wg.Done()
 
-		wg.Add(1)
-		go func(endpoint string) {
-			defer wg.Done()
+				dspResp, code, err := s.getBidsFromDSPbyHTTP_V_2_5(reqCtx, jsonData, endpoint)
+				if err != nil {
+					log.Printf(
+						"Cannot getBidsFromDSPbyHTTP_V_2_5, bid request id: %s,ssp_domain: %s, dsp_domain: %s, error: %v",
+						req.BidRequest.GetId(),
+						req.SspDomain,
+						endpoint,
+						err,
+					)
+				}
 
-			dspResp, code, err := s.getBidsFromDSPbyHTTP_V_2_5(reqCtx, jsonData, endpoint)
-			if err != nil {
-				log.Printf(
-					"Cannot getBidsFromDSPbyHTTP_V_2_5, bid request id: %s,ssp_domain: %s, dsp_domain: %s, error: %v",
-					req.BidRequest.GetId(),
-					req.SspDomain,
-					endpoint,
-					err,
-				)
-			}
+				codesCh <- &dspDomainCode{
+					domain: domain,
+					code:   code,
+				}
 
-			codesCh <- &dspDomainCode{
-				endpoint: endpoint,
-				code:     code,
-			}
+				// Фильтрация ответа SPP
+				if !s.processor.ProcessResponseForSPPV25(req.SspDomain, dspResp).Allowed {
+					//log.Printf("Gor SSP filter, domain %s, resp: %w", endpoint, dspResp)
 
-			// Фильтрация ответа SPP
-			if !s.processor.ProcessResponseForSPPV25(req.SspDomain, dspResp).Allowed {
-				//log.Printf("Gor SSP filter, domain %s, resp: %w", endpoint, dspResp)
+					return
+				}
 
-				return
-			}
-
-			for i := range dspResp.Seatbid {
-				if dspResp.Seatbid[i] != nil {
-					for j := range dspResp.Seatbid[i].Bid {
-						if dspResp.Seatbid[i].Bid[j].Adm != nil {
-							adid := coder.AdmToAdidCompact(*dspResp.Seatbid[i].Bid[j].Adm)
-							dspResp.Seatbid[i].Bid[j].Adid = &adid
+				for i := range dspResp.Seatbid {
+					if dspResp.Seatbid[i] != nil {
+						for j := range dspResp.Seatbid[i].Bid {
+							if dspResp.Seatbid[i].Bid[j].Adm != nil {
+								adid := coder.AdmToAdidCompact(*dspResp.Seatbid[i].Bid[j].Adm)
+								dspResp.Seatbid[i].Bid[j].Adid = &adid
+							}
 						}
 					}
 				}
-			}
 
-			if dspResp != nil {
-				responsesCh <- &dspDomainResp{
-					endpoint: endpoint,
-					resp:     dspResp,
+				if dspResp != nil {
+					responsesCh <- &dspDomainResp{
+						domain: domain,
+						resp:   dspResp,
+					}
 				}
-			}
-		}(endpoint)
+			}(endpoint)
+		}
 	}
 
 	go func() {
@@ -259,14 +271,14 @@ func (s *Server) GetBids_V2_5(
 
 	clickResponses := make(map[string]int)
 	for c := range codesCh {
-		clickResponses[c.endpoint] = c.code
+		clickResponses[c.domain] = c.code
 	}
 
 	writeMetadataToRedis(ctx, s.redisClient, req.GlobalId, clickResponses)
 
 	responses := make(map[string]*ortb_V2_5.BidResponse)
 	for r := range responsesCh {
-		responses[r.endpoint] = r.resp
+		responses[r.domain] = r.resp
 	}
 
 	return &dspRouterGrpc.DspRouterResponse_V2_5{
@@ -310,6 +322,31 @@ func (s *Server) getBidsFromDSPbyHTTP_V_2_5(ctx context.Context, jsonData []byte
 		return &grpcResp, resp.StatusCode, nil
 	}
 	return nil, resp.StatusCode, nil
+}
+
+func (s *Server) GetSspGeoLinksMap(context.Context, *emptypb.Empty) (*dspRouterGrpc.SspGeoDspLinksResponse_V2_5, error) {
+	data, err := os.ReadFile(s.linkFilename)
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "failed to read file %s: %w", s.linkFilename, err)
+	}
+
+	return &dspRouterGrpc.SspGeoDspLinksResponse_V2_5{
+		JsonData: string(data),
+	}, nil
+}
+
+func (s *Server) SetSspGeoLinksMap(ctx context.Context, req *dspRouterGrpc.SspGeoDspLinksRequest_V2_5) (*emptypb.Empty, error) {
+	var err error
+
+	if s.linkMap, err = utils.RewriteSspGeoDspFile[bool](
+		req.JsonData,
+		s.linkFilename,
+	); err != nil {
+		return nil, err
+	}
+	log.Printf("Successfully updated Links with %d SSP entries", len(s.linkMap))
+
+	return nil, nil
 }
 
 func writeMetadataToRedis(ctx context.Context, redisClient *redis.Client, globalId string, data map[string]int) {

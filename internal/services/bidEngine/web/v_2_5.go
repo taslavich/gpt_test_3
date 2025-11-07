@@ -15,7 +15,7 @@ import (
 	pb "gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/proto/services/bidEngine"
 	"gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/proto/types/ortb_V2_5"
 	utils "gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/utils_grpc"
-	bidEngine "gitlab.com/twinbid-exchange/RTB-exchange/internal/services/bidEngine/service"
+	"gitlab.com/twinbid-exchange/RTB-exchange/internal/types"
 	clickhouse_types "gitlab.com/twinbid-exchange/RTB-exchange/internal/types/clickhouse"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -23,11 +23,13 @@ import (
 )
 
 type Server struct {
-	ProfitPercent float32
-	redisClient   *redis.Client
-	timeout       time.Duration
-	hostname      string
-	counter       *uint64
+	ProfitPercent   float32
+	redisClient     *redis.Client
+	timeout         time.Duration
+	hostname        string
+	counter         *uint64
+	percentFilename string
+	percentMap      map[string]map[string]map[string]*types.PercentAndBidfloor
 
 	GetWinnerBidInternal_V_2_5 func(
 		ctx context.Context,
@@ -53,6 +55,8 @@ func NewServer(
 		hostname string,
 		counter *uint64,
 	) (*ortb_V2_5.BidResponse, *clickhouse_types.BidResponse),
+	percentFilename string,
+	percentMap map[string]map[string]map[string]*types.PercentAndBidfloor,
 ) *Server {
 	var counter uint64 = 0
 	return &Server{
@@ -61,6 +65,8 @@ func NewServer(
 		hostname:                   hostname,
 		GetWinnerBidInternal_V_2_5: GetWinnerBidInternal_V_2_5,
 		counter:                    &counter,
+		percentFilename:            percentFilename,
+		percentMap:                 percentMap,
 	}
 }
 
@@ -106,65 +112,26 @@ func (s *Server) GetWinnerBid_V2_5(
 }
 
 func (s *Server) SetSspGeoPercentsMap(ctx context.Context, req *bidEngineGrpc.SspGeoDspPercentsRequest_V2_5) (*emptypb.Empty, error) {
-	log.Printf("=== DEBUG SetSspGeoPercentsMap ===")
-	log.Printf("Request: %+v", req)
-	log.Printf("JsonData: '%s'", req.JsonData)
-	log.Printf("JsonData length: %d", len(req.JsonData))
+	var err error
 
-	if req == nil {
-		log.Printf("REQUEST IS NIL!")
-		return nil, status.Errorf(codes.InvalidArgument, "request is nil")
+	if s.percentMap, err = utils.RewriteSspGeoDspFile[*types.PercentAndBidfloor](
+		req.JsonData,
+		s.percentFilename,
+	); err != nil {
+		return nil, err
 	}
+	log.Printf("Successfully updated SspGeoPercents with %d SSP entries", len(s.percentMap))
 
-	if req.JsonData == "" {
-		log.Printf("JSON_DATA IS EMPTY!")
-		return nil, status.Errorf(codes.InvalidArgument, "json_data is empty")
-	}
-
-	// Парсим JSON напрямую
-	var inputMap map[string]map[string]map[string]float32
-
-	err := json.Unmarshal([]byte(req.JsonData), &inputMap)
-	if err != nil {
-		return nil, status.Errorf(codes.InvalidArgument, "invalid JSON format: %v", err)
-	}
-
-	// Сохраняем в файл
-	fileData, err := json.MarshalIndent(inputMap, "", "  ")
-	if err != nil {
-		return nil, status.Errorf(codes.Internal, "failed to marshal data for file: %v", err)
-	}
-
-	err = os.WriteFile(bidEngine.SspGeoDspPercentsFilePath, fileData, 0644)
-	if err != nil {
-		return nil, status.Errorf(codes.Internal, "failed to write file %s: %v", bidEngine.SspGeoDspPercentsFilePath, err)
-	}
-
-	bidEngine.SspGeoPercents = inputMap
-
-	log.Printf("Successfully updated SspGeoPercents with %d SSP entries", len(inputMap))
 	return nil, nil
 }
 
 func (s *Server) GetSspGeoPercentsMap(context.Context, *emptypb.Empty) (*bidEngineGrpc.SspGeoDspPercentsResponse_V2_5, error) {
-	log.Printf("=== DEBUG GetSspGeoPercentsMap ===")
-	log.Printf("SspGeoPercents == nil: %t", bidEngine.SspGeoPercents == nil)
-	log.Printf("SspGeoPercents length: %d", len(bidEngine.SspGeoPercents))
-	log.Printf("SspGeoPercents: %+v", bidEngine.SspGeoPercents)
-
-	if bidEngine.SspGeoPercents == nil {
-		log.Printf("SspGeoPercents is NIL!")
-		return &bidEngineGrpc.SspGeoDspPercentsResponse_V2_5{
-			JsonData: "{}",
-		}, nil
-	}
-
-	jsonBytes, err := json.Marshal(bidEngine.SspGeoPercents)
+	data, err := os.ReadFile(s.percentFilename)
 	if err != nil {
-		return nil, status.Errorf(codes.Internal, "failed to marshal data to JSON: %v", err)
+		return nil, status.Errorf(codes.Internal, "failed to read file %s: %w", s.percentFilename, err)
 	}
 
 	return &bidEngineGrpc.SspGeoDspPercentsResponse_V2_5{
-		JsonData: string(jsonBytes),
+		JsonData: string(data),
 	}, nil
 }

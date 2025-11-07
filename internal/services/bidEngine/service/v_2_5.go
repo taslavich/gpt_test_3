@@ -14,16 +14,6 @@ import (
 	clickhouse_types "gitlab.com/twinbid-exchange/RTB-exchange/internal/types/clickhouse"
 )
 
-func IsInStringSlice(variable string, list []string) bool {
-	for _, target := range list {
-		if variable == target {
-			return true
-		}
-	}
-
-	return false
-}
-
 func getRandomProfitPercent() float32 {
 	percentages := [11]float32{0.20, 0.21, 0.22, 0.23, 0.24, 0.25, 0.26, 0.27, 0.28, 0.29, 0.30} // 20% - 30% (1)
 	randomIndex := rand.Intn(11)                                                                 // 0 - 10 (1)
@@ -127,32 +117,9 @@ func GetWinnerBidInternal_V_2_5(
 		}
 
 		var needed bool = true
-		daoVnJpId := []string{"JP", "VN", "ID"}
-		daoMyMlBdPh := []string{"MY", "ML", "BD", "PH"}
 
-		clickaVnJpId := []string{"JP", "VN", "ID"}
-		clickaMyMlBdPh := []string{"MY", "ML", "BD", "PH"}
-
-		if IsInStringSlice(req.BidRequest.Device.Geo.GetCountry(), daoVnJpId) && winningDomain == "http://pop-48702.daortb.com/api/rtb-pops/item?sourceId=59738&api-key=xvKZ-_oewvADCb2RR0W6bgp_EdLEKCLj" {
+		if winningDomain == "dsp_hilltopads.com" {
 			profitPercent = 0.70
-			needed = false
-		} else if IsInStringSlice(req.BidRequest.Device.Geo.GetCountry(), daoMyMlBdPh) && winningDomain == "http://pop-48702.daortb.com/api/rtb-pops/item?sourceId=59738&api-key=xvKZ-_oewvADCb2RR0W6bgp_EdLEKCLj" {
-			profitPercent = 0.50
-			needed = false
-		} else if IsInStringSlice(req.BidRequest.Device.Geo.GetCountry(), clickaVnJpId) && winningDomain == "http://pop.zog.link/bid-request?token=h6dKfdh544FHD83" {
-			profitPercent = 0.70
-			needed = false
-		} else if IsInStringSlice(req.BidRequest.Device.Geo.GetCountry(), clickaMyMlBdPh) && winningDomain == "http://pop.zog.link/bid-request?token=h6dKfdh544FHD83" {
-			profitPercent = 0.50
-			needed = false
-		} else if winningDomain == "http://ortbtwinbidexadlt.hilltopadsfeed.com/ask" {
-			profitPercent = 0.70
-			needed = false
-		} else if req.SspDomain == "octoclick.com" && winningDomain == "http://pop-48702.daortb.com/api/rtb-pops/item?sourceId=59738&api-key=xvKZ-_oewvADCb2RR0W6bgp_EdLEKCLj" {
-			profitPercent = 0.80
-			needed = false
-		} else if winningDomain == "http://ortbtwinbidexadlt.hilltopadsfeed.com/ask" && (req.SspDomain == "mybid.com" || req.SspDomain == "kadam.net") {
-			profitPercent = 0.20
 			needed = false
 		}
 

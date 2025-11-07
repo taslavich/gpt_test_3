@@ -10,14 +10,14 @@ func WrapError(prefix string, wrapError error) error {
 	if !ok {
 		return status.Errorf(
 			codes.Unknown,
-			"Because got unknown error %w: %w",
+			"Because got unknown error %s: %s",
 			prefix,
 			st.Err(),
 		)
 	}
 	return status.Errorf(
 		st.Code(),
-		"%w: %w",
+		"%s: %s",
 		prefix,
 		st.Err(),
 	)
