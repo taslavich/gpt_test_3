@@ -238,7 +238,7 @@ func putWorkStatus(
 
 	*work = input.Work
 
-	if err := rnr.JSON(w, http.StatusOK, nil); err != nil {
+	if err := rnr.Text(w, http.StatusOK, fmt.Sprintf("Changed to %v", *work)); err != nil {
 		log.Printf("Cannot make HTTP response back in putWorkStatus: %v\n", err)
 	}
 }
