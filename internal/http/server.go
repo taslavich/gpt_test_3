@@ -14,12 +14,13 @@ import (
 
 	"github.com/go-chi/chi/middleware"
 	"github.com/go-chi/chi/v5"
+	sppAdapterWeb "gitlab.com/twinbid-exchange/RTB-exchange/internal/services/sspAdapter/web"
 )
 
 func WorkSspAdapterMiddleware(work *bool) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			if !*work {
+			if !*work && (!(r.URL.Path == sppAdapterWeb.GetWorkStatusUrl) || !(r.URL.Path == sppAdapterWeb.PutWorkStatusUrl)) {
 				http.Error(w, "Service Unavailable", http.StatusServiceUnavailable)
 				return
 			}

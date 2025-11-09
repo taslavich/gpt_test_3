@@ -53,28 +53,3 @@ func getNurl(
 
 	http.Redirect(w, r, decodedURL, http.StatusFound)
 }
-
-func getWorkStatus(
-	w http.ResponseWriter,
-	work *bool,
-) {
-	if err := rnr.JSON(w, http.StatusOK, getWorkStatusResponse{
-		Work: *work,
-	}); err != nil {
-		log.Printf("Cannot make HTTP response back in getWorkStatus: %v\n", err)
-	}
-}
-
-func putWorkStatus(
-	w http.ResponseWriter,
-	r *http.Request,
-	work *bool,
-) {
-	input := r.Context().Value(httpin.Input).(*putWorkStatusRequest)
-
-	*work = input.Work
-
-	if err := rnr.JSON(w, http.StatusOK, nil); err != nil {
-		log.Printf("Cannot make HTTP response back in putWorkStatus: %v\n", err)
-	}
-}
