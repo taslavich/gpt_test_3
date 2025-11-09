@@ -20,7 +20,17 @@ import (
 func WorkSspAdapterMiddleware(work *bool) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			if !*work && (!(r.URL.Path == sppAdapterWeb.GetWorkStatusUrl) || !(r.URL.Path == sppAdapterWeb.PutWorkStatusUrl)) {
+			if r.URL.Path == sppAdapterWeb.GetWorkStatusUrl {
+				next.ServeHTTP(w, r)
+				return
+			}
+
+			if r.URL.Path == sppAdapterWeb.PutWorkStatusUrl {
+				next.ServeHTTP(w, r)
+				return
+			}
+
+			if !*work {
 				http.Error(w, "Service Unavailable", http.StatusServiceUnavailable)
 				return
 			}
