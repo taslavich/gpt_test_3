@@ -76,7 +76,7 @@ func InitHttpRoutes(
 
 	httpRouter.With(
 		httpin.NewInput(putWorkStatusRequest{}),
-	).Post(PutWorkStatusUrl, func(w http.ResponseWriter, r *http.Request) {
+	).Put(PutWorkStatusUrl, func(w http.ResponseWriter, r *http.Request) {
 		putWorkStatus(w, r, work)
 	})
 
