@@ -25,6 +25,9 @@ const (
 
 	GetAdmUrl  = "/adm"
 	GetNurlUrl = "/nurl"
+
+	GetWorkStatusUrl = "/work_status"
+	PutWorkStatusUrl = "/work_status"
 )
 
 type postBidRequest_V2_5 struct {
@@ -43,6 +46,14 @@ type admNurlRequest struct {
 	DspURL   string `in:"query=url" required:"true"`
 }
 
+type putWorkStatusRequest struct {
+	Work bool `in:"query=work" required:"true"`
+}
+
+type getWorkStatusResponse struct {
+	Work bool `json:"work"`
+}
+
 func InitHttpRoutes(
 	ctx context.Context,
 	httpRouter *chi.Mux,
@@ -52,6 +63,7 @@ func InitHttpRoutes(
 	orchestratorClient orchestratorProto.OrchestratorServiceClient,
 	bidRequestTimeout time.Duration,
 	sspFeeds map[string]string,
+	work *bool,
 ) {
 	var counter uint64 = 0
 	integration.UseGochiURLParam("path", chi.URLParam)
@@ -60,6 +72,18 @@ func InitHttpRoutes(
 		httpin.NewInput(postBidRequest_V2_5{}),
 	).Post(PostBid_V_2_5_URL, func(w http.ResponseWriter, r *http.Request) {
 		postBid_V2_5(ctx, w, r, redisClient, isBadIp, getCountryISO, orchestratorClient, bidRequestTimeout, sspFeeds, &counter)
+	})
+
+	httpRouter.With(
+		httpin.NewInput(putWorkStatusRequest{}),
+	).Post(PutWorkStatusUrl, func(w http.ResponseWriter, r *http.Request) {
+		putWorkStatus(w, r, work)
+	})
+
+	httpRouter.With(
+		httpin.NewInput(getWorkStatusResponse{}),
+	).Get(GetWorkStatusUrl, func(w http.ResponseWriter, r *http.Request) {
+		getWorkStatus(w, work)
 	})
 }
 
