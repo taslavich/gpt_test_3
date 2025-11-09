@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 
+	"github.com/go-chi/chi/v5"
 	"github.com/redis/go-redis/v9"
 	"gitlab.com/twinbid-exchange/RTB-exchange/internal/config"
 	httpServer "gitlab.com/twinbid-exchange/RTB-exchange/internal/http"
@@ -35,7 +36,7 @@ func main() {
 	}
 	log.Println("✅ Connected to Redis")
 
-	router := httpServer.InitHttpRouter()
+	router := httpServer.InitHttpRouter(chi.NewRouter())
 	sppAdapterWeb.InitHttpsRoutes(
 		ctx,
 		router,

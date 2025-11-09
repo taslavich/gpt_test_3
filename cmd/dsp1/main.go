@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 
+	"github.com/go-chi/chi/v5"
 	"gitlab.com/twinbid-exchange/RTB-exchange/internal/config"
 	"gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/proto/types/ortb_V2_5"
 	httpServer "gitlab.com/twinbid-exchange/RTB-exchange/internal/http"
@@ -27,7 +28,7 @@ func main() {
 	BidId := fmt.Sprint(cfg.DspName, cfg.DspName)
 	Nurl := "http://0.0.0.0:8090/nurl"
 	//Burl := "http://0.0.0.0:8090/burl"
-	router := httpServer.InitHttpRouter()
+	router := httpServer.InitHttpRouter(chi.NewRouter())
 	mockDspWeb.InitRoutes(
 		ctx,
 		router,

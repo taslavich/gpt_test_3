@@ -6,6 +6,7 @@ import (
 	"log"
 	"os"
 
+	"github.com/go-chi/chi/v5"
 	"github.com/redis/go-redis/v9"
 	"gitlab.com/twinbid-exchange/RTB-exchange/internal/config"
 	"gitlab.com/twinbid-exchange/RTB-exchange/internal/geoBadIp"
@@ -62,8 +63,9 @@ func main() {
 	client, cancelFunc := adapter.GetGrpClient()
 	defer cancelFunc()
 
-	router := httpServer.InitHttpRouter()
+	router := chi.NewRouter()
 	router.Use(httpServer.WorkSspAdapterMiddleware(&work))
+	router = httpServer.InitHttpRouter(router)
 	sppAdapterWeb.InitHttpRoutes(
 		ctx,
 		router,
