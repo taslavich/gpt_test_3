@@ -16,55 +16,18 @@ import (
 	"github.com/go-chi/chi/v5"
 )
 
-/*func runServer(cfg *config.BiddingEngineConfig) {
+func WorkSspAdapterMiddleware(work *bool) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if !*work {
+				http.Error(w, "Service Unavailable", http.StatusServiceUnavailable)
+				return
+			}
 
-	lis, err := net.Listen(
-		"tcp",
-		fmt.Sprintf(
-			"%s:%d",
-			cfg.HTTPServer.Host,
-			cfg.HTTPServer.Port,
-		),
-	)
-	if err != nil {
-		log.Fatalf("failed to listen: %v", err)
+			next.ServeHTTP(w, r)
+		})
 	}
-	s := grpc.NewServer()
-	pb.RegisterBiddingEngineServiceServer(
-		s,
-		&biddingEngineWeb.Server{
-			ProfitPercent:        cfg.ProfitPercent,
-			GetWinnerBidInternal: biddingEngine.GetWinnerBid,
-		},
-	)
-
-	log.Printf("Server started on %s:%d", cfg.HTTPServer.Host, cfg.HTTPServer.Port)
-	if err := s.Serve(lis); err != nil {
-		log.Fatalf("failed to serve: %v", err)
-	}
-
-	// Канал для ошибок
-	errChan := make(chan error)
-
-	// Запуск сервера в горутине
-	go func() {
-		if err := s.Serve(lis); err != nil {
-			errChan <- err
-		}
-	}()
-
-	// Graceful shutdown
-	stop := make(chan os.Signal, 1)
-	signal.Notify(stop, os.Interrupt, syscall.SIGTERM)
-
-	select {
-	case <-stop:
-		log.Println("Shutting down gracefully...")
-		srv.GracefulStop() // Плавная остановка gRPC
-	case err := <-errChan:
-		log.Fatalf("Server crashed: %v", err)
-	}
-}*/
+}
 
 func InitHttpRouter() *chi.Mux {
 	httpRouter := chi.NewRouter()
