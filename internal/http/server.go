@@ -29,8 +29,7 @@ func WorkSspAdapterMiddleware(work *bool) func(http.Handler) http.Handler {
 	}
 }
 
-func InitHttpRouter() *chi.Mux {
-	httpRouter := chi.NewRouter()
+func InitHttpRouter(httpRouter *chi.Mux) *chi.Mux {
 	httpRouter.Use(middleware.Logger)
 	httpRouter.Use(middleware.Recoverer)
 	httpRouter.Use(middleware.Timeout(60 * time.Second))
