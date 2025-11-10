@@ -17,7 +17,7 @@ import (
 	sppAdapterWeb "gitlab.com/twinbid-exchange/RTB-exchange/internal/services/sspAdapter/web"
 )
 
-func WorkSspAdapterMiddleware(work *bool) func(http.Handler) http.Handler {
+func WorkSspAdapterMiddleware(workAdl, workMc *bool) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			if r.URL.Path == sppAdapterWeb.GetWorkStatusUrl {
@@ -30,7 +30,12 @@ func WorkSspAdapterMiddleware(work *bool) func(http.Handler) http.Handler {
 				return
 			}
 
-			if !*work {
+			if !*workAdl && r.URL.Path == sppAdapterWeb.PostBid_V_2_5_URL {
+				http.Error(w, "Service Unavailable", http.StatusServiceUnavailable)
+				return
+			}
+
+			if !*workMc && r.URL.Path == sppAdapterWeb.PostBid_mainstream_V_2_5_URL {
 				http.Error(w, "Service Unavailable", http.StatusServiceUnavailable)
 				return
 			}

@@ -367,6 +367,8 @@ func (s *Server) SetSspGeoLinksMap(ctx context.Context, req *dspRouterGrpc.SspGe
 			req.JsonData,
 			s.linkFilename_mainstream,
 		)
+	default:
+		return nil, status.Errorf(codes.Internal, "Typic is no here! failed to read file: %v", err)
 	}
 	if err != nil {
 		return nil, err
