@@ -139,6 +139,8 @@ func (s *Server) SetSspGeoPercentsMap(ctx context.Context, req *bidEngineGrpc.Ss
 			req.JsonData,
 			s.percentFilename_mainstream,
 		)
+	default:
+		return nil, status.Errorf(codes.Internal, "Typic is no here! failed to read file: %v", err)
 	}
 	if err != nil {
 		return nil, err

@@ -16,7 +16,8 @@ import (
 )
 
 func main() {
-	work := false
+	workAdl := false
+	workMc := false
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -64,7 +65,7 @@ func main() {
 	defer cancelFunc()
 
 	router := chi.NewRouter()
-	router.Use(httpServer.WorkSspAdapterMiddleware(&work))
+	router.Use(httpServer.WorkSspAdapterMiddleware(&workAdl, &workMc))
 	router = httpServer.InitHttpRouter(router)
 	sppAdapterWeb.InitHttpRoutes(
 		ctx,
@@ -76,7 +77,8 @@ func main() {
 		cfg.GetWinnerBidTimeout,
 		cfg.SspAdultFeeds,
 		cfg.SspMainStreamFeeds,
-		&work,
+		&workAdl,
+		&workMc,
 	)
 	log.Println("HTTP routes initialized")
 

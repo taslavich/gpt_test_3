@@ -234,10 +234,12 @@ func postBid_V2_5(
 
 func getWorkStatus(
 	w http.ResponseWriter,
-	work *bool,
+	workAdl,
+	workMc *bool,
 ) {
 	if err := rnr.JSON(w, http.StatusOK, getWorkStatusResponse{
-		Work: *work,
+		WorkAdl: *workAdl,
+		WorkMc:  *workMc,
 	}); err != nil {
 		log.Printf("Cannot make HTTP response back in getWorkStatus: %v\n", err)
 	}
@@ -246,13 +248,15 @@ func getWorkStatus(
 func putWorkStatus(
 	w http.ResponseWriter,
 	r *http.Request,
-	work *bool,
+	workAdl,
+	workMc *bool,
 ) {
 	input := r.Context().Value(httpin.Input).(*putWorkStatusRequest)
 
-	*work = input.Work
+	*workAdl = input.WorkAdl
+	*workMc = input.WorkMc
 
-	if err := rnr.Text(w, http.StatusOK, fmt.Sprintf("Changed to %v", *work)); err != nil {
+	if err := rnr.Text(w, http.StatusOK, fmt.Sprintf("Changed workAdl to %v and Changed workMc to %v", *workAdl, *workMc)); err != nil {
 		log.Printf("Cannot make HTTP response back in putWorkStatus: %v\n", err)
 	}
 }

@@ -53,11 +53,13 @@ type admNurlRequest struct {
 }
 
 type putWorkStatusRequest struct {
-	Work bool `in:"query=work" required:"true"`
+	WorkAdl bool `in:"query=workAdl" required:"true"`
+	WorkMc  bool `in:"query=workMc" required:"true"`
 }
 
 type getWorkStatusResponse struct {
-	Work bool `json:"work"`
+	WorkAdl bool `json:"workAdl"`
+	WorkMc  bool `json:"workMc"`
 }
 
 func InitHttpRoutes(
@@ -70,7 +72,8 @@ func InitHttpRoutes(
 	bidRequestTimeout time.Duration,
 	sspFeeds map[string]string,
 	sspMainstreamFeeds map[string]string,
-	work *bool,
+	workAdl,
+	workMc *bool,
 ) {
 	var counter uint64 = 0
 	integration.UseGochiURLParam("path", chi.URLParam)
@@ -90,13 +93,13 @@ func InitHttpRoutes(
 	httpRouter.With(
 		httpin.NewInput(putWorkStatusRequest{}),
 	).Put(PutWorkStatusUrl, func(w http.ResponseWriter, r *http.Request) {
-		putWorkStatus(w, r, work)
+		putWorkStatus(w, r, workAdl, workMc)
 	})
 
 	httpRouter.With(
 		httpin.NewInput(getWorkStatusResponse{}),
 	).Get(GetWorkStatusUrl, func(w http.ResponseWriter, r *http.Request) {
-		getWorkStatus(w, work)
+		getWorkStatus(w, workAdl, workMc)
 	})
 }
 
