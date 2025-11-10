@@ -53,17 +53,9 @@ func main() {
 
 	fileLoader := filter.NewFileRuleLoader(
 		ruleManager,
-		cfg.DspRulesConfigPathV24,
 		cfg.DspRulesConfigPathV25,
-		cfg.SppRulesConfigPathV24,
 		cfg.SppRulesConfigPathV25,
 	)
-	if err := waitForFile(ctx, cfg.DspRulesConfigPathV24, 10, time.Second); err != nil {
-		log.Fatalf("DSP V24 rules are not available: %v", err)
-	}
-	if err := waitForFile(ctx, cfg.SppRulesConfigPathV24, 10, time.Second); err != nil {
-		log.Fatalf("SPP V24 rules are not available: %v", err)
-	}
 
 	if err := waitForFile(ctx, cfg.DspRulesConfigPathV25, 10, time.Second); err != nil {
 		log.Fatalf("DSP V25 rules are not available: %v", err)
@@ -96,12 +88,11 @@ func main() {
 		ruleManager,
 		fileLoader,
 		processor,
-		cfg.DSPEndpoints_v_2_4,
 		cfg.DSPEndpoints_v_2_5,
+		cfg.DSPEndpoints_mainstream_v_2_5,
 		redisClient,
 		cfg.BidResponsesTimeout,
 		cfg.MaxParallelRequests,
-		cfg.SspNotDsp,
 		cfg.SspGeoDspLinksFilePath,
 		sspGeoDspMap,
 	)

@@ -76,6 +76,7 @@ func (s *Server) GetWinnerBid_V2_5(
 			GlobalId:   req.GlobalId,
 			SspDomain:  req.SspDomain,
 			Logged:     req.Logged,
+			Typic:      req.Typic,
 		},
 	)
 	if err != nil {

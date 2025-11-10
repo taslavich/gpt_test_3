@@ -23,6 +23,7 @@ import (
 	dspRouterGrpc "gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/proto/services/dspRouter"
 	"gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/proto/types/ortb_V2_5"
 	utils "gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/utils_grpc"
+	sppAdapterWeb "gitlab.com/twinbid-exchange/RTB-exchange/internal/services/sspAdapter/web"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/emptypb"
@@ -33,8 +34,8 @@ type Server struct {
 	fileLoader  *filter.FileRuleLoader
 	processor   *filter.OptimizedFilterProcessor
 
-	dspEndpoints_v_2_4 []string
-	dspEndpoints_v_2_5 config.MapStringToString
+	dspEndpoints_v_2_5            config.MapStringToString
+	dspEndpoints_mainstream_v_2_5 config.MapStringToString
 
 	redisClient *redis.Client
 
@@ -42,8 +43,6 @@ type Server struct {
 	timeout      time.Duration
 	// Пулы для снижения аллокаций
 	bufferPool sync.Pool
-
-	sspNotDsp config.MapStringToStringSlice
 
 	ranger cidranger.Ranger
 
@@ -82,12 +81,11 @@ func NewServer(
 	ruleManager *filter.RuleManager,
 	fileLoader *filter.FileRuleLoader,
 	processor *filter.OptimizedFilterProcessor,
-	dspEndpoints_v_2_4 []string,
-	dspEndpoints_v_2_5 config.MapStringToString,
+	dspEndpoints_v_2_5,
+	dspEndpoints_mainstream_v_2_5 config.MapStringToString,
 	redisClient *redis.Client,
 	timeout time.Duration,
 	maxParallelRequests int,
-	sspNotDsp config.MapStringToStringSlice,
 	linkFilename string,
 	linkMap map[string]map[string]map[string]bool,
 ) *Server {
@@ -103,9 +101,7 @@ func NewServer(
 	// Глобальный лимит исходящих: консервативно отталкиваемся от
 	// количества DSP и локального лимита; при желании — вынеси в конфиг.
 	outboundLimit := maxParallelRequests * 2
-	if l := len(dspEndpoints_v_2_4); l > 0 && l*maxParallelRequests > outboundLimit {
-		outboundLimit = l * maxParallelRequests
-	}
+
 	if l := len(dspEndpoints_v_2_5); l > 0 && l*maxParallelRequests > outboundLimit {
 		outboundLimit = l * maxParallelRequests
 	}
@@ -116,20 +112,19 @@ func NewServer(
 	rang := cidranger.NewPCTrieRanger()
 
 	return &Server{
-		ruleManager:        ruleManager,
-		fileLoader:         fileLoader,
-		processor:          processor,
-		dspEndpoints_v_2_4: dspEndpoints_v_2_4,
-		dspEndpoints_v_2_5: dspEndpoints_v_2_5,
-		redisClient:        redisClient,
-		client_v_2_5:       client_v_2_5,
-		timeout:            timeout,
+		ruleManager:                   ruleManager,
+		fileLoader:                    fileLoader,
+		processor:                     processor,
+		dspEndpoints_v_2_5:            dspEndpoints_v_2_5,
+		dspEndpoints_mainstream_v_2_5: dspEndpoints_mainstream_v_2_5,
+		redisClient:                   redisClient,
+		client_v_2_5:                  client_v_2_5,
+		timeout:                       timeout,
 		bufferPool: sync.Pool{
 			New: func() interface{} {
 				return bytes.NewBuffer(make([]byte, 0, 2048))
 			},
 		},
-		sspNotDsp:    sspNotDsp,
 		ranger:       rang,
 		linkFilename: linkFilename,
 		linkMap:      linkMap,
@@ -161,8 +156,6 @@ func (s *Server) GetBids_V2_5(
 		}
 	}()
 
-	//notDsp := s.sspNotDsp[req.SspDomain]
-
 	jsonData, err := jsoniter.Marshal(req.BidRequest)
 	if err != nil {
 		newErr := fmt.Errorf("Can not marshal in GetBids_V_2_5 because got uknown error: %v", err)
@@ -185,35 +178,17 @@ func (s *Server) GetBids_V2_5(
 	codesCh := make(chan *dspDomainCode, len(s.dspEndpoints_v_2_5))
 	responsesCh := make(chan *dspDomainResp, len(s.dspEndpoints_v_2_5))
 
-	// Запускаем все DSP параллельно
-	for endpoint, domain := range s.dspEndpoints_v_2_5 {
+	var dspList config.MapStringToString
+	switch req.Typic {
+	case sppAdapterWeb.ADULT:
+		dspList = s.dspEndpoints_v_2_5
+	case sppAdapterWeb.MAINSTREAM:
+		dspList = s.dspEndpoints_mainstream_v_2_5
+	}
+
+	for endpoint, domain := range dspList {
 		endpoint := endpoint
 		domain := domain
-		/*if (req.BidRequest.Device.Geo.GetCountry() == "ID" || req.BidRequest.Device.Geo.GetCountry() == "PH") && (endpoint != "http://pop-48702.daortb.com/api/rtb-pops/item?sourceId=59738&api-key=xvKZ-_oewvADCb2RR0W6bgp_EdLEKCLj" || endpoint == "http://ortbtwinbidexadlt.hilltopadsfeed.com/ask") {
-			codesCh <- &dspDomainCode{
-				domain: domain,
-				code:   -5,
-			}
-			continue
-		}
-
-		if utils.IsInStringSlice(endpoint, notDsp) {
-			codesCh <- &dspDomainCode{
-				domain: domain,
-				code:   -4,
-			}
-			continue
-		}
-
-		if endpoint == "http://pop-48702.daortb.com/api/rtb-pops/item?sourceId=59738&api-key=xvKZ-_oewvADCb2RR0W6bgp_EdLEKCLj" || endpoint == "http://ortbtwinbidexadlt.hilltopadsfeed.com/ask" {
-			if req.SspDomain != "galaksion.com" {
-				codesCh <- &dspDomainCode{
-					domain: domain,
-					code:   -2,
-				}
-				continue
-			}
-		}*/
 
 		if !utils.GetValueFomSspGeoDspMap(req.SspDomain, req.BidRequest.Device.Geo.GetCountry(), domain, s.linkMap, false) {
 			codesCh <- &dspDomainCode{
@@ -232,14 +207,14 @@ func (s *Server) GetBids_V2_5(
 			continue
 		}
 
-		if !Allowed(endpoint, req.BidRequest, s.ranger) {
+		/*if !Allowed(endpoint, req.BidRequest, s.ranger) {
 			//log.Println("Gor DSP filter")
 			codesCh <- &dspDomainCode{
 				domain: domain,
 				code:   -1,
 			}
 			continue
-		}
+		}*/
 
 		wg.Add(1)
 		go func(endpoint string) {
