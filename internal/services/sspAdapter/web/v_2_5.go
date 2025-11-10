@@ -253,13 +253,21 @@ func putWorkStatus(
 ) {
 	input := r.Context().Value(httpin.Input).(*putWorkStatusRequest)
 
-	if input.WorkAdl != nil {
-		*workAdl = *input.WorkAdl
-	} else if input.WorkMc != nil {
-		*workMc = *input.WorkMc
+	if input.Typic == "" {
+		http.Error(w, "Typic is no here", http.StatusBadRequest)
 	}
 
-	if err := rnr.Text(w, http.StatusOK, fmt.Sprintf("Changed workAdl to %v and Changed workMc to %v", *workAdl, *workMc)); err != nil {
+	var work bool
+	switch input.Typic {
+	case ADULT:
+		*workAdl = input.Work
+		work = *workAdl
+	case MAINSTREAM:
+		*workMc = input.Work
+		work = *workAdl
+	}
+
+	if err := rnr.Text(w, http.StatusOK, fmt.Sprintf("Changed to %v", work)); err != nil {
 		log.Printf("Cannot make HTTP response back in putWorkStatus: %v\n", err)
 	}
 }
