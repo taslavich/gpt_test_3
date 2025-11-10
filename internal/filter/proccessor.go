@@ -9,18 +9,14 @@ import (
 type OptimizedFilterProcessor struct {
 	ruleManager *RuleManager
 	// Stateless экстракторы (создаются один раз)
-	v24ReqExtractor  *struct{}
 	v25ReqExtractor  *StatelessV25BidRequestExtractor
-	v24RespExtractor *struct{}
 	v25RespExtractor *StatelessV25BidResponseExtractor
 }
 
 func NewOptimizedFilterProcessor(ruleManager *RuleManager) *OptimizedFilterProcessor {
 	return &OptimizedFilterProcessor{
 		ruleManager:      ruleManager,
-		v24ReqExtractor:  nil,
 		v25ReqExtractor:  NewStatelessV25BidRequestExtractor(),
-		v24RespExtractor: nil,
 		v25RespExtractor: NewStatelessV25BidResponseExtractor(),
 	}
 }

@@ -75,6 +75,7 @@ func main() {
 		client,
 		cfg.GetWinnerBidTimeout,
 		cfg.SspFeeds,
+		cfg.SspMainStreamFeeds,
 		&work,
 	)
 	log.Println("HTTP routes initialized")

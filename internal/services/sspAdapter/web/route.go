@@ -15,13 +15,19 @@ import (
 	"github.com/unrolled/render"
 )
 
+const (
+	ADULT      = "ADULT"
+	MAINSTREAM = "MAINSTREAM"
+)
+
 var rnr = render.New(render.Options{
 	StreamingJSON: true,
 	UnEscapeHTML:  true,
 })
 
 const (
-	PostBid_V_2_5_URL = "/bid_v_2_5"
+	PostBid_V_2_5_URL            = "/bid_v_2_5"
+	PostBid_mainstream_V_2_5_URL = "/bid_mainstream_v_2_5"
 
 	GetAdmUrl  = "/adm"
 	GetNurlUrl = "/nurl"
@@ -63,6 +69,7 @@ func InitHttpRoutes(
 	orchestratorClient orchestratorProto.OrchestratorServiceClient,
 	bidRequestTimeout time.Duration,
 	sspFeeds map[string]string,
+	sspMainstreamFeeds map[string]string,
 	work *bool,
 ) {
 	var counter uint64 = 0
@@ -71,7 +78,13 @@ func InitHttpRoutes(
 	httpRouter.With(
 		httpin.NewInput(postBidRequest_V2_5{}),
 	).Post(PostBid_V_2_5_URL, func(w http.ResponseWriter, r *http.Request) {
-		postBid_V2_5(ctx, w, r, redisClient, isBadIp, getCountryISO, orchestratorClient, bidRequestTimeout, sspFeeds, &counter)
+		postBid_V2_5(ctx, w, r, redisClient, isBadIp, getCountryISO, orchestratorClient, bidRequestTimeout, sspFeeds, sspMainstreamFeeds, &counter, ADULT)
+	})
+
+	httpRouter.With(
+		httpin.NewInput(postBidRequest_V2_5{}),
+	).Post(PostBid_mainstream_V_2_5_URL, func(w http.ResponseWriter, r *http.Request) {
+		postBid_V2_5(ctx, w, r, redisClient, isBadIp, getCountryISO, orchestratorClient, bidRequestTimeout, sspFeeds, sspMainstreamFeeds, &counter, MAINSTREAM)
 	})
 
 	httpRouter.With(

@@ -131,12 +131,10 @@ type SPPSettings struct {
 
 // Добавляем структуры для поддержки версий
 type VersionedDSPSettings struct {
-	V24 []RuleNode `json:"v24,omitempty"`
 	V25 []RuleNode `json:"v25,omitempty"`
 }
 
 type VersionedSPPSettings struct {
-	V24 []RuleNode `json:"v24,omitempty"`
 	V25 []RuleNode `json:"v25,omitempty"`
 }
 

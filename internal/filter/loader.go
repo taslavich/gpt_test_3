@@ -10,19 +10,15 @@ import (
 
 type FileRuleLoader struct {
 	ruleManager    *RuleManager
-	dspV24FilePath string
 	dspV25FilePath string
-	sppV24FilePath string
 	sppV25FilePath string
 	watcher        *fsnotify.Watcher
 }
 
-func NewFileRuleLoader(ruleManager *RuleManager, dspV24Path, dspV25Path, sppV24Path, sppV25Path string) *FileRuleLoader {
+func NewFileRuleLoader(ruleManager *RuleManager, dspV25Path, sppV25Path string) *FileRuleLoader {
 	return &FileRuleLoader{
 		ruleManager:    ruleManager,
-		dspV24FilePath: dspV24Path,
 		dspV25FilePath: dspV25Path,
-		sppV24FilePath: sppV24Path,
 		sppV25FilePath: sppV25Path,
 	}
 }

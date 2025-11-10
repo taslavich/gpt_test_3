@@ -48,7 +48,9 @@ func postBid_V2_5(
 	orchestratorClient orchestratorProto.OrchestratorServiceClient,
 	timeout time.Duration,
 	sspFeeds map[string]string,
+	sspMainstreamFeeds map[string]string,
 	counter *uint64,
+	typic string,
 ) {
 	var input *postBidRequest_V2_5
 	defer func() {
@@ -66,7 +68,14 @@ func postBid_V2_5(
 	}()
 	input = r.Context().Value(httpin.Input).(*postBidRequest_V2_5)
 
-	ssp_domain, ok := sspFeeds[input.Feed]
+	var ssp_domain string
+	var ok bool
+	switch typic {
+	case ADULT:
+		ssp_domain, ok = sspFeeds[input.Feed]
+	case MAINSTREAM:
+		ssp_domain, ok = sspMainstreamFeeds[input.Feed]
+	}
 	if !ok {
 		err := fmt.Errorf("Busy")
 		http.Error(w, err.Error(), http.StatusForbidden)
@@ -189,6 +198,7 @@ func postBid_V2_5(
 			GlobalId:   globalId,
 			SspDomain:  ssp_domain,
 			Logged:     logged,
+			Typic:      typic,
 		},
 	)
 	if err != nil {
