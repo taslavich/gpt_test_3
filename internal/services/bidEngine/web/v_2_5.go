@@ -128,13 +128,7 @@ func (s *Server) GetWinnerBid_V2_5(
 func (s *Server) SetSspGeoPercentsMap(ctx context.Context, req *bidEngineGrpc.SspGeoDspPercentsRequest_V2_5) (*emptypb.Empty, error) {
 	var err error
 
-	var typic string
-	err = json.Unmarshal([]byte(req.Typic), &typic)
-	if err != nil {
-		return nil, status.Errorf(codes.InvalidArgument, "invalid JSON format: %v", err)
-	}
-
-	switch typic {
+	switch req.Typic {
 	case sppAdapterWeb.ADULT:
 		s.percentMap_adult, err = utils.RewriteSspGeoDspFile[*types.PercentAndBidfloor](
 			req.JsonData,
@@ -160,13 +154,7 @@ func (s *Server) GetSspGeoPercentsMap(ctx context.Context, req *bidEngineGrpc.Ge
 	var data []byte
 	var err error
 
-	var typic string
-	err = json.Unmarshal([]byte(req.Typic), &typic)
-	if err != nil {
-		return nil, status.Errorf(codes.InvalidArgument, "invalid JSON format: %v", err)
-	}
-
-	switch typic {
+	switch req.Typic {
 	case sppAdapterWeb.ADULT:
 		data, err = os.ReadFile(s.percentFilename_adult)
 	case sppAdapterWeb.MAINSTREAM:

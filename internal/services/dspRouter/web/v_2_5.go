@@ -34,7 +34,7 @@ type Server struct {
 	fileLoader  *filter.FileRuleLoader
 	processor   *filter.OptimizedFilterProcessor
 
-	dspEndpoints_v_2_5            config.MapStringToString
+	dspEndpoints_adult_v_2_5      config.MapStringToString
 	dspEndpoints_mainstream_v_2_5 config.MapStringToString
 
 	redisClient *redis.Client
@@ -120,7 +120,7 @@ func NewServer(
 		ruleManager:                   ruleManager,
 		fileLoader:                    fileLoader,
 		processor:                     processor,
-		dspEndpoints_v_2_5:            dspEndpoints_v_2_5,
+		dspEndpoints_adult_v_2_5:      dspEndpoints_v_2_5,
 		dspEndpoints_mainstream_v_2_5: dspEndpoints_mainstream_v_2_5,
 		redisClient:                   redisClient,
 		client_v_2_5:                  client_v_2_5,
@@ -182,13 +182,13 @@ func (s *Server) GetBids_V2_5(
 		wg sync.WaitGroup
 	)
 
-	codesCh := make(chan *dspDomainCode, len(s.dspEndpoints_v_2_5))
-	responsesCh := make(chan *dspDomainResp, len(s.dspEndpoints_v_2_5))
+	codesCh := make(chan *dspDomainCode, len(s.dspEndpoints_adult_v_2_5))
+	responsesCh := make(chan *dspDomainResp, len(s.dspEndpoints_adult_v_2_5))
 
 	var dspList config.MapStringToString
 	switch req.Typic {
 	case sppAdapterWeb.ADULT:
-		dspList = s.dspEndpoints_v_2_5
+		dspList = s.dspEndpoints_adult_v_2_5
 	case sppAdapterWeb.MAINSTREAM:
 		dspList = s.dspEndpoints_mainstream_v_2_5
 	}
@@ -346,13 +346,17 @@ func (s *Server) GetSspGeoLinksMap(ctx context.Context, req *dspRouterGrpc.GetSs
 	var data []byte
 	var err error
 
-	var typic string
-	err = json.Unmarshal([]byte(req.Typic), &typic)
-	if err != nil {
-		return nil, status.Errorf(codes.InvalidArgument, "invalid JSON format: %v", err)
-	}
+	// ДЕБАГ - посмотрим что пришло
+	log.Printf("=== DEBUG ===")
+	log.Printf("req.Typic: '%s'", req.Typic)
+	log.Printf("sppAdapterWeb.ADULT: '%s'", sppAdapterWeb.ADULT)
+	log.Printf("sppAdapterWeb.MAINSTREAM: '%s'", sppAdapterWeb.MAINSTREAM)
+	log.Printf("req.Typic == sppAdapterWeb.MAINSTREAM: %v", req.Typic == sppAdapterWeb.MAINSTREAM)
+	log.Printf("req.Typic length: %d", len(req.Typic))
+	log.Printf("MAINSTREAM length: %d", len(sppAdapterWeb.MAINSTREAM))
+	log.Printf("=== DEBUG END ===")
 
-	switch typic {
+	switch req.Typic {
 	case sppAdapterWeb.ADULT:
 		data, err = os.ReadFile(s.linkFilename_adult)
 	case sppAdapterWeb.MAINSTREAM:
@@ -372,13 +376,7 @@ func (s *Server) GetSspGeoLinksMap(ctx context.Context, req *dspRouterGrpc.GetSs
 func (s *Server) SetSspGeoLinksMap(ctx context.Context, req *dspRouterGrpc.SspGeoDspLinksRequest_V2_5) (*emptypb.Empty, error) {
 	var err error
 
-	var typic string
-	err = json.Unmarshal([]byte(req.Typic), &typic)
-	if err != nil {
-		return nil, status.Errorf(codes.InvalidArgument, "invalid JSON format: %v", err)
-	}
-
-	switch typic {
+	switch req.Typic {
 	case sppAdapterWeb.ADULT:
 		s.linkMap_adult, err = utils.RewriteSspGeoDspFile[bool](
 			req.JsonData,
