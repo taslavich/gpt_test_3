@@ -346,7 +346,13 @@ func (s *Server) GetSspGeoLinksMap(ctx context.Context, req *dspRouterGrpc.GetSs
 	var data []byte
 	var err error
 
-	switch req.Typic {
+	var typic string
+	err = json.Unmarshal([]byte(req.Typic), &typic)
+	if err != nil {
+		return nil, status.Errorf(codes.InvalidArgument, "invalid JSON format: %v", err)
+	}
+
+	switch typic {
 	case sppAdapterWeb.ADULT:
 		data, err = os.ReadFile(s.linkFilename_adult)
 	case sppAdapterWeb.MAINSTREAM:
@@ -366,7 +372,13 @@ func (s *Server) GetSspGeoLinksMap(ctx context.Context, req *dspRouterGrpc.GetSs
 func (s *Server) SetSspGeoLinksMap(ctx context.Context, req *dspRouterGrpc.SspGeoDspLinksRequest_V2_5) (*emptypb.Empty, error) {
 	var err error
 
-	switch req.Typic {
+	var typic string
+	err = json.Unmarshal([]byte(req.Typic), &typic)
+	if err != nil {
+		return nil, status.Errorf(codes.InvalidArgument, "invalid JSON format: %v", err)
+	}
+
+	switch typic {
 	case sppAdapterWeb.ADULT:
 		s.linkMap_adult, err = utils.RewriteSspGeoDspFile[bool](
 			req.JsonData,
