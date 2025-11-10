@@ -253,8 +253,11 @@ func putWorkStatus(
 ) {
 	input := r.Context().Value(httpin.Input).(*putWorkStatusRequest)
 
-	*workAdl = input.WorkAdl
-	*workMc = input.WorkMc
+	if input.WorkAdl != nil {
+		*workAdl = *input.WorkAdl
+	} else if input.WorkMc != nil {
+		*workMc = *input.WorkMc
+	}
 
 	if err := rnr.Text(w, http.StatusOK, fmt.Sprintf("Changed workAdl to %v and Changed workMc to %v", *workAdl, *workMc)); err != nil {
 		log.Printf("Cannot make HTTP response back in putWorkStatus: %v\n", err)
