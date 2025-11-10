@@ -31,7 +31,7 @@ const (
 type DspRouterServiceClient interface {
 	GetBids_V2_5(ctx context.Context, in *DspRouterRequest_V2_5, opts ...grpc.CallOption) (*DspRouterResponse_V2_5, error)
 	SetSspGeoLinksMap(ctx context.Context, in *SspGeoDspLinksRequest_V2_5, opts ...grpc.CallOption) (*emptypb.Empty, error)
-	GetSspGeoLinksMap(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*SspGeoDspLinksResponse_V2_5, error)
+	GetSspGeoLinksMap(ctx context.Context, in *GetSspGeoDspLinksRequest_V2_5, opts ...grpc.CallOption) (*GetSspGeoDspLinksResponse_V2_5, error)
 }
 
 type dspRouterServiceClient struct {
@@ -62,9 +62,9 @@ func (c *dspRouterServiceClient) SetSspGeoLinksMap(ctx context.Context, in *SspG
 	return out, nil
 }
 
-func (c *dspRouterServiceClient) GetSspGeoLinksMap(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*SspGeoDspLinksResponse_V2_5, error) {
+func (c *dspRouterServiceClient) GetSspGeoLinksMap(ctx context.Context, in *GetSspGeoDspLinksRequest_V2_5, opts ...grpc.CallOption) (*GetSspGeoDspLinksResponse_V2_5, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(SspGeoDspLinksResponse_V2_5)
+	out := new(GetSspGeoDspLinksResponse_V2_5)
 	err := c.cc.Invoke(ctx, DspRouterService_GetSspGeoLinksMap_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
@@ -78,7 +78,7 @@ func (c *dspRouterServiceClient) GetSspGeoLinksMap(ctx context.Context, in *empt
 type DspRouterServiceServer interface {
 	GetBids_V2_5(context.Context, *DspRouterRequest_V2_5) (*DspRouterResponse_V2_5, error)
 	SetSspGeoLinksMap(context.Context, *SspGeoDspLinksRequest_V2_5) (*emptypb.Empty, error)
-	GetSspGeoLinksMap(context.Context, *emptypb.Empty) (*SspGeoDspLinksResponse_V2_5, error)
+	GetSspGeoLinksMap(context.Context, *GetSspGeoDspLinksRequest_V2_5) (*GetSspGeoDspLinksResponse_V2_5, error)
 	mustEmbedUnimplementedDspRouterServiceServer()
 }
 
@@ -95,7 +95,7 @@ func (UnimplementedDspRouterServiceServer) GetBids_V2_5(context.Context, *DspRou
 func (UnimplementedDspRouterServiceServer) SetSspGeoLinksMap(context.Context, *SspGeoDspLinksRequest_V2_5) (*emptypb.Empty, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method SetSspGeoLinksMap not implemented")
 }
-func (UnimplementedDspRouterServiceServer) GetSspGeoLinksMap(context.Context, *emptypb.Empty) (*SspGeoDspLinksResponse_V2_5, error) {
+func (UnimplementedDspRouterServiceServer) GetSspGeoLinksMap(context.Context, *GetSspGeoDspLinksRequest_V2_5) (*GetSspGeoDspLinksResponse_V2_5, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetSspGeoLinksMap not implemented")
 }
 func (UnimplementedDspRouterServiceServer) mustEmbedUnimplementedDspRouterServiceServer() {}
@@ -156,7 +156,7 @@ func _DspRouterService_SetSspGeoLinksMap_Handler(srv interface{}, ctx context.Co
 }
 
 func _DspRouterService_GetSspGeoLinksMap_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(emptypb.Empty)
+	in := new(GetSspGeoDspLinksRequest_V2_5)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
@@ -168,7 +168,7 @@ func _DspRouterService_GetSspGeoLinksMap_Handler(srv interface{}, ctx context.Co
 		FullMethod: DspRouterService_GetSspGeoLinksMap_FullMethodName,
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(DspRouterServiceServer).GetSspGeoLinksMap(ctx, req.(*emptypb.Empty))
+		return srv.(DspRouterServiceServer).GetSspGeoLinksMap(ctx, req.(*GetSspGeoDspLinksRequest_V2_5))
 	}
 	return interceptor(ctx, in, info, handler)
 }

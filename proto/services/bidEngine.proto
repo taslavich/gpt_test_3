@@ -8,7 +8,7 @@ import "google/protobuf/empty.proto";
 service BidEngineService {
   rpc getWinnerBid_V2_5(BidEngineRequest_V2_5) returns (BidEngineResponse_V2_5) {};
   rpc SetSspGeoPercentsMap(SspGeoDspPercentsRequest_V2_5) returns (google.protobuf.Empty);
-  rpc GetSspGeoPercentsMap(google.protobuf.Empty) returns (SspGeoDspPercentsResponse_V2_5);
+  rpc GetSspGeoPercentsMap(GetSspGeoDspPercentsRequest_V2_5) returns (GetSspGeoDspPercentsResponse_V2_5);
 }
 
 message BidEngineRequest_V2_5 {
@@ -30,6 +30,10 @@ message SspGeoDspPercentsRequest_V2_5 {
   string typic = 2;
 }
 
-message SspGeoDspPercentsResponse_V2_5 {
+message GetSspGeoDspPercentsRequest_V2_5 {
+  string typic = 1;
+}
+
+message GetSspGeoDspPercentsResponse_V2_5 {
   string json_data = 1;
 }

@@ -219,27 +219,27 @@ func (x *SspGeoDspLinksRequest_V2_5) GetTypic() string {
 	return ""
 }
 
-type SspGeoDspLinksResponse_V2_5 struct {
+type GetSspGeoDspLinksRequest_V2_5 struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	JsonData      string                 `protobuf:"bytes,1,opt,name=json_data,json=jsonData,proto3" json:"json_data,omitempty"`
+	Typic         string                 `protobuf:"bytes,1,opt,name=typic,proto3" json:"typic,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
-func (x *SspGeoDspLinksResponse_V2_5) Reset() {
-	*x = SspGeoDspLinksResponse_V2_5{}
+func (x *GetSspGeoDspLinksRequest_V2_5) Reset() {
+	*x = GetSspGeoDspLinksRequest_V2_5{}
 	mi := &file_services_dspRouter_proto_msgTypes[3]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
 
-func (x *SspGeoDspLinksResponse_V2_5) String() string {
+func (x *GetSspGeoDspLinksRequest_V2_5) String() string {
 	return protoimpl.X.MessageStringOf(x)
 }
 
-func (*SspGeoDspLinksResponse_V2_5) ProtoMessage() {}
+func (*GetSspGeoDspLinksRequest_V2_5) ProtoMessage() {}
 
-func (x *SspGeoDspLinksResponse_V2_5) ProtoReflect() protoreflect.Message {
+func (x *GetSspGeoDspLinksRequest_V2_5) ProtoReflect() protoreflect.Message {
 	mi := &file_services_dspRouter_proto_msgTypes[3]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
@@ -251,12 +251,56 @@ func (x *SspGeoDspLinksResponse_V2_5) ProtoReflect() protoreflect.Message {
 	return mi.MessageOf(x)
 }
 
-// Deprecated: Use SspGeoDspLinksResponse_V2_5.ProtoReflect.Descriptor instead.
-func (*SspGeoDspLinksResponse_V2_5) Descriptor() ([]byte, []int) {
+// Deprecated: Use GetSspGeoDspLinksRequest_V2_5.ProtoReflect.Descriptor instead.
+func (*GetSspGeoDspLinksRequest_V2_5) Descriptor() ([]byte, []int) {
 	return file_services_dspRouter_proto_rawDescGZIP(), []int{3}
 }
 
-func (x *SspGeoDspLinksResponse_V2_5) GetJsonData() string {
+func (x *GetSspGeoDspLinksRequest_V2_5) GetTypic() string {
+	if x != nil {
+		return x.Typic
+	}
+	return ""
+}
+
+type GetSspGeoDspLinksResponse_V2_5 struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	JsonData      string                 `protobuf:"bytes,1,opt,name=json_data,json=jsonData,proto3" json:"json_data,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetSspGeoDspLinksResponse_V2_5) Reset() {
+	*x = GetSspGeoDspLinksResponse_V2_5{}
+	mi := &file_services_dspRouter_proto_msgTypes[4]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetSspGeoDspLinksResponse_V2_5) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetSspGeoDspLinksResponse_V2_5) ProtoMessage() {}
+
+func (x *GetSspGeoDspLinksResponse_V2_5) ProtoReflect() protoreflect.Message {
+	mi := &file_services_dspRouter_proto_msgTypes[4]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetSspGeoDspLinksResponse_V2_5.ProtoReflect.Descriptor instead.
+func (*GetSspGeoDspLinksResponse_V2_5) Descriptor() ([]byte, []int) {
+	return file_services_dspRouter_proto_rawDescGZIP(), []int{4}
+}
+
+func (x *GetSspGeoDspLinksResponse_V2_5) GetJsonData() string {
 	if x != nil {
 		return x.JsonData
 	}
@@ -290,13 +334,15 @@ const file_services_dspRouter_proto_rawDesc = "" +
 	"\x05value\x18\x02 \x01(\v2\x16.ortb_V2_5.BidResponseR\x05value:\x028\x01\"O\n" +
 	"\x1aSspGeoDspLinksRequest_V2_5\x12\x1b\n" +
 	"\tjson_data\x18\x01 \x01(\tR\bjsonData\x12\x14\n" +
-	"\x05typic\x18\x02 \x01(\tR\x05typic\":\n" +
-	"\x1bSspGeoDspLinksResponse_V2_5\x12\x1b\n" +
-	"\tjson_data\x18\x01 \x01(\tR\bjsonData2\x90\x02\n" +
+	"\x05typic\x18\x02 \x01(\tR\x05typic\"5\n" +
+	"\x1dGetSspGeoDspLinksRequest_V2_5\x12\x14\n" +
+	"\x05typic\x18\x01 \x01(\tR\x05typic\"=\n" +
+	"\x1eGetSspGeoDspLinksResponse_V2_5\x12\x1b\n" +
+	"\tjson_data\x18\x01 \x01(\tR\bjsonData2\xa5\x02\n" +
 	"\x10DspRouterService\x12S\n" +
 	"\fGetBids_V2_5\x12 .dspRouter.DspRouterRequest_V2_5\x1a!.dspRouter.DspRouterResponse_V2_5\x12R\n" +
-	"\x11SetSspGeoLinksMap\x12%.dspRouter.SspGeoDspLinksRequest_V2_5\x1a\x16.google.protobuf.Empty\x12S\n" +
-	"\x11GetSspGeoLinksMap\x12\x16.google.protobuf.Empty\x1a&.dspRouter.SspGeoDspLinksResponse_V2_5B_Z]gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/proto/services/dspRouter;dspRouterGrpcb\x06proto3"
+	"\x11SetSspGeoLinksMap\x12%.dspRouter.SspGeoDspLinksRequest_V2_5\x1a\x16.google.protobuf.Empty\x12h\n" +
+	"\x11GetSspGeoLinksMap\x12(.dspRouter.GetSspGeoDspLinksRequest_V2_5\x1a).dspRouter.GetSspGeoDspLinksResponse_V2_5B_Z]gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/proto/services/dspRouter;dspRouterGrpcb\x06proto3"
 
 var (
 	file_services_dspRouter_proto_rawDescOnce sync.Once
@@ -310,28 +356,29 @@ func file_services_dspRouter_proto_rawDescGZIP() []byte {
 	return file_services_dspRouter_proto_rawDescData
 }
 
-var file_services_dspRouter_proto_msgTypes = make([]protoimpl.MessageInfo, 5)
+var file_services_dspRouter_proto_msgTypes = make([]protoimpl.MessageInfo, 6)
 var file_services_dspRouter_proto_goTypes = []any{
-	(*DspRouterRequest_V2_5)(nil),       // 0: dspRouter.DspRouterRequest_V2_5
-	(*DspRouterResponse_V2_5)(nil),      // 1: dspRouter.DspRouterResponse_V2_5
-	(*SspGeoDspLinksRequest_V2_5)(nil),  // 2: dspRouter.SspGeoDspLinksRequest_V2_5
-	(*SspGeoDspLinksResponse_V2_5)(nil), // 3: dspRouter.SspGeoDspLinksResponse_V2_5
-	nil,                                 // 4: dspRouter.DspRouterResponse_V2_5.BidResponsesEntry
-	(*ortb_V2_5.BidRequest)(nil),        // 5: ortb_V2_5.BidRequest
-	(*ortb_V2_5.BidResponse)(nil),       // 6: ortb_V2_5.BidResponse
-	(*emptypb.Empty)(nil),               // 7: google.protobuf.Empty
+	(*DspRouterRequest_V2_5)(nil),          // 0: dspRouter.DspRouterRequest_V2_5
+	(*DspRouterResponse_V2_5)(nil),         // 1: dspRouter.DspRouterResponse_V2_5
+	(*SspGeoDspLinksRequest_V2_5)(nil),     // 2: dspRouter.SspGeoDspLinksRequest_V2_5
+	(*GetSspGeoDspLinksRequest_V2_5)(nil),  // 3: dspRouter.GetSspGeoDspLinksRequest_V2_5
+	(*GetSspGeoDspLinksResponse_V2_5)(nil), // 4: dspRouter.GetSspGeoDspLinksResponse_V2_5
+	nil,                                    // 5: dspRouter.DspRouterResponse_V2_5.BidResponsesEntry
+	(*ortb_V2_5.BidRequest)(nil),           // 6: ortb_V2_5.BidRequest
+	(*ortb_V2_5.BidResponse)(nil),          // 7: ortb_V2_5.BidResponse
+	(*emptypb.Empty)(nil),                  // 8: google.protobuf.Empty
 }
 var file_services_dspRouter_proto_depIdxs = []int32{
-	5, // 0: dspRouter.DspRouterRequest_V2_5.bidRequest:type_name -> ortb_V2_5.BidRequest
-	5, // 1: dspRouter.DspRouterResponse_V2_5.bidRequest:type_name -> ortb_V2_5.BidRequest
-	4, // 2: dspRouter.DspRouterResponse_V2_5.bidResponses:type_name -> dspRouter.DspRouterResponse_V2_5.BidResponsesEntry
-	6, // 3: dspRouter.DspRouterResponse_V2_5.BidResponsesEntry.value:type_name -> ortb_V2_5.BidResponse
+	6, // 0: dspRouter.DspRouterRequest_V2_5.bidRequest:type_name -> ortb_V2_5.BidRequest
+	6, // 1: dspRouter.DspRouterResponse_V2_5.bidRequest:type_name -> ortb_V2_5.BidRequest
+	5, // 2: dspRouter.DspRouterResponse_V2_5.bidResponses:type_name -> dspRouter.DspRouterResponse_V2_5.BidResponsesEntry
+	7, // 3: dspRouter.DspRouterResponse_V2_5.BidResponsesEntry.value:type_name -> ortb_V2_5.BidResponse
 	0, // 4: dspRouter.DspRouterService.GetBids_V2_5:input_type -> dspRouter.DspRouterRequest_V2_5
 	2, // 5: dspRouter.DspRouterService.SetSspGeoLinksMap:input_type -> dspRouter.SspGeoDspLinksRequest_V2_5
-	7, // 6: dspRouter.DspRouterService.GetSspGeoLinksMap:input_type -> google.protobuf.Empty
+	3, // 6: dspRouter.DspRouterService.GetSspGeoLinksMap:input_type -> dspRouter.GetSspGeoDspLinksRequest_V2_5
 	1, // 7: dspRouter.DspRouterService.GetBids_V2_5:output_type -> dspRouter.DspRouterResponse_V2_5
-	7, // 8: dspRouter.DspRouterService.SetSspGeoLinksMap:output_type -> google.protobuf.Empty
-	3, // 9: dspRouter.DspRouterService.GetSspGeoLinksMap:output_type -> dspRouter.SspGeoDspLinksResponse_V2_5
+	8, // 8: dspRouter.DspRouterService.SetSspGeoLinksMap:output_type -> google.protobuf.Empty
+	4, // 9: dspRouter.DspRouterService.GetSspGeoLinksMap:output_type -> dspRouter.GetSspGeoDspLinksResponse_V2_5
 	7, // [7:10] is the sub-list for method output_type
 	4, // [4:7] is the sub-list for method input_type
 	4, // [4:4] is the sub-list for extension type_name
@@ -350,7 +397,7 @@ func file_services_dspRouter_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_services_dspRouter_proto_rawDesc), len(file_services_dspRouter_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   5,
+			NumMessages:   6,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

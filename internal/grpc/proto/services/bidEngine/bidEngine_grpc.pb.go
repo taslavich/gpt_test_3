@@ -31,7 +31,7 @@ const (
 type BidEngineServiceClient interface {
 	GetWinnerBid_V2_5(ctx context.Context, in *BidEngineRequest_V2_5, opts ...grpc.CallOption) (*BidEngineResponse_V2_5, error)
 	SetSspGeoPercentsMap(ctx context.Context, in *SspGeoDspPercentsRequest_V2_5, opts ...grpc.CallOption) (*emptypb.Empty, error)
-	GetSspGeoPercentsMap(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*SspGeoDspPercentsResponse_V2_5, error)
+	GetSspGeoPercentsMap(ctx context.Context, in *GetSspGeoDspPercentsRequest_V2_5, opts ...grpc.CallOption) (*GetSspGeoDspPercentsResponse_V2_5, error)
 }
 
 type bidEngineServiceClient struct {
@@ -62,9 +62,9 @@ func (c *bidEngineServiceClient) SetSspGeoPercentsMap(ctx context.Context, in *S
 	return out, nil
 }
 
-func (c *bidEngineServiceClient) GetSspGeoPercentsMap(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*SspGeoDspPercentsResponse_V2_5, error) {
+func (c *bidEngineServiceClient) GetSspGeoPercentsMap(ctx context.Context, in *GetSspGeoDspPercentsRequest_V2_5, opts ...grpc.CallOption) (*GetSspGeoDspPercentsResponse_V2_5, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(SspGeoDspPercentsResponse_V2_5)
+	out := new(GetSspGeoDspPercentsResponse_V2_5)
 	err := c.cc.Invoke(ctx, BidEngineService_GetSspGeoPercentsMap_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
@@ -78,7 +78,7 @@ func (c *bidEngineServiceClient) GetSspGeoPercentsMap(ctx context.Context, in *e
 type BidEngineServiceServer interface {
 	GetWinnerBid_V2_5(context.Context, *BidEngineRequest_V2_5) (*BidEngineResponse_V2_5, error)
 	SetSspGeoPercentsMap(context.Context, *SspGeoDspPercentsRequest_V2_5) (*emptypb.Empty, error)
-	GetSspGeoPercentsMap(context.Context, *emptypb.Empty) (*SspGeoDspPercentsResponse_V2_5, error)
+	GetSspGeoPercentsMap(context.Context, *GetSspGeoDspPercentsRequest_V2_5) (*GetSspGeoDspPercentsResponse_V2_5, error)
 	mustEmbedUnimplementedBidEngineServiceServer()
 }
 
@@ -95,7 +95,7 @@ func (UnimplementedBidEngineServiceServer) GetWinnerBid_V2_5(context.Context, *B
 func (UnimplementedBidEngineServiceServer) SetSspGeoPercentsMap(context.Context, *SspGeoDspPercentsRequest_V2_5) (*emptypb.Empty, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method SetSspGeoPercentsMap not implemented")
 }
-func (UnimplementedBidEngineServiceServer) GetSspGeoPercentsMap(context.Context, *emptypb.Empty) (*SspGeoDspPercentsResponse_V2_5, error) {
+func (UnimplementedBidEngineServiceServer) GetSspGeoPercentsMap(context.Context, *GetSspGeoDspPercentsRequest_V2_5) (*GetSspGeoDspPercentsResponse_V2_5, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetSspGeoPercentsMap not implemented")
 }
 func (UnimplementedBidEngineServiceServer) mustEmbedUnimplementedBidEngineServiceServer() {}
@@ -156,7 +156,7 @@ func _BidEngineService_SetSspGeoPercentsMap_Handler(srv interface{}, ctx context
 }
 
 func _BidEngineService_GetSspGeoPercentsMap_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(emptypb.Empty)
+	in := new(GetSspGeoDspPercentsRequest_V2_5)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
@@ -168,7 +168,7 @@ func _BidEngineService_GetSspGeoPercentsMap_Handler(srv interface{}, ctx context
 		FullMethod: BidEngineService_GetSspGeoPercentsMap_FullMethodName,
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(BidEngineServiceServer).GetSspGeoPercentsMap(ctx, req.(*emptypb.Empty))
+		return srv.(BidEngineServiceServer).GetSspGeoPercentsMap(ctx, req.(*GetSspGeoDspPercentsRequest_V2_5))
 	}
 	return interceptor(ctx, in, info, handler)
 }
