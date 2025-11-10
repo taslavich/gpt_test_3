@@ -53,8 +53,8 @@ type admNurlRequest struct {
 }
 
 type putWorkStatusRequest struct {
-	WorkAdl *bool `in:"query=workAdl"`
-	WorkMc  *bool `in:"query=workMc"`
+	Work  bool   `in:"query=work" required:"true"`
+	Typic string `in:"query=work" required:"true"`
 }
 
 type getWorkStatusResponse struct {
