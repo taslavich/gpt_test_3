@@ -30,6 +30,7 @@ type BidEngineRequest_V2_5 struct {
 	GlobalId      string                            `protobuf:"bytes,3,opt,name=globalId,proto3" json:"globalId,omitempty"`
 	SspDomain     string                            `protobuf:"bytes,4,opt,name=ssp_domain,json=sspDomain,proto3" json:"ssp_domain,omitempty"`
 	Logged        bool                              `protobuf:"varint,5,opt,name=logged,proto3" json:"logged,omitempty"`
+	Typic         string                            `protobuf:"bytes,6,opt,name=typic,proto3" json:"typic,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -99,6 +100,13 @@ func (x *BidEngineRequest_V2_5) GetLogged() bool {
 	return false
 }
 
+func (x *BidEngineRequest_V2_5) GetTypic() string {
+	if x != nil {
+		return x.Typic
+	}
+	return ""
+}
+
 type BidEngineResponse_V2_5 struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	BidResponse   *ortb_V2_5.BidResponse `protobuf:"bytes,1,opt,name=bidResponse,proto3" json:"bidResponse,omitempty"`
@@ -154,6 +162,7 @@ func (x *BidEngineResponse_V2_5) GetGlobalId() string {
 type SspGeoDspPercentsRequest_V2_5 struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	JsonData      string                 `protobuf:"bytes,1,opt,name=json_data,json=jsonData,proto3" json:"json_data,omitempty"`
+	Typic         string                 `protobuf:"bytes,2,opt,name=typic,proto3" json:"typic,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -191,6 +200,13 @@ func (*SspGeoDspPercentsRequest_V2_5) Descriptor() ([]byte, []int) {
 func (x *SspGeoDspPercentsRequest_V2_5) GetJsonData() string {
 	if x != nil {
 		return x.JsonData
+	}
+	return ""
+}
+
+func (x *SspGeoDspPercentsRequest_V2_5) GetTypic() string {
+	if x != nil {
+		return x.Typic
 	}
 	return ""
 }
@@ -243,7 +259,7 @@ var File_services_bidEngine_proto protoreflect.FileDescriptor
 
 const file_services_bidEngine_proto_rawDesc = "" +
 	"\n" +
-	"\x18services/bidEngine.proto\x12\tbidEngine\x1a\x1atypes/ortb_V2_5/ortb.proto\x1a\x1bgoogle/protobuf/empty.proto\"\xd2\x02\n" +
+	"\x18services/bidEngine.proto\x12\tbidEngine\x1a\x1atypes/ortb_V2_5/ortb.proto\x1a\x1bgoogle/protobuf/empty.proto\"\xe8\x02\n" +
 	"\x15BidEngineRequest_V2_5\x125\n" +
 	"\n" +
 	"bidRequest\x18\x01 \x01(\v2\x15.ortb_V2_5.BidRequestR\n" +
@@ -252,15 +268,17 @@ const file_services_bidEngine_proto_rawDesc = "" +
 	"\bglobalId\x18\x03 \x01(\tR\bglobalId\x12\x1d\n" +
 	"\n" +
 	"ssp_domain\x18\x04 \x01(\tR\tsspDomain\x12\x16\n" +
-	"\x06logged\x18\x05 \x01(\bR\x06logged\x1aW\n" +
+	"\x06logged\x18\x05 \x01(\bR\x06logged\x12\x14\n" +
+	"\x05typic\x18\x06 \x01(\tR\x05typic\x1aW\n" +
 	"\x11BidResponsesEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12,\n" +
 	"\x05value\x18\x02 \x01(\v2\x16.ortb_V2_5.BidResponseR\x05value:\x028\x01\"n\n" +
 	"\x16BidEngineResponse_V2_5\x128\n" +
 	"\vbidResponse\x18\x01 \x01(\v2\x16.ortb_V2_5.BidResponseR\vbidResponse\x12\x1a\n" +
-	"\bglobalId\x18\x02 \x01(\tR\bglobalId\"<\n" +
+	"\bglobalId\x18\x02 \x01(\tR\bglobalId\"R\n" +
 	"\x1dSspGeoDspPercentsRequest_V2_5\x12\x1b\n" +
-	"\tjson_data\x18\x01 \x01(\tR\bjsonData\"=\n" +
+	"\tjson_data\x18\x01 \x01(\tR\bjsonData\x12\x14\n" +
+	"\x05typic\x18\x02 \x01(\tR\x05typic\"=\n" +
 	"\x1eSspGeoDspPercentsResponse_V2_5\x12\x1b\n" +
 	"\tjson_data\x18\x01 \x01(\tR\bjsonData2\xa3\x02\n" +
 	"\x10BidEngineService\x12Z\n" +

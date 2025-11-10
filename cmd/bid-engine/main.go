@@ -42,7 +42,12 @@ func main() {
 	}
 	log.Println("✅ Connected to Redis")
 
-	sspGeoDspMap, err := utils.InitSspGeoDspMap[*types.PercentAndBidfloor](cfg.SspGeoDspPercentsFilePath)
+	sspGeoDspMapAdult, err := utils.InitSspGeoDspMap[*types.PercentAndBidfloor](cfg.SspGeoDspPercentsAdultFilePath)
+	if err != nil {
+		log.Fatalf("Failed to InitSspGeoPercentsLogic: %v", err)
+	}
+
+	sspGeoDspMapMainstream, err := utils.InitSspGeoDspMap[*types.PercentAndBidfloor](cfg.SspGeoDspPercentsMainstreamFilePath)
 	if err != nil {
 		log.Fatalf("Failed to InitSspGeoPercentsLogic: %v", err)
 	}
@@ -66,8 +71,10 @@ func main() {
 			redisClient,
 			cfg.SystemHostname,
 			bidEngine.GetWinnerBidInternal_V_2_5,
-			cfg.SspGeoDspPercentsFilePath,
-			sspGeoDspMap,
+			cfg.SspGeoDspPercentsAdultFilePath,
+			sspGeoDspMapAdult,
+			cfg.SspGeoDspPercentsMainstreamFilePath,
+			sspGeoDspMapMainstream,
 		),
 	)
 

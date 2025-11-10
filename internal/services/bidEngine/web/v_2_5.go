@@ -15,6 +15,7 @@ import (
 	pb "gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/proto/services/bidEngine"
 	"gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/proto/types/ortb_V2_5"
 	utils "gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/utils_grpc"
+	sppAdapterWeb "gitlab.com/twinbid-exchange/RTB-exchange/internal/services/sspAdapter/web"
 	"gitlab.com/twinbid-exchange/RTB-exchange/internal/types"
 	clickhouse_types "gitlab.com/twinbid-exchange/RTB-exchange/internal/types/clickhouse"
 	"google.golang.org/grpc/codes"
@@ -23,12 +24,14 @@ import (
 )
 
 type Server struct {
-	ProfitPercent   float32
-	redisClient     *redis.Client
-	timeout         time.Duration
-	hostname        string
-	percentFilename string
-	percentMap      map[string]map[string]map[string]*types.PercentAndBidfloor
+	ProfitPercent              float32
+	redisClient                *redis.Client
+	timeout                    time.Duration
+	hostname                   string
+	percentFilename_adult      string
+	percentFilename_mainstream string
+	percentMap_adult           map[string]map[string]map[string]*types.PercentAndBidfloor
+	percentMap_mainstream      map[string]map[string]map[string]*types.PercentAndBidfloor
 
 	GetWinnerBidInternal_V_2_5 func(
 		ctx context.Context,
@@ -36,8 +39,10 @@ type Server struct {
 		profitPercent float32,
 		globalId string,
 		hostname string,
-		percentMap map[string]map[string]map[string]*types.PercentAndBidfloor,
+		percentMapAdult map[string]map[string]map[string]*types.PercentAndBidfloor,
+		percentMapMainstream map[string]map[string]map[string]*types.PercentAndBidfloor,
 		logged bool,
+		typic string,
 	) (*ortb_V2_5.BidResponse, *clickhouse_types.BidResponse)
 
 	pb.BidEngineServiceServer
@@ -53,19 +58,26 @@ func NewServer(
 		profitPercent float32,
 		globalId string,
 		hostname string,
-		percentMap map[string]map[string]map[string]*types.PercentAndBidfloor,
+		percentMapAdult map[string]map[string]map[string]*types.PercentAndBidfloor,
+		percentMapMainstream map[string]map[string]map[string]*types.PercentAndBidfloor,
 		logged bool,
+		typic string,
 	) (*ortb_V2_5.BidResponse, *clickhouse_types.BidResponse),
-	percentFilename string,
-	percentMap map[string]map[string]map[string]*types.PercentAndBidfloor,
+	percentFilename_adult string,
+	percentMap_adult map[string]map[string]map[string]*types.PercentAndBidfloor,
+
+	percentFilename_mainstream string,
+	percentMap_mainstream map[string]map[string]map[string]*types.PercentAndBidfloor,
 ) *Server {
 	return &Server{
 		ProfitPercent:              ProfitPercent,
 		redisClient:                redisClient,
 		hostname:                   hostname,
 		GetWinnerBidInternal_V_2_5: GetWinnerBidInternal_V_2_5,
-		percentFilename:            percentFilename,
-		percentMap:                 percentMap,
+		percentFilename_adult:      percentFilename_adult,
+		percentFilename_mainstream: percentFilename_mainstream,
+		percentMap_adult:           percentMap_adult,
+		percentMap_mainstream:      percentMap_mainstream,
 	}
 }
 
@@ -93,8 +105,10 @@ func (s *Server) GetWinnerBid_V2_5(
 		s.ProfitPercent,
 		req.GlobalId,
 		s.hostname,
-		s.percentMap,
+		s.percentMap_adult,
+		s.percentMap_mainstream,
 		req.Logged,
+		req.Typic,
 	)
 
 	clickhouseData, err := json.Marshal(clickhouseBidResponse)
@@ -114,21 +128,30 @@ func (s *Server) GetWinnerBid_V2_5(
 func (s *Server) SetSspGeoPercentsMap(ctx context.Context, req *bidEngineGrpc.SspGeoDspPercentsRequest_V2_5) (*emptypb.Empty, error) {
 	var err error
 
-	if s.percentMap, err = utils.RewriteSspGeoDspFile[*types.PercentAndBidfloor](
-		req.JsonData,
-		s.percentFilename,
-	); err != nil {
+	switch req.Typic {
+	case sppAdapterWeb.ADULT:
+		s.percentMap_adult, err = utils.RewriteSspGeoDspFile[*types.PercentAndBidfloor](
+			req.JsonData,
+			s.percentFilename_adult,
+		)
+	case sppAdapterWeb.MAINSTREAM:
+		s.percentMap_mainstream, err = utils.RewriteSspGeoDspFile[*types.PercentAndBidfloor](
+			req.JsonData,
+			s.percentFilename_mainstream,
+		)
+	}
+	if err != nil {
 		return nil, err
 	}
-	log.Printf("Successfully updated SspGeoPercents with %d SSP entries", len(s.percentMap))
+	log.Printf("Successfully updated SspGeoPercents SSP entries")
 
 	return nil, nil
 }
 
 func (s *Server) GetSspGeoPercentsMap(context.Context, *emptypb.Empty) (*bidEngineGrpc.SspGeoDspPercentsResponse_V2_5, error) {
-	data, err := os.ReadFile(s.percentFilename)
+	data, err := os.ReadFile(s.percentFilename_adult)
 	if err != nil {
-		return nil, status.Errorf(codes.Internal, "failed to read file %s: %w", s.percentFilename, err)
+		return nil, status.Errorf(codes.Internal, "failed to read file %s: %w", s.percentFilename_adult, err)
 	}
 
 	return &bidEngineGrpc.SspGeoDspPercentsResponse_V2_5{

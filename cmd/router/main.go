@@ -78,7 +78,12 @@ func main() {
 
 	processor := filter.NewOptimizedFilterProcessor(ruleManager)
 
-	sspGeoDspMap, err := utils.InitSspGeoDspMap[bool](cfg.SspGeoDspLinksFilePath)
+	sspGeoDspMapAdult, err := utils.InitSspGeoDspMap[bool](cfg.SspGeoDspLinksAdultFilePath)
+	if err != nil {
+		log.Fatalf("Failed to InitSspGeoPercentsLogic: %v", err)
+	}
+
+	sspGeoDspMapMainstream, err := utils.InitSspGeoDspMap[bool](cfg.SspGeoDspLinksMainstreamFilePath)
 	if err != nil {
 		log.Fatalf("Failed to InitSspGeoPercentsLogic: %v", err)
 	}
@@ -88,13 +93,15 @@ func main() {
 		ruleManager,
 		fileLoader,
 		processor,
-		cfg.DSPEndpoints_v_2_5,
-		cfg.DSPEndpoints_mainstream_v_2_5,
+		cfg.DSPEndpointsAdult_v_2_5,
+		cfg.DSPEndpointsMainstream_v_2_5,
 		redisClient,
 		cfg.BidResponsesTimeout,
 		cfg.MaxParallelRequests,
-		cfg.SspGeoDspLinksFilePath,
-		sspGeoDspMap,
+		cfg.SspGeoDspLinksAdultFilePath,
+		cfg.SspGeoDspLinksMainstreamFilePath,
+		sspGeoDspMapAdult,
+		sspGeoDspMapMainstream,
 	)
 
 	if err := routerServer.LoadNetset(cfg.AllowedIpDbPath); err != nil {

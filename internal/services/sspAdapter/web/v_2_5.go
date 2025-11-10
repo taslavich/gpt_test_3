@@ -160,6 +160,10 @@ func postBid_V2_5(
 		log.Printf("failed to marshal JSON in postBid_V2_5: %w", err)
 	}
 
+	if err := utils.WriteStringToRedis(ctx, redisClient, globalId, constants.TYPIC_COLUMN, typic, logged); err != nil {
+		log.Printf("failed to WriteStringToRedis Domain in postBid_V2_5: %w", err)
+	}
+
 	if err := utils.WriteStringToRedis(ctx, redisClient, globalId, constants.SPP_DOMAIN_COLUMN, ssp_domain, logged); err != nil {
 		log.Printf("failed to WriteStringToRedis Domain in postBid_V2_5: %w", err)
 	}

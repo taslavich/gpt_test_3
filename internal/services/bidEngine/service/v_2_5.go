@@ -10,6 +10,7 @@ import (
 	bidEngineGrpc "gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/proto/services/bidEngine"
 	"gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/proto/types/ortb_V2_5"
 	utils "gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/utils_grpc"
+	sppAdapterWeb "gitlab.com/twinbid-exchange/RTB-exchange/internal/services/sspAdapter/web"
 	"gitlab.com/twinbid-exchange/RTB-exchange/internal/types"
 	clickhouse_types "gitlab.com/twinbid-exchange/RTB-exchange/internal/types/clickhouse"
 )
@@ -26,8 +27,10 @@ func GetWinnerBidInternal_V_2_5(
 	profitPercent float32,
 	globalId string,
 	hostname string,
-	percentMap map[string]map[string]map[string]*types.PercentAndBidfloor,
+	percentMapAdult map[string]map[string]map[string]*types.PercentAndBidfloor,
+	percentMapMainstream map[string]map[string]map[string]*types.PercentAndBidfloor,
 	logged bool,
+	typic string,
 ) (*ortb_V2_5.BidResponse, *clickhouse_types.BidResponse) {
 	////////////
 	///profitPercent = getRandomProfitPercent()
@@ -113,10 +116,19 @@ func GetWinnerBidInternal_V_2_5(
 			}
 		}
 
-		value := utils.GetValueFomSspGeoDspMap(req.SspDomain, req.BidRequest.Device.Geo.GetCountry(), winningDomain, percentMap, &types.PercentAndBidfloor{
-			Percent:  profitPercent,
-			Bidfloor: true,
-		})
+		var value *types.PercentAndBidfloor
+		switch typic {
+		case sppAdapterWeb.ADULT:
+			value = utils.GetValueFomSspGeoDspMap(req.SspDomain, req.BidRequest.Device.Geo.GetCountry(), winningDomain, percentMapAdult, &types.PercentAndBidfloor{
+				Percent:  profitPercent,
+				Bidfloor: true,
+			})
+		case sppAdapterWeb.MAINSTREAM:
+			value = utils.GetValueFomSspGeoDspMap(req.SspDomain, req.BidRequest.Device.Geo.GetCountry(), winningDomain, percentMapMainstream, &types.PercentAndBidfloor{
+				Percent:  profitPercent,
+				Bidfloor: true,
+			})
+		}
 
 		finalPrice, _, err := applyPriceConstraintsAndPercent(
 			winningBid.GetPrice(),

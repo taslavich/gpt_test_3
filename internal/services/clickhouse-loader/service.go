@@ -72,7 +72,7 @@ func insertBatch(chDB *sql.DB, table string, records []types.StatisticsRecord) e
 	}
 
 	query := fmt.Sprintf(`
-		INSERT INTO %s (uuid, timestamp, spp_domain, bid_request, geo_column, bid_responses, bid_response_winner, adm_ip, adm)
+		INSERT INTO %s (uuid, timestamp, typic, spp_domain, bid_request, geo_column, bid_responses, bid_response_winner, adm_ip, adm)
 		VALUES 
 	`, table)
 
@@ -80,7 +80,7 @@ func insertBatch(chDB *sql.DB, table string, records []types.StatisticsRecord) e
 	var values []interface{}
 
 	for _, record := range records {
-		valuePlaceholders = append(valuePlaceholders, "(?, ?, ?, ?, ?, ?, ?, ?, ?)")
+		valuePlaceholders = append(valuePlaceholders, "(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
 
 		var admBool bool
 		if record.ADM == "1" {
@@ -92,6 +92,7 @@ func insertBatch(chDB *sql.DB, table string, records []types.StatisticsRecord) e
 		values = append(values,
 			coalesceEmpty(record.UUID),
 			coalesceEmpty(record.TIMESTAMP),
+			coalesceEmpty(record.TYPIC),
 			coalesceEmpty(record.SPP_DOMAIN),
 			coalesceEmpty(record.BID_REQUEST),
 			coalesceEmpty(record.GEO_COLUMN),
@@ -123,7 +124,8 @@ func hasData(record types.StatisticsRecord) bool {
 		record.ADM != "" ||
 		record.UUID != "" ||
 		record.TIMESTAMP != "" ||
-		record.SPP_DOMAIN != ""
+		record.SPP_DOMAIN != "" ||
+		record.TYPIC != ""
 }
 
 // Вспомогательная функция для обработки пустых значений
@@ -139,6 +141,7 @@ func CreateTable(chDB *sql.DB, tableName string) error {
         CREATE TABLE IF NOT EXISTS %s (
             uuid UUID,
             timestamp DateTime64(3),
+			typic String,
             spp_domain String,
             bid_request String,
             geo_column String,
