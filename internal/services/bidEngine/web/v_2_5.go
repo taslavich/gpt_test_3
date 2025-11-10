@@ -150,13 +150,23 @@ func (s *Server) SetSspGeoPercentsMap(ctx context.Context, req *bidEngineGrpc.Ss
 	return nil, nil
 }
 
-func (s *Server) GetSspGeoPercentsMap(context.Context, *emptypb.Empty) (*bidEngineGrpc.SspGeoDspPercentsResponse_V2_5, error) {
-	data, err := os.ReadFile(s.percentFilename_adult)
+func (s *Server) GetSspGeoPercentsMap(ctx context.Context, req *bidEngineGrpc.GetSspGeoDspPercentsRequest_V2_5) (*bidEngineGrpc.GetSspGeoDspPercentsResponse_V2_5, error) {
+	var data []byte
+	var err error
+
+	switch req.Typic {
+	case sppAdapterWeb.ADULT:
+		data, err = os.ReadFile(s.percentFilename_adult)
+	case sppAdapterWeb.MAINSTREAM:
+		data, err = os.ReadFile(s.percentFilename_mainstream)
+	default:
+		return nil, status.Error(codes.Internal, "Typic is no here! failed to read file")
+	}
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "failed to read file %s: %w", s.percentFilename_adult, err)
 	}
 
-	return &bidEngineGrpc.SspGeoDspPercentsResponse_V2_5{
+	return &bidEngineGrpc.GetSspGeoDspPercentsResponse_V2_5{
 		JsonData: string(data),
 	}, nil
 }

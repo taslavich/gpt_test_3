@@ -199,7 +199,7 @@ func (s *Server) GetBids_V2_5(
 
 		switch req.Typic {
 		case sppAdapterWeb.ADULT:
-			if !utils.GetValueFomSspGeoDspMap(req.SspDomain, req.BidRequest.Device.Geo.GetCountry(), domain, s.linkMap_adult, false) {
+			if !utils.GetValueFomSspGeoDspMap(req.SspDomain, req.BidRequest.Device.Geo.GetCountry(), domain, s.linkMap_adult, true) {
 				codesCh <- &dspDomainCode{
 					domain: domain,
 					code:   -2,
@@ -207,7 +207,7 @@ func (s *Server) GetBids_V2_5(
 				continue
 			}
 		case sppAdapterWeb.MAINSTREAM:
-			if !utils.GetValueFomSspGeoDspMap(req.SspDomain, req.BidRequest.Device.Geo.GetCountry(), domain, s.linkMap_mainstream, false) {
+			if !utils.GetValueFomSspGeoDspMap(req.SspDomain, req.BidRequest.Device.Geo.GetCountry(), domain, s.linkMap_mainstream, true) {
 				codesCh <- &dspDomainCode{
 					domain: domain,
 					code:   -2,
@@ -342,13 +342,23 @@ func (s *Server) getBidsFromDSPbyHTTP_V_2_5(ctx context.Context, jsonData []byte
 	return nil, resp.StatusCode, nil
 }
 
-func (s *Server) GetSspGeoLinksMap(context.Context, *emptypb.Empty) (*dspRouterGrpc.SspGeoDspLinksResponse_V2_5, error) {
-	data, err := os.ReadFile(s.linkFilename_adult)
+func (s *Server) GetSspGeoLinksMap(ctx context.Context, req *dspRouterGrpc.GetSspGeoDspLinksRequest_V2_5) (*dspRouterGrpc.GetSspGeoDspLinksResponse_V2_5, error) {
+	var data []byte
+	var err error
+
+	switch req.Typic {
+	case sppAdapterWeb.ADULT:
+		data, err = os.ReadFile(s.linkFilename_adult)
+	case sppAdapterWeb.MAINSTREAM:
+		data, err = os.ReadFile(s.linkFilename_mainstream)
+	default:
+		return nil, status.Error(codes.Internal, "Typic is no here! failed to read file")
+	}
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "failed to read file %s: %w", s.linkFilename_adult, err)
 	}
 
-	return &dspRouterGrpc.SspGeoDspLinksResponse_V2_5{
+	return &dspRouterGrpc.GetSspGeoDspLinksResponse_V2_5{
 		JsonData: string(data),
 	}, nil
 }
@@ -368,7 +378,7 @@ func (s *Server) SetSspGeoLinksMap(ctx context.Context, req *dspRouterGrpc.SspGe
 			s.linkFilename_mainstream,
 		)
 	default:
-		return nil, status.Errorf(codes.Internal, "Typic is no here! failed to read file: %v", err)
+		return nil, status.Error(codes.Internal, "Typic is no here! failed to read file")
 	}
 	if err != nil {
 		return nil, err
