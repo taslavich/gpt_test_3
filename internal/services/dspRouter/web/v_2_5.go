@@ -346,16 +346,6 @@ func (s *Server) GetSspGeoLinksMap(ctx context.Context, req *dspRouterGrpc.GetSs
 	var data []byte
 	var err error
 
-	// ДЕБАГ - посмотрим что пришло
-	log.Printf("=== DEBUG ===")
-	log.Printf("req.Typic: '%s'", req.Typic)
-	log.Printf("sppAdapterWeb.ADULT: '%s'", sppAdapterWeb.ADULT)
-	log.Printf("sppAdapterWeb.MAINSTREAM: '%s'", sppAdapterWeb.MAINSTREAM)
-	log.Printf("req.Typic == sppAdapterWeb.MAINSTREAM: %v", req.Typic == sppAdapterWeb.MAINSTREAM)
-	log.Printf("req.Typic length: %d", len(req.Typic))
-	log.Printf("MAINSTREAM length: %d", len(sppAdapterWeb.MAINSTREAM))
-	log.Printf("=== DEBUG END ===")
-
 	switch req.Typic {
 	case sppAdapterWeb.ADULT:
 		data, err = os.ReadFile(s.linkFilename_adult)
