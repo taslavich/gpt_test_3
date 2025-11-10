@@ -134,6 +134,7 @@ func (s *Server) GetWinnerBid_V2_5(
 			GlobalId:     bids.GlobalId,
 			SspDomain:    bids.SspDomain,
 			Logged:       req.Logged,
+			Typic:        req.Typic,
 		},
 	)
 	if err != nil {

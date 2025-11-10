@@ -46,8 +46,11 @@ type Server struct {
 
 	ranger cidranger.Ranger
 
-	linkFilename string
-	linkMap      map[string]map[string]map[string]bool
+	linkFilename_adult      string
+	linkFilename_mainstream string
+
+	linkMap_adult      map[string]map[string]map[string]bool
+	linkMap_mainstream map[string]map[string]map[string]bool
 
 	dspRouterGrpc.UnimplementedDspRouterServiceServer
 }
@@ -86,8 +89,10 @@ func NewServer(
 	redisClient *redis.Client,
 	timeout time.Duration,
 	maxParallelRequests int,
-	linkFilename string,
-	linkMap map[string]map[string]map[string]bool,
+	linkFilename_adult string,
+	linkFilename_mainstream string,
+	linkMap_adult map[string]map[string]map[string]bool,
+	linkMap_mainstream map[string]map[string]map[string]bool,
 ) *Server {
 	if timeout <= 0 {
 		timeout = 150 * time.Millisecond
@@ -125,9 +130,11 @@ func NewServer(
 				return bytes.NewBuffer(make([]byte, 0, 2048))
 			},
 		},
-		ranger:       rang,
-		linkFilename: linkFilename,
-		linkMap:      linkMap,
+		ranger:                  rang,
+		linkFilename_adult:      linkFilename_adult,
+		linkFilename_mainstream: linkFilename_mainstream,
+		linkMap_adult:           linkMap_adult,
+		linkMap_mainstream:      linkMap_mainstream,
 	}
 }
 
@@ -190,12 +197,23 @@ func (s *Server) GetBids_V2_5(
 		endpoint := endpoint
 		domain := domain
 
-		if !utils.GetValueFomSspGeoDspMap(req.SspDomain, req.BidRequest.Device.Geo.GetCountry(), domain, s.linkMap, false) {
-			codesCh <- &dspDomainCode{
-				domain: domain,
-				code:   -2,
+		switch req.Typic {
+		case sppAdapterWeb.ADULT:
+			if !utils.GetValueFomSspGeoDspMap(req.SspDomain, req.BidRequest.Device.Geo.GetCountry(), domain, s.linkMap_adult, false) {
+				codesCh <- &dspDomainCode{
+					domain: domain,
+					code:   -2,
+				}
+				continue
 			}
-			continue
+		case sppAdapterWeb.MAINSTREAM:
+			if !utils.GetValueFomSspGeoDspMap(req.SspDomain, req.BidRequest.Device.Geo.GetCountry(), domain, s.linkMap_mainstream, false) {
+				codesCh <- &dspDomainCode{
+					domain: domain,
+					code:   -2,
+				}
+				continue
+			}
 		}
 
 		if !s.processor.ProcessRequestForDSPV25(endpoint, req.BidRequest).Allowed {
@@ -325,9 +343,9 @@ func (s *Server) getBidsFromDSPbyHTTP_V_2_5(ctx context.Context, jsonData []byte
 }
 
 func (s *Server) GetSspGeoLinksMap(context.Context, *emptypb.Empty) (*dspRouterGrpc.SspGeoDspLinksResponse_V2_5, error) {
-	data, err := os.ReadFile(s.linkFilename)
+	data, err := os.ReadFile(s.linkFilename_adult)
 	if err != nil {
-		return nil, status.Errorf(codes.Internal, "failed to read file %s: %w", s.linkFilename, err)
+		return nil, status.Errorf(codes.Internal, "failed to read file %s: %w", s.linkFilename_adult, err)
 	}
 
 	return &dspRouterGrpc.SspGeoDspLinksResponse_V2_5{
@@ -338,13 +356,23 @@ func (s *Server) GetSspGeoLinksMap(context.Context, *emptypb.Empty) (*dspRouterG
 func (s *Server) SetSspGeoLinksMap(ctx context.Context, req *dspRouterGrpc.SspGeoDspLinksRequest_V2_5) (*emptypb.Empty, error) {
 	var err error
 
-	if s.linkMap, err = utils.RewriteSspGeoDspFile[bool](
-		req.JsonData,
-		s.linkFilename,
-	); err != nil {
+	switch req.Typic {
+	case sppAdapterWeb.ADULT:
+		s.linkMap_adult, err = utils.RewriteSspGeoDspFile[bool](
+			req.JsonData,
+			s.linkFilename_adult,
+		)
+	case sppAdapterWeb.MAINSTREAM:
+		s.linkMap_mainstream, err = utils.RewriteSspGeoDspFile[bool](
+			req.JsonData,
+			s.linkFilename_mainstream,
+		)
+	}
+	if err != nil {
 		return nil, err
 	}
-	log.Printf("Successfully updated Links with %d SSP entries", len(s.linkMap))
+
+	log.Printf("Successfully updated Links SSP entries")
 
 	return nil, nil
 }

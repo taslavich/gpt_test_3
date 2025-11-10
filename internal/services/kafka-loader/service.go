@@ -94,6 +94,11 @@ func ProcessBatch(ctx context.Context, redisClient *redis.Client, kafkaWriter *k
 			fieldsToDelete[key] = append(fieldsToDelete[key], constants.SPP_DOMAIN_COLUMN)
 		}
 
+		if typic, exists := data[constants.TYPIC_COLUMN]; exists {
+			record.TYPIC = typic
+			fieldsToDelete[key] = append(fieldsToDelete[key], constants.TYPIC_COLUMN)
+		}
+
 		record.UUID = key
 		fieldsToDelete[key] = append(fieldsToDelete[key], constants.UUID_COLUMN)
 
@@ -142,7 +147,8 @@ func hasData(record types.StatisticsRecord) bool {
 		record.ADM != "" ||
 		record.UUID != "" ||
 		record.TIMESTAMP != "" ||
-		record.SPP_DOMAIN != ""
+		record.SPP_DOMAIN != "" ||
+		record.TYPIC != ""
 }
 
 func EnsureTopicExists(broker string, topic string) error {

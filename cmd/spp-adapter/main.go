@@ -74,7 +74,7 @@ func main() {
 		geoIp.GetCountryISO,
 		client,
 		cfg.GetWinnerBidTimeout,
-		cfg.SspFeeds,
+		cfg.SspAdultFeeds,
 		cfg.SspMainStreamFeeds,
 		&work,
 	)

@@ -27,7 +27,7 @@ var rnr = render.New(render.Options{
 
 const (
 	PostBid_V_2_5_URL            = "/bid_v_2_5"
-	PostBid_mainstream_V_2_5_URL = "/bid_mainstream_v_2_5"
+	PostBid_mainstream_V_2_5_URL = "/bid_v_2_5_mc"
 
 	GetAdmUrl  = "/adm"
 	GetNurlUrl = "/nurl"

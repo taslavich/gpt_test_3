@@ -82,22 +82,24 @@ func (l *ListString) SetValue(value string) error {
 
 type BiddingEngineConfig struct {
 	HttpServer
-	ProfitPercent             float32 `yaml:"PROFIT_PERCENT" env:"PROFIT_PERCENT" env-default:"0.2"`
-	SystemHostname            string  `yaml:"SYSTEM_HOSTNAME" env:"SYSTEM_HOSTNAME"`
-	SspGeoDspPercentsFilePath string  `yaml:"SSP_GEO_DSP_PERCENTS_FILE_PATH" env:"SSP_GEO_DSP_PERCENTS_FILE_PATH"`
+	ProfitPercent                       float32 `yaml:"PROFIT_PERCENT" env:"PROFIT_PERCENT" env-default:"0.2"`
+	SystemHostname                      string  `yaml:"SYSTEM_HOSTNAME" env:"SYSTEM_HOSTNAME"`
+	SspGeoDspPercentsAdultFilePath      string  `yaml:"SSP_GEO_DSP_PERCENTS_ADULT_FILE_PATH" env:"SSP_GEO_DSP_PERCENTS_ADULT_FILE_PATH"`
+	SspGeoDspPercentsMainstreamFilePath string  `yaml:"SSP_GEO_DSP_PERCENTS_MAINSTREAM_FILE_PATH" env:"SSP_GEO_DSP_PERCENTS_MAINSTREAM_FILE_PATH"`
 	RedisConfig
 }
 
 type RouterConfig struct {
 	HttpServer
-	DSPEndpoints_v_2_5            MapStringToString `yaml:"DSP_ENDPOINTS_V_2_5" env:"DSP_ENDPOINTS_V_2_5"`
-	DSPEndpoints_mainstream_v_2_5 MapStringToString `yaml:"DSP_ENDPOINTS_MAINSTREAM_V_2_5" env:"DSP_ENDPOINTS_MAINSTREAM_V_2_5"`
+	DSPEndpointsAdult_v_2_5      MapStringToString `yaml:"DSP_ENDPOINTS_ADULT_V_2_5" env:"DSP_ENDPOINTS_ADULT_V_2_5"`
+	DSPEndpointsMainstream_v_2_5 MapStringToString `yaml:"DSP_ENDPOINTS_MAINSTREAM_V_2_5" env:"DSP_ENDPOINTS_MAINSTREAM_V_2_5"`
 
 	DspRulesConfigPathV25 string `yaml:"DSP_RULES_CONFIG_PATH" env:"DSP_RULES_CONFIG_PATH_V_25"`
 	SppRulesConfigPathV25 string `yaml:"SPP_RULES_CONFIG_PATH" env:"SPP_RULES_CONFIG_PATH_V_25"`
 
-	AllowedIpDbPath        string `yaml:"ALLOWED_IP_DB_PATH" env:"ALLOWED_IP_DB_PATH"`
-	SspGeoDspLinksFilePath string `yaml:"SSP_GEO_DSP_LINKS_FILE_PATH" env:"SSP_GEO_DSP_LINKS_FILE_PATH"`
+	AllowedIpDbPath                  string `yaml:"ALLOWED_IP_DB_PATH" env:"ALLOWED_IP_DB_PATH"`
+	SspGeoDspLinksAdultFilePath      string `yaml:"SSP_GEO_DSP_LINKS_ADULT_FILE_PATH" env:"SSP_GEO_DSP_LINKS_ADULT_FILE_PATH"`
+	SspGeoDspLinksMainstreamFilePath string `yaml:"SSP_GEO_DSP_LINKS_MAINSTREAM_FILE_PATH" env:"SSP_GEO_DSP_LINKS_MAINSTREAM_FILE_PATH"`
 
 	BidResponsesTimeout time.Duration `yaml:"BID_RESPONSES_TIMEOUT" env:"BID_RESPONSES_TIMEOUT"`
 
@@ -124,7 +126,7 @@ type SppAdapterConfig struct {
 	NurlTimeout         time.Duration     `yaml:"NURL_TIMEOUT" env:"NURL_TIMEOUT"`
 	GetWinnerBidTimeout time.Duration     `yaml:"GET_WINNER_BID_TIMEOUT" env:"GET_WINNER_BID_TIMEOUT"`
 	GeoIpDbPath         string            `yaml:"GEO_IP_DB_PATH" env:"GEO_IP_DB_PATH"`
-	SspFeeds            MapStringToString `yaml:"SSP_FEEDS" env:"SSP_FEEDS"`
+	SspAdultFeeds       MapStringToString `yaml:"SSP_ADULT_FEEDS" env:"SSP_ADULT_FEEDS"`
 	SspMainStreamFeeds  MapStringToString `yaml:"SSP_MAINSTREAM_FEEDS" env:"SSP_MAINSTREAM_FEEDS"`
 
 	RedisConfig

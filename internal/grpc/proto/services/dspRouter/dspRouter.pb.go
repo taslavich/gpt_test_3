@@ -170,6 +170,7 @@ func (x *DspRouterResponse_V2_5) GetSspDomain() string {
 type SspGeoDspLinksRequest_V2_5 struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	JsonData      string                 `protobuf:"bytes,1,opt,name=json_data,json=jsonData,proto3" json:"json_data,omitempty"`
+	Typic         string                 `protobuf:"bytes,2,opt,name=typic,proto3" json:"typic,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -207,6 +208,13 @@ func (*SspGeoDspLinksRequest_V2_5) Descriptor() ([]byte, []int) {
 func (x *SspGeoDspLinksRequest_V2_5) GetJsonData() string {
 	if x != nil {
 		return x.JsonData
+	}
+	return ""
+}
+
+func (x *SspGeoDspLinksRequest_V2_5) GetTypic() string {
+	if x != nil {
+		return x.Typic
 	}
 	return ""
 }
@@ -279,9 +287,10 @@ const file_services_dspRouter_proto_rawDesc = "" +
 	"ssp_domain\x18\x04 \x01(\tR\tsspDomain\x1aW\n" +
 	"\x11BidResponsesEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12,\n" +
-	"\x05value\x18\x02 \x01(\v2\x16.ortb_V2_5.BidResponseR\x05value:\x028\x01\"9\n" +
+	"\x05value\x18\x02 \x01(\v2\x16.ortb_V2_5.BidResponseR\x05value:\x028\x01\"O\n" +
 	"\x1aSspGeoDspLinksRequest_V2_5\x12\x1b\n" +
-	"\tjson_data\x18\x01 \x01(\tR\bjsonData\":\n" +
+	"\tjson_data\x18\x01 \x01(\tR\bjsonData\x12\x14\n" +
+	"\x05typic\x18\x02 \x01(\tR\x05typic\":\n" +
 	"\x1bSspGeoDspLinksResponse_V2_5\x12\x1b\n" +
 	"\tjson_data\x18\x01 \x01(\tR\bjsonData2\x90\x02\n" +
 	"\x10DspRouterService\x12S\n" +
