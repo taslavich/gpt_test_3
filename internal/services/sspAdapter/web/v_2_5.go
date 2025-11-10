@@ -260,7 +260,7 @@ func putWorkStatus(
 		work = *workAdl
 	case MAINSTREAM:
 		*workMc = input.Work
-		work = *workAdl
+		work = *workMc
 	default:
 		http.Error(w, "Typic is no here", http.StatusBadRequest)
 	}
