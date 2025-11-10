@@ -363,7 +363,7 @@ func (s *Server) GetSspGeoLinksMap(ctx context.Context, req *dspRouterGrpc.GetSs
 	}, nil
 }
 
-func (s *Server) SetSspGeoLinksMap(ctx context.Context, req *dspRouterGrpc.SspGeoDspLinksRequest_V2_5) (*emptypb.Empty, error) {
+func (s *Server) SetSspGeoLinksMap(ctx context.Context, req *dspRouterGrpc.GetSspGeoDspLinksRequest_V2_5) (*emptypb.Empty, error) {
 	var err error
 
 	switch req.Typic {
