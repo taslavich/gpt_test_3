@@ -54,7 +54,7 @@ type admNurlRequest struct {
 
 type putWorkStatusRequest struct {
 	Work  bool   `in:"query=work" required:"true"`
-	Typic string `in:"query=work" required:"true"`
+	Typic string `in:"query=typic" required:"true"`
 }
 
 type getWorkStatusResponse struct {
