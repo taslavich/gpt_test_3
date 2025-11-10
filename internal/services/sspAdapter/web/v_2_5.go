@@ -253,10 +253,6 @@ func putWorkStatus(
 ) {
 	input := r.Context().Value(httpin.Input).(*putWorkStatusRequest)
 
-	if input.Typic == "" {
-		http.Error(w, "Typic is no here", http.StatusBadRequest)
-	}
-
 	var work bool
 	switch input.Typic {
 	case ADULT:
@@ -265,6 +261,8 @@ func putWorkStatus(
 	case MAINSTREAM:
 		*workMc = input.Work
 		work = *workAdl
+	default:
+		http.Error(w, "Typic is no here", http.StatusBadRequest)
 	}
 
 	if err := rnr.Text(w, http.StatusOK, fmt.Sprintf("Changed to %v", work)); err != nil {
