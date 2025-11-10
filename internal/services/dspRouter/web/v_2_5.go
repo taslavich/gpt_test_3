@@ -199,7 +199,7 @@ func (s *Server) GetBids_V2_5(
 
 		switch req.Typic {
 		case sppAdapterWeb.ADULT:
-			if !utils.GetValueFomSspGeoDspMap(req.SspDomain, req.BidRequest.Device.Geo.GetCountry(), domain, s.linkMap_adult, true) {
+			if !utils.GetValueFomSspGeoDspMap(req.SspDomain, req.BidRequest.Device.Geo.GetCountry(), domain, s.linkMap_adult, false) {
 				codesCh <- &dspDomainCode{
 					domain: domain,
 					code:   -2,
@@ -207,7 +207,7 @@ func (s *Server) GetBids_V2_5(
 				continue
 			}
 		case sppAdapterWeb.MAINSTREAM:
-			if !utils.GetValueFomSspGeoDspMap(req.SspDomain, req.BidRequest.Device.Geo.GetCountry(), domain, s.linkMap_mainstream, true) {
+			if !utils.GetValueFomSspGeoDspMap(req.SspDomain, req.BidRequest.Device.Geo.GetCountry(), domain, s.linkMap_mainstream, false) {
 				codesCh <- &dspDomainCode{
 					domain: domain,
 					code:   -2,
