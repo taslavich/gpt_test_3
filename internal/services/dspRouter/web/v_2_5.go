@@ -192,7 +192,7 @@ func (s *Server) GetBids_V2_5(
 			}
 		}
 
-		if !s.processor.ProcessRequestForDSPV25(endpoint, req.BidRequest).Allowed {
+		if !s.processor.ProcessRequestForDSPV25(deletePrefix(domain), req.BidRequest).Allowed {
 			//log.Println("Gor DSP filter")
 			codesCh <- &dspDomainCode{
 				domain: domain,
@@ -231,7 +231,7 @@ func (s *Server) GetBids_V2_5(
 			}
 
 			// Фильтрация ответа SPP
-			if !s.processor.ProcessResponseForSPPV25(req.SspDomain, dspResp).Allowed {
+			if !s.processor.ProcessResponseForSPPV25(deletePrefix(req.SspDomain), dspResp).Allowed {
 				//log.Printf("Gor SSP filter, domain %s, resp: %w", endpoint, dspResp)
 
 				return
