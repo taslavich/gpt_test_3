@@ -151,6 +151,10 @@ func postBid_V2_5(
 		return
 	}*/
 
+	if input.Payload.BidRequest.Cur == nil {
+		input.Payload.BidRequest.Cur = append(input.Payload.BidRequest.Cur, "USD")
+	}
+
 	logged := shouldPass(counter)
 
 	globalId := uuid.New().String()
