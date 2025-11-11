@@ -3,6 +3,7 @@ package dspRouterWeb
 import (
 	"net"
 	"net/http"
+	"strings"
 	"time"
 
 	"gitlab.com/twinbid-exchange/RTB-exchange/internal/config"
@@ -55,4 +56,16 @@ func NewFastHTTPClient(timeout time.Duration) *http.Client {
 		Transport: transport,
 		Timeout:   timeout, // Главный таймаут
 	}
+}
+
+func deletePrefix(domain string) string {
+	if newDomain, ok := strings.CutPrefix(domain, ADL_PREFIX); ok {
+		return newDomain
+	}
+
+	if newDomain, ok := strings.CutPrefix(domain, MC_PREFIX); ok {
+		return newDomain
+	}
+
+	return ""
 }
