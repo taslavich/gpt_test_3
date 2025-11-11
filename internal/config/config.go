@@ -2,6 +2,7 @@ package config
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"strings"
 	"time"
@@ -30,6 +31,36 @@ func (m *MapStringToString) SetValue(value string) error {
 		key := strings.TrimSpace(pair[:idx])
 		valueStr := strings.TrimSpace(pair[idx+1:])
 		(*m)[key] = valueStr
+	}
+	return nil
+}
+
+type MapStringToDuration map[string]time.Duration
+
+func (m *MapStringToDuration) SetValue(value string) error {
+	*m = make(MapStringToDuration)
+	if value == "" {
+		return nil
+	}
+
+	pairs := strings.Split(value, ",")
+	for _, pair := range pairs {
+		// Ищем только ПЕРВЫЙ знак | как разделитель ключ-значение
+		idx := strings.Index(pair, "|")
+		if idx == -1 {
+			continue // пропускаем некорректные пары
+		}
+
+		key := strings.TrimSpace(pair[:idx])
+		durationStr := strings.TrimSpace(pair[idx+1:])
+
+		// Парсим duration из строки
+		duration, err := time.ParseDuration(durationStr)
+		if err != nil {
+			return fmt.Errorf("invalid duration format for key '%s': %w", key, err)
+		}
+
+		(*m)[key] = duration
 	}
 	return nil
 }
@@ -102,6 +133,8 @@ type RouterConfig struct {
 	SspGeoDspLinksMainstreamFilePath string `yaml:"SSP_GEO_DSP_LINKS_MAINSTREAM_FILE_PATH" env:"SSP_GEO_DSP_LINKS_MAINSTREAM_FILE_PATH"`
 
 	BidResponsesTimeout time.Duration `yaml:"BID_RESPONSES_TIMEOUT" env:"BID_RESPONSES_TIMEOUT"`
+
+	SspHttpClientTimeouts MapStringToDuration `yaml:"SSP_HTTP_CLIENT_TIMEOUT" env:"SSP_HTTP_CLIENT_TIMEOUT"`
 
 	MaxParallelRequests int  `yaml:"MAX_PARALLEL_REQUESTS" env:"MAX_PARALLEL_REQUESTS" env-default:"64"`
 	Debug               bool `yaml:"DEBUG" env:"DEBUG" env-default:"false"`

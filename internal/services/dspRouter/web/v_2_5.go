@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
-	"net"
 	"net/http"
 	"os"
 	"runtime/debug"
@@ -39,8 +38,9 @@ type Server struct {
 
 	redisClient *redis.Client
 
-	client_v_2_5 *http.Client
-	timeout      time.Duration
+	clients map[string]*http.Client
+
+	timeout time.Duration
 	// Пулы для снижения аллокаций
 	bufferPool sync.Pool
 
@@ -53,31 +53,6 @@ type Server struct {
 	linkMap_mainstream map[string]map[string]map[string]bool
 
 	dspRouterGrpc.UnimplementedDspRouterServiceServer
-}
-
-func NewFastHTTPClient() *http.Client {
-	transport := &http.Transport{
-		Proxy: http.ProxyFromEnvironment,
-		DialContext: (&net.Dialer{
-			Timeout:   5 * time.Second, // Уменьшаем с 30s до 5s
-			KeepAlive: 30 * time.Second,
-			DualStack: true,
-		}).DialContext,
-
-		// Пул соединений - ОБЯЗАТЕЛЬНО оставить!
-		MaxIdleConns:        500,
-		MaxIdleConnsPerHost: 100,
-		MaxConnsPerHost:     200,
-		IdleConnTimeout:     30 * time.Second, // ОБЯЗАТЕЛЬНО оставить!
-
-		DisableCompression: true,
-		ForceAttemptHTTP2:  false,
-	}
-
-	return &http.Client{
-		Transport: transport,
-		Timeout:   150 * time.Millisecond, // Главный таймаут
-	}
 }
 
 func NewServer(
@@ -93,6 +68,7 @@ func NewServer(
 	linkFilename_mainstream string,
 	linkMap_adult map[string]map[string]map[string]bool,
 	linkMap_mainstream map[string]map[string]map[string]bool,
+	clients map[string]*http.Client,
 ) *Server {
 	if timeout <= 0 {
 		timeout = 150 * time.Millisecond
@@ -100,8 +76,6 @@ func NewServer(
 	if maxParallelRequests <= 0 {
 		maxParallelRequests = 64
 	}
-
-	client_v_2_5 := NewFastHTTPClient()
 
 	// Глобальный лимит исходящих: консервативно отталкиваемся от
 	// количества DSP и локального лимита; при желании — вынеси в конфиг.
@@ -123,7 +97,7 @@ func NewServer(
 		dspEndpoints_adult_v_2_5:      dspEndpoints_v_2_5,
 		dspEndpoints_mainstream_v_2_5: dspEndpoints_mainstream_v_2_5,
 		redisClient:                   redisClient,
-		client_v_2_5:                  client_v_2_5,
+		clients:                       clients,
 		timeout:                       timeout,
 		bufferPool: sync.Pool{
 			New: func() interface{} {
@@ -177,6 +151,8 @@ func (s *Server) GetBids_V2_5(
 
 		return nil, status.Error(grpcCode, newErr.Error())
 	}
+
+	client_v_2_5 := getSspHttpClients(req.SspDomain, s.clients)
 
 	var (
 		wg sync.WaitGroup
@@ -235,10 +211,10 @@ func (s *Server) GetBids_V2_5(
 		}*/
 
 		wg.Add(1)
-		go func(endpoint string) {
+		go func(endpoint string, client_v_2_5 *http.Client) {
 			defer wg.Done()
 
-			dspResp, code, err := s.getBidsFromDSPbyHTTP_V_2_5(reqCtx, jsonData, endpoint)
+			dspResp, code, err := s.getBidsFromDSPbyHTTP_V_2_5(reqCtx, jsonData, endpoint, client_v_2_5)
 			if err != nil {
 				log.Printf(
 					"Cannot getBidsFromDSPbyHTTP_V_2_5, bid request id: %s,ssp_domain: %s, dsp_domain: %s, error: %v",
@@ -278,7 +254,7 @@ func (s *Server) GetBids_V2_5(
 					resp:   dspResp,
 				}
 			}
-		}(endpoint)
+		}(endpoint, client_v_2_5)
 	}
 
 	go func() {
@@ -307,7 +283,7 @@ func (s *Server) GetBids_V2_5(
 	}, nil
 }
 
-func (s *Server) getBidsFromDSPbyHTTP_V_2_5(ctx context.Context, jsonData []byte, dspEndpoint string) (
+func (s *Server) getBidsFromDSPbyHTTP_V_2_5(ctx context.Context, jsonData []byte, dspEndpoint string, client_v_2_5 *http.Client) (
 	ddr *ortb_V2_5.BidResponse, code int, err error) {
 	// Пул буферов — как в v2.4
 	buf := s.bufferPool.Get().(*bytes.Buffer)
@@ -325,7 +301,7 @@ func (s *Server) getBidsFromDSPbyHTTP_V_2_5(ctx context.Context, jsonData []byte
 		req.Header.Set("X-Openrtb-Version", "2.5")
 	}
 
-	resp, err := s.client_v_2_5.Do(req)
+	resp, err := client_v_2_5.Do(req)
 	if err != nil {
 		return nil, 1, fmt.Errorf("Request failed: %v", err)
 	}
