@@ -88,6 +88,8 @@ func main() {
 		log.Fatalf("Failed to InitSspGeoPercentsLogic: %v", err)
 	}
 
+	clients := dspRouterWeb.InitSspHttpClients(cfg.SspHttpClientTimeouts)
+
 	s := grpc.NewServer()
 	routerServer := dspRouterWeb.NewServer(
 		ruleManager,
@@ -102,6 +104,7 @@ func main() {
 		cfg.SspGeoDspLinksMainstreamFilePath,
 		sspGeoDspMapAdult,
 		sspGeoDspMapMainstream,
+		clients,
 	)
 
 	if err := routerServer.LoadNetset(cfg.AllowedIpDbPath); err != nil {
