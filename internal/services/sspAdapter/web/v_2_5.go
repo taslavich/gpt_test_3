@@ -84,7 +84,7 @@ func postBid_V2_5(
 
 	if input == nil || input.Payload == nil {
 		err := fmt.Errorf("Invalid request: payload is nil or missing")
-		log.Print(err.Error(), r.Host)
+		log.Print(err.Error(), r.RemoteAddr)
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
@@ -93,7 +93,7 @@ func postBid_V2_5(
 		err := fmt.Errorf(
 			"There is no device object",
 		)
-		log.Print(err.Error(), r.Host)
+		log.Print(err.Error(), r.RemoteAddr)
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
@@ -103,7 +103,7 @@ func postBid_V2_5(
 		err := fmt.Errorf(
 			"There is no device ip",
 		)
-		log.Print(err.Error(), r.Host)
+		log.Print(err.Error(), r.RemoteAddr)
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
@@ -114,7 +114,7 @@ func postBid_V2_5(
 			"There an server error while isBadIp: %w",
 			err,
 		)
-		log.Print(err.Error(), r.Host)
+		log.Print(err.Error(), r.RemoteAddr)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	} else if err != nil && bad == true {
@@ -122,7 +122,7 @@ func postBid_V2_5(
 			"Ip is bad: %w",
 			err,
 		)
-		log.Print(err.Error(), r.Host)
+		log.Print(err.Error(), r.RemoteAddr)
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
@@ -133,7 +133,7 @@ func postBid_V2_5(
 			"Bad format: %w",
 			err,
 		)
-		log.Print(err.Error(), r.Host)
+		log.Print(err.Error(), r.RemoteAddr)
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	} else if errors.As(err, geoBadIp.InnerLookupIpError) {
@@ -141,7 +141,7 @@ func postBid_V2_5(
 			"There an server error while getCountryISO: %w",
 			err,
 		)
-		log.Print(err.Error(), r.Host)
+		log.Print(err.Error(), r.RemoteAddr)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
