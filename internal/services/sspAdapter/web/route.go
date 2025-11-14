@@ -26,8 +26,10 @@ var rnr = render.New(render.Options{
 })
 
 const (
-	PostBid_V_2_5_URL            = "/bid_v_2_5"
-	PostBid_mainstream_V_2_5_URL = "/bid_v_2_5_mc"
+	PostBid_POP_ADL_V_2_5_URL = "/bid_v_2_5"
+	PostBid_POP_MC_V_2_5_URL  = "/bid_v_2_5_mc"
+
+	PostBid_IPP_V_2_5_URL = "/bid_ipp_v_2_5"
 
 	GetAdmUrl  = "/adm"
 	GetNurlUrl = "/nurl"
@@ -80,13 +82,13 @@ func InitHttpRoutes(
 
 	httpRouter.With(
 		httpin.NewInput(postBidRequest_V2_5{}),
-	).Post(PostBid_V_2_5_URL, func(w http.ResponseWriter, r *http.Request) {
+	).Post(PostBid_POP_ADL_V_2_5_URL, func(w http.ResponseWriter, r *http.Request) {
 		postBid_V2_5(ctx, w, r, redisClient, isBadIp, getCountryISO, orchestratorClient, bidRequestTimeout, sspFeeds, sspMainstreamFeeds, &counter, ADULT)
 	})
 
 	httpRouter.With(
 		httpin.NewInput(postBidRequest_V2_5{}),
-	).Post(PostBid_mainstream_V_2_5_URL, func(w http.ResponseWriter, r *http.Request) {
+	).Post(PostBid_POP_MC_V_2_5_URL, func(w http.ResponseWriter, r *http.Request) {
 		postBid_V2_5(ctx, w, r, redisClient, isBadIp, getCountryISO, orchestratorClient, bidRequestTimeout, sspFeeds, sspMainstreamFeeds, &counter, MAINSTREAM)
 	})
 
