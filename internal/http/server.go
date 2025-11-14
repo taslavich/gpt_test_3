@@ -30,12 +30,12 @@ func WorkSspAdapterMiddleware(workAdl, workMc *bool) func(http.Handler) http.Han
 				return
 			}
 
-			if !*workAdl && r.URL.Path == sppAdapterWeb.PostBid_V_2_5_URL {
+			if !*workAdl && r.URL.Path == sppAdapterWeb.PostBid_POP_ADL_V_2_5_URL {
 				http.Error(w, "Service Unavailable", http.StatusServiceUnavailable)
 				return
 			}
 
-			if !*workMc && r.URL.Path == sppAdapterWeb.PostBid_mainstream_V_2_5_URL {
+			if !*workMc && r.URL.Path == sppAdapterWeb.PostBid_POP_MC_V_2_5_URL {
 				http.Error(w, "Service Unavailable", http.StatusServiceUnavailable)
 				return
 			}
