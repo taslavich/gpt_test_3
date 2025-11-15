@@ -89,18 +89,7 @@ func InitHttpRoutes(
 	httpRouter.With(
 		httpin.NewInput(postBidRequest_V2_5{}),
 	).Post(PostBid_POP_MC_V_2_5_URL, func(w http.ResponseWriter, r *http.Request) {
-		input := r.Context().Value(httpin.Input).(*postBidRequest_V2_5)
-
-		newCtx := context.WithValue(r.Context(), httpin.Input, input)
-		newRequest := r.WithContext(newCtx)
-
-		if input.Feed == "93d0e428-ad5e-4370-81de-bee8896bfa4a" {
-			postBid_V2_5(newCtx, w, newRequest, redisClient, isBadIp, getCountryISO,
-				orchestratorClient, bidRequestTimeout, sspFeeds, sspMainstreamFeeds, &counter, ADULT)
-		} else {
-			postBid_V2_5(newCtx, w, newRequest, redisClient, isBadIp, getCountryISO,
-				orchestratorClient, bidRequestTimeout, sspFeeds, sspMainstreamFeeds, &counter, MAINSTREAM)
-		}
+		postBid_V2_5(ctx, w, r, redisClient, isBadIp, getCountryISO, orchestratorClient, bidRequestTimeout, sspFeeds, sspMainstreamFeeds, &counter, MAINSTREAM)
 	})
 
 	httpRouter.With(
