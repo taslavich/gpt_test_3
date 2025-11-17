@@ -13,7 +13,7 @@ func TestDSPV25Rules(t *testing.T) {
 		fmt.Println(err)
 	}
 
-	ip := net.ParseIP("204.0.113.45")
+	ip := net.ParseIP("2a00:1450:4007:0812::200e")
 	if ip == nil {
 		log.Println(fmt.Errorf(
 			"%w %s",
@@ -28,5 +28,5 @@ func TestDSPV25Rules(t *testing.T) {
 		fmt.Println(err)
 	}
 
-	fmt.Println(rec.Country.ISOCode)
+	fmt.Printf("--|%s|--\n", rec.Country.ISOCode)
 }
