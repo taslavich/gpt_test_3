@@ -99,16 +99,21 @@ func postBid_V2_5(
 	}
 
 	deviceIp := input.Payload.BidRequest.Device.Ip
-	if deviceIp == nil {
+	deviceIpv6 := input.Payload.BidRequest.Device.Ipv6
+
+	if deviceIp == nil && deviceIpv6 == nil {
 		err := fmt.Errorf(
 			"There is no device ip",
 		)
 		log.Print(err.Error(), r.RemoteAddr)
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
+
+	} else if deviceIp == nil && deviceIpv6 != nil {
+		input.Payload.BidRequest.Device.Ip = deviceIpv6
 	}
 
-	bad, err := isBadIp(*deviceIp)
+	bad, err := isBadIp(input.Payload.BidRequest.Device.GetIp())
 	if err != nil && bad == false {
 		err := fmt.Errorf(
 			"There an server error while isBadIp: %w",
@@ -188,12 +193,14 @@ func postBid_V2_5(
 		log.Printf("failed to WriteJsonToRedis TimeStamp in postBid_V2_5: %w", err)
 	}
 
-	if input.Payload.BidRequest.Device.Geo == nil {
-		input.Payload.BidRequest.Device.Geo = &ortb_V2_5.Geo{
-			Country: &countryISO,
+	if countryISO != "" {
+		if input.Payload.BidRequest.Device.Geo == nil {
+			input.Payload.BidRequest.Device.Geo = &ortb_V2_5.Geo{
+				Country: &countryISO,
+			}
+		} else {
+			input.Payload.BidRequest.Device.Geo.Country = &countryISO
 		}
-	} else {
-		input.Payload.BidRequest.Device.Geo.Country = &countryISO
 	}
 
 	reqCtx, cancel := context.WithTimeout(ctx, timeout)
