@@ -132,7 +132,7 @@ func postBid_V2_5(
 		return
 	}
 
-	countryISO, err := getCountryISO(*deviceIp)
+	countryISO, err := getCountryISO(input.Payload.BidRequest.Device.GetIp())
 	if errors.As(err, geoBadIp.BadIpFormatError) {
 		err := fmt.Errorf(
 			"Bad format: %w",
