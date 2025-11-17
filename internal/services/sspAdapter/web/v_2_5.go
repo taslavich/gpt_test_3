@@ -98,19 +98,18 @@ func postBid_V2_5(
 		return
 	}
 
-	deviceIp := input.Payload.BidRequest.Device.Ip
-	deviceIpv6 := input.Payload.BidRequest.Device.Ipv6
+	device := input.Payload.BidRequest.Device
 
-	if deviceIp == nil && deviceIpv6 == nil {
+	if device.Ip == nil && device.Ipv6 == nil {
 		err := fmt.Errorf(
 			"There is no device ip",
 		)
-		log.Print(err.Error(), r.RemoteAddr)
+		log.Printf("error: %s, ip host: %s,  ipv4: %s, ipv6: %s", err.Error(), r.RemoteAddr, device.GetIp(), device.GetIpv6())
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 
-	} else if deviceIp == nil && deviceIpv6 != nil {
-		input.Payload.BidRequest.Device.Ip = deviceIpv6
+	} else if device.Ip == nil && device.Ipv6 != nil {
+		input.Payload.BidRequest.Device.Ip = device.Ipv6
 	}
 
 	bad, err := isBadIp(input.Payload.BidRequest.Device.GetIp())
