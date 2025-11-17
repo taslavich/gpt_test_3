@@ -104,7 +104,7 @@ func postBid_V2_5(
 		err := fmt.Errorf(
 			"There is no device ip",
 		)
-		log.Printf("error: %s, ip host: %s,  ipv4: %s, ipv6: %s", err.Error(), r.RemoteAddr, device.GetIp(), device.GetIpv6())
+		log.Printf("error: %s, feed: %s,  ipv4: %s, ipv6: %s", err.Error(), input.Feed, device.GetIp(), device.GetIpv6())
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 
