@@ -10,18 +10,20 @@ import (
 )
 
 var innerFilterMap = map[string]func(bidRequest *ortb_V2_5.BidRequest, ranger cidranger.Ranger) bool{
-	"http://ortbtwinbidexadlt.hilltopadsfeed.com/ask": func(bidRequest *ortb_V2_5.BidRequest, ranger cidranger.Ranger) bool {
-		return AllowedSite(bidRequest) // allowedUA(bidRequest.GetDevice().GetUa()) && isIPAllowed(bidRequest.GetDevice().GetIp(), ranger, bidRequest) &&
+	"adl_dsp_hilltopads.com": func(bidRequest *ortb_V2_5.BidRequest, ranger cidranger.Ranger) bool {
+		return AllowedSiteHilltop(bidRequest) // allowedUA(bidRequest.GetDevice().GetUa()) && isIPAllowed(bidRequest.GetDevice().GetIp(), ranger, bidRequest) &&
 	},
-	/*"http://pop-48702.daortb.com/api/rtb-pops/item?sourceId=59738&api-key=xvKZ-_oewvADCb2RR0W6bgp_EdLEKCLj": func(bidRequest *ortb_V2_5.BidRequest, ranger cidranger.Ranger) bool {
-		return AllowedSite(bidRequest) && allowedUA(bidRequest.GetDevice().GetUa())
+	"mc_dsp_dao.ad": func(bidRequest *ortb_V2_5.BidRequest, ranger cidranger.Ranger) bool {
+		return AllowedSiteDao(bidRequest) //AllowedSite(bidRequest) && allowedUA(bidRequest.GetDevice().GetUa())
 	},
-	"http://u625267.pophandler.net/rtb/?async=1&code_type=1&js=1&rtbRequest=1&sid=940499": func(bidRequest *ortb_V2_5.BidRequest, ranger cidranger.Ranger) bool {
-		return !HasIpv6(bidRequest)
-	},
-	"http://pop.zog.link/bid-request?token=h6dKfdh544FHD83": func(bidRequest *ortb_V2_5.BidRequest, ranger cidranger.Ranger) bool {
-		return AllowedSite(bidRequest) && allowedUA(bidRequest.GetDevice().GetUa())
-	},*/
+	/*
+		"http://u625267.pophandler.net/rtb/?async=1&code_type=1&js=1&rtbRequest=1&sid=940499": func(bidRequest *ortb_V2_5.BidRequest, ranger cidranger.Ranger) bool {
+			return !HasIpv6(bidRequest)
+		},
+		"http://pop.zog.link/bid-request?token=h6dKfdh544FHD83": func(bidRequest *ortb_V2_5.BidRequest, ranger cidranger.Ranger) bool {
+			return AllowedSite(bidRequest) && allowedUA(bidRequest.GetDevice().GetUa())
+		},
+	*/
 }
 
 func HasIpv6(bidRequest *ortb_V2_5.BidRequest) bool {
@@ -40,6 +42,60 @@ func HasIpv6(bidRequest *ortb_V2_5.BidRequest) bool {
 	}
 
 	return false
+}
+
+func AllowedSiteDao(bidRequest *ortb_V2_5.BidRequest) bool {
+	if bidRequest.Site == nil || bidRequest.Site.Id == nil {
+		return true
+	}
+
+	if bidRequest.Site.GetId() == "" || bidRequest.Site.GetId() == " " {
+		return true
+	}
+
+	siteId := bidRequest.Site.GetId()
+
+	blockedList := map[string]bool{
+		"1133":      true,
+		"532006761": true,
+		"532008162": true,
+		"532006760": true,
+		"532006815": true,
+		"532006323": true,
+		"532006321": true,
+		"532006984": true,
+		"53502320":  true,
+		"53839256":  true,
+		"366142":    true,
+		"1449072":   true,
+		"284407":    true,
+		"201667":    true,
+		"840":       true,
+		"536042675": true,
+		"531432573": true,
+		"532006762": true,
+		"531429670": true,
+		"531436242": true,
+		"532007766": true,
+		"531430094": true,
+		"536046031": true,
+		"532008634": true,
+		"532007151": true,
+		"531430095": true,
+		"531430092": true,
+		"531443452": true,
+		"536046623": true,
+		"532006978": true,
+		"536046673": true,
+		"531430096": true,
+		"531450109": true,
+		"536046044": true,
+		"531430097": true,
+		"531434313": true,
+		"536097192": true,
+	}
+
+	return !blockedList[siteId]
 }
 
 func ChangeSiteId(bidRequest *ortb_V2_5.BidRequest) {
@@ -80,7 +136,7 @@ func ChangeSiteId(bidRequest *ortb_V2_5.BidRequest) {
 	}
 }
 
-func AllowedSite(bidRequest *ortb_V2_5.BidRequest) bool {
+func AllowedSiteHilltop(bidRequest *ortb_V2_5.BidRequest) bool {
 	if bidRequest.Site == nil || bidRequest.Site.Id == nil {
 		return false
 	}

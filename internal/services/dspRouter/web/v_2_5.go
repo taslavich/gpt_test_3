@@ -162,34 +162,26 @@ func (s *Server) GetBids_V2_5(
 	responsesCh := make(chan *dspDomainResp, len(s.dspEndpoints_adult_v_2_5))
 
 	var dspList config.MapStringToString
+	var linkMap map[string]map[string]map[string]bool
 	switch req.Typic {
 	case sppAdapterWeb.ADULT:
 		dspList = s.dspEndpoints_adult_v_2_5
+		linkMap = s.linkMap_adult
 	case sppAdapterWeb.MAINSTREAM:
 		dspList = s.dspEndpoints_mainstream_v_2_5
+		linkMap = s.linkMap_mainstream
 	}
 
 	for endpoint, domain := range dspList {
 		endpoint := endpoint
 		domain := domain
 
-		switch req.Typic {
-		case sppAdapterWeb.ADULT:
-			if !utils.GetValueFomSspGeoDspMap(req.SspDomain, req.BidRequest.Device.Geo.GetCountry(), domain, s.linkMap_adult, false) {
-				codesCh <- &dspDomainCode{
-					domain: domain,
-					code:   -2,
-				}
-				continue
+		if !utils.GetValueFomSspGeoDspMap(req.SspDomain, req.BidRequest.Device.Geo.GetCountry(), domain, linkMap, false) {
+			codesCh <- &dspDomainCode{
+				domain: domain,
+				code:   -2,
 			}
-		case sppAdapterWeb.MAINSTREAM:
-			if !utils.GetValueFomSspGeoDspMap(req.SspDomain, req.BidRequest.Device.Geo.GetCountry(), domain, s.linkMap_mainstream, false) {
-				codesCh <- &dspDomainCode{
-					domain: domain,
-					code:   -2,
-				}
-				continue
-			}
+			continue
 		}
 
 		if !s.processor.ProcessRequestForDSPV25(deletePrefix(domain), req.BidRequest).Allowed {
@@ -201,7 +193,7 @@ func (s *Server) GetBids_V2_5(
 			continue
 		}
 
-		if !Allowed(endpoint, req.BidRequest, s.ranger) {
+		if !Allowed(domain, req.BidRequest, s.ranger) {
 			//log.Println("Gor DSP filter")
 			codesCh <- &dspDomainCode{
 				domain: domain,
@@ -215,7 +207,7 @@ func (s *Server) GetBids_V2_5(
 		}
 
 		wg.Add(1)
-		go func(endpoint string, client_v_2_5 *http.Client) {
+		go func(endpoint, domain string, client_v_2_5 *http.Client) {
 			defer wg.Done()
 
 			dspResp, code, err := s.getBidsFromDSPbyHTTP_V_2_5(reqCtx, jsonData, endpoint, client_v_2_5)
@@ -224,7 +216,7 @@ func (s *Server) GetBids_V2_5(
 					"Cannot getBidsFromDSPbyHTTP_V_2_5, bid request id: %s,ssp_domain: %s, dsp_domain: %s, error: %v",
 					req.BidRequest.GetId(),
 					req.SspDomain,
-					endpoint,
+					domain,
 					err,
 				)
 			}
@@ -258,7 +250,7 @@ func (s *Server) GetBids_V2_5(
 					resp:   dspResp,
 				}
 			}
-		}(endpoint, client_v_2_5)
+		}(endpoint, domain, client_v_2_5)
 	}
 
 	go func() {
