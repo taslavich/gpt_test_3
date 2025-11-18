@@ -140,23 +140,6 @@ func AllowedSiteHilltop(bidRequest *ortb_V2_5.BidRequest) bool {
 	siteId := bidRequest.Site.GetId()
 
 	whiteList := map[string]bool{
-		"137710":     true,
-		"395785":     true,
-		"6097432":    true,
-		"11003416":   true,
-		"120868223":  true,
-		"121261621":  true,
-		"121322232":  true,
-		"121355117":  true,
-		"121426873":  true,
-		"121607300":  true,
-		"1330865238": true,
-		"1330883261": true,
-		"1331040003": true,
-		"1332053775": true,
-		"1332060518": true,
-		"1340555612": true,
-		"1340674506": true,
 		"121918":     true,
 		"143293":     true,
 		"160846":     true,
