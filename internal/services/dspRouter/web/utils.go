@@ -102,7 +102,7 @@ func NewFastHTTPClient(timeout time.Duration) *http.Client {
 	}
 }
 
-func deletePrefix(domain string) string {
+func DeletePrefix(domain string) string {
 	if newDomain, ok := strings.CutPrefix(domain, ADL_PREFIX); ok {
 		return newDomain
 	}
