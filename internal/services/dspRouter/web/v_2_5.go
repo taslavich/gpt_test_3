@@ -210,6 +210,10 @@ func (s *Server) GetBids_V2_5(
 			continue
 		}
 
+		if req.SspDomain == "mc_clickadilla.com" && domain == "mc_dsp_dao.ad" {
+			ChangeSiteId(req.BidRequest)
+		}
+
 		wg.Add(1)
 		go func(endpoint string, client_v_2_5 *http.Client) {
 			defer wg.Done()

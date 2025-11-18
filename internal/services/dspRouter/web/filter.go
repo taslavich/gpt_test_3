@@ -3,6 +3,7 @@ package dspRouterWeb
 import (
 	"log"
 	"net"
+	"strconv"
 
 	"github.com/yl2chen/cidranger"
 	"gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/proto/types/ortb_V2_5"
@@ -39,6 +40,44 @@ func HasIpv6(bidRequest *ortb_V2_5.BidRequest) bool {
 	}
 
 	return false
+}
+
+func ChangeSiteId(bidRequest *ortb_V2_5.BidRequest) {
+	if bidRequest.Site == nil || bidRequest.Site.Id == nil {
+		return
+	}
+
+	if bidRequest.Site.GetId() == "" || bidRequest.Site.GetId() == " " {
+		return
+	}
+
+	siteId := bidRequest.Site.GetId()
+
+	whiteList := map[string]bool{
+		"1467988": true,
+		"1467987": true,
+		"1457703": true,
+		"1457702": true,
+		"1461440": true,
+		"6037953": true,
+		"6092051": true,
+		"1455125": true,
+		"6092052": true,
+		"2012434": true,
+		"2012438": true,
+		"1457725": true,
+		"840":     true,
+	}
+
+	if res := whiteList[siteId]; res {
+		newNum, err := strconv.Atoi(siteId)
+		if err != nil {
+			return
+		}
+
+		newId := strconv.Itoa(newNum * 2)
+		bidRequest.Site.Id = &newId
+	}
 }
 
 func AllowedSite(bidRequest *ortb_V2_5.BidRequest) bool {
