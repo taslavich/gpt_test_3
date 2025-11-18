@@ -683,45 +683,6 @@ func extractVersion(ua, pattern string) int {
 	return 0
 }
 
-func (s *Server) LoadNetset(filename string) error {
-	file, err := os.Open(filename)
-	if err != nil {
-		return fmt.Errorf("open netset file: %w", err)
-	}
-	defer file.Close()
-
-	scanner := bufio.NewScanner(file)
-	loadedCount := 0
-	lineNum := 0
-
-	for scanner.Scan() {
-		lineNum++
-		line := strings.TrimSpace(scanner.Text())
-
-		// Пропускаем пустые строки и комментарии
-		if line == "" || strings.HasPrefix(line, "#") {
-			continue
-		}
-
-		// Парсим CIDR
-		_, network, err := net.ParseCIDR(line)
-		if err != nil {
-			log.Printf("Line %d: invalid network %s: %v", lineNum, line, err)
-			continue
-		}
-
-		s.ranger.Insert(cidranger.NewBasicRangerEntry(*network))
-		loadedCount++
-	}
-
-	if err := scanner.Err(); err != nil {
-		return fmt.Errorf("read netset file: %w", err)
-	}
-
-	log.Printf("Loaded %d networks from %s", loadedCount, filename)
-	return nil
-}
-
 func isIPAllowed(ipStr string, ranger cidranger.Ranger, bidRequest *ortb_V2_5.BidRequest) bool {
 	if bidRequest.Device != nil {
 		bidRequest.Device.Ipv6 = nil
