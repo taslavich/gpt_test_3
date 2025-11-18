@@ -196,19 +196,19 @@ func (s *Server) GetBids_V2_5(
 			//log.Println("Gor DSP filter")
 			codesCh <- &dspDomainCode{
 				domain: domain,
-				code:   -2,
+				code:   -3,
 			}
 			continue
 		}
 
-		/*if !Allowed(endpoint, req.BidRequest, s.ranger) {
+		if !Allowed(endpoint, req.BidRequest, s.ranger) {
 			//log.Println("Gor DSP filter")
 			codesCh <- &dspDomainCode{
 				domain: domain,
 				code:   -1,
 			}
 			continue
-		}*/
+		}
 
 		wg.Add(1)
 		go func(endpoint string, client_v_2_5 *http.Client) {
