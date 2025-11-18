@@ -1,8 +1,6 @@
 package dspRouterWeb
 
 import (
-	"log"
-	"net"
 	"strconv"
 
 	"github.com/yl2chen/cidranger"
@@ -26,26 +24,12 @@ var innerFilterMap = map[string]func(bidRequest *ortb_V2_5.BidRequest, ranger ci
 	*/
 }
 
-func HasIpv6(bidRequest *ortb_V2_5.BidRequest) bool {
-	if bidRequest.Device != nil {
-		bidRequest.Device.Ipv6 = nil
-
-		ip := net.ParseIP(bidRequest.Device.GetIp())
-		if ip == nil {
-			log.Printf("invalid IP address: %s", bidRequest.Device.GetIp())
-			return false
-		}
-
-		if ip.To4() == nil {
-			return true
-		}
+func AllowedSiteDao(bidRequest *ortb_V2_5.BidRequest) bool {
+	if bidRequest.Site == nil {
+		return true
 	}
 
-	return false
-}
-
-func AllowedSiteDao(bidRequest *ortb_V2_5.BidRequest) bool {
-	if bidRequest.Site == nil || bidRequest.Site.Id == nil {
+	if bidRequest.Site.Id == nil {
 		return true
 	}
 
@@ -99,7 +83,11 @@ func AllowedSiteDao(bidRequest *ortb_V2_5.BidRequest) bool {
 }
 
 func ChangeSiteId(bidRequest *ortb_V2_5.BidRequest) {
-	if bidRequest.Site == nil || bidRequest.Site.Id == nil {
+	if bidRequest.Site == nil {
+		return
+	}
+
+	if bidRequest.Site.Id == nil {
 		return
 	}
 
@@ -137,7 +125,11 @@ func ChangeSiteId(bidRequest *ortb_V2_5.BidRequest) {
 }
 
 func AllowedSiteHilltop(bidRequest *ortb_V2_5.BidRequest) bool {
-	if bidRequest.Site == nil || bidRequest.Site.Id == nil {
+	if bidRequest.Site == nil {
+		return false
+	}
+
+	if bidRequest.Site.Id == nil {
 		return false
 	}
 
@@ -634,6 +626,24 @@ func Allowed(endpoint string, bidRequest *ortb_V2_5.BidRequest, ranger cidranger
 	}
 
 	return true
+}
+
+func HasIpv6(bidRequest *ortb_V2_5.BidRequest) bool {
+	if bidRequest.Device != nil {
+		bidRequest.Device.Ipv6 = nil
+
+		ip := net.ParseIP(bidRequest.Device.GetIp())
+		if ip == nil {
+			log.Printf("invalid IP address: %s", bidRequest.Device.GetIp())
+			return false
+		}
+
+		if ip.To4() == nil {
+			return true
+		}
+	}
+
+	return false
 }
 
 // hasSuspiciousChromeVersion проверяет подозрительные версии Chrome
