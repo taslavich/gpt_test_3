@@ -1,13 +1,57 @@
 package dspRouterWeb
 
 import (
+	"bufio"
+	"fmt"
+	"log"
 	"net"
 	"net/http"
+	"os"
 	"strings"
 	"time"
 
+	"github.com/yl2chen/cidranger"
 	"gitlab.com/twinbid-exchange/RTB-exchange/internal/config"
 )
+
+func (s *Server) LoadNetset(filename string) error {
+	file, err := os.Open(filename)
+	if err != nil {
+		return fmt.Errorf("open netset file: %w", err)
+	}
+	defer file.Close()
+
+	scanner := bufio.NewScanner(file)
+	loadedCount := 0
+	lineNum := 0
+
+	for scanner.Scan() {
+		lineNum++
+		line := strings.TrimSpace(scanner.Text())
+
+		// Пропускаем пустые строки и комментарии
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+
+		// Парсим CIDR
+		_, network, err := net.ParseCIDR(line)
+		if err != nil {
+			log.Printf("Line %d: invalid network %s: %v", lineNum, line, err)
+			continue
+		}
+
+		s.ranger.Insert(cidranger.NewBasicRangerEntry(*network))
+		loadedCount++
+	}
+
+	if err := scanner.Err(); err != nil {
+		return fmt.Errorf("read netset file: %w", err)
+	}
+
+	log.Printf("Loaded %d networks from %s", loadedCount, filename)
+	return nil
+}
 
 func InitSspHttpClients(configTimeouts config.MapStringToDuration) map[string]*http.Client {
 	timeouts := make(map[string]*http.Client)
