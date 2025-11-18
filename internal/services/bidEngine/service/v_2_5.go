@@ -10,6 +10,7 @@ import (
 	bidEngineGrpc "gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/proto/services/bidEngine"
 	"gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/proto/types/ortb_V2_5"
 	utils "gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/utils_grpc"
+	dspRouterWeb "gitlab.com/twinbid-exchange/RTB-exchange/internal/services/dspRouter/web"
 	sppAdapterWeb "gitlab.com/twinbid-exchange/RTB-exchange/internal/services/sspAdapter/web"
 	"gitlab.com/twinbid-exchange/RTB-exchange/internal/types"
 	clickhouse_types "gitlab.com/twinbid-exchange/RTB-exchange/internal/types/clickhouse"
@@ -104,9 +105,7 @@ func GetWinnerBidInternal_V_2_5(
 			return bids[i].bid.GetPrice() > bids[j].bid.GetPrice()
 		})
 
-		winningBidWithDomain := bids[0] // ← ИЗМЕНЕНО
-		winningBid := winningBidWithDomain.bid
-		winningDomain := winningBidWithDomain.domain
+		winner := bids[0]
 
 		var bidFloor float32 = 0
 		for _, imp := range req.BidRequest.Imp {
@@ -116,27 +115,38 @@ func GetWinnerBidInternal_V_2_5(
 			}
 		}
 
-		var value *types.PercentAndBidfloor
+		var percentMap map[string]map[string]map[string]*types.PercentAndBidfloor
 		switch typic {
 		case sppAdapterWeb.ADULT:
-			value = utils.GetValueFomSspGeoDspMap(req.SspDomain, req.BidRequest.Device.Geo.GetCountry(), winningDomain, percentMapAdult, &types.PercentAndBidfloor{
-				Percent:  profitPercent,
-				Bidfloor: true,
-			})
+			percentMap = percentMapAdult
 		case sppAdapterWeb.MAINSTREAM:
-			value = utils.GetValueFomSspGeoDspMap(req.SspDomain, req.BidRequest.Device.Geo.GetCountry(), winningDomain, percentMapMainstream, &types.PercentAndBidfloor{
+			percentMap = percentMapMainstream
+		}
+
+		var value *types.PercentAndBidfloor
+		isHilltopSpecialCase := dspRouterWeb.DeletePrefix(winner.domain) == "dsp_hilltopads.com" && winner.bid.GetPrice() < 1.7
+
+		if isHilltopSpecialCase && len(bids) == 1 {
+			value = &types.PercentAndBidfloor{
+				Percent:  0.99,
+				Bidfloor: false,
+			}
+		} else {
+			if isHilltopSpecialCase && len(bids) > 1 {
+				winner = bids[1]
+			}
+
+			value = utils.GetValueFomSspGeoDspMap(req.SspDomain, req.BidRequest.Device.Geo.GetCountry(), winner.domain, percentMap, &types.PercentAndBidfloor{
 				Percent:  profitPercent,
 				Bidfloor: true,
 			})
 		}
 
 		finalPrice, _, err := applyPriceConstraintsAndPercent(
-			winningBid.GetPrice(),
+			winner.bid.GetPrice(),
 			bidFloor,
 			value.Percent,
 			value.Bidfloor,
-			/*profitPercent,
-			true,*/
 		)
 		if err != nil {
 			errStr = err.Error()
@@ -145,36 +155,36 @@ func GetWinnerBidInternal_V_2_5(
 
 		var finalBid *ortb_V2_5.Bid
 
-		wrappedNurl := utils.WrapURL(hostname, winningBid.GetNurl(), globalId, utils.NURL)
+		wrappedNurl := utils.WrapURL(hostname, winner.bid.GetNurl(), globalId, utils.NURL)
 
 		if logged {
-			wrappedAdm := utils.WrapURL(hostname, winningBid.GetAdm(), globalId, utils.ADM)
+			wrappedAdm := utils.WrapURL(hostname, winner.bid.GetAdm(), globalId, utils.ADM)
 			finalBid = &ortb_V2_5.Bid{
-				Id:    winningBid.Id,
-				Impid: winningBid.Impid,
+				Id:    winner.bid.Id,
+				Impid: winner.bid.Impid,
 				Price: &finalPrice,
 				Adm:   &wrappedAdm,
-				Adid:  winningBid.Adid,
+				Adid:  winner.bid.Adid,
 				Nurl:  &wrappedNurl,
 			}
 		} else {
 			finalBid = &ortb_V2_5.Bid{
-				Id:    winningBid.Id,
-				Impid: winningBid.Impid,
+				Id:    winner.bid.Id,
+				Impid: winner.bid.Impid,
 				Price: &finalPrice,
-				Adm:   winningBid.Adm,
-				Adid:  winningBid.Adid,
+				Adm:   winner.bid.Adm,
+				Adid:  winner.bid.Adid,
 				Nurl:  &wrappedNurl,
 			}
 		}
 
 		clickhouseBid := &clickhouse_types.Bid{
-			DspDomain: &winningDomain,
-			Id:        winningBid.Id,
-			Impid:     winningBid.Impid,
+			DspDomain: &winner.domain,
+			Id:        winner.bid.Id,
+			Impid:     winner.bid.Impid,
 			Price:     &finalPrice,
-			DspPrice:  winningBid.Price,
-			Adid:      winningBid.Adid,
+			DspPrice:  winner.bid.Price,
+			Adid:      winner.bid.Adid,
 		}
 
 		seatBid[0].Bid = append(seatBid[0].Bid, finalBid)
