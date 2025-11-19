@@ -124,7 +124,7 @@ func GetWinnerBidInternal_V_2_5(
 		}
 
 		var value *types.PercentAndBidfloor
-		isHilltopSpecialCase := dspRouterWeb.DeletePrefix(winner.domain) == "dsp_hilltopads.com" && winner.bid.GetPrice() < 1.7
+		isHilltopSpecialCase := dspRouterWeb.DeletePrefix(winner.domain) == "dsp_hilltopads.com" && winner.bid.GetPrice() < 1.0
 
 		if isHilltopSpecialCase && len(bids) == 1 {
 			value = &types.PercentAndBidfloor{
