@@ -1,7 +1,9 @@
 package dspRouterWeb
 
 import (
+	"regexp"
 	"strconv"
+	"strings"
 
 	"github.com/yl2chen/cidranger"
 	"gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/proto/types/ortb_V2_5"
@@ -12,10 +14,10 @@ var innerFilterMap = map[string]func(bidRequest *ortb_V2_5.BidRequest, ranger ci
 		return AllowedSiteHilltop(bidRequest) // allowedUA(bidRequest.GetDevice().GetUa()) && isIPAllowed(bidRequest.GetDevice().GetIp(), ranger, bidRequest) &&
 	},
 	"mc_dsp_dao.ad": func(bidRequest *ortb_V2_5.BidRequest, ranger cidranger.Ranger) bool {
-		return AllowedSiteDao(bidRequest) //AllowedSite(bidRequest) && allowedUA(bidRequest.GetDevice().GetUa())
+		return AllowedSiteDao(bidRequest) // && allowedUA(bidRequest.GetDevice().GetUa())
 	},
 	"adl_dsp_dao.ad": func(bidRequest *ortb_V2_5.BidRequest, ranger cidranger.Ranger) bool {
-		return AllowedSiteDao(bidRequest) //AllowedSite(bidRequest) && allowedUA(bidRequest.GetDevice().GetUa())
+		return AllowedSiteDao(bidRequest) && allowedUA(bidRequest.GetDevice().GetUa())
 	},
 	/*
 		"http://u625267.pophandler.net/rtb/?async=1&code_type=1&js=1&rtbRequest=1&sid=940499": func(bidRequest *ortb_V2_5.BidRequest, ranger cidranger.Ranger) bool {
@@ -184,7 +186,7 @@ func Allowed(endpoint string, bidRequest *ortb_V2_5.BidRequest, ranger cidranger
 
 // allowedUA проверяет User-Agent по всем правилам блокировки
 // Возвращает true если UA валиден, false если заблокирован
-/*func allowedUA(ua string) bool {
+func allowedUA(ua string) bool {
 	// Нормализуем UA
 	normalizedUA := strings.TrimSpace(ua)
 
@@ -199,13 +201,13 @@ func Allowed(endpoint string, bidRequest *ortb_V2_5.BidRequest, ranger cidranger
 	}
 
 	// 3. Подозрительные версии Chrome (например, 141.0.0.0 вместо 141.0.0.1)
-	if hasSuspiciousChromeVersion(normalizedUA) {
+	/*if hasSuspiciousChromeVersion(normalizedUA) {
 		return false
 	}
 
 	if hasSuspiciousIOSBuild(normalizedUA) {
 		return false
-	}
+	}*/
 
 	if hasMismatchedOSBrowser(normalizedUA) {
 		return false
@@ -213,11 +215,11 @@ func Allowed(endpoint string, bidRequest *ortb_V2_5.BidRequest, ranger cidranger
 
 	// 4. Автоматизация/скрипты
 	automationPatterns := []string{
-		`(?i)HeadlessChrome`, `(?i)PhantomJS`, `(?i)Selenium`: true,
-		`(?i)Puppeteer`, `(?i)curl`, `(?i)wget`: true,
-		`(?i)python-requests`, `(?i)Go-http-client`: true,
-		`(?i)okhttp`, `(?i)libwww-perl`: true,
-		`(?i)Apache-HttpClient`, `(?i)HttpClient`: true,
+		`(?i)HeadlessChrome`, `(?i)PhantomJS`, `(?i)Selenium`,
+		`(?i)Puppeteer`, `(?i)curl`, `(?i)wget`,
+		`(?i)python-requests`, `(?i)Go-http-client`,
+		`(?i)okhttp`, `(?i)libwww-perl`,
+		`(?i)Apache-HttpClient`, `(?i)HttpClient`,
 		`(?i)node\.js`,
 	}
 
@@ -229,7 +231,7 @@ func Allowed(endpoint string, bidRequest *ortb_V2_5.BidRequest, ranger cidranger
 
 	// 5. Боты/краулеры
 	botPatterns := []string{
-		`(?i)bot`, `(?i)crawler`, `(?i)spider`: true,
+		`(?i)bot`, `(?i)crawler`, `(?i)spider`,
 		`(?i)scrap`, `(?i)scan`, `(?i)checker`,
 	}
 
@@ -241,7 +243,7 @@ func Allowed(endpoint string, bidRequest *ortb_V2_5.BidRequest, ranger cidranger
 
 	// 6. Версия браузера 0 или невалидная
 	zeroVersionPatterns := []string{
-		`Chrome/0`, `Firefox/0`, `Version/0`: true,
+		`Chrome/0`, `Firefox/0`, `Version/0`,
 		`Chrome/0\.`, `Firefox/0\.`, `Version/0\.`,
 	}
 
@@ -261,7 +263,7 @@ func Allowed(endpoint string, bidRequest *ortb_V2_5.BidRequest, ranger cidranger
 
 	// 8. Несогласованная комбинация ОС/устройства
 	osMismatchPatterns := []string{
-		`(?i)Windows NT.*Mobile`: true,
+		`(?i)Windows NT.*Mobile`,
 		`(?i)Macintosh;.*Mobile`,
 	}
 
@@ -284,30 +286,12 @@ func Allowed(endpoint string, bidRequest *ortb_V2_5.BidRequest, ranger cidranger
 	return true
 }
 
-func HasIpv6(bidRequest *ortb_V2_5.BidRequest) bool {
-	if bidRequest.Device != nil {
-		bidRequest.Device.Ipv6 = nil
-
-		ip := net.ParseIP(bidRequest.Device.GetIp())
-		if ip == nil {
-			log.Printf("invalid IP address: %s", bidRequest.Device.GetIp())
-			return false
-		}
-
-		if ip.To4() == nil {
-			return true
-		}
-	}
-
-	return false
-}
-
 // hasSuspiciousChromeVersion проверяет подозрительные версии Chrome
 // Например: Chrome/141.0.0.0 (все нули в минорных версиях)
 func hasSuspiciousChromeVersion(ua string) bool {
 	// Ищем Chrome версии с .0.0.0 в конце
 	suspiciousPatterns := []string{
-		`Chrome/\d+\.0\.0\.0`: true,
+		`Chrome/\d+\.0\.0\.0`,
 		`Chrome/\d+\.0\.0\s`,
 	}
 
@@ -336,7 +320,7 @@ func hasMobileMarker(ua string) bool {
 // hasBrowserMarker проверяет наличие браузерных маркеров
 func hasBrowserMarker(ua string) bool {
 	browserPatterns := []string{
-		`(?i)Safari`, `(?i)Chrome`, `(?i)Firefox`, `(?i)Edge`: true,
+		`(?i)Safari`, `(?i)Chrome`, `(?i)Firefox`, `(?i)Edge`,
 		`(?i)AppleWebKit`, `(?i)Gecko`,
 	}
 
@@ -444,6 +428,27 @@ func extractVersion(ua, pattern string) int {
 	return 0
 }
 
+/*
+func HasIpv6(bidRequest *ortb_V2_5.BidRequest) bool {
+	if bidRequest.Device != nil {
+		bidRequest.Device.Ipv6 = nil
+
+		ip := net.ParseIP(bidRequest.Device.GetIp())
+		if ip == nil {
+			log.Printf("invalid IP address: %s", bidRequest.Device.GetIp())
+			return false
+		}
+
+		if ip.To4() == nil {
+			return true
+		}
+	}
+
+	return false
+}
+*/
+
+/*
 func isIPAllowed(ipStr string, ranger cidranger.Ranger, bidRequest *ortb_V2_5.BidRequest) bool {
 	if bidRequest.Device != nil {
 		bidRequest.Device.Ipv6 = nil
