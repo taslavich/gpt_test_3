@@ -30,15 +30,7 @@ var innerFilterMap = map[string]func(bidRequest *ortb_V2_5.BidRequest, ranger ci
 }
 
 func AllowedSiteDao(bidRequest *ortb_V2_5.BidRequest) bool {
-	if bidRequest.Site == nil {
-		return true
-	}
-
-	if bidRequest.Site.Id == nil {
-		return true
-	}
-
-	if bidRequest.Site.GetId() == "" || bidRequest.Site.GetId() == " " {
+	if bidRequest.Site.GetId() == "" {
 		return true
 	}
 
@@ -88,15 +80,7 @@ func AllowedSiteDao(bidRequest *ortb_V2_5.BidRequest) bool {
 }
 
 func ChangeSiteId(bidRequest *ortb_V2_5.BidRequest) {
-	if bidRequest.Site == nil {
-		return
-	}
-
-	if bidRequest.Site.Id == nil {
-		return
-	}
-
-	if bidRequest.Site.GetId() == "" || bidRequest.Site.GetId() == " " {
+	if bidRequest.Site.GetId() == "" {
 		return
 	}
 
@@ -130,15 +114,7 @@ func ChangeSiteId(bidRequest *ortb_V2_5.BidRequest) {
 }
 
 func AllowedSiteHilltop(bidRequest *ortb_V2_5.BidRequest) bool {
-	if bidRequest.Site == nil {
-		return true
-	}
-
-	if bidRequest.Site.Id == nil {
-		return true
-	}
-
-	if bidRequest.Site.GetId() == "" || bidRequest.Site.GetId() == " " {
+	if bidRequest.Site.GetId() == "" {
 		return true
 	}
 

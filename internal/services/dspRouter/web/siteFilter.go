@@ -2,71 +2,73 @@ package dspRouterWeb
 
 import "gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/proto/types/ortb_V2_5"
 
+type IAllow interface {
+	Allowed(bidRequest *ortb_V2_5.BidRequest) bool
+}
+
 type SiteIdBox struct {
 	apply       bool
 	isWhiteList bool
 	siteIds     map[string]bool
 }
 
-func NewSiteIdBox(siteIds []string) *SiteIdBox {
-	var newSiteIdMap = make(map[string]bool)
-	for i := range siteIds {
-		newSiteIdMap[siteIds[i]] = true
+func NewSiteIdBox(apply, isWhiteList bool, siteIds []string) *SiteIdBox {
+	var newSiteIdMap map[string]bool
+	if apply {
+		newSiteIdMap = make(map[string]bool)
+		for i := range siteIds {
+			newSiteIdMap[siteIds[i]] = true
+		}
 	}
 
-	return &SiteIdBox{}
+	return &SiteIdBox{
+		siteIds:     newSiteIdMap,
+		isWhiteList: isWhiteList,
+		apply:       apply,
+	}
 }
 
-/*if bidRequest.Site == nil || bidRequest.Site.Id == nil{
-	return false
-}
+func (s *SiteIdBox) Allowed(bidRequest *ortb_V2_5.BidRequest) bool {
+	if s == nil {
+		return true
+	}
 
-if bidRequest.Site.Id == nil {
-	return false
-}
-
-if bidRequest.Site.GetId() == "" || bidRequest.Site.GetId() == " " {
-	return false
-}
-
-siteId := bidRequest.Site.GetId()
-whiteList := map[string]bool{
-	"137710":     true,
-}
-
-return whiteList[siteId]*/
-
-func (s *SiteIdBox) applyFilter(bidRequest *ortb_V2_5.BidRequest) bool {
 	if !s.apply {
-		return !s.isWhiteList
-	}
-
-	if bidRequest.Site == nil {
-		return false
-	}
-
-	if bidRequest.Site.Id == nil {
-		return false
-	}
-
-	if bidRequest.Site.GetId() == "" || bidRequest.Site.GetId() == " " {
-		return false
+		return true
 	}
 
 	siteId := bidRequest.Site.GetId()
 
-	whiteList := map[string]bool{
-		"137710":  true,
-		"395785":  true,
-		"6097432": true,
+	if s.isWhiteList {
+		return s.siteIds[siteId]
+	} else {
+		return !s.siteIds[siteId]
+	}
+}
+
+type FiltersBox struct {
+	allowers []IAllow
+}
+
+func NewFiltersBox(allowers []IAllow) *FiltersBox {
+	return &FiltersBox{
+		allowers: allowers,
+	}
+}
+
+func (f *FiltersBox) Allowed(bidRequest *ortb_V2_5.BidRequest) bool {
+	if bidRequest == nil {
+		return false
 	}
 
-	return whiteList[siteId]
-}
+	if f == nil {
+		return true
+	}
 
-type filtersBox struct {
-}
-
-func allowedUnic(bidRequest *ortb_V2_5.BidRequest) bool {
+	for i := range f.allowers {
+		if !f.allowers[i].Allowed(bidRequest) {
+			return false
+		}
+	}
 	return true
 }
