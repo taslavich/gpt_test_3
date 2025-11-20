@@ -14,9 +14,11 @@ import (
 	"gitlab.com/twinbid-exchange/RTB-exchange/internal/filter"
 	dspRouterGrpc "gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/proto/services/dspRouter"
 	utils "gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/utils_grpc"
+	httpServer "gitlab.com/twinbid-exchange/RTB-exchange/internal/http"
 	maxproc "gitlab.com/twinbid-exchange/RTB-exchange/internal/mp"
 	dspRouterWeb "gitlab.com/twinbid-exchange/RTB-exchange/internal/services/dspRouter/web"
 
+	"github.com/go-chi/chi/v5"
 	"github.com/redis/go-redis/v9"
 	"google.golang.org/grpc"
 )
@@ -89,6 +91,10 @@ func main() {
 	}
 
 	clients := dspRouterWeb.InitSspHttpClients(cfg.SspHttpClientTimeouts)
+	filters, err := filter.NewFiltersBox(cfg.DspFiltersFilePath)
+	if err != nil {
+		log.Fatalf("Failed to NewFiltersBox: %v", err)
+	}
 
 	s := grpc.NewServer()
 	routerServer := dspRouterWeb.NewServer(
@@ -100,11 +106,10 @@ func main() {
 		redisClient,
 		cfg.BidResponsesTimeout,
 		cfg.MaxParallelRequests,
-		cfg.SspGeoDspLinksAdultFilePath,
-		cfg.SspGeoDspLinksMainstreamFilePath,
-		sspGeoDspMapAdult,
-		sspGeoDspMapMainstream,
+		&sspGeoDspMapAdult,
+		&sspGeoDspMapMainstream,
 		clients,
+		filters,
 	)
 
 	if err := routerServer.LoadNetset(cfg.AllowedIpDbPath); err != nil {
@@ -115,6 +120,18 @@ func main() {
 		s,
 		routerServer,
 	)
+
+	router := httpServer.InitHttpRouter(chi.NewRouter())
+	dspRouterWeb.InitHttpRoutes(
+		router,
+		cfg.SspGeoDspLinksAdultFilePath,
+		cfg.SspGeoDspLinksMainstreamFilePath,
+		&sspGeoDspMapAdult,
+		&sspGeoDspMapMainstream,
+		filters,
+		cfg.DspFiltersFilePath,
+	)
+	log.Println("HTTP routes initialized")
 
 	errChan := make(chan error)
 
@@ -135,15 +152,17 @@ func main() {
 		"tcp",
 		fmt.Sprintf(
 			"%s:%d",
-			cfg.Host,
-			cfg.Port,
+			cfg.GrpcServer.Host,
+			cfg.GrpcServer.Port,
 		),
 	)
 	if err != nil {
 		log.Fatalf("failed to listen: %v", err)
 	}
 
-	log.Printf("Server started on %s:%d", cfg.Host, cfg.Port)
+	go httpServer.RunHttpServer(ctx, router, cfg.HttpServer.Host, cfg.HttpServer.Port)
+
+	log.Printf("Server started on %s:%d", cfg.GrpcServer.Host, cfg.GrpcServer.Port)
 	if err := s.Serve(lis); err != nil {
 		errChan <- err
 		log.Printf("failed to serve: %v", err)

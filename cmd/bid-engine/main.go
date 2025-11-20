@@ -9,10 +9,12 @@ import (
 	"os/signal"
 	"syscall"
 
+	"github.com/go-chi/chi/v5"
 	"github.com/redis/go-redis/v9"
 	"gitlab.com/twinbid-exchange/RTB-exchange/internal/config"
 	bidEngineGrpc "gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/proto/services/bidEngine"
 	utils "gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/utils_grpc"
+	httpServer "gitlab.com/twinbid-exchange/RTB-exchange/internal/http"
 	bidEngine "gitlab.com/twinbid-exchange/RTB-exchange/internal/services/bidEngine/service"
 	bidEngineWeb "gitlab.com/twinbid-exchange/RTB-exchange/internal/services/bidEngine/web"
 	"gitlab.com/twinbid-exchange/RTB-exchange/internal/types"
@@ -56,8 +58,8 @@ func main() {
 		"tcp",
 		fmt.Sprintf(
 			"%s:%d",
-			cfg.Host,
-			cfg.Port,
+			cfg.GrpcServer.Host,
+			cfg.GrpcServer.Port,
 		),
 	)
 	if err != nil {
@@ -78,6 +80,16 @@ func main() {
 		),
 	)
 
+	router := httpServer.InitHttpRouter(chi.NewRouter())
+	bidEngineWeb.InitHttpRoutes(
+		router,
+		cfg.SspGeoDspPercentsAdultFilePath,
+		cfg.SspGeoDspPercentsMainstreamFilePath,
+		&sspGeoDspMapAdult,
+		&sspGeoDspMapMainstream,
+	)
+	log.Println("HTTP routes initialized")
+
 	errChan := make(chan error)
 
 	go func() {
@@ -93,7 +105,7 @@ func main() {
 		}
 	}()
 
-	log.Printf("Server started on %s:%d", cfg.Host, cfg.Port)
+	log.Printf("Server started on %s:%d", cfg.GrpcServer.Host, cfg.GrpcServer.Port)
 	if err := s.Serve(lis); err != nil {
 		errChan <- err
 		log.Printf("failed to serve: %v", err)

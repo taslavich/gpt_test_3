@@ -51,6 +51,6 @@ func main() {
 	)
 	log.Println("HTTP routes initialized")
 
-	httpServer.RunHttpServer(ctx, router, cfg.Host, cfg.Port)
+	httpServer.RunHttpServer(ctx, router, cfg.HttpServer.Host, cfg.HttpServer.Port)
 
 }

@@ -112,7 +112,8 @@ func (l *ListString) SetValue(value string) error {
 }
 
 type BiddingEngineConfig struct {
-	HttpServer
+	HttpServer                          HttpServer
+	GrpcServer                          GrpcServer
 	ProfitPercent                       float32 `yaml:"PROFIT_PERCENT" env:"PROFIT_PERCENT" env-default:"0.2"`
 	SystemHostname                      string  `yaml:"SYSTEM_HOSTNAME" env:"SYSTEM_HOSTNAME"`
 	SspGeoDspPercentsAdultFilePath      string  `yaml:"SSP_GEO_DSP_PERCENTS_ADULT_FILE_PATH" env:"SSP_GEO_DSP_PERCENTS_ADULT_FILE_PATH"`
@@ -121,7 +122,8 @@ type BiddingEngineConfig struct {
 }
 
 type RouterConfig struct {
-	HttpServer
+	GrpcServer                   GrpcServer
+	HttpServer                   HttpServer
 	DSPEndpointsAdult_v_2_5      MapStringToString `yaml:"DSP_ENDPOINTS_ADULT_V_2_5" env:"DSP_ENDPOINTS_ADULT_V_2_5"`
 	DSPEndpointsMainstream_v_2_5 MapStringToString `yaml:"DSP_ENDPOINTS_MAINSTREAM_V_2_5" env:"DSP_ENDPOINTS_MAINSTREAM_V_2_5"`
 
@@ -134,6 +136,8 @@ type RouterConfig struct {
 
 	BidResponsesTimeout time.Duration `yaml:"BID_RESPONSES_TIMEOUT" env:"BID_RESPONSES_TIMEOUT"`
 
+	DspFiltersFilePath string `yaml:"DSP_FILTERS_FILE_PATH" env:"DSP_FILTERS_FILE_PATH"`
+
 	SspHttpClientTimeouts MapStringToDuration `yaml:"SSP_HTTP_CLIENT_TIMEOUT" env:"SSP_HTTP_CLIENT_TIMEOUT"`
 
 	MaxParallelRequests int  `yaml:"MAX_PARALLEL_REQUESTS" env:"MAX_PARALLEL_REQUESTS" env-default:"64"`
@@ -143,7 +147,7 @@ type RouterConfig struct {
 }
 
 type OrchestratorConfig struct {
-	HttpServer
+	GrpcServer     GrpcServer
 	UriOfBidEngine string        `yaml:"URI_OF_BID_ENGINE" env:"URI_OF_BID_ENGINE"`
 	UriOfDspRouter string        `yaml:"URI_OF_DSP_ROUTER" env:"URI_OF_DSP_ROUTER"`
 	AuctionTimeout time.Duration `yaml:"AUCTION_TIMEOUT" env:"AUCTION_TIMEOUT"`
@@ -153,7 +157,7 @@ type OrchestratorConfig struct {
 }
 
 type SppAdapterConfig struct {
-	HttpServer
+	HttpServer          HttpServer
 	UriOfOrchestrator   string            `yaml:"URI_OF_ORCHESTRATOR" env:"URI_OF_ORCHESTRATOR"`
 	AdmTimeout          time.Duration     `yaml:"ADM_TIMEOUT" env:"ADM_TIMEOUT"`
 	NurlTimeout         time.Duration     `yaml:"NURL_TIMEOUT" env:"NURL_TIMEOUT"`
@@ -166,7 +170,7 @@ type SppAdapterConfig struct {
 }
 
 type AdmAdapterConfig struct {
-	HttpServer
+	HttpServer   HttpServer
 	AdmTimeout   time.Duration `yaml:"ADM_TIMEOUT" env:"ADM_TIMEOUT"`
 	NurlTimeout  time.Duration `yaml:"NURL_TIMEOUT" env:"NURL_TIMEOUT"`
 	FullChain    string        `yaml:"FULLCHAIN_PEM" env:"FULLCHAIN_PEM"`
@@ -205,11 +209,11 @@ type ClickhouseLoaderConfig struct {
 }
 
 type MockDspConfig struct {
-	HttpServer
-	DspName string  `env:"DSP_NAME"`
-	Price   float32 `env:"PRICE"`
-	Adid    string  `env:"ADID"`
-	Adm     string  `env:"ADM"`
+	HttpServer HttpServer
+	DspName    string  `env:"DSP_NAME"`
+	Price      float32 `env:"PRICE"`
+	Adid       string  `env:"ADID"`
+	Adm        string  `env:"ADM"`
 }
 
 type RedisConfig struct {
@@ -227,6 +231,16 @@ type KafkaConfig struct {
 }
 
 type HttpServer struct {
+	Host string `yaml:"HTTP_HOSTNAME" env:"HTTP_HOSTNAME"`
+	Port uint16 `yaml:"HTTP_PORT" env:"HTTP_PORT"`
+}
+
+type GrpcServer struct {
+	Host string `yaml:"GRPC_HOSTNAME" env:"GRPC_HOSTNAME"`
+	Port uint16 `yaml:"GRPC_PORT" env:"GRPC_PORT"`
+}
+
+type Server struct {
 	Host string `yaml:"HOSTNAME" env:"HOSTNAME"`
 	Port uint16 `yaml:"PORT" env:"PORT"`
 }

@@ -3,16 +3,9 @@ package dspRouter;
 option go_package = "gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/proto/services/dspRouter;dspRouterGrpc";
 
 import "types/ortb_V2_5/ortb.proto";
-import "google/protobuf/empty.proto";
 
 service DspRouterService {
     rpc GetBids_V2_5(DspRouterRequest_V2_5) returns (DspRouterResponse_V2_5);
-
-    rpc SetSspGeoLinksMap(SspGeoDspLinksRequest_V2_5) returns (google.protobuf.Empty);
-    rpc GetSspGeoLinksMap(GetSspGeoDspLinksRequest_V2_5) returns (GetSspGeoDspLinksResponse_V2_5);
-
-    rpc SetDspFiltersMap(SetDspFiltersRequest_V2_5) returns (google.protobuf.Empty);
-    rpc GetDspFiltersMap(google.protobuf.Empty) returns (GetDspFiltersResponse_V2_5);
 }
 
 message DspRouterRequest_V2_5 {
@@ -28,28 +21,4 @@ message DspRouterResponse_V2_5 {
   map<string, ortb_V2_5.BidResponse> bidResponses = 2;
   string globalId = 3;
   string ssp_domain = 4;
-}
-
-
-
-message SspGeoDspLinksRequest_V2_5 {
-  string json_data = 1;
-  string typic = 2;
-}
-
-message GetSspGeoDspLinksRequest_V2_5 {
-  string typic = 1;
-}
-message GetSspGeoDspLinksResponse_V2_5 {
-  string json_data = 1;
-}
-
-
-
-message SetDspFiltersRequest_V2_5 {
-  string json_data = 1;
-}
-
-message GetDspFiltersResponse_V2_5 {
-  string json_data = 1;
 }

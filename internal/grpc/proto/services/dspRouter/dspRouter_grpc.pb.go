@@ -11,7 +11,6 @@ import (
 	grpc "google.golang.org/grpc"
 	codes "google.golang.org/grpc/codes"
 	status "google.golang.org/grpc/status"
-	emptypb "google.golang.org/protobuf/types/known/emptypb"
 )
 
 // This is a compile-time assertion to ensure that this generated file
@@ -20,11 +19,7 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	DspRouterService_GetBids_V2_5_FullMethodName      = "/dspRouter.DspRouterService/GetBids_V2_5"
-	DspRouterService_SetSspGeoLinksMap_FullMethodName = "/dspRouter.DspRouterService/SetSspGeoLinksMap"
-	DspRouterService_GetSspGeoLinksMap_FullMethodName = "/dspRouter.DspRouterService/GetSspGeoLinksMap"
-	DspRouterService_SetDspFiltersMap_FullMethodName  = "/dspRouter.DspRouterService/SetDspFiltersMap"
-	DspRouterService_GetDspFiltersMap_FullMethodName  = "/dspRouter.DspRouterService/GetDspFiltersMap"
+	DspRouterService_GetBids_V2_5_FullMethodName = "/dspRouter.DspRouterService/GetBids_V2_5"
 )
 
 // DspRouterServiceClient is the client API for DspRouterService service.
@@ -32,10 +27,6 @@ const (
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 type DspRouterServiceClient interface {
 	GetBids_V2_5(ctx context.Context, in *DspRouterRequest_V2_5, opts ...grpc.CallOption) (*DspRouterResponse_V2_5, error)
-	SetSspGeoLinksMap(ctx context.Context, in *SspGeoDspLinksRequest_V2_5, opts ...grpc.CallOption) (*emptypb.Empty, error)
-	GetSspGeoLinksMap(ctx context.Context, in *GetSspGeoDspLinksRequest_V2_5, opts ...grpc.CallOption) (*GetSspGeoDspLinksResponse_V2_5, error)
-	SetDspFiltersMap(ctx context.Context, in *SetDspFiltersRequest_V2_5, opts ...grpc.CallOption) (*emptypb.Empty, error)
-	GetDspFiltersMap(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*GetDspFiltersResponse_V2_5, error)
 }
 
 type dspRouterServiceClient struct {
@@ -56,55 +47,11 @@ func (c *dspRouterServiceClient) GetBids_V2_5(ctx context.Context, in *DspRouter
 	return out, nil
 }
 
-func (c *dspRouterServiceClient) SetSspGeoLinksMap(ctx context.Context, in *SspGeoDspLinksRequest_V2_5, opts ...grpc.CallOption) (*emptypb.Empty, error) {
-	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(emptypb.Empty)
-	err := c.cc.Invoke(ctx, DspRouterService_SetSspGeoLinksMap_FullMethodName, in, out, cOpts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
-}
-
-func (c *dspRouterServiceClient) GetSspGeoLinksMap(ctx context.Context, in *GetSspGeoDspLinksRequest_V2_5, opts ...grpc.CallOption) (*GetSspGeoDspLinksResponse_V2_5, error) {
-	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(GetSspGeoDspLinksResponse_V2_5)
-	err := c.cc.Invoke(ctx, DspRouterService_GetSspGeoLinksMap_FullMethodName, in, out, cOpts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
-}
-
-func (c *dspRouterServiceClient) SetDspFiltersMap(ctx context.Context, in *SetDspFiltersRequest_V2_5, opts ...grpc.CallOption) (*emptypb.Empty, error) {
-	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(emptypb.Empty)
-	err := c.cc.Invoke(ctx, DspRouterService_SetDspFiltersMap_FullMethodName, in, out, cOpts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
-}
-
-func (c *dspRouterServiceClient) GetDspFiltersMap(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*GetDspFiltersResponse_V2_5, error) {
-	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(GetDspFiltersResponse_V2_5)
-	err := c.cc.Invoke(ctx, DspRouterService_GetDspFiltersMap_FullMethodName, in, out, cOpts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
-}
-
 // DspRouterServiceServer is the server API for DspRouterService service.
 // All implementations must embed UnimplementedDspRouterServiceServer
 // for forward compatibility.
 type DspRouterServiceServer interface {
 	GetBids_V2_5(context.Context, *DspRouterRequest_V2_5) (*DspRouterResponse_V2_5, error)
-	SetSspGeoLinksMap(context.Context, *SspGeoDspLinksRequest_V2_5) (*emptypb.Empty, error)
-	GetSspGeoLinksMap(context.Context, *GetSspGeoDspLinksRequest_V2_5) (*GetSspGeoDspLinksResponse_V2_5, error)
-	SetDspFiltersMap(context.Context, *SetDspFiltersRequest_V2_5) (*emptypb.Empty, error)
-	GetDspFiltersMap(context.Context, *emptypb.Empty) (*GetDspFiltersResponse_V2_5, error)
 	mustEmbedUnimplementedDspRouterServiceServer()
 }
 
@@ -117,18 +64,6 @@ type UnimplementedDspRouterServiceServer struct{}
 
 func (UnimplementedDspRouterServiceServer) GetBids_V2_5(context.Context, *DspRouterRequest_V2_5) (*DspRouterResponse_V2_5, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetBids_V2_5 not implemented")
-}
-func (UnimplementedDspRouterServiceServer) SetSspGeoLinksMap(context.Context, *SspGeoDspLinksRequest_V2_5) (*emptypb.Empty, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method SetSspGeoLinksMap not implemented")
-}
-func (UnimplementedDspRouterServiceServer) GetSspGeoLinksMap(context.Context, *GetSspGeoDspLinksRequest_V2_5) (*GetSspGeoDspLinksResponse_V2_5, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method GetSspGeoLinksMap not implemented")
-}
-func (UnimplementedDspRouterServiceServer) SetDspFiltersMap(context.Context, *SetDspFiltersRequest_V2_5) (*emptypb.Empty, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method SetDspFiltersMap not implemented")
-}
-func (UnimplementedDspRouterServiceServer) GetDspFiltersMap(context.Context, *emptypb.Empty) (*GetDspFiltersResponse_V2_5, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method GetDspFiltersMap not implemented")
 }
 func (UnimplementedDspRouterServiceServer) mustEmbedUnimplementedDspRouterServiceServer() {}
 func (UnimplementedDspRouterServiceServer) testEmbeddedByValue()                          {}
@@ -169,78 +104,6 @@ func _DspRouterService_GetBids_V2_5_Handler(srv interface{}, ctx context.Context
 	return interceptor(ctx, in, info, handler)
 }
 
-func _DspRouterService_SetSspGeoLinksMap_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(SspGeoDspLinksRequest_V2_5)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(DspRouterServiceServer).SetSspGeoLinksMap(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: DspRouterService_SetSspGeoLinksMap_FullMethodName,
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(DspRouterServiceServer).SetSspGeoLinksMap(ctx, req.(*SspGeoDspLinksRequest_V2_5))
-	}
-	return interceptor(ctx, in, info, handler)
-}
-
-func _DspRouterService_GetSspGeoLinksMap_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(GetSspGeoDspLinksRequest_V2_5)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(DspRouterServiceServer).GetSspGeoLinksMap(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: DspRouterService_GetSspGeoLinksMap_FullMethodName,
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(DspRouterServiceServer).GetSspGeoLinksMap(ctx, req.(*GetSspGeoDspLinksRequest_V2_5))
-	}
-	return interceptor(ctx, in, info, handler)
-}
-
-func _DspRouterService_SetDspFiltersMap_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(SetDspFiltersRequest_V2_5)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(DspRouterServiceServer).SetDspFiltersMap(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: DspRouterService_SetDspFiltersMap_FullMethodName,
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(DspRouterServiceServer).SetDspFiltersMap(ctx, req.(*SetDspFiltersRequest_V2_5))
-	}
-	return interceptor(ctx, in, info, handler)
-}
-
-func _DspRouterService_GetDspFiltersMap_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(emptypb.Empty)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(DspRouterServiceServer).GetDspFiltersMap(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: DspRouterService_GetDspFiltersMap_FullMethodName,
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(DspRouterServiceServer).GetDspFiltersMap(ctx, req.(*emptypb.Empty))
-	}
-	return interceptor(ctx, in, info, handler)
-}
-
 // DspRouterService_ServiceDesc is the grpc.ServiceDesc for DspRouterService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -251,22 +114,6 @@ var DspRouterService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "GetBids_V2_5",
 			Handler:    _DspRouterService_GetBids_V2_5_Handler,
-		},
-		{
-			MethodName: "SetSspGeoLinksMap",
-			Handler:    _DspRouterService_SetSspGeoLinksMap_Handler,
-		},
-		{
-			MethodName: "GetSspGeoLinksMap",
-			Handler:    _DspRouterService_GetSspGeoLinksMap_Handler,
-		},
-		{
-			MethodName: "SetDspFiltersMap",
-			Handler:    _DspRouterService_SetDspFiltersMap_Handler,
-		},
-		{
-			MethodName: "GetDspFiltersMap",
-			Handler:    _DspRouterService_GetDspFiltersMap_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},
