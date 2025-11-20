@@ -1,6 +1,10 @@
 package config
 
-/*
+import (
+	"reflect"
+	"testing"
+)
+
 func TestMapStringToString_SetValue(t *testing.T) {
 	tests := []struct {
 		name     string
@@ -143,4 +147,3 @@ func TestMapStringToStringSlice_SetValue(t *testing.T) {
 		})
 	}
 }
-*/

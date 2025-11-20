@@ -240,11 +240,6 @@ type GrpcServer struct {
 	Port uint16 `yaml:"GRPC_PORT" env:"GRPC_PORT"`
 }
 
-type Server struct {
-	Host string `yaml:"HOSTNAME" env:"HOSTNAME"`
-	Port uint16 `yaml:"PORT" env:"PORT"`
-}
-
 func getEnvFileNames() []string {
 	return []string{".env.local", ".env", "bid-engine.env", "clickhouse-loader.env", "kafka-loader.env", "dsp1.env", "dsp2.env", "dsp3.env", "orchestrator.env", "router.env", "spp-adapter.env"}
 }
