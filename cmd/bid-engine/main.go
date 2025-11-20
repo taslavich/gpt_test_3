@@ -105,6 +105,8 @@ func main() {
 		}
 	}()
 
+	go httpServer.RunHttpServer(ctx, router, cfg.HttpServer.Host, cfg.HttpServer.Port)
+
 	log.Printf("Server started on %s:%d", cfg.GrpcServer.Host, cfg.GrpcServer.Port)
 	if err := s.Serve(lis); err != nil {
 		errChan <- err
