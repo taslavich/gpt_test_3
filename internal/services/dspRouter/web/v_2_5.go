@@ -39,16 +39,15 @@ type Server struct {
 	clients map[string]*http.Client
 
 	timeout time.Duration
-	// Пулы для снижения аллокаций
+
 	bufferPool sync.Pool
 
 	ranger cidranger.Ranger
 
-	linkFilename_adult      string
-	linkFilename_mainstream string
+	linkMap_adult      *map[string]map[string]map[string]bool
+	linkMap_mainstream *map[string]map[string]map[string]bool
 
-	linkMap_adult      map[string]map[string]map[string]bool
-	linkMap_mainstream map[string]map[string]map[string]bool
+	filters *filter.FiltersBox
 
 	dspRouterGrpc.UnimplementedDspRouterServiceServer
 }
@@ -62,11 +61,10 @@ func NewServer(
 	redisClient *redis.Client,
 	timeout time.Duration,
 	maxParallelRequests int,
-	linkFilename_adult string,
-	linkFilename_mainstream string,
-	linkMap_adult map[string]map[string]map[string]bool,
-	linkMap_mainstream map[string]map[string]map[string]bool,
+	linkMap_adult *map[string]map[string]map[string]bool,
+	linkMap_mainstream *map[string]map[string]map[string]bool,
 	clients map[string]*http.Client,
+	filters *filter.FiltersBox,
 ) *Server {
 	if timeout <= 0 {
 		timeout = 150 * time.Millisecond
@@ -102,11 +100,10 @@ func NewServer(
 				return bytes.NewBuffer(make([]byte, 0, 2048))
 			},
 		},
-		ranger:                  rang,
-		linkFilename_adult:      linkFilename_adult,
-		linkFilename_mainstream: linkFilename_mainstream,
-		linkMap_adult:           linkMap_adult,
-		linkMap_mainstream:      linkMap_mainstream,
+		ranger:             rang,
+		linkMap_adult:      linkMap_adult,
+		linkMap_mainstream: linkMap_mainstream,
+		filters:            filters,
 	}
 }
 
@@ -124,7 +121,6 @@ func (s *Server) GetBids_V2_5(
 	ctx context.Context,
 	req *dspRouterGrpc.DspRouterRequest_V2_5,
 ) (resp *dspRouterGrpc.DspRouterResponse_V2_5, funcErr error) {
-
 	reqCtx, cancel := context.WithTimeout(ctx, s.timeout)
 	defer func() {
 		cancel()
@@ -164,10 +160,10 @@ func (s *Server) GetBids_V2_5(
 	switch req.Typic {
 	case sppAdapterWeb.ADULT:
 		dspList = s.dspEndpoints_adult_v_2_5
-		linkMap = s.linkMap_adult
+		linkMap = *s.linkMap_adult
 	case sppAdapterWeb.MAINSTREAM:
 		dspList = s.dspEndpoints_mainstream_v_2_5
-		linkMap = s.linkMap_mainstream
+		linkMap = *s.linkMap_mainstream
 	}
 
 	for endpoint, domain := range dspList {
@@ -200,6 +196,15 @@ func (s *Server) GetBids_V2_5(
 			continue
 		}
 
+		if !s.filters.Allowed(req.BidRequest, domain) {
+			//log.Println("Gor DSP filter")
+			codesCh <- &dspDomainCode{
+				domain: domain,
+				code:   -5,
+			}
+			continue
+		}
+
 		if req.SspDomain == "mc_clickadilla.com" && domain == "mc_dsp_dao.ad" {
 			ChangeSiteId(req.BidRequest)
 		}
@@ -224,10 +229,8 @@ func (s *Server) GetBids_V2_5(
 				code:   code,
 			}
 
-			// Фильтрация ответа SPP
 			if !s.processor.ProcessResponseForSPPV25(DeletePrefix(req.SspDomain), dspResp).Allowed {
 				//log.Printf("Gor SSP filter, domain %s, resp: %w", endpoint, dspResp)
-
 				return
 			}
 
@@ -279,7 +282,6 @@ func (s *Server) GetBids_V2_5(
 
 func (s *Server) getBidsFromDSPbyHTTP_V_2_5(ctx context.Context, jsonData []byte, dspEndpoint string, client_v_2_5 *http.Client) (
 	ddr *ortb_V2_5.BidResponse, code int, err error) {
-	// Пул буферов — как в v2.4
 	buf := s.bufferPool.Get().(*bytes.Buffer)
 	buf.Reset()
 	buf.Write(jsonData)

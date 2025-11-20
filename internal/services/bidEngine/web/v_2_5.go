@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
-	"os"
 	"runtime/debug"
 	"time"
 
@@ -15,12 +14,10 @@ import (
 	pb "gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/proto/services/bidEngine"
 	"gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/proto/types/ortb_V2_5"
 	utils "gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/utils_grpc"
-	sppAdapterWeb "gitlab.com/twinbid-exchange/RTB-exchange/internal/services/sspAdapter/web"
 	"gitlab.com/twinbid-exchange/RTB-exchange/internal/types"
 	clickhouse_types "gitlab.com/twinbid-exchange/RTB-exchange/internal/types/clickhouse"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
-	"google.golang.org/protobuf/types/known/emptypb"
 )
 
 type Server struct {
@@ -122,51 +119,5 @@ func (s *Server) GetWinnerBid_V2_5(
 
 	return &bidEngineGrpc.BidEngineResponse_V2_5{
 		BidResponse: bidResponse,
-	}, nil
-}
-
-func (s *Server) SetSspGeoPercentsMap(ctx context.Context, req *bidEngineGrpc.SspGeoDspPercentsRequest_V2_5) (*emptypb.Empty, error) {
-	var err error
-
-	switch req.Typic {
-	case sppAdapterWeb.ADULT:
-		s.percentMap_adult, err = utils.RewriteSspGeoDspFile[*types.PercentAndBidfloor](
-			req.JsonData,
-			s.percentFilename_adult,
-		)
-	case sppAdapterWeb.MAINSTREAM:
-		s.percentMap_mainstream, err = utils.RewriteSspGeoDspFile[*types.PercentAndBidfloor](
-			req.JsonData,
-			s.percentFilename_mainstream,
-		)
-	default:
-		return nil, status.Errorf(codes.Internal, "Typic is no here! failed to read file: %v", err)
-	}
-	if err != nil {
-		return nil, err
-	}
-	log.Printf("Successfully updated SspGeoPercents SSP entries")
-
-	return nil, nil
-}
-
-func (s *Server) GetSspGeoPercentsMap(ctx context.Context, req *bidEngineGrpc.GetSspGeoDspPercentsRequest_V2_5) (*bidEngineGrpc.GetSspGeoDspPercentsResponse_V2_5, error) {
-	var data []byte
-	var err error
-
-	switch req.Typic {
-	case sppAdapterWeb.ADULT:
-		data, err = os.ReadFile(s.percentFilename_adult)
-	case sppAdapterWeb.MAINSTREAM:
-		data, err = os.ReadFile(s.percentFilename_mainstream)
-	default:
-		return nil, status.Error(codes.Internal, "Typic is no here! failed to read file")
-	}
-	if err != nil {
-		return nil, status.Errorf(codes.Internal, "failed to read file %s: %w", s.percentFilename_adult, err)
-	}
-
-	return &bidEngineGrpc.GetSspGeoDspPercentsResponse_V2_5{
-		JsonData: string(data),
 	}, nil
 }

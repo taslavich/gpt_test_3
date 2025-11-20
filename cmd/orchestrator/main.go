@@ -77,15 +77,15 @@ func main() {
 		"tcp",
 		fmt.Sprintf(
 			"%s:%d",
-			cfg.Host,
-			cfg.Port,
+			cfg.GrpcServer.Host,
+			cfg.GrpcServer.Port,
 		),
 	)
 	if err != nil {
 		log.Fatalf("failed to listen: %v", err)
 	}
 
-	log.Printf("Server started on %s:%d", cfg.Host, cfg.Port)
+	log.Printf("Server started on %s:%d", cfg.GrpcServer.Host, cfg.GrpcServer.Port)
 	if err := s.Serve(lis); err != nil {
 		errChan <- err
 		log.Printf("failed to serve: %v", err)

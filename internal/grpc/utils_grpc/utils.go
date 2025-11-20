@@ -141,3 +141,26 @@ func RewriteSspGeoDspFile[T *types.PercentAndBidfloor | bool](JsonData, percentF
 
 	return SetAndConvertNonGoodMap(inputMap), nil
 }
+
+func RewriteSspGeoDspFileNextVer[
+	T *types.PercentAndBidfloor |
+		bool,
+](
+	inputMap map[string]map[string]map[string]T,
+	percentFilename string,
+) (
+	map[string]map[string]map[string]T,
+	error,
+) {
+	fileData, err := json.MarshalIndent(inputMap, "", "  ")
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "failed to marshal data for file: %v", err)
+	}
+
+	err = os.WriteFile(percentFilename, fileData, 0644)
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "failed to write file %s: %v", percentFilename, err)
+	}
+
+	return SetAndConvertNonGoodMap(inputMap), nil
+}
