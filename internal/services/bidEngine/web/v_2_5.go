@@ -27,8 +27,8 @@ type Server struct {
 	hostname                   string
 	percentFilename_adult      string
 	percentFilename_mainstream string
-	percentMap_adult           map[string]map[string]map[string]*types.PercentAndBidfloor
-	percentMap_mainstream      map[string]map[string]map[string]*types.PercentAndBidfloor
+	percentMap_adult           *map[string]map[string]map[string]*types.PercentAndBidfloor
+	percentMap_mainstream      *map[string]map[string]map[string]*types.PercentAndBidfloor
 
 	GetWinnerBidInternal_V_2_5 func(
 		ctx context.Context,
@@ -36,8 +36,8 @@ type Server struct {
 		profitPercent float32,
 		globalId string,
 		hostname string,
-		percentMapAdult map[string]map[string]map[string]*types.PercentAndBidfloor,
-		percentMapMainstream map[string]map[string]map[string]*types.PercentAndBidfloor,
+		percentMapAdult *map[string]map[string]map[string]*types.PercentAndBidfloor,
+		percentMapMainstream *map[string]map[string]map[string]*types.PercentAndBidfloor,
 		logged bool,
 		typic string,
 	) (*ortb_V2_5.BidResponse, *clickhouse_types.BidResponse)
@@ -55,16 +55,16 @@ func NewServer(
 		profitPercent float32,
 		globalId string,
 		hostname string,
-		percentMapAdult map[string]map[string]map[string]*types.PercentAndBidfloor,
-		percentMapMainstream map[string]map[string]map[string]*types.PercentAndBidfloor,
+		percentMapAdult *map[string]map[string]map[string]*types.PercentAndBidfloor,
+		percentMapMainstream *map[string]map[string]map[string]*types.PercentAndBidfloor,
 		logged bool,
 		typic string,
 	) (*ortb_V2_5.BidResponse, *clickhouse_types.BidResponse),
 	percentFilename_adult string,
-	percentMap_adult map[string]map[string]map[string]*types.PercentAndBidfloor,
+	percentMap_adult *map[string]map[string]map[string]*types.PercentAndBidfloor,
 
 	percentFilename_mainstream string,
-	percentMap_mainstream map[string]map[string]map[string]*types.PercentAndBidfloor,
+	percentMap_mainstream *map[string]map[string]map[string]*types.PercentAndBidfloor,
 ) *Server {
 	return &Server{
 		ProfitPercent:              ProfitPercent,
