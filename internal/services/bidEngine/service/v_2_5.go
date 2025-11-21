@@ -27,8 +27,8 @@ func GetWinnerBidInternal_V_2_5(
 	profitPercent float32,
 	globalId string,
 	hostname string,
-	percentMapAdult map[string]map[string]map[string]*types.PercentAndBidfloor,
-	percentMapMainstream map[string]map[string]map[string]*types.PercentAndBidfloor,
+	percentMapAdult *map[string]map[string]map[string]*types.PercentAndBidfloor,
+	percentMapMainstream *map[string]map[string]map[string]*types.PercentAndBidfloor,
 	logged bool,
 	typic string,
 ) (*ortb_V2_5.BidResponse, *clickhouse_types.BidResponse) {
@@ -117,9 +117,9 @@ func GetWinnerBidInternal_V_2_5(
 		var percentMap map[string]map[string]map[string]*types.PercentAndBidfloor
 		switch typic {
 		case sppAdapterWeb.ADULT:
-			percentMap = percentMapAdult
+			percentMap = *percentMapAdult
 		case sppAdapterWeb.MAINSTREAM:
-			percentMap = percentMapMainstream
+			percentMap = *percentMapMainstream
 		}
 
 		/*var value *types.PercentAndBidfloor

@@ -74,9 +74,9 @@ func main() {
 			cfg.SystemHostname,
 			bidEngine.GetWinnerBidInternal_V_2_5,
 			cfg.SspGeoDspPercentsAdultFilePath,
-			sspGeoDspMapAdult,
+			&sspGeoDspMapAdult,
 			cfg.SspGeoDspPercentsMainstreamFilePath,
-			sspGeoDspMapMainstream,
+			&sspGeoDspMapMainstream,
 		),
 	)
 
