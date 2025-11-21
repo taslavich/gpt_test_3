@@ -10,9 +10,9 @@ import (
 )
 
 var innerFilterMap = map[string]func(bidRequest *ortb_V2_5.BidRequest, ranger cidranger.Ranger) bool{
-	/*"adl_dsp_hilltopads.com": func(bidRequest *ortb_V2_5.BidRequest, ranger cidranger.Ranger) bool {
+	"adl_dsp_hilltopads.com": func(bidRequest *ortb_V2_5.BidRequest, ranger cidranger.Ranger) bool {
 		return AllowedSiteHilltop(bidRequest) // allowedUA(bidRequest.GetDevice().GetUa()) && isIPAllowed(bidRequest.GetDevice().GetIp(), ranger, bidRequest) &&
-	},*/
+	},
 	"mc_dsp_dao.ad": func(bidRequest *ortb_V2_5.BidRequest, ranger cidranger.Ranger) bool {
 		return AllowedSiteDao(bidRequest) // && allowedUA(bidRequest.GetDevice().GetUa())
 	},
@@ -33,7 +33,6 @@ func AllowedSiteDao(bidRequest *ortb_V2_5.BidRequest) bool {
 	if bidRequest.Site.GetId() == "" {
 		return true
 	}
-
 	siteId := bidRequest.Site.GetId()
 
 	blockedList := map[string]bool{
