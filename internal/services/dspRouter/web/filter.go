@@ -11,13 +11,13 @@ import (
 
 var innerFilterMap = map[string]func(bidRequest *ortb_V2_5.BidRequest, ranger cidranger.Ranger) bool{
 	/*"adl_dsp_hilltopads.com": func(bidRequest *ortb_V2_5.BidRequest, ranger cidranger.Ranger) bool {
-		return AllowedSiteHilltop(bidRequest) // allowedUA(bidRequest.GetDevice().GetUa()) && isIPAllowed(bidRequest.GetDevice().GetIp(), ranger, bidRequest) &&
+		return // allowedUA(bidRequest.GetDevice().GetUa()) && isIPAllowed(bidRequest.GetDevice().GetIp(), ranger, bidRequest) &&
 	},
 	"mc_dsp_dao.ad": func(bidRequest *ortb_V2_5.BidRequest, ranger cidranger.Ranger) bool {
-		return AllowedSiteDao(bidRequest) // && allowedUA(bidRequest.GetDevice().GetUa())
+		return // && allowedUA(bidRequest.GetDevice().GetUa())
 	},
 	"adl_dsp_dao.ad": func(bidRequest *ortb_V2_5.BidRequest, ranger cidranger.Ranger) bool {
-		return AllowedSiteDao(bidRequest) //&& allowedUA(bidRequest.GetDevice().GetUa())
+		return //&& allowedUA(bidRequest.GetDevice().GetUa())
 	},*/
 	/*
 		"http://u625267.pophandler.net/rtb/?async=1&code_type=1&js=1&rtbRequest=1&sid=940499": func(bidRequest *ortb_V2_5.BidRequest, ranger cidranger.Ranger) bool {
@@ -27,56 +27,6 @@ var innerFilterMap = map[string]func(bidRequest *ortb_V2_5.BidRequest, ranger ci
 			return AllowedSite(bidRequest) && allowedUA(bidRequest.GetDevice().GetUa())
 		},
 	*/
-}
-
-func AllowedSiteDao(bidRequest *ortb_V2_5.BidRequest) bool {
-	if bidRequest.Site.GetId() == "" {
-		return true
-	}
-
-	siteId := bidRequest.Site.GetId()
-
-	blockedList := map[string]bool{
-		"1133":      true,
-		"532006761": true,
-		"532008162": true,
-		"532006760": true,
-		"532006815": true,
-		"532006323": true,
-		"532006321": true,
-		"532006984": true,
-		"53502320":  true,
-		"53839256":  true,
-		"366142":    true,
-		"1449072":   true,
-		"284407":    true,
-		"201667":    true,
-		"840":       true,
-		"536042675": true,
-		"531432573": true,
-		"532006762": true,
-		"531429670": true,
-		"531436242": true,
-		"532007766": true,
-		"531430094": true,
-		"536046031": true,
-		"532008634": true,
-		"532007151": true,
-		"531430095": true,
-		"531430092": true,
-		"531443452": true,
-		"536046623": true,
-		"532006978": true,
-		"536046673": true,
-		"531430096": true,
-		"531450109": true,
-		"536046044": true,
-		"531430097": true,
-		"531434313": true,
-		"536097192": true,
-	}
-
-	return !blockedList[siteId]
 }
 
 func ChangeSiteId(bidRequest *ortb_V2_5.BidRequest) {
@@ -111,43 +61,6 @@ func ChangeSiteId(bidRequest *ortb_V2_5.BidRequest) {
 		newId := strconv.Itoa(newNum * 2)
 		bidRequest.Site.Id = &newId
 	}
-}
-
-func AllowedSiteHilltop(bidRequest *ortb_V2_5.BidRequest) bool {
-	if bidRequest.Site.GetId() == "" {
-		return true
-	}
-
-	siteId := bidRequest.Site.GetId()
-
-	blockedList := map[string]bool{
-		"888687":     true,
-		"81880":      true,
-		"888701":     true,
-		"888685":     true,
-		"888703":     true,
-		"134812":     true,
-		"123979":     true,
-		"121603667":  true,
-		"213781":     true,
-		"2010283":    true,
-		"1470301":    true,
-		"1457558":    true,
-		"2010614":    true,
-		"162772":     true,
-		"251659":     true,
-		"888688":     true,
-		"1463271":    true,
-		"159487":     true,
-		"158953":     true,
-		"255112":     true,
-		"350896":     true,
-		"1332056814": true,
-		"121654102":  true,
-		"11017520":   true,
-	}
-
-	return !blockedList[siteId]
 }
 
 func Allowed(endpoint string, bidRequest *ortb_V2_5.BidRequest, ranger cidranger.Ranger) bool {
