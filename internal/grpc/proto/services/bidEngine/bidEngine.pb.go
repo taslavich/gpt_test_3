@@ -10,7 +10,6 @@ import (
 	ortb_V2_5 "gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/proto/types/ortb_V2_5"
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
-	emptypb "google.golang.org/protobuf/types/known/emptypb"
 	reflect "reflect"
 	sync "sync"
 	unsafe "unsafe"
@@ -159,151 +158,11 @@ func (x *BidEngineResponse_V2_5) GetGlobalId() string {
 	return ""
 }
 
-type SspGeoDspPercentsRequest_V2_5 struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	JsonData      string                 `protobuf:"bytes,1,opt,name=json_data,json=jsonData,proto3" json:"json_data,omitempty"`
-	Typic         string                 `protobuf:"bytes,2,opt,name=typic,proto3" json:"typic,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *SspGeoDspPercentsRequest_V2_5) Reset() {
-	*x = SspGeoDspPercentsRequest_V2_5{}
-	mi := &file_services_bidEngine_proto_msgTypes[2]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *SspGeoDspPercentsRequest_V2_5) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*SspGeoDspPercentsRequest_V2_5) ProtoMessage() {}
-
-func (x *SspGeoDspPercentsRequest_V2_5) ProtoReflect() protoreflect.Message {
-	mi := &file_services_bidEngine_proto_msgTypes[2]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use SspGeoDspPercentsRequest_V2_5.ProtoReflect.Descriptor instead.
-func (*SspGeoDspPercentsRequest_V2_5) Descriptor() ([]byte, []int) {
-	return file_services_bidEngine_proto_rawDescGZIP(), []int{2}
-}
-
-func (x *SspGeoDspPercentsRequest_V2_5) GetJsonData() string {
-	if x != nil {
-		return x.JsonData
-	}
-	return ""
-}
-
-func (x *SspGeoDspPercentsRequest_V2_5) GetTypic() string {
-	if x != nil {
-		return x.Typic
-	}
-	return ""
-}
-
-type GetSspGeoDspPercentsRequest_V2_5 struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Typic         string                 `protobuf:"bytes,1,opt,name=typic,proto3" json:"typic,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *GetSspGeoDspPercentsRequest_V2_5) Reset() {
-	*x = GetSspGeoDspPercentsRequest_V2_5{}
-	mi := &file_services_bidEngine_proto_msgTypes[3]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *GetSspGeoDspPercentsRequest_V2_5) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*GetSspGeoDspPercentsRequest_V2_5) ProtoMessage() {}
-
-func (x *GetSspGeoDspPercentsRequest_V2_5) ProtoReflect() protoreflect.Message {
-	mi := &file_services_bidEngine_proto_msgTypes[3]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use GetSspGeoDspPercentsRequest_V2_5.ProtoReflect.Descriptor instead.
-func (*GetSspGeoDspPercentsRequest_V2_5) Descriptor() ([]byte, []int) {
-	return file_services_bidEngine_proto_rawDescGZIP(), []int{3}
-}
-
-func (x *GetSspGeoDspPercentsRequest_V2_5) GetTypic() string {
-	if x != nil {
-		return x.Typic
-	}
-	return ""
-}
-
-type GetSspGeoDspPercentsResponse_V2_5 struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	JsonData      string                 `protobuf:"bytes,1,opt,name=json_data,json=jsonData,proto3" json:"json_data,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *GetSspGeoDspPercentsResponse_V2_5) Reset() {
-	*x = GetSspGeoDspPercentsResponse_V2_5{}
-	mi := &file_services_bidEngine_proto_msgTypes[4]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *GetSspGeoDspPercentsResponse_V2_5) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*GetSspGeoDspPercentsResponse_V2_5) ProtoMessage() {}
-
-func (x *GetSspGeoDspPercentsResponse_V2_5) ProtoReflect() protoreflect.Message {
-	mi := &file_services_bidEngine_proto_msgTypes[4]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use GetSspGeoDspPercentsResponse_V2_5.ProtoReflect.Descriptor instead.
-func (*GetSspGeoDspPercentsResponse_V2_5) Descriptor() ([]byte, []int) {
-	return file_services_bidEngine_proto_rawDescGZIP(), []int{4}
-}
-
-func (x *GetSspGeoDspPercentsResponse_V2_5) GetJsonData() string {
-	if x != nil {
-		return x.JsonData
-	}
-	return ""
-}
-
 var File_services_bidEngine_proto protoreflect.FileDescriptor
 
 const file_services_bidEngine_proto_rawDesc = "" +
 	"\n" +
-	"\x18services/bidEngine.proto\x12\tbidEngine\x1a\x1atypes/ortb_V2_5/ortb.proto\x1a\x1bgoogle/protobuf/empty.proto\"\xe8\x02\n" +
+	"\x18services/bidEngine.proto\x12\tbidEngine\x1a\x1atypes/ortb_V2_5/ortb.proto\"\xe8\x02\n" +
 	"\x15BidEngineRequest_V2_5\x125\n" +
 	"\n" +
 	"bidRequest\x18\x01 \x01(\v2\x15.ortb_V2_5.BidRequestR\n" +
@@ -319,18 +178,9 @@ const file_services_bidEngine_proto_rawDesc = "" +
 	"\x05value\x18\x02 \x01(\v2\x16.ortb_V2_5.BidResponseR\x05value:\x028\x01\"n\n" +
 	"\x16BidEngineResponse_V2_5\x128\n" +
 	"\vbidResponse\x18\x01 \x01(\v2\x16.ortb_V2_5.BidResponseR\vbidResponse\x12\x1a\n" +
-	"\bglobalId\x18\x02 \x01(\tR\bglobalId\"R\n" +
-	"\x1dSspGeoDspPercentsRequest_V2_5\x12\x1b\n" +
-	"\tjson_data\x18\x01 \x01(\tR\bjsonData\x12\x14\n" +
-	"\x05typic\x18\x02 \x01(\tR\x05typic\"8\n" +
-	" GetSspGeoDspPercentsRequest_V2_5\x12\x14\n" +
-	"\x05typic\x18\x01 \x01(\tR\x05typic\"@\n" +
-	"!GetSspGeoDspPercentsResponse_V2_5\x12\x1b\n" +
-	"\tjson_data\x18\x01 \x01(\tR\bjsonData2\xbb\x02\n" +
+	"\bglobalId\x18\x02 \x01(\tR\bglobalId2n\n" +
 	"\x10BidEngineService\x12Z\n" +
-	"\x11getWinnerBid_V2_5\x12 .bidEngine.BidEngineRequest_V2_5\x1a!.bidEngine.BidEngineResponse_V2_5\"\x00\x12X\n" +
-	"\x14SetSspGeoPercentsMap\x12(.bidEngine.SspGeoDspPercentsRequest_V2_5\x1a\x16.google.protobuf.Empty\x12q\n" +
-	"\x14GetSspGeoPercentsMap\x12+.bidEngine.GetSspGeoDspPercentsRequest_V2_5\x1a,.bidEngine.GetSspGeoDspPercentsResponse_V2_5B_Z]gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/proto/services/bidEngine;bidEngineGrpcb\x06proto3"
+	"\x11getWinnerBid_V2_5\x12 .bidEngine.BidEngineRequest_V2_5\x1a!.bidEngine.BidEngineResponse_V2_5\"\x00B_Z]gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/proto/services/bidEngine;bidEngineGrpcb\x06proto3"
 
 var (
 	file_services_bidEngine_proto_rawDescOnce sync.Once
@@ -344,31 +194,23 @@ func file_services_bidEngine_proto_rawDescGZIP() []byte {
 	return file_services_bidEngine_proto_rawDescData
 }
 
-var file_services_bidEngine_proto_msgTypes = make([]protoimpl.MessageInfo, 6)
+var file_services_bidEngine_proto_msgTypes = make([]protoimpl.MessageInfo, 3)
 var file_services_bidEngine_proto_goTypes = []any{
-	(*BidEngineRequest_V2_5)(nil),             // 0: bidEngine.BidEngineRequest_V2_5
-	(*BidEngineResponse_V2_5)(nil),            // 1: bidEngine.BidEngineResponse_V2_5
-	(*SspGeoDspPercentsRequest_V2_5)(nil),     // 2: bidEngine.SspGeoDspPercentsRequest_V2_5
-	(*GetSspGeoDspPercentsRequest_V2_5)(nil),  // 3: bidEngine.GetSspGeoDspPercentsRequest_V2_5
-	(*GetSspGeoDspPercentsResponse_V2_5)(nil), // 4: bidEngine.GetSspGeoDspPercentsResponse_V2_5
-	nil,                           // 5: bidEngine.BidEngineRequest_V2_5.BidResponsesEntry
-	(*ortb_V2_5.BidRequest)(nil),  // 6: ortb_V2_5.BidRequest
-	(*ortb_V2_5.BidResponse)(nil), // 7: ortb_V2_5.BidResponse
-	(*emptypb.Empty)(nil),         // 8: google.protobuf.Empty
+	(*BidEngineRequest_V2_5)(nil),  // 0: bidEngine.BidEngineRequest_V2_5
+	(*BidEngineResponse_V2_5)(nil), // 1: bidEngine.BidEngineResponse_V2_5
+	nil,                            // 2: bidEngine.BidEngineRequest_V2_5.BidResponsesEntry
+	(*ortb_V2_5.BidRequest)(nil),   // 3: ortb_V2_5.BidRequest
+	(*ortb_V2_5.BidResponse)(nil),  // 4: ortb_V2_5.BidResponse
 }
 var file_services_bidEngine_proto_depIdxs = []int32{
-	6, // 0: bidEngine.BidEngineRequest_V2_5.bidRequest:type_name -> ortb_V2_5.BidRequest
-	5, // 1: bidEngine.BidEngineRequest_V2_5.bidResponses:type_name -> bidEngine.BidEngineRequest_V2_5.BidResponsesEntry
-	7, // 2: bidEngine.BidEngineResponse_V2_5.bidResponse:type_name -> ortb_V2_5.BidResponse
-	7, // 3: bidEngine.BidEngineRequest_V2_5.BidResponsesEntry.value:type_name -> ortb_V2_5.BidResponse
+	3, // 0: bidEngine.BidEngineRequest_V2_5.bidRequest:type_name -> ortb_V2_5.BidRequest
+	2, // 1: bidEngine.BidEngineRequest_V2_5.bidResponses:type_name -> bidEngine.BidEngineRequest_V2_5.BidResponsesEntry
+	4, // 2: bidEngine.BidEngineResponse_V2_5.bidResponse:type_name -> ortb_V2_5.BidResponse
+	4, // 3: bidEngine.BidEngineRequest_V2_5.BidResponsesEntry.value:type_name -> ortb_V2_5.BidResponse
 	0, // 4: bidEngine.BidEngineService.getWinnerBid_V2_5:input_type -> bidEngine.BidEngineRequest_V2_5
-	2, // 5: bidEngine.BidEngineService.SetSspGeoPercentsMap:input_type -> bidEngine.SspGeoDspPercentsRequest_V2_5
-	3, // 6: bidEngine.BidEngineService.GetSspGeoPercentsMap:input_type -> bidEngine.GetSspGeoDspPercentsRequest_V2_5
-	1, // 7: bidEngine.BidEngineService.getWinnerBid_V2_5:output_type -> bidEngine.BidEngineResponse_V2_5
-	8, // 8: bidEngine.BidEngineService.SetSspGeoPercentsMap:output_type -> google.protobuf.Empty
-	4, // 9: bidEngine.BidEngineService.GetSspGeoPercentsMap:output_type -> bidEngine.GetSspGeoDspPercentsResponse_V2_5
-	7, // [7:10] is the sub-list for method output_type
-	4, // [4:7] is the sub-list for method input_type
+	1, // 5: bidEngine.BidEngineService.getWinnerBid_V2_5:output_type -> bidEngine.BidEngineResponse_V2_5
+	5, // [5:6] is the sub-list for method output_type
+	4, // [4:5] is the sub-list for method input_type
 	4, // [4:4] is the sub-list for extension type_name
 	4, // [4:4] is the sub-list for extension extendee
 	0, // [0:4] is the sub-list for field type_name
@@ -385,7 +227,7 @@ func file_services_bidEngine_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_services_bidEngine_proto_rawDesc), len(file_services_bidEngine_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   6,
+			NumMessages:   3,
 			NumExtensions: 0,
 			NumServices:   1,
 		},
