@@ -1,0 +1,41 @@
+<?php
+
+/*
++---------------------------------------------------------------------------+
+| Revive Adserver                                                           |
+| http://www.revive-adserver.com                                            |
+|                                                                           |
+| Copyright: See the COPYRIGHT.txt file.                                    |
+| License: GPLv2 or later, see the LICENSE.txt file.                        |
++---------------------------------------------------------------------------+
+*/
+
+/**
+ * Table Definition for testplugin_table
+ */
+require_once 'DB_DataObjectCommon.php';
+
+class DataObjects_Testplugin_table extends DB_DataObjectCommon
+{
+    ###START_AUTOCODE
+    /* the code below is auto generated do not remove the above tag */
+
+    public $__table = 'testplugin_table';                // table name
+    public $testplugin_id;                   // int(10)  not_null primary_key unsigned auto_increment
+    public $testplugin_desc;                 // string(128)
+    public $updated;                         // datetime(19)  binary
+    public $test_newfield;                   // int(4)  not_null
+
+    /* Static get */
+    public static function staticGet($k, $v = null)
+    {
+        return DB_DataObject::staticGet('DataObjects_Testplugin_table', $k, $v);
+    }
+
+    public $defaultValues = [
+        'test_newfield' => 0,
+    ];
+
+    /* the code above is auto generated do not remove the tag below */
+    ###END_AUTOCODE
+}
