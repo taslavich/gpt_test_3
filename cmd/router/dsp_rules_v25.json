@@ -92,8 +92,7 @@
             { "field": "imp.id",        "condition": "exists", "value_type": "string", "value": "" },
             { "field": "device.ua",       "condition": "exists", "value_type": "string", "value": "" },
             { "field": "device.ip",       "condition": "exists", "value_type": "string", "value": "" },
-            { "field": "at",            "condition": "exists", "value_type": "int",    "value": "" },
-            { "field": "device.language", "condition": "exists", "value_type": "string", "value": "" }
+            { "field": "at",            "condition": "exists", "value_type": "int",    "value": "" }
           ]
         }
       ]
@@ -107,8 +106,7 @@
             { "field": "imp.id",        "condition": "exists", "value_type": "string", "value": "" },
             { "field": "device.ua",       "condition": "exists", "value_type": "string", "value": "" },
             { "field": "device.ip",       "condition": "exists", "value_type": "string", "value": "" },
-            { "field": "at",            "condition": "exists", "value_type": "int",    "value": "" },
-            { "field": "device.language", "condition": "exists", "value_type": "string", "value": "" }
+            { "field": "at",            "condition": "exists", "value_type": "int",    "value": "" }
           ]
         }
       ]
