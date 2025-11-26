@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"runtime/debug"
@@ -216,8 +217,8 @@ func (s *Server) GetBids_V2_5(
 			dspResp, code, err := s.getBidsFromDSPbyHTTP_V_2_5(reqCtx, jsonData, endpoint, client_v_2_5)
 			if err != nil {
 				log.Printf(
-					"Cannot getBidsFromDSPbyHTTP_V_2_5, bid request id: %s,ssp_domain: %s, dsp_domain: %s, error: %v",
-					req.BidRequest.GetId(),
+					"Cannot getBidsFromDSPbyHTTP_V_2_5, uuid: %s,ssp_domain: %s, dsp_domain: %s, error: %v",
+					req.GlobalId,
 					req.SspDomain,
 					domain,
 					err,
@@ -303,11 +304,15 @@ func (s *Server) getBidsFromDSPbyHTTP_V_2_5(ctx context.Context, jsonData []byte
 	}
 	defer resp.Body.Close()
 
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, 4, fmt.Errorf("read body failed: %v", err)
+	}
+
 	if resp.StatusCode == http.StatusOK {
 		var grpcResp ortb_V2_5.BidResponse
-		dec := jsoniter.NewDecoder(resp.Body) // без лишних аллокаций
-		if err := dec.Decode(&grpcResp); err != nil {
-			return nil, 3, fmt.Errorf("decode: %v", err)
+		if err := jsoniter.Unmarshal(body, &grpcResp); err != nil {
+			return nil, 3, fmt.Errorf("decode: %v, body: %s", err, string(body))
 		}
 		return &grpcResp, resp.StatusCode, nil
 	}
