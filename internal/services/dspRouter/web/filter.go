@@ -73,14 +73,9 @@ func ChangeSiteIdhilltopTest(bidRequest *ortb_V2_5.BidRequest) {
 	whiteList := map[string]bool{
 		"70": true,
 	}
+	newId := "261"
 
 	if res := whiteList[siteId]; res {
-		newNum, err := strconv.Atoi(siteId)
-		if err != nil {
-			return
-		}
-
-		newId := strconv.Itoa(newNum * 2)
 		bidRequest.Site.Id = &newId
 	}
 }
