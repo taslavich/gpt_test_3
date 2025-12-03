@@ -210,6 +210,10 @@ func (s *Server) GetBids_V2_5(
 			ChangeSiteId(req.BidRequest)
 		}
 
+		if DeletePrefix(domain) == "dsp_test_hilltopads.com" {
+			ChangeSiteIdhilltopTest(req.BidRequest)
+		}
+
 		wg.Add(1)
 		go func(endpoint, domain string, client_v_2_5 *http.Client) {
 			defer wg.Done()
