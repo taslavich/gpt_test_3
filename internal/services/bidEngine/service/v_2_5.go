@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"log"
 	"math/rand"
-	"os"
 	"sort"
 
 	"gitlab.com/twinbid-exchange/RTB-exchange/internal/constants"
@@ -69,19 +68,12 @@ func GetWinnerBidInternal_V_2_5(
 	}
 
 	if len(impBids) == 0 {
-		if resp, ok := req.BidResponses["adl_dsp_mybid.com"]; ok {
-			jsonData, err := json.MarshalIndent(resp, "", "  ")
-			if err != nil {
-				log.Printf("Got len of impBids = 0, Error marshaling: %v", err)
-			}
-
-			err = os.WriteFile("./temp.json", jsonData, 0644)
-			if err != nil {
-				log.Printf("failed to write file %s: %v", "./temp.json", err)
-			}
-
-			log.Printf("Got len of impBids = 0, global id %s", req.GlobalId)
+		jsonData, err := json.MarshalIndent(req.BidResponses, "", "  ")
+		if err != nil {
+			log.Printf("Got len of impBids = 0, Error marshaling: %v", err)
 		}
+
+		log.Printf("Got len of impBids = 0, global id %s, bid responses %s", req.GlobalId, string(jsonData))
 		return &ortb_V2_5.BidResponse{
 				Id: req.BidRequest.Id,
 				Seatbid: []*ortb_V2_5.SeatBid{
