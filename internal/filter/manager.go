@@ -90,12 +90,6 @@ func (rm *RuleManager) ClearAllSPPRules() {
 func GetAutoRulesForSPP() []*FilterRule {
 	return []*FilterRule{
 		{
-			ID:        "auto_nurl_exists",
-			Field:     FieldBidNurl,
-			Condition: ConditionExists,
-			Value:     StringCondition{cond: ConditionExists, value: ""},
-		},
-		{
 			ID:        "auto_adm_exists",
 			Field:     FieldBidAdm,
 			Condition: ConditionExists,
