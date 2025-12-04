@@ -222,18 +222,18 @@ func applyPriceConstraintsAndPercent(dspPrice, bidFloor, profitPercent float32, 
 	finalProfitPercent float32,
 	err error,
 ) {
-	if bidFloor == constants.NEGATIVE_BIDFLOOR {
+	if needed && bidFloor == constants.NEGATIVE_BIDFLOOR {
 		bidFloor = constants.ZERO_BIDFLOOR
 	}
 
-	if dspPrice < bidFloor {
+	if needed && dspPrice < bidFloor {
 		return 0, 0, fmt.Errorf("DSP Price is lower thand bid floor")
 	}
 
 	finalDspPrice = dspPrice - dspPrice*profitPercent
 	finalProfitPercent = profitPercent
 
-	if finalDspPrice < bidFloor && needed {
+	if needed && finalDspPrice < bidFloor {
 		finalDspPrice, finalProfitPercent = findGoodPriceViaPercent(
 			dspPrice,
 			bidFloor,
