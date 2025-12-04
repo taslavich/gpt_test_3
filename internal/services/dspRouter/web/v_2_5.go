@@ -132,6 +132,9 @@ func (s *Server) GetBids_V2_5(
 		}
 	}()
 
+	newTmax := int32(s.clients[req.SspDomain].Timeout.Milliseconds())
+	req.BidRequest.Tmax = &newTmax
+
 	jsonData, err := jsoniter.Marshal(req.BidRequest)
 	if err != nil {
 		newErr := fmt.Errorf("Can not marshal in GetBids_V_2_5 because got uknown error: %v", err)
