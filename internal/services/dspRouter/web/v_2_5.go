@@ -132,7 +132,9 @@ func (s *Server) GetBids_V2_5(
 		}
 	}()
 
-	newTmax := int32(s.clients[req.SspDomain].Timeout.Milliseconds())
+	client_v_2_5 := getSspHttpClients(req.SspDomain, s.clients)
+
+	newTmax := int32(client_v_2_5.Timeout.Milliseconds())
 	req.BidRequest.Tmax = &newTmax
 
 	jsonData, err := jsoniter.Marshal(req.BidRequest)
@@ -149,8 +151,6 @@ func (s *Server) GetBids_V2_5(
 
 		return nil, status.Error(grpcCode, newErr.Error())
 	}
-
-	client_v_2_5 := getSspHttpClients(req.SspDomain, s.clients)
 
 	var (
 		wg sync.WaitGroup
@@ -314,6 +314,10 @@ func (s *Server) getBidsFromDSPbyHTTP_V_2_5(ctx context.Context, uuid string, js
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return nil, 4, fmt.Errorf("read body failed: %v", err)
+	}
+
+	if dspEndpoint == "http://u625267.pophandler.net/rtb/?async=1&code_type=1&js=1&rtbRequest=1&sid=940499" {
+		log.Printf("uuid: %s, code: %d, body: %s", uuid, resp.StatusCode, string(body))
 	}
 
 	if resp.StatusCode == http.StatusOK {
