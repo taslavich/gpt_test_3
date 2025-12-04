@@ -68,12 +68,14 @@ func GetWinnerBidInternal_V_2_5(
 	}
 
 	if len(impBids) == 0 {
-		jsonData, err := json.MarshalIndent(req.BidResponses, "", "  ")
-		if err != nil {
-			log.Printf("Got len of impBids = 0, Error marshaling: %v", err)
-		}
+		if resp, ok := req.BidResponses["adl_dsp_mybid.com"]; ok {
+			jsonData, err := json.MarshalIndent(resp.Seatbid, "", "  ")
+			if err != nil {
+				log.Printf("Got len of impBids = 0, Error marshaling: %v", err)
+			}
 
-		log.Printf("Got len of impBids = 0, global id %s, bid responses %s", req.GlobalId, string(jsonData))
+			log.Printf("Got len of impBids = 0, global id %s, bid responses %s", req.GlobalId, string(jsonData))
+		}
 		return &ortb_V2_5.BidResponse{
 				Id: req.BidRequest.Id,
 				Seatbid: []*ortb_V2_5.SeatBid{
