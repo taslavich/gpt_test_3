@@ -302,9 +302,7 @@ func (s *Server) getBidsFromDSPbyHTTP_V_2_5(ctx context.Context, uuid string, js
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Connection", "keep-alive")
-	if dspEndpoint == HILLTOP_DSP || dspEndpoint == HILLTOP_DSP_TEST {
-		req.Header.Set("X-Openrtb-Version", "2.5")
-	}
+	req.Header.Set("X-Openrtb-Version", "2.5")
 
 	resp, err := client_v_2_5.Do(req)
 	if err != nil {
