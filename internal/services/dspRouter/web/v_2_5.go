@@ -134,7 +134,7 @@ func (s *Server) GetBids_V2_5(
 
 	client_v_2_5 := getSspHttpClients(req.SspDomain, s.clients)
 
-	newTmax := int32(client_v_2_5.Timeout.Milliseconds())
+	newTmax := int32(client_v_2_5.Timeout.Milliseconds()) - 20
 	req.BidRequest.Tmax = &newTmax
 
 	jsonData, err := jsoniter.Marshal(req.BidRequest)
