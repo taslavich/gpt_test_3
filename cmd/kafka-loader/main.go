@@ -65,7 +65,6 @@ func main() {
 				log.Printf("❌ Batch processing error: %v", err)
 				continue
 			}
-			log.Printf("Total processed: %d records", totalProcessed)
 		}
 	}
 }

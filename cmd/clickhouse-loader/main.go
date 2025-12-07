@@ -95,13 +95,8 @@ func main() {
 			}
 
 			totalProcessed += int64(processed)
-			if processed > 0 {
-				log.Printf("💾 Inserted %d records to ClickHouse (total: %d)", processed, totalProcessed)
-			}
 
 			if time.Since(startTime) > time.Minute {
-				rate := float64(totalProcessed) / time.Since(startTime).Minutes()
-				log.Printf("📊 Stats: %d records processed, %.2f records/min", totalProcessed, rate)
 				startTime = time.Now()
 			}
 		}
