@@ -44,8 +44,6 @@ func ProcessKafkaMessages(ctx context.Context, broker, topic string, reader *kaf
 		if hasData(record) {
 			records = append(records, record)
 			messages = append(messages, msg)
-		} else {
-			log.Printf("📭 Skipping empty message")
 		}
 	}
 
@@ -62,7 +60,6 @@ func ProcessKafkaMessages(ctx context.Context, broker, topic string, reader *kaf
 		log.Printf("⚠️ Failed to commit Kafka offsets: %v", err)
 	}
 
-	log.Printf("✅ Successfully processed %d messages to ClickHouse", len(records))
 	return len(records), nil
 }
 
@@ -110,7 +107,6 @@ func insertBatch(chDB *sql.DB, table string, records []types.StatisticsRecord) e
 		return fmt.Errorf("failed to insert batch: %v", err)
 	}
 
-	log.Printf("📊 Inserted %d records with single batch query", len(records))
 	return nil
 }
 
