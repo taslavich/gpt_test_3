@@ -10,15 +10,15 @@ import (
 )
 
 var innerFilterMap = map[string]func(bidRequest *ortb_V2_5.BidRequest, ranger cidranger.Ranger) bool{
-	/*"adl_dsp_hilltopads.com": func(bidRequest *ortb_V2_5.BidRequest, ranger cidranger.Ranger) bool {
-		return // allowedUA(bidRequest.GetDevice().GetUa()) && isIPAllowed(bidRequest.GetDevice().GetIp(), ranger, bidRequest) &&
-	},
-	"mc_dsp_dao.ad": func(bidRequest *ortb_V2_5.BidRequest, ranger cidranger.Ranger) bool {
-		return // && allowedUA(bidRequest.GetDevice().GetUa())
-	},
-	"adl_dsp_dao.ad": func(bidRequest *ortb_V2_5.BidRequest, ranger cidranger.Ranger) bool {
-		return //&& allowedUA(bidRequest.GetDevice().GetUa())
-	},*/
+	"adl_dsp_test_hilltopads.com": func(bidRequest *ortb_V2_5.BidRequest, ranger cidranger.Ranger) bool {
+		return allowedUA(bidRequest.GetDevice().GetUa()) //&& isIPAllowed(bidRequest.GetDevice().GetIp(), ranger, bidRequest) &&
+	}, /*
+		"mc_dsp_dao.ad": func(bidRequest *ortb_V2_5.BidRequest, ranger cidranger.Ranger) bool {
+			return // && allowedUA(bidRequest.GetDevice().GetUa())
+		},
+		"adl_dsp_dao.ad": func(bidRequest *ortb_V2_5.BidRequest, ranger cidranger.Ranger) bool {
+			return //&& allowedUA(bidRequest.GetDevice().GetUa())
+		},*/
 	/*
 		"http://u625267.pophandler.net/rtb/?async=1&code_type=1&js=1&rtbRequest=1&sid=940499": func(bidRequest *ortb_V2_5.BidRequest, ranger cidranger.Ranger) bool {
 			return !HasIpv6(bidRequest)
@@ -113,11 +113,11 @@ func allowedUA(ua string) bool {
 
 	if hasSuspiciousIOSBuild(normalizedUA) {
 		return false
-	}*/
+	}
 
 	if hasMismatchedOSBrowser(normalizedUA) {
 		return false
-	}
+	}*/
 
 	// 4. Автоматизация/скрипты
 	automationPatterns := []string{
@@ -147,7 +147,7 @@ func allowedUA(ua string) bool {
 		}
 	}
 
-	// 6. Версия браузера 0 или невалидная
+	/*// 6. Версия браузера 0 или невалидная
 	zeroVersionPatterns := []string{
 		`Chrome/0`, `Firefox/0`, `Version/0`,
 		`Chrome/0\.`, `Firefox/0\.`, `Version/0\.`,
@@ -158,7 +158,7 @@ func allowedUA(ua string) bool {
 			return false
 		}
 	}
-
+	*/
 	// 7. Длина UA
 	if len(normalizedUA) < 20 {
 		return false
