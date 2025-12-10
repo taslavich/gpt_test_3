@@ -72,7 +72,7 @@ func main() {
 		router,
 		redisClient,
 		badIp.IsBad,
-		geoIp.GetCountryISO,
+		geoIp.GetCountryAndCityIdISO,
 		client,
 		cfg.GetWinnerBidTimeout,
 		cfg.SspAdultFeeds,

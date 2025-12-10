@@ -44,7 +44,7 @@ func postBid_V2_5(
 	r *http.Request,
 	redisClient *redis.Client,
 	isBadIp func(ipStr string) (bool, error),
-	getCountryISO func(ipStr string) (string, error),
+	getCountryISO func(ipStr string) (string, uint32, error),
 	orchestratorClient orchestratorProto.OrchestratorServiceClient,
 	timeout time.Duration,
 	sspFeeds map[string]string,
@@ -131,7 +131,7 @@ func postBid_V2_5(
 		return
 	}
 
-	countryISO, err := getCountryISO(input.Payload.BidRequest.Device.GetIp())
+	countryISO, cityId, err := getCountryISO(input.Payload.BidRequest.Device.GetIp())
 	if errors.As(err, geoBadIp.BadIpFormatError) {
 		err := fmt.Errorf(
 			"Bad format: %w",
@@ -182,6 +182,10 @@ func postBid_V2_5(
 
 	if err := utils.WriteStringToRedis(ctx, redisClient, globalId, constants.GEO_COLUMN, countryISO, logged); err != nil {
 		log.Printf("failed to WriteStringToRedis Geo in postBid_V2_5: %w", err)
+	}
+
+	if err := utils.WriteUint32ToRedis(ctx, redisClient, globalId, constants.CITY_ID_COLUMN, cityId, logged); err != nil {
+		log.Printf("failed to WriteStringToRedis CITY_ID_COLUMN in postBid_V2_5: %w", err)
 	}
 
 	if err := utils.WriteStringToRedis(ctx, redisClient, globalId, constants.ADM_COLUMN, constants.FALSE, logged); err != nil {

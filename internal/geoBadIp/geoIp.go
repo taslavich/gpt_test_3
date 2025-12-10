@@ -11,6 +11,10 @@ type GeoIPRecord struct {
 	Country struct {
 		ISOCode string `maxminddb:"iso_code"`
 	} `maxminddb:"country"`
+
+	City struct {
+		GeonameID uint32 `maxminddb:"geoname_id"`
+	} `maxminddb:"city"`
 }
 
 type GeoIPService struct {
@@ -31,10 +35,10 @@ func (g *GeoIPService) Close() {
 	}
 }
 
-func (g *GeoIPService) GetCountryISO(ipStr string) (string, error) {
+func (g *GeoIPService) GetCountryAndCityIdISO(ipStr string) (string, uint32, error) {
 	ip := net.ParseIP(ipStr)
 	if ip == nil {
-		return "", fmt.Errorf(
+		return "", 0, fmt.Errorf(
 			"%w %s",
 			BadIpFormatError,
 			ip,
@@ -42,12 +46,13 @@ func (g *GeoIPService) GetCountryISO(ipStr string) (string, error) {
 	}
 	var rec GeoIPRecord
 	if err := g.db.Lookup(ip, &rec); err != nil {
-		return "", fmt.Errorf(
+		return "", 0, fmt.Errorf(
 			"%w %s: %w",
 			InnerLookupIpError,
 			ip,
 			err,
 		)
 	}
-	return rec.Country.ISOCode, nil
+
+	return rec.Country.ISOCode, rec.City.GeonameID, nil
 }
