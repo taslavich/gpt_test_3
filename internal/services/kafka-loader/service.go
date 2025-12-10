@@ -64,6 +64,11 @@ func ProcessBatch(ctx context.Context, redisClient *redis.Client, kafkaWriter *k
 			fieldsToDelete[key] = append(fieldsToDelete[key], constants.GEO_COLUMN)
 		}
 
+		if cityIdColumn, exists := data[constants.CITY_ID_COLUMN]; exists {
+			record.CITY_ID_COLUMN = cityIdColumn
+			fieldsToDelete[key] = append(fieldsToDelete[key], constants.CITY_ID_COLUMN)
+		}
+
 		if bidResponses, exists := data[constants.BID_RESPONSES_COLUMN]; exists {
 			record.BID_RESPONSES = bidResponses
 			fieldsToDelete[key] = append(fieldsToDelete[key], constants.BID_RESPONSES_COLUMN)
@@ -141,6 +146,7 @@ func ProcessBatch(ctx context.Context, redisClient *redis.Client, kafkaWriter *k
 func hasData(record types.StatisticsRecord) bool {
 	return record.BID_REQUEST != "" ||
 		record.GEO_COLUMN != "" ||
+		record.CITY_ID_COLUMN != "" ||
 		record.BID_RESPONSES != "" ||
 		record.BID_RESPONSE_WINNER != "" ||
 		record.ADM_IP != "" ||

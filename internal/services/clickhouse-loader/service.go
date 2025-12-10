@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"strconv"
 	"strings"
 
 	"github.com/segmentio/kafka-go"
@@ -69,7 +70,7 @@ func insertBatch(chDB *sql.DB, table string, records []types.StatisticsRecord) e
 	}
 
 	query := fmt.Sprintf(`
-		INSERT INTO %s (uuid, timestamp, typic, spp_domain, bid_request, geo_column, bid_responses, bid_response_winner, adm_ip, adm)
+		INSERT INTO %s (uuid, timestamp, typic, spp_domain, bid_request, geo_column, city_id, bid_responses, bid_response_winner, adm_ip, adm)
 		VALUES 
 	`, table)
 
@@ -77,13 +78,21 @@ func insertBatch(chDB *sql.DB, table string, records []types.StatisticsRecord) e
 	var values []interface{}
 
 	for _, record := range records {
-		valuePlaceholders = append(valuePlaceholders, "(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
+		valuePlaceholders = append(valuePlaceholders, "(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
 
 		var admBool bool
 		if record.ADM == "1" {
 			admBool = true
 		} else {
 			admBool = false // "0", "", или любое другое значение = false
+		}
+
+		var cityID uint32 = 0
+		id64, err := strconv.ParseUint(record.CITY_ID_COLUMN, 10, 32) // base 10, 32 bit
+		if err != nil {
+			log.Printf("Cannot parse CITY_ID_COLUMN int %s: %v", record.CITY_ID_COLUMN, err)
+		} else {
+			cityID = uint32(id64) // uint64 → uint32
 		}
 
 		values = append(values,
@@ -93,6 +102,7 @@ func insertBatch(chDB *sql.DB, table string, records []types.StatisticsRecord) e
 			coalesceEmpty(record.SPP_DOMAIN),
 			coalesceEmpty(record.BID_REQUEST),
 			coalesceEmpty(record.GEO_COLUMN),
+			cityID,
 			coalesceEmpty(record.BID_RESPONSES),
 			coalesceEmpty(record.BID_RESPONSE_WINNER),
 			coalesceEmpty(record.ADM_IP),
@@ -114,6 +124,7 @@ func insertBatch(chDB *sql.DB, table string, records []types.StatisticsRecord) e
 func hasData(record types.StatisticsRecord) bool {
 	return record.BID_REQUEST != "" ||
 		record.GEO_COLUMN != "" ||
+		record.CITY_ID_COLUMN != "" ||
 		record.BID_RESPONSES != "" ||
 		record.BID_RESPONSE_WINNER != "" ||
 		record.ADM_IP != "" ||
@@ -141,6 +152,7 @@ func CreateTable(chDB *sql.DB, tableName string) error {
             spp_domain String,
             bid_request String,
             geo_column String,
+			city_id UInt32,
             bid_responses String,
             bid_response_winner String,
             adm_ip String,

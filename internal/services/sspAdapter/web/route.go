@@ -69,7 +69,7 @@ func InitHttpRoutes(
 	httpRouter *chi.Mux,
 	redisClient *redis.Client,
 	isBadIp func(ipStr string) (bool, error),
-	getCountryISO func(ipStr string) (string, error),
+	getCountryISO func(ipStr string) (string, uint32, error),
 	orchestratorClient orchestratorProto.OrchestratorServiceClient,
 	bidRequestTimeout time.Duration,
 	sspFeeds map[string]string,
