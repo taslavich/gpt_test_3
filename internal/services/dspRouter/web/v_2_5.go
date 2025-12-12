@@ -122,9 +122,7 @@ func (s *Server) GetBids_V2_5(
 	ctx context.Context,
 	req *dspRouterGrpc.DspRouterRequest_V2_5,
 ) (resp *dspRouterGrpc.DspRouterResponse_V2_5, funcErr error) {
-	reqCtx, cancel := context.WithTimeout(ctx, s.timeout)
 	defer func() {
-		cancel()
 		if r := recover(); r != nil {
 			err := fmt.Errorf("Recovered from panic in GetBids_V2_5: %v, %s", r, string(debug.Stack()))
 			resp = nil
@@ -136,6 +134,7 @@ func (s *Server) GetBids_V2_5(
 
 	newTmax := int32(float64(client_v_2_5.Timeout.Milliseconds()) * 0.85)
 	req.BidRequest.Tmax = &newTmax
+	reqCtx, _ := context.WithTimeout(ctx, client_v_2_5.Timeout)
 
 	jsonData, err := jsoniter.Marshal(req.BidRequest)
 	if err != nil {
