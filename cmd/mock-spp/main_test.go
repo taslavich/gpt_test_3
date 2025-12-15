@@ -78,10 +78,7 @@ func int32Ptr(i int32) *int32    { return &i }
 
 func generateRandomIP() string {
 	n := atomic.AddUint64(&globalIDCounter, 1)
-	// 4 разных подсети для лучшего RSS распределения
-	subnet := (n / 1000) % 4
-	return fmt.Sprintf("10.%d.%d.%d.%d",
-		subnet,
+	return fmt.Sprintf("10.%d.%d.%d",
 		byte(n>>16)%255,
 		byte(n>>8)%255,
 		byte(n)%255)
