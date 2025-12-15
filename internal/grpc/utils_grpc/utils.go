@@ -191,62 +191,49 @@ func OptimizeAll(serviceType string) error {
 	log.Printf("✅ Оптимизации применены для %s", serviceType)
 	return nil
 }
-
 func optimizeGoRuntime(serviceType string) {
 	cores := runtime.NumCPU()
 
-	// Автоматически определяем оптимальное количество потоков
+	// 1. Устанавливаем GOMAXPROCS - безопасно и полезно
 	runtime.GOMAXPROCS(cores)
 
-	// Для Go 1.22 нужно осторожно с MaxThreads
-	// Сначала получаем текущее значение
-	currentThreads := debug.SetMaxThreads(0)
-
-	// Разные настройки для разных сервисов
+	// 2. Установка MaxThreads - ВАЖНО: НЕ вызываем SetMaxThreads(0) для получения значения!
+	// В Go 1.24 нужно устанавливать только положительные значения
+	// или не трогать вообще (runtime сам управляет потоками)
 	switch serviceType {
 	case "router":
-		// Для роутера с 64 ядрами - безопасные значения
-		if currentThreads == 0 {
-			// Если текущее значение 0 (по умолчанию), устанавливаем безопасное
-			debug.SetMaxThreads(10000) // Безопасное значение для Go 1.22
-		}
-		debug.SetGCPercent(200)             // Меньше GC для высокой нагрузки
+		// Для роутера с 64 ядрами устанавливаем разумное значение
+		debug.SetMaxThreads(10000)          // Безопасное значение для высоконагрузочного сервиса
+		debug.SetGCPercent(200)             // Реже GC для лучшей производительности
 		debug.SetMaxStack(32 * 1024 * 1024) // 32MB
 
-		// Оптимизации для роутера
-		runtime.MemProfileRate = 0 // Отключаем профилирование памяти в продакшене
-
 	case "orchestrator", "bidengine":
-		// gRPC сервисы
-		if currentThreads == 0 {
-			debug.SetMaxThreads(5000)
-		}
+		debug.SetMaxThreads(5000)
 		debug.SetGCPercent(150)
 		debug.SetMaxStack(16 * 1024 * 1024)
 
 	case "ssp":
-		// HTTP сервис
-		if currentThreads == 0 {
-			debug.SetMaxThreads(15000)
-		}
+		debug.SetMaxThreads(8000)
 		debug.SetGCPercent(200)
 		debug.SetMaxStack(8 * 1024 * 1024)
 
 	default:
-		// Консервативные настройки по умолчанию
-		if currentThreads == 0 {
-			debug.SetMaxThreads(2000)
-		}
+		debug.SetMaxThreads(2000)
 		debug.SetGCPercent(100)
 		debug.SetMaxStack(8 * 1024 * 1024)
 	}
 
-	// Логируем финальные значения
-	log.Printf("  GOMAXPROCS: %d, MaxThreads: %d, GC: %d%%, MaxStack: %dMB",
+	// 3. Отключаем ненужное профилирование в продакшене
+	runtime.MemProfileRate = 0
+	runtime.SetBlockProfileRate(0)
+	runtime.SetMutexProfileFraction(0)
+
+	// 4. Логируем - БЕЗ вызова SetMaxThreads(0) для получения значений!
+	log.Printf("  GOMAXPROCS: %d, GC: %d%%, MaxStack: %dMB",
 		runtime.GOMAXPROCS(0),
-		debug.SetMaxThreads(0),
-		debug.SetGCPercent(-1),
+		debug.SetGCPercent(-1), // Это еще работает
 		debug.SetMaxStack(0)/(1024*1024))
+	// НЕЛЬЗЯ: debug.SetMaxThreads(0) - это вызывает панику в Go 1.24
 }
 
 func setSystemLimits() error {
