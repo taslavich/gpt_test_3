@@ -261,77 +261,67 @@ func setSystemLimits() error {
 
 func optimizeNetworkSettings(serviceType string) error {
 	// Сетевые оптимизации для высоких RPS
+	// Используем безопасный подход - только основные параметры
 	settings := []struct {
-		key   string
-		value string
+		key      string
+		value    string
+		required bool // Обязательный ли параметр
 	}{
-		// Общие настройки TCP
-		{"net.core.rmem_max", "67108864"}, // 64MB
-		{"net.core.wmem_max", "67108864"},
-		{"net.core.rmem_default", "4194304"}, // 4MB
-		{"net.core.wmem_default", "4194304"},
-		{"net.core.optmem_max", "4194304"},
-		{"net.core.somaxconn", "65535"},
-		{"net.core.netdev_max_backlog", "500000"},
-
-		// TCP оптимизации
-		{"net.ipv4.tcp_rmem", "4096 87380 67108864"},
-		{"net.ipv4.tcp_wmem", "4096 65536 67108864"},
-		{"net.ipv4.tcp_mem", "8388608 12582912 16777216"},
-		{"net.ipv4.tcp_window_scaling", "1"},
-		{"net.ipv4.tcp_timestamps", "1"},
-		{"net.ipv4.tcp_sack", "1"},
-		{"net.ipv4.tcp_fack", "1"},
-		{"net.ipv4.tcp_syncookies", "1"},
-		{"net.ipv4.tcp_max_syn_backlog", "3240000"},
-		{"net.ipv4.tcp_synack_retries", "2"},
-		{"net.ipv4.tcp_syn_retries", "2"},
-		{"net.ipv4.tcp_retries2", "3"},
+		// Только самые важные и безопасные параметры
+		{"net.core.somaxconn", "65535", true},
+		{"net.core.netdev_max_backlog", "100000", false},
+		{"net.ipv4.tcp_max_syn_backlog", "3240000", false},
 	}
 
-	// Специфичные настройки для роутера
+	// Специфичные настройки для роутера (только безопасные)
 	if serviceType == "router" {
 		routerSettings := []struct {
-			key   string
-			value string
+			key      string
+			value    string
+			required bool
 		}{
-			{"net.ipv4.ip_local_port_range", "1024 65000"},
-			{"net.ipv4.tcp_fin_timeout", "10"},
-			{"net.ipv4.tcp_tw_reuse", "1"},
-			{"net.ipv4.tcp_tw_recycle", "0"}, // Выключено в новых ядрах
-			{"net.ipv4.tcp_max_tw_buckets", "2000000"},
-			{"net.ipv4.tcp_keepalive_time", "300"},
-			{"net.ipv4.tcp_keepalive_probes", "3"},
-			{"net.ipv4.tcp_keepalive_intvl", "30"},
-			{"net.ipv4.tcp_slow_start_after_idle", "0"}, // Важно для постоянной нагрузки
+			{"net.ipv4.ip_local_port_range", "1024 65000", true},
+			{"net.ipv4.tcp_tw_reuse", "1", false},
+			{"net.ipv4.tcp_fin_timeout", "10", false},
 		}
 		settings = append(settings, routerSettings...)
 	}
 
+	successCount := 0
 	for _, setting := range settings {
-		if err := sysctlWrite(setting.key, setting.value); err != nil {
-			log.Printf("  ⚠️  Не удалось установить %s=%s: %v",
-				setting.key, setting.value, err)
+		if err := safeSysctlWrite(setting.key, setting.value); err != nil {
+			if setting.required {
+				log.Printf("  ⚠️ Не удалось установить обязательный параметр %s: %v", setting.key, err)
+				// Для обязательных параметров можно вернуть ошибку
+				// return fmt.Errorf("не удалось установить %s: %v", setting.key, err)
+			} else {
+				log.Printf("  ⚠️ Не удалось установить параметр %s: %v", setting.key, err)
+			}
+		} else {
+			successCount++
 		}
 	}
 
-	log.Printf("  Сетевые настройки оптимизированы для %s", serviceType)
+	log.Printf("  Установлено %d/%d сетевых параметров", successCount, len(settings))
 	return nil
 }
 
-func sysctlWrite(key, value string) error {
-	// Проверяем существование параметра
-	cmd := exec.Command("sysctl", "-n", key)
-	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("параметр %s не существует", key)
-	}
-
-	// Устанавливаем значение
-	cmd = exec.Command("sysctl", "-w", key+"="+value)
+func safeSysctlWrite(key, value string) error {
+	// Пробуем установить без предварительной проверки
+	cmd := exec.Command("sysctl", "-w", key+"="+value)
 	output, err := cmd.CombinedOutput()
+
 	if err != nil {
-		return fmt.Errorf("не удалось установить %s: %v, вывод: %s",
-			key, err, string(output))
+		// Проверяем, может быть параметр уже установлен или не поддерживается
+		outputStr := string(output)
+		if strings.Contains(outputStr, "permission denied") {
+			return fmt.Errorf("нет прав для установки %s", key)
+		} else if strings.Contains(outputStr, "No such file or directory") {
+			return fmt.Errorf("параметр %s не поддерживается ядром", key)
+		} else if strings.Contains(outputStr, "Invalid argument") {
+			return fmt.Errorf("недопустимое значение для %s", key)
+		}
+		return fmt.Errorf("%s: %v", strings.TrimSpace(outputStr), err)
 	}
 
 	log.Printf("    %s = %s", key, value)
