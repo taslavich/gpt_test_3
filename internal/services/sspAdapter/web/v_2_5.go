@@ -35,7 +35,7 @@ func checkRegion(countryISO string) error {
 }
 
 func shouldPass(counter *uint64) bool {
-	return atomic.AddUint64(counter, 1)%100 < 5
+	return atomic.AddUint64(counter, 1)%100 < 99
 }
 
 func postBid_V2_5(
