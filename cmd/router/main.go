@@ -24,8 +24,12 @@ import (
 )
 
 func main() {
+	if err := utils.OptimizeAll("rout"); err != nil {
+		log.Fatalf("OptimizeAll failed: %v", err)
+	}
+
 	if _, err := maxproc.Set(); err != nil {
-		log.Printf("automaxprocs setup failed: %v", err)
+		log.Fatalf("automaxprocs setup failed: %v", err)
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
