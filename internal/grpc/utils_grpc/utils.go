@@ -198,43 +198,54 @@ func optimizeGoRuntime(serviceType string) {
 	// Автоматически определяем оптимальное количество потоков
 	runtime.GOMAXPROCS(cores)
 
+	// Для Go 1.22 нужно осторожно с MaxThreads
+	// Сначала получаем текущее значение
+	currentThreads := debug.SetMaxThreads(0)
+
 	// Разные настройки для разных сервисов
 	switch serviceType {
 	case "router":
-		// Роутер - низкая задержка, высокая параллельность
-		// Для Go 1.24+ SetMaxThreads устарел, используем осторожно
-		debug.SetMaxThreads(cores * 100)    // 32 ядра * 100 = 3200 потоков
-		debug.SetGCPercent(100)             // Менее агрессивный GC
-		debug.SetMaxStack(64 * 1024 * 1024) // 64MB макс стек
+		// Для роутера с 64 ядрами - безопасные значения
+		if currentThreads == 0 {
+			// Если текущее значение 0 (по умолчанию), устанавливаем безопасное
+			debug.SetMaxThreads(10000) // Безопасное значение для Go 1.22
+		}
+		debug.SetGCPercent(200)             // Меньше GC для высокой нагрузки
+		debug.SetMaxStack(32 * 1024 * 1024) // 32MB
 
 		// Оптимизации для роутера
-		runtime.MemProfileRate = 4096      // Реже профилирование памяти
-		runtime.SetBlockProfileRate(0)     // Отключаем профилирование блокировок
-		runtime.SetMutexProfileFraction(0) // Отключаем профилирование мьютексов
+		runtime.MemProfileRate = 0 // Отключаем профилирование памяти в продакшене
 
 	case "orchestrator", "bidengine":
-		// gRPC сервисы - баланс latency/throughput
-		debug.SetMaxThreads(cores * 50)
-		debug.SetGCPercent(80)
-		debug.SetMaxStack(32 * 1024 * 1024)
+		// gRPC сервисы
+		if currentThreads == 0 {
+			debug.SetMaxThreads(5000)
+		}
+		debug.SetGCPercent(150)
+		debug.SetMaxStack(16 * 1024 * 1024)
 
 	case "ssp":
-		// HTTP сервис - больше горутин
-		debug.SetMaxThreads(cores * 200)
-		debug.SetGCPercent(120)
-		debug.SetMaxStack(16 * 1024 * 1024)
+		// HTTP сервис
+		if currentThreads == 0 {
+			debug.SetMaxThreads(15000)
+		}
+		debug.SetGCPercent(200)
+		debug.SetMaxStack(8 * 1024 * 1024)
 
 	default:
 		// Консервативные настройки по умолчанию
-		debug.SetMaxThreads(cores * 25)
+		if currentThreads == 0 {
+			debug.SetMaxThreads(2000)
+		}
 		debug.SetGCPercent(100)
-		debug.SetMaxStack(16 * 1024 * 1024)
+		debug.SetMaxStack(8 * 1024 * 1024)
 	}
 
+	// Логируем финальные значения
 	log.Printf("  GOMAXPROCS: %d, MaxThreads: %d, GC: %d%%, MaxStack: %dMB",
 		runtime.GOMAXPROCS(0),
-		debug.SetMaxThreads(0), // Получаем текущее значение
-		debug.SetGCPercent(-1), // Получаем текущее значение
+		debug.SetMaxThreads(0),
+		debug.SetGCPercent(-1),
 		debug.SetMaxStack(0)/(1024*1024))
 }
 
@@ -242,16 +253,17 @@ func setSystemLimits() error {
 	// Увеличиваем лимиты для высоконагруженного сервера
 	var rLimit syscall.Rlimit
 
-	// Файловые дескрипторы (важно для роутера с множеством соединений)
+	// Файловые дескрипторы
 	if err := syscall.Getrlimit(syscall.RLIMIT_NOFILE, &rLimit); err == nil {
 		oldCur := rLimit.Cur
-		rLimit.Cur = 1000000 // 1 млн дескрипторов
-		rLimit.Max = 1000000
+		// Для 64 ядерного сервера
+		rLimit.Cur = 500000
+		rLimit.Max = 500000
 		if err := syscall.Setrlimit(syscall.RLIMIT_NOFILE, &rLimit); err != nil {
 			log.Printf("  Не удалось установить RLIMIT_NOFILE: %v", err)
-			// Пробуем меньшее значение
-			rLimit.Cur = 500000
-			rLimit.Max = 500000
+			// Пробуем стандартное значение
+			rLimit.Cur = 100000
+			rLimit.Max = 100000
 			syscall.Setrlimit(syscall.RLIMIT_NOFILE, &rLimit)
 		}
 		log.Printf("  Файловые дескрипторы: %d -> %d", oldCur, rLimit.Cur)
