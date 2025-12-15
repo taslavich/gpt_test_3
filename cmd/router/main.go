@@ -24,12 +24,8 @@ import (
 )
 
 func main() {
-	/*if err := utils.OptimizeAll("router"); err != nil {
-		log.Fatalf("OptimizeAll failed: %v", err)
-	}*/
-
 	if _, err := maxproc.Set(); err != nil {
-		log.Fatalf("automaxprocs setup failed: %v", err)
+		log.Printf("automaxprocs setup failed: %v", err)
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
