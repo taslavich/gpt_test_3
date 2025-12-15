@@ -3,6 +3,7 @@ package loadtest
 import (
 	"bytes"
 	"context"
+	"crypto/tls"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -14,10 +15,24 @@ import (
 	"time"
 )
 
+var (
+	sharedTransport = &http.Transport{
+		MaxIdleConns:        10000,
+		MaxIdleConnsPerHost: 10000,
+		MaxConnsPerHost:     10000,
+		IdleConnTimeout:     90 * time.Second,
+		DisableKeepAlives:   false,
+		TLSClientConfig:     &tls.Config{InsecureSkipVerify: true},
+	}
+
+	// Динамический контроль RPS
+	rpsCounter uint64
+)
+
 // Конфигурация теста
 const (
 	sppAdapterURL = "http://84.32.189.70:8086/bid_v_2_5?feed=50bb2887-5508-4feb-a823-4e43d7633879"
-	threads       = 100              // Количество параллельных горутин
+	threads       = 500              // Количество параллельных горутин
 	targetRPS     = 10000            // Целевая нагрузка (RPS)
 	testDuration  = 30 * time.Second // Длительность теста
 )
@@ -62,9 +77,14 @@ func stringPtr(s string) *string { return &s }
 func int32Ptr(i int32) *int32    { return &i }
 
 func generateRandomIP() string {
-	// Простая генерация приватного IP, быстро меняющаяся
 	n := atomic.AddUint64(&globalIDCounter, 1)
-	return fmt.Sprintf("10.%d.%d.%d", byte(n>>16), byte(n>>8), byte(n))
+	// 4 разных подсети для лучшего RSS распределения
+	subnet := (n / 1000) % 4
+	return fmt.Sprintf("10.%d.%d.%d",
+		subnet,
+		byte(n>>16)%255,
+		byte(n>>8)%255,
+		byte(n)%255)
 }
 
 // Тест производительности (rate-based)
@@ -76,7 +96,7 @@ func TestLoadRTBSystem(t *testing.T) {
 	remainder := targetRPS % threads
 
 	// буфер результатов — targetRPS * duration (максимум). Берём минимум с разумным лимитом.
-	maxResults := targetRPS * int(testDuration.Seconds())
+	maxResults := targetRPS * int(testDuration.Seconds()) * 2
 	if maxResults < 1 {
 		maxResults = targetRPS
 	}
@@ -135,13 +155,14 @@ func workerRate(id, rps int, results chan<- *testResult, wg *sync.WaitGroup, sto
 		return
 	}
 
+	client := &http.Client{
+		Timeout:   5 * time.Second,
+		Transport: sharedTransport,
+	}
+
 	interval := time.Second / time.Duration(rps)
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
-
-	client := &http.Client{
-		Timeout: 5 * time.Second,
-	}
 
 	for {
 		select {
@@ -152,10 +173,10 @@ func workerRate(id, rps int, results chan<- *testResult, wg *sync.WaitGroup, sto
 			start := time.Now()
 			bidRequest := generateBidRequest()
 			result := sendBidRequestWithClient(bidRequest, start, client)
-			// non-blocking send to avoid deadlock if results channel full
 			select {
 			case results <- result:
 			default:
+				// Если буфер переполнен, пропускаем запись
 			}
 		}
 	}
