@@ -195,10 +195,10 @@ func optimizeGoRuntime(serviceType string) {
 	switch serviceType {
 	case "rout":
 		// Роутер - максимальная производительность
-		debug.SetMaxThreads(100000)
+		debug.SetMaxThreads(50000)
 		runtime.GOMAXPROCS(cores)
-		debug.SetGCPercent(10)               // Агрессивный GC для low latency
-		debug.SetMaxStack(256 * 1024 * 1024) // 256MB
+		debug.SetGCPercent(30)              // Агрессивный GC для low latency
+		debug.SetMaxStack(16 * 1024 * 1024) // 256MB
 
 	case "orch", "eng":
 		// ГРПЦ сервисы - баланс latency/throughput
