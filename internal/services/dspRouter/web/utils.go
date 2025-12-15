@@ -79,26 +79,40 @@ func getSspHttpClients(sspDomain string, clients map[string]*http.Client) *http.
 
 func NewFastHTTPClient(timeout time.Duration) *http.Client {
 	transport := &http.Transport{
-		Proxy: http.ProxyFromEnvironment,
+		// ⚡ ДЛЯ 32 ЯДЕР И 250K СОЕДИНЕНИЙ:
+		MaxIdleConns:        50000, // Было 500
+		MaxIdleConnsPerHost: 10000, // Было 100
+		MaxConnsPerHost:     0,     // БЕЗ ЛИМИТА
+
+		// ⚡ Оптимизация для большего числа соединений
+		IdleConnTimeout: 120 * time.Second,
+
+		// ⚡ Больше буферы для high-throughput
+		WriteBufferSize: 128 * 1024, // 128KB
+		ReadBufferSize:  128 * 1024,
+
+		// ⚡ Быстрее переподключения
 		DialContext: (&net.Dialer{
-			Timeout:   5 * time.Second, // Уменьшаем с 30s до 5s
-			KeepAlive: 30 * time.Second,
+			Timeout:   2 * time.Second, // Быстрее!
+			KeepAlive: 120 * time.Second,
 			DualStack: true,
 		}).DialContext,
 
-		// Пул соединений - ОБЯЗАТЕЛЬНО оставить!
-		MaxIdleConns:        500,
-		MaxIdleConnsPerHost: 100,
-		MaxConnsPerHost:     200,
-		IdleConnTimeout:     30 * time.Second, // ОБЯЗАТЕЛЬНО оставить!
+		// ⚡ Отключаем HTTP/2 - он создаёт один connection pool
+		// Для RTB лучше много отдельных соединений
+		ForceAttemptHTTP2: false,
 
-		DisableCompression: true,
-		ForceAttemptHTTP2:  false,
+		// ⚡ Включаем TCP FastOpen если поддерживается
+		// (нужно проверить ядро)
 	}
 
 	return &http.Client{
 		Transport: transport,
-		Timeout:   timeout, // Главный таймаут
+		Timeout:   timeout,
+		// ⚡ Отключаем редиректы в DSP роутере
+		CheckRedirect: func(req *http.Request, via []*http.Request) error {
+			return http.ErrUseLastResponse
+		},
 	}
 }
 

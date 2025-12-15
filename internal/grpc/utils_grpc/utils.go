@@ -170,117 +170,171 @@ func RewriteSspGeoDspFileNextVer[
 	return SetAndConvertNonGoodMap(inputMap), nil
 }
 
-// OptimizeAll - вызывает все оптимизации для сервиса
-// serviceType: "router", "orchestrator", "bidengine", "ssp", "clickhouse"
 func OptimizeAll(serviceType string) error {
-	log.Printf("⚡ Оптимизация для %s (CPU: %d ядер)", serviceType, runtime.NumCPU())
+	log.Printf("⚡ Оптимизация для %s (CPU: %d ядер, Go: %s)",
+		serviceType, runtime.NumCPU(), runtime.Version())
 
 	optimizeGoRuntime(serviceType)
-	if err := setSystemLimits(); err != nil {
-		return fmt.Errorf("Cannot setSystemLimits %v", err)
-	}
-	if err := optimizeNetworkSettings(serviceType); err != nil {
-		return fmt.Errorf("Cannot optimizeNetworkSettings %v", err)
+
+	// Системные оптимизации только если root
+	if os.Geteuid() == 0 {
+		if err := setSystemLimits(); err != nil {
+			log.Printf("⚠️  Системные лимиты не изменены: %v", err)
+		}
+		if err := optimizeNetworkSettings(serviceType); err != nil {
+			log.Printf("⚠️  Сетевые настройки не изменены: %v", err)
+		}
+	} else {
+		log.Printf("⚠️  Требуются root права для системных оптимизаций")
 	}
 
 	log.Printf("✅ Оптимизации применены для %s", serviceType)
-
 	return nil
 }
 
 func optimizeGoRuntime(serviceType string) {
 	cores := runtime.NumCPU()
 
+	// Автоматически определяем оптимальное количество потоков
+	runtime.GOMAXPROCS(cores)
+
 	// Разные настройки для разных сервисов
 	switch serviceType {
-	case "rout":
-		// Роутер - максимальная производительность
-		debug.SetMaxThreads(50000)
-		runtime.GOMAXPROCS(cores)
-		debug.SetGCPercent(30)              // Агрессивный GC для low latency
-		debug.SetMaxStack(16 * 1024 * 1024) // 256MB
+	case "router":
+		// Роутер - низкая задержка, высокая параллельность
+		// Для Go 1.24+ SetMaxThreads устарел, используем осторожно
+		debug.SetMaxThreads(cores * 100)    // 32 ядра * 100 = 3200 потоков
+		debug.SetGCPercent(100)             // Менее агрессивный GC
+		debug.SetMaxStack(64 * 1024 * 1024) // 64MB макс стек
 
-	case "orch", "eng":
-		// ГРПЦ сервисы - баланс latency/throughput
-		debug.SetMaxThreads(50000)
-		runtime.GOMAXPROCS(cores)
-		debug.SetGCPercent(20)
-		debug.SetMaxStack(128 * 1024 * 1024)
+		// Оптимизации для роутера
+		runtime.MemProfileRate = 4096      // Реже профилирование памяти
+		runtime.SetBlockProfileRate(0)     // Отключаем профилирование блокировок
+		runtime.SetMutexProfileFraction(0) // Отключаем профилирование мьютексов
+
+	case "orchestrator", "bidengine":
+		// gRPC сервисы - баланс latency/throughput
+		debug.SetMaxThreads(cores * 50)
+		debug.SetGCPercent(80)
+		debug.SetMaxStack(32 * 1024 * 1024)
 
 	case "ssp":
 		// HTTP сервис - больше горутин
-		debug.SetMaxThreads(100000)
-		runtime.GOMAXPROCS(cores)
-		debug.SetGCPercent(30) // Менее агрессивный
-		debug.SetMaxStack(64 * 1024 * 1024)
+		debug.SetMaxThreads(cores * 200)
+		debug.SetGCPercent(120)
+		debug.SetMaxStack(16 * 1024 * 1024)
 
 	default:
-		// Остальные
-		debug.SetMaxThreads(30000)
-		runtime.GOMAXPROCS(cores)
-		debug.SetGCPercent(30)
-		debug.SetMaxStack(64 * 1024 * 1024)
+		// Консервативные настройки по умолчанию
+		debug.SetMaxThreads(cores * 25)
+		debug.SetGCPercent(100)
+		debug.SetMaxStack(16 * 1024 * 1024)
 	}
 
-	log.Printf("  GOMAXPROCS: %d, GC: %d%%, MaxStack: %dMB",
-		runtime.GOMAXPROCS(0), debug.SetGCPercent(0), debug.SetMaxStack(0)/(1024*1024))
+	log.Printf("  GOMAXPROCS: %d, MaxThreads: %d, GC: %d%%, MaxStack: %dMB",
+		runtime.GOMAXPROCS(0),
+		debug.SetMaxThreads(0), // Получаем текущее значение
+		debug.SetGCPercent(-1), // Получаем текущее значение
+		debug.SetMaxStack(0)/(1024*1024))
 }
 
 func setSystemLimits() error {
-	// Только если root
-	if os.Geteuid() != 0 {
-		return fmt.Errorf("Без root прав, системные лимиты не изменены")
-	}
-
-	// Дескрипторы файлов
+	// Увеличиваем лимиты для высоконагруженного сервера
 	var rLimit syscall.Rlimit
+
+	// Файловые дескрипторы (важно для роутера с множеством соединений)
 	if err := syscall.Getrlimit(syscall.RLIMIT_NOFILE, &rLimit); err == nil {
-		rLimit.Cur = 500000
-		rLimit.Max = 500000
-		syscall.Setrlimit(syscall.RLIMIT_NOFILE, &rLimit)
-		log.Printf("  Файловые дескрипторы: %d", rLimit.Cur)
+		oldCur := rLimit.Cur
+		rLimit.Cur = 1000000 // 1 млн дескрипторов
+		rLimit.Max = 1000000
+		if err := syscall.Setrlimit(syscall.RLIMIT_NOFILE, &rLimit); err != nil {
+			log.Printf("  Не удалось установить RLIMIT_NOFILE: %v", err)
+			// Пробуем меньшее значение
+			rLimit.Cur = 500000
+			rLimit.Max = 500000
+			syscall.Setrlimit(syscall.RLIMIT_NOFILE, &rLimit)
+		}
+		log.Printf("  Файловые дескрипторы: %d -> %d", oldCur, rLimit.Cur)
 	}
 
 	return nil
 }
 
 func optimizeNetworkSettings(serviceType string) error {
-	if os.Geteuid() != 0 {
-		return fmt.Errorf("Без root прав, системные лимиты не изменены")
+	// Сетевые оптимизации для высоких RPS
+	settings := []struct {
+		key   string
+		value string
+	}{
+		// Общие настройки TCP
+		{"net.core.rmem_max", "67108864"}, // 64MB
+		{"net.core.wmem_max", "67108864"},
+		{"net.core.rmem_default", "4194304"}, // 4MB
+		{"net.core.wmem_default", "4194304"},
+		{"net.core.optmem_max", "4194304"},
+		{"net.core.somaxconn", "65535"},
+		{"net.core.netdev_max_backlog", "500000"},
+
+		// TCP оптимизации
+		{"net.ipv4.tcp_rmem", "4096 87380 67108864"},
+		{"net.ipv4.tcp_wmem", "4096 65536 67108864"},
+		{"net.ipv4.tcp_mem", "8388608 12582912 16777216"},
+		{"net.ipv4.tcp_window_scaling", "1"},
+		{"net.ipv4.tcp_timestamps", "1"},
+		{"net.ipv4.tcp_sack", "1"},
+		{"net.ipv4.tcp_fack", "1"},
+		{"net.ipv4.tcp_syncookies", "1"},
+		{"net.ipv4.tcp_max_syn_backlog", "3240000"},
+		{"net.ipv4.tcp_synack_retries", "2"},
+		{"net.ipv4.tcp_syn_retries", "2"},
+		{"net.ipv4.tcp_retries2", "3"},
 	}
 
-	// Общие настройки для всех
-	if err := sysctlWrite("net.core.rmem_max", "16777216"); err != nil {
-		return fmt.Errorf("Cannot sysctlWrite %v", err)
-	}
-	if err := sysctlWrite("net.core.wmem_max", "16777216"); err != nil {
-		return fmt.Errorf("Cannot sysctlWrite %v", err)
-	}
-
-	// Специфичные для роутера (много исходящих соединений)
+	// Специфичные настройки для роутера
 	if serviceType == "router" {
-		if err := sysctlWrite("net.ipv4.ip_local_port_range", "1024 65535"); err != nil {
-			return fmt.Errorf("Cannot sysctlWrite %v", err)
+		routerSettings := []struct {
+			key   string
+			value string
+		}{
+			{"net.ipv4.ip_local_port_range", "1024 65000"},
+			{"net.ipv4.tcp_fin_timeout", "10"},
+			{"net.ipv4.tcp_tw_reuse", "1"},
+			{"net.ipv4.tcp_tw_recycle", "0"}, // Выключено в новых ядрах
+			{"net.ipv4.tcp_max_tw_buckets", "2000000"},
+			{"net.ipv4.tcp_keepalive_time", "300"},
+			{"net.ipv4.tcp_keepalive_probes", "3"},
+			{"net.ipv4.tcp_keepalive_intvl", "30"},
+			{"net.ipv4.tcp_slow_start_after_idle", "0"}, // Важно для постоянной нагрузки
 		}
-		if err := sysctlWrite("net.ipv4.tcp_fin_timeout", "5"); err != nil {
-			return fmt.Errorf("Cannot sysctlWrite %v", err)
-		}
-		if err := sysctlWrite("net.ipv4.tcp_tw_reuse", "1"); err != nil {
-			return fmt.Errorf("Cannot sysctlWrite %v", err)
-		}
-		if err := sysctlWrite("net.core.somaxconn", "65535"); err != nil {
-			return fmt.Errorf("Cannot sysctlWrite %v", err)
+		settings = append(settings, routerSettings...)
+	}
+
+	for _, setting := range settings {
+		if err := sysctlWrite(setting.key, setting.value); err != nil {
+			log.Printf("  ⚠️  Не удалось установить %s=%s: %v",
+				setting.key, setting.value, err)
 		}
 	}
 
+	log.Printf("  Сетевые настройки оптимизированы для %s", serviceType)
 	return nil
 }
 
 func sysctlWrite(key, value string) error {
-	cmd := exec.Command("sysctl", "-w", key+"="+value)
+	// Проверяем существование параметра
+	cmd := exec.Command("sysctl", "-n", key)
 	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("Cannot Run %v", err)
+		return fmt.Errorf("параметр %s не существует", key)
 	}
 
+	// Устанавливаем значение
+	cmd = exec.Command("sysctl", "-w", key+"="+value)
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("не удалось установить %s: %v, вывод: %s",
+			key, err, string(output))
+	}
+
+	log.Printf("    %s = %s", key, value)
 	return nil
 }

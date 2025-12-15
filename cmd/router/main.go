@@ -24,7 +24,7 @@ import (
 )
 
 func main() {
-	if err := utils.OptimizeAll("rout"); err != nil {
+	if err := utils.OptimizeAll("router"); err != nil {
 		log.Fatalf("OptimizeAll failed: %v", err)
 	}
 
