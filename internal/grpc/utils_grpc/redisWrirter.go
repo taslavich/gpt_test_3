@@ -3,7 +3,6 @@ package utils
 import (
 	"context"
 	"fmt"
-	"log"
 	"time"
 
 	"github.com/redis/go-redis/v9"
@@ -12,10 +11,7 @@ import (
 const RedisKeyTTL = 5 * time.Minute
 
 func WriteStringToRedis(ctx context.Context, redisClient *redis.Client, uuid, column string, data string, logged bool) error {
-	log.Printf("DEBUG WriteStringToRedis: logged=%v, uuid=%s, column=%s, data=%s", logged, uuid, column, data)
-
 	if !logged {
-		log.Printf("DEBUG: Skipping Redis write (logged=false)")
 		return nil
 	}
 
@@ -30,10 +26,7 @@ func WriteStringToRedis(ctx context.Context, redisClient *redis.Client, uuid, co
 }
 
 func WriteUint32ToRedis(ctx context.Context, redisClient *redis.Client, uuid, column string, data uint32, logged bool) error {
-	log.Printf("DEBUG WriteStringToRedis: logged=%v, uuid=%s, column=%s, data=%s", logged, uuid, column, data)
-
 	if !logged {
-		log.Printf("DEBUG: Skipping Redis write (logged=false)")
 		return nil
 	}
 
@@ -48,10 +41,7 @@ func WriteUint32ToRedis(ctx context.Context, redisClient *redis.Client, uuid, co
 }
 
 func WriteJsonToRedis(ctx context.Context, redisClient *redis.Client, uuid, column string, data []byte, logged bool) error {
-	log.Printf("DEBUG WriteStringToRedis: logged=%v, uuid=%s, column=%s, data=%s", logged, uuid, column, data)
-
 	if !logged {
-		log.Printf("DEBUG: Skipping Redis write (logged=false)")
 		return nil
 	}
 
@@ -66,10 +56,7 @@ func WriteJsonToRedis(ctx context.Context, redisClient *redis.Client, uuid, colu
 }
 
 func WriteFloat32ToRedis(ctx context.Context, redisClient *redis.Client, uuid, column string, data float32, logged bool) error {
-	log.Printf("DEBUG WriteStringToRedis: logged=%v, uuid=%s, column=%s, data=%s", logged, uuid, column, data)
-
 	if !logged {
-		log.Printf("DEBUG: Skipping Redis write (logged=false)")
 		return nil
 	}
 

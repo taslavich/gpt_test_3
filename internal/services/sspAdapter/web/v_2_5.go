@@ -35,7 +35,7 @@ func checkRegion(countryISO string) error {
 }
 
 func shouldPass(counter *uint64) bool {
-	return atomic.AddUint64(counter, 1)%100 < 99
+	return atomic.AddUint64(counter, 1)%100 < 5
 }
 
 func postBid_V2_5(
@@ -159,8 +159,7 @@ func postBid_V2_5(
 		input.Payload.BidRequest.Cur = append(input.Payload.BidRequest.Cur, "USD")
 	}
 
-	logged := true //shouldPass(counter)
-	log.Printf("DEBUG postBid_V2_5: logged=%v", logged)
+	logged := shouldPass(counter)
 
 	globalId := uuid.New().String()
 
