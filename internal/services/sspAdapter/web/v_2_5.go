@@ -160,6 +160,7 @@ func postBid_V2_5(
 	}
 
 	logged := true //shouldPass(counter)
+	log.Printf("DEBUG postBid_V2_5: logged=%v", logged)
 
 	globalId := uuid.New().String()
 
