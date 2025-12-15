@@ -1,31 +1,25 @@
 package loadtest
 
 import (
-	"bufio"
+	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
-	"io"
 	"log"
 	"net/http"
-	"os"
-	"os/exec"
-	"path/filepath"
 	"sort"
-	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
-
-	"gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/proto/types/ortb_V2_5"
 )
 
 // Конфигурация теста
 const (
-	sppAdapterURL = "https://twinbidexchange.com/adm?id=c709afe1-bea9-4132-aee13&url=https%3A%2F%2Fkts.vasstycom.com%2Fin%2F266gRU_w0WXx8uICUafxnCKMHrYdx"
-	threads       = 100             // Количество параллельных горутин
-	targetRPS     = 330             // Целевая нагрузка (RPS)
-	testDuration  = 5 * time.Second // Длительность теста
+	sppAdapterURL = "http://84.32.189.70:8086/bid_v_2_5?feed=50bb2887-5508-4feb-a823-4e43d7633879"
+	threads       = 100              // Количество параллельных горутин
+	targetRPS     = 10000            // Целевая нагрузка (RPS)
+	testDuration  = 10 * time.Second // Длительность теста
 )
 
 var (
@@ -41,54 +35,25 @@ var (
 	processPattern    = ""                //"rtb_bid-engine|rtb_orchestrator|rtb_router|rtb_spp-adapter|rtb_kafka-loader|rtb_clickhouse-loader|rtb_mock-dsp-1|rtb_mock-dsp-2|rtb_mock-dsp-3|rtb_redis|rtb_kafka|rtb_nginx-gateway" // Шаблон для поиска процессов RTB
 )
 
-type streamSpec struct {
-	name     string
-	args     []string
-	filename string
-}
-
-type snapshotSpec struct {
-	name     string
-	args     []string
-	interval time.Duration
-	filename string
-}
-
-// Генератор тестовых BidRequest для нового формата
 func generateBidRequest() map[string]interface{} {
-	bidFloor := float32(0.5)
-	w := int32(300)
-	h := int32(250)
-	country := "US"
-
 	id := atomic.AddUint64(&globalIDCounter, 1)
 
-	// Создаем ORTB 2.5 BidRequest
-	bidRequest := &ortb_V2_5.BidRequest{
-		Id: stringPtr(fmt.Sprintf("req-%d", id)),
-		At: int32Ptr(1),
-		Imp: []*ortb_V2_5.Imp{
-			{
-				Id:       stringPtr("imp-1"),
-				Bidfloor: &bidFloor,
-				Banner: &ortb_V2_5.Banner{
-					W: &w,
-					H: &h,
-				},
-			},
-		},
-		Device: &ortb_V2_5.Device{
-			Ip: stringPtr(generateRandomIP()),
-			Geo: &ortb_V2_5.Geo{
-				Country: &country,
-			},
-		},
-	}
-
-	// Оборачиваем в нужный формат
 	return map[string]interface{}{
-		"bid_request": bidRequest,
-		"ssp_domain":  "example.com",
+		"id": fmt.Sprintf("%d", id),
+		"at": 1,
+		"imp": []map[string]interface{}{
+			{
+				"id": fmt.Sprintf("%d", id),
+			},
+		},
+		"device": map[string]interface{}{
+			"ip": generateRandomIP(),
+			"ua": "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Mobile Safari/537.36",
+		},
+		"site": map[string]interface{}{
+			"id": fmt.Sprintf("%d", id),
+		},
+		"cur": []string{"USD"},
 	}
 }
 
@@ -196,9 +161,8 @@ func workerRate(id, rps int, results chan<- *testResult, wg *sync.WaitGroup, sto
 	}
 }
 
-// Отправка BidRequest с переиспользуемым клиентом
 func sendBidRequestWithClient(bidRequest map[string]interface{}, startTime time.Time, client *http.Client) *testResult {
-	/*jsonData, err := json.Marshal(bidRequest)
+	jsonData, err := json.Marshal(bidRequest)
 	if err != nil {
 		return &testResult{
 			success:   false,
@@ -207,11 +171,11 @@ func sendBidRequestWithClient(bidRequest map[string]interface{}, startTime time.
 			timestamp: startTime,
 		}
 	}
-	*/
+
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	req, err := http.NewRequestWithContext(ctx, "GET", sppAdapterURL, nil)
+	req, err := http.NewRequestWithContext(ctx, "POST", sppAdapterURL, bytes.NewBuffer(jsonData))
 	if err != nil {
 		return &testResult{
 			success:   false,
@@ -221,7 +185,9 @@ func sendBidRequestWithClient(bidRequest map[string]interface{}, startTime time.
 		}
 	}
 
+	// Обязательные заголовки как в curl запросе
 	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-Openrtb-Version", "2.5")
 
 	resp, err := client.Do(req)
 	if err != nil {
@@ -236,6 +202,7 @@ func sendBidRequestWithClient(bidRequest map[string]interface{}, startTime time.
 
 	latency := time.Since(startTime)
 
+	// Проверяем статус 200 (есть бид) или 204 (нет бида)
 	if resp.StatusCode == http.StatusOK || resp.StatusCode == http.StatusNoContent {
 		return &testResult{
 			success:   true,
@@ -337,208 +304,4 @@ func analyzeResults(results []*testResult, totalTime time.Duration) {
 	} else {
 		fmt.Printf("⚠️  Latency is high: %v\n", avgLatency)
 	}
-}
-
-// ============================
-// ДИАГНОСТИЧЕСКАЯ СИСТЕМА
-// ============================
-
-func runDiagnostics() {
-	if err := os.MkdirAll(diagOutputDir, 0o755); err != nil {
-		log.Printf("❌ Ошибка создания каталога диагностики: %v", err)
-		return
-	}
-
-	pidList := strings.Join(findPIDs(processPattern), ",")
-	ctx, cancel := context.WithTimeout(context.Background(), diagDuration)
-	defer cancel()
-
-	var wg sync.WaitGroup
-
-	streamCmds := []streamSpec{
-		{"top", buildTopArgs(pidList), "top.log"},
-		{"pidstat", buildPidstatArgs(pidList), "pidstat.log"},
-		{"mpstat", []string{"-P", "ALL", "2"}, "mpstat.log"},
-		{"vmstat", []string{"2"}, "vmstat.log"},
-		{"iostat", []string{"-xz", "2"}, "iostat.log"},
-		{"sar", []string{"-n", "DEV", "2"}, "sar-dev.log"},
-		{"sar", []string{"-n", "TCP,ETCP", "2"}, "sar-tcp.log"},
-	}
-
-	for _, spec := range streamCmds {
-		wg.Add(1)
-		go runStream(ctx, &wg, spec, diagOutputDir)
-	}
-
-	snapshotCmds := []snapshotSpec{
-		{"free", []string{"-m"}, 10 * time.Second, "free.log"},
-		{"ss", []string{"-s"}, 10 * time.Second, "ss-summary.log"},
-		{"ss", []string{"-tan", "state", "time-wait"}, 10 * time.Second, "ss-timewait.log"},
-	}
-
-	for _, spec := range snapshotCmds {
-		wg.Add(1)
-		go runSnapshots(ctx, &wg, spec, diagOutputDir)
-	}
-
-	// Записываем информацию о тесте
-	writeTestInfo(diagOutputDir)
-
-	wg.Wait()
-	fmt.Println("✅ Диагностика завершена")
-}
-
-func findPIDs(pattern string) []string {
-	pattern = strings.TrimSpace(pattern)
-	if pattern == "" {
-		return nil
-	}
-	out, err := exec.Command("pgrep", "-f", pattern).Output()
-	if err != nil {
-		log.Printf("⚠️ pgrep не нашёл процессов для %q: %v", pattern, err)
-		return nil
-	}
-	return strings.Fields(string(out))
-}
-
-func buildTopArgs(pidList string) []string {
-	args := []string{"-b", "-H", "-d", "2"}
-	if pidList != "" {
-		args = append(args, "-p", pidList)
-	}
-	return args
-}
-
-func buildPidstatArgs(pidList string) []string {
-	args := []string{"-u", "-r", "-d", "2"}
-	if pidList != "" {
-		args = append(args, "-p", pidList)
-	}
-	return args
-}
-
-func runStream(ctx context.Context, wg *sync.WaitGroup, spec streamSpec, dir string) {
-	defer wg.Done()
-
-	path := filepath.Join(dir, spec.filename)
-	file, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
-	if err != nil {
-		log.Printf("❌ Не удалось открыть %s: %v", path, err)
-		return
-	}
-	defer file.Close()
-
-	// Записываем заголовок
-	fmt.Fprintf(file, "=== %s started at %s ===\n", spec.name, time.Now().Format(time.RFC3339))
-	fmt.Fprintf(file, "Command: %s %s\n\n", spec.name, strings.Join(spec.args, " "))
-
-	cmd := exec.CommandContext(ctx, spec.name, spec.args...)
-	stdout, err := cmd.StdoutPipe()
-	if err != nil {
-		log.Printf("❌ %s stdout: %v", spec.name, err)
-		return
-	}
-	stderr, err := cmd.StderrPipe()
-	if err != nil {
-		log.Printf("❌ %s stderr: %v", spec.name, err)
-		return
-	}
-
-	if err := cmd.Start(); err != nil {
-		log.Printf("❌ %s start: %v", spec.name, err)
-		return
-	}
-
-	var copierWG sync.WaitGroup
-	copierWG.Add(2)
-	go copyStream(&copierWG, file, stdout)
-	go copyStream(&copierWG, file, stderr)
-
-	done := make(chan struct{})
-	go func() {
-		defer close(done)
-		if err := cmd.Wait(); err != nil && ctx.Err() == nil {
-			log.Printf("⚠️ %s завершилась с ошибкой: %v", spec.name, err)
-		}
-	}()
-
-	select {
-	case <-ctx.Done():
-		_ = cmd.Process.Signal(os.Interrupt)
-		<-done
-	case <-done:
-	}
-	copierWG.Wait()
-	fmt.Fprintf(file, "\n=== %s finished at %s ===\n\n", spec.name, time.Now().Format(time.RFC3339))
-}
-
-func runSnapshots(ctx context.Context, wg *sync.WaitGroup, spec snapshotSpec, dir string) {
-	defer wg.Done()
-
-	path := filepath.Join(dir, spec.filename)
-	file, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
-	if err != nil {
-		log.Printf("❌ Не удалось открыть %s: %v", path, err)
-		return
-	}
-	defer file.Close()
-
-	// Записываем заголовок
-	fmt.Fprintf(file, "=== %s snapshots started at %s ===\n", spec.name, time.Now().Format(time.RFC3339))
-	fmt.Fprintf(file, "Command: %s %s\n", spec.name, strings.Join(spec.args, " "))
-	fmt.Fprintf(file, "Interval: %v\n\n", spec.interval)
-
-	ticker := time.NewTicker(spec.interval)
-	defer ticker.Stop()
-
-	writeSnapshot(ctx, file, spec)
-	for {
-		select {
-		case <-ctx.Done():
-			fmt.Fprintf(file, "\n=== %s snapshots finished at %s ===\n\n", spec.name, time.Now().Format(time.RFC3339))
-			return
-		case <-ticker.C:
-			writeSnapshot(ctx, file, spec)
-		}
-	}
-}
-
-func writeSnapshot(ctx context.Context, file *os.File, spec snapshotSpec) {
-	fmt.Fprintf(file, "\n--- %s ---\n", time.Now().Format(time.RFC3339))
-	cmd := exec.CommandContext(ctx, spec.name, spec.args...)
-	output, err := cmd.CombinedOutput()
-	if err != nil {
-		fmt.Fprintf(file, "❌ ошибка: %v\n", err)
-	}
-	file.Write(output)
-}
-
-func copyStream(wg *sync.WaitGroup, dst *os.File, src io.Reader) {
-	defer wg.Done()
-	scanner := bufio.NewScanner(src)
-	for scanner.Scan() {
-		fmt.Fprintln(dst, scanner.Text())
-	}
-	if err := scanner.Err(); err != nil {
-		log.Printf("⚠️ ошибка чтения потока: %v", err)
-	}
-}
-
-func writeTestInfo(dir string) {
-	path := filepath.Join(dir, "test_info.log")
-	file, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
-	if err != nil {
-		log.Printf("❌ Не удалось записать информацию о тесте: %v", err)
-		return
-	}
-	defer file.Close()
-
-	fmt.Fprintf(file, "=== Load Test Information ===\n")
-	fmt.Fprintf(file, "Start Time: %s\n", time.Now().Format(time.RFC3339))
-	fmt.Fprintf(file, "Target URL: %s\n", sppAdapterURL)
-	fmt.Fprintf(file, "Threads: %d\n", threads)
-	fmt.Fprintf(file, "Target RPS: %d\n", targetRPS)
-	fmt.Fprintf(file, "Test Duration: %v\n", testDuration)
-	fmt.Fprintf(file, "Process Pattern: %s\n", processPattern)
-	fmt.Fprintf(file, "=============================\n\n")
 }
