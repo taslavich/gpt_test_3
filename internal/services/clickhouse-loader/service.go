@@ -22,6 +22,8 @@ func ProcessKafkaMessages(ctx context.Context, broker, topic string, reader *kaf
 	if !passed {
 		log.Printf("ZERO MSG")
 		return 0, nil
+	} else {
+		log.Printf("PASSED")
 	}
 
 	var messages []kafka.Message
@@ -61,6 +63,8 @@ func ProcessKafkaMessages(ctx context.Context, broker, topic string, reader *kaf
 	if err := reader.CommitMessages(ctx, messages...); err != nil {
 		log.Printf("⚠️ Failed to commit Kafka offsets: %v", err)
 	}
+
+	log.Printf("COMMITED")
 
 	return len(records), nil
 }
