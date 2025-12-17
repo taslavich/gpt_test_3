@@ -303,20 +303,18 @@ func (s *Server) getBidsFromDSPbyHTTP_V_2_5(ctx context.Context, uuid string, js
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Connection", "keep-alive")
 	req.Header.Set("X-Openrtb-Version", "2.5")
-
+	networkStart := time.Now()
 	resp, err := client_v_2_5.Do(req)
+	networkDuration := time.Since(networkStart)
+
 	if err != nil {
-		return nil, 1, fmt.Errorf("Request failed: %v", err)
+		return nil, 1, fmt.Errorf("Timeout: %d ms, Request failed: %v", networkDuration.Milliseconds(), err)
 	}
 	defer resp.Body.Close()
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return nil, 4, fmt.Errorf("read body failed: %v", err)
-	}
-
-	if dspEndpoint == "http://u625267.pophandler.net/rtb/?async=1&code_type=1&js=1&rtbRequest=1&sid=940499" {
-		log.Printf("uuid: %s, code: %d, body: %s", uuid, resp.StatusCode, string(body))
 	}
 
 	if resp.StatusCode == http.StatusOK {
