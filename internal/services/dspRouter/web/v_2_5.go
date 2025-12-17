@@ -215,7 +215,7 @@ func (s *Server) GetBids_V2_5(
 		go func(ctx context.Context, endpoint, domain string, client_v_2_5 *http.Client) {
 			defer wg.Done()
 
-			reqCtx, cancel := context.WithTimeout(ctx, client_v_2_5.Timeout)
+			reqCtx, cancel := context.WithTimeout(context.Background(), client_v_2_5.Timeout)
 			defer cancel()
 
 			dspResp, code, err := s.getBidsFromDSPbyHTTP_V_2_5(reqCtx, req.GlobalId, jsonData, endpoint, client_v_2_5)
