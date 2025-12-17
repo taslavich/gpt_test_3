@@ -221,11 +221,12 @@ func (s *Server) GetBids_V2_5(
 			dspResp, code, err := s.getBidsFromDSPbyHTTP_V_2_5(reqCtx, req.GlobalId, jsonData, endpoint, client_v_2_5)
 			if err != nil {
 				log.Printf(
-					"Cannot getBidsFromDSPbyHTTP_V_2_5, uuid: %s,ssp_domain: %s, dsp_domain: %s, timeout max %d ms error: %v",
+					"Cannot getBidsFromDSPbyHTTP_V_2_5, uuid: %s,ssp_domain: %s, dsp_domain: %s, timeout max %d ms, tmax: %d, error: %v",
 					req.GlobalId,
 					req.SspDomain,
 					domain,
 					client_v_2_5.Timeout.Milliseconds(),
+					newTmax,
 					err,
 				)
 			}
