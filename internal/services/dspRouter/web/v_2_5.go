@@ -67,9 +67,6 @@ func NewServer(
 	clients map[string]*http.Client,
 	filters *filter.FiltersBox,
 ) *Server {
-	if timeout <= 0 {
-		timeout = 150 * time.Millisecond
-	}
 	if maxParallelRequests <= 0 {
 		maxParallelRequests = 64
 	}
@@ -122,9 +119,7 @@ func (s *Server) GetBids_V2_5(
 	ctx context.Context,
 	req *dspRouterGrpc.DspRouterRequest_V2_5,
 ) (resp *dspRouterGrpc.DspRouterResponse_V2_5, funcErr error) {
-	reqCtx, cancel := context.WithTimeout(ctx, s.timeout)
 	defer func() {
-		cancel()
 		if r := recover(); r != nil {
 			err := fmt.Errorf("Recovered from panic in GetBids_V2_5: %v, %s", r, string(debug.Stack()))
 			resp = nil
@@ -133,7 +128,6 @@ func (s *Server) GetBids_V2_5(
 	}()
 
 	client_v_2_5 := getSspHttpClients(req.SspDomain, s.clients)
-
 	newTmax := int32(float64(client_v_2_5.Timeout.Milliseconds()) * 0.85)
 	req.BidRequest.Tmax = &newTmax
 
@@ -218,8 +212,11 @@ func (s *Server) GetBids_V2_5(
 		}
 
 		wg.Add(1)
-		go func(endpoint, domain string, client_v_2_5 *http.Client) {
+		go func(ctx context.Context, endpoint, domain string, client_v_2_5 *http.Client) {
 			defer wg.Done()
+
+			reqCtx, cancel := context.WithTimeout(ctx, client_v_2_5.Timeout)
+			defer cancel()
 
 			dspResp, code, err := s.getBidsFromDSPbyHTTP_V_2_5(reqCtx, req.GlobalId, jsonData, endpoint, client_v_2_5)
 			if err != nil {
@@ -260,7 +257,7 @@ func (s *Server) GetBids_V2_5(
 					resp:   dspResp,
 				}
 			}
-		}(endpoint, domain, client_v_2_5)
+		}(ctx, endpoint, domain, client_v_2_5)
 	}
 
 	go func() {
