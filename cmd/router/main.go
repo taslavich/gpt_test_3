@@ -7,6 +7,7 @@ import (
 	"net"
 	"os"
 	"os/signal"
+	"runtime"
 	"syscall"
 	"time"
 
@@ -24,6 +25,8 @@ import (
 )
 
 func main() {
+	cores := runtime.NumCPU()
+	runtime.GOMAXPROCS(cores)
 	/*if err := utils.OptimizeAll("router"); err != nil {
 		log.Fatalf("OptimizeAll failed: %v", err)
 	}*/
