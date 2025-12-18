@@ -21,7 +21,11 @@ message Imp {
     optional int32 secure = 4;
     optional int32 instl = 5;
     optional string bidfloorcur = 6;
-    optional Ext imp_ext = 7;
+    optional Imp_Ext ext = 7;
+}
+
+message Imp_Ext {
+    optional string subid = 1;
 }
   
 message Device {
