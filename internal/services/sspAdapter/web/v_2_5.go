@@ -159,6 +159,16 @@ func postBid_V2_5(
 		input.Payload.BidRequest.Cur = append(input.Payload.BidRequest.Cur, "USD")
 	}
 
+	if input.Payload.BidRequest.Site != nil && input.Payload.BidRequest.Site.Id != nil && input.Payload.BidRequest.Imp != nil {
+		for i := range input.Payload.BidRequest.Imp {
+			if input.Payload.BidRequest.Imp[i] != nil {
+				input.Payload.BidRequest.Imp[i].Ext = &ortb_V2_5.Imp_Ext{
+					Subid: input.Payload.BidRequest.Site.Id,
+				}
+			}
+		}
+	}
+
 	logged := shouldPass(counter)
 
 	globalId := uuid.New().String()
