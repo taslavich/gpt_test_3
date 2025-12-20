@@ -160,7 +160,6 @@ function processForm($aAgency, $form)
     $isNewAgency = empty($aFields['agencyid']);
 
     if ($isNewAgency) {
-        $aFields['manager_username'] = strtolower((string) $aFields['manager_username']);
         $oPlugin = OA_Auth::staticGetAuthPlugin();
         $oPlugin->validateUsersLogin($aFields['manager_username']);
         $oPlugin->validateUsersEmail($aFields['manager_email']);
