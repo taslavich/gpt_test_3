@@ -295,10 +295,6 @@ class OA_Permission
             $aAccountsByType[$row['account_type']][$row['account_id']] = self::generateAccountName($row);
         }
 
-        if (isset($aAccountsByType[OA_ACCOUNT_ADMIN])) {
-            $aAccountsByType = self::mergeAdminAccounts($aAccountsByType);
-        }
-
         uksort($aAccountsByType, ['OA_Permission', '_accountTypeSort']);
 
         if (!$groupByType) {
@@ -419,8 +415,23 @@ class OA_Permission
         if (empty($userId)) {
             $userId = self::getUserId();
         }
-        return self::isUserLinkedToAccount($accountId, $userId)
-            || self::isUserLinkedToAdmin($userId);
+        /** @var DataObjects_Accounts $doAccount */
+        $doAccount = OA_Dal::staticGetDO('accounts', $accountId);
+        if (!$doAccount) {
+            return false;
+        }
+
+        $isAdminUser = self::isUserLinkedToAdmin($userId);
+
+        if ($doAccount->account_type === OA_ACCOUNT_ADMIN) {
+            return $isAdminUser && self::isUserLinkedToAccount($accountId, $userId);
+        }
+
+        if ($isAdminUser) {
+            return false;
+        }
+
+        return self::isUserLinkedToAccount($accountId, $userId);
     }
 
     /**
@@ -705,14 +716,6 @@ class OA_Permission
         $entityId = (int) $entityId;
         $hasAccess = self::hasAccessToObject($entityTable, $entityId, $operationAccessType);
 
-        if (!$hasAccess) {
-            if (!self::isManualAccountSwitch()) {
-                if (self::isUserLinkedToAdmin()) {
-                    // Check object existence
-                    self::enforceTrue(self::getAccountIdForEntity($entityTable, $entityId));
-                }
-            }
-        }
         if (!$hasAccess) {
             self::redirectIfManualAccountSwitch();
             $hasAccess = self::attemptToSwitchForAccess($entityTable, $entityId, $operationAccessType);
