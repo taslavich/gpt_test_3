@@ -23,6 +23,12 @@ class OA_Admin_UI_AccountSwitch
         $accounts = OA_Permission::getLinkedAccounts(true, true);
         $remainingCounts = [];
 
+        if (OA_Permission::isUserLinkedToAdmin()) {
+            $accounts = [
+                OA_ACCOUNT_ADMIN => $accounts[OA_ACCOUNT_ADMIN] ?? [],
+            ];
+        }
+
         // Prepare recently used accountName
         $recentlyUsed = [];
         global $session;

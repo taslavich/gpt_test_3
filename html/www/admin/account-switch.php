@@ -23,6 +23,10 @@ require_once MAX_PATH . '/lib/OA/Admin/UI/AccountSwitch.php';
 phpAds_registerGlobalUnslashed('account_id');
 
 if (!empty($account_id)) {
+    $doAccount = OA_Dal::staticGetDO('accounts', $account_id);
+    if (OA_Permission::isUserLinkedToAdmin() && $doAccount && $doAccount->account_type !== OA_ACCOUNT_ADMIN) {
+        OA_Permission::enforceTrue(false);
+    }
     OA_Permission::enforceAccess($account_id);
     OA_Permission::switchAccount($account_id);
 }
