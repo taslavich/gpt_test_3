@@ -159,6 +159,11 @@ func postBid_V2_5(
 		input.Payload.BidRequest.Cur = append(input.Payload.BidRequest.Cur, "USD")
 	}
 
+	var at int32 = 1
+	if input.Payload.BidRequest.At == nil {
+		input.Payload.BidRequest.At = &at
+	}
+
 	if input.Payload.BidRequest.Site != nil && input.Payload.BidRequest.Site.Id != nil && input.Payload.BidRequest.Imp != nil {
 		for i := range input.Payload.BidRequest.Imp {
 			if input.Payload.BidRequest.Imp[i] != nil {
