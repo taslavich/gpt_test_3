@@ -165,6 +165,7 @@ type SppAdapterConfig struct {
 	GeoIpDbPath         string            `yaml:"GEO_IP_DB_PATH" env:"GEO_IP_DB_PATH"`
 	SspAdultFeeds       MapStringToString `yaml:"SSP_ADULT_FEEDS" env:"SSP_ADULT_FEEDS"`
 	SspMainStreamFeeds  MapStringToString `yaml:"SSP_MAINSTREAM_FEEDS" env:"SSP_MAINSTREAM_FEEDS"`
+	SiteIdDomainPath    string            `yaml:"SITE_ID_DOMAIN_PATH" env:"SITE_ID_DOMAIN_PATH"`
 
 	RedisConfig
 }
