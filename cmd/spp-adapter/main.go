@@ -64,6 +64,16 @@ func main() {
 	client, cancelFunc := adapter.GetGrpClient()
 	defer cancelFunc()
 
+	/*
+		siteIdDomainCommon, siteIdDomainDelta, err := utils.ReadSiteIdDomainFromFile(cfg.SiteIdDomainPath)
+		if err != nil {
+			log.Fatalf("failed to read siteIdDomain: %v", err)
+		}
+
+		s := gocron.NewScheduler(time.UTC)
+		s.Every(30).Seconds().Do(utils.WriteSiteIdDomainToTheFile(&siteIdDomainCommon, siteIdDomainDelta, cfg.SiteIdDomainPath))
+	*/
+
 	router := chi.NewRouter()
 	router.Use(httpServer.WorkSspAdapterMiddleware(&workAdl, &workMc))
 	router = httpServer.InitHttpRouter(router)
