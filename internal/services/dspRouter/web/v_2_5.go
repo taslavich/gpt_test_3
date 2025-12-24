@@ -146,6 +146,10 @@ func (s *Server) GetBids_V2_5(
 		return nil, status.Error(grpcCode, newErr.Error())
 	}
 
+	if err := utils.WriteJsonToRedis(ctx, s.redisClient, req.GlobalId, constants.BID_REQUEST_COLUMN, jsonData, req.Logged); err != nil {
+		log.Printf("failed to WriteJsonToRedis Bid Request in postBid_V2_5: %w", err)
+	}
+
 	var (
 		wg sync.WaitGroup
 	)

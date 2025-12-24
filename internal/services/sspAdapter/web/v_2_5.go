@@ -2,7 +2,6 @@ package sppAdapterWeb
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"log"
@@ -51,6 +50,7 @@ func postBid_V2_5(
 	sspMainstreamFeeds map[string]string,
 	counter *uint64,
 	typic string,
+	siteIdsAndDomains *utils.SiteIdsAndDomains,
 ) {
 	var input *postBidRequest_V2_5
 	defer func() {
@@ -164,6 +164,25 @@ func postBid_V2_5(
 		input.Payload.BidRequest.At = &at
 	}
 
+	if input.Payload.BidRequest.User == nil {
+		id := uuid.New().String()
+		input.Payload.BidRequest.User = &ortb_V2_5.User{
+			Id: &id,
+		}
+	} else if input.Payload.BidRequest.User.Id == nil {
+		id := uuid.New().String()
+		input.Payload.BidRequest.User.Id = &id
+	}
+
+	if input.Payload.BidRequest.Site != nil {
+		if input.Payload.BidRequest.Site.Id != nil {
+			if input.Payload.BidRequest.Site.Domain == nil {
+				domain := siteIdsAndDomains.GenerateDomain(*input.Payload.BidRequest.Site.Id)
+				input.Payload.BidRequest.Site.Domain = &domain
+			}
+		}
+	}
+
 	if input.Payload.BidRequest.Site != nil && input.Payload.BidRequest.Site.Id != nil && input.Payload.BidRequest.Imp != nil {
 		for i := range input.Payload.BidRequest.Imp {
 			if input.Payload.BidRequest.Imp[i] != nil {
@@ -178,21 +197,12 @@ func postBid_V2_5(
 
 	globalId := uuid.New().String()
 
-	bidReqData, err := json.Marshal(input.Payload)
-	if err != nil {
-		log.Printf("failed to marshal JSON in postBid_V2_5: %w", err)
-	}
-
 	if err := utils.WriteStringToRedis(ctx, redisClient, globalId, constants.TYPIC_COLUMN, typic, logged); err != nil {
 		log.Printf("failed to WriteStringToRedis Domain in postBid_V2_5: %w", err)
 	}
 
 	if err := utils.WriteStringToRedis(ctx, redisClient, globalId, constants.SPP_DOMAIN_COLUMN, ssp_domain, logged); err != nil {
 		log.Printf("failed to WriteStringToRedis Domain in postBid_V2_5: %w", err)
-	}
-
-	if err := utils.WriteJsonToRedis(ctx, redisClient, globalId, constants.BID_REQUEST_COLUMN, bidReqData, logged); err != nil {
-		log.Printf("failed to WriteJsonToRedis Bid Request in postBid_V2_5: %w", err)
 	}
 
 	if err := utils.WriteStringToRedis(ctx, redisClient, globalId, constants.GEO_COLUMN, countryISO, logged); err != nil {
