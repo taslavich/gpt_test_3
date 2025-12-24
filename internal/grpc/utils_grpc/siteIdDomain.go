@@ -195,8 +195,8 @@ func (s *SiteIdsAndDomains) GenerateDomain(siteId string) string {
 		break
 	}
 
-	s.siteIdDomainDeltaByIds[siteId] = response
-	s.domainDeltaSet[response] = struct{}{}
+	/*s.siteIdDomainDeltaByIds[siteId] = response
+	s.domainDeltaSet[response] = struct{}{}*/
 
 	return response
 }
