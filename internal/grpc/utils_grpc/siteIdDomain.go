@@ -162,7 +162,7 @@ func (s *SiteIdsAndDomains) GenerateDomain(siteId string) string {
 	}
 
 	id := genID.Add(1)
-	rng := generators[(id&255)+1]
+	rng := generators[id&255]
 	n1 := rng.Uint64()
 	n2 := rng.Uint64()
 	n3 := rng.Uint64()
