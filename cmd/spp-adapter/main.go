@@ -77,6 +77,7 @@ func main() {
 		if err := siteIdsAndDomains.WriteSiteIdDomainToTheFile(); err != nil {
 			log.Printf("Cannot WriteSiteIdDomainToTheFile: %v", err)
 		}
+		log.Println("Made WriteSiteIdDomainToTheFile")
 	})
 	go s.StartAsync()
 	log.Println("⏰ Scheduler started (every 30 seconds)")
