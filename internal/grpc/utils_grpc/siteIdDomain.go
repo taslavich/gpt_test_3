@@ -36,8 +36,9 @@ type SiteIdsAndDomains struct {
 	level23Domains map[uint]string
 
 	filenameSiteIdsDomains string
-	filenameDomainLevel1   string
-	filenameDomainLevel23  string
+
+	filenameDomainLevel1  string
+	filenameDomainLevel23 string
 }
 
 func NewSiteIdsAndDomains(filenameSiteIdsDomains, filenameDomainLevel1, filenameDomainLevel23 string) (*SiteIdsAndDomains, error) {
@@ -118,12 +119,7 @@ func loadIndexedDomainsFromJSON(filename string) (map[uint]string, error) {
 	return domains, nil
 }
 
-func (s *SiteIdsAndDomains) WriteSiteIdDomainToTheFile() error {
-	f, err := os.OpenFile(s.filenameSiteIdsDomains, os.O_APPEND|os.O_WRONLY|os.O_CREATE, 0644)
-	if err != nil {
-		return fmt.Errorf("Cannot open file %s in WriteSiteIdDomainToTheFile: %v", s.filenameSiteIdsDomains, err)
-	}
-	defer f.Close()
+func (s *SiteIdsAndDomains) WriteSiteIdDomainToTheFile(f *os.File) error {
 
 	writer := bufio.NewWriterSize(f, 16*1024*1024)
 
@@ -137,7 +133,7 @@ func (s *SiteIdsAndDomains) WriteSiteIdDomainToTheFile() error {
 		writer.WriteByte('\n')
 	}
 
-	err = writer.Flush()
+	err := writer.Flush()
 	if err != nil {
 		return fmt.Errorf("Cannot flush file %s in WriteSiteIdDomainToTheFile: %v", s.filenameSiteIdsDomains, err)
 	}
