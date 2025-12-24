@@ -84,5 +84,6 @@ require (
 	github.com/segmentio/kafka-go v0.4.49
 	github.com/spf13/viper v1.21.0
 	github.com/yl2chen/cidranger v1.0.2
+	golang.org/x/exp v0.0.0-20251219203646-944ab1f22d93
 	golang.org/x/sys v0.36.0 // indirect
 )

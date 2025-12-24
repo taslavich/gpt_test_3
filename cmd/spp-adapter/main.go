@@ -5,11 +5,14 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"time"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/go-co-op/gocron"
 	"github.com/redis/go-redis/v9"
 	"gitlab.com/twinbid-exchange/RTB-exchange/internal/config"
 	"gitlab.com/twinbid-exchange/RTB-exchange/internal/geoBadIp"
+	utils "gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/utils_grpc"
 	httpServer "gitlab.com/twinbid-exchange/RTB-exchange/internal/http"
 	sppAdapter "gitlab.com/twinbid-exchange/RTB-exchange/internal/services/sspAdapter/service"
 	sppAdapterWeb "gitlab.com/twinbid-exchange/RTB-exchange/internal/services/sspAdapter/web"
@@ -64,15 +67,17 @@ func main() {
 	client, cancelFunc := adapter.GetGrpClient()
 	defer cancelFunc()
 
-	/*
-		siteIdDomainCommon, siteIdDomainDelta, err := utils.ReadSiteIdDomainFromFile(cfg.SiteIdDomainPath)
-		if err != nil {
-			log.Fatalf("failed to read siteIdDomain: %v", err)
-		}
+	siteIdsAndDomains, err := utils.NewSiteIdsAndDomains(cfg.SiteIdDomainPath, cfg.Domains1LevelPath, cfg.Domains23LevelPath)
+	if err != nil {
+		log.Fatalf("failed to NewSiteIdsAndDomains: %v", err)
+	}
 
-		s := gocron.NewScheduler(time.UTC)
-		s.Every(30).Seconds().Do(utils.WriteSiteIdDomainToTheFile(&siteIdDomainCommon, siteIdDomainDelta, cfg.SiteIdDomainPath))
-	*/
+	s := gocron.NewScheduler(time.UTC)
+	s.Every(30).Seconds().Do(func() {
+		if err := siteIdsAndDomains.WriteSiteIdDomainToTheFile(); err != nil {
+			log.Printf("Cannot WriteSiteIdDomainToTheFile: %v", err)
+		}
+	})
 
 	router := chi.NewRouter()
 	router.Use(httpServer.WorkSspAdapterMiddleware(&workAdl, &workMc))
@@ -89,6 +94,7 @@ func main() {
 		cfg.SspMainStreamFeeds,
 		&workAdl,
 		&workMc,
+		siteIdsAndDomains,
 	)
 	log.Println("HTTP routes initialized")
 

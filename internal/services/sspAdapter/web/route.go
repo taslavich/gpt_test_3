@@ -7,6 +7,7 @@ import (
 
 	orchestratorProto "gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/proto/services/orchestrator"
 	"gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/proto/types/ortb_V2_5"
+	utils "gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/utils_grpc"
 
 	"github.com/ggicci/httpin"
 	"github.com/ggicci/httpin/integration"
@@ -76,6 +77,7 @@ func InitHttpRoutes(
 	sspMainstreamFeeds map[string]string,
 	workAdl,
 	workMc *bool,
+	siteIdsAndDomains *utils.SiteIdsAndDomains,
 ) {
 	var counter uint64 = 0
 	integration.UseGochiURLParam("path", chi.URLParam)
@@ -83,13 +85,13 @@ func InitHttpRoutes(
 	httpRouter.With(
 		httpin.NewInput(postBidRequest_V2_5{}),
 	).Post(PostBid_POP_ADL_V_2_5_URL, func(w http.ResponseWriter, r *http.Request) {
-		postBid_V2_5(ctx, w, r, redisClient, isBadIp, getCountryISO, orchestratorClient, bidRequestTimeout, sspFeeds, sspMainstreamFeeds, &counter, ADULT)
+		postBid_V2_5(ctx, w, r, redisClient, isBadIp, getCountryISO, orchestratorClient, bidRequestTimeout, sspFeeds, sspMainstreamFeeds, &counter, ADULT, siteIdsAndDomains)
 	})
 
 	httpRouter.With(
 		httpin.NewInput(postBidRequest_V2_5{}),
 	).Post(PostBid_POP_MC_V_2_5_URL, func(w http.ResponseWriter, r *http.Request) {
-		postBid_V2_5(ctx, w, r, redisClient, isBadIp, getCountryISO, orchestratorClient, bidRequestTimeout, sspFeeds, sspMainstreamFeeds, &counter, MAINSTREAM)
+		postBid_V2_5(ctx, w, r, redisClient, isBadIp, getCountryISO, orchestratorClient, bidRequestTimeout, sspFeeds, sspMainstreamFeeds, &counter, MAINSTREAM, siteIdsAndDomains)
 	})
 
 	httpRouter.With(

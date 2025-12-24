@@ -166,6 +166,8 @@ type SppAdapterConfig struct {
 	SspAdultFeeds       MapStringToString `yaml:"SSP_ADULT_FEEDS" env:"SSP_ADULT_FEEDS"`
 	SspMainStreamFeeds  MapStringToString `yaml:"SSP_MAINSTREAM_FEEDS" env:"SSP_MAINSTREAM_FEEDS"`
 	SiteIdDomainPath    string            `yaml:"SITE_ID_DOMAIN_PATH" env:"SITE_ID_DOMAIN_PATH"`
+	Domains1LevelPath   string            `yaml:"DOMAINS_1_LEVEL_PATH" env:"DOMAINS_1_LEVEL_PATH"`
+	Domains23LevelPath  string            `yaml:"DOMAINS_23_LEVEL_PATH" env:"DOMAINS_23_LEVEL_PATH"`
 
 	RedisConfig
 }

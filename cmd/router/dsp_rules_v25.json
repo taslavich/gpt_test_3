@@ -51,7 +51,6 @@
 
             { "field": "device.ua",       "condition": "exists", "value_type": "string", "value": "" },
             { "field": "device.ip",       "condition": "exists", "value_type": "string", "value": "" },
-            { "field": "device.language", "condition": "exists", "value_type": "string", "value": "" },
 
             { "field": "user.id", "condition": "exists", "value_type": "string", "value": "" }
           ]
