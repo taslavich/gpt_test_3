@@ -79,6 +79,7 @@ require (
 	github.com/joho/godotenv v1.5.1
 	github.com/json-iterator/go v1.1.12
 	github.com/kelseyhightower/envconfig v1.4.0
+	github.com/orcaman/concurrent-map/v2 v2.0.1
 	github.com/oschwald/maxminddb-golang v1.12.0
 	github.com/redis/go-redis/v9 v9.14.0
 	github.com/segmentio/kafka-go v0.4.49
