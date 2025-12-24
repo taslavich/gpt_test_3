@@ -11,7 +11,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"golang.org/x/exp/maps"
+	cmap "github.com/orcaman/concurrent-map/v2"
 )
 
 var (
@@ -27,11 +27,11 @@ func init() {
 }
 
 type SiteIdsAndDomains struct {
-	siteIdDomainCommonByIds map[string]string
-	siteIdDomainDeltaByIds  map[string]string
+	siteIdDomainCommonByIds cmap.ConcurrentMap[string, string]
+	siteIdDomainDeltaByIds  cmap.ConcurrentMap[string, string]
 
-	domainCommonSet map[string]struct{}
-	domainDeltaSet  map[string]struct{}
+	domainCommonSet cmap.ConcurrentMap[string, struct{}]
+	domainDeltaSet  cmap.ConcurrentMap[string, struct{}]
 
 	level1Domains  map[uint]string
 	level23Domains map[uint]string
@@ -59,9 +59,9 @@ func NewSiteIdsAndDomains(filenameSiteIdsDomains, filenameDomainLevel1, filename
 
 	return &SiteIdsAndDomains{
 		siteIdDomainCommonByIds: siteIdCommon,
-		siteIdDomainDeltaByIds:  make(map[string]string),
+		siteIdDomainDeltaByIds:  cmap.New[string](),
 		domainCommonSet:         domainCommonSet,
-		domainDeltaSet:          map[string]struct{}{},
+		domainDeltaSet:          cmap.New[struct{}](),
 
 		level1Domains:  level1Domains,
 		level23Domains: level23Domains,
@@ -72,14 +72,15 @@ func NewSiteIdsAndDomains(filenameSiteIdsDomains, filenameDomainLevel1, filename
 	}, nil
 }
 
-func loadSiteIdsDomains(filename string) (map[string]string, map[string]struct{}, error) {
+func loadSiteIdsDomains(filename string) (cmap.ConcurrentMap[string, string], cmap.ConcurrentMap[string, struct{}], error) {
 	f, err := os.Open(filename)
 	if err != nil {
-		return nil, nil, fmt.Errorf("Cannot open file %s in ReadSiteIdDomainFromFile: %v", filename, err)
+		return cmap.New[string](), cmap.New[struct{}](), fmt.Errorf("Cannot open file %s in ReadSiteIdDomainFromFile: %v", filename, err)
 	}
 	defer f.Close()
 
-	siteIdCommon := make(map[string]string)
+	siteIdCommon := cmap.New[string]()
+	domainSet := cmap.New[struct{}]()
 	scanner := bufio.NewScanner(f)
 
 	for scanner.Scan() {
@@ -95,14 +96,15 @@ func loadSiteIdsDomains(filename string) (map[string]string, map[string]struct{}
 
 		key := line[:sepIndex]
 		value := line[sepIndex+1:]
-		siteIdCommon[key] = value
+		siteIdCommon.Set(key, value)
+		domainSet.Set(value, struct{}{})
 	}
 
 	if err := scanner.Err(); err != nil {
-		return nil, nil, err
+		return cmap.New[string](), cmap.New[struct{}](), err
 	}
 
-	return siteIdCommon, ValuesSet(siteIdCommon), nil
+	return siteIdCommon, domainSet, nil
 }
 
 func loadIndexedDomainsFromJSON(filename string) (map[uint]string, error) {
@@ -128,8 +130,8 @@ func (s *SiteIdsAndDomains) WriteSiteIdDomainToTheFile() error {
 
 	writer := bufio.NewWriterSize(f, 16*1024*1024)
 
-	deltaBufferByIds := maps.Clone(s.siteIdDomainDeltaByIds)
-	deltaBufferSet := maps.Clone(s.domainDeltaSet)
+	deltaBufferByIds := s.siteIdDomainDeltaByIds.Items()
+	deltaBufferSet := s.domainDeltaSet.Items()
 
 	for k, v := range deltaBufferByIds {
 		writer.WriteString(k)
@@ -143,15 +145,15 @@ func (s *SiteIdsAndDomains) WriteSiteIdDomainToTheFile() error {
 		return fmt.Errorf("Cannot flush file %s in WriteSiteIdDomainToTheFile: %v", s.filenameSiteIdsDomains, err)
 	}
 
-	maps.Copy(s.siteIdDomainCommonByIds, deltaBufferByIds)
-	maps.Copy(s.domainCommonSet, deltaBufferSet)
+	s.siteIdDomainCommonByIds.MSet(deltaBufferByIds)
+	s.domainCommonSet.MSet(deltaBufferSet)
 
 	for key := range deltaBufferByIds {
-		delete(s.siteIdDomainDeltaByIds, key)
+		s.siteIdDomainDeltaByIds.Remove(key)
 	}
 
 	for key := range deltaBufferSet {
-		delete(s.domainDeltaSet, key)
+		s.domainDeltaSet.Remove(key)
 	}
 
 	log.Println("FINISHED WriteSiteIdDomainToTheFile")
@@ -159,11 +161,11 @@ func (s *SiteIdsAndDomains) WriteSiteIdDomainToTheFile() error {
 }
 
 func (s *SiteIdsAndDomains) GenerateDomain(siteId string) string {
-	if val, ok := s.siteIdDomainDeltaByIds[siteId]; ok {
+	if val, ok := s.siteIdDomainDeltaByIds.Get(siteId); ok {
 		return val
 	}
 
-	if val, ok := s.siteIdDomainCommonByIds[siteId]; ok {
+	if val, ok := s.siteIdDomainCommonByIds.Get(siteId); ok {
 		return val
 	}
 
@@ -184,19 +186,19 @@ func (s *SiteIdsAndDomains) GenerateDomain(siteId string) string {
 		level2 := s.level23Domains[level2Index]
 		level3 := s.level23Domains[level3Index]
 		response = fmt.Sprintf("%s.%s.%s", level3, level2, level1)
-		if _, ok := s.domainDeltaSet[response]; ok {
+		if _, ok := s.domainDeltaSet.Get(response); ok {
 			continue
 		}
 
-		if _, ok := s.domainCommonSet[response]; ok {
+		if _, ok := s.domainCommonSet.Get(response); ok {
 			continue
 		}
 
 		break
 	}
 
-	/*s.siteIdDomainDeltaByIds[siteId] = response
-	s.domainDeltaSet[response] = struct{}{}*/
+	s.siteIdDomainDeltaByIds.Set(siteId, response)
+	s.domainDeltaSet.Set(response, struct{}{})
 
 	return response
 }
