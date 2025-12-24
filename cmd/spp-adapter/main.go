@@ -72,9 +72,15 @@ func main() {
 		log.Fatalf("failed to NewSiteIdsAndDomains: %v", err)
 	}
 
+	f, err := os.OpenFile(cfg.SiteIdDomainPath, os.O_APPEND|os.O_WRONLY|os.O_CREATE, 0644)
+	if err != nil {
+		log.Fatalf("Cannot open file %s in WriteSiteIdDomainToTheFile: %v", cfg.SiteIdDomainPath, err)
+	}
+	defer f.Close()
+
 	s := gocron.NewScheduler(time.UTC)
 	s.Every(30).Seconds().Do(func() {
-		if err := siteIdsAndDomains.WriteSiteIdDomainToTheFile(); err != nil {
+		if err := siteIdsAndDomains.WriteSiteIdDomainToTheFile(f); err != nil {
 			log.Printf("Cannot WriteSiteIdDomainToTheFile: %v", err)
 		}
 	})
