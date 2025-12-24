@@ -71,6 +71,7 @@ func main() {
 	if err != nil {
 		log.Fatalf("failed to NewSiteIdsAndDomains: %v", err)
 	}
+	log.Printf("site id filename: %s", cfg.SiteIdDomainPath)
 
 	s := gocron.NewScheduler(time.UTC)
 	s.Every(30).Seconds().Do(func() {

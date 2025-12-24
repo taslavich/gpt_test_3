@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"encoding/json"
 	"fmt"
+	"log"
 	"math/rand/v2"
 	"os"
 	"strings"
@@ -153,6 +154,7 @@ func (s *SiteIdsAndDomains) WriteSiteIdDomainToTheFile() error {
 		delete(s.domainDeltaSet, key)
 	}
 
+	log.Println("FINISHED WriteSiteIdDomainToTheFile")
 	return nil
 }
 
