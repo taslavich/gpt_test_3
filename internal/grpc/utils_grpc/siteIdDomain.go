@@ -167,7 +167,6 @@ func (s *SiteIdsAndDomains) GenerateDomain(siteId string) string {
 
 	id := genID.Add(1)
 	rng := generators[id&255]
-	n1 := rng.Uint64()
 	n2 := rng.Uint64()
 	n3 := rng.Uint64()
 	n4 := rng.Uint64()
@@ -175,37 +174,23 @@ func (s *SiteIdsAndDomains) GenerateDomain(siteId string) string {
 	var response string
 
 	for true {
-		levels := 2 + uint(n1&1)
 		level1Index := 1 + uint(n2%63)
 		level2Index := 1 + uint(n3%10000)
+		level3Index := 1 + uint(n4%10000)
 
 		level1 := s.level1Domains[level1Index]
 		level2 := s.level23Domains[level2Index]
-		if levels == 2 {
-			response = fmt.Sprintf("%s.%s", level2, level1)
-			if _, ok := s.domainDeltaSet[response]; ok {
-				continue
-			}
-
-			if _, ok := s.domainCommonSet[response]; ok {
-				continue
-			}
-
-			break
-		} else if levels == 3 {
-			level3Index := 1 + uint(n4%10000)
-			level3 := s.level23Domains[level3Index]
-			response = fmt.Sprintf("%s.%s.%s", level3, level2, level1)
-			if _, ok := s.domainDeltaSet[response]; ok {
-				continue
-			}
-
-			if _, ok := s.domainCommonSet[response]; ok {
-				continue
-			}
-
-			break
+		level3 := s.level23Domains[level3Index]
+		response = fmt.Sprintf("%s.%s.%s", level3, level2, level1)
+		if _, ok := s.domainDeltaSet[response]; ok {
+			continue
 		}
+
+		if _, ok := s.domainCommonSet[response]; ok {
+			continue
+		}
+
+		break
 	}
 
 	return response
