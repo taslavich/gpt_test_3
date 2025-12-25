@@ -82,7 +82,7 @@ func NewFastHTTPClient(timeout time.Duration) *http.Client {
 		// ⚡ ДЛЯ 32 ЯДЕР И 250K СОЕДИНЕНИЙ:
 		MaxIdleConns:        50000, // Было 500
 		MaxIdleConnsPerHost: 10000, // Было 100
-		MaxConnsPerHost:     0,     // БЕЗ ЛИМИТА
+		MaxConnsPerHost:     400,   // БЕЗ ЛИМИТА
 
 		// ⚡ Оптимизация для большего числа соединений
 		IdleConnTimeout: 120 * time.Second,
@@ -93,7 +93,7 @@ func NewFastHTTPClient(timeout time.Duration) *http.Client {
 
 		// ⚡ Быстрее переподключения
 		DialContext: (&net.Dialer{
-			Timeout:   2 * time.Second, // Быстрее!
+			Timeout:   1 * time.Second, // Быстрее!
 			KeepAlive: 120 * time.Second,
 			DualStack: true,
 		}).DialContext,

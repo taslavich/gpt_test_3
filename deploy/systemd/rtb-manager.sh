@@ -20,15 +20,8 @@ CORE_SERVICES=(
     "rtb-adm-adapter"
 )
 
-# Mock сервисы
-MOCK_SERVICES=(
-    "rtb-dsp1"
-    "rtb-dsp2"
-    "rtb-dsp3"
-)
-
 # Все сервисы
-ALL_SERVICES=("${INFRA_SERVICES[@]}" "${CORE_SERVICES[@]}" "${MOCK_SERVICES[@]}")
+ALL_SERVICES=("${INFRA_SERVICES[@]}" "${CORE_SERVICES[@]}")
 
 check_project_dir() {
     if [ ! -d "$PROJECT_DIR" ]; then
@@ -118,19 +111,11 @@ case "$1" in
         start_services "${CORE_SERVICES[@]}"
         echo "✅ Core RTB services started"
         ;;
-    start-mocks)
-        check_project_dir
-        echo "🚀 Starting MOCK DSP services..."
-        start_services "${MOCK_SERVICES[@]}"
-        echo "✅ Mock DSP services started"
-        ;;
     start)
-        echo "🚀 Starting ALL services (infra + core + mocks)..."
+        echo "🚀 Starting ALL services (infra + core)..."
         $0 start-infra
         sleep 3
         $0 start-core
-        sleep 2
-        $0 start-mocks
         echo "✅ All services started"
         ;;
     stop-infra)
@@ -143,15 +128,8 @@ case "$1" in
         stop_services "${CORE_SERVICES[@]}"
         echo "✅ Core RTB services stopped"
         ;;
-    stop-mocks)
-        echo "🛑 Stopping MOCK DSP services..."
-        stop_services "${MOCK_SERVICES[@]}"
-        echo "✅ Mock DSP services stopped"
-        ;;
     stop)
         echo "🛑 Stopping ALL services..."
-        $0 stop-mocks
-        sleep 1
         $0 stop-core
         sleep 1
         $0 stop-infra
@@ -176,9 +154,6 @@ case "$1" in
         echo ""
         echo "=== CORE RTB ==="
         show_status "${CORE_SERVICES[@]}"
-        echo ""
-        echo "=== MOCK DSP ==="
-        show_status "${MOCK_SERVICES[@]}"
         ;;
     status-infra)
         echo "📊 INFRASTRUCTURE Services Status:"
@@ -187,10 +162,6 @@ case "$1" in
     status-core)
         echo "📊 CORE RTB Services Status:"
         show_status "${CORE_SERVICES[@]}"
-        ;;
-    status-mocks)
-        echo "📊 MOCK DSP Services Status:"
-        show_status "${MOCK_SERVICES[@]}"
         ;;
     logs)
         service="$2"
@@ -242,18 +213,10 @@ case "$1" in
         done
         echo "✅ Core services enabled to start on boot"
         ;;
-    enable-mocks)
-        echo "🔧 Enabling MOCK DSP services..."
-        for service in "${MOCK_SERVICES[@]}"; do
-            sudo systemctl enable "$service"
-        done
-        echo "✅ Mock services enabled to start on boot"
-        ;;
     enable)
         echo "🔧 Enabling ALL services..."
         $0 enable-infra
         $0 enable-core
-        $0 enable-mocks
         echo "✅ All services enabled to start on boot"
         ;;
     disable)
@@ -276,9 +239,6 @@ case "$1" in
         go build -o ./cmd/adm-adapter/adm-adapter ./cmd/adm-adapter
         go build -o ./cmd/clickhouse-loader/clickhouse-loader ./cmd/clickhouse-loader
         go build -o ./cmd/kafka-loader/kafka-loader ./cmd/kafka-loader
-        go build -o ./cmd/dsp1/dsp1 ./cmd/dsp1
-        go build -o ./cmd/dsp2/dsp2 ./cmd/dsp2
-        go build -o ./cmd/dsp3/dsp3 ./cmd/dsp3
         
         # Делаем бинарники исполняемыми!
         chmod +x ./cmd/bid-engine/bid-engine
@@ -288,9 +248,6 @@ case "$1" in
         chmod +x ./cmd/adm-adapter/adm-adapter
         chmod +x ./cmd/clickhouse-loader/clickhouse-loader
         chmod +x ./cmd/kafka-loader/kafka-loader
-        chmod +x ./cmd/dsp1/dsp1
-        chmod +x ./cmd/dsp2/dsp2
-        chmod +x ./cmd/dsp3/dsp3
 
         # Копируем конфиги в корень для удобства (исправленные пути)
         if [ -f "./cmd/router/dsp_rules_v25.json" ]; then
@@ -441,29 +398,25 @@ case "$1" in
        # fi
         ;;
     *)
-        echo "Usage: $0 {start|start-infra|start-core|start-mocks|stop|stop-infra|stop-core|stop-mocks|restart|restart-core|status|status-infra|status-core|status-mocks|logs|errors|enable|enable-infra|enable-core|enable-mocks|disable|build|update|deploy|test-infra}"
+        echo "Usage: $0 {start|start-infra|start-core|stop|stop-infra|stop-core|restart|restart-core|status|status-infra|status-core|logs|errors|enable|enable-infra|enable-core|disable|build|update|deploy|test-infra}"
         echo ""
         echo "Commands:"
-        echo "  start         - Start ALL services (infra + core + mocks)"
+        echo "  start         - Start ALL services (infra + core)"
         echo "  start-infra   - Start only INFRASTRUCTURE services"
         echo "  start-core    - Start only CORE RTB services"
-        echo "  start-mocks   - Start only MOCK DSP services"
         echo "  stop          - Stop ALL services"
         echo "  stop-infra    - Stop only INFRASTRUCTURE services"
         echo "  stop-core     - Stop only CORE RTB services"
-        echo "  stop-mocks    - Stop only MOCK DSP services"
         echo "  restart       - Restart ALL services"
         echo "  restart-core  - Restart only CORE RTB services"
         echo "  status        - Show status of ALL services"
         echo "  status-infra  - Show status of INFRASTRUCTURE services"
         echo "  status-core   - Show status of CORE RTB services"
-        echo "  status-mocks  - Show status of MOCK DSP services"
         echo "  logs          - Show logs for specific service"
         echo "  errors        - Show error logs for specific service"
         echo "  enable        - Enable ALL services to start on boot"
         echo "  enable-infra  - Enable only INFRASTRUCTURE services"
         echo "  enable-core   - Enable only CORE RTB services"
-        echo "  enable-mocks  - Enable only MOCK DSP services"
         echo "  disable       - Disable ALL services from starting on boot"
         echo "  build         - Rebuild all services from source"
         echo "  update        - Git pull + build + restart"
@@ -472,7 +425,6 @@ case "$1" in
         echo ""
         echo "Infrastructure: ${INFRA_SERVICES[*]}"
         echo "Core Services: ${CORE_SERVICES[*]}"
-        echo "Mock Services: ${MOCK_SERVICES[*]}"
         echo ""
         echo "Examples:"
         echo "  $0 start-infra       # Start only infrastructure"
