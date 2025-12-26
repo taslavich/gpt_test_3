@@ -192,27 +192,6 @@ case "$1" in
             echo "⚠️  GeoIP2_City.mmdb not found"
         fi
 
-        if [ -f "./cmd/bid-engine/sspGeoDspPersents.json" ]; then
-            cp ./cmd/bid-engine/sspGeoDspPersents.json ./
-            echo "✅ Copied sspGeoDspPersents.json"
-        else
-            echo "⚠️  sspGeoDspPersents.json not found"
-        fi
-
-        if [ -f "./cmd/router/sspGeoDspLinks.json" ]; then
-            cp ./cmd/router/sspGeoDspLinks.json ./
-            echo "✅ Copied sspGeoDspLinks.json"
-        else
-            echo "⚠️  sspGeoDspLinks.json not found"
-        fi
-
-        if [ -f "./cmd/router/dspFilters.json" ]; then
-            cp ./cmd/router/dspFilters.json ./
-            echo "✅ Copied dspFilters.json"
-        else
-            echo "⚠️  dspFilters.json not found"
-        fi
-
         if [ -f "./cmd/adm-adapter/fullchain.pem" ]; then
             cp ./cmd/adm-adapter/fullchain.pem ./
             echo "✅ Copied fullchain.pem"
