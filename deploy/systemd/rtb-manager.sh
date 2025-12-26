@@ -162,6 +162,113 @@ case "$1" in
         go build -o ./cmd/clickhouse-loader/clickhouse-loader ./cmd/clickhouse-loader
         go build -o ./cmd/kafka-loader/kafka-loader ./cmd/kafka-loader
         chmod +x ./cmd/*/*
+
+        # Копируем конфиги в корень для удобства (исправленные пути)
+        if [ -f "./cmd/router/dsp_rules_v25.json" ]; then
+            cp ./cmd/router/dsp_rules_v25.json ./
+            echo "✅ Copied dsp_rules_v25.json"
+        else
+            echo "⚠️  dsp_rules_v25.json not found"
+        fi
+        
+        if [ -f "./cmd/router/spp_rules_v25.json" ]; then
+            cp ./cmd/router/spp_rules_v25.json ./
+            echo "✅ Copied spp_rules_v25.json"
+        else
+            echo "⚠️  spp_rules_v25.json not found"
+        fi
+
+        if [ -f "./cmd/router/firehol_level1.netset" ]; then
+            cp ./cmd/router/firehol_level1.netset ./
+            echo "✅ Copied firehol_level1.netset"
+        else
+            echo "⚠️  firehol_level1.netset not found"
+        fi
+        
+        if [ -f "./cmd/spp-adapter/GeoIP2_City.mmdb" ]; then
+            cp ./cmd/spp-adapter/GeoIP2_City.mmdb ./
+            echo "✅ Copied GeoIP2_City.mmdb"
+        else
+            echo "⚠️  GeoIP2_City.mmdb not found"
+        fi
+
+        if [ -f "./cmd/bid-engine/sspGeoDspPersents.json" ]; then
+            cp ./cmd/bid-engine/sspGeoDspPersents.json ./
+            echo "✅ Copied sspGeoDspPersents.json"
+        else
+            echo "⚠️  sspGeoDspPersents.json not found"
+        fi
+
+        if [ -f "./cmd/router/sspGeoDspLinks.json" ]; then
+            cp ./cmd/router/sspGeoDspLinks.json ./
+            echo "✅ Copied sspGeoDspLinks.json"
+        else
+            echo "⚠️  sspGeoDspLinks.json not found"
+        fi
+
+        if [ -f "./cmd/router/dspFilters.json" ]; then
+            cp ./cmd/router/dspFilters.json ./
+            echo "✅ Copied dspFilters.json"
+        else
+            echo "⚠️  dspFilters.json not found"
+        fi
+
+        if [ -f "./cmd/adm-adapter/fullchain.pem" ]; then
+            cp ./cmd/adm-adapter/fullchain.pem ./
+            echo "✅ Copied fullchain.pem"
+        else
+            echo "⚠️  fullchain.pem not found"
+        fi
+
+        if [ -f "./cmd/adm-adapter/privkey.pem" ]; then
+            cp ./cmd/adm-adapter/privkey.pem ./
+            echo "✅ Copied privkey.pem"
+        else
+            echo "⚠️  privkey.pem not found"
+        fi
+
+        if [ -f "./cmd/adm-adapter/rsa-fullchain.pem" ]; then
+            cp ./cmd/adm-adapter/rsa-fullchain.pem ./
+            echo "✅ Copied rsa-fullchain.pem"
+        else
+            echo "⚠️  rsa-fullchain.pem not found"
+        fi
+
+        if [ -f "./cmd/adm-adapter/rsa-privkey.pem" ]; then
+            cp ./cmd/adm-adapter/rsa-privkey.pem ./
+            echo "✅ Copied rsa-privkey.pem"
+        else
+            echo "⚠️  rsa-privkey.pem not found"
+        fi
+
+        if [ -f "./cmd/adm-adapter/adm-fullchain.pem" ]; then
+            cp ./cmd/adm-adapter/adm-fullchain.pem ./
+            echo "✅ Copied adm-fullchain.pem"
+        else
+            echo "⚠️  adm-fullchain.pem not found"
+        fi
+
+        if [ -f "./cmd/adm-adapter/adm-privkey.pem" ]; then
+            cp ./cmd/adm-adapter/adm-privkey.pem ./
+            echo "✅ Copied adm-privkey.pem"
+        else
+            echo "⚠️  adm-privkey.pem not found"
+        fi
+
+        if [ -f "./cmd/adm-adapter/adm-rsa-fullchain.pem" ]; then
+            cp ./cmd/adm-adapter/adm-rsa-fullchain.pem ./
+            echo "✅ Copied adm-rsa-fullchain.pem"
+        else
+            echo "⚠️  adm-rsa-fullchain.pem not found"
+        fi
+
+        if [ -f "./cmd/adm-adapter/adm-rsa-privkey.pem" ]; then
+            cp ./cmd/adm-adapter/adm-rsa-privkey.pem ./
+            echo "✅ Copied adm-rsa-privkey.pem"
+        else
+            echo "⚠️  adm-rsa-privkey.pem not found"
+        fi
+
         echo "✅ Build done"
         ;;
 
