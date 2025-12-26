@@ -11,6 +11,7 @@ WorkingDirectory=/root/RTB/gpt_test_3
 
 EnvironmentFile=/root/RTB/gpt_test_3/cmd/router/router.env
 Environment=ROUTER_INSTANCE=%i
+Environment=HTTP_PORT=809%i
 
 ExecStart=/root/RTB/gpt_test_3/cmd/router/router
 Restart=always
