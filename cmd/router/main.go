@@ -18,6 +18,7 @@ import (
 	httpServer "gitlab.com/twinbid-exchange/RTB-exchange/internal/http"
 	maxproc "gitlab.com/twinbid-exchange/RTB-exchange/internal/mp"
 	dspRouterWeb "gitlab.com/twinbid-exchange/RTB-exchange/internal/services/dspRouter/web"
+	"golang.org/x/sys/unix"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/redis/go-redis/v9"
@@ -155,7 +156,34 @@ func main() {
 		}
 	}()
 
-	lis, err := net.Listen(
+	lc := net.ListenConfig{
+		Control: func(network, address string, c syscall.RawConn) error {
+			var controlErr error
+			err := c.Control(func(fd uintptr) {
+				controlErr = unix.SetsockoptInt(
+					int(fd),
+					unix.SOL_SOCKET,
+					unix.SO_REUSEPORT,
+					1,
+				)
+			})
+			if err != nil {
+				return err
+			}
+			return controlErr
+		},
+	}
+
+	lis, err := lc.Listen(
+		context.Background(),
+		"tcp",
+		fmt.Sprintf("%s:%d", cfg.GrpcServer.Host, cfg.GrpcServer.Port),
+	)
+	if err != nil {
+		log.Fatalf("failed to listen: %v", err)
+	}
+
+	/*lis, err := net.Listen(
 		"tcp",
 		fmt.Sprintf(
 			"%s:%d",
@@ -165,7 +193,7 @@ func main() {
 	)
 	if err != nil {
 		log.Fatalf("failed to listen: %v", err)
-	}
+	}*/
 
 	go httpServer.RunHttpServer(ctx, router, cfg.HttpServer.Host, cfg.HttpServer.Port)
 
