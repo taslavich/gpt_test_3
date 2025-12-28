@@ -180,6 +180,8 @@ func (s *Server) GetBids_V2_5(
 			continue
 		}
 
+		log.Println("HII")
+
 		if !s.processor.ProcessRequestForDSPV25(DeletePrefix(domain), req.BidRequest).Allowed {
 			//log.Println("Gor DSP filter")
 			codesCh <- &dspDomainCode{
@@ -204,7 +206,7 @@ func (s *Server) GetBids_V2_5(
 				domain: domain,
 				code:   -5,
 			}
-			log.Printf("STOP SITE ID: %d, domain: %s", req.BidRequest.Site.Id, domain)
+			log.Printf("STOP SITE ID: %d, domain: %s, ssp domain: %s", req.BidRequest.Site.Id, domain)
 			continue
 		}
 
