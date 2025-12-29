@@ -6,6 +6,7 @@ import (
 	"os"
 
 	"gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/proto/types/ortb_V2_5"
+	utils "gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/utils_grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
@@ -86,14 +87,20 @@ func (f *FiltersBox) Allowed(bidRequest *ortb_V2_5.BidRequest, domain string) bo
 		return true
 	}
 
-	filters, ok := f.Allowers[domain]
-	if !ok {
-		return true
+	filtersALL, ok := f.Allowers["ALL"]
+	if ok {
+		if !filtersALL.SiteId.Allowed(bidRequest) {
+			return false
+		}
 	}
 
-	if !filters.SiteId.Allowed(bidRequest) {
-		return false
+	filters, ok := f.Allowers[domain]
+	if ok {
+		if !filters.SiteId.Allowed(bidRequest) {
+			return false
+		}
 	}
+
 	return true
 }
 
@@ -137,12 +144,16 @@ func FiltersJsonToFilters(mapa FiltersJsonBox) map[string]*Filters {
 func FiltersToFiltersJson(mapa map[string]*Filters) map[string]*FiltersJson {
 	newMap := make(map[string]*FiltersJson)
 	for domain, filters := range mapa {
-		newMap[domain] = &FiltersJson{
-			SiteId: &SiteIdBoxJson{
-				Apply:       filters.SiteId.Apply,
-				IsWhiteList: filters.SiteId.IsWhiteList,
-				SiteIds:     MapKeysToSlice(filters.SiteId.SiteIds),
-			},
+		domains := utils.SplitAndTrimKeys(domain)
+
+		for _, singleDomain := range domains {
+			newMap[singleDomain] = &FiltersJson{
+				SiteId: &SiteIdBoxJson{
+					Apply:       filters.SiteId.Apply,
+					IsWhiteList: filters.SiteId.IsWhiteList,
+					SiteIds:     MapKeysToSlice(filters.SiteId.SiteIds),
+				},
+			}
 		}
 	}
 	return newMap

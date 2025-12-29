@@ -47,7 +47,7 @@ func InitSspGeoDspMap[T *types.PercentAndBidfloor | bool](filename string) (map[
 func SetAndConvertNonGoodMap[T *types.PercentAndBidfloor | bool](tmp map[string]map[string]map[string]T) map[string]map[string]map[string]T {
 	out := make(map[string]map[string]map[string]T)
 	for sspKey, geoMap := range tmp {
-		sspKeys := splitAndTrimKeys(sspKey)
+		sspKeys := SplitAndTrimKeys(sspKey)
 
 		for _, singleSspKey := range sspKeys {
 			if out[singleSspKey] == nil {
@@ -55,7 +55,7 @@ func SetAndConvertNonGoodMap[T *types.PercentAndBidfloor | bool](tmp map[string]
 			}
 
 			for geoKey, dspMap := range geoMap {
-				geoKeys := splitAndTrimKeys(geoKey)
+				geoKeys := SplitAndTrimKeys(geoKey)
 
 				for _, singleGeoKey := range geoKeys {
 					if out[singleSspKey][singleGeoKey] == nil {
@@ -63,7 +63,7 @@ func SetAndConvertNonGoodMap[T *types.PercentAndBidfloor | bool](tmp map[string]
 					}
 
 					for dspKey, value := range dspMap {
-						dspKeys := splitAndTrimKeys(dspKey)
+						dspKeys := SplitAndTrimKeys(dspKey)
 
 						for _, singleDspKey := range dspKeys {
 							out[singleSspKey][singleGeoKey][singleDspKey] = value
@@ -77,7 +77,7 @@ func SetAndConvertNonGoodMap[T *types.PercentAndBidfloor | bool](tmp map[string]
 	return out
 }
 
-func splitAndTrimKeys(key string) []string {
+func SplitAndTrimKeys(key string) []string {
 	if key == "" {
 		return []string{""}
 	}

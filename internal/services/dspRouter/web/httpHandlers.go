@@ -1,8 +1,10 @@
 package dspRouterWeb
 
 import (
+	"encoding/json"
 	"log"
 	"net/http"
+	"os"
 
 	"github.com/ggicci/httpin"
 	"gitlab.com/twinbid-exchange/RTB-exchange/internal/filter"
@@ -13,20 +15,32 @@ import (
 func getSspGeoLinksMap(
 	w http.ResponseWriter,
 	r *http.Request,
-	linkMap_adult *map[string]map[string]map[string]bool,
-	linkMap_mainstream *map[string]map[string]map[string]bool,
+	linkMap_adult string,
+	linkMap_mainstream string,
 ) {
-	var mapa map[string]map[string]map[string]bool
-
+	var filename string
 	input := r.Context().Value(httpin.Input).(*getSspGeoDspLinksRequest_V2_5)
 
 	switch input.Typic {
 	case sppAdapterWeb.ADULT:
-		mapa = *linkMap_adult
+		filename = linkMap_adult
 	case sppAdapterWeb.MAINSTREAM:
-		mapa = *linkMap_mainstream
+		filename = linkMap_mainstream
 	default:
 		http.Error(w, "Invalid Typic value", http.StatusBadRequest)
+		return
+	}
+
+	data, err := os.ReadFile(filename)
+	if err != nil {
+		http.Error(w, "Cannot ReadFile", http.StatusInternalServerError)
+		return
+	}
+
+	var mapa map[string]map[string]map[string]bool
+	err = json.Unmarshal(data, &mapa)
+	if err != nil {
+		http.Error(w, "Cannot Unmarshal", http.StatusInternalServerError)
 		return
 	}
 
@@ -92,9 +106,22 @@ func putDspFiltersMap(
 func getDspFiltersMap(
 	w http.ResponseWriter,
 	r *http.Request,
-	filters *filter.FiltersBox,
+	filters string,
 ) {
-	if err := rnr.JSON(w, http.StatusOK, filter.FiltersToFiltersJson(filters.Allowers)); err != nil {
+	data, err := os.ReadFile(filters)
+	if err != nil {
+		http.Error(w, "Cannot ReadFile", http.StatusInternalServerError)
+		return
+	}
+
+	var mapa map[string]*filter.FiltersJson
+	err = json.Unmarshal(data, &mapa)
+	if err != nil {
+		http.Error(w, "Cannot Unmarshal", http.StatusInternalServerError)
+		return
+	}
+
+	if err := rnr.JSON(w, http.StatusOK, mapa); err != nil {
 		log.Printf("Cannot make HTTP response back: %v\n", err)
 	}
 }
