@@ -7,6 +7,8 @@ import (
 	dspRouterGrpc "gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/proto/services/dspRouter"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/resolver"
+	"google.golang.org/grpc/resolver/manual"
 )
 
 func NewOrchestrator(
@@ -28,12 +30,22 @@ func (o *TOrchestrator) GetGrpClients() (*GrpcClients, func()) {
 		log.Fatalf("did not connect to bidEngine: %v", err)
 	}
 
+	r := manual.NewBuilderWithScheme("static")
+
+	r.InitialState(resolver.State{
+		Addresses: []resolver.Address{
+			{Addr: "localhost:8051"},
+			{Addr: "localhost:8052"},
+		},
+	})
+
 	dspRouterConn, err := grpc.Dial(
-		o.addressOfDspRouter,
+		r.Scheme()+":///ignored",
+		grpc.WithResolvers(r),
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
 		grpc.WithDefaultServiceConfig(`{
-			"loadBalancingConfig": [{"round_robin":{}}]
-		}`),
+        "loadBalancingConfig": [{"round_robin":{}}]
+    }`),
 	)
 	if err != nil {
 		log.Fatalf("did not connect to dspRouter: %v", err)
