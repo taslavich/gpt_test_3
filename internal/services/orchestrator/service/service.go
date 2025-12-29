@@ -28,7 +28,7 @@ func (o *TOrchestrator) GetGrpClients() (*GrpcClients, func()) {
 		log.Fatalf("did not connect to bidEngine: %v", err)
 	}
 
-	dspRouterConn, err := grpc.NewClient(
+	dspRouterConn, err := grpc.Dial(
 		o.addressOfDspRouter,
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
 		grpc.WithDefaultServiceConfig(`{
