@@ -204,7 +204,7 @@ func (s *Server) GetBids_V2_5(
 				domain: domain,
 				code:   -5,
 			}
-			log.Printf("STOP SITE ID: %d, domain: %s, ssp domain: %s", req.BidRequest.Site.Id, domain)
+			log.Printf("STOP SITE ID: %d, domain: %s, ssp domain: %s", req.BidRequest.Site.GetId(), domain)
 			continue
 		}
 
