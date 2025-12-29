@@ -192,34 +192,6 @@ case "$1" in
             echo "⚠️  GeoIP2_City.mmdb not found"
         fi
 
-        if [ -f "./cmd/adm-adapter/fullchain.pem" ]; then
-            cp ./cmd/adm-adapter/fullchain.pem ./
-            echo "✅ Copied fullchain.pem"
-        else
-            echo "⚠️  fullchain.pem not found"
-        fi
-
-        if [ -f "./cmd/adm-adapter/privkey.pem" ]; then
-            cp ./cmd/adm-adapter/privkey.pem ./
-            echo "✅ Copied privkey.pem"
-        else
-            echo "⚠️  privkey.pem not found"
-        fi
-
-        if [ -f "./cmd/adm-adapter/rsa-fullchain.pem" ]; then
-            cp ./cmd/adm-adapter/rsa-fullchain.pem ./
-            echo "✅ Copied rsa-fullchain.pem"
-        else
-            echo "⚠️  rsa-fullchain.pem not found"
-        fi
-
-        if [ -f "./cmd/adm-adapter/rsa-privkey.pem" ]; then
-            cp ./cmd/adm-adapter/rsa-privkey.pem ./
-            echo "✅ Copied rsa-privkey.pem"
-        else
-            echo "⚠️  rsa-privkey.pem not found"
-        fi
-
         if [ -f "./cmd/adm-adapter/adm-fullchain.pem" ]; then
             cp ./cmd/adm-adapter/adm-fullchain.pem ./
             echo "✅ Copied adm-fullchain.pem"
