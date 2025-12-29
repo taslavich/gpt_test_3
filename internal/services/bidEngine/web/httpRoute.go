@@ -42,7 +42,7 @@ func InitHttpRoutes(
 	httpRouter.With(
 		httpin.NewInput(getSspGeoDspPercentsRequest_V2_5{}),
 	).Get(GetSspGeoDspPercentsMapUrl, func(w http.ResponseWriter, r *http.Request) {
-		getSspGeoPercentsMap(w, r, percentMap_adult, percentMap_mainstream)
+		getSspGeoPercentsMap(w, r, percentFilename_adult, percentFilename_mainstream)
 	})
 
 	httpRouter.With(

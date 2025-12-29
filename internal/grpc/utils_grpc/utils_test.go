@@ -398,7 +398,7 @@ func TestSplitAndTrimKeys(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.input, func(t *testing.T) {
-			result := splitAndTrimKeys(tt.input)
+			result := SplitAndTrimKeys(tt.input)
 			if !reflect.DeepEqual(result, tt.expected) {
 				t.Errorf("splitAndTrimKeys(%q) = %v, expected %v",
 					tt.input, result, tt.expected)

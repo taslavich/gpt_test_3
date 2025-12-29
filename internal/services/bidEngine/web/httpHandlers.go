@@ -1,8 +1,10 @@
 package bidEngineWeb
 
 import (
+	"encoding/json"
 	"log"
 	"net/http"
+	"os"
 
 	"github.com/ggicci/httpin"
 	utils "gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/utils_grpc"
@@ -48,20 +50,33 @@ func putSspGeoPercentsMap(
 func getSspGeoPercentsMap(
 	w http.ResponseWriter,
 	r *http.Request,
-	percentMap_adult *map[string]map[string]map[string]*types.PercentAndBidfloor,
-	percentMap_mainstream *map[string]map[string]map[string]*types.PercentAndBidfloor,
+	percentMap_adult string,
+	percentMap_mainstream string,
 ) {
-	var mapa map[string]map[string]map[string]*types.PercentAndBidfloor
+	var filename string
 
 	input := r.Context().Value(httpin.Input).(*getSspGeoDspPercentsRequest_V2_5)
 
 	switch input.Typic {
 	case sppAdapterWeb.ADULT:
-		mapa = *percentMap_adult
+		filename = percentMap_adult
 	case sppAdapterWeb.MAINSTREAM:
-		mapa = *percentMap_mainstream
+		filename = percentMap_mainstream
 	default:
 		http.Error(w, "Invalid Typic value", http.StatusBadRequest)
+		return
+	}
+
+	data, err := os.ReadFile(filename)
+	if err != nil {
+		http.Error(w, "Cannot ReadFile", http.StatusInternalServerError)
+		return
+	}
+
+	var mapa map[string]map[string]map[string]*types.PercentAndBidfloor
+	err = json.Unmarshal(data, &mapa)
+	if err != nil {
+		http.Error(w, "Cannot Unmarshal", http.StatusInternalServerError)
 		return
 	}
 
