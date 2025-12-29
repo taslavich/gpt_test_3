@@ -119,8 +119,6 @@ func (s *Server) GetBids_V2_5(
 	ctx context.Context,
 	req *dspRouterGrpc.DspRouterRequest_V2_5,
 ) (resp *dspRouterGrpc.DspRouterResponse_V2_5, funcErr error) {
-
-	log.Println("HELLO")
 	defer func() {
 		if r := recover(); r != nil {
 			err := fmt.Errorf("Recovered from panic in GetBids_V2_5: %v, %s", r, string(debug.Stack()))
@@ -181,8 +179,6 @@ func (s *Server) GetBids_V2_5(
 			}
 			continue
 		}
-
-		log.Println("HII")
 
 		if !s.processor.ProcessRequestForDSPV25(DeletePrefix(domain), req.BidRequest).Allowed {
 			//log.Println("Gor DSP filter")
