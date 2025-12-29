@@ -184,13 +184,6 @@ case "$1" in
         else
             echo "⚠️  firehol_level1.netset not found"
         fi
-        
-        if [ -f "./cmd/spp-adapter/GeoIP2_City.mmdb" ]; then
-            cp ./cmd/spp-adapter/GeoIP2_City.mmdb ./
-            echo "✅ Copied GeoIP2_City.mmdb"
-        else
-            echo "⚠️  GeoIP2_City.mmdb not found"
-        fi
 
         if [ -f "./cmd/adm-adapter/adm-fullchain.pem" ]; then
             cp ./cmd/adm-adapter/adm-fullchain.pem ./
