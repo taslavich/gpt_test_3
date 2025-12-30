@@ -97,7 +97,11 @@ func main() {
 		log.Fatalf("Failed to InitSspGeoPercentsLogic: %v", err)
 	}
 
-	clients := dspRouterWeb.InitSspHttpClients(cfg.SspHttpClientTimeouts)
+	clients := dspRouterWeb.InitSspHttpClients(
+		cfg.DSPEndpointsAdult_v_2_5,
+		cfg.DSPEndpointsMainstream_v_2_5,
+	)
+
 	filters, err := filter.NewFiltersBox(cfg.DspFiltersFilePath)
 	if err != nil {
 		log.Fatalf("Failed to NewFiltersBox: %v", err)
@@ -112,11 +116,11 @@ func main() {
 		cfg.DSPEndpointsMainstream_v_2_5,
 		redisClient,
 		cfg.BidResponsesTimeout,
-		cfg.MaxParallelRequests,
 		&sspGeoDspMapAdult,
 		&sspGeoDspMapMainstream,
 		clients,
 		filters,
+		cfg.SspHttpClientTimeouts,
 	)
 
 	if err := routerServer.LoadNetset(cfg.AllowedIpDbPath); err != nil {
