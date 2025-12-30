@@ -53,43 +53,61 @@ func (s *Server) LoadNetset(filename string) error {
 	return nil
 }
 
-func InitSspHttpClients(configTimeouts config.MapStringToDuration) map[string]*http.Client {
-	timeouts := make(map[string]*http.Client)
-	for sspDomain, timeout := range configTimeouts {
-		mcSspDomain := MC_PREFIX + sspDomain
-		adlSspDomain := ADL_PREFIX + sspDomain
-
-		client := NewFastHTTPClient(timeout)
-		timeouts[mcSspDomain] = client
-		timeouts[adlSspDomain] = client
+func getSspTimeout(sspDomain string, configTimeouts config.MapStringToDuration) time.Duration {
+	var timeout time.Duration
+	timeout, ok := configTimeouts[DeletePrefix(sspDomain)]
+	if !ok {
+		timeout = 150 * time.Millisecond
 	}
 
-	timeouts[DEFAULT] = NewFastHTTPClient(150 * time.Millisecond)
+	return timeout
+}
+
+func InitSspHttpClients(
+	dspEndpoints_v_2_5 config.MapStringToString,
+	dspEndpoints_mainstream_v_2_5 config.MapStringToString,
+) map[string]*http.Client {
+	timeouts := make(map[string]*http.Client)
+	for _, domain := range dspEndpoints_v_2_5 {
+		if _, ok := timeouts[domain]; !ok {
+			client := NewFastHTTPClient()
+			timeouts[domain] = client
+		}
+	}
+
+	for _, domain := range dspEndpoints_mainstream_v_2_5 {
+		if _, ok := timeouts[domain]; !ok {
+			client := NewFastHTTPClient()
+			timeouts[domain] = client
+		}
+	}
+
+	timeouts[DEFAULT] = NewFastHTTPClient()
 
 	return timeouts
 }
 
-func getSspHttpClients(sspDomain string, clients map[string]*http.Client) *http.Client {
-	client, ok := clients[sspDomain]
+func getDspHttpClients(dspDomain string, clients map[string]*http.Client) *http.Client {
+	client, ok := clients[dspDomain]
 	if !ok {
 		return clients[DEFAULT]
 	}
 	return client
 }
 
-func NewFastHTTPClient(timeout time.Duration) *http.Client {
+func NewFastHTTPClient() *http.Client {
 	transport := &http.Transport{
 		// ⚡ ДЛЯ 32 ЯДЕР И 250K СОЕДИНЕНИЙ:
-		MaxIdleConns:        50000, // Было 500
-		MaxIdleConnsPerHost: 10000, // Было 100
-		MaxConnsPerHost:     400,   // БЕЗ ЛИМИТА
+		MaxIdleConns:        30000, // Было 500
+		MaxIdleConnsPerHost: 5000,  // Было 100
+		MaxConnsPerHost:     0,     // БЕЗ ЛИМИТА
 
 		// ⚡ Оптимизация для большего числа соединений
 		IdleConnTimeout: 120 * time.Second,
 
 		// ⚡ Больше буферы для high-throughput
-		WriteBufferSize: 128 * 1024, // 128KB
-		ReadBufferSize:  128 * 1024,
+		ReadBufferSize:  32 * 1024,
+		WriteBufferSize: 32 * 1024,
 
 		// ⚡ Быстрее переподключения
 		DialContext: (&net.Dialer{
@@ -97,18 +115,10 @@ func NewFastHTTPClient(timeout time.Duration) *http.Client {
 			KeepAlive: 120 * time.Second,
 			DualStack: true,
 		}).DialContext,
-
-		// ⚡ Отключаем HTTP/2 - он создаёт один connection pool
-		// Для RTB лучше много отдельных соединений
-		ForceAttemptHTTP2: false,
-
-		// ⚡ Включаем TCP FastOpen если поддерживается
-		// (нужно проверить ядро)
 	}
 
 	return &http.Client{
 		Transport: transport,
-		Timeout:   timeout,
 		// ⚡ Отключаем редиректы в DSP роутере
 		CheckRedirect: func(req *http.Request, via []*http.Request) error {
 			return http.ErrUseLastResponse

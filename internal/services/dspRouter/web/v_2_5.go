@@ -50,6 +50,8 @@ type Server struct {
 
 	filters *filter.FiltersBox
 
+	configTimeouts config.MapStringToDuration
+
 	dspRouterGrpc.UnimplementedDspRouterServiceServer
 }
 
@@ -61,27 +63,12 @@ func NewServer(
 	dspEndpoints_mainstream_v_2_5 config.MapStringToString,
 	redisClient *redis.Client,
 	timeout time.Duration,
-	maxParallelRequests int,
 	linkMap_adult *map[string]map[string]map[string]bool,
 	linkMap_mainstream *map[string]map[string]map[string]bool,
 	clients map[string]*http.Client,
 	filters *filter.FiltersBox,
+	configTimeouts config.MapStringToDuration,
 ) *Server {
-	if maxParallelRequests <= 0 {
-		maxParallelRequests = 64
-	}
-
-	// Глобальный лимит исходящих: консервативно отталкиваемся от
-	// количества DSP и локального лимита; при желании — вынеси в конфиг.
-	outboundLimit := maxParallelRequests * 2
-
-	if l := len(dspEndpoints_v_2_5); l > 0 && l*maxParallelRequests > outboundLimit {
-		outboundLimit = l * maxParallelRequests
-	}
-	if outboundLimit < 256 {
-		outboundLimit = 256
-	}
-
 	rang := cidranger.NewPCTrieRanger()
 
 	return &Server{
@@ -102,6 +89,7 @@ func NewServer(
 		linkMap_adult:      linkMap_adult,
 		linkMap_mainstream: linkMap_mainstream,
 		filters:            filters,
+		configTimeouts:     configTimeouts,
 	}
 }
 
@@ -127,8 +115,9 @@ func (s *Server) GetBids_V2_5(
 		}
 	}()
 
-	client_v_2_5 := getSspHttpClients(req.SspDomain, s.clients)
-	newTmax := int32(float64(client_v_2_5.Timeout.Milliseconds()) * 0.85)
+	timeout := getSspTimeout(req.SspDomain, s.configTimeouts)
+
+	newTmax := int32(float64(timeout.Milliseconds()) * 0.85)
 	req.BidRequest.Tmax = &newTmax
 
 	jsonData, err := jsoniter.Marshal(req.BidRequest)
@@ -216,11 +205,13 @@ func (s *Server) GetBids_V2_5(
 			ChangeSiteIdhilltopTest(req.BidRequest)
 		}
 
+		client_v_2_5 := getDspHttpClients(domain, s.clients)
+
 		wg.Add(1)
-		go func(ctx context.Context, endpoint, domain string, client_v_2_5 *http.Client) {
+		go func(ctx context.Context, endpoint, domain string, client_v_2_5 *http.Client, timeout time.Duration) {
 			defer wg.Done()
 
-			reqCtx, cancel := context.WithTimeout(context.Background(), client_v_2_5.Timeout)
+			reqCtx, cancel := context.WithTimeout(context.Background(), timeout)
 			defer cancel()
 
 			dspResp, code, err := s.getBidsFromDSPbyHTTP_V_2_5(reqCtx, req.GlobalId, jsonData, endpoint, client_v_2_5)
@@ -263,7 +254,7 @@ func (s *Server) GetBids_V2_5(
 					resp:   dspResp,
 				}
 			}
-		}(ctx, endpoint, domain, client_v_2_5)
+		}(ctx, endpoint, domain, client_v_2_5, timeout)
 	}
 
 	go func() {
@@ -313,7 +304,10 @@ func (s *Server) getBidsFromDSPbyHTTP_V_2_5(ctx context.Context, uuid string, js
 	if err != nil {
 		return nil, 1, fmt.Errorf("Timeout: %d ms, Request failed: %v", networkDuration.Milliseconds(), err)
 	}
-	defer resp.Body.Close()
+	defer func() {
+		io.Copy(io.Discard, resp.Body)
+		resp.Body.Close()
+	}()
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
