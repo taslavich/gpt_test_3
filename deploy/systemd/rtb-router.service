@@ -20,6 +20,8 @@ TasksMax=infinity
 Nice=-10
 CPUWeight=100
 
+CPUAffinity=0-31
+
 # Network backlog (локально)
 ExecStartPre=/bin/sh -c 'sysctl -w net.core.somaxconn=65535'
 ExecStartPre=/bin/sh -c 'sysctl -w net.ipv4.tcp_max_syn_backlog=65535'
