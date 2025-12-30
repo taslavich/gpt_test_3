@@ -3,17 +3,12 @@ set -e
 
 PROJECT_DIR="/root/RTB/gpt_test_3"
 
-# ===== НАСТРОЙКИ =====
-SERVICE_ROUTER="rtb-router"
-ROUTER_INSTANCES=2
-
 # Инфраструктурные сервисы
 INFRA_SERVICES=(
     "rtb-redis"
     "rtb-kafka"
 )
 
-# Основные RTB сервисы (БЕЗ router!)
 CORE_SERVICES=(
     "rtb-bid-engine"
     "rtb-orchestrator"
@@ -21,6 +16,7 @@ CORE_SERVICES=(
     "rtb-clickhouse-loader"
     "rtb-kafka-loader"
     "rtb-adm-adapter"
+    "rtb-router" 
 )
 
 # ====================
@@ -30,29 +26,6 @@ check_project_dir() {
         echo "❌ Project directory not found: $PROJECT_DIR"
         exit 1
     fi
-}
-
-start_router() {
-    echo "🚀 Starting ROUTER instances ($ROUTER_INSTANCES)"
-    systemctl daemon-reload
-    for i in $(seq 1 "$ROUTER_INSTANCES"); do
-        systemctl enable ${SERVICE_ROUTER}@${i} >/dev/null
-        systemctl start  ${SERVICE_ROUTER}@${i}
-    done
-}
-
-stop_router() {
-    echo "🛑 Stopping ROUTER instances"
-    for i in $(seq 1 "$ROUTER_INSTANCES"); do
-        systemctl stop ${SERVICE_ROUTER}@${i} || true
-    done
-}
-
-status_router() {
-    echo "📊 ROUTER status"
-    for i in $(seq 1 "$ROUTER_INSTANCES"); do
-        systemctl status ${SERVICE_ROUTER}@${i} --no-pager
-    done
 }
 
 start_services() {
@@ -100,7 +73,6 @@ case "$1" in
 
     start-core)
         check_project_dir
-        start_router
         start_services "${CORE_SERVICES[@]}"
         ;;
 
@@ -112,7 +84,6 @@ case "$1" in
 
     stop-core)
         stop_services "${CORE_SERVICES[@]}"
-        stop_router
         ;;
 
     stop-infra)
@@ -125,14 +96,6 @@ case "$1" in
         $0 stop-infra
         ;;
 
-    restart-core)
-        stop_router
-        sleep 1
-        start_router
-        stop_services "${CORE_SERVICES[@]}"
-        start_services "${CORE_SERVICES[@]}"
-        ;;
-
     restart)
         $0 stop
         sleep 3
@@ -142,9 +105,6 @@ case "$1" in
     status)
         echo "=== INFRA ==="
         show_status "${INFRA_SERVICES[@]}"
-        echo
-        echo "=== ROUTER ==="
-        status_router
         echo
         echo "=== CORE ==="
         show_status "${CORE_SERVICES[@]}"
@@ -234,10 +194,7 @@ case "$1" in
     *)
         echo "Usage:"
         echo "  $0 start|stop|restart|status"
-        echo "  $0 start-core|stop-core|restart-core"
         echo "  $0 start-infra|stop-infra"
-        echo "  $0 logs rtb-router <n>"
-        echo "  $0 errors rtb-router <n>"
         exit 1
         ;;
 esac

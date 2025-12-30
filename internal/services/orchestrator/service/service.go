@@ -7,8 +7,6 @@ import (
 	dspRouterGrpc "gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/proto/services/dspRouter"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
-	"google.golang.org/grpc/resolver"
-	"google.golang.org/grpc/resolver/manual"
 )
 
 func NewOrchestrator(
@@ -30,7 +28,30 @@ func (o *TOrchestrator) GetGrpClients() (*GrpcClients, func()) {
 		log.Fatalf("did not connect to bidEngine: %v", err)
 	}
 
-	r := manual.NewBuilderWithScheme("static")
+	dspRouterConn, err := grpc.NewClient(
+		o.addressOfDspRouter,
+		grpc.WithTransportCredentials(insecure.NewCredentials()),
+	)
+	if err != nil {
+		log.Fatalf("did not connect to dspRouter: %v", err)
+	}
+
+	return &GrpcClients{
+			BidEngineGrpcClient: bidEngineGrpc.NewBidEngineServiceClient(bidEngineConn),
+			DspRouterGrpcClient: dspRouterGrpc.NewDspRouterServiceClient(dspRouterConn),
+		},
+		func() {
+			if err := bidEngineConn.Close(); err != nil {
+				log.Printf("Cannot close bidEngine connection: %w", err)
+			}
+
+			if err := dspRouterConn.Close(); err != nil {
+				log.Printf("Cannot close dspRouter connection: %w", err)
+			}
+		}
+}
+
+/*r := manual.NewBuilderWithScheme("static")
 
 	r.InitialState(resolver.State{
 		Addresses: []resolver.Address{
@@ -49,19 +70,4 @@ func (o *TOrchestrator) GetGrpClients() (*GrpcClients, func()) {
 	)
 	if err != nil {
 		log.Fatalf("did not connect to dspRouter: %v", err)
-	}
-
-	return &GrpcClients{
-			BidEngineGrpcClient: bidEngineGrpc.NewBidEngineServiceClient(bidEngineConn),
-			DspRouterGrpcClient: dspRouterGrpc.NewDspRouterServiceClient(dspRouterConn),
-		},
-		func() {
-			if err := bidEngineConn.Close(); err != nil {
-				log.Printf("Cannot close bidEngine connection: %v", err)
-			}
-
-			if err := dspRouterConn.Close(); err != nil {
-				log.Printf("Cannot close dspRouter connection: %v", err)
-			}
-		}
-}
+	}*/
