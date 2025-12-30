@@ -10,20 +10,19 @@ StartLimitInterval=0
 
 EnvironmentFile=/root/RTB/gpt_test_3/cmd/router/router.env
 
-# 🔥 КРИТИЧНО
+# FD / процессы
 LimitNOFILE=1048576
 LimitNPROC=1048576
-
-# 🔥 Очереди
+LimitMEMLOCK=infinity
 TasksMax=infinity
 
-# 🔥 CPU приоритет
+# CPU — приоритет, но не монополия
 Nice=-10
 CPUWeight=100
 
-# 🔥 I/O
-IOSchedulingClass=realtime
-IOSchedulingPriority=0
+# Network backlog (локально)
+ExecStartPre=/bin/sh -c 'sysctl -w net.core.somaxconn=65535'
+ExecStartPre=/bin/sh -c 'sysctl -w net.ipv4.tcp_max_syn_backlog=65535'
 
 # Logging
 StandardOutput=append:/var/log/rtb/router.log
