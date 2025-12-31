@@ -12,6 +12,30 @@ import (
 	sppAdapterWeb "gitlab.com/twinbid-exchange/RTB-exchange/internal/services/sspAdapter/web"
 )
 
+func getSspGeoLinksMapDebug(
+	w http.ResponseWriter,
+	r *http.Request,
+	linkMap_adult *map[string]map[string]map[string]bool,
+	linkMap_mainstream *map[string]map[string]map[string]bool,
+) {
+	var mapa map[string]map[string]map[string]bool
+	input := r.Context().Value(httpin.Input).(*getSspGeoDspLinksRequest_V2_5)
+
+	switch input.Typic {
+	case sppAdapterWeb.ADULT:
+		mapa = *linkMap_adult
+	case sppAdapterWeb.MAINSTREAM:
+		mapa = *linkMap_mainstream
+	default:
+		http.Error(w, "Invalid Typic value", http.StatusBadRequest)
+		return
+	}
+
+	if err := rnr.JSON(w, http.StatusOK, mapa); err != nil {
+		log.Printf("Cannot make HTTP response back: %v\n", err)
+	}
+}
+
 func getSspGeoLinksMap(
 	w http.ResponseWriter,
 	r *http.Request,
@@ -122,6 +146,16 @@ func getDspFiltersMap(
 	}
 
 	if err := rnr.JSON(w, http.StatusOK, mapa); err != nil {
+		log.Printf("Cannot make HTTP response back: %v\n", err)
+	}
+}
+
+func getDspFiltersMapDebug(
+	w http.ResponseWriter,
+	r *http.Request,
+	filters *filter.FiltersBox,
+) {
+	if err := rnr.JSON(w, http.StatusOK, filter.FiltersToFiltersJson(filters.Allowers)); err != nil {
 		log.Printf("Cannot make HTTP response back: %v\n", err)
 	}
 }
