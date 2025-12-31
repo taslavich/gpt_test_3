@@ -23,6 +23,11 @@ const (
 	PutDspFiltersMapUrl = "/filter/dsp_filters_map"
 )
 
+const (
+	GetDebugSspGeoDspLinksMapUrl = "/filter/debug_ssp_geo_dsp_links_map"
+	GetDebugDspFiltersMapUrl     = "/filter/debug_dsp_filters_map"
+)
+
 type getSspGeoDspLinksRequest_V2_5 struct {
 	Typic string `in:"query=typic" required:"true"`
 }
@@ -56,6 +61,12 @@ func InitHttpRoutes(
 	})
 
 	httpRouter.With(
+		httpin.NewInput(getSspGeoDspLinksRequest_V2_5{}),
+	).Get(GetDebugSspGeoDspLinksMapUrl, func(w http.ResponseWriter, r *http.Request) {
+		getSspGeoLinksMapDebug(w, r, linkMap_adult, linkMap_mainstream)
+	})
+
+	httpRouter.With(
 		httpin.NewInput(putSspGeoDspLinksRequest_V2_5{}),
 	).Put(PutSspGeoDspLinksMapUrl, func(w http.ResponseWriter, r *http.Request) {
 		putSspGeoLinksMap(w, r, linkFilename_adult, linkFilename_mainstream, linkMap_adult, linkMap_mainstream)
@@ -63,6 +74,10 @@ func InitHttpRoutes(
 
 	httpRouter.Get(GetDspFiltersMapUrl, func(w http.ResponseWriter, r *http.Request) {
 		getDspFiltersMap(w, r, filtersFilename)
+	})
+
+	httpRouter.Get(GetDebugDspFiltersMapUrl, func(w http.ResponseWriter, r *http.Request) {
+		getDspFiltersMapDebug(w, r, filters)
 	})
 
 	httpRouter.With(

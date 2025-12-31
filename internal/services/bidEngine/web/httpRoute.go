@@ -20,6 +20,10 @@ const (
 	PutSspGeoDspPercentsMapUrl = "/filter/ssp_geo_dsp_percents_map"
 )
 
+const (
+	GetDebugSspGeoDspPercentsMapUrl = "/filter/debug_ssp_geo_dsp_percents_map"
+)
+
 type getSspGeoDspPercentsRequest_V2_5 struct {
 	Typic string `in:"query=typic" required:"true"`
 }
@@ -43,6 +47,12 @@ func InitHttpRoutes(
 		httpin.NewInput(getSspGeoDspPercentsRequest_V2_5{}),
 	).Get(GetSspGeoDspPercentsMapUrl, func(w http.ResponseWriter, r *http.Request) {
 		getSspGeoPercentsMap(w, r, percentFilename_adult, percentFilename_mainstream)
+	})
+
+	httpRouter.With(
+		httpin.NewInput(getSspGeoDspPercentsRequest_V2_5{}),
+	).Get(GetDebugSspGeoDspPercentsMapUrl, func(w http.ResponseWriter, r *http.Request) {
+		getSspGeoPercentsMapDebug(w, r, percentMap_adult, percentMap_mainstream)
 	})
 
 	httpRouter.With(

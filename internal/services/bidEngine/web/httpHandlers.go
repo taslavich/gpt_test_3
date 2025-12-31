@@ -84,3 +84,27 @@ func getSspGeoPercentsMap(
 		log.Printf("Cannot make HTTP response back: %v\n", err)
 	}
 }
+
+func getSspGeoPercentsMapDebug(
+	w http.ResponseWriter,
+	r *http.Request,
+	percentMap_adult *map[string]map[string]map[string]*types.PercentAndBidfloor,
+	percentMap_mainstream *map[string]map[string]map[string]*types.PercentAndBidfloor,
+) {
+	var mapa map[string]map[string]map[string]*types.PercentAndBidfloor
+	input := r.Context().Value(httpin.Input).(*getSspGeoDspPercentsRequest_V2_5)
+
+	switch input.Typic {
+	case sppAdapterWeb.ADULT:
+		mapa = *percentMap_adult
+	case sppAdapterWeb.MAINSTREAM:
+		mapa = *percentMap_mainstream
+	default:
+		http.Error(w, "Invalid Typic value", http.StatusBadRequest)
+		return
+	}
+
+	if err := rnr.JSON(w, http.StatusOK, mapa); err != nil {
+		log.Printf("Cannot make HTTP response back: %v\n", err)
+	}
+}
