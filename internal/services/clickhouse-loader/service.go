@@ -45,13 +45,10 @@ func ProcessKafkaMessages(
 		var record types.StatisticsRecord
 		if err := json.Unmarshal(msg.Value, &record); err != nil {
 			log.Printf("⚠️ Failed to parse Kafka message: %v", err)
-			// коммитим плохое сообщение, чтобы не зациклиться
-			_ = reader.CommitMessages(ctx, msg)
 			continue
 		}
 
 		if !hasData(record) {
-			_ = reader.CommitMessages(ctx, msg)
 			continue
 		}
 
