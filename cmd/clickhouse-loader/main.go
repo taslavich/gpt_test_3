@@ -26,6 +26,8 @@ func main() {
 	}
 	log.Println("Config initialized!")
 
+	log.Println(cfg.Clickhouse.Username, cfg.Clickhouse.Password)
+
 	addr := net.JoinHostPort(cfg.Clickhouse.Host, cfg.Clickhouse.Port)
 
 	conn, err := clickhouse.Open(&clickhouse.Options{
@@ -68,6 +70,9 @@ func main() {
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
 
+	ticker := time.NewTicker(time.Duration(cfg.TimeoutSec) * time.Second)
+	defer ticker.Stop()
+
 	log.Printf("🚀 ClickHouse Loader started. Reading from topic: %s", cfg.Kafka.KafkaTopic)
 
 	for {
@@ -75,7 +80,7 @@ func main() {
 		case <-sigChan:
 			log.Print("🛑 Shutting down ClickHouse Loader")
 			return
-		default:
+		case <-ticker.C:
 			err := clickhouse_loader.ProcessKafkaMessages(
 				ctx,
 				kafkaReader,
