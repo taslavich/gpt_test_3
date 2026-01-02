@@ -128,12 +128,23 @@ func InitKafkaReader(cfg config.KafkaConfig) (*kafka.Reader, error) {
 
 	// Создаем ридер
 	kafkaReader := kafka.NewReader(kafka.ReaderConfig{
-		Brokers:  cfg.KafkaBrokers,
-		Topic:    cfg.KafkaTopic,
-		GroupID:  cfg.KafkaGroupID,
-		MinBytes: 10e3,
-		MaxBytes: 10e6,
-		MaxWait:  1 * time.Second,
+		Brokers: cfg.KafkaBrokers,
+		Topic:   cfg.KafkaTopic,
+		GroupID: cfg.KafkaGroupID,
+
+		// 🔴 КЛЮЧЕВО ДЛЯ СКОРОСТИ
+		MinBytes: 10 << 20,  // 10 MB
+		MaxBytes: 100 << 20, // 100 MB
+		MaxWait:  5 * time.Millisecond,
+
+		// 🔴 внутренний буфер
+		QueueCapacity: 50000,
+
+		// 🔴 коммиты не на каждый ReadMessage
+		CommitInterval: time.Second,
+
+		// опционально
+		ReadLagInterval: -1,
 	})
 
 	log.Println("✅ Kafka reader initialized successfully")
