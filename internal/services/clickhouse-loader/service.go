@@ -2,127 +2,181 @@ package clickhouse_loader
 
 import (
 	"context"
-	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"strconv"
-	"strings"
+	"time"
 
+	"github.com/ClickHouse/clickhouse-go/v2"
+	"github.com/google/uuid"
 	"github.com/segmentio/kafka-go"
 	"gitlab.com/twinbid-exchange/RTB-exchange/internal/types"
 )
 
-func ProcessKafkaMessages(ctx context.Context, broker, topic string, reader *kafka.Reader, chDB *sql.DB, table string, batchSize, timeoutSec int) (int, error) {
-	passed, err := checkMessageCount(ctx, broker, topic, batchSize)
-	if err != nil {
-		return 0, fmt.Errorf("failed to check Kafka message count: %v", err)
-	}
+func ProcessKafkaMessages(
+	ctx context.Context,
+	reader *kafka.Reader,
+	ch clickhouse.Conn,
+	table string,
+	batchSize int,
+	timeoutSec int,
+) error {
+	readCtx, cancel := context.WithTimeout(ctx, time.Duration(timeoutSec)*time.Second)
+	defer cancel()
 
-	if !passed {
-		log.Printf("ZERO MSG")
-		return 0, nil
-	} else {
-		log.Printf("PASSED")
-	}
-
-	var messages []kafka.Message
-	var records []types.StatisticsRecord
+	var (
+		messages []kafka.Message
+		records  []types.StatisticsRecord
+	)
 
 	for i := 0; i < batchSize; i++ {
-		msg, err := reader.ReadMessage(ctx)
+
+		msg, err := reader.ReadMessage(readCtx)
 		if err != nil {
-			if err == context.DeadlineExceeded {
+			// таймаут — значит новых сообщений пока нет
+			if errors.Is(err, context.DeadlineExceeded) {
 				break
 			}
-			return 0, err
+			return err
 		}
 
 		var record types.StatisticsRecord
 		if err := json.Unmarshal(msg.Value, &record); err != nil {
 			log.Printf("⚠️ Failed to parse Kafka message: %v", err)
+			// коммитим плохое сообщение, чтобы не зациклиться
+			_ = reader.CommitMessages(ctx, msg)
 			continue
 		}
 
-		// Проверяем есть ли хотя бы одно непустое поле
-		if hasData(record) {
-			records = append(records, record)
-			messages = append(messages, msg)
+		if !hasData(record) {
+			_ = reader.CommitMessages(ctx, msg)
+			continue
 		}
+
+		records = append(records, record)
+		messages = append(messages, msg)
 	}
 
 	if len(records) == 0 {
-		return 0, nil
+		time.Sleep(1 * time.Second)
+		return nil
 	}
 
-	// Убираем вызов GiveBatch и напрямую вставляем batch
-	if err := insertBatch(chDB, table, records); err != nil {
-		return 0, fmt.Errorf("failed to insert batch: %v", err)
+	// native batch insert в ClickHouse
+	if err := insertBatch(ctx, ch, table, records); err != nil {
+		return err
 	}
 
+	// коммит offsets ТОЛЬКО после успешной вставки
 	if err := reader.CommitMessages(ctx, messages...); err != nil {
 		log.Printf("⚠️ Failed to commit Kafka offsets: %v", err)
+	} else {
+		log.Println("COMMITED %d", len(records))
 	}
 
-	log.Printf("COMMITED")
-
-	return len(records), nil
+	return nil
 }
 
-func insertBatch(chDB *sql.DB, table string, records []types.StatisticsRecord) error {
+func insertBatch(
+	ctx context.Context,
+	ch clickhouse.Conn,
+	table string,
+	records []types.StatisticsRecord,
+) error {
+
 	if len(records) == 0 {
 		return nil
 	}
 
 	query := fmt.Sprintf(`
-		INSERT INTO %s (uuid, timestamp, typic, spp_domain, bid_request, geo_column, city_id, bid_responses, bid_response_winner, adm_ip, adm)
-		VALUES 
+		INSERT INTO %s (
+			uuid,
+			timestamp,
+			typic,
+			spp_domain,
+			bid_request,
+			geo_column,
+			city_id,
+			bid_responses,
+			bid_response_winner,
+			adm_ip,
+			adm
+		)
 	`, table)
 
-	var valuePlaceholders []string
-	var values []interface{}
-
-	for _, record := range records {
-		valuePlaceholders = append(valuePlaceholders, "(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
-
-		var admBool bool
-		if record.ADM == "1" {
-			admBool = true
-		} else {
-			admBool = false // "0", "", или любое другое значение = false
-		}
-
-		var cityID uint32 = 0
-		id64, err := strconv.ParseUint(record.CITY_ID_COLUMN, 10, 32) // base 10, 32 bit
-		if err != nil {
-			log.Printf("Cannot parse CITY_ID_COLUMN int %s: %v", record.CITY_ID_COLUMN, err)
-		} else {
-			cityID = uint32(id64) // uint64 → uint32
-		}
-
-		values = append(values,
-			coalesceEmpty(record.UUID),
-			coalesceEmpty(record.TIMESTAMP),
-			coalesceEmpty(record.TYPIC),
-			coalesceEmpty(record.SPP_DOMAIN),
-			coalesceEmpty(record.BID_REQUEST),
-			coalesceEmpty(record.GEO_COLUMN),
-			cityID,
-			coalesceEmpty(record.BID_RESPONSES),
-			coalesceEmpty(record.BID_RESPONSE_WINNER),
-			coalesceEmpty(record.ADM_IP),
-			admBool,
-		)
+	batch, err := ch.PrepareBatch(ctx, query)
+	if err != nil {
+		return fmt.Errorf("PrepareBatch: %w", err)
 	}
 
-	query += strings.Join(valuePlaceholders, ", ")
+	for _, r := range records {
 
-	_, err := chDB.Exec(query, values...)
-	if err != nil {
-		return fmt.Errorf("failed to insert batch: %v", err)
+		u, err := uuid.Parse(r.UUID)
+		if err != nil {
+			u = uuid.Nil
+		}
+
+		ts := parseTimestampUTC(r.TIMESTAMP)
+
+		adm := r.ADM == "1"
+
+		var cityID uint32
+		if r.CITY_ID_COLUMN != "" {
+			id64, err := strconv.ParseUint(r.CITY_ID_COLUMN, 10, 32)
+			if err != nil {
+				log.Printf("Cannot parse CITY_ID_COLUMN %q: %v", r.CITY_ID_COLUMN, err)
+			} else {
+				cityID = uint32(id64)
+			}
+		}
+
+		if err := batch.Append(
+			u,
+			ts,
+			r.TYPIC,
+			r.SPP_DOMAIN,
+			r.BID_REQUEST,
+			r.GEO_COLUMN,
+			cityID,
+			r.BID_RESPONSES,
+			r.BID_RESPONSE_WINNER,
+			r.ADM_IP,
+			adm,
+		); err != nil {
+			return fmt.Errorf("batch.Append: %w", err)
+		}
+	}
+
+	if err := batch.Send(); err != nil {
+		return fmt.Errorf("batch.Send: %w", err)
 	}
 
 	return nil
+}
+
+func parseTimestampUTC(s string) time.Time {
+	// fallback: начало Unix-времени
+	fallback := time.Unix(0, 0).UTC()
+
+	if s == "" {
+		return fallback
+	}
+
+	layouts := []string{
+		"2006-01-02 15:04:05.000",
+		"2006-01-02 15:04:05",
+		time.RFC3339Nano,
+	}
+
+	for _, layout := range layouts {
+		if t, err := time.ParseInLocation(layout, s, time.UTC); err == nil {
+			return t
+		}
+	}
+
+	return fallback
 }
 
 // Проверяет есть ли хотя бы одно непустое поле
@@ -140,16 +194,8 @@ func hasData(record types.StatisticsRecord) bool {
 		record.TYPIC != ""
 }
 
-// Вспомогательная функция для обработки пустых значений
-func coalesceEmpty(s string) string {
-	if s == "" {
-		return ""
-	}
-	return s
-}
-
-func CreateTable(chDB *sql.DB, tableName string) error {
-	_, err := chDB.Exec(fmt.Sprintf(`
+func CreateTable(ctx context.Context, ch clickhouse.Conn, tableName string) error {
+	err := ch.Exec(ctx, fmt.Sprintf(`
         CREATE TABLE IF NOT EXISTS %s (
             uuid UUID,
             timestamp DateTime64(3),
@@ -170,45 +216,4 @@ func CreateTable(chDB *sql.DB, tableName string) error {
         SETTINGS index_granularity = 8192
     `, tableName))
 	return err
-}
-
-func checkMessageCount(ctx context.Context, broker, topic string, minThreshold int) (bool, error) {
-	conn, err := kafka.Dial("tcp", broker)
-	if err != nil {
-		return false, err
-	}
-	defer conn.Close()
-
-	partitions, err := conn.ReadPartitions()
-	if err != nil {
-		return false, err
-	}
-
-	totalMessages := 0
-	for _, p := range partitions {
-		if p.Topic != topic {
-			continue
-		}
-
-		partitionConn, err := kafka.DialPartition(ctx, "tcp", broker, p)
-		if err != nil {
-			log.Printf("Cannot DialPartition: %v", err)
-			continue
-		}
-		defer partitionConn.Close()
-
-		first, err := partitionConn.ReadFirstOffset()
-		if err != nil {
-			log.Printf("Cannot ReadFirstOffset: %v", err)
-			continue
-		}
-		last, err := partitionConn.ReadLastOffset()
-		if err != nil {
-			log.Printf("Cannot ReadLastOffset: %v", err)
-			continue
-		}
-		totalMessages += int(last - first)
-	}
-
-	return totalMessages >= minThreshold, nil
 }

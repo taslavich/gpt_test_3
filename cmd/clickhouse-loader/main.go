@@ -26,11 +26,9 @@ func main() {
 	}
 	log.Println("Config initialized!")
 
-	log.Println(cfg.Clickhouse.Username, cfg.Clickhouse.Password)
-
 	addr := net.JoinHostPort(cfg.Clickhouse.Host, cfg.Clickhouse.Port)
 
-	conn := clickhouse.OpenDB(&clickhouse.Options{
+	conn, err := clickhouse.Open(&clickhouse.Options{
 		Addr:     []string{addr},
 		Protocol: clickhouse.Native,
 		TLS:      &tls.Config{},
@@ -40,14 +38,17 @@ func main() {
 			Database: cfg.Clickhouse.Database,
 		},
 	})
+	if err != nil {
+		log.Fatalf("❌ ClickHouse Open connection failed: %v", err)
+	}
 	defer conn.Close()
 
-	if err := conn.PingContext(ctx); err != nil {
+	if err := conn.Ping(ctx); err != nil {
 		log.Fatalf("❌ ClickHouse ping failed: %v", err)
 	}
 	log.Println("✅ Connected to ClickHouse")
 
-	if err := clickhouse_loader.CreateTable(conn, cfg.Clickhouse.ClickHouseTable); err != nil {
+	if err := clickhouse_loader.CreateTable(ctx, conn, cfg.Clickhouse.ClickHouseTable); err != nil {
 		log.Fatalf("❌ Failed to create table: %v", err)
 	}
 	log.Printf("✅ Table %s ready", cfg.Clickhouse.ClickHouseTable)
@@ -67,21 +68,16 @@ func main() {
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
 
-	var totalProcessed int64
-	startTime := time.Now()
-
 	log.Printf("🚀 ClickHouse Loader started. Reading from topic: %s", cfg.Kafka.KafkaTopic)
 
 	for {
 		select {
 		case <-sigChan:
-			log.Printf("🛑 Shutting down ClickHouse Loader. Total processed: %d records", totalProcessed)
+			log.Print("🛑 Shutting down ClickHouse Loader")
 			return
 		default:
-			processed, err := clickhouse_loader.ProcessKafkaMessages(
+			err := clickhouse_loader.ProcessKafkaMessages(
 				ctx,
-				cfg.Kafka.KafkaBrokers[0],
-				cfg.Kafka.KafkaTopic,
 				kafkaReader,
 				conn,
 				cfg.Clickhouse.ClickHouseTable,
@@ -90,14 +86,7 @@ func main() {
 			)
 			if err != nil {
 				log.Printf("❌ Processing error: %v", err)
-				time.Sleep(5 * time.Second)
 				continue
-			}
-
-			totalProcessed += int64(processed)
-
-			if time.Since(startTime) > time.Minute {
-				startTime = time.Now()
 			}
 		}
 	}
