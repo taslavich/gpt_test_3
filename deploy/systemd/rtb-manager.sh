@@ -145,34 +145,6 @@ case "$1" in
             echo "⚠️  firehol_level1.netset not found"
         fi
 
-        if [ -f "./cmd/adm-adapter/adm-fullchain.pem" ]; then
-            cp ./cmd/adm-adapter/adm-fullchain.pem ./
-            echo "✅ Copied adm-fullchain.pem"
-        else
-            echo "⚠️  adm-fullchain.pem not found"
-        fi
-
-        if [ -f "./cmd/adm-adapter/adm-privkey.pem" ]; then
-            cp ./cmd/adm-adapter/adm-privkey.pem ./
-            echo "✅ Copied adm-privkey.pem"
-        else
-            echo "⚠️  adm-privkey.pem not found"
-        fi
-
-        if [ -f "./cmd/adm-adapter/adm-rsa-fullchain.pem" ]; then
-            cp ./cmd/adm-adapter/adm-rsa-fullchain.pem ./
-            echo "✅ Copied adm-rsa-fullchain.pem"
-        else
-            echo "⚠️  adm-rsa-fullchain.pem not found"
-        fi
-
-        if [ -f "./cmd/adm-adapter/adm-rsa-privkey.pem" ]; then
-            cp ./cmd/adm-adapter/adm-rsa-privkey.pem ./
-            echo "✅ Copied adm-rsa-privkey.pem"
-        else
-            echo "⚠️  adm-rsa-privkey.pem not found"
-        fi
-
         echo "✅ Build done"
         ;;
 
