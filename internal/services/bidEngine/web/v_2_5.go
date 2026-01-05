@@ -24,22 +24,22 @@ type Server struct {
 	ProfitPercent              float32
 	redisClient                *redis.Client
 	timeout                    time.Duration
-	hostname                   string
 	percentFilename_adult      string
 	percentFilename_mainstream string
 	percentMap_adult           *map[string]map[string]map[string]*types.PercentAndBidfloor
 	percentMap_mainstream      *map[string]map[string]map[string]*types.PercentAndBidfloor
+	admDomain                  string
 
 	GetWinnerBidInternal_V_2_5 func(
 		ctx context.Context,
 		req *bidEngineGrpc.BidEngineRequest_V2_5,
 		profitPercent float32,
 		globalId string,
-		hostname string,
 		percentMapAdult *map[string]map[string]map[string]*types.PercentAndBidfloor,
 		percentMapMainstream *map[string]map[string]map[string]*types.PercentAndBidfloor,
 		logged bool,
 		typic string,
+		admDomain string,
 	) (*ortb_V2_5.BidResponse, *clickhouse_types.BidResponse)
 
 	pb.BidEngineServiceServer
@@ -48,33 +48,34 @@ type Server struct {
 func NewServer(
 	ProfitPercent float32,
 	redisClient *redis.Client,
-	hostname string,
 	GetWinnerBidInternal_V_2_5 func(
 		ctx context.Context,
 		req *bidEngineGrpc.BidEngineRequest_V2_5,
 		profitPercent float32,
 		globalId string,
-		hostname string,
 		percentMapAdult *map[string]map[string]map[string]*types.PercentAndBidfloor,
 		percentMapMainstream *map[string]map[string]map[string]*types.PercentAndBidfloor,
 		logged bool,
 		typic string,
+		admDomain string,
 	) (*ortb_V2_5.BidResponse, *clickhouse_types.BidResponse),
 	percentFilename_adult string,
 	percentMap_adult *map[string]map[string]map[string]*types.PercentAndBidfloor,
 
 	percentFilename_mainstream string,
 	percentMap_mainstream *map[string]map[string]map[string]*types.PercentAndBidfloor,
+
+	admDomain string,
 ) *Server {
 	return &Server{
 		ProfitPercent:              ProfitPercent,
 		redisClient:                redisClient,
-		hostname:                   hostname,
 		GetWinnerBidInternal_V_2_5: GetWinnerBidInternal_V_2_5,
 		percentFilename_adult:      percentFilename_adult,
 		percentFilename_mainstream: percentFilename_mainstream,
 		percentMap_adult:           percentMap_adult,
 		percentMap_mainstream:      percentMap_mainstream,
+		admDomain:                  admDomain,
 	}
 }
 
@@ -101,11 +102,11 @@ func (s *Server) GetWinnerBid_V2_5(
 		req,
 		s.ProfitPercent,
 		req.GlobalId,
-		s.hostname,
 		s.percentMap_adult,
 		s.percentMap_mainstream,
 		req.Logged,
 		req.Typic,
+		s.admDomain,
 	)
 
 	clickhouseData, err := json.Marshal(clickhouseBidResponse)
