@@ -115,9 +115,9 @@ type BiddingEngineConfig struct {
 	HttpServer                          HttpServer
 	GrpcServer                          GrpcServer
 	ProfitPercent                       float32 `yaml:"PROFIT_PERCENT" env:"PROFIT_PERCENT" env-default:"0.2"`
-	SystemHostname                      string  `yaml:"SYSTEM_HOSTNAME" env:"SYSTEM_HOSTNAME"`
 	SspGeoDspPercentsAdultFilePath      string  `yaml:"SSP_GEO_DSP_PERCENTS_ADULT_FILE_PATH" env:"SSP_GEO_DSP_PERCENTS_ADULT_FILE_PATH"`
 	SspGeoDspPercentsMainstreamFilePath string  `yaml:"SSP_GEO_DSP_PERCENTS_MAINSTREAM_FILE_PATH" env:"SSP_GEO_DSP_PERCENTS_MAINSTREAM_FILE_PATH"`
+	AdmDomain                           string  `yaml:"ADM_DOMAIN" env:"ADM_DOMAIN"`
 	RedisConfig
 }
 
