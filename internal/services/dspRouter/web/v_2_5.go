@@ -135,7 +135,10 @@ func (s *Server) GetBids_V2_5(
 		return nil, status.Error(grpcCode, newErr.Error())
 	}
 
-	if err := utils.WriteJsonToRedis(ctx, s.redisClient, req.GlobalId, constants.BID_REQUEST_COLUMN, jsonData, req.Logged); err != nil {
+	bg, cancel := context.WithTimeout(context.Background(), 10*time.Millisecond)
+	defer cancel()
+
+	if err := utils.WriteJsonToRedis(bg, s.redisClient, req.GlobalId, constants.BID_REQUEST_COLUMN, jsonData, req.Logged); err != nil {
 		log.Printf("failed to WriteJsonToRedis Bid Request in postBid_V2_5: %w", err)
 	}
 
@@ -331,7 +334,7 @@ func writeMetadataToRedis(ctx context.Context, redisClient *redis.Client, global
 		log.Printf("failed to marshal data: %v", err)
 		return
 	}
-	bg, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
+	bg, cancel := context.WithTimeout(context.Background(), 10*time.Millisecond)
 	defer cancel()
 
 	if err := utils.WriteJsonToRedis(bg, redisClient, globalId, constants.BID_RESPONSES_COLUMN, bidRespsData, logged); err != nil {
