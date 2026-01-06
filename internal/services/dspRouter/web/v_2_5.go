@@ -331,8 +331,10 @@ func writeMetadataToRedis(ctx context.Context, redisClient *redis.Client, global
 		log.Printf("failed to marshal data: %v", err)
 		return
 	}
-	bgCtx := context.Background()
-	if err := utils.WriteJsonToRedis(bgCtx, redisClient, globalId, constants.BID_RESPONSES_COLUMN, bidRespsData, logged); err != nil {
+	bg, cancel := context.WithTimeout(context.Background(), 10*time.Millisecond)
+	defer cancel()
+
+	if err := utils.WriteJsonToRedis(bg, redisClient, globalId, constants.BID_RESPONSES_COLUMN, bidRespsData, logged); err != nil {
 		log.Printf("failed to WriteJsonToRedis: %v", err)
 	}
 }
