@@ -204,9 +204,9 @@ func (s *Server) GetBids_V2_5(
 			ChangeSiteId(req.BidRequest)
 		}
 
-		if DeletePrefix(domain) == "dsp_test_hilltopads.com" {
+		/*if DeletePrefix(domain) == "dsp_test_hilltopads.com" {
 			ChangeSiteIdhilltopTest(req.BidRequest)
-		}
+		}*/
 
 		client_v_2_5 := getDspHttpClients(domain, s.clients)
 

@@ -63,7 +63,7 @@ func ChangeSiteId(bidRequest *ortb_V2_5.BidRequest) {
 	}
 }
 
-func ChangeSiteIdhilltopTest(bidRequest *ortb_V2_5.BidRequest) {
+/*func ChangeSiteIdhilltopTest(bidRequest *ortb_V2_5.BidRequest) {
 	if bidRequest.Site.GetId() == "" {
 		return
 	}
@@ -78,7 +78,7 @@ func ChangeSiteIdhilltopTest(bidRequest *ortb_V2_5.BidRequest) {
 	if res := whiteList[siteId]; res {
 		bidRequest.Site.Id = &newId
 	}
-}
+}*/
 
 func Allowed(endpoint string, bidRequest *ortb_V2_5.BidRequest, ranger cidranger.Ranger) bool {
 	val, ok := innerFilterMap[endpoint]
