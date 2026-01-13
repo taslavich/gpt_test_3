@@ -68,6 +68,16 @@
         }
       ]
     },
+    "dsp_visitweb.com": {
+      "v25": [
+        {
+          "and": [
+            { "field": "device.ua",     "condition": "exists", "value_type": "string", "value": "" },
+            { "field": "device.ip",     "condition": "exists", "value_type": "string", "value": "" }
+          ]
+        }
+      ]
+    },
     "dsp_galaksion.com": {
       "v25": [
         {
