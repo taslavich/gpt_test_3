@@ -13,6 +13,15 @@
         }
       ]
     },
+    "dsp_buymedia.com": {
+      "v25": [
+        {
+          "and": [
+            { "field": "device.ip",     "condition": "exists", "value_type": "string", "value": "" }
+          ]
+        }
+      ]
+    },
     "dsp_moblivion.com": {
       "v25": [
         {
