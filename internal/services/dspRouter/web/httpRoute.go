@@ -80,11 +80,15 @@ func InitHttpRoutes(
 		putSspGeoLinksMap(w, r, linkFilename_adult, linkFilename_mainstream, linkMap_adult, linkMap_mainstream)
 	})
 
-	httpRouter.Get(GetDspFiltersMapUrl, func(w http.ResponseWriter, r *http.Request) {
+	httpRouter.With(
+		httpin.NewInput(getDspFiltersMapRequest_V2_5{}),
+	).Get(GetDspFiltersMapUrl, func(w http.ResponseWriter, r *http.Request) {
 		getDspFiltersMap(w, r, filtersAdlFilename, filtersMcFilename)
 	})
 
-	httpRouter.Get(GetDebugDspFiltersMapUrl, func(w http.ResponseWriter, r *http.Request) {
+	httpRouter.With(
+		httpin.NewInput(getDspFiltersMapRequest_V2_5{}),
+	).Get(GetDebugDspFiltersMapUrl, func(w http.ResponseWriter, r *http.Request) {
 		getDspFiltersMapDebug(w, r, filtersAdl, filtersMc)
 	})
 
