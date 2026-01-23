@@ -48,7 +48,8 @@ type Server struct {
 	linkMap_adult      *map[string]map[string]map[string]bool
 	linkMap_mainstream *map[string]map[string]map[string]bool
 
-	filters *filter.FiltersBox
+	filtersAdl *filter.FiltersBox
+	filtersMc  *filter.FiltersBox
 
 	configTimeouts config.MapStringToDuration
 
@@ -66,7 +67,8 @@ func NewServer(
 	linkMap_adult *map[string]map[string]map[string]bool,
 	linkMap_mainstream *map[string]map[string]map[string]bool,
 	clients map[string]*http.Client,
-	filters *filter.FiltersBox,
+	filtersAdl *filter.FiltersBox,
+	filtersMc *filter.FiltersBox,
 	configTimeouts config.MapStringToDuration,
 ) *Server {
 	rang := cidranger.NewPCTrieRanger()
@@ -88,7 +90,8 @@ func NewServer(
 		ranger:             rang,
 		linkMap_adult:      linkMap_adult,
 		linkMap_mainstream: linkMap_mainstream,
-		filters:            filters,
+		filtersAdl:         filtersAdl,
+		filtersMc:          filtersMc,
 		configTimeouts:     configTimeouts,
 	}
 }
@@ -151,13 +154,16 @@ func (s *Server) GetBids_V2_5(
 
 	var dspList config.MapStringToString
 	var linkMap map[string]map[string]map[string]bool
+	var filters *filter.FiltersBox
 	switch req.Typic {
 	case sppAdapterWeb.ADULT:
 		dspList = s.dspEndpoints_adult_v_2_5
 		linkMap = *s.linkMap_adult
+		filters = s.filtersAdl
 	case sppAdapterWeb.MAINSTREAM:
 		dspList = s.dspEndpoints_mainstream_v_2_5
 		linkMap = *s.linkMap_mainstream
+		filters = s.filtersMc
 	}
 
 	for endpoint, domain := range dspList {
@@ -190,7 +196,7 @@ func (s *Server) GetBids_V2_5(
 			continue
 		}
 
-		if !s.filters.Allowed(req.BidRequest, domain) {
+		if !filters.Allowed(req.BidRequest, domain) {
 			//log.Println("Gor DSP filter")
 			codesCh <- &dspDomainCode{
 				domain: domain,

@@ -32,7 +32,12 @@ type getSspGeoDspLinksRequest_V2_5 struct {
 	Typic string `in:"query=typic" required:"true"`
 }
 
+type getDspFiltersMapRequest_V2_5 struct {
+	Typic string `in:"query=typic" required:"true"`
+}
+
 type putDspFiltersMapRequest struct {
+	Typic                 string `in:"query=typic" required:"true"`
 	filter.FiltersJsonBox `in:"body=json"`
 }
 
@@ -49,8 +54,11 @@ func InitHttpRoutes(
 	linkMap_adult,
 	linkMap_mainstream *map[string]map[string]map[string]bool,
 
-	filters *filter.FiltersBox,
-	filtersFilename string,
+	filtersAdlFilename string,
+	filtersMcFilename string,
+
+	filtersAdl *filter.FiltersBox,
+	filtersMc *filter.FiltersBox,
 ) {
 	integration.UseGochiURLParam("path", chi.URLParam)
 
@@ -73,16 +81,16 @@ func InitHttpRoutes(
 	})
 
 	httpRouter.Get(GetDspFiltersMapUrl, func(w http.ResponseWriter, r *http.Request) {
-		getDspFiltersMap(w, r, filtersFilename)
+		getDspFiltersMap(w, r, filtersAdlFilename, filtersMcFilename)
 	})
 
 	httpRouter.Get(GetDebugDspFiltersMapUrl, func(w http.ResponseWriter, r *http.Request) {
-		getDspFiltersMapDebug(w, r, filters)
+		getDspFiltersMapDebug(w, r, filtersAdl, filtersMc)
 	})
 
 	httpRouter.With(
 		httpin.NewInput(putDspFiltersMapRequest{}),
 	).Put(PutDspFiltersMapUrl, func(w http.ResponseWriter, r *http.Request) {
-		putDspFiltersMap(w, r, filters, filtersFilename)
+		putDspFiltersMap(w, r, filtersAdlFilename, filtersMcFilename, filtersAdl, filtersMc)
 	})
 }
