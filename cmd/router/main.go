@@ -102,7 +102,12 @@ func main() {
 		cfg.DSPEndpointsMainstream_v_2_5,
 	)
 
-	filters, err := filter.NewFiltersBox(cfg.DspFiltersFilePath)
+	filtersAdl, err := filter.NewFiltersBox(cfg.DspFiltersAdlFilePath)
+	if err != nil {
+		log.Fatalf("Failed to NewFiltersBox: %v", err)
+	}
+
+	filtersMc, err := filter.NewFiltersBox(cfg.DspFiltersMcFilePath)
 	if err != nil {
 		log.Fatalf("Failed to NewFiltersBox: %v", err)
 	}
@@ -119,7 +124,8 @@ func main() {
 		&sspGeoDspMapAdult,
 		&sspGeoDspMapMainstream,
 		clients,
-		filters,
+		filtersAdl,
+		filtersMc,
 		cfg.SspHttpClientTimeouts,
 	)
 
@@ -139,8 +145,10 @@ func main() {
 		cfg.SspGeoDspLinksMainstreamFilePath,
 		&sspGeoDspMapAdult,
 		&sspGeoDspMapMainstream,
-		filters,
-		cfg.DspFiltersFilePath,
+		cfg.DspFiltersAdlFilePath,
+		cfg.DspFiltersMcFilePath,
+		filtersAdl,
+		filtersMc,
 	)
 	log.Println("HTTP routes initialized")
 

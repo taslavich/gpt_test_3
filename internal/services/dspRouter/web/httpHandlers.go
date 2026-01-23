@@ -111,13 +111,25 @@ func putSspGeoLinksMap(
 func putDspFiltersMap(
 	w http.ResponseWriter,
 	r *http.Request,
-	filters *filter.FiltersBox,
-	filtersFilename string,
+	filtersAdlFilename string,
+	filtersMcFilename string,
+	filtersAdl *filter.FiltersBox,
+	filtersMc *filter.FiltersBox,
 ) {
 	var err error
+
 	input := r.Context().Value(httpin.Input).(*putDspFiltersMapRequest)
 
-	filters.Allowers, err = filter.RewriteDspFiltersFileNextVer(input.FiltersJsonBox, filtersFilename)
+	switch input.Typic {
+	case sppAdapterWeb.ADULT:
+		filtersAdl.Allowers, err = filter.RewriteDspFiltersFileNextVer(input.FiltersJsonBox, filtersAdlFilename)
+	case sppAdapterWeb.MAINSTREAM:
+		filtersMc.Allowers, err = filter.RewriteDspFiltersFileNextVer(input.FiltersJsonBox, filtersMcFilename)
+	default:
+		http.Error(w, "Invalid Typic value", http.StatusBadRequest)
+		return
+	}
+
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -130,9 +142,24 @@ func putDspFiltersMap(
 func getDspFiltersMap(
 	w http.ResponseWriter,
 	r *http.Request,
-	filters string,
+	filtersAdl string,
+	filtersMc string,
 ) {
-	data, err := os.ReadFile(filters)
+	var filename string
+
+	input := r.Context().Value(httpin.Input).(*getDspFiltersMapRequest_V2_5)
+
+	switch input.Typic {
+	case sppAdapterWeb.ADULT:
+		filename = filtersAdl
+	case sppAdapterWeb.MAINSTREAM:
+		filename = filtersMc
+	default:
+		http.Error(w, "Invalid Typic value", http.StatusBadRequest)
+		return
+	}
+
+	data, err := os.ReadFile(filename)
 	if err != nil {
 		http.Error(w, "Cannot ReadFile", http.StatusInternalServerError)
 		return
@@ -153,8 +180,23 @@ func getDspFiltersMap(
 func getDspFiltersMapDebug(
 	w http.ResponseWriter,
 	r *http.Request,
-	filters *filter.FiltersBox,
+	filtersAdl *filter.FiltersBox,
+	filtersMc *filter.FiltersBox,
 ) {
+	var filters *filter.FiltersBox
+
+	input := r.Context().Value(httpin.Input).(*getDspFiltersMapRequest_V2_5)
+
+	switch input.Typic {
+	case sppAdapterWeb.ADULT:
+		filters = filtersAdl
+	case sppAdapterWeb.MAINSTREAM:
+		filters = filtersMc
+	default:
+		http.Error(w, "Invalid Typic value", http.StatusBadRequest)
+		return
+	}
+
 	if err := rnr.JSON(w, http.StatusOK, filter.FiltersToFiltersJson(filters.Allowers)); err != nil {
 		log.Printf("Cannot make HTTP response back: %v\n", err)
 	}
