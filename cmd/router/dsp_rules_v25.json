@@ -55,6 +55,15 @@
         }
       ]
     },
+    "dsp_mybid.com_4":{
+      "v25": [
+        {
+          "and": [
+            { "field": "device.ip",     "condition": "exists", "value_type": "string", "value": "" }
+          ]
+        }
+      ]
+    },
     "dsp_octoclick.com": {
       "v25": [
         {
