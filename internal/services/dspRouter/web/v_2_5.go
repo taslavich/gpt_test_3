@@ -307,23 +307,7 @@ func (s *Server) getBidsFromDSPbyHTTP_V_2_5(ctx context.Context, uuid string, js
 	req.Header.Set("Connection", "keep-alive")
 	req.Header.Set("X-Openrtb-Version", "2.5")
 	networkStart := time.Now()
-	//resp, err := client_v_2_5.Do(req)
-	var resp *http.Response = &http.Response{
-		Status:           "204 No Content",     // Статус как строка
-		StatusCode:       http.StatusNoContent, // 204
-		Proto:            "HTTP/1.1",           // Протокол
-		ProtoMajor:       1,
-		ProtoMinor:       1,
-		Header:           http.Header{}, // Заголовки (можно добавить нужные)
-		Body:             http.NoBody,   // Для 204 No Content тело обычно пустое
-		ContentLength:    0,
-		TransferEncoding: []string{}, // Кодировки передачи
-		Close:            false,      // Закрывать ли соединение
-		Uncompressed:     false,
-		Trailer:          http.Header{},
-		Request:          &http.Request{}, // Можно создать мок запроса если нужно
-		TLS:              nil,             // Для TLS соединений
-	}
+	resp, err := client_v_2_5.Do(req)
 	networkDuration := time.Since(networkStart)
 
 	if err != nil {
