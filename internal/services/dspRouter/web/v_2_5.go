@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"runtime/debug"
@@ -293,7 +294,7 @@ func (s *Server) GetBids_V2_5(
 
 func (s *Server) getBidsFromDSPbyHTTP_V_2_5(ctx context.Context, uuid string, jsonData []byte, dspEndpoint string, client_v_2_5 *http.Client) (
 	ddr *ortb_V2_5.BidResponse, code int, err error) {
-	/*buf := s.bufferPool.Get().(*bytes.Buffer)
+	buf := s.bufferPool.Get().(*bytes.Buffer)
 	buf.Reset()
 	buf.Write(jsonData)
 	defer s.bufferPool.Put(buf)
@@ -330,8 +331,7 @@ func (s *Server) getBidsFromDSPbyHTTP_V_2_5(ctx context.Context, uuid string, js
 		}
 		return &grpcResp, resp.StatusCode, nil
 	}
-	return nil, resp.StatusCode, nil*/
-	return nil, http.StatusNoContent, nil
+	return nil, resp.StatusCode, nil
 }
 
 func writeMetadataToRedis(ctx context.Context, redisClient *redis.Client, globalId string, data map[string]int, logged bool) {
