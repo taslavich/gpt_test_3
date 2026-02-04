@@ -46,6 +46,18 @@
         }
       ]
     },
+    "dsp_dao.ad_2":{
+      "v25": [
+        {
+          "and": [
+            { "field": "site.id",       "condition": "exists", "value_type": "string", "value": "" },
+            { "field": "device.ua",     "condition": "exists", "value_type": "string", "value": "" },
+            { "field": "device.ip",     "condition": "exists", "value_type": "string", "value": "" },
+            { "field": "at",            "condition": "exists", "value_type": "int",    "value": "" }
+          ]
+        }
+      ]
+    },
     "dsp_mybid.com": {
       "v25": [
         {

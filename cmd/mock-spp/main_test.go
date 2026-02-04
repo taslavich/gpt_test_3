@@ -31,10 +31,10 @@ var (
 
 // Конфигурация теста
 const (
-	sppAdapterURL = "http://127.0.0.1:8086/bid_v_2_5_mc?feed=50bb2887-5508-4feb-a823-4e43d7633879"
-	threads       = 1000             // Количество параллельных горутин
-	targetRPS     = 20000            // Целевая нагрузка (RPS)
-	testDuration  = 10 * time.Second // Длительность теста
+	sppAdapterURL = "http://138.226.222.33:8050/bid_v_2_5?feed=0ade409b-1a1f-47a2-abad-e3b5cc3780a0"
+	threads       = 100             // Количество параллельных горутин
+	targetRPS     = 3000            // Целевая нагрузка (RPS)
+	testDuration  = 2 * time.Second // Длительность теста
 )
 
 var (
