@@ -178,6 +178,8 @@ func GetWinnerBidInternal_V_2_5(
 				Adm:   &wrappedAdm,
 				Adid:  winner.bid.Adid,
 				Nurl:  &wrappedNurl,
+				Cid:   winner.bid.Cid,
+				Crid:  winner.bid.Crid,
 			}
 		} else {
 			finalBid = &ortb_V2_5.Bid{
@@ -187,6 +189,8 @@ func GetWinnerBidInternal_V_2_5(
 				Adm:   winner.bid.Adm,
 				Adid:  winner.bid.Adid,
 				Nurl:  &wrappedNurl,
+				Cid:   winner.bid.Cid,
+				Crid:  winner.bid.Crid,
 			}
 		}
 
@@ -197,6 +201,8 @@ func GetWinnerBidInternal_V_2_5(
 			Price:     &finalPrice,
 			DspPrice:  winner.bid.Price,
 			Adid:      winner.bid.Adid,
+			Cid:       winner.bid.Cid,
+			Crid:      winner.bid.Crid,
 		}
 
 		seatBid[0].Bid = append(seatBid[0].Bid, finalBid)
