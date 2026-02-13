@@ -162,18 +162,18 @@ func (s *Server) GetBids_V2_5(
 	var dspList config.MapStringToString
 	var linkMap map[string]map[string]map[string]bool
 	var filters *filter.FiltersBox
-	//var filterBoxChanger *filter.ChangersBoxChanger
+	var filterBoxChanger *filter.ChangersBoxChanger
 	switch req.Typic {
 	case sppAdapterWeb.ADULT:
 		dspList = s.dspEndpoints_adult_v_2_5
 		linkMap = *s.linkMap_adult
 		filters = s.filtersAdl
-		//filterBoxChanger = s.filterBoxChangerAdl
+		filterBoxChanger = s.filterBoxChangerAdl
 	case sppAdapterWeb.MAINSTREAM:
 		dspList = s.dspEndpoints_mainstream_v_2_5
 		linkMap = *s.linkMap_mainstream
 		filters = s.filtersMc
-		//filterBoxChanger = s.filterBoxChangerMc
+		filterBoxChanger = s.filterBoxChangerMc
 	}
 
 	for endpoint, domain := range dspList {
@@ -216,12 +216,12 @@ func (s *Server) GetBids_V2_5(
 			continue
 		}
 
-		if req.SspDomain == "mc_clickadilla.com" && domain == "mc_dsp_dao.ad" {
+		/*	if req.SspDomain == "mc_clickadilla.com" && domain == "mc_dsp_dao.ad" {
 			ChangeSiteId(req.BidRequest)
-		}
+		}*/
 
 		jsonDataTmp := jsonData
-		/*if bidRequest, isChanged := filterBoxChanger.Change(req.BidRequest, domain); isChanged {
+		if bidRequest, isChanged := filterBoxChanger.Change(req.BidRequest, domain); isChanged {
 			jsonDataTmp, err = jsoniter.Marshal(bidRequest)
 			if err != nil {
 				newErr := fmt.Errorf("Can not marshal in GetBids_V_2_5 because got uknown error: %v", err)
@@ -236,7 +236,7 @@ func (s *Server) GetBids_V2_5(
 
 				return nil, status.Error(grpcCode, newErr.Error())
 			}
-		}*/
+		}
 
 		/*if DeletePrefix(domain) == "dsp_test_hilltopads.com" {
 			ChangeSiteIdhilltopTest(req.BidRequest)
