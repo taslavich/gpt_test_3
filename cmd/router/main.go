@@ -114,12 +114,12 @@ func main() {
 
 	changersAdl, err := filter.NewChangersBoxChanger(cfg.AllowedIpDbPath)
 	if err != nil {
-		log.Fatalf("Failed to NewFiltersBox: %v", err)
+		log.Fatalf("Failed to NewChangersBoxChanger: %v", err)
 	}
 
 	changersMc, err := filter.NewChangersBoxChanger(cfg.AllowedIpDbPath)
 	if err != nil {
-		log.Fatalf("Failed to NewFiltersBox: %v", err)
+		log.Fatalf("Failed to NewChangersBoxChanger: %v", err)
 	}
 
 	s := grpc.NewServer()
