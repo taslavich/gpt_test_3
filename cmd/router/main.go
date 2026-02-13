@@ -112,12 +112,12 @@ func main() {
 		log.Fatalf("Failed to NewFiltersBox: %v", err)
 	}
 
-	changersAdl, err := filter.NewChangersBoxChanger(cfg.AllowedIpDbPath)
+	changersAdl, err := filter.NewChangersBoxChanger(cfg.DspChangersAdlFilePath)
 	if err != nil {
 		log.Fatalf("Failed to NewChangersBoxChanger: %v", err)
 	}
 
-	changersMc, err := filter.NewChangersBoxChanger(cfg.AllowedIpDbPath)
+	changersMc, err := filter.NewChangersBoxChanger(cfg.DspChangersMcFilePath)
 	if err != nil {
 		log.Fatalf("Failed to NewChangersBoxChanger: %v", err)
 	}
