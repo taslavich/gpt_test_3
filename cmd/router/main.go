@@ -112,6 +112,16 @@ func main() {
 		log.Fatalf("Failed to NewFiltersBox: %v", err)
 	}
 
+	changersAdl, err := filter.NewChangersBoxChanger(cfg.AllowedIpDbPath)
+	if err != nil {
+		log.Fatalf("Failed to NewFiltersBox: %v", err)
+	}
+
+	changersMc, err := filter.NewChangersBoxChanger(cfg.AllowedIpDbPath)
+	if err != nil {
+		log.Fatalf("Failed to NewFiltersBox: %v", err)
+	}
+
 	s := grpc.NewServer()
 	routerServer := dspRouterWeb.NewServer(
 		ruleManager,
@@ -126,6 +136,8 @@ func main() {
 		clients,
 		filtersAdl,
 		filtersMc,
+		changersAdl,
+		changersMc,
 		cfg.SspHttpClientTimeouts,
 	)
 
@@ -149,6 +161,10 @@ func main() {
 		cfg.DspFiltersMcFilePath,
 		filtersAdl,
 		filtersMc,
+		cfg.DspFiltersAdlFilePath,
+		cfg.DspFiltersAdlFilePath,
+		changersAdl,
+		changersMc,
 	)
 	log.Println("HTTP routes initialized")
 

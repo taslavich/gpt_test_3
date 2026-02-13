@@ -51,6 +51,9 @@ type Server struct {
 	filtersAdl *filter.FiltersBox
 	filtersMc  *filter.FiltersBox
 
+	filterBoxChangerAdl *filter.ChangersBoxChanger
+	filterBoxChangerMc  *filter.ChangersBoxChanger
+
 	configTimeouts config.MapStringToDuration
 
 	dspRouterGrpc.UnimplementedDspRouterServiceServer
@@ -69,6 +72,8 @@ func NewServer(
 	clients map[string]*http.Client,
 	filtersAdl *filter.FiltersBox,
 	filtersMc *filter.FiltersBox,
+	filterBoxChangerAdl *filter.ChangersBoxChanger,
+	filterBoxChangerMc *filter.ChangersBoxChanger,
 	configTimeouts config.MapStringToDuration,
 ) *Server {
 	rang := cidranger.NewPCTrieRanger()
@@ -87,12 +92,14 @@ func NewServer(
 				return bytes.NewBuffer(make([]byte, 0, 2048))
 			},
 		},
-		ranger:             rang,
-		linkMap_adult:      linkMap_adult,
-		linkMap_mainstream: linkMap_mainstream,
-		filtersAdl:         filtersAdl,
-		filtersMc:          filtersMc,
-		configTimeouts:     configTimeouts,
+		ranger:              rang,
+		linkMap_adult:       linkMap_adult,
+		linkMap_mainstream:  linkMap_mainstream,
+		filtersAdl:          filtersAdl,
+		filtersMc:           filtersMc,
+		filterBoxChangerAdl: filterBoxChangerAdl,
+		filterBoxChangerMc:  filterBoxChangerMc,
+		configTimeouts:      configTimeouts,
 	}
 }
 
@@ -155,15 +162,18 @@ func (s *Server) GetBids_V2_5(
 	var dspList config.MapStringToString
 	var linkMap map[string]map[string]map[string]bool
 	var filters *filter.FiltersBox
+	var filterBoxChanger *filter.ChangersBoxChanger
 	switch req.Typic {
 	case sppAdapterWeb.ADULT:
 		dspList = s.dspEndpoints_adult_v_2_5
 		linkMap = *s.linkMap_adult
 		filters = s.filtersAdl
+		filterBoxChanger = s.filterBoxChangerAdl
 	case sppAdapterWeb.MAINSTREAM:
 		dspList = s.dspEndpoints_mainstream_v_2_5
 		linkMap = *s.linkMap_mainstream
 		filters = s.filtersMc
+		filterBoxChanger = s.filterBoxChangerMc
 	}
 
 	for endpoint, domain := range dspList {
@@ -206,8 +216,26 @@ func (s *Server) GetBids_V2_5(
 			continue
 		}
 
-		if req.SspDomain == "mc_clickadilla.com" && domain == "mc_dsp_dao.ad" {
+		/*	if req.SspDomain == "mc_clickadilla.com" && domain == "mc_dsp_dao.ad" {
 			ChangeSiteId(req.BidRequest)
+		}*/
+
+		jsonDataTmp := jsonData
+		if bidRequest, isChanged := filterBoxChanger.Change(req.BidRequest, domain); isChanged {
+			jsonDataTmp, err = jsoniter.Marshal(bidRequest)
+			if err != nil {
+				newErr := fmt.Errorf("Can not marshal in GetBids_V_2_5 because got uknown error: %v", err)
+
+				grpcCode := codes.Unknown
+
+				st, ok := status.FromError(err)
+				if !ok {
+					grpcCode = st.Code()
+					newErr = fmt.Errorf("Can not marshal in GetBids_V_2_5 because got error: %v", st.Err())
+				}
+
+				return nil, status.Error(grpcCode, newErr.Error())
+			}
 		}
 
 		/*if DeletePrefix(domain) == "dsp_test_hilltopads.com" {
@@ -223,7 +251,7 @@ func (s *Server) GetBids_V2_5(
 			reqCtx, cancel := context.WithTimeout(context.Background(), timeout)
 			defer cancel()
 
-			dspResp, code, err := s.getBidsFromDSPbyHTTP_V_2_5(reqCtx, req.GlobalId, jsonData, endpoint, client_v_2_5)
+			dspResp, code, err := s.getBidsFromDSPbyHTTP_V_2_5(reqCtx, req.GlobalId, jsonDataTmp, endpoint, client_v_2_5)
 			if err != nil {
 				/*log.Printf(
 					"Cannot getBidsFromDSPbyHTTP_V_2_5, uuid: %s,ssp_domain: %s, dsp_domain: %s, timeout max %d ms, tmax: %d, error: %v",

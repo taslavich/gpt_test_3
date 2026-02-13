@@ -201,3 +201,97 @@ func getDspFiltersMapDebug(
 		log.Printf("Cannot make HTTP response back: %v\n", err)
 	}
 }
+
+func getDspChangersMap(
+	w http.ResponseWriter,
+	r *http.Request,
+	changersAdl string,
+	changersMc string,
+) {
+	var filename string
+
+	input := r.Context().Value(httpin.Input).(*getDspChangersMapRequest_V2_5)
+
+	switch input.Typic {
+	case sppAdapterWeb.ADULT:
+		filename = changersAdl
+	case sppAdapterWeb.MAINSTREAM:
+		filename = changersMc
+	default:
+		http.Error(w, "Invalid Typic value", http.StatusBadRequest)
+		return
+	}
+
+	data, err := os.ReadFile(filename)
+	if err != nil {
+		http.Error(w, "Cannot ReadFile", http.StatusInternalServerError)
+		return
+	}
+
+	var mapa filter.ChangerType
+	err = json.Unmarshal(data, &mapa)
+	if err != nil {
+		http.Error(w, "Cannot Unmarshal", http.StatusInternalServerError)
+		return
+	}
+
+	if err := rnr.JSON(w, http.StatusOK, mapa); err != nil {
+		log.Printf("Cannot make HTTP response back: %v\n", err)
+	}
+}
+
+func putDspChangersMap(
+	w http.ResponseWriter,
+	r *http.Request,
+	changersAdlFilename string,
+	changersMcFilename string,
+	changersAdl *filter.ChangersBoxChanger,
+	changersMc *filter.ChangersBoxChanger,
+) {
+	var err error
+
+	input := r.Context().Value(httpin.Input).(*putDspChangersMapRequest)
+
+	switch input.Typic {
+	case sppAdapterWeb.ADULT:
+		changersAdl.Changers, err = filter.RewriteChangersFile(changersAdl.Changers, changersAdlFilename)
+	case sppAdapterWeb.MAINSTREAM:
+		changersMc.Changers, err = filter.RewriteChangersFile(changersMc.Changers, changersMcFilename)
+	default:
+		http.Error(w, "Invalid Typic value", http.StatusBadRequest)
+		return
+	}
+
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func getDspChangersMapDebug(
+	w http.ResponseWriter,
+	r *http.Request,
+	changersAdl *filter.ChangersBoxChanger,
+	changersMc *filter.ChangersBoxChanger,
+) {
+	var changers *filter.ChangersBoxChanger
+
+	input := r.Context().Value(httpin.Input).(*getDspChangersMapRequest_V2_5)
+
+	switch input.Typic {
+	case sppAdapterWeb.ADULT:
+		changers = changersAdl
+	case sppAdapterWeb.MAINSTREAM:
+		changers = changersMc
+	default:
+		http.Error(w, "Invalid Typic value", http.StatusBadRequest)
+		return
+	}
+
+	if err := rnr.JSON(w, http.StatusOK, changers.Changers); err != nil {
+		log.Printf("Cannot make HTTP response back: %v\n", err)
+	}
+}
