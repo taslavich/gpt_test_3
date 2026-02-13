@@ -329,7 +329,7 @@ func (s *Server) getBidsFromDSPbyHTTP_V_2_5(ctx context.Context, uuid string, js
 
 	req, err := http.NewRequestWithContext(ctx, "POST", dspEndpoint, buf)
 	if err != nil {
-		log.Println("Create request failed: %v", err)
+		//log.Println("Create request failed: %v", err)
 		return nil, 55, fmt.Errorf("Create request failed: %v", err)
 	}
 	req.Header.Set("Content-Type", "application/json")
