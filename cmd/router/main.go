@@ -161,8 +161,8 @@ func main() {
 		cfg.DspFiltersMcFilePath,
 		filtersAdl,
 		filtersMc,
-		cfg.DspFiltersAdlFilePath,
-		cfg.DspFiltersAdlFilePath,
+		cfg.DspChangersAdlFilePath,
+		cfg.DspChangersMcFilePath,
 		changersAdl,
 		changersMc,
 	)
