@@ -21,11 +21,15 @@ const (
 
 	GetDspFiltersMapUrl = "/filter/dsp_filters_map"
 	PutDspFiltersMapUrl = "/filter/dsp_filters_map"
+
+	GetDspChangersMapUrl = "/filter/dsp_changers_map"
+	PutDspChangersMapUrl = "/filter/dsp_changers_map"
 )
 
 const (
 	GetDebugSspGeoDspLinksMapUrl = "/filter/debug_ssp_geo_dsp_links_map"
 	GetDebugDspFiltersMapUrl     = "/filter/debug_dsp_filters_map"
+	GetDebugDspChangersMapUrl    = "/filter/debug_dsp_changers_map"
 )
 
 type getSspGeoDspLinksRequest_V2_5 struct {
@@ -46,6 +50,15 @@ type putSspGeoDspLinksRequest_V2_5 struct {
 	Mapa  map[string]map[string]map[string]bool `in:"body=json"`
 }
 
+type getDspChangersMapRequest_V2_5 struct {
+	Typic string `in:"query=typic" required:"true"`
+}
+
+type putDspChangersMapRequest struct {
+	Typic              string `in:"query=typic" required:"true"`
+	filter.ChangerType `in:"body=json"`
+}
+
 func InitHttpRoutes(
 	httpRouter *chi.Mux,
 	linkFilename_adult string,
@@ -59,6 +72,12 @@ func InitHttpRoutes(
 
 	filtersAdl *filter.FiltersBox,
 	filtersMc *filter.FiltersBox,
+
+	changersAdlFilename string,
+	changersMcFilename string,
+
+	changersAdl *filter.ChangersBoxChanger,
+	changersMc *filter.ChangersBoxChanger,
 ) {
 	integration.UseGochiURLParam("path", chi.URLParam)
 
@@ -96,5 +115,25 @@ func InitHttpRoutes(
 		httpin.NewInput(putDspFiltersMapRequest{}),
 	).Put(PutDspFiltersMapUrl, func(w http.ResponseWriter, r *http.Request) {
 		putDspFiltersMap(w, r, filtersAdlFilename, filtersMcFilename, filtersAdl, filtersMc)
+	})
+
+	//----------------------------
+
+	httpRouter.With(
+		httpin.NewInput(getDspChangersMapRequest_V2_5{}),
+	).Get(GetDspChangersMapUrl, func(w http.ResponseWriter, r *http.Request) {
+		getDspChangersMap(w, r, changersAdlFilename, changersMcFilename)
+	})
+
+	httpRouter.With(
+		httpin.NewInput(getDspChangersMapRequest_V2_5{}),
+	).Get(GetDebugDspChangersMapUrl, func(w http.ResponseWriter, r *http.Request) {
+		getDspChangersMapDebug(w, r, changersAdl, changersMc)
+	})
+
+	httpRouter.With(
+		httpin.NewInput(putDspChangersMapRequest{}),
+	).Put(PutDspChangersMapUrl, func(w http.ResponseWriter, r *http.Request) {
+		putDspChangersMap(w, r, changersAdlFilename, changersMcFilename, changersAdl, changersMc)
 	})
 }

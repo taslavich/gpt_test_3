@@ -139,6 +139,9 @@ type RouterConfig struct {
 	DspFiltersAdlFilePath string `yaml:"DSP_FILTERS_ADULT_FILE_PATH" env:"DSP_FILTERS_ADULT_FILE_PATH"`
 	DspFiltersMcFilePath  string `yaml:"DSP_FILTERS_MAINSTREAM_FILE_PATH" env:"DSP_FILTERS_MAINSTREAM_FILE_PATH"`
 
+	DspChangersAdlFilePath string `yaml:"DSP_CHANGERS_ADULT_FILE_PATH" env:"DSP_CHANGERS_ADULT_FILE_PATH"`
+	DspChangersMcFilePath  string `yaml:"DSP_CHANGERS_MAINSTREAM_FILE_PATH" env:"DSP_CHANGERS_MAINSTREAM_FILE_PATH"`
+
 	SspHttpClientTimeouts MapStringToDuration `yaml:"SSP_HTTP_CLIENT_TIMEOUT" env:"SSP_HTTP_CLIENT_TIMEOUT"`
 
 	MaxParallelRequests int  `yaml:"MAX_PARALLEL_REQUESTS" env:"MAX_PARALLEL_REQUESTS" env-default:"64"`
