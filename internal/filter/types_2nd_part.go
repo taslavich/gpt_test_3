@@ -133,8 +133,12 @@ type FiltersJson struct {
 func FiltersJsonToFilters(mapa FiltersJsonBox) map[string]*Filters {
 	newMap := make(map[string]*Filters)
 	for domain, filters := range mapa {
-		newMap[domain] = &Filters{
-			SiteId: getSiteIdBox(filters.SiteId),
+		domains := utils.SplitAndTrimKeys(domain)
+
+		for _, singleDomain := range domains {
+			newMap[singleDomain] = &Filters{
+				SiteId: getSiteIdBox(filters.SiteId),
+			}
 		}
 	}
 

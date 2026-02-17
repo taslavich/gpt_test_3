@@ -197,7 +197,7 @@ func getDspFiltersMapDebug(
 		return
 	}
 
-	if err := rnr.JSON(w, http.StatusOK, filter.FiltersToFiltersJson(filters.Allowers)); err != nil {
+	if err := rnr.JSON(w, http.StatusOK, filters.Allowers); err != nil {
 		log.Printf("Cannot make HTTP response back: %v\n", err)
 	}
 }
