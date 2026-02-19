@@ -159,20 +159,20 @@ func InitHttpRoutes(
 	//-----------------------------------
 
 	httpRouter.With(
-		httpin.NewInput(getDspFiltersMapRequest_V2_5{}),
-	).Get(GetDspFiltersMapUrl, func(w http.ResponseWriter, r *http.Request) {
-		getDspFiltersMap(w, r, filtersAdlFilename, filtersMcFilename)
+		httpin.NewInput(getDspFiltersCidMapRequest_V2_5{}),
+	).Get(GetDspFiltersCidMapUrl, func(w http.ResponseWriter, r *http.Request) {
+		getDspFiltersCidMap(w, r, filtersCidAdlFilename, filtersCidMcFilename)
 	})
 
 	httpRouter.With(
-		httpin.NewInput(getDspFiltersMapRequest_V2_5{}),
-	).Get(GetDebugDspFiltersMapUrl, func(w http.ResponseWriter, r *http.Request) {
-		getDspFiltersMapDebug(w, r, filtersAdl, filtersMc)
+		httpin.NewInput(getDspFiltersCidMapRequest_V2_5{}),
+	).Get(GetDebugDspFiltersCidMapUrl, func(w http.ResponseWriter, r *http.Request) {
+		getDspFiltersCidMapDebug(w, r, filtersCidAdl, filtersCidMc)
 	})
 
 	httpRouter.With(
-		httpin.NewInput(putDspFiltersMapRequest{}),
-	).Put(PutDspFiltersMapUrl, func(w http.ResponseWriter, r *http.Request) {
-		putDspFiltersMap(w, r, filtersAdlFilename, filtersMcFilename, filtersAdl, filtersMc)
+		httpin.NewInput(putDspFiltersCidMapRequest{}),
+	).Put(PutDspFiltersCidMapUrl, func(w http.ResponseWriter, r *http.Request) {
+		putDspFiltersCidMap(w, r, filtersCidAdlFilename, filtersCidMcFilename, filtersCidAdl, filtersCidMc)
 	})
 }
