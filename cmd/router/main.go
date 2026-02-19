@@ -122,6 +122,16 @@ func main() {
 		log.Fatalf("Failed to NewChangersBoxChanger: %v", err)
 	}
 
+	cidSspDspMapAdl, err := filter.InitCidSspDspMap(cfg.CidSspDspLinksAdultFilePath)
+	if err != nil {
+		log.Fatalf("Failed to InitCidSspDspMap: %v", err)
+	}
+
+	cidSspDspMapMc, err := filter.InitCidSspDspMap(cfg.CidSspDspLinksMainstreamFilePath)
+	if err != nil {
+		log.Fatalf("Failed to InitCidSspDspMap: %v", err)
+	}
+
 	s := grpc.NewServer()
 	routerServer := dspRouterWeb.NewServer(
 		ruleManager,
@@ -136,6 +146,8 @@ func main() {
 		clients,
 		filtersAdl,
 		filtersMc,
+		&cidSspDspMapAdl,
+		&cidSspDspMapMc,
 		changersAdl,
 		changersMc,
 		cfg.SspHttpClientTimeouts,
@@ -165,6 +177,10 @@ func main() {
 		cfg.DspChangersMcFilePath,
 		changersAdl,
 		changersMc,
+		cfg.CidSspDspLinksAdultFilePath,
+		cfg.CidSspDspLinksMainstreamFilePath,
+		&cidSspDspMapAdl,
+		&cidSspDspMapMc,
 	)
 	log.Println("HTTP routes initialized")
 

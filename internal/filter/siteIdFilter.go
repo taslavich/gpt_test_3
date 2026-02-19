@@ -87,16 +87,16 @@ func (f *FiltersBox) Allowed(bidRequest *ortb_V2_5.BidRequest, domain string) bo
 		return true
 	}
 
-	filtersALL, ok := f.Allowers["ALL"]
+	filters, ok := f.Allowers[domain]
 	if ok {
-		if !filtersALL.SiteId.Allowed(bidRequest) {
+		if !filters.SiteId.Allowed(bidRequest) {
 			return false
 		}
 	}
 
-	filters, ok := f.Allowers[domain]
+	filtersALL, ok := f.Allowers["ALL"]
 	if ok {
-		if !filters.SiteId.Allowed(bidRequest) {
+		if !filtersALL.SiteId.Allowed(bidRequest) {
 			return false
 		}
 	}
