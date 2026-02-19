@@ -47,15 +47,15 @@ func (s *CidIdBox) Allowed(bidResponse *ortb_V2_5.BidResponse) bool {
 	}
 
 	for i := range bidResponse.Seatbid {
-		seatbid := bidResponse.Seatbid[i]
-		if seatbid == nil {
+		if bidResponse.Seatbid[i] == nil {
 			continue
 		}
 		for j := range bidResponse.Seatbid[i].Bid {
-			bid := bidResponse.Seatbid[i].Bid[j]
-			if bid == nil {
+			if bidResponse.Seatbid[i].Bid[j] == nil {
 				continue
 			}
+
+			bid := bidResponse.Seatbid[i].Bid[j]
 
 			cidId := bid.GetCid()
 			var check bool
@@ -84,6 +84,7 @@ func (s *CidIdBox) Allowed(bidResponse *ortb_V2_5.BidResponse) bool {
 			}
 
 			thereIs = true
+			break
 		}
 	}
 
