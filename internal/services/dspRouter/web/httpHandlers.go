@@ -295,3 +295,99 @@ func getDspChangersMapDebug(
 		log.Printf("Cannot make HTTP response back: %v\n", err)
 	}
 }
+
+//-------------------------------------------------------------------------
+
+func getDspFiltersCidMap(
+	w http.ResponseWriter,
+	r *http.Request,
+	filtersCidAdl string,
+	filtersCidMc string,
+) {
+	var filename string
+
+	input := r.Context().Value(httpin.Input).(*getDspFiltersCidMapRequest_V2_5)
+
+	switch input.Typic {
+	case sppAdapterWeb.ADULT:
+		filename = filtersCidAdl
+	case sppAdapterWeb.MAINSTREAM:
+		filename = filtersCidMc
+	default:
+		http.Error(w, "Invalid Typic value", http.StatusBadRequest)
+		return
+	}
+
+	data, err := os.ReadFile(filename)
+	if err != nil {
+		http.Error(w, "Cannot ReadFile", http.StatusInternalServerError)
+		return
+	}
+
+	var mapa filter.FilterCidJsonBoxType
+	err = json.Unmarshal(data, &mapa)
+	if err != nil {
+		http.Error(w, "Cannot Unmarshal", http.StatusInternalServerError)
+		return
+	}
+
+	if err := rnr.JSON(w, http.StatusOK, mapa); err != nil {
+		log.Printf("Cannot make HTTP response back: %v\n", err)
+	}
+}
+
+func getDspFiltersCidMapDebug(
+	w http.ResponseWriter,
+	r *http.Request,
+	filtersCidAdl *filter.FilterCidBoxType,
+	filtersCidMc *filter.FilterCidBoxType,
+) {
+	var filters *filter.FilterCidBoxType
+
+	input := r.Context().Value(httpin.Input).(*getDspFiltersCidMapRequest_V2_5)
+
+	switch input.Typic {
+	case sppAdapterWeb.ADULT:
+		filters = filtersCidAdl
+	case sppAdapterWeb.MAINSTREAM:
+		filters = filtersCidMc
+	default:
+		http.Error(w, "Invalid Typic value", http.StatusBadRequest)
+		return
+	}
+
+	if err := rnr.JSON(w, http.StatusOK, filters); err != nil {
+		log.Printf("Cannot make HTTP response back: %v\n", err)
+	}
+}
+
+func putDspFiltersCidMap(
+	w http.ResponseWriter,
+	r *http.Request,
+	filtersCidAdlFilename string,
+	filtersCidMcFilename string,
+	filtersCidAdl *filter.FilterCidBoxType,
+	filtersCidMc *filter.FilterCidBoxType,
+) {
+	var err error
+
+	input := r.Context().Value(httpin.Input).(*putDspFiltersCidMapRequest)
+
+	switch input.Typic {
+	case sppAdapterWeb.ADULT:
+		*filtersCidAdl, err = filter.RewriteDspFiltersCidFileNextVer(input.FilterCidJsonBoxType, filtersCidAdlFilename)
+	case sppAdapterWeb.MAINSTREAM:
+		*filtersCidMc, err = filter.RewriteDspFiltersCidFileNextVer(input.FilterCidJsonBoxType, filtersCidMcFilename)
+	default:
+		http.Error(w, "Invalid Typic value", http.StatusBadRequest)
+		return
+	}
+
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusNoContent)
+}

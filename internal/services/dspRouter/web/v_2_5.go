@@ -51,6 +51,9 @@ type Server struct {
 	filtersAdl *filter.FiltersBox
 	filtersMc  *filter.FiltersBox
 
+	filtersCidAdl *filter.FilterCidBoxType
+	filtersCidMc  *filter.FilterCidBoxType
+
 	filterBoxChangerAdl *filter.ChangersBoxChanger
 	filterBoxChangerMc  *filter.ChangersBoxChanger
 
@@ -72,6 +75,8 @@ func NewServer(
 	clients map[string]*http.Client,
 	filtersAdl *filter.FiltersBox,
 	filtersMc *filter.FiltersBox,
+	filtersCidAdl *filter.FilterCidBoxType,
+	filtersCidMc *filter.FilterCidBoxType,
 	filterBoxChangerAdl *filter.ChangersBoxChanger,
 	filterBoxChangerMc *filter.ChangersBoxChanger,
 	configTimeouts config.MapStringToDuration,
@@ -97,6 +102,8 @@ func NewServer(
 		linkMap_mainstream:  linkMap_mainstream,
 		filtersAdl:          filtersAdl,
 		filtersMc:           filtersMc,
+		filtersCidAdl:       filtersCidAdl,
+		filtersCidMc:        filtersCidMc,
 		filterBoxChangerAdl: filterBoxChangerAdl,
 		filterBoxChangerMc:  filterBoxChangerMc,
 		configTimeouts:      configTimeouts,
@@ -162,17 +169,20 @@ func (s *Server) GetBids_V2_5(
 	var dspList config.MapStringToString
 	var linkMap map[string]map[string]map[string]bool
 	var filters *filter.FiltersBox
+	var filtersCid *filter.FilterCidBoxType
 	var filterBoxChanger *filter.ChangersBoxChanger
 	switch req.Typic {
 	case sppAdapterWeb.ADULT:
 		dspList = s.dspEndpoints_adult_v_2_5
 		linkMap = *s.linkMap_adult
 		filters = s.filtersAdl
+		filtersCid = s.filtersCidAdl
 		filterBoxChanger = s.filterBoxChangerAdl
 	case sppAdapterWeb.MAINSTREAM:
 		dspList = s.dspEndpoints_mainstream_v_2_5
 		linkMap = *s.linkMap_mainstream
 		filters = s.filtersMc
+		filtersCid = s.filtersCidMc
 		filterBoxChanger = s.filterBoxChangerMc
 	}
 
@@ -262,6 +272,16 @@ func (s *Server) GetBids_V2_5(
 					newTmax,
 					err,
 				)*/
+			}
+
+			if code == http.StatusOK {
+				if !filter.GetValueFomCidMap(dspResp, req.SspDomain, domain, *filtersCid) {
+					codesCh <- &dspDomainCode{
+						domain: domain,
+						code:   -77,
+					}
+					return
+				}
 			}
 
 			codesCh <- &dspDomainCode{

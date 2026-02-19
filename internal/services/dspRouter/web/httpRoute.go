@@ -24,12 +24,16 @@ const (
 
 	GetDspChangersMapUrl = "/filter/dsp_changers_map"
 	PutDspChangersMapUrl = "/filter/dsp_changers_map"
+
+	GetDspFiltersCidMapUrl = "/filter/dsp_filters_cid_map"
+	PutDspFiltersCidMapUrl = "/filter/dsp_filters_cid_map"
 )
 
 const (
 	GetDebugSspGeoDspLinksMapUrl = "/filter/debug_ssp_geo_dsp_links_map"
 	GetDebugDspFiltersMapUrl     = "/filter/debug_dsp_filters_map"
 	GetDebugDspChangersMapUrl    = "/filter/debug_dsp_changers_map"
+	GetDebugDspFiltersCidMapUrl  = "/filter/debug_dsp_filters_cid_map"
 )
 
 type getSspGeoDspLinksRequest_V2_5 struct {
@@ -59,6 +63,15 @@ type putDspChangersMapRequest struct {
 	filter.ChangerType `in:"body=json"`
 }
 
+type getDspFiltersCidMapRequest_V2_5 struct {
+	Typic string `in:"query=typic" required:"true"`
+}
+
+type putDspFiltersCidMapRequest struct {
+	Typic                       string `in:"query=typic" required:"true"`
+	filter.FilterCidJsonBoxType `in:"body=json"`
+}
+
 func InitHttpRoutes(
 	httpRouter *chi.Mux,
 	linkFilename_adult string,
@@ -78,6 +91,12 @@ func InitHttpRoutes(
 
 	changersAdl *filter.ChangersBoxChanger,
 	changersMc *filter.ChangersBoxChanger,
+
+	filtersCidAdlFilename string,
+	filtersCidMcFilename string,
+
+	filtersCidAdl *filter.FilterCidBoxType,
+	filtersCidMc *filter.FilterCidBoxType,
 ) {
 	integration.UseGochiURLParam("path", chi.URLParam)
 
@@ -135,5 +154,25 @@ func InitHttpRoutes(
 		httpin.NewInput(putDspChangersMapRequest{}),
 	).Put(PutDspChangersMapUrl, func(w http.ResponseWriter, r *http.Request) {
 		putDspChangersMap(w, r, changersAdlFilename, changersMcFilename, changersAdl, changersMc)
+	})
+
+	//-----------------------------------
+
+	httpRouter.With(
+		httpin.NewInput(getDspFiltersMapRequest_V2_5{}),
+	).Get(GetDspFiltersMapUrl, func(w http.ResponseWriter, r *http.Request) {
+		getDspFiltersMap(w, r, filtersAdlFilename, filtersMcFilename)
+	})
+
+	httpRouter.With(
+		httpin.NewInput(getDspFiltersMapRequest_V2_5{}),
+	).Get(GetDebugDspFiltersMapUrl, func(w http.ResponseWriter, r *http.Request) {
+		getDspFiltersMapDebug(w, r, filtersAdl, filtersMc)
+	})
+
+	httpRouter.With(
+		httpin.NewInput(putDspFiltersMapRequest{}),
+	).Put(PutDspFiltersMapUrl, func(w http.ResponseWriter, r *http.Request) {
+		putDspFiltersMap(w, r, filtersAdlFilename, filtersMcFilename, filtersAdl, filtersMc)
 	})
 }
