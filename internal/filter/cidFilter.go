@@ -17,22 +17,6 @@ type CidIdBox struct {
 	CidIds      map[string]bool
 }
 
-func NewCidIdBox(apply, isWhiteList bool, cidIds []string) *CidIdBox {
-	var newCidIdMap map[string]bool
-	if apply {
-		newCidIdMap = make(map[string]bool)
-		for i := range cidIds {
-			newCidIdMap[cidIds[i]] = true
-		}
-	}
-
-	return &CidIdBox{
-		CidIds:      newCidIdMap,
-		IsWhiteList: isWhiteList,
-		Apply:       apply,
-	}
-}
-
 func (s *CidIdBox) Allowed(bidResponse *ortb_V2_5.BidResponse) bool {
 	if s == nil {
 		return true
@@ -43,7 +27,7 @@ func (s *CidIdBox) Allowed(bidResponse *ortb_V2_5.BidResponse) bool {
 	}
 
 	if bidResponse == nil || bidResponse.Seatbid == nil {
-		return true
+		return false
 	}
 
 	for i := range bidResponse.Seatbid {
@@ -125,10 +109,12 @@ func FiltersCidJsonToFiltersCid(mapa FilterCidJsonBoxType) FilterCidBoxType {
 
 			for dspKey, filterCid := range dsps {
 
+				cidIdBox := getCidIdBox(filterCid)
+
 				dspKeys := utils.SplitAndTrimKeys(dspKey)
 				for _, singleDspDomain := range dspKeys {
 					if newMap[singleSspDomain][singleDspDomain] == nil {
-						newMap[singleSspDomain][singleDspDomain] = getCidIdBox(filterCid)
+						newMap[singleSspDomain][singleDspDomain] = cidIdBox
 					}
 				}
 			}

@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
-	"math/rand"
 	"sort"
 
 	"gitlab.com/twinbid-exchange/RTB-exchange/internal/constants"
@@ -16,12 +15,6 @@ import (
 	"gitlab.com/twinbid-exchange/RTB-exchange/internal/types"
 	clickhouse_types "gitlab.com/twinbid-exchange/RTB-exchange/internal/types/clickhouse"
 )
-
-func getRandomProfitPercent() float32 {
-	percentages := [11]float32{0.20, 0.21, 0.22, 0.23, 0.24, 0.25, 0.26, 0.27, 0.28, 0.29, 0.30} // 20% - 30% (1)
-	randomIndex := rand.Intn(11)                                                                 // 0 - 10 (1)
-	return percentages[randomIndex]
-}
 
 func GetWinnerBidInternal_V_2_5(
 	ctx context.Context,
@@ -34,9 +27,6 @@ func GetWinnerBidInternal_V_2_5(
 	typic string,
 	admDomain string,
 ) (*ortb_V2_5.BidResponse, *clickhouse_types.BidResponse) {
-	////////////
-	///profitPercent = getRandomProfitPercent()
-	//////////////
 	type bidWithDomain struct {
 		bid    *ortb_V2_5.Bid
 		domain string
@@ -129,25 +119,6 @@ func GetWinnerBidInternal_V_2_5(
 		case sppAdapterWeb.MAINSTREAM:
 			percentMap = *percentMapMainstream
 		}
-
-		/*var value *types.PercentAndBidfloor
-		isHilltopSpecialCase := dspRouterWeb.DeletePrefix(winner.domain) == "dsp_hilltopads.com" && winner.bid.GetPrice() < 1.7
-
-		if isHilltopSpecialCase && len(bids) == 1 {
-			value = &types.PercentAndBidfloor{
-				Percent:  0.99,
-				Bidfloor: false,
-			}
-		} else {
-			if isHilltopSpecialCase && len(bids) > 1 {
-				winner = bids[1]
-			}
-
-			value := utils.GetValueFomSspGeoDspMap(req.SspDomain, req.BidRequest.Device.Geo.GetCountry(), winner.domain, percentMap, &types.PercentAndBidfloor{
-				Percent:  profitPercent,
-				Bidfloor: true,
-			})
-		}*/
 
 		value := utils.GetValueFomSspGeoDspMap(req.SspDomain, req.BidRequest.Device.Geo.GetCountry(), winner.domain, percentMap, &types.PercentAndBidfloor{
 			Percent:  profitPercent,
