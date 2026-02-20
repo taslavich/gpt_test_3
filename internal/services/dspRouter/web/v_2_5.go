@@ -280,6 +280,7 @@ func (s *Server) GetBids_V2_5(
 						domain: domain,
 						code:   -77,
 					}
+					log.Println("GOT GetValueFomCidMap")
 					return
 				}
 			}
