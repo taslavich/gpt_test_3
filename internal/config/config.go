@@ -175,6 +175,7 @@ type SppAdapterConfig struct {
 	SiteIdDomainPath    string            `yaml:"SITE_ID_DOMAIN_PATH" env:"SITE_ID_DOMAIN_PATH"`
 	Domains1LevelPath   string            `yaml:"DOMAINS_1_LEVEL_PATH" env:"DOMAINS_1_LEVEL_PATH"`
 	Domains23LevelPath  string            `yaml:"DOMAINS_23_LEVEL_PATH" env:"DOMAINS_23_LEVEL_PATH"`
+	GeoToLangPath       string            `yaml:"GEO_TO_LANG_PATH" env:"GEO_TO_LANG_PATH"`
 
 	RedisConfig
 }
