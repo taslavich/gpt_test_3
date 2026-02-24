@@ -237,7 +237,7 @@ func postBid_V2_5(
 		lang = geoToLang["DEFAULT"]
 	}
 
-	input.Payload.BidRequest.Device.Ua = &lang
+	input.Payload.BidRequest.Device.Language = &lang
 
 	reqCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
