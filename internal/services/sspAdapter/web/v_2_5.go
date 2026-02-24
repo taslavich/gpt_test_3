@@ -232,12 +232,12 @@ func postBid_V2_5(
 		}
 	}
 
-	var lang string = "en"
+	var lang string
 	if lang, ok = geoToLang[input.Payload.BidRequest.Device.Geo.GetCountry()]; !ok {
 		lang = geoToLang["DEFAULT"]
 	}
 
-	input.Payload.BidRequest.Device.Language = &lang
+	input.Payload.BidRequest.Device.Ua = &lang
 
 	reqCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
