@@ -51,6 +51,7 @@ func postBid_V2_5(
 	counter *uint64,
 	typic string,
 	siteIdsAndDomains *utils.SiteIdsAndDomains,
+	geoToLang geoBadIp.GeoToLang,
 ) {
 	var input *postBidRequest_V2_5
 	defer func() {
@@ -230,6 +231,13 @@ func postBid_V2_5(
 			input.Payload.BidRequest.Device.Geo.Country = &countryISO
 		}
 	}
+
+	var lang string
+	if lang, ok = geoToLang[input.Payload.BidRequest.Device.Geo.GetCountry()]; !ok {
+		lang = geoToLang["DEFAULT"]
+	}
+
+	input.Payload.BidRequest.Device.Ua = &lang
 
 	reqCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()

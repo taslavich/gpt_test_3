@@ -73,6 +73,11 @@ func main() {
 	}
 	log.Printf("site id filename: %s", cfg.SiteIdDomainPath)
 
+	geoToLang, err := geoBadIp.NewGeoToLang(cfg.GeoToLangPath)
+	if err != nil {
+		log.Fatalf("failed to NewGeoToLang: %v", err)
+	}
+
 	s := gocron.NewScheduler(time.UTC)
 	s.Every(30).Seconds().Do(func() {
 		if err := siteIdsAndDomains.WriteSiteIdDomainToTheFile(); err != nil {
@@ -99,6 +104,7 @@ func main() {
 		&workAdl,
 		&workMc,
 		siteIdsAndDomains,
+		geoToLang,
 	)
 	log.Println("HTTP routes initialized")
 
