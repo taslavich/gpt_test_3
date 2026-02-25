@@ -173,7 +173,6 @@ func GetWinnerBidInternal_V_2_5(
 			DspPrice:  winner.bid.Price,
 			Adid:      winner.bid.Adid,
 			Cid:       winner.bid.Cid,
-			Adm:       winner.bid.Adm,
 			Crid:      winner.bid.Crid,
 		}
 
