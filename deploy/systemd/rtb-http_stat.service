@@ -1,0 +1,25 @@
+[Unit]
+Description=HTTP Statistics Service
+After=network.target nginx.service
+Wants=nginx.service
+
+[Service]
+Type=simple
+User=root
+Group=root
+WorkingDirectory=/root
+ExecStart=/root/http_stat
+Restart=always
+RestartSec=10
+StandardOutput=append:/var/log/rtb/req.log
+StandardError=append:/var/log/rtb/req.error.log
+SyslogIdentifier=http-stat
+
+# Безопасность
+NoNewPrivileges=yes
+ProtectSystem=full
+ReadWritePaths=/var/log/rtb
+ReadOnlyPaths=/var/log/nginx
+
+[Install]
+WantedBy=multi-user.target
