@@ -18,5 +18,6 @@ type Bid struct {
 	DspPrice  *float32 `json:"dsp_price,omitempty"`
 	Adid      *string  `json:"adid,omitempty"`
 	Cid       *string  `json:"cid,omitempty"`
+	Adm       *string  `json:"adm,omitempty"`
 	Crid      *string  `json:"crid,omitempty"`
 }
