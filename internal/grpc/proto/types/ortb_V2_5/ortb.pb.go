@@ -138,6 +138,7 @@ type Imp struct {
 	Instl         *int32                 `protobuf:"varint,5,opt,name=instl,proto3,oneof" json:"instl,omitempty"`
 	Bidfloorcur   *string                `protobuf:"bytes,6,opt,name=bidfloorcur,proto3,oneof" json:"bidfloorcur,omitempty"`
 	Ext           *Imp_Ext               `protobuf:"bytes,7,opt,name=ext,proto3,oneof" json:"ext,omitempty"`
+	Banner        *Banner                `protobuf:"bytes,8,opt,name=banner,proto3,oneof" json:"banner,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -221,6 +222,49 @@ func (x *Imp) GetExt() *Imp_Ext {
 	return nil
 }
 
+func (x *Imp) GetBanner() *Banner {
+	if x != nil {
+		return x.Banner
+	}
+	return nil
+}
+
+type Banner struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *Banner) Reset() {
+	*x = Banner{}
+	mi := &file_types_ortb_V2_5_ortb_proto_msgTypes[2]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *Banner) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*Banner) ProtoMessage() {}
+
+func (x *Banner) ProtoReflect() protoreflect.Message {
+	mi := &file_types_ortb_V2_5_ortb_proto_msgTypes[2]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use Banner.ProtoReflect.Descriptor instead.
+func (*Banner) Descriptor() ([]byte, []int) {
+	return file_types_ortb_V2_5_ortb_proto_rawDescGZIP(), []int{2}
+}
+
 type Imp_Ext struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Subid         *string                `protobuf:"bytes,1,opt,name=subid,proto3,oneof" json:"subid,omitempty"`
@@ -230,7 +274,7 @@ type Imp_Ext struct {
 
 func (x *Imp_Ext) Reset() {
 	*x = Imp_Ext{}
-	mi := &file_types_ortb_V2_5_ortb_proto_msgTypes[2]
+	mi := &file_types_ortb_V2_5_ortb_proto_msgTypes[3]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -242,7 +286,7 @@ func (x *Imp_Ext) String() string {
 func (*Imp_Ext) ProtoMessage() {}
 
 func (x *Imp_Ext) ProtoReflect() protoreflect.Message {
-	mi := &file_types_ortb_V2_5_ortb_proto_msgTypes[2]
+	mi := &file_types_ortb_V2_5_ortb_proto_msgTypes[3]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -255,7 +299,7 @@ func (x *Imp_Ext) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Imp_Ext.ProtoReflect.Descriptor instead.
 func (*Imp_Ext) Descriptor() ([]byte, []int) {
-	return file_types_ortb_V2_5_ortb_proto_rawDescGZIP(), []int{2}
+	return file_types_ortb_V2_5_ortb_proto_rawDescGZIP(), []int{3}
 }
 
 func (x *Imp_Ext) GetSubid() string {
@@ -280,7 +324,7 @@ type Device struct {
 
 func (x *Device) Reset() {
 	*x = Device{}
-	mi := &file_types_ortb_V2_5_ortb_proto_msgTypes[3]
+	mi := &file_types_ortb_V2_5_ortb_proto_msgTypes[4]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -292,7 +336,7 @@ func (x *Device) String() string {
 func (*Device) ProtoMessage() {}
 
 func (x *Device) ProtoReflect() protoreflect.Message {
-	mi := &file_types_ortb_V2_5_ortb_proto_msgTypes[3]
+	mi := &file_types_ortb_V2_5_ortb_proto_msgTypes[4]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -305,7 +349,7 @@ func (x *Device) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Device.ProtoReflect.Descriptor instead.
 func (*Device) Descriptor() ([]byte, []int) {
-	return file_types_ortb_V2_5_ortb_proto_rawDescGZIP(), []int{3}
+	return file_types_ortb_V2_5_ortb_proto_rawDescGZIP(), []int{4}
 }
 
 func (x *Device) GetIp() string {
@@ -371,7 +415,7 @@ type Geo struct {
 
 func (x *Geo) Reset() {
 	*x = Geo{}
-	mi := &file_types_ortb_V2_5_ortb_proto_msgTypes[4]
+	mi := &file_types_ortb_V2_5_ortb_proto_msgTypes[5]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -383,7 +427,7 @@ func (x *Geo) String() string {
 func (*Geo) ProtoMessage() {}
 
 func (x *Geo) ProtoReflect() protoreflect.Message {
-	mi := &file_types_ortb_V2_5_ortb_proto_msgTypes[4]
+	mi := &file_types_ortb_V2_5_ortb_proto_msgTypes[5]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -396,7 +440,7 @@ func (x *Geo) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Geo.ProtoReflect.Descriptor instead.
 func (*Geo) Descriptor() ([]byte, []int) {
-	return file_types_ortb_V2_5_ortb_proto_rawDescGZIP(), []int{4}
+	return file_types_ortb_V2_5_ortb_proto_rawDescGZIP(), []int{5}
 }
 
 func (x *Geo) GetCountry() string {
@@ -456,7 +500,7 @@ type Site struct {
 
 func (x *Site) Reset() {
 	*x = Site{}
-	mi := &file_types_ortb_V2_5_ortb_proto_msgTypes[5]
+	mi := &file_types_ortb_V2_5_ortb_proto_msgTypes[6]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -468,7 +512,7 @@ func (x *Site) String() string {
 func (*Site) ProtoMessage() {}
 
 func (x *Site) ProtoReflect() protoreflect.Message {
-	mi := &file_types_ortb_V2_5_ortb_proto_msgTypes[5]
+	mi := &file_types_ortb_V2_5_ortb_proto_msgTypes[6]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -481,7 +525,7 @@ func (x *Site) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Site.ProtoReflect.Descriptor instead.
 func (*Site) Descriptor() ([]byte, []int) {
-	return file_types_ortb_V2_5_ortb_proto_rawDescGZIP(), []int{5}
+	return file_types_ortb_V2_5_ortb_proto_rawDescGZIP(), []int{6}
 }
 
 func (x *Site) GetId() string {
@@ -542,7 +586,7 @@ type Publisher struct {
 
 func (x *Publisher) Reset() {
 	*x = Publisher{}
-	mi := &file_types_ortb_V2_5_ortb_proto_msgTypes[6]
+	mi := &file_types_ortb_V2_5_ortb_proto_msgTypes[7]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -554,7 +598,7 @@ func (x *Publisher) String() string {
 func (*Publisher) ProtoMessage() {}
 
 func (x *Publisher) ProtoReflect() protoreflect.Message {
-	mi := &file_types_ortb_V2_5_ortb_proto_msgTypes[6]
+	mi := &file_types_ortb_V2_5_ortb_proto_msgTypes[7]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -567,7 +611,7 @@ func (x *Publisher) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Publisher.ProtoReflect.Descriptor instead.
 func (*Publisher) Descriptor() ([]byte, []int) {
-	return file_types_ortb_V2_5_ortb_proto_rawDescGZIP(), []int{6}
+	return file_types_ortb_V2_5_ortb_proto_rawDescGZIP(), []int{7}
 }
 
 func (x *Publisher) GetId() string {
@@ -588,7 +632,7 @@ type User struct {
 
 func (x *User) Reset() {
 	*x = User{}
-	mi := &file_types_ortb_V2_5_ortb_proto_msgTypes[7]
+	mi := &file_types_ortb_V2_5_ortb_proto_msgTypes[8]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -600,7 +644,7 @@ func (x *User) String() string {
 func (*User) ProtoMessage() {}
 
 func (x *User) ProtoReflect() protoreflect.Message {
-	mi := &file_types_ortb_V2_5_ortb_proto_msgTypes[7]
+	mi := &file_types_ortb_V2_5_ortb_proto_msgTypes[8]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -613,7 +657,7 @@ func (x *User) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use User.ProtoReflect.Descriptor instead.
 func (*User) Descriptor() ([]byte, []int) {
-	return file_types_ortb_V2_5_ortb_proto_rawDescGZIP(), []int{7}
+	return file_types_ortb_V2_5_ortb_proto_rawDescGZIP(), []int{8}
 }
 
 func (x *User) GetId() string {
@@ -647,7 +691,7 @@ type SeatBid struct {
 
 func (x *SeatBid) Reset() {
 	*x = SeatBid{}
-	mi := &file_types_ortb_V2_5_ortb_proto_msgTypes[8]
+	mi := &file_types_ortb_V2_5_ortb_proto_msgTypes[9]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -659,7 +703,7 @@ func (x *SeatBid) String() string {
 func (*SeatBid) ProtoMessage() {}
 
 func (x *SeatBid) ProtoReflect() protoreflect.Message {
-	mi := &file_types_ortb_V2_5_ortb_proto_msgTypes[8]
+	mi := &file_types_ortb_V2_5_ortb_proto_msgTypes[9]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -672,7 +716,7 @@ func (x *SeatBid) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SeatBid.ProtoReflect.Descriptor instead.
 func (*SeatBid) Descriptor() ([]byte, []int) {
-	return file_types_ortb_V2_5_ortb_proto_rawDescGZIP(), []int{8}
+	return file_types_ortb_V2_5_ortb_proto_rawDescGZIP(), []int{9}
 }
 
 func (x *SeatBid) GetBid() []*Bid {
@@ -713,7 +757,7 @@ type Bid struct {
 
 func (x *Bid) Reset() {
 	*x = Bid{}
-	mi := &file_types_ortb_V2_5_ortb_proto_msgTypes[9]
+	mi := &file_types_ortb_V2_5_ortb_proto_msgTypes[10]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -725,7 +769,7 @@ func (x *Bid) String() string {
 func (*Bid) ProtoMessage() {}
 
 func (x *Bid) ProtoReflect() protoreflect.Message {
-	mi := &file_types_ortb_V2_5_ortb_proto_msgTypes[9]
+	mi := &file_types_ortb_V2_5_ortb_proto_msgTypes[10]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -738,7 +782,7 @@ func (x *Bid) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Bid.ProtoReflect.Descriptor instead.
 func (*Bid) Descriptor() ([]byte, []int) {
-	return file_types_ortb_V2_5_ortb_proto_rawDescGZIP(), []int{9}
+	return file_types_ortb_V2_5_ortb_proto_rawDescGZIP(), []int{10}
 }
 
 func (x *Bid) GetId() string {
@@ -866,7 +910,7 @@ type BidResponse struct {
 
 func (x *BidResponse) Reset() {
 	*x = BidResponse{}
-	mi := &file_types_ortb_V2_5_ortb_proto_msgTypes[10]
+	mi := &file_types_ortb_V2_5_ortb_proto_msgTypes[11]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -878,7 +922,7 @@ func (x *BidResponse) String() string {
 func (*BidResponse) ProtoMessage() {}
 
 func (x *BidResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_types_ortb_V2_5_ortb_proto_msgTypes[10]
+	mi := &file_types_ortb_V2_5_ortb_proto_msgTypes[11]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -891,7 +935,7 @@ func (x *BidResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use BidResponse.ProtoReflect.Descriptor instead.
 func (*BidResponse) Descriptor() ([]byte, []int) {
-	return file_types_ortb_V2_5_ortb_proto_rawDescGZIP(), []int{10}
+	return file_types_ortb_V2_5_ortb_proto_rawDescGZIP(), []int{11}
 }
 
 func (x *BidResponse) GetId() string {
@@ -938,7 +982,7 @@ type Ext struct {
 
 func (x *Ext) Reset() {
 	*x = Ext{}
-	mi := &file_types_ortb_V2_5_ortb_proto_msgTypes[11]
+	mi := &file_types_ortb_V2_5_ortb_proto_msgTypes[12]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -950,7 +994,7 @@ func (x *Ext) String() string {
 func (*Ext) ProtoMessage() {}
 
 func (x *Ext) ProtoReflect() protoreflect.Message {
-	mi := &file_types_ortb_V2_5_ortb_proto_msgTypes[11]
+	mi := &file_types_ortb_V2_5_ortb_proto_msgTypes[12]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -963,7 +1007,7 @@ func (x *Ext) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Ext.ProtoReflect.Descriptor instead.
 func (*Ext) Descriptor() ([]byte, []int) {
-	return file_types_ortb_V2_5_ortb_proto_rawDescGZIP(), []int{11}
+	return file_types_ortb_V2_5_ortb_proto_rawDescGZIP(), []int{12}
 }
 
 func (x *Ext) GetValues() map[string]string {
@@ -994,7 +1038,7 @@ const file_types_ortb_V2_5_ortb_proto_rawDesc = "" +
 	"\a_deviceB\a\n" +
 	"\x05_siteB\a\n" +
 	"\x05_userB\a\n" +
-	"\x05_tmax\"\xab\x02\n" +
+	"\x05_tmax\"\xe6\x02\n" +
 	"\x03Imp\x12\x13\n" +
 	"\x02id\x18\x01 \x01(\tH\x00R\x02id\x88\x01\x01\x12\x1f\n" +
 	"\bbidfloor\x18\x02 \x01(\x02H\x01R\bbidfloor\x88\x01\x01\x12\x19\n" +
@@ -1002,14 +1046,17 @@ const file_types_ortb_V2_5_ortb_proto_rawDesc = "" +
 	"\x06secure\x18\x04 \x01(\x05H\x03R\x06secure\x88\x01\x01\x12\x19\n" +
 	"\x05instl\x18\x05 \x01(\x05H\x04R\x05instl\x88\x01\x01\x12%\n" +
 	"\vbidfloorcur\x18\x06 \x01(\tH\x05R\vbidfloorcur\x88\x01\x01\x12)\n" +
-	"\x03ext\x18\a \x01(\v2\x12.ortb_V2_5.Imp_ExtH\x06R\x03ext\x88\x01\x01B\x05\n" +
+	"\x03ext\x18\a \x01(\v2\x12.ortb_V2_5.Imp_ExtH\x06R\x03ext\x88\x01\x01\x12.\n" +
+	"\x06banner\x18\b \x01(\v2\x11.ortb_V2_5.BannerH\aR\x06banner\x88\x01\x01B\x05\n" +
 	"\x03_idB\v\n" +
 	"\t_bidfloorB\b\n" +
 	"\x06_tagidB\t\n" +
 	"\a_secureB\b\n" +
 	"\x06_instlB\x0e\n" +
 	"\f_bidfloorcurB\x06\n" +
-	"\x04_ext\".\n" +
+	"\x04_extB\t\n" +
+	"\a_banner\"\b\n" +
+	"\x06Banner\".\n" +
 	"\aImp_Ext\x12\x19\n" +
 	"\x05subid\x18\x01 \x01(\tH\x00R\x05subid\x88\x01\x01B\b\n" +
 	"\x06_subid\"\x9e\x02\n" +
@@ -1133,39 +1180,41 @@ func file_types_ortb_V2_5_ortb_proto_rawDescGZIP() []byte {
 	return file_types_ortb_V2_5_ortb_proto_rawDescData
 }
 
-var file_types_ortb_V2_5_ortb_proto_msgTypes = make([]protoimpl.MessageInfo, 13)
+var file_types_ortb_V2_5_ortb_proto_msgTypes = make([]protoimpl.MessageInfo, 14)
 var file_types_ortb_V2_5_ortb_proto_goTypes = []any{
 	(*BidRequest)(nil),  // 0: ortb_V2_5.BidRequest
 	(*Imp)(nil),         // 1: ortb_V2_5.Imp
-	(*Imp_Ext)(nil),     // 2: ortb_V2_5.Imp_Ext
-	(*Device)(nil),      // 3: ortb_V2_5.Device
-	(*Geo)(nil),         // 4: ortb_V2_5.Geo
-	(*Site)(nil),        // 5: ortb_V2_5.Site
-	(*Publisher)(nil),   // 6: ortb_V2_5.Publisher
-	(*User)(nil),        // 7: ortb_V2_5.User
-	(*SeatBid)(nil),     // 8: ortb_V2_5.SeatBid
-	(*Bid)(nil),         // 9: ortb_V2_5.Bid
-	(*BidResponse)(nil), // 10: ortb_V2_5.BidResponse
-	(*Ext)(nil),         // 11: ortb_V2_5.Ext
-	nil,                 // 12: ortb_V2_5.Ext.ValuesEntry
+	(*Banner)(nil),      // 2: ortb_V2_5.Banner
+	(*Imp_Ext)(nil),     // 3: ortb_V2_5.Imp_Ext
+	(*Device)(nil),      // 4: ortb_V2_5.Device
+	(*Geo)(nil),         // 5: ortb_V2_5.Geo
+	(*Site)(nil),        // 6: ortb_V2_5.Site
+	(*Publisher)(nil),   // 7: ortb_V2_5.Publisher
+	(*User)(nil),        // 8: ortb_V2_5.User
+	(*SeatBid)(nil),     // 9: ortb_V2_5.SeatBid
+	(*Bid)(nil),         // 10: ortb_V2_5.Bid
+	(*BidResponse)(nil), // 11: ortb_V2_5.BidResponse
+	(*Ext)(nil),         // 12: ortb_V2_5.Ext
+	nil,                 // 13: ortb_V2_5.Ext.ValuesEntry
 }
 var file_types_ortb_V2_5_ortb_proto_depIdxs = []int32{
 	1,  // 0: ortb_V2_5.BidRequest.imp:type_name -> ortb_V2_5.Imp
-	3,  // 1: ortb_V2_5.BidRequest.device:type_name -> ortb_V2_5.Device
-	5,  // 2: ortb_V2_5.BidRequest.site:type_name -> ortb_V2_5.Site
-	7,  // 3: ortb_V2_5.BidRequest.user:type_name -> ortb_V2_5.User
-	2,  // 4: ortb_V2_5.Imp.ext:type_name -> ortb_V2_5.Imp_Ext
-	4,  // 5: ortb_V2_5.Device.geo:type_name -> ortb_V2_5.Geo
-	11, // 6: ortb_V2_5.Device.device_ext:type_name -> ortb_V2_5.Ext
-	6,  // 7: ortb_V2_5.Site.publisher:type_name -> ortb_V2_5.Publisher
-	9,  // 8: ortb_V2_5.SeatBid.bid:type_name -> ortb_V2_5.Bid
-	8,  // 9: ortb_V2_5.BidResponse.seatbid:type_name -> ortb_V2_5.SeatBid
-	12, // 10: ortb_V2_5.Ext.values:type_name -> ortb_V2_5.Ext.ValuesEntry
-	11, // [11:11] is the sub-list for method output_type
-	11, // [11:11] is the sub-list for method input_type
-	11, // [11:11] is the sub-list for extension type_name
-	11, // [11:11] is the sub-list for extension extendee
-	0,  // [0:11] is the sub-list for field type_name
+	4,  // 1: ortb_V2_5.BidRequest.device:type_name -> ortb_V2_5.Device
+	6,  // 2: ortb_V2_5.BidRequest.site:type_name -> ortb_V2_5.Site
+	8,  // 3: ortb_V2_5.BidRequest.user:type_name -> ortb_V2_5.User
+	3,  // 4: ortb_V2_5.Imp.ext:type_name -> ortb_V2_5.Imp_Ext
+	2,  // 5: ortb_V2_5.Imp.banner:type_name -> ortb_V2_5.Banner
+	5,  // 6: ortb_V2_5.Device.geo:type_name -> ortb_V2_5.Geo
+	12, // 7: ortb_V2_5.Device.device_ext:type_name -> ortb_V2_5.Ext
+	7,  // 8: ortb_V2_5.Site.publisher:type_name -> ortb_V2_5.Publisher
+	10, // 9: ortb_V2_5.SeatBid.bid:type_name -> ortb_V2_5.Bid
+	9,  // 10: ortb_V2_5.BidResponse.seatbid:type_name -> ortb_V2_5.SeatBid
+	13, // 11: ortb_V2_5.Ext.values:type_name -> ortb_V2_5.Ext.ValuesEntry
+	12, // [12:12] is the sub-list for method output_type
+	12, // [12:12] is the sub-list for method input_type
+	12, // [12:12] is the sub-list for extension type_name
+	12, // [12:12] is the sub-list for extension extendee
+	0,  // [0:12] is the sub-list for field type_name
 }
 
 func init() { file_types_ortb_V2_5_ortb_proto_init() }
@@ -1175,7 +1224,6 @@ func file_types_ortb_V2_5_ortb_proto_init() {
 	}
 	file_types_ortb_V2_5_ortb_proto_msgTypes[0].OneofWrappers = []any{}
 	file_types_ortb_V2_5_ortb_proto_msgTypes[1].OneofWrappers = []any{}
-	file_types_ortb_V2_5_ortb_proto_msgTypes[2].OneofWrappers = []any{}
 	file_types_ortb_V2_5_ortb_proto_msgTypes[3].OneofWrappers = []any{}
 	file_types_ortb_V2_5_ortb_proto_msgTypes[4].OneofWrappers = []any{}
 	file_types_ortb_V2_5_ortb_proto_msgTypes[5].OneofWrappers = []any{}
@@ -1184,13 +1232,14 @@ func file_types_ortb_V2_5_ortb_proto_init() {
 	file_types_ortb_V2_5_ortb_proto_msgTypes[8].OneofWrappers = []any{}
 	file_types_ortb_V2_5_ortb_proto_msgTypes[9].OneofWrappers = []any{}
 	file_types_ortb_V2_5_ortb_proto_msgTypes[10].OneofWrappers = []any{}
+	file_types_ortb_V2_5_ortb_proto_msgTypes[11].OneofWrappers = []any{}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_types_ortb_V2_5_ortb_proto_rawDesc), len(file_types_ortb_V2_5_ortb_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   13,
+			NumMessages:   14,
 			NumExtensions: 0,
 			NumServices:   0,
 		},

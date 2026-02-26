@@ -246,8 +246,24 @@ func (s *Server) GetBids_V2_5(
 						newBidRequest.Imp[i].Bidfloor = &mockBidfloor
 						newBidRequest.Imp[i].Secure = &mockSecure
 						newBidRequest.Imp[i].Bidfloorcur = &mockBidfloorcur
+						newBidRequest.Imp[i].Banner = &ortb_V2_5.Banner{}
 					}
 				}
+			}
+
+			jsonDataTmp, err = jsoniter.Marshal(newBidRequest)
+			if err != nil {
+				newErr := fmt.Errorf("Can not marshal in GetBids_V_2_5 because got uknown error: %v", err)
+
+				grpcCode := codes.Unknown
+
+				st, ok := status.FromError(err)
+				if !ok {
+					grpcCode = st.Code()
+					newErr = fmt.Errorf("Can not marshal in GetBids_V_2_5 because got error: %v", st.Err())
+				}
+
+				return nil, status.Error(grpcCode, newErr.Error())
 			}
 		}
 
