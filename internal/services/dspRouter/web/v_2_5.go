@@ -9,6 +9,7 @@ import (
 	"log"
 	"net/http"
 	"runtime/debug"
+	"strings"
 	"sync"
 	"time"
 
@@ -25,6 +26,7 @@ import (
 	sppAdapterWeb "gitlab.com/twinbid-exchange/RTB-exchange/internal/services/sspAdapter/web"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/proto"
 )
 
 type Server struct {
@@ -170,20 +172,20 @@ func (s *Server) GetBids_V2_5(
 	var linkMap map[string]map[string]map[string]bool
 	var filters *filter.FiltersBox
 	var filtersCid *filter.FilterCidBoxType
-	var filterBoxChanger *filter.ChangersBoxChanger
+	//var filterBoxChanger *filter.ChangersBoxChanger
 	switch req.Typic {
 	case sppAdapterWeb.ADULT:
 		dspList = s.dspEndpoints_adult_v_2_5
 		linkMap = *s.linkMap_adult
 		filters = s.filtersAdl
 		filtersCid = s.filtersCidAdl
-		filterBoxChanger = s.filterBoxChangerAdl
+		//filterBoxChanger = s.filterBoxChangerAdl
 	case sppAdapterWeb.MAINSTREAM:
 		dspList = s.dspEndpoints_mainstream_v_2_5
 		linkMap = *s.linkMap_mainstream
 		filters = s.filtersMc
 		filtersCid = s.filtersCidMc
-		filterBoxChanger = s.filterBoxChangerMc
+		//filterBoxChanger = s.filterBoxChangerMc
 	}
 
 	for endpoint, domain := range dspList {
@@ -231,7 +233,25 @@ func (s *Server) GetBids_V2_5(
 		}*/
 
 		jsonDataTmp := jsonData
-		if bidRequest, isChanged := filterBoxChanger.Change(req.BidRequest, domain); isChanged {
+
+		if strings.HasSuffix(domain, constants.BUYMEDIA) {
+			newBidRequest := proto.Clone(req.BidRequest).(*ortb_V2_5.BidRequest)
+			var mockBidfloor float32 = 0
+			var mockSecure int32 = 1
+			var mockBidfloorcur string = "USD"
+			if newBidRequest.Imp != nil {
+				for i := range newBidRequest.Imp {
+					imp := newBidRequest.Imp[i]
+					if imp != nil {
+						newBidRequest.Imp[i].Bidfloor = &mockBidfloor
+						newBidRequest.Imp[i].Secure = &mockSecure
+						newBidRequest.Imp[i].Bidfloorcur = &mockBidfloorcur
+					}
+				}
+			}
+		}
+
+		/*if bidRequest, isChanged := filterBoxChanger.Change(req.BidRequest, domain); isChanged {
 			jsonDataTmp, err = jsoniter.Marshal(bidRequest)
 			if err != nil {
 				newErr := fmt.Errorf("Can not marshal in GetBids_V_2_5 because got uknown error: %v", err)
@@ -246,7 +266,7 @@ func (s *Server) GetBids_V2_5(
 
 				return nil, status.Error(grpcCode, newErr.Error())
 			}
-		}
+		}*/
 
 		/*if DeletePrefix(domain) == "dsp_test_hilltopads.com" {
 			ChangeSiteIdhilltopTest(req.BidRequest)
