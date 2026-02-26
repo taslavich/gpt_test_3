@@ -22,6 +22,10 @@ message Imp {
     optional int32 instl = 5;
     optional string bidfloorcur = 6;
     optional Imp_Ext ext = 7;
+    optional Banner banner = 8;
+}
+
+message Banner {
 }
 
 message Imp_Ext {
