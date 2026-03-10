@@ -2,6 +2,7 @@ package dspRouterWeb
 
 import (
 	"encoding/json"
+	"fmt"
 	"log"
 	"net/http"
 	"os"
@@ -256,6 +257,7 @@ func putDspChangersMap(
 	case sppAdapterWeb.ADULT:
 		changersAdl.Changers, err = filter.RewriteChangersFile(changersAdl.Changers, changersAdlFilename)
 	case sppAdapterWeb.MAINSTREAM:
+		fmt.Println("In Put")
 		changersMc.Changers, err = filter.RewriteChangersFile(changersMc.Changers, changersMcFilename)
 	default:
 		http.Error(w, "Invalid Typic value", http.StatusBadRequest)
