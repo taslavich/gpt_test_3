@@ -146,15 +146,18 @@ func RewriteChangersFile(
 	ChangerType,
 	error,
 ) {
+	fmt.Println("In Rewrite")
 	fileData, err := json.MarshalIndent(changers, "", "  ")
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "failed to marshal data for file: %v", err)
 	}
+	fmt.Println("Finished Marshal")
 
 	err = os.WriteFile(changersFilename, fileData, 0644)
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "failed to write file %s: %v", changersFilename, err)
 	}
+	fmt.Println("Finished Writing to file")
 
 	return ToManyChangersMap(changers), nil
 }
@@ -174,6 +177,7 @@ func ToManyChangersMap(changers map[string]*ChangersChanger) map[string]*Changer
 			newMap[singleDomain] = ch
 		}
 	}
+	fmt.Println("Finished ToManyChangersMap")
 	return newMap
 }
 
