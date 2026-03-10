@@ -255,11 +255,11 @@ func putDspChangersMap(
 
 	switch input.Typic {
 	case sppAdapterWeb.ADULT:
-		changersAdl.Changers, err = filter.RewriteChangersFile(changersAdl.Changers, changersAdlFilename)
+		changersAdl.Changers, err = filter.RewriteChangersFile(input.ChangerType, changersAdlFilename)
 	case sppAdapterWeb.MAINSTREAM:
 		fmt.Println("In Put")
 		fmt.Println(changersMcFilename)
-		changersMc.Changers, err = filter.RewriteChangersFile(changersMc.Changers, changersMcFilename)
+		changersMc.Changers, err = filter.RewriteChangersFile(input.ChangerType, changersMcFilename)
 	default:
 		http.Error(w, "Invalid Typic value", http.StatusBadRequest)
 		return
