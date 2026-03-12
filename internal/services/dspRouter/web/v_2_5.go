@@ -271,7 +271,7 @@ func (s *Server) GetBids_V2_5(
 		}
 
 		if domain == "adl_dsp_wt_dao.ad" && req.SspDomain == "adl_trafficstars.com" {
-			fmt.Println("GOT REQ")
+			//fmt.Println("GOT REQ")
 			if mainRequest.Site.GetId() == "1343464" {
 				fmt.Println("GOT ID")
 			}
