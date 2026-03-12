@@ -270,15 +270,8 @@ func (s *Server) GetBids_V2_5(
 			}
 		}
 
-		if domain == "adl_dsp_wt_dao.ad" && req.SspDomain == "adl_trafficstars.com" {
-			//fmt.Println("GOT REQ")
-			if mainRequest.Site.GetId() == "1343464" {
-				fmt.Println("GOT ID")
-			}
-		}
-
 		if bidRequest, isChanged := filterBoxChanger.Change(mainRequest, domain); isChanged {
-			fmt.Println("HELLO")
+			fmt.Println(bidRequest.Site.GetId())
 			jsonDataTmp, err = jsoniter.Marshal(bidRequest)
 			if err != nil {
 				newErr := fmt.Errorf("Can not marshal in GetBids_V_2_5 because got uknown error: %v", err)
