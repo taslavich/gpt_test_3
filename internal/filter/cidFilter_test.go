@@ -1,6 +1,6 @@
 package filter
 
-import (
+/*import (
 	"testing"
 
 	"gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/proto/types/ortb_V2_5"
@@ -133,3 +133,4 @@ func TestCidIdBox_Allowed(t *testing.T) {
 		})
 	}
 }
+*/

@@ -167,11 +167,7 @@ func ToManyChangersMap(changers map[string]*ChangersChanger) map[string]*Changer
 	for key, val := range changers {
 		domains := utils.SplitAndTrimKeys(key)
 
-		ch := val
-
-		if len(domains) > 1 {
-			ch = val.ToMany()
-		}
+		ch := val.ToMany()
 
 		for _, singleDomain := range domains {
 			newMap[singleDomain] = ch
