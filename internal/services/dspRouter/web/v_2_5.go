@@ -271,7 +271,7 @@ func (s *Server) GetBids_V2_5(
 		}
 
 		if bidRequest, isChanged := filterBoxChanger.Change(mainRequest, domain); isChanged {
-			fmt.Println(bidRequest.Site.GetId())
+			//fmt.Println(bidRequest.Site.GetId())
 			jsonDataTmp, err = jsoniter.Marshal(bidRequest)
 			if err != nil {
 				newErr := fmt.Errorf("Can not marshal in GetBids_V_2_5 because got uknown error: %v", err)
