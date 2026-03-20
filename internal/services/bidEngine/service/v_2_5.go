@@ -7,7 +7,6 @@ import (
 	"log"
 	"sort"
 
-	"gitlab.com/twinbid-exchange/RTB-exchange/internal/constants"
 	bidEngineGrpc "gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/proto/services/bidEngine"
 	"gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/proto/types/ortb_V2_5"
 	utils "gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/utils_grpc"
@@ -28,8 +27,9 @@ func GetWinnerBidInternal_V_2_5(
 	admDomain string,
 ) (*ortb_V2_5.BidResponse, *clickhouse_types.BidResponse) {
 	type bidWithDomain struct {
-		bid    *ortb_V2_5.Bid
-		domain string
+		bid        *ortb_V2_5.Bid
+		finalPrice float32
+		domain     string
 	}
 
 	impBids := make(map[string][]*bidWithDomain)
@@ -98,11 +98,6 @@ func GetWinnerBidInternal_V_2_5(
 		if len(bids) == 0 {
 			continue // добавляем защиту
 		}
-		sort.Slice(bids, func(i, j int) bool {
-			return bids[i].bid.GetPrice() > bids[j].bid.GetPrice()
-		})
-
-		winner := bids[0]
 
 		var bidFloor float32 = 0
 		for _, imp := range req.BidRequest.Imp {
@@ -120,21 +115,33 @@ func GetWinnerBidInternal_V_2_5(
 			percentMap = *percentMapMainstream
 		}
 
-		value := utils.GetValueFomSspGeoDspMap(req.SspDomain, req.BidRequest.Device.Geo.GetCountry(), winner.domain, percentMap, &types.PercentAndBidfloor{
-			Percent:  profitPercent,
-			Bidfloor: true,
+		newBids := make([]*bidWithDomain, 0)
+		for k := range bids {
+			value := utils.GetValueFomSspGeoDspMap(req.SspDomain, req.BidRequest.Device.Geo.GetCountry(), bids[k].domain, percentMap, &types.PercentAndBidfloor{
+				Percent:  profitPercent,
+				Bidfloor: true,
+			})
+
+			finalPrice, err := applyPriceConstraintsAndPercent(
+				bids[k].bid.GetPrice(),
+				bidFloor,
+				value.Percent,
+				value.Bidfloor,
+			)
+			if err != nil {
+				continue
+			}
+
+			bids[k].finalPrice = finalPrice
+			newBids = append(newBids, bids[k])
+
+		}
+
+		sort.Slice(newBids, func(i, j int) bool {
+			return newBids[i].finalPrice > newBids[j].finalPrice
 		})
 
-		finalPrice, _, err := applyPriceConstraintsAndPercent(
-			winner.bid.GetPrice(),
-			bidFloor,
-			value.Percent,
-			value.Bidfloor,
-		)
-		if err != nil {
-			errStr = err.Error()
-			continue
-		}
+		winner := newBids[0]
 
 		var finalBid *ortb_V2_5.Bid
 
@@ -145,7 +152,7 @@ func GetWinnerBidInternal_V_2_5(
 			finalBid = &ortb_V2_5.Bid{
 				Id:    winner.bid.Id,
 				Impid: winner.bid.Impid,
-				Price: &finalPrice,
+				Price: &winner.finalPrice,
 				Adm:   &wrappedAdm,
 				Adid:  winner.bid.Adid,
 				Nurl:  &wrappedNurl,
@@ -156,7 +163,7 @@ func GetWinnerBidInternal_V_2_5(
 			finalBid = &ortb_V2_5.Bid{
 				Id:    winner.bid.Id,
 				Impid: winner.bid.Impid,
-				Price: &finalPrice,
+				Price: &winner.finalPrice,
 				Adm:   winner.bid.Adm,
 				Adid:  winner.bid.Adid,
 				Nurl:  &wrappedNurl,
@@ -169,7 +176,7 @@ func GetWinnerBidInternal_V_2_5(
 			DspDomain: &winner.domain,
 			Id:        winner.bid.Id,
 			Impid:     winner.bid.Impid,
-			Price:     &finalPrice,
+			Price:     &winner.finalPrice,
 			DspPrice:  winner.bid.Price,
 			Adid:      winner.bid.Adid,
 			Cid:       winner.bid.Cid,
@@ -196,44 +203,17 @@ func GetWinnerBidInternal_V_2_5(
 
 func applyPriceConstraintsAndPercent(dspPrice, bidFloor, profitPercent float32, needed bool) (
 	finalDspPrice float32,
-	finalProfitPercent float32,
 	err error,
 ) {
-	if needed && bidFloor == constants.NEGATIVE_BIDFLOOR {
-		bidFloor = constants.ZERO_BIDFLOOR
-	}
-
 	if needed && dspPrice < bidFloor {
-		return 0, 0, fmt.Errorf("DSP Price is lower thand bid floor")
+		return 0, fmt.Errorf("DSP Price is lower thand bid floor")
 	}
 
 	finalDspPrice = dspPrice - dspPrice*profitPercent
-	finalProfitPercent = profitPercent
 
 	if needed && finalDspPrice < bidFloor {
-		finalDspPrice, finalProfitPercent = findGoodPriceViaPercent(
-			dspPrice,
-			bidFloor,
-			profitPercent,
-		)
+		finalDspPrice = bidFloor
 	}
 
-	return finalDspPrice, finalProfitPercent, nil
-}
-
-func findGoodPriceViaPercent(
-	DspPrice, bidFloor, profitPercent float32,
-) (
-	finalDspPrice float32,
-	finalProfitPercent float32,
-) {
-	finalDspPrice = -1
-	for finalProfitPercent = profitPercent; finalProfitPercent >= 0; finalProfitPercent = finalProfitPercent - EPS {
-		finalDspPrice = DspPrice - DspPrice*finalProfitPercent
-		if finalDspPrice >= bidFloor {
-			break
-		}
-	}
-
-	return finalDspPrice, finalProfitPercent
+	return finalDspPrice, nil
 }
