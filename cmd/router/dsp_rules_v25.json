@@ -192,6 +192,20 @@
         }
       ]
     },
+    "dsp_2_galaksion.com": {
+      "v25": [
+        {
+          "and": [
+            { "field": "bidrequest.cur", "condition": "exists", "value_type": "string", "value": "" },
+            { "field": "bidrequest.id", "condition": "exists", "value_type": "string", "value": "" },
+            { "field": "imp.id",        "condition": "exists", "value_type": "string", "value": "" },
+            { "field": "device.ua",       "condition": "exists", "value_type": "string", "value": "" },
+            { "field": "device.ip",       "condition": "exists", "value_type": "string", "value": "" },
+            { "field": "at",            "condition": "exists", "value_type": "int",    "value": "" }
+          ]
+        }
+      ]
+    },
     "dsp_hilltopads.com": {
       "v25": [
         {
