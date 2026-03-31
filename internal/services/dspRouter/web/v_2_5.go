@@ -13,10 +13,10 @@ import (
 	"sync"
 	"time"
 
+	"github.com/google/uuid"
 	jsoniter "github.com/json-iterator/go"
 	"github.com/redis/go-redis/v9"
 	"github.com/yl2chen/cidranger"
-	"gitlab.com/twinbid-exchange/RTB-exchange/internal/coder"
 	"gitlab.com/twinbid-exchange/RTB-exchange/internal/config"
 	"gitlab.com/twinbid-exchange/RTB-exchange/internal/constants"
 	"gitlab.com/twinbid-exchange/RTB-exchange/internal/filter"
@@ -334,13 +334,29 @@ func (s *Server) GetBids_V2_5(
 				return
 			}
 
-			for i := range dspResp.Seatbid {
-				if dspResp.Seatbid[i] != nil {
+			if strings.HasSuffix(req.SspDomain, "kadam.net") {
+				for i := range dspResp.Seatbid {
+					if dspResp.Seatbid[i] == nil {
+						continue
+					}
 					for j := range dspResp.Seatbid[i].Bid {
-						if dspResp.Seatbid[i].Bid[j].Adm != nil {
-							adid := coder.AdmToAdidCompact(*dspResp.Seatbid[i].Bid[j].Adm)
-							dspResp.Seatbid[i].Bid[j].Adid = &adid
+						if dspResp.Seatbid[i].Bid[j] == nil {
+							continue
 						}
+						adid := uuid.New().String()[:10]
+						dspResp.Seatbid[i].Bid[j].Adid = &adid
+					}
+				}
+			} else {
+				for i := range dspResp.Seatbid {
+					if dspResp.Seatbid[i] == nil {
+						continue
+					}
+					for j := range dspResp.Seatbid[i].Bid {
+						if dspResp.Seatbid[i].Bid[j] == nil {
+							continue
+						}
+						dspResp.Seatbid[i].Bid[j].Adid = nil
 					}
 				}
 			}
