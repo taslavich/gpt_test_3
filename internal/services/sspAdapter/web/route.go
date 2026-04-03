@@ -31,7 +31,14 @@ const (
 	PostBid_POP_ADL_V_2_5_URL = "/bid_v_2_5"
 	PostBid_POP_MC_V_2_5_URL  = "/bid_v_2_5_mc"
 
-	PostBid_IPP_V_2_5_URL = "/bid_ipp_v_2_5"
+	PostBid_BAN_ADL_V_2_5_URL = "/bid_v_2_5_ban_adl"
+	PostBid_BAN_MC_V_2_5_URL  = "/bid_v_2_5_ban_mc"
+
+	PostBid_NAT_ADL_V_2_5_URL = "/bid_v_2_5_nat_adl"
+	PostBid_NAT_MC_V_2_5_URL  = "/bid_v_2_5_nat_mc"
+
+	PostBid_IPP_ADL_V_2_5_URL = "/bid_v_2_5_ipp_adl"
+	PostBid_IPP_MC_V_2_5_URL  = "/bid_v_2_5_ipp_mc"
 
 	GetAdmUrl  = "/adm"
 	GetNurlUrl = "/nurl"
