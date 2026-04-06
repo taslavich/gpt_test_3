@@ -32,6 +32,7 @@ type BidRequest struct {
 	Tmax          *int32                 `protobuf:"varint,7,opt,name=tmax,proto3,oneof" json:"tmax,omitempty"`
 	Cur           []string               `protobuf:"bytes,8,rep,name=cur,proto3" json:"cur,omitempty"`
 	Bcat          []string               `protobuf:"bytes,9,rep,name=bcat,proto3" json:"bcat,omitempty"`
+	Test          *int32                 `protobuf:"varint,10,opt,name=test,proto3,oneof" json:"test,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -129,6 +130,13 @@ func (x *BidRequest) GetBcat() []string {
 	return nil
 }
 
+func (x *BidRequest) GetTest() int32 {
+	if x != nil && x.Test != nil {
+		return *x.Test
+	}
+	return 0
+}
+
 type Imp struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Id            *string                `protobuf:"bytes,1,opt,name=id,proto3,oneof" json:"id,omitempty"`
@@ -139,6 +147,7 @@ type Imp struct {
 	Bidfloorcur   *string                `protobuf:"bytes,6,opt,name=bidfloorcur,proto3,oneof" json:"bidfloorcur,omitempty"`
 	Ext           *Imp_Ext               `protobuf:"bytes,7,opt,name=ext,proto3,oneof" json:"ext,omitempty"`
 	Banner        *Banner                `protobuf:"bytes,8,opt,name=banner,proto3,oneof" json:"banner,omitempty"`
+	Native        *Native                `protobuf:"bytes,9,opt,name=native,proto3,oneof" json:"native,omitempty"` // только request и ver
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -229,6 +238,13 @@ func (x *Imp) GetBanner() *Banner {
 	return nil
 }
 
+func (x *Imp) GetNative() *Native {
+	if x != nil {
+		return x.Native
+	}
+	return nil
+}
+
 type Banner struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	unknownFields protoimpl.UnknownFields
@@ -265,6 +281,58 @@ func (*Banner) Descriptor() ([]byte, []int) {
 	return file_types_ortb_V2_5_ortb_proto_rawDescGZIP(), []int{2}
 }
 
+type Native struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Request       *string                `protobuf:"bytes,1,opt,name=request,proto3,oneof" json:"request,omitempty"` // JSON строка
+	Ver           *string                `protobuf:"bytes,2,opt,name=ver,proto3,oneof" json:"ver,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *Native) Reset() {
+	*x = Native{}
+	mi := &file_types_ortb_V2_5_ortb_proto_msgTypes[3]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *Native) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*Native) ProtoMessage() {}
+
+func (x *Native) ProtoReflect() protoreflect.Message {
+	mi := &file_types_ortb_V2_5_ortb_proto_msgTypes[3]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use Native.ProtoReflect.Descriptor instead.
+func (*Native) Descriptor() ([]byte, []int) {
+	return file_types_ortb_V2_5_ortb_proto_rawDescGZIP(), []int{3}
+}
+
+func (x *Native) GetRequest() string {
+	if x != nil && x.Request != nil {
+		return *x.Request
+	}
+	return ""
+}
+
+func (x *Native) GetVer() string {
+	if x != nil && x.Ver != nil {
+		return *x.Ver
+	}
+	return ""
+}
+
 type Imp_Ext struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Subid         *string                `protobuf:"bytes,1,opt,name=subid,proto3,oneof" json:"subid,omitempty"`
@@ -274,7 +342,7 @@ type Imp_Ext struct {
 
 func (x *Imp_Ext) Reset() {
 	*x = Imp_Ext{}
-	mi := &file_types_ortb_V2_5_ortb_proto_msgTypes[3]
+	mi := &file_types_ortb_V2_5_ortb_proto_msgTypes[4]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -286,7 +354,7 @@ func (x *Imp_Ext) String() string {
 func (*Imp_Ext) ProtoMessage() {}
 
 func (x *Imp_Ext) ProtoReflect() protoreflect.Message {
-	mi := &file_types_ortb_V2_5_ortb_proto_msgTypes[3]
+	mi := &file_types_ortb_V2_5_ortb_proto_msgTypes[4]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -299,7 +367,7 @@ func (x *Imp_Ext) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Imp_Ext.ProtoReflect.Descriptor instead.
 func (*Imp_Ext) Descriptor() ([]byte, []int) {
-	return file_types_ortb_V2_5_ortb_proto_rawDescGZIP(), []int{3}
+	return file_types_ortb_V2_5_ortb_proto_rawDescGZIP(), []int{4}
 }
 
 func (x *Imp_Ext) GetSubid() string {
@@ -310,21 +378,27 @@ func (x *Imp_Ext) GetSubid() string {
 }
 
 type Device struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Ip            *string                `protobuf:"bytes,1,opt,name=ip,proto3,oneof" json:"ip,omitempty"`
-	Geo           *Geo                   `protobuf:"bytes,2,opt,name=geo,proto3,oneof" json:"geo,omitempty"`
-	Ua            *string                `protobuf:"bytes,3,opt,name=ua,proto3,oneof" json:"ua,omitempty"`
-	Js            *int32                 `protobuf:"varint,4,opt,name=js,proto3,oneof" json:"js,omitempty"`
-	Language      *string                `protobuf:"bytes,5,opt,name=language,proto3,oneof" json:"language,omitempty"`
-	DeviceExt     *Ext                   `protobuf:"bytes,6,opt,name=device_ext,json=deviceExt,proto3,oneof" json:"device_ext,omitempty"`
-	Ipv6          *string                `protobuf:"bytes,7,opt,name=ipv6,proto3,oneof" json:"ipv6,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	state          protoimpl.MessageState `protogen:"open.v1"`
+	Ip             *string                `protobuf:"bytes,1,opt,name=ip,proto3,oneof" json:"ip,omitempty"`
+	Geo            *Geo                   `protobuf:"bytes,2,opt,name=geo,proto3,oneof" json:"geo,omitempty"`
+	Ua             *string                `protobuf:"bytes,3,opt,name=ua,proto3,oneof" json:"ua,omitempty"`
+	Js             *int32                 `protobuf:"varint,4,opt,name=js,proto3,oneof" json:"js,omitempty"`
+	Language       *string                `protobuf:"bytes,5,opt,name=language,proto3,oneof" json:"language,omitempty"`
+	DeviceExt      *Ext                   `protobuf:"bytes,6,opt,name=device_ext,json=deviceExt,proto3,oneof" json:"device_ext,omitempty"`
+	Ipv6           *string                `protobuf:"bytes,7,opt,name=ipv6,proto3,oneof" json:"ipv6,omitempty"`
+	Connectiontype *int32                 `protobuf:"varint,8,opt,name=connectiontype,proto3,oneof" json:"connectiontype,omitempty"`
+	Carrier        *string                `protobuf:"bytes,9,opt,name=carrier,proto3,oneof" json:"carrier,omitempty"`
+	Os             *string                `protobuf:"bytes,10,opt,name=os,proto3,oneof" json:"os,omitempty"`
+	DeviceType     *int32                 `protobuf:"varint,11,opt,name=deviceType,proto3,oneof" json:"deviceType,omitempty"`
+	W              *int32                 `protobuf:"varint,12,opt,name=w,proto3,oneof" json:"w,omitempty"`
+	H              *int32                 `protobuf:"varint,13,opt,name=h,proto3,oneof" json:"h,omitempty"`
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
 }
 
 func (x *Device) Reset() {
 	*x = Device{}
-	mi := &file_types_ortb_V2_5_ortb_proto_msgTypes[4]
+	mi := &file_types_ortb_V2_5_ortb_proto_msgTypes[5]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -336,7 +410,7 @@ func (x *Device) String() string {
 func (*Device) ProtoMessage() {}
 
 func (x *Device) ProtoReflect() protoreflect.Message {
-	mi := &file_types_ortb_V2_5_ortb_proto_msgTypes[4]
+	mi := &file_types_ortb_V2_5_ortb_proto_msgTypes[5]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -349,7 +423,7 @@ func (x *Device) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Device.ProtoReflect.Descriptor instead.
 func (*Device) Descriptor() ([]byte, []int) {
-	return file_types_ortb_V2_5_ortb_proto_rawDescGZIP(), []int{4}
+	return file_types_ortb_V2_5_ortb_proto_rawDescGZIP(), []int{5}
 }
 
 func (x *Device) GetIp() string {
@@ -401,6 +475,48 @@ func (x *Device) GetIpv6() string {
 	return ""
 }
 
+func (x *Device) GetConnectiontype() int32 {
+	if x != nil && x.Connectiontype != nil {
+		return *x.Connectiontype
+	}
+	return 0
+}
+
+func (x *Device) GetCarrier() string {
+	if x != nil && x.Carrier != nil {
+		return *x.Carrier
+	}
+	return ""
+}
+
+func (x *Device) GetOs() string {
+	if x != nil && x.Os != nil {
+		return *x.Os
+	}
+	return ""
+}
+
+func (x *Device) GetDeviceType() int32 {
+	if x != nil && x.DeviceType != nil {
+		return *x.DeviceType
+	}
+	return 0
+}
+
+func (x *Device) GetW() int32 {
+	if x != nil && x.W != nil {
+		return *x.W
+	}
+	return 0
+}
+
+func (x *Device) GetH() int32 {
+	if x != nil && x.H != nil {
+		return *x.H
+	}
+	return 0
+}
+
 type Geo struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Country       *string                `protobuf:"bytes,1,opt,name=country,proto3,oneof" json:"country,omitempty"`
@@ -409,13 +525,14 @@ type Geo struct {
 	Region        *string                `protobuf:"bytes,4,opt,name=region,proto3,oneof" json:"region,omitempty"`
 	City          *string                `protobuf:"bytes,5,opt,name=city,proto3,oneof" json:"city,omitempty"`
 	Zip           *string                `protobuf:"bytes,6,opt,name=zip,proto3,oneof" json:"zip,omitempty"`
+	Type          *int32                 `protobuf:"varint,7,opt,name=type,proto3,oneof" json:"type,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
 func (x *Geo) Reset() {
 	*x = Geo{}
-	mi := &file_types_ortb_V2_5_ortb_proto_msgTypes[5]
+	mi := &file_types_ortb_V2_5_ortb_proto_msgTypes[6]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -427,7 +544,7 @@ func (x *Geo) String() string {
 func (*Geo) ProtoMessage() {}
 
 func (x *Geo) ProtoReflect() protoreflect.Message {
-	mi := &file_types_ortb_V2_5_ortb_proto_msgTypes[5]
+	mi := &file_types_ortb_V2_5_ortb_proto_msgTypes[6]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -440,7 +557,7 @@ func (x *Geo) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Geo.ProtoReflect.Descriptor instead.
 func (*Geo) Descriptor() ([]byte, []int) {
-	return file_types_ortb_V2_5_ortb_proto_rawDescGZIP(), []int{5}
+	return file_types_ortb_V2_5_ortb_proto_rawDescGZIP(), []int{6}
 }
 
 func (x *Geo) GetCountry() string {
@@ -485,6 +602,13 @@ func (x *Geo) GetZip() string {
 	return ""
 }
 
+func (x *Geo) GetType() int32 {
+	if x != nil && x.Type != nil {
+		return *x.Type
+	}
+	return 0
+}
+
 type Site struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Id            *string                `protobuf:"bytes,1,opt,name=id,proto3,oneof" json:"id,omitempty"`
@@ -494,13 +618,14 @@ type Site struct {
 	Ref           *string                `protobuf:"bytes,5,opt,name=ref,proto3,oneof" json:"ref,omitempty"`
 	Cat           []string               `protobuf:"bytes,6,rep,name=cat,proto3" json:"cat,omitempty"`
 	Publisher     *Publisher             `protobuf:"bytes,7,opt,name=publisher,proto3,oneof" json:"publisher,omitempty"`
+	Keywords      *string                `protobuf:"bytes,8,opt,name=keywords,proto3,oneof" json:"keywords,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
 func (x *Site) Reset() {
 	*x = Site{}
-	mi := &file_types_ortb_V2_5_ortb_proto_msgTypes[6]
+	mi := &file_types_ortb_V2_5_ortb_proto_msgTypes[7]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -512,7 +637,7 @@ func (x *Site) String() string {
 func (*Site) ProtoMessage() {}
 
 func (x *Site) ProtoReflect() protoreflect.Message {
-	mi := &file_types_ortb_V2_5_ortb_proto_msgTypes[6]
+	mi := &file_types_ortb_V2_5_ortb_proto_msgTypes[7]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -525,7 +650,7 @@ func (x *Site) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Site.ProtoReflect.Descriptor instead.
 func (*Site) Descriptor() ([]byte, []int) {
-	return file_types_ortb_V2_5_ortb_proto_rawDescGZIP(), []int{6}
+	return file_types_ortb_V2_5_ortb_proto_rawDescGZIP(), []int{7}
 }
 
 func (x *Site) GetId() string {
@@ -577,16 +702,24 @@ func (x *Site) GetPublisher() *Publisher {
 	return nil
 }
 
+func (x *Site) GetKeywords() string {
+	if x != nil && x.Keywords != nil {
+		return *x.Keywords
+	}
+	return ""
+}
+
 type Publisher struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Id            *string                `protobuf:"bytes,1,opt,name=id,proto3,oneof" json:"id,omitempty"`
+	Name          *string                `protobuf:"bytes,2,opt,name=name,proto3,oneof" json:"name,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
 func (x *Publisher) Reset() {
 	*x = Publisher{}
-	mi := &file_types_ortb_V2_5_ortb_proto_msgTypes[7]
+	mi := &file_types_ortb_V2_5_ortb_proto_msgTypes[8]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -598,7 +731,7 @@ func (x *Publisher) String() string {
 func (*Publisher) ProtoMessage() {}
 
 func (x *Publisher) ProtoReflect() protoreflect.Message {
-	mi := &file_types_ortb_V2_5_ortb_proto_msgTypes[7]
+	mi := &file_types_ortb_V2_5_ortb_proto_msgTypes[8]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -611,12 +744,19 @@ func (x *Publisher) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Publisher.ProtoReflect.Descriptor instead.
 func (*Publisher) Descriptor() ([]byte, []int) {
-	return file_types_ortb_V2_5_ortb_proto_rawDescGZIP(), []int{7}
+	return file_types_ortb_V2_5_ortb_proto_rawDescGZIP(), []int{8}
 }
 
 func (x *Publisher) GetId() string {
 	if x != nil && x.Id != nil {
 		return *x.Id
+	}
+	return ""
+}
+
+func (x *Publisher) GetName() string {
+	if x != nil && x.Name != nil {
+		return *x.Name
 	}
 	return ""
 }
@@ -632,7 +772,7 @@ type User struct {
 
 func (x *User) Reset() {
 	*x = User{}
-	mi := &file_types_ortb_V2_5_ortb_proto_msgTypes[8]
+	mi := &file_types_ortb_V2_5_ortb_proto_msgTypes[9]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -644,7 +784,7 @@ func (x *User) String() string {
 func (*User) ProtoMessage() {}
 
 func (x *User) ProtoReflect() protoreflect.Message {
-	mi := &file_types_ortb_V2_5_ortb_proto_msgTypes[8]
+	mi := &file_types_ortb_V2_5_ortb_proto_msgTypes[9]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -657,7 +797,7 @@ func (x *User) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use User.ProtoReflect.Descriptor instead.
 func (*User) Descriptor() ([]byte, []int) {
-	return file_types_ortb_V2_5_ortb_proto_rawDescGZIP(), []int{8}
+	return file_types_ortb_V2_5_ortb_proto_rawDescGZIP(), []int{9}
 }
 
 func (x *User) GetId() string {
@@ -684,14 +824,14 @@ func (x *User) GetBuyeruid() string {
 type SeatBid struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Bid           []*Bid                 `protobuf:"bytes,1,rep,name=bid,proto3" json:"bid,omitempty"`
-	Seat          *string                `protobuf:"bytes,2,opt,name=seat,proto3,oneof" json:"seat,omitempty"` // Добавлено поле seat
+	Seat          *string                `protobuf:"bytes,2,opt,name=seat,proto3,oneof" json:"seat,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
 func (x *SeatBid) Reset() {
 	*x = SeatBid{}
-	mi := &file_types_ortb_V2_5_ortb_proto_msgTypes[9]
+	mi := &file_types_ortb_V2_5_ortb_proto_msgTypes[10]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -703,7 +843,7 @@ func (x *SeatBid) String() string {
 func (*SeatBid) ProtoMessage() {}
 
 func (x *SeatBid) ProtoReflect() protoreflect.Message {
-	mi := &file_types_ortb_V2_5_ortb_proto_msgTypes[9]
+	mi := &file_types_ortb_V2_5_ortb_proto_msgTypes[10]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -716,7 +856,7 @@ func (x *SeatBid) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SeatBid.ProtoReflect.Descriptor instead.
 func (*SeatBid) Descriptor() ([]byte, []int) {
-	return file_types_ortb_V2_5_ortb_proto_rawDescGZIP(), []int{9}
+	return file_types_ortb_V2_5_ortb_proto_rawDescGZIP(), []int{10}
 }
 
 func (x *SeatBid) GetBid() []*Bid {
@@ -741,7 +881,7 @@ type Bid struct {
 	Adid          *string                `protobuf:"bytes,4,opt,name=adid,proto3,oneof" json:"adid,omitempty"`
 	Nurl          *string                `protobuf:"bytes,5,opt,name=nurl,proto3,oneof" json:"nurl,omitempty"`
 	Burl          *string                `protobuf:"bytes,6,opt,name=burl,proto3,oneof" json:"burl,omitempty"`
-	Adm           *string                `protobuf:"bytes,7,opt,name=adm,proto3,oneof" json:"adm,omitempty"`
+	Adm           *string                `protobuf:"bytes,7,opt,name=adm,proto3,oneof" json:"adm,omitempty"` // просто строка, хоть нативка хоть баннер
 	Adomain       []string               `protobuf:"bytes,8,rep,name=adomain,proto3" json:"adomain,omitempty"`
 	Bundle        *string                `protobuf:"bytes,9,opt,name=bundle,proto3,oneof" json:"bundle,omitempty"`
 	Iurl          *string                `protobuf:"bytes,10,opt,name=iurl,proto3,oneof" json:"iurl,omitempty"`
@@ -751,13 +891,14 @@ type Bid struct {
 	Dealid        *string                `protobuf:"bytes,14,opt,name=dealid,proto3,oneof" json:"dealid,omitempty"`
 	W             *int32                 `protobuf:"varint,15,opt,name=w,proto3,oneof" json:"w,omitempty"`
 	H             *int32                 `protobuf:"varint,16,opt,name=h,proto3,oneof" json:"h,omitempty"`
+	Ext           *BidExt                `protobuf:"bytes,17,opt,name=ext,proto3,oneof" json:"ext,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
 func (x *Bid) Reset() {
 	*x = Bid{}
-	mi := &file_types_ortb_V2_5_ortb_proto_msgTypes[10]
+	mi := &file_types_ortb_V2_5_ortb_proto_msgTypes[11]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -769,7 +910,7 @@ func (x *Bid) String() string {
 func (*Bid) ProtoMessage() {}
 
 func (x *Bid) ProtoReflect() protoreflect.Message {
-	mi := &file_types_ortb_V2_5_ortb_proto_msgTypes[10]
+	mi := &file_types_ortb_V2_5_ortb_proto_msgTypes[11]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -782,7 +923,7 @@ func (x *Bid) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Bid.ProtoReflect.Descriptor instead.
 func (*Bid) Descriptor() ([]byte, []int) {
-	return file_types_ortb_V2_5_ortb_proto_rawDescGZIP(), []int{10}
+	return file_types_ortb_V2_5_ortb_proto_rawDescGZIP(), []int{11}
 }
 
 func (x *Bid) GetId() string {
@@ -897,20 +1038,80 @@ func (x *Bid) GetH() int32 {
 	return 0
 }
 
+func (x *Bid) GetExt() *BidExt {
+	if x != nil {
+		return x.Ext
+	}
+	return nil
+}
+
+type BidExt struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Btype         *int32                 `protobuf:"varint,1,opt,name=btype,proto3,oneof" json:"btype,omitempty"`
+	VerticalId    *int32                 `protobuf:"varint,2,opt,name=vertical_id,json=verticalId,proto3,oneof" json:"vertical_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *BidExt) Reset() {
+	*x = BidExt{}
+	mi := &file_types_ortb_V2_5_ortb_proto_msgTypes[12]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *BidExt) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*BidExt) ProtoMessage() {}
+
+func (x *BidExt) ProtoReflect() protoreflect.Message {
+	mi := &file_types_ortb_V2_5_ortb_proto_msgTypes[12]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use BidExt.ProtoReflect.Descriptor instead.
+func (*BidExt) Descriptor() ([]byte, []int) {
+	return file_types_ortb_V2_5_ortb_proto_rawDescGZIP(), []int{12}
+}
+
+func (x *BidExt) GetBtype() int32 {
+	if x != nil && x.Btype != nil {
+		return *x.Btype
+	}
+	return 0
+}
+
+func (x *BidExt) GetVerticalId() int32 {
+	if x != nil && x.VerticalId != nil {
+		return *x.VerticalId
+	}
+	return 0
+}
+
 type BidResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Id            *string                `protobuf:"bytes,1,opt,name=id,proto3,oneof" json:"id,omitempty"`
-	Seatbid       []*SeatBid             `protobuf:"bytes,2,rep,name=seatbid,proto3" json:"seatbid,omitempty"` // Исправлено: repeated вместо optional
+	Seatbid       []*SeatBid             `protobuf:"bytes,2,rep,name=seatbid,proto3" json:"seatbid,omitempty"` // у тебя всегда один SeatBid с одним Bid
 	Bidid         *string                `protobuf:"bytes,3,opt,name=bidid,proto3,oneof" json:"bidid,omitempty"`
 	Cur           *string                `protobuf:"bytes,4,opt,name=cur,proto3,oneof" json:"cur,omitempty"`
 	Nbr           *int32                 `protobuf:"varint,5,opt,name=nbr,proto3,oneof" json:"nbr,omitempty"`
+	Ext           *Ext                   `protobuf:"bytes,6,opt,name=ext,proto3,oneof" json:"ext,omitempty"` // Galaxyon кидает "Ext" на этом уровне
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
 func (x *BidResponse) Reset() {
 	*x = BidResponse{}
-	mi := &file_types_ortb_V2_5_ortb_proto_msgTypes[11]
+	mi := &file_types_ortb_V2_5_ortb_proto_msgTypes[13]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -922,7 +1123,7 @@ func (x *BidResponse) String() string {
 func (*BidResponse) ProtoMessage() {}
 
 func (x *BidResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_types_ortb_V2_5_ortb_proto_msgTypes[11]
+	mi := &file_types_ortb_V2_5_ortb_proto_msgTypes[13]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -935,7 +1136,7 @@ func (x *BidResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use BidResponse.ProtoReflect.Descriptor instead.
 func (*BidResponse) Descriptor() ([]byte, []int) {
-	return file_types_ortb_V2_5_ortb_proto_rawDescGZIP(), []int{11}
+	return file_types_ortb_V2_5_ortb_proto_rawDescGZIP(), []int{13}
 }
 
 func (x *BidResponse) GetId() string {
@@ -973,6 +1174,13 @@ func (x *BidResponse) GetNbr() int32 {
 	return 0
 }
 
+func (x *BidResponse) GetExt() *Ext {
+	if x != nil {
+		return x.Ext
+	}
+	return nil
+}
+
 type Ext struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Values        map[string]string      `protobuf:"bytes,1,rep,name=values,proto3" json:"values,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
@@ -982,7 +1190,7 @@ type Ext struct {
 
 func (x *Ext) Reset() {
 	*x = Ext{}
-	mi := &file_types_ortb_V2_5_ortb_proto_msgTypes[12]
+	mi := &file_types_ortb_V2_5_ortb_proto_msgTypes[14]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -994,7 +1202,7 @@ func (x *Ext) String() string {
 func (*Ext) ProtoMessage() {}
 
 func (x *Ext) ProtoReflect() protoreflect.Message {
-	mi := &file_types_ortb_V2_5_ortb_proto_msgTypes[12]
+	mi := &file_types_ortb_V2_5_ortb_proto_msgTypes[14]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1007,7 +1215,7 @@ func (x *Ext) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Ext.ProtoReflect.Descriptor instead.
 func (*Ext) Descriptor() ([]byte, []int) {
-	return file_types_ortb_V2_5_ortb_proto_rawDescGZIP(), []int{12}
+	return file_types_ortb_V2_5_ortb_proto_rawDescGZIP(), []int{14}
 }
 
 func (x *Ext) GetValues() map[string]string {
@@ -1021,7 +1229,7 @@ var File_types_ortb_V2_5_ortb_proto protoreflect.FileDescriptor
 
 const file_types_ortb_V2_5_ortb_proto_rawDesc = "" +
 	"\n" +
-	"\x1atypes/ortb_V2_5/ortb.proto\x12\tortb_V2_5\"\xcf\x02\n" +
+	"\x1atypes/ortb_V2_5/ortb.proto\x12\tortb_V2_5\"\xf1\x02\n" +
 	"\n" +
 	"BidRequest\x12\x13\n" +
 	"\x02id\x18\x01 \x01(\tH\x00R\x02id\x88\x01\x01\x12\x13\n" +
@@ -1032,13 +1240,16 @@ const file_types_ortb_V2_5_ortb_proto_rawDesc = "" +
 	"\x04user\x18\x06 \x01(\v2\x0f.ortb_V2_5.UserH\x04R\x04user\x88\x01\x01\x12\x17\n" +
 	"\x04tmax\x18\a \x01(\x05H\x05R\x04tmax\x88\x01\x01\x12\x10\n" +
 	"\x03cur\x18\b \x03(\tR\x03cur\x12\x12\n" +
-	"\x04bcat\x18\t \x03(\tR\x04bcatB\x05\n" +
+	"\x04bcat\x18\t \x03(\tR\x04bcat\x12\x17\n" +
+	"\x04test\x18\n" +
+	" \x01(\x05H\x06R\x04test\x88\x01\x01B\x05\n" +
 	"\x03_idB\x05\n" +
 	"\x03_atB\t\n" +
 	"\a_deviceB\a\n" +
 	"\x05_siteB\a\n" +
 	"\x05_userB\a\n" +
-	"\x05_tmax\"\xe6\x02\n" +
+	"\x05_tmaxB\a\n" +
+	"\x05_test\"\xa1\x03\n" +
 	"\x03Imp\x12\x13\n" +
 	"\x02id\x18\x01 \x01(\tH\x00R\x02id\x88\x01\x01\x12\x1f\n" +
 	"\bbidfloor\x18\x02 \x01(\x02H\x01R\bbidfloor\x88\x01\x01\x12\x19\n" +
@@ -1047,7 +1258,8 @@ const file_types_ortb_V2_5_ortb_proto_rawDesc = "" +
 	"\x05instl\x18\x05 \x01(\x05H\x04R\x05instl\x88\x01\x01\x12%\n" +
 	"\vbidfloorcur\x18\x06 \x01(\tH\x05R\vbidfloorcur\x88\x01\x01\x12)\n" +
 	"\x03ext\x18\a \x01(\v2\x12.ortb_V2_5.Imp_ExtH\x06R\x03ext\x88\x01\x01\x12.\n" +
-	"\x06banner\x18\b \x01(\v2\x11.ortb_V2_5.BannerH\aR\x06banner\x88\x01\x01B\x05\n" +
+	"\x06banner\x18\b \x01(\v2\x11.ortb_V2_5.BannerH\aR\x06banner\x88\x01\x01\x12.\n" +
+	"\x06native\x18\t \x01(\v2\x11.ortb_V2_5.NativeH\bR\x06native\x88\x01\x01B\x05\n" +
 	"\x03_idB\v\n" +
 	"\t_bidfloorB\b\n" +
 	"\x06_tagidB\t\n" +
@@ -1055,11 +1267,18 @@ const file_types_ortb_V2_5_ortb_proto_rawDesc = "" +
 	"\x06_instlB\x0e\n" +
 	"\f_bidfloorcurB\x06\n" +
 	"\x04_extB\t\n" +
-	"\a_banner\"\b\n" +
-	"\x06Banner\".\n" +
+	"\a_bannerB\t\n" +
+	"\a_native\"\b\n" +
+	"\x06Banner\"R\n" +
+	"\x06Native\x12\x1d\n" +
+	"\arequest\x18\x01 \x01(\tH\x00R\arequest\x88\x01\x01\x12\x15\n" +
+	"\x03ver\x18\x02 \x01(\tH\x01R\x03ver\x88\x01\x01B\n" +
+	"\n" +
+	"\b_requestB\x06\n" +
+	"\x04_ver\".\n" +
 	"\aImp_Ext\x12\x19\n" +
 	"\x05subid\x18\x01 \x01(\tH\x00R\x05subid\x88\x01\x01B\b\n" +
-	"\x06_subid\"\x9e\x02\n" +
+	"\x06_subid\"\x8b\x04\n" +
 	"\x06Device\x12\x13\n" +
 	"\x02ip\x18\x01 \x01(\tH\x00R\x02ip\x88\x01\x01\x12%\n" +
 	"\x03geo\x18\x02 \x01(\v2\x0e.ortb_V2_5.GeoH\x01R\x03geo\x88\x01\x01\x12\x13\n" +
@@ -1068,28 +1287,47 @@ const file_types_ortb_V2_5_ortb_proto_rawDesc = "" +
 	"\blanguage\x18\x05 \x01(\tH\x04R\blanguage\x88\x01\x01\x122\n" +
 	"\n" +
 	"device_ext\x18\x06 \x01(\v2\x0e.ortb_V2_5.ExtH\x05R\tdeviceExt\x88\x01\x01\x12\x17\n" +
-	"\x04ipv6\x18\a \x01(\tH\x06R\x04ipv6\x88\x01\x01B\x05\n" +
+	"\x04ipv6\x18\a \x01(\tH\x06R\x04ipv6\x88\x01\x01\x12+\n" +
+	"\x0econnectiontype\x18\b \x01(\x05H\aR\x0econnectiontype\x88\x01\x01\x12\x1d\n" +
+	"\acarrier\x18\t \x01(\tH\bR\acarrier\x88\x01\x01\x12\x13\n" +
+	"\x02os\x18\n" +
+	" \x01(\tH\tR\x02os\x88\x01\x01\x12#\n" +
+	"\n" +
+	"deviceType\x18\v \x01(\x05H\n" +
+	"R\n" +
+	"deviceType\x88\x01\x01\x12\x11\n" +
+	"\x01w\x18\f \x01(\x05H\vR\x01w\x88\x01\x01\x12\x11\n" +
+	"\x01h\x18\r \x01(\x05H\fR\x01h\x88\x01\x01B\x05\n" +
 	"\x03_ipB\x06\n" +
 	"\x04_geoB\x05\n" +
 	"\x03_uaB\x05\n" +
 	"\x03_jsB\v\n" +
 	"\t_languageB\r\n" +
 	"\v_device_extB\a\n" +
-	"\x05_ipv6\"\xd7\x01\n" +
+	"\x05_ipv6B\x11\n" +
+	"\x0f_connectiontypeB\n" +
+	"\n" +
+	"\b_carrierB\x05\n" +
+	"\x03_osB\r\n" +
+	"\v_deviceTypeB\x04\n" +
+	"\x02_wB\x04\n" +
+	"\x02_h\"\xf9\x01\n" +
 	"\x03Geo\x12\x1d\n" +
 	"\acountry\x18\x01 \x01(\tH\x00R\acountry\x88\x01\x01\x12\x15\n" +
 	"\x03lat\x18\x02 \x01(\x02H\x01R\x03lat\x88\x01\x01\x12\x15\n" +
 	"\x03lon\x18\x03 \x01(\x02H\x02R\x03lon\x88\x01\x01\x12\x1b\n" +
 	"\x06region\x18\x04 \x01(\tH\x03R\x06region\x88\x01\x01\x12\x17\n" +
 	"\x04city\x18\x05 \x01(\tH\x04R\x04city\x88\x01\x01\x12\x15\n" +
-	"\x03zip\x18\x06 \x01(\tH\x05R\x03zip\x88\x01\x01B\n" +
+	"\x03zip\x18\x06 \x01(\tH\x05R\x03zip\x88\x01\x01\x12\x17\n" +
+	"\x04type\x18\a \x01(\x05H\x06R\x04type\x88\x01\x01B\n" +
 	"\n" +
 	"\b_countryB\x06\n" +
 	"\x04_latB\x06\n" +
 	"\x04_lonB\t\n" +
 	"\a_regionB\a\n" +
 	"\x05_cityB\x06\n" +
-	"\x04_zip\"\x86\x02\n" +
+	"\x04_zipB\a\n" +
+	"\x05_type\"\xb4\x02\n" +
 	"\x04Site\x12\x13\n" +
 	"\x02id\x18\x01 \x01(\tH\x00R\x02id\x88\x01\x01\x12\x17\n" +
 	"\x04name\x18\x02 \x01(\tH\x01R\x04name\x88\x01\x01\x12\x17\n" +
@@ -1097,17 +1335,21 @@ const file_types_ortb_V2_5_ortb_proto_rawDesc = "" +
 	"\x06domain\x18\x04 \x01(\tH\x03R\x06domain\x88\x01\x01\x12\x15\n" +
 	"\x03ref\x18\x05 \x01(\tH\x04R\x03ref\x88\x01\x01\x12\x10\n" +
 	"\x03cat\x18\x06 \x03(\tR\x03cat\x127\n" +
-	"\tpublisher\x18\a \x01(\v2\x14.ortb_V2_5.PublisherH\x05R\tpublisher\x88\x01\x01B\x05\n" +
+	"\tpublisher\x18\a \x01(\v2\x14.ortb_V2_5.PublisherH\x05R\tpublisher\x88\x01\x01\x12\x1f\n" +
+	"\bkeywords\x18\b \x01(\tH\x06R\bkeywords\x88\x01\x01B\x05\n" +
 	"\x03_idB\a\n" +
 	"\x05_nameB\a\n" +
 	"\x05_pageB\t\n" +
 	"\a_domainB\x06\n" +
 	"\x04_refB\f\n" +
 	"\n" +
-	"_publisher\"'\n" +
+	"_publisherB\v\n" +
+	"\t_keywords\"I\n" +
 	"\tPublisher\x12\x13\n" +
-	"\x02id\x18\x01 \x01(\tH\x00R\x02id\x88\x01\x01B\x05\n" +
-	"\x03_id\"~\n" +
+	"\x02id\x18\x01 \x01(\tH\x00R\x02id\x88\x01\x01\x12\x17\n" +
+	"\x04name\x18\x02 \x01(\tH\x01R\x04name\x88\x01\x01B\x05\n" +
+	"\x03_idB\a\n" +
+	"\x05_name\"~\n" +
 	"\x04User\x12\x13\n" +
 	"\x02id\x18\x01 \x01(\tH\x00R\x02id\x88\x01\x01\x12\x1f\n" +
 	"\bkeywords\x18\x02 \x01(\tH\x01R\bkeywords\x88\x01\x01\x12\x1f\n" +
@@ -1118,7 +1360,7 @@ const file_types_ortb_V2_5_ortb_proto_rawDesc = "" +
 	"\aSeatBid\x12 \n" +
 	"\x03bid\x18\x01 \x03(\v2\x0e.ortb_V2_5.BidR\x03bid\x12\x17\n" +
 	"\x04seat\x18\x02 \x01(\tH\x00R\x04seat\x88\x01\x01B\a\n" +
-	"\x05_seat\"\x83\x04\n" +
+	"\x05_seat\"\xb5\x04\n" +
 	"\x03Bid\x12\x13\n" +
 	"\x02id\x18\x01 \x01(\tH\x00R\x02id\x88\x01\x01\x12\x19\n" +
 	"\x05impid\x18\x02 \x01(\tH\x01R\x05impid\x88\x01\x01\x12\x19\n" +
@@ -1137,7 +1379,8 @@ const file_types_ortb_V2_5_ortb_proto_rawDesc = "" +
 	"\x04attr\x18\r \x03(\x05R\x04attr\x12\x1b\n" +
 	"\x06dealid\x18\x0e \x01(\tH\vR\x06dealid\x88\x01\x01\x12\x11\n" +
 	"\x01w\x18\x0f \x01(\x05H\fR\x01w\x88\x01\x01\x12\x11\n" +
-	"\x01h\x18\x10 \x01(\x05H\rR\x01h\x88\x01\x01B\x05\n" +
+	"\x01h\x18\x10 \x01(\x05H\rR\x01h\x88\x01\x01\x12(\n" +
+	"\x03ext\x18\x11 \x01(\v2\x11.ortb_V2_5.BidExtH\x0eR\x03ext\x88\x01\x01B\x05\n" +
 	"\x03_idB\b\n" +
 	"\x06_impidB\b\n" +
 	"\x06_priceB\a\n" +
@@ -1151,17 +1394,26 @@ const file_types_ortb_V2_5_ortb_proto_rawDesc = "" +
 	"\x05_cridB\t\n" +
 	"\a_dealidB\x04\n" +
 	"\x02_wB\x04\n" +
-	"\x02_h\"\xba\x01\n" +
+	"\x02_hB\x06\n" +
+	"\x04_ext\"c\n" +
+	"\x06BidExt\x12\x19\n" +
+	"\x05btype\x18\x01 \x01(\x05H\x00R\x05btype\x88\x01\x01\x12$\n" +
+	"\vvertical_id\x18\x02 \x01(\x05H\x01R\n" +
+	"verticalId\x88\x01\x01B\b\n" +
+	"\x06_btypeB\x0e\n" +
+	"\f_vertical_id\"\xe9\x01\n" +
 	"\vBidResponse\x12\x13\n" +
 	"\x02id\x18\x01 \x01(\tH\x00R\x02id\x88\x01\x01\x12,\n" +
 	"\aseatbid\x18\x02 \x03(\v2\x12.ortb_V2_5.SeatBidR\aseatbid\x12\x19\n" +
 	"\x05bidid\x18\x03 \x01(\tH\x01R\x05bidid\x88\x01\x01\x12\x15\n" +
 	"\x03cur\x18\x04 \x01(\tH\x02R\x03cur\x88\x01\x01\x12\x15\n" +
-	"\x03nbr\x18\x05 \x01(\x05H\x03R\x03nbr\x88\x01\x01B\x05\n" +
+	"\x03nbr\x18\x05 \x01(\x05H\x03R\x03nbr\x88\x01\x01\x12%\n" +
+	"\x03ext\x18\x06 \x01(\v2\x0e.ortb_V2_5.ExtH\x04R\x03ext\x88\x01\x01B\x05\n" +
 	"\x03_idB\b\n" +
 	"\x06_bididB\x06\n" +
 	"\x04_curB\x06\n" +
-	"\x04_nbr\"t\n" +
+	"\x04_nbrB\x06\n" +
+	"\x04_ext\"t\n" +
 	"\x03Ext\x122\n" +
 	"\x06values\x18\x01 \x03(\v2\x1a.ortb_V2_5.Ext.ValuesEntryR\x06values\x1a9\n" +
 	"\vValuesEntry\x12\x10\n" +
@@ -1180,41 +1432,46 @@ func file_types_ortb_V2_5_ortb_proto_rawDescGZIP() []byte {
 	return file_types_ortb_V2_5_ortb_proto_rawDescData
 }
 
-var file_types_ortb_V2_5_ortb_proto_msgTypes = make([]protoimpl.MessageInfo, 14)
+var file_types_ortb_V2_5_ortb_proto_msgTypes = make([]protoimpl.MessageInfo, 16)
 var file_types_ortb_V2_5_ortb_proto_goTypes = []any{
 	(*BidRequest)(nil),  // 0: ortb_V2_5.BidRequest
 	(*Imp)(nil),         // 1: ortb_V2_5.Imp
 	(*Banner)(nil),      // 2: ortb_V2_5.Banner
-	(*Imp_Ext)(nil),     // 3: ortb_V2_5.Imp_Ext
-	(*Device)(nil),      // 4: ortb_V2_5.Device
-	(*Geo)(nil),         // 5: ortb_V2_5.Geo
-	(*Site)(nil),        // 6: ortb_V2_5.Site
-	(*Publisher)(nil),   // 7: ortb_V2_5.Publisher
-	(*User)(nil),        // 8: ortb_V2_5.User
-	(*SeatBid)(nil),     // 9: ortb_V2_5.SeatBid
-	(*Bid)(nil),         // 10: ortb_V2_5.Bid
-	(*BidResponse)(nil), // 11: ortb_V2_5.BidResponse
-	(*Ext)(nil),         // 12: ortb_V2_5.Ext
-	nil,                 // 13: ortb_V2_5.Ext.ValuesEntry
+	(*Native)(nil),      // 3: ortb_V2_5.Native
+	(*Imp_Ext)(nil),     // 4: ortb_V2_5.Imp_Ext
+	(*Device)(nil),      // 5: ortb_V2_5.Device
+	(*Geo)(nil),         // 6: ortb_V2_5.Geo
+	(*Site)(nil),        // 7: ortb_V2_5.Site
+	(*Publisher)(nil),   // 8: ortb_V2_5.Publisher
+	(*User)(nil),        // 9: ortb_V2_5.User
+	(*SeatBid)(nil),     // 10: ortb_V2_5.SeatBid
+	(*Bid)(nil),         // 11: ortb_V2_5.Bid
+	(*BidExt)(nil),      // 12: ortb_V2_5.BidExt
+	(*BidResponse)(nil), // 13: ortb_V2_5.BidResponse
+	(*Ext)(nil),         // 14: ortb_V2_5.Ext
+	nil,                 // 15: ortb_V2_5.Ext.ValuesEntry
 }
 var file_types_ortb_V2_5_ortb_proto_depIdxs = []int32{
 	1,  // 0: ortb_V2_5.BidRequest.imp:type_name -> ortb_V2_5.Imp
-	4,  // 1: ortb_V2_5.BidRequest.device:type_name -> ortb_V2_5.Device
-	6,  // 2: ortb_V2_5.BidRequest.site:type_name -> ortb_V2_5.Site
-	8,  // 3: ortb_V2_5.BidRequest.user:type_name -> ortb_V2_5.User
-	3,  // 4: ortb_V2_5.Imp.ext:type_name -> ortb_V2_5.Imp_Ext
+	5,  // 1: ortb_V2_5.BidRequest.device:type_name -> ortb_V2_5.Device
+	7,  // 2: ortb_V2_5.BidRequest.site:type_name -> ortb_V2_5.Site
+	9,  // 3: ortb_V2_5.BidRequest.user:type_name -> ortb_V2_5.User
+	4,  // 4: ortb_V2_5.Imp.ext:type_name -> ortb_V2_5.Imp_Ext
 	2,  // 5: ortb_V2_5.Imp.banner:type_name -> ortb_V2_5.Banner
-	5,  // 6: ortb_V2_5.Device.geo:type_name -> ortb_V2_5.Geo
-	12, // 7: ortb_V2_5.Device.device_ext:type_name -> ortb_V2_5.Ext
-	7,  // 8: ortb_V2_5.Site.publisher:type_name -> ortb_V2_5.Publisher
-	10, // 9: ortb_V2_5.SeatBid.bid:type_name -> ortb_V2_5.Bid
-	9,  // 10: ortb_V2_5.BidResponse.seatbid:type_name -> ortb_V2_5.SeatBid
-	13, // 11: ortb_V2_5.Ext.values:type_name -> ortb_V2_5.Ext.ValuesEntry
-	12, // [12:12] is the sub-list for method output_type
-	12, // [12:12] is the sub-list for method input_type
-	12, // [12:12] is the sub-list for extension type_name
-	12, // [12:12] is the sub-list for extension extendee
-	0,  // [0:12] is the sub-list for field type_name
+	3,  // 6: ortb_V2_5.Imp.native:type_name -> ortb_V2_5.Native
+	6,  // 7: ortb_V2_5.Device.geo:type_name -> ortb_V2_5.Geo
+	14, // 8: ortb_V2_5.Device.device_ext:type_name -> ortb_V2_5.Ext
+	8,  // 9: ortb_V2_5.Site.publisher:type_name -> ortb_V2_5.Publisher
+	11, // 10: ortb_V2_5.SeatBid.bid:type_name -> ortb_V2_5.Bid
+	12, // 11: ortb_V2_5.Bid.ext:type_name -> ortb_V2_5.BidExt
+	10, // 12: ortb_V2_5.BidResponse.seatbid:type_name -> ortb_V2_5.SeatBid
+	14, // 13: ortb_V2_5.BidResponse.ext:type_name -> ortb_V2_5.Ext
+	15, // 14: ortb_V2_5.Ext.values:type_name -> ortb_V2_5.Ext.ValuesEntry
+	15, // [15:15] is the sub-list for method output_type
+	15, // [15:15] is the sub-list for method input_type
+	15, // [15:15] is the sub-list for extension type_name
+	15, // [15:15] is the sub-list for extension extendee
+	0,  // [0:15] is the sub-list for field type_name
 }
 
 func init() { file_types_ortb_V2_5_ortb_proto_init() }
@@ -1233,13 +1490,15 @@ func file_types_ortb_V2_5_ortb_proto_init() {
 	file_types_ortb_V2_5_ortb_proto_msgTypes[9].OneofWrappers = []any{}
 	file_types_ortb_V2_5_ortb_proto_msgTypes[10].OneofWrappers = []any{}
 	file_types_ortb_V2_5_ortb_proto_msgTypes[11].OneofWrappers = []any{}
+	file_types_ortb_V2_5_ortb_proto_msgTypes[12].OneofWrappers = []any{}
+	file_types_ortb_V2_5_ortb_proto_msgTypes[13].OneofWrappers = []any{}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_types_ortb_V2_5_ortb_proto_rawDesc), len(file_types_ortb_V2_5_ortb_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   14,
+			NumMessages:   16,
 			NumExtensions: 0,
 			NumServices:   0,
 		},
