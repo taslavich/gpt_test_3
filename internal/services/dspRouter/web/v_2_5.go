@@ -186,17 +186,8 @@ func (s *Server) GetBids_V2_5(
 		filtersCid = s.filtersCidMc
 		filterBoxChanger = s.filterBoxChangerMc
 	} else {
-		allsTrue := map[string]map[string]map[string]bool{
-			"ALL": {
-				"ALL": {
-					"ALL": true,
-				},
-			},
-		}
-		dspList = config.MapStringToString{
-			"none": "none",
-		}
-		linkMap = allsTrue
+		dspList = nil
+		linkMap = nil
 		filters = nil
 		filtersCid = nil
 		filterBoxChanger = nil
@@ -412,10 +403,6 @@ func (s *Server) GetBids_V2_5(
 
 func (s *Server) getBidsFromDSPbyHTTP_V_2_5(ctx context.Context, uuid string, jsonData []byte, dspEndpoint string, client_v_2_5 *http.Client) (
 	ddr *ortb_V2_5.BidResponse, code int, err error) {
-	if dspEndpoint == "none" {
-		return nil, http.StatusNoContent, nil
-	}
-
 	buf := s.bufferPool.Get().(*bytes.Buffer)
 	buf.Reset()
 	buf.Write(jsonData)
