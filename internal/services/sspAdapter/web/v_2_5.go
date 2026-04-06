@@ -47,9 +47,9 @@ func postBid_V2_5(
 	orchestratorClient orchestratorProto.OrchestratorServiceClient,
 	timeout time.Duration,
 	sspFeeds map[string]string,
-	sspMainstreamFeeds map[string]string,
 	counter *uint64,
 	typic string,
+	format string,
 	siteIdsAndDomains *utils.SiteIdsAndDomains,
 	geoToLang geoBadIp.GeoToLang,
 ) {
@@ -71,12 +71,8 @@ func postBid_V2_5(
 
 	var ssp_domain string
 	var ok bool
-	switch typic {
-	case ADULT:
-		ssp_domain, ok = sspFeeds[input.Feed]
-	case MAINSTREAM:
-		ssp_domain, ok = sspMainstreamFeeds[input.Feed]
-	}
+
+	ssp_domain, ok = sspFeeds[input.Feed]
 	if !ok {
 		err := fmt.Errorf("Busy")
 		http.Error(w, err.Error(), http.StatusForbidden)
@@ -198,6 +194,10 @@ func postBid_V2_5(
 
 	globalId := uuid.New().String()
 
+	if err := utils.WriteStringToRedis(ctx, redisClient, globalId, constants.FORMAT_COLUMN, format, logged); err != nil {
+		log.Printf("failed to WriteStringToRedis Format in postBid_V2_5: %w", err)
+	}
+
 	if err := utils.WriteStringToRedis(ctx, redisClient, globalId, constants.TYPIC_COLUMN, typic, logged); err != nil {
 		log.Printf("failed to WriteStringToRedis Domain in postBid_V2_5: %w", err)
 	}
@@ -242,40 +242,46 @@ func postBid_V2_5(
 	reqCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
-	res, err := orchestratorClient.GetWinnerBid_V2_5(
-		reqCtx,
-		&orchestratorProto.OrchestratorRequest_V2_5{
-			BidRequest: input.Payload.BidRequest,
-			GlobalId:   globalId,
-			SspDomain:  ssp_domain,
-			Logged:     logged,
-			Typic:      typic,
-		},
-	)
-	if err != nil {
-		httpErr := fmt.Errorf("Cannot GetWinnerBid because got error:")
+	switch format {
+	case POP:
+		res, err := orchestratorClient.GetWinnerBid_V2_5(
+			reqCtx,
+			&orchestratorProto.OrchestratorRequest_V2_5{
+				BidRequest: input.Payload.BidRequest,
+				GlobalId:   globalId,
+				SspDomain:  ssp_domain,
+				Logged:     logged,
+				Typic:      typic,
+			},
+		)
+		if err != nil {
+			httpErr := fmt.Errorf("Cannot GetWinnerBid because got error:")
 
-		httpCode := http.StatusInternalServerError
+			httpCode := http.StatusInternalServerError
 
-		st, ok := status.FromError(err)
-		if !ok {
-			httpCode = grpcRuntime.HTTPStatusFromCode(st.Code())
+			st, ok := status.FromError(err)
+			if !ok {
+				httpCode = grpcRuntime.HTTPStatusFromCode(st.Code())
+			}
+
+			http.Error(w, httpErr.Error(), httpCode)
+			log.Printf(err.Error())
+			return
+		}
+		statusCode := http.StatusOK
+		if len(res.BidResponse.Seatbid[0].Bid) == 0 {
+			w.WriteHeader(http.StatusNoContent) // ← ПРАВИЛЬНО
+			return
 		}
 
-		http.Error(w, httpErr.Error(), httpCode)
-		log.Printf(err.Error())
-		return
-	}
-	statusCode := http.StatusOK
-	if len(res.BidResponse.Seatbid[0].Bid) == 0 {
+		if err = rnr.JSON(w, statusCode, postBidResponse_V2_5{
+			BidResponse: res.BidResponse,
+		}); err != nil {
+			log.Printf("Cannot make HTTP response back: %v\n", err)
+		}
+	default:
 		w.WriteHeader(http.StatusNoContent) // ← ПРАВИЛЬНО
 		return
-	}
-
-	if err = rnr.JSON(w, statusCode, postBidResponse_V2_5{
-		BidResponse: res.BidResponse,
-	}); err != nil {
-		log.Printf("Cannot make HTTP response back: %v\n", err)
 	}
 }
 

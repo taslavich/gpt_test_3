@@ -91,6 +91,7 @@ func insertBatch(
 		INSERT INTO %s (
 			uuid,
 			timestamp,
+			format,
 			typic,
 			spp_domain,
 			bid_request,
@@ -132,6 +133,7 @@ func insertBatch(
 		if err := batch.Append(
 			u,
 			ts,
+			r.FORMAT,
 			r.TYPIC,
 			r.SPP_DOMAIN,
 			r.BID_REQUEST,
@@ -188,7 +190,8 @@ func hasData(record types.StatisticsRecord) bool {
 		record.UUID != "" ||
 		record.TIMESTAMP != "" ||
 		record.SPP_DOMAIN != "" ||
-		record.TYPIC != ""
+		record.TYPIC != "" ||
+		record.FORMAT != ""
 }
 
 func CreateTable(ctx context.Context, ch clickhouse.Conn, tableName string) error {
@@ -196,6 +199,7 @@ func CreateTable(ctx context.Context, ch clickhouse.Conn, tableName string) erro
         CREATE TABLE IF NOT EXISTS %s (
             uuid UUID,
             timestamp DateTime64(3),
+			format String,
 			typic String,
             spp_domain String,
             bid_request String,
