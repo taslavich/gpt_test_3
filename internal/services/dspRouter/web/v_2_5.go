@@ -191,6 +191,13 @@ func (s *Server) GetBids_V2_5(
 		filters = nil
 		filtersCid = nil
 		filterBoxChanger = nil
+
+		return &dspRouterGrpc.DspRouterResponse_V2_5{
+			BidRequest:   req.BidRequest,
+			BidResponses: make(map[string]*ortb_V2_5.BidResponse),
+			GlobalId:     req.GlobalId,
+			SspDomain:    req.SspDomain,
+		}, nil
 	}
 
 	for endpoint, domain := range dspList {
