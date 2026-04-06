@@ -14,6 +14,7 @@ message OrchestratorRequest_V2_5 {
   string ssp_domain = 3;
   bool logged = 4;
   string typic = 5;
+  string format = 6;
 }
 
 message OrchestratorResponse_V2_5 {

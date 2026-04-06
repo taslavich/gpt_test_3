@@ -77,6 +77,7 @@ func (s *Server) GetWinnerBid_V2_5(
 			SspDomain:  req.SspDomain,
 			Logged:     req.Logged,
 			Typic:      req.Typic,
+			Format:     req.Format,
 		},
 	)
 	if err != nil {
@@ -135,6 +136,7 @@ func (s *Server) GetWinnerBid_V2_5(
 			SspDomain:    bids.SspDomain,
 			Logged:       req.Logged,
 			Typic:        req.Typic,
+			Format:       req.Format,
 		},
 	)
 	if err != nil {
