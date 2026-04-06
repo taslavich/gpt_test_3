@@ -173,19 +173,33 @@ func (s *Server) GetBids_V2_5(
 	var filters *filter.FiltersBox
 	var filtersCid *filter.FilterCidBoxType
 	var filterBoxChanger *filter.ChangersBoxChanger
-	switch req.Typic {
-	case sppAdapterWeb.ADULT:
+	if req.Typic == sppAdapterWeb.ADULT && req.Format == sppAdapterWeb.POP {
 		dspList = s.dspEndpoints_adult_v_2_5
 		linkMap = *s.linkMap_adult
 		filters = s.filtersAdl
 		filtersCid = s.filtersCidAdl
 		filterBoxChanger = s.filterBoxChangerAdl
-	case sppAdapterWeb.MAINSTREAM:
+	} else if req.Typic == sppAdapterWeb.MAINSTREAM && req.Format == sppAdapterWeb.POP {
 		dspList = s.dspEndpoints_mainstream_v_2_5
 		linkMap = *s.linkMap_mainstream
 		filters = s.filtersMc
 		filtersCid = s.filtersCidMc
 		filterBoxChanger = s.filterBoxChangerMc
+	} else {
+		allsTrue := map[string]map[string]map[string]bool{
+			"ALL": {
+				"ALL": {
+					"ALL": true,
+				},
+			},
+		}
+		dspList = config.MapStringToString{
+			"none": "none",
+		}
+		linkMap = allsTrue
+		filters = nil
+		filtersCid = nil
+		filterBoxChanger = nil
 	}
 
 	for endpoint, domain := range dspList {
@@ -398,6 +412,10 @@ func (s *Server) GetBids_V2_5(
 
 func (s *Server) getBidsFromDSPbyHTTP_V_2_5(ctx context.Context, uuid string, jsonData []byte, dspEndpoint string, client_v_2_5 *http.Client) (
 	ddr *ortb_V2_5.BidResponse, code int, err error) {
+	if dspEndpoint == "none" {
+		return nil, http.StatusNoContent, nil
+	}
+
 	buf := s.bufferPool.Get().(*bytes.Buffer)
 	buf.Reset()
 	buf.Write(jsonData)
