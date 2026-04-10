@@ -247,6 +247,15 @@ func (x *Imp) GetNative() *Native {
 
 type Banner struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
+	W             *int32                 `protobuf:"varint,1,opt,name=w,proto3,oneof" json:"w,omitempty"`
+	H             *int32                 `protobuf:"varint,2,opt,name=h,proto3,oneof" json:"h,omitempty"`
+	Pos           *int32                 `protobuf:"varint,3,opt,name=pos,proto3,oneof" json:"pos,omitempty"`
+	Mimes         []string               `protobuf:"bytes,4,rep,name=mimes,proto3" json:"mimes,omitempty"`
+	Api           *string                `protobuf:"bytes,5,opt,name=api,proto3,oneof" json:"api,omitempty"`
+	Topframe      *int32                 `protobuf:"varint,6,opt,name=topframe,proto3,oneof" json:"topframe,omitempty"`
+	Btype         []int32                `protobuf:"varint,7,rep,packed,name=btype,proto3" json:"btype,omitempty"`
+	Battr         []int32                `protobuf:"varint,8,rep,packed,name=battr,proto3" json:"battr,omitempty"`
+	Ext           []string               `protobuf:"bytes,9,rep,name=ext,proto3" json:"ext,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -279,6 +288,69 @@ func (x *Banner) ProtoReflect() protoreflect.Message {
 // Deprecated: Use Banner.ProtoReflect.Descriptor instead.
 func (*Banner) Descriptor() ([]byte, []int) {
 	return file_types_ortb_V2_5_ortb_proto_rawDescGZIP(), []int{2}
+}
+
+func (x *Banner) GetW() int32 {
+	if x != nil && x.W != nil {
+		return *x.W
+	}
+	return 0
+}
+
+func (x *Banner) GetH() int32 {
+	if x != nil && x.H != nil {
+		return *x.H
+	}
+	return 0
+}
+
+func (x *Banner) GetPos() int32 {
+	if x != nil && x.Pos != nil {
+		return *x.Pos
+	}
+	return 0
+}
+
+func (x *Banner) GetMimes() []string {
+	if x != nil {
+		return x.Mimes
+	}
+	return nil
+}
+
+func (x *Banner) GetApi() string {
+	if x != nil && x.Api != nil {
+		return *x.Api
+	}
+	return ""
+}
+
+func (x *Banner) GetTopframe() int32 {
+	if x != nil && x.Topframe != nil {
+		return *x.Topframe
+	}
+	return 0
+}
+
+func (x *Banner) GetBtype() []int32 {
+	if x != nil {
+		return x.Btype
+	}
+	return nil
+}
+
+func (x *Banner) GetBattr() []int32 {
+	if x != nil {
+		return x.Battr
+	}
+	return nil
+}
+
+func (x *Banner) GetExt() []string {
+	if x != nil {
+		return x.Ext
+	}
+	return nil
 }
 
 type Native struct {
@@ -1268,8 +1340,22 @@ const file_types_ortb_V2_5_ortb_proto_rawDesc = "" +
 	"\f_bidfloorcurB\x06\n" +
 	"\x04_extB\t\n" +
 	"\a_bannerB\t\n" +
-	"\a_native\"\b\n" +
-	"\x06Banner\"R\n" +
+	"\a_native\"\xfa\x01\n" +
+	"\x06Banner\x12\x11\n" +
+	"\x01w\x18\x01 \x01(\x05H\x00R\x01w\x88\x01\x01\x12\x11\n" +
+	"\x01h\x18\x02 \x01(\x05H\x01R\x01h\x88\x01\x01\x12\x15\n" +
+	"\x03pos\x18\x03 \x01(\x05H\x02R\x03pos\x88\x01\x01\x12\x14\n" +
+	"\x05mimes\x18\x04 \x03(\tR\x05mimes\x12\x15\n" +
+	"\x03api\x18\x05 \x01(\tH\x03R\x03api\x88\x01\x01\x12\x1f\n" +
+	"\btopframe\x18\x06 \x01(\x05H\x04R\btopframe\x88\x01\x01\x12\x14\n" +
+	"\x05btype\x18\a \x03(\x05R\x05btype\x12\x14\n" +
+	"\x05battr\x18\b \x03(\x05R\x05battr\x12\x10\n" +
+	"\x03ext\x18\t \x03(\tR\x03extB\x04\n" +
+	"\x02_wB\x04\n" +
+	"\x02_hB\x06\n" +
+	"\x04_posB\x06\n" +
+	"\x04_apiB\v\n" +
+	"\t_topframe\"R\n" +
 	"\x06Native\x12\x1d\n" +
 	"\arequest\x18\x01 \x01(\tH\x00R\arequest\x88\x01\x01\x12\x15\n" +
 	"\x03ver\x18\x02 \x01(\tH\x01R\x03ver\x88\x01\x01B\n" +
@@ -1481,6 +1567,7 @@ func file_types_ortb_V2_5_ortb_proto_init() {
 	}
 	file_types_ortb_V2_5_ortb_proto_msgTypes[0].OneofWrappers = []any{}
 	file_types_ortb_V2_5_ortb_proto_msgTypes[1].OneofWrappers = []any{}
+	file_types_ortb_V2_5_ortb_proto_msgTypes[2].OneofWrappers = []any{}
 	file_types_ortb_V2_5_ortb_proto_msgTypes[3].OneofWrappers = []any{}
 	file_types_ortb_V2_5_ortb_proto_msgTypes[4].OneofWrappers = []any{}
 	file_types_ortb_V2_5_ortb_proto_msgTypes[5].OneofWrappers = []any{}
