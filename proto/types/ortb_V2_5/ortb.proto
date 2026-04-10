@@ -27,7 +27,17 @@ message Imp {
     optional Native native = 9;  // только request и ver
 }
 
-message Banner {}
+message Banner {
+    optional int32 w = 1;           
+    optional int32 h = 2;          
+    optional int32 pos = 3;        
+    repeated string mimes = 4;      
+    optional string api = 5;       
+    optional int32 topframe = 6;   
+    repeated int32 btype = 7;       
+    repeated int32 battr = 8;       
+    repeated string ext = 9;      
+}
 
 message Native {
     optional string request = 1;  // JSON строка
