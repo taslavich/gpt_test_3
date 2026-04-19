@@ -12,7 +12,7 @@ import { useNotifications } from "@/contexts/NotificationContext";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { useProfile } from "@/contexts/ProfileContext";
 import { useAuth } from "@/contexts/AuthContext";
-import { supabase } from "@/integrations/supabase/client";
+import { createTopupRequest, listTopupRequests, validatePromo } from "@/lib/api";
 
 const amounts = [100, 250, 500, 1000, 5000];
 
@@ -54,12 +54,8 @@ export default function DashboardBalance() {
   const fetchTopupRequests = async () => {
     if (!user) return;
     setLoadingRequests(true);
-    const { data, error } = await supabase
-      .from("topup_requests")
-      .select("*")
-      .eq("user_id", user.id)
-      .order("created_at", { ascending: false });
-    if (!error && data) setTopupRequests(data as TopupRequest[]);
+    const data = await listTopupRequests(user.id);
+    setTopupRequests(data as TopupRequest[]);
     setLoadingRequests(false);
   };
 
@@ -73,29 +69,14 @@ export default function DashboardBalance() {
   const handleApplyPromo = async () => {
     const code = promoCode.trim().toUpperCase();
     if (!code) return;
-    const { data, error } = await supabase
-      .from("promo_codes")
-      .select("*")
-      .eq("code", code)
-      .eq("is_active", true)
-      .single();
-    if (error || !data) {
+    const data = await validatePromo(code);
+    if (!data.valid) {
       setAppliedPromo(null);
       toast.error(t("balance.promo.invalid"));
       return;
     }
-    // Check expiry
-    if (data.expires_at && new Date(data.expires_at) < new Date()) {
-      toast.error(t("balance.promo.invalid"));
-      return;
-    }
-    // Check max uses
-    if (data.max_uses && data.current_uses >= data.max_uses) {
-      toast.error(t("balance.promo.invalid"));
-      return;
-    }
-    setAppliedPromo({ code, bonus: Number(data.bonus_percent) });
-    toast.success(t("balance.promo.applied").replace("{percent}", `${data.bonus_percent}`));
+    setAppliedPromo({ code, bonus: Number(data.bonusPercent) });
+    toast.success(t("balance.promo.applied").replace("{percent}", `${data.bonusPercent}`));
   };
 
   const handleRemovePromo = () => {
@@ -121,34 +102,19 @@ export default function DashboardBalance() {
   const handleSubmitTx = async () => {
     if (!txHash.trim() || !user || !pendingPayment) return;
 
-    const { error } = await supabase.from("topup_requests").insert({
-      user_id: user.id,
+    const { error } = await createTopupRequest({
+      userId: user.id,
       amount: pendingPayment.amount,
-      payment_method: pendingPayment.method,
-      tx_hash: txHash.trim(),
-      promo_code: pendingPayment.promo || null,
-      bonus_percent: pendingPayment.bonus || 0,
+      paymentMethod: pendingPayment.method,
+      txHash: txHash.trim(),
+      promoCode: pendingPayment.promo || undefined,
+      bonusPercent: pendingPayment.bonus || 0,
     });
 
     if (error) {
       toast.error("Error submitting payment");
       console.error(error);
       return;
-    }
-
-    // Record promo usage if applicable
-    if (pendingPayment.promo) {
-      const { data: promoData } = await supabase
-        .from("promo_codes")
-        .select("id")
-        .eq("code", pendingPayment.promo)
-        .single();
-      if (promoData) {
-        await supabase.from("promo_usage").insert({
-          user_id: user.id,
-          promo_code_id: promoData.id,
-        });
-      }
     }
 
     toast.success(t("balance.toast.paymentSent"), {
