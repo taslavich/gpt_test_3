@@ -72,6 +72,7 @@ export default function EditCampaign() {
       setTrafficType(campaign.trafficType || "mainstream");
       setInitialTrafficType(campaign.trafficType || "mainstream");
       setVerticals(campaign.verticals || []);
+      setInitialBannerSize(campaign.bannerSize || "");
     }
   }, [campaign]);
 
@@ -79,12 +80,44 @@ export default function EditCampaign() {
     return JSON.stringify(creatives) !== JSON.stringify(initialCreatives);
   }, [creatives, initialCreatives]);
 
-  const hasTrafficTypeChanged = trafficType !== initialTrafficType;
-  const needsModeration = hasCreativeChanged || hasTrafficTypeChanged;
-
+  const [initialBannerSize, setInitialBannerSize] = useState("");
   const isRestart = campaign?.status === "completed";
   const showBannerSize = campaign?.formatKey === "banner";
   const showBrandName = campaign?.formatKey === "native" || campaign?.formatKey === "push";
+  const hasBannerSizeChanged = showBannerSize && bannerSize !== initialBannerSize;
+  const hasTrafficTypeChanged = trafficType !== initialTrafficType;
+  const needsModeration = hasCreativeChanged || hasTrafficTypeChanged || hasBannerSizeChanged;
+
+  const clearError = (...keys: string[]) => setErrors(prev => {
+    const next = { ...prev };
+    keys.forEach(k => delete next[k]);
+    return next;
+  });
+
+  // Reactively clear budget/date/price errors
+  useEffect(() => { if (totalBudget && parseFloat(totalBudget.replace(",",".")) >= 1) clearError("totalBudget"); }, [totalBudget]);
+  useEffect(() => { if (startDate) clearError("startDate"); }, [startDate]);
+  useEffect(() => { if (endDate) { const today = new Date(); today.setHours(0,0,0,0); if (new Date(endDate) >= today) clearError("endDate"); } }, [endDate]);
+  useEffect(() => { if (name.trim()) clearError("name"); }, [name]);
+  useEffect(() => {
+    if (priceValue && campaign) {
+      const pv = parseFloat(priceValue.replace(",", ".")) || 0;
+      const formatMins: Record<string, Record<TrafficQuality, number>> = {
+        banner: { common: 0.01, high: 0.01, ultra: 0.01 },
+        native: { common: 0.01, high: 0.01, ultra: 0.01 },
+        push: { common: 0.005, high: 0.005, ultra: 0.005 },
+        popunder: { common: 0.3, high: 0.7, ultra: 0.9 },
+      };
+      const mins = formatMins[campaign.formatKey] || formatMins.banner;
+      const minCpm = mins[trafficQuality];
+      const min = pricingModel === "cpc" ? +(minCpm * 1.7 / 1000).toFixed(5) : minCpm;
+      if (pv >= min) clearError("priceValue");
+    }
+  }, [priceValue, pricingModel, trafficQuality, campaign]);
+
+  const updateList = (key: string, updates: Partial<TargetingState>) => {
+    setLists(prev => ({ ...prev, [key]: { ...prev[key], ...updates } }));
+  };
 
   if (!campaign) {
     return (
@@ -95,16 +128,12 @@ export default function EditCampaign() {
     );
   }
 
-  const updateList = (key: string, updates: Partial<TargetingState>) => {
-    setLists(prev => ({ ...prev, [key]: { ...prev[key], ...updates } }));
-  };
-
   const parseNum = (v: string) => parseFloat(v.replace(",", ".")) || 0;
 
   const handleSave = () => {
     const e: Record<string, string> = {};
     const tb = parseNum(totalBudget);
-    if (!totalBudget || isNaN(tb) || tb < 100) e.totalBudget = t("edit.errorBudgetMin");
+    if (!totalBudget || isNaN(tb) || tb < 1) e.totalBudget = t("edit.errorBudgetMin");
 
     const formatMins: Record<string, Record<TrafficQuality, number>> = {
       banner: { common: 0.01, high: 0.01, ultra: 0.01 },
@@ -128,6 +157,7 @@ export default function EditCampaign() {
 
     // Validate creatives
     creatives.forEach(c => {
+      if (!c.name?.trim()) e[`creative_${c.id}_name`] = t("create.required");
       if (!c.url.trim()) e[`creative_${c.id}_url`] = t("create.required");
       if (campaign.formatKey !== "popunder" && !c.imageUrl) e[`creative_${c.id}_image`] = t("create.required");
       if ((campaign.formatKey === "native" || campaign.formatKey === "push") && !c.title?.trim()) e[`creative_${c.id}_title`] = t("create.required");
@@ -195,7 +225,7 @@ export default function EditCampaign() {
             <CardContent className="space-y-5 pt-6">
               <div className="space-y-2">
                 <Label>{t("create.trafficType")}</Label>
-                <Select value={trafficType} onValueChange={(v) => setTrafficType(v as TrafficType)}>
+                <Select value={trafficType} onValueChange={(v) => { setTrafficType(v as TrafficType); if (v === "mainstream") setVerticals(prev => prev.filter(x => x !== "Adult")); }}>
                   <SelectTrigger className="bg-background border-border">
                     <SelectValue />
                   </SelectTrigger>
@@ -207,9 +237,9 @@ export default function EditCampaign() {
                 </Select>
               </div>
               <div className="space-y-2">
-                <Label>{t("create.vertical")} ({t("create.optional")})</Label>
+                <Label>{t("create.vertical")}</Label>
                 <div className="flex flex-wrap gap-2">
-                  {VERTICALS.map(v => {
+                  {VERTICALS.filter(v => trafficType === "mainstream" ? v !== "Adult" : true).map(v => {
                     const isChecked = verticals.includes(v);
                     return (
                       <button
@@ -230,7 +260,7 @@ export default function EditCampaign() {
               </div>
               <div className="space-y-2">
                 <Label>{t("edit.name")} *</Label>
-                <Input value={name} onChange={(e) => setName(e.target.value)}
+                <Input value={name} onChange={(e) => { setName(e.target.value); if (e.target.value.trim()) clearError("name"); }}
                   className={`bg-background border-border ${errors.name ? "border-destructive" : ""}`} />
                 {errors.name && <p className="text-xs text-destructive">{errors.name}</p>}
               </div>
@@ -243,7 +273,7 @@ export default function EditCampaign() {
               {showBannerSize && (
                 <div className="space-y-2">
                   <Label>{t("create.bannerSize")} *</Label>
-                  <Select value={bannerSize} onValueChange={setBannerSize}>
+                  <Select value={bannerSize} onValueChange={(v) => { setBannerSize(v); clearError("bannerSize"); }}>
                     <SelectTrigger className={`bg-background border-border ${errors.bannerSize ? "border-destructive" : ""}`}>
                       <SelectValue placeholder={t("create.selectBannerSize")} />
                     </SelectTrigger>
@@ -257,7 +287,7 @@ export default function EditCampaign() {
 
               {showBrandName && (
                 <div className="space-y-2">
-                  <Label>{t("create.brandName")} ({t("create.optional")})</Label>
+                  <Label>{t("create.brandName")}</Label>
                   <Input value={brandName} onChange={(e) => setBrandName(e.target.value)}
                     placeholder={t("create.brandNamePlaceholder")} className="bg-background border-border" />
                 </div>
@@ -265,7 +295,7 @@ export default function EditCampaign() {
 
               <div className="pt-2">
                 <p className="text-sm font-medium text-muted-foreground mb-3">{t("create.creatives")}</p>
-                <CreativesEditor formatKey={campaign.formatKey} creatives={creatives} onChange={setCreatives} errors={errors} />
+                <CreativesEditor formatKey={campaign.formatKey} creatives={creatives} onChange={setCreatives} errors={errors} onClearError={clearError} />
               </div>
             </CardContent>
           </Card>

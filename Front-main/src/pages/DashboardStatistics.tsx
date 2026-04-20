@@ -2,19 +2,20 @@ import { useMemo, useCallback, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
 import { Eye, MousePointer, Target, TrendingUp, ArrowUpDown, CalendarIcon, RefreshCw, Filter } from "lucide-react";
 import { AreaChart, Area, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
-import { format, parse, isWithinInterval, startOfDay, subDays, startOfWeek, startOfMonth } from "date-fns";
+import { format, parse, isWithinInterval, startOfDay, subDays } from "date-fns";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
 import type { DateRange } from "react-day-picker";
 import { toast } from "sonner";
 import { useCampaigns } from "@/contexts/CampaignContext";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { useStatistics } from "@/contexts/StatisticsContext";
+import { formatCountryLabel } from "@/lib/countries";
 
 type GroupBy = "dates" | "hours" | "browsers" | "siteid" | "devices" | "os" | "country";
 type SortKey = "label" | "impressions" | "clicks" | "spent";
@@ -26,6 +27,13 @@ function seedRandom(seed: string) {
   return () => { h = Math.imul(h ^ (h >>> 16), 0x45d9f3b); h = Math.imul(h ^ (h >>> 13), 0x45d9f3b); return ((h ^ (h >>> 16)) >>> 0) / 4294967296; };
 }
 
+const DIMENSION_MAP: Record<string, string[]> = {
+  country: ["US","GB","DE","FR","BR","IN","JP","RU","AU","CA","ES","IT","KR","TR","PL"],
+  browsers: ["Chrome","Safari","Firefox","Edge","Opera","Samsung Internet"],
+  devices: ["Mobile","Desktop","Tablet","Smart TV"],
+  os: ["Android","iOS","Windows","macOS","Linux","ChromeOS"],
+};
+
 function getCampaignData(campaignId: string, groupBy: GroupBy): { label: string; impressions: number; clicks: number; spent: number }[] {
   const rng = seedRandom(campaignId + groupBy);
   const r = (min: number, max: number) => Math.floor(rng() * (max - min)) + min;
@@ -33,75 +41,122 @@ function getCampaignData(campaignId: string, groupBy: GroupBy): { label: string;
   if (groupBy === "dates") {
     const now = new Date();
     return Array.from({ length: 30 }, (_, i) => {
-      const d = new Date(now);
-      d.setDate(d.getDate() - 29 + i);
-      const day = String(d.getDate()).padStart(2, "0");
-      const month = String(d.getMonth() + 1).padStart(2, "0");
-      const year = d.getFullYear();
-      return {
-        label: `${day}.${month}.${year}`,
-        impressions: r(1000, 8000), clicks: r(50, 500), spent: r(500, 4000),
-      };
+      const d = new Date(now); d.setDate(d.getDate() - 29 + i);
+      return { label: `${String(d.getDate()).padStart(2,"0")}.${String(d.getMonth()+1).padStart(2,"0")}.${d.getFullYear()}`, impressions: r(1000,8000), clicks: r(50,500), spent: r(500,4000) };
     });
   }
   if (groupBy === "hours") {
     const now = new Date();
     const days = Array.from({ length: 14 }, (_, i) => {
-      const d = new Date(now);
-      d.setDate(d.getDate() - 13 + i);
-      const day = String(d.getDate()).padStart(2, "0");
-      const month = String(d.getMonth() + 1).padStart(2, "0");
-      const year = d.getFullYear();
-      return `${day}.${month}.${year}`;
+      const d = new Date(now); d.setDate(d.getDate() - 13 + i);
+      return `${String(d.getDate()).padStart(2,"0")}.${String(d.getMonth()+1).padStart(2,"0")}.${d.getFullYear()}`;
     });
     return days.flatMap(day =>
       Array.from({ length: 24 }, (_, h) => ({
-        label: `${day} ${String(h).padStart(2, "0")}:00`,
-        impressions: r(100, 1500), clicks: r(5, 120), spent: r(50, 800),
+        label: `${day} ${String(h).padStart(2,"0")}:00`,
+        impressions: r(100,1500), clicks: r(5,120), spent: r(50,800),
       }))
     );
   }
-  if (groupBy === "browsers") {
-    return ["Chrome", "Safari", "Firefox", "Edge", "Opera", "Samsung Internet", "Other"].map(b => ({
-      label: b, impressions: r(2000, 50000), clicks: r(100, 3500), spent: r(800, 18000),
-    }));
-  }
-  if (groupBy === "siteid") {
-    return ["site_landing_1", "site_banner_top", "site_video_pre", "site_native_feed", "site_push_main", "site_pop_exit"].map(s => ({
-      label: s, impressions: r(5000, 25000), clicks: r(300, 1500), spent: r(1500, 8000),
-    }));
-  }
-  if (groupBy === "os") {
-    return ["Android", "iOS", "Windows", "macOS", "Linux", "ChromeOS"].map(o => ({
-      label: o, impressions: r(1000, 40000), clicks: r(50, 2500), spent: r(400, 14000),
-    }));
-  }
-  if (groupBy === "country") {
-    return ["US", "GB", "DE", "FR", "BR", "IN", "JP", "RU", "AU", "CA", "ES", "IT", "KR", "TR", "PL"].map(c => ({
-      label: c, impressions: r(2000, 60000), clicks: r(100, 4000), spent: r(600, 20000),
-    }));
-  }
-  // devices
-  return ["Mobile", "Desktop", "Tablet", "Smart TV", "Console"].map(d => ({
-    label: d, impressions: r(1000, 40000), clicks: r(50, 2500), spent: r(400, 14000),
-  }));
+  if (groupBy === "browsers") return DIMENSION_MAP.browsers.map(b => ({ label: b, impressions: r(2000,50000), clicks: r(100,3500), spent: r(800,18000) }));
+  if (groupBy === "siteid") return ["site_landing_1","site_banner_top","site_video_pre","site_native_feed","site_push_main","site_pop_exit"].map(s => ({ label: s, impressions: r(5000,25000), clicks: r(300,1500), spent: r(1500,8000) }));
+  if (groupBy === "os") return DIMENSION_MAP.os.map(o => ({ label: o, impressions: r(1000,40000), clicks: r(50,2500), spent: r(400,14000) }));
+  if (groupBy === "country") return DIMENSION_MAP.country.map(c => ({ label: c, impressions: r(2000,60000), clicks: r(100,4000), spent: r(600,20000) }));
+  return DIMENSION_MAP.devices.map(d => ({ label: d, impressions: r(1000,40000), clicks: r(50,2500), spent: r(400,14000) }));
 }
 
 function mergeData(datasets: { label: string; impressions: number; clicks: number; spent: number }[][]) {
   const map = new Map<string, { label: string; impressions: number; clicks: number; spent: number }>();
-  for (const ds of datasets) {
-    for (const row of ds) {
-      const existing = map.get(row.label);
-      if (existing) { existing.impressions += row.impressions; existing.clicks += row.clicks; existing.spent += row.spent; }
-      else { map.set(row.label, { ...row }); }
-    }
+  for (const ds of datasets) for (const row of ds) {
+    const existing = map.get(row.label);
+    if (existing) { existing.impressions += row.impressions; existing.clicks += row.clicks; existing.spent += row.spent; }
+    else map.set(row.label, { ...row });
   }
   return Array.from(map.values());
 }
 
+// Apply dimension filters: when groupBy matches a filter dimension, keep only selected labels.
+// When groupBy is different, apply a deterministic reduction factor based on how many items are filtered.
+function applyFilters(
+  data: { label: string; impressions: number; clicks: number; spent: number }[],
+  groupBy: GroupBy,
+  filters: { country: Set<string>; browsers: Set<string>; devices: Set<string>; os: Set<string> }
+) {
+  let filtered = data;
+  const dimensionFilters: { key: GroupBy; selected: Set<string>; total: number }[] = [
+    { key: "country", selected: filters.country, total: DIMENSION_MAP.country.length },
+    { key: "browsers", selected: filters.browsers, total: DIMENSION_MAP.browsers.length },
+    { key: "devices", selected: filters.devices, total: DIMENSION_MAP.devices.length },
+    { key: "os", selected: filters.os, total: DIMENSION_MAP.os.length },
+  ];
+
+  for (const dim of dimensionFilters) {
+    if (dim.selected.size === 0) continue; // no filter = all
+    if (groupBy === dim.key) {
+      // Direct filter: keep only matching labels
+      filtered = filtered.filter(row => dim.selected.has(row.label));
+    } else {
+      // Cross-dimension: scale values proportionally
+      const ratio = dim.selected.size / dim.total;
+      filtered = filtered.map(row => ({
+        ...row,
+        impressions: Math.round(row.impressions * ratio),
+        clicks: Math.round(row.clicks * ratio),
+        spent: Math.round(row.spent * ratio),
+      }));
+    }
+  }
+  return filtered;
+}
+
+// Multi-select filter component (supports plain string options or {value,label} pairs)
+type FilterOption = string | { value: string; label: string };
+function MultiSelectFilter({ label, options, selected, onChange }: {
+  label: string; options: FilterOption[]; selected: Set<string>;
+  onChange: React.Dispatch<React.SetStateAction<Set<string>>>;
+}) {
+  const { t } = useLanguage();
+  const normalized = options.map(o => typeof o === "string" ? { value: o, label: o } : o);
+  const toggle = (val: string) => {
+    onChange(prev => {
+      const next = new Set(prev);
+      if (next.has(val)) next.delete(val); else next.add(val);
+      return next;
+    });
+  };
+  const displayText = selected.size === 0 ? t("stats.allValues") : `${selected.size} ${t("stats.selected")}`;
+
+  return (
+    <div className="flex flex-col gap-1">
+      <Label className="text-xs text-muted-foreground">{label}</Label>
+      <Popover>
+        <PopoverTrigger asChild>
+          <Button variant="outline" className="w-[220px] justify-start bg-background border-border h-8 text-sm font-normal text-left truncate">
+            {displayText}
+          </Button>
+        </PopoverTrigger>
+        <PopoverContent className="w-[260px] p-2" align="start">
+          <div className="space-y-1 max-h-56 overflow-y-auto">
+            <label className="flex items-center gap-2 px-2 py-1.5 rounded hover:bg-muted/50 cursor-pointer text-sm font-medium border-b border-border pb-2 mb-1">
+              <Checkbox checked={selected.size === 0} onCheckedChange={(checked) => { if (checked) onChange(new Set()); }} />
+              {t("stats.allValues")}
+            </label>
+            {normalized.map(opt => (
+              <label key={opt.value} className="flex items-center gap-2 px-2 py-1.5 rounded hover:bg-muted/50 cursor-pointer text-sm">
+                <Checkbox checked={selected.has(opt.value)} onCheckedChange={() => toggle(opt.value)} />
+                <span className="truncate">{opt.label}</span>
+              </label>
+            ))}
+          </div>
+        </PopoverContent>
+      </Popover>
+    </div>
+  );
+}
+
 export default function DashboardStatistics() {
   const { campaigns } = useCampaigns();
-  const { t } = useLanguage();
+  const { t, lang } = useLanguage();
   
   const {
     selectedCampaignIds, setSelectedCampaignIds,
@@ -127,7 +182,7 @@ export default function DashboardStatistics() {
 
   const appliedGroupBy = groupBy;
 
-  const hasActiveFilters = appliedFilterCountry !== "all" || appliedFilterBrowser !== "all" || appliedFilterDevice !== "all" || appliedFilterOS !== "all";
+  const hasActiveFilters = appliedFilterCountry.size > 0 || appliedFilterBrowser.size > 0 || appliedFilterDevice.size > 0 || appliedFilterOS.size > 0;
 
   const groupLabels: Record<GroupBy, string> = {
     dates: t("stats.byDates"), hours: t("stats.byHours"), browsers: t("stats.byBrowsers"),
@@ -139,13 +194,11 @@ export default function DashboardStatistics() {
     [campaigns]
   );
 
-  // Selected single campaign id (empty string = all)
   const selectedCampaignId = useMemo(() => {
     if (selectedCampaignIds.size === 1) return Array.from(selectedCampaignIds)[0];
     return "";
   }, [selectedCampaignIds]);
 
-  // Build list of available creatives based on selected campaign
   const availableCreatives = useMemo(() => {
     const result: { id: string; label: string }[] = [];
     if (!selectedCampaignId) return result;
@@ -158,6 +211,24 @@ export default function DashboardStatistics() {
     });
     return result;
   }, [selectedCampaignId, campaigns]);
+
+  // Country filter options with localized name + ISO code
+  const countryOptions = useMemo(
+    () => DIMENSION_MAP.country.map(code => ({ value: code, label: formatCountryLabel(code, lang) })),
+    [lang]
+  );
+
+  // On mount: if nothing applied yet, auto-apply "all active campaigns" + last 7 days.
+  useEffect(() => {
+    if (appliedCampaignIds.size === 0 && activeCampaigns.length > 0) {
+      const defaultRange: DateRange = { from: subDays(new Date(), 6), to: new Date() };
+      setAppliedCampaignIds(new Set(activeCampaigns.map(c => c.id)));
+      // Reflect defaults in the UI controls so the user sees what's applied
+      if (!dateRange?.from) setDateRange(defaultRange);
+      setAppliedDateRange(appliedDateRange ?? defaultRange);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeCampaigns]);
 
   const hasSelection = appliedCampaignIds.size > 0 && appliedDateRange?.from;
 
@@ -175,8 +246,15 @@ export default function DashboardStatistics() {
         return isWithinInterval(d, { start: from, end: to });
       });
     }
+    // Apply dimension filters
+    merged = applyFilters(merged, appliedGroupBy, {
+      country: appliedFilterCountry,
+      browsers: appliedFilterBrowser,
+      devices: appliedFilterDevice,
+      os: appliedFilterOS,
+    });
     return merged;
-  }, [appliedCampaignIds, appliedGroupBy, appliedDateRange, hasSelection]);
+  }, [appliedCampaignIds, appliedGroupBy, appliedDateRange, appliedFilterCountry, appliedFilterBrowser, appliedFilterDevice, appliedFilterOS, hasSelection]);
 
   const metricCards = useMemo(() => {
     const totalImpressions = data.reduce((s, r) => s + r.impressions, 0);
@@ -196,6 +274,7 @@ export default function DashboardStatistics() {
     else if (appliedGroupBy === "hours") { setSortKey("label"); setSortDir("asc"); }
     else { setSortKey("impressions"); setSortDir("desc"); }
   }, [appliedGroupBy]);
+
 
    const handleRefresh = useCallback(() => {
     // For "all" campaigns, add all active campaign ids
@@ -262,10 +341,18 @@ export default function DashboardStatistics() {
   const labelHeader = appliedGroupBy === "dates" ? t("stats.date") : appliedGroupBy === "hours" ? t("stats.dateAndHour") : appliedGroupBy === "browsers" ? t("stats.browser") : appliedGroupBy === "siteid" ? "SiteID" : appliedGroupBy === "os" ? t("stats.os") : appliedGroupBy === "country" ? t("stats.country") : t("stats.device");
   const canSortByLabel = appliedGroupBy === "dates" || appliedGroupBy === "hours";
 
-  const countryOptions = ["US","GB","DE","FR","BR","IN","JP","RU","AU","CA","ES","IT","KR","TR","PL"];
-  const browserOptions = ["Chrome","Safari","Firefox","Edge","Opera","Samsung Internet"];
-  const deviceOptions = ["Mobile","Desktop","Tablet","Smart TV"];
-  const osOptions = ["Android","iOS","Windows","macOS","Linux","ChromeOS"];
+  // Custom tooltip for hours chart
+  const HoursTooltip = ({ active, payload, label }: any) => {
+    if (!active || !payload?.length) return null;
+    const metricLabel = chartMetric === "impressions" ? t("stats.impressions") : chartMetric === "clicks" ? t("stats.clicks") : t("stats.spent");
+    const value = payload[0]?.value;
+    return (
+      <div className="rounded-lg border bg-card px-3 py-2 text-sm shadow-md" style={{ borderColor: "hsl(var(--border))" }}>
+        <p className="font-medium text-foreground">{label}</p>
+        <p className="text-muted-foreground">{metricLabel}: <span className="font-semibold text-foreground">{chartMetric === "spent" ? `$${value?.toLocaleString()}` : value?.toLocaleString()}</span></p>
+      </div>
+    );
+  };
 
   return (
     <div className="space-y-6">
@@ -307,9 +394,7 @@ export default function DashboardStatistics() {
             <PopoverContent className="w-[320px] p-2" align="start">
               <div className="space-y-1 max-h-64 overflow-y-auto">
                 <label className="flex items-center gap-2 px-2 py-1.5 rounded hover:bg-muted/50 cursor-pointer text-sm font-medium border-b border-border pb-2 mb-1">
-                  <Checkbox checked={selectedCreativeIds.size === 0} onCheckedChange={(checked) => {
-                    if (checked) setSelectedCreativeIds(new Set());
-                  }} />
+                  <Checkbox checked={selectedCreativeIds.size === 0} onCheckedChange={(checked) => { if (checked) setSelectedCreativeIds(new Set()); }} />
                   {t("stats.allCreatives")}
                 </label>
                 {availableCreatives.map(cr => (
@@ -373,52 +458,16 @@ export default function DashboardStatistics() {
             <Filter className="h-4 w-4 text-muted-foreground" />
             <span className="text-sm font-medium">{t("stats.filters")}</span>
             {hasActiveFilters && (
-              <Button variant="ghost" size="sm" className="text-xs h-6 px-2" onClick={() => { setFilterCountry("all"); setFilterBrowser("all"); setFilterDevice("all"); setFilterOS("all"); }}>
+              <Button variant="ghost" size="sm" className="text-xs h-6 px-2" onClick={() => { setFilterCountry(new Set()); setFilterBrowser(new Set()); setFilterDevice(new Set()); setFilterOS(new Set()); }}>
                 {t("stats.clearFilters")}
               </Button>
             )}
           </div>
           <div className="flex flex-wrap gap-4">
-            <div className="flex flex-col gap-1">
-              <Label className="text-xs text-muted-foreground">{t("stats.filterCountry")}</Label>
-              <Select value={filterCountry} onValueChange={setFilterCountry}>
-                <SelectTrigger className="w-[140px] bg-background border-border h-8 text-sm"><SelectValue placeholder={t("stats.filterCountry")} /></SelectTrigger>
-                <SelectContent className="bg-card border-border">
-                  <SelectItem value="all">{t("stats.allValues")}</SelectItem>
-                  {countryOptions.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="flex flex-col gap-1">
-              <Label className="text-xs text-muted-foreground">{t("stats.filterBrowser")}</Label>
-              <Select value={filterBrowser} onValueChange={setFilterBrowser}>
-                <SelectTrigger className="w-[160px] bg-background border-border h-8 text-sm"><SelectValue placeholder={t("stats.filterBrowser")} /></SelectTrigger>
-                <SelectContent className="bg-card border-border">
-                  <SelectItem value="all">{t("stats.allValues")}</SelectItem>
-                  {browserOptions.map(b => <SelectItem key={b} value={b}>{b}</SelectItem>)}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="flex flex-col gap-1">
-              <Label className="text-xs text-muted-foreground">{t("stats.filterDevice")}</Label>
-              <Select value={filterDevice} onValueChange={setFilterDevice}>
-                <SelectTrigger className="w-[140px] bg-background border-border h-8 text-sm"><SelectValue placeholder={t("stats.filterDevice")} /></SelectTrigger>
-                <SelectContent className="bg-card border-border">
-                  <SelectItem value="all">{t("stats.allValues")}</SelectItem>
-                  {deviceOptions.map(d => <SelectItem key={d} value={d}>{d}</SelectItem>)}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="flex flex-col gap-1">
-              <Label className="text-xs text-muted-foreground">{t("stats.filterOS")}</Label>
-              <Select value={filterOS} onValueChange={setFilterOS}>
-                <SelectTrigger className="w-[140px] bg-background border-border h-8 text-sm"><SelectValue placeholder={t("stats.filterOS")} /></SelectTrigger>
-                <SelectContent className="bg-card border-border">
-                  <SelectItem value="all">{t("stats.allValues")}</SelectItem>
-                  {osOptions.map(o => <SelectItem key={o} value={o}>{o}</SelectItem>)}
-                </SelectContent>
-              </Select>
-            </div>
+            <MultiSelectFilter label={t("stats.filterCountry")} options={countryOptions} selected={filterCountry} onChange={setFilterCountry} />
+            <MultiSelectFilter label={t("stats.filterBrowser")} options={DIMENSION_MAP.browsers} selected={filterBrowser} onChange={setFilterBrowser} />
+            <MultiSelectFilter label={t("stats.filterDevice")} options={DIMENSION_MAP.devices} selected={filterDevice} onChange={setFilterDevice} />
+            <MultiSelectFilter label={t("stats.filterOS")} options={DIMENSION_MAP.os} selected={filterOS} onChange={setFilterOS} />
           </div>
         </CardContent>
       </Card>
@@ -449,7 +498,7 @@ export default function DashboardStatistics() {
             ))}
           </div>
 
-          {/* Chart for dates */}
+          {/* Chart */}
           {(appliedGroupBy === "dates" || appliedGroupBy === "hours") && chartData.length > 0 && (
             <Card className="bg-card border-border">
               <CardHeader>
@@ -469,31 +518,37 @@ export default function DashboardStatistics() {
                 </div>
               </CardHeader>
               <CardContent>
-                <div className="h-[280px]">
+                <div className="h-[280px] animate-[reveal-chart_1.2s_ease-out_forwards]" style={{ clipPath: 'inset(0 0 0 0)' }}>
+                  <style>{`
+                    @keyframes reveal-chart {
+                      from { clip-path: inset(0 100% 0 0); }
+                      to { clip-path: inset(0 0 0 0); }
+                    }
+                  `}</style>
                   <ResponsiveContainer width="100%" height="100%">
-                    {appliedGroupBy === "hours" ? (
-                      <BarChart data={chartData}>
-                        <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
-                        <XAxis dataKey="label" stroke="hsl(var(--muted-foreground))" fontSize={10} angle={-45} textAnchor="end" height={60} />
-                        <YAxis stroke="hsl(var(--muted-foreground))" fontSize={12} />
+                    <AreaChart data={chartData}>
+                      <defs>
+                        <linearGradient id="grad-metric" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="5%" stopColor="hsl(var(--primary))" stopOpacity={0.3} />
+                          <stop offset="95%" stopColor="hsl(var(--primary))" stopOpacity={0} />
+                        </linearGradient>
+                      </defs>
+                      <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
+                      <XAxis
+                        dataKey="label"
+                        stroke="hsl(var(--muted-foreground))"
+                        fontSize={appliedGroupBy === "hours" ? 10 : 12}
+                        tickFormatter={appliedGroupBy === "hours" ? (val: string) => val.split(" ")[1] || val : undefined}
+                        interval={appliedGroupBy === "hours" ? "preserveStartEnd" : undefined}
+                      />
+                      <YAxis stroke="hsl(var(--muted-foreground))" fontSize={12} />
+                      {appliedGroupBy === "hours" ? (
+                        <Tooltip content={<HoursTooltip />} />
+                      ) : (
                         <Tooltip contentStyle={{ backgroundColor: "hsl(var(--card))", border: "1px solid hsl(var(--border))", borderRadius: "8px", color: "hsl(var(--foreground))" }} />
-                        <Bar dataKey={chartMetric} fill="hsl(var(--primary))" radius={[2, 2, 0, 0]} />
-                      </BarChart>
-                    ) : (
-                      <AreaChart data={chartData}>
-                        <defs>
-                          <linearGradient id="grad-metric" x1="0" y1="0" x2="0" y2="1">
-                            <stop offset="5%" stopColor="hsl(var(--primary))" stopOpacity={0.3} />
-                            <stop offset="95%" stopColor="hsl(var(--primary))" stopOpacity={0} />
-                          </linearGradient>
-                        </defs>
-                        <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
-                        <XAxis dataKey="label" stroke="hsl(var(--muted-foreground))" fontSize={12} />
-                        <YAxis stroke="hsl(var(--muted-foreground))" fontSize={12} />
-                        <Tooltip contentStyle={{ backgroundColor: "hsl(var(--card))", border: "1px solid hsl(var(--border))", borderRadius: "8px", color: "hsl(var(--foreground))" }} />
-                        <Area type="monotone" dataKey={chartMetric} stroke="hsl(var(--primary))" fill="url(#grad-metric)" strokeWidth={2} />
-                      </AreaChart>
-                    )}
+                      )}
+                      <Area type="monotone" dataKey={chartMetric} stroke="hsl(var(--primary))" fill="url(#grad-metric)" strokeWidth={2} isAnimationActive={false} />
+                    </AreaChart>
                   </ResponsiveContainer>
                 </div>
               </CardContent>
@@ -539,10 +594,12 @@ export default function DashboardStatistics() {
                     <tbody>
                       {sortedData.map((row) => (
                         <tr key={row.label} className="border-b border-border/50 hover:bg-muted/50 transition-colors">
-                          <td className="py-3 px-4 font-medium truncate">{row.label}</td>
+                          <td className="py-3 px-4 font-medium truncate">
+                            {appliedGroupBy === "country" ? formatCountryLabel(row.label, lang) : row.label}
+                          </td>
                           <td className="py-3 px-4">{row.impressions.toLocaleString()}</td>
                           <td className="py-3 px-4">{row.clicks.toLocaleString()}</td>
-                          <td className="py-3 px-4">{((row.clicks / row.impressions) * 100).toFixed(2)}%</td>
+                          <td className="py-3 px-4">{row.impressions > 0 ? ((row.clicks / row.impressions) * 100).toFixed(2) : "0.00"}%</td>
                           <td className="py-3 px-4">${row.spent.toLocaleString()}</td>
                         </tr>
                       ))}
