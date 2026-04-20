@@ -190,6 +190,7 @@ const translations: Record<string, Record<Lang, string>> = {
   "balance.notif.notCompleted": { ru: "Оплата не завершена", en: "Payment not completed" },
   "balance.notif.noHash": { ru: "Вы не отправили хэш транзакции на", en: "You did not submit the transaction hash for" },
   "balance.notif.completePayment": { ru: "Завершить оплату", en: "Complete payment" },
+  "balance.disabledReason": { ru: "У вас есть незавершённая оплата — завершите её или отмените, чтобы создать новую.", en: "You have an unfinished payment — complete or cancel it to start a new one." },
   "balance.notif.cancelConfirmTitle": { ru: "Отменить транзакцию?", en: "Cancel transaction?" },
   "balance.notif.cancelConfirmDesc": { ru: "Вы уверены, что хотите отменить незавершённую транзакцию? Это действие нельзя будет отменить.", en: "Are you sure you want to cancel the pending transaction? This action cannot be undone." },
   "balance.notif.cancelConfirmYes": { ru: "Да, отменить", en: "Yes, cancel" },
@@ -295,7 +296,7 @@ const translations: Record<string, Record<Lang, string>> = {
   "settings.security": { ru: "Безопасность", en: "Security" },
   "settings.name": { ru: "Имя", en: "Name" },
   "settings.email": { ru: "Email", en: "Email" },
-  "settings.telegram": { ru: "Telegram (опционально)", en: "Telegram (optional)" },
+  "settings.telegram": { ru: "Telegram", en: "Telegram" },
   "settings.timezone": { ru: "Часовой пояс", en: "Timezone" },
   "settings.save": { ru: "Сохранить", en: "Save" },
   "settings.saved": { ru: "Настройки сохранены", en: "Settings saved" },
@@ -345,8 +346,16 @@ const translations: Record<string, Record<Lang, string>> = {
   "create.next": { ru: "Далее", en: "Next" },
   "create.createBtn": { ru: "Создать кампанию", en: "Create campaign" },
   "create.created": { ru: "Кампания создана и отправлена на модерацию!", en: "Campaign created and sent for moderation!" },
+  "create.draftSaved": { ru: "Кампания сохранена в черновики", en: "Campaign saved as draft" },
+  "create.draftSavedDesc": { ru: "Создание кампании не завершено. Вы можете продолжить редактирование в любое время.", en: "Campaign creation is not finished. You can continue editing at any time." },
   "create.uploadImage": { ru: "Загрузить изображение", en: "Upload image" },
   "create.imageUploaded": { ru: "Изображение загружено", en: "Image uploaded" },
+  "create.imageFormatError": { ru: "Неверный формат. Поддерживаются: PNG, JPG, JPEG", en: "Invalid format. Supported: PNG, JPG, JPEG" },
+  "create.imageFormatHint": { ru: "Поддерживаемые форматы: PNG, JPG, JPEG", en: "Supported formats: PNG, JPG, JPEG" },
+  "create.creativeTitle": { ru: "Заголовок", en: "Title" },
+  "create.creativeDescription": { ru: "Описание", en: "Description" },
+  "create.creativeUrl": { ru: "Ссылка", en: "URL" },
+  "create.urlMacrosHint": { ru: "Нажмите для добавления макросов отслеживания:", en: "Click to add tracking macros:" },
   "create.endDateError": { ru: "Дата окончания не может быть раньше сегодняшнего дня", en: "End date cannot be earlier than today" },
   "create.endDateRequired": { ru: "Укажите корректные даты для завершения создания", en: "Specify valid dates to complete creation" },
 
@@ -384,8 +393,8 @@ const translations: Record<string, Record<Lang, string>> = {
   "targeting.scheduleHint": { ru: "Кликните или протяните мышью для выбора часов. Кликните на день/час для выделения целого ряда/столбца", en: "Click or drag to select hours. Click a day/hour header to toggle an entire row/column" },
   "targeting.selectAll": { ru: "Все", en: "All" },
   "targeting.deselectAll": { ru: "Снять", en: "Clear" },
-  "targeting.ipHint": { ru: "Введите IPv4 или IPv6 адреса через запятую", en: "Enter IPv4 or IPv6 addresses, comma-separated" },
-  "targeting.ipFormatError": { ru: "Неверный формат IP. Допускаются только IPv4 и IPv6 адреса", en: "Invalid IP format. Only IPv4 and IPv6 addresses are allowed" },
+  "targeting.ipHint": { ru: "Введите IPv4 адреса через запятую", en: "Enter IPv4 addresses, comma-separated" },
+  "targeting.ipFormatError": { ru: "Неверный формат IP. Допускаются только IPv4 адреса", en: "Invalid IP format. Only IPv4 addresses are allowed" },
 
   // Days of week
   "day.monday": { ru: "Понедельник", en: "Monday" },
@@ -398,8 +407,8 @@ const translations: Record<string, Record<Lang, string>> = {
 
   // Budget Section
   "budget.totalBudget": { ru: "Общий бюджет *", en: "Total budget *" },
-  "budget.totalBudgetHint": { ru: "Обязательное поле. Минимум $100", en: "Required field. Minimum $100" },
-  "budget.dailyBudget": { ru: "Дневной бюджет (опционально)", en: "Daily budget (optional)" },
+  "budget.totalBudgetHint": { ru: "Обязательное поле. Минимум $1", en: "Required field. Minimum $1" },
+  "budget.dailyBudget": { ru: "Дневной бюджет", en: "Daily budget" },
   "budget.dailyBudgetPlaceholder": { ru: "Без ограничений", en: "No limit" },
   "budget.trafficType": { ru: "Тип трафика *", en: "Traffic type *" },
   "budget.trafficCommon": { ru: "Фильтрация на стороне партнёра + фильтрация TwinBid. Базовый сегмент: хорошие объёмы при контроле качества.", en: "Partner-side filtering + TwinBid filtering. Base segment: good volumes with quality control." },
@@ -490,8 +499,19 @@ const translations: Record<string, Record<Lang, string>> = {
   "budget.selectDate": { ru: "Выберите дату", en: "Select date" },
 
   // Edit campaign errors
-  "edit.errorBudgetMin": { ru: "Бюджет кампании должен быть не менее $100", en: "Campaign budget must be at least $100" },
+  "edit.errorBudgetMin": { ru: "Бюджет кампании должен быть не менее $1", en: "Campaign budget must be at least $1" },
   "edit.restartedActive": { ru: "Кампания перезапущена", en: "Campaign restarted" },
+
+  // Payment
+  "balance.paymentMethod": { ru: "Способ оплаты", en: "Payment method" },
+
+  // Settings - campaign budget alert
+  "settings.campaignBudgetAlert": { ru: "Бюджет кампании", en: "Campaign budget" },
+  "settings.campaignBudgetAlertDesc": { ru: "Уведомление при остатке менее 10% бюджета кампании", en: "Notification when less than 10% of campaign budget remains" },
+
+  // Budget notification
+  "notif.campaignBudgetLow": { ru: "Бюджет кампании заканчивается", en: "Campaign budget running low" },
+  "notif.budgetRemaining": { ru: "бюджета осталось", en: "budget remaining" },
 };
 
 interface LanguageContextType {

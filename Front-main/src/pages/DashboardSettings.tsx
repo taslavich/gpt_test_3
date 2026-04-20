@@ -163,6 +163,13 @@ export default function DashboardSettings() {
                   <Label>{t("settings.lowBalance")}</Label>
                   <Switch checked={notifyBalance} onCheckedChange={setNotifyBalance} />
                 </div>
+                <div className="flex items-center justify-between">
+                  <div>
+                    <Label>{t("settings.campaignBudgetAlert")}</Label>
+                    <p className="text-xs text-muted-foreground mt-0.5">{t("settings.campaignBudgetAlertDesc")}</p>
+                  </div>
+                  <Switch checked={notifyCampaign} onCheckedChange={setNotifyCampaign} />
+                </div>
               </div>
               <Separator />
               <div className="space-y-2 max-w-xs">
