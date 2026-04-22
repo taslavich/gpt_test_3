@@ -10,8 +10,7 @@ import { toast } from "sonner";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { useProfile } from "@/contexts/ProfileContext";
 import { useAuth } from "@/contexts/AuthContext";
-import { usePendingPayment } from "@/contexts/PendingPaymentContext";
-import { supabase } from "@/integrations/supabase/client";
+import { createTopupRequest, listTopupRequests, validatePromo } from "@/lib/api";
 
 const amounts = [100, 250, 500, 1000, 5000];
 
@@ -52,12 +51,8 @@ export default function DashboardBalance() {
   const fetchTopupRequests = async () => {
     if (!user) return;
     setLoadingRequests(true);
-    const { data, error } = await supabase
-      .from("topup_requests")
-      .select("*")
-      .eq("user_id", user.id)
-      .order("created_at", { ascending: false });
-    if (!error && data) setTopupRequests(data as TopupRequest[]);
+    const data = await listTopupRequests(user.id);
+    setTopupRequests(data as TopupRequest[]);
     setLoadingRequests(false);
   };
 
@@ -73,27 +68,14 @@ export default function DashboardBalance() {
   const handleApplyPromo = async () => {
     const code = promoCode.trim().toUpperCase();
     if (!code) return;
-    const { data, error } = await supabase
-      .from("promo_codes")
-      .select("*")
-      .eq("code", code)
-      .eq("is_active", true)
-      .single();
-    if (error || !data) {
+    const data = await validatePromo(code);
+    if (!data.valid) {
       setAppliedPromo(null);
       toast.error(t("balance.promo.invalid"));
       return;
     }
-    if (data.expires_at && new Date(data.expires_at) < new Date()) {
-      toast.error(t("balance.promo.invalid"));
-      return;
-    }
-    if (data.max_uses && data.current_uses >= data.max_uses) {
-      toast.error(t("balance.promo.invalid"));
-      return;
-    }
-    setAppliedPromo({ code, bonus: Number(data.bonus_percent) });
-    toast.success(t("balance.promo.applied").replace("{percent}", `${data.bonus_percent}`));
+    setAppliedPromo({ code, bonus: Number(data.bonusPercent) });
+    toast.success(t("balance.promo.applied").replace("{percent}", `${data.bonusPercent}`));
   };
 
   const handleRemovePromo = () => {
@@ -107,11 +89,40 @@ export default function DashboardBalance() {
       toast.error(t("balance.disabledReason"));
       return;
     }
-    setPendingPayment({
-      amount: finalAmount,
-      method: selectedMethod,
-      promo: appliedPromo?.code,
-      bonus: appliedPromo?.bonus,
+    setPendingPayment({ amount: finalAmount, method: selectedMethod, promo: appliedPromo?.code, bonus: appliedPromo?.bonus });
+    setTxHash("");
+    setShowTxDialog(true);
+    if (pendingNotificationId) {
+      removeNotification(pendingNotificationId);
+      setPendingNotificationId(null);
+    }
+  };
+
+  const handleSubmitTx = async () => {
+    if (!txHash.trim() || !user || !pendingPayment) return;
+
+    const { error } = await createTopupRequest({
+      userId: user.id,
+      amount: pendingPayment.amount,
+      paymentMethod: pendingPayment.method,
+      txHash: txHash.trim(),
+      promoCode: pendingPayment.promo || undefined,
+      bonusPercent: pendingPayment.bonus || 0,
+    });
+
+    if (error) {
+      toast.error("Error submitting payment");
+      console.error(error);
+      return;
+    }
+
+    toast.success(t("balance.toast.paymentSent"), {
+      duration: 8000,
+      description: t("balance.toast.paymentSupport"),
+      action: {
+        label: "@GregTwinbid",
+        onClick: () => window.open("https://t.me/GregTwinbid", "_blank"),
+      },
     });
     setAppliedPromo(null);
     setPromoCode("");
