@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Bell, User, X, Send } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -6,17 +6,36 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { useNotifications, type Notification } from "@/contexts/NotificationContext";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { useAuth } from "@/contexts/AuthContext";
+import { useCampaigns } from "@/contexts/CampaignContext";
+import { useProfile } from "@/contexts/ProfileContext";
 import { LanguageSelector } from "@/components/LanguageSelector";
 import { cn } from "@/lib/utils";
 import { useNavigate } from "react-router-dom";
 
 export function DashboardHeader() {
-  const { notifications, removeNotification } = useNotifications();
+  const { notifications, addNotification, removeNotification } = useNotifications();
   const { t } = useLanguage();
   const { user } = useAuth();
+  const { campaigns } = useCampaigns();
+  const { profile } = useProfile();
   const [open, setOpen] = useState(false);
   const navigate = useNavigate();
   const [confirmDismiss, setConfirmDismiss] = useState<Notification | null>(null);
+
+  // Campaign budget alerts - notify when <10% budget remaining
+  useEffect(() => {
+    if (!profile?.notifyCampaignStatus) return;
+    campaigns
+      .filter(c => c.status === "active" && c.budget > 0 && c.spent >= c.budget * 0.9)
+      .forEach(c => {
+        addNotification({
+          title: t("notif.campaignBudgetLow"),
+          description: `${c.name}: ${Math.round((1 - c.spent / c.budget) * 100)}% ${t("notif.budgetRemaining")}`,
+          type: "warning",
+          persistent: false,
+        });
+      });
+  }, [campaigns]);
 
   const handleDismissClick = (n: Notification) => {
     if (n.onDismiss) {

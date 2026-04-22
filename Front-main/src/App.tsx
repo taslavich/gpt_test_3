@@ -9,6 +9,8 @@ import { LanguageProvider } from "./contexts/LanguageContext";
 import { StatisticsProvider } from "./contexts/StatisticsContext";
 import { AuthProvider } from "./contexts/AuthContext";
 import { ProfileProvider } from "./contexts/ProfileContext";
+import { PendingPaymentProvider } from "./contexts/PendingPaymentContext";
+import { PendingPaymentDialog } from "./components/PendingPaymentDialog";
 import { ProtectedRoute } from "./components/ProtectedRoute";
 import Index from "./pages/Index";
 import NotFound from "./pages/NotFound";
@@ -33,23 +35,26 @@ const App = () => (
           <AuthProvider>
             <ProfileProvider>
               <NotificationProvider>
-                <CampaignProvider>
-                <StatisticsProvider>
-                  <Routes>
-                    <Route path="/" element={<Index />} />
-                    <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>}>
-                      <Route index element={<DashboardOverview />} />
-                      <Route path="campaigns" element={<DashboardCampaigns />} />
-                      <Route path="campaigns/create" element={<CreateCampaign />} />
-                      <Route path="campaigns/:id/edit" element={<EditCampaign />} />
-                      <Route path="statistics" element={<DashboardStatistics />} />
-                      <Route path="balance" element={<DashboardBalance />} />
-                      <Route path="settings" element={<DashboardSettings />} />
-                    </Route>
-                    <Route path="*" element={<NotFound />} />
-                  </Routes>
-                  </StatisticsProvider>
-                </CampaignProvider>
+                <PendingPaymentProvider>
+                  <CampaignProvider>
+                  <StatisticsProvider>
+                    <Routes>
+                      <Route path="/" element={<Index />} />
+                      <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>}>
+                        <Route index element={<DashboardOverview />} />
+                        <Route path="campaigns" element={<DashboardCampaigns />} />
+                        <Route path="campaigns/create" element={<CreateCampaign />} />
+                        <Route path="campaigns/:id/edit" element={<EditCampaign />} />
+                        <Route path="statistics" element={<DashboardStatistics />} />
+                        <Route path="balance" element={<DashboardBalance />} />
+                        <Route path="settings" element={<DashboardSettings />} />
+                      </Route>
+                      <Route path="*" element={<NotFound />} />
+                    </Routes>
+                    <PendingPaymentDialog />
+                    </StatisticsProvider>
+                  </CampaignProvider>
+                </PendingPaymentProvider>
               </NotificationProvider>
             </ProfileProvider>
           </AuthProvider>
