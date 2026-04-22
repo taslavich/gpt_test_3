@@ -1,0 +1,68 @@
+import { ACCESS_TOKEN_KEY, API_BASE_URL } from "./config";
+
+export class ApiError extends Error {
+  status: number;
+  code?: string;
+  fields?: Record<string, string>;
+  constructor(status: number, message: string, code?: string, fields?: Record<string, string>) {
+    super(message);
+    this.status = status;
+    this.code = code;
+    this.fields = fields;
+  }
+}
+
+interface RequestOptions {
+  method?: "GET" | "POST" | "PATCH" | "DELETE" | "PUT";
+  body?: unknown;
+  query?: Record<string, string | number | boolean | undefined | null>;
+  auth?: boolean;
+  signal?: AbortSignal;
+}
+
+function buildUrl(path: string, query?: RequestOptions["query"]): string {
+  const url = new URL(path.startsWith("http") ? path : `${API_BASE_URL}${path}`);
+  if (query) {
+    for (const [k, v] of Object.entries(query)) {
+      if (v === undefined || v === null) continue;
+      url.searchParams.set(k, String(v));
+    }
+  }
+  return url.toString();
+}
+
+export async function http<T>(path: string, opts: RequestOptions = {}): Promise<T> {
+  const { method = "GET", body, query, auth = true, signal } = opts;
+  const headers: Record<string, string> = { Accept: "application/json" };
+  if (body !== undefined) headers["Content-Type"] = "application/json";
+  if (auth) {
+    const token = localStorage.getItem(ACCESS_TOKEN_KEY);
+    if (token) headers.Authorization = `Bearer ${token}`;
+  }
+
+  const res = await fetch(buildUrl(path, query), {
+    method,
+    headers,
+    body: body !== undefined ? JSON.stringify(body) : undefined,
+    signal,
+  });
+
+  if (res.status === 204) return undefined as T;
+
+  let data: any = null;
+  const text = await res.text();
+  if (text) {
+    try { data = JSON.parse(text); } catch { data = text; }
+  }
+
+  if (!res.ok) {
+    const err = data?.error;
+    throw new ApiError(
+      res.status,
+      err?.message || (typeof data === "string" ? data : `HTTP ${res.status}`),
+      err?.code,
+      err?.fields,
+    );
+  }
+  return data as T;
+}
