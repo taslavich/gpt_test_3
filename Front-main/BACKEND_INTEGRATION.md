@@ -1,6 +1,7 @@
 # Backend integration guide
 
 By default frontend uses local stubs (`VITE_USE_API_STUBS=true`).
+All current runtime backend calls are centralized in `src/lib/api.ts`.
 
 ## 1) Main API file
 - `src/lib/api.ts`
@@ -37,3 +38,7 @@ To connect a real backend:
 ## 4) Statistics
 `src/pages/DashboardStatistics.tsx` currently builds demo data in-browser.
 If you move to ClickHouse through backend, replace that page data source with your API endpoint (for example `GET /stats`).
+
+## 5) Project cleanup status
+- Legacy Supabase runtime client was removed from `src/integrations/supabase/*`.
+- `@supabase/supabase-js` dependency was removed from `package.json`.
