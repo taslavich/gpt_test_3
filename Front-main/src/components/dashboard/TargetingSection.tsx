@@ -277,12 +277,11 @@ function SitesInput({ items, onAdd, t }: { items: string[]; onAdd: (items: strin
   );
 }
 
-// IP input with IPv4/IPv6 validation
+// IP input with IPv4 validation only
 const IPV4_RE = /^(?:(?:25[0-5]|2[0-4]\d|[01]?\d\d?)\.){3}(?:25[0-5]|2[0-4]\d|[01]?\d\d?)$/;
-const IPV6_RE = /^([0-9a-fA-F]{0,4}:){2,7}[0-9a-fA-F]{0,4}$/;
 
 function isValidIp(v: string): boolean {
-  return IPV4_RE.test(v) || IPV6_RE.test(v);
+  return IPV4_RE.test(v);
 }
 
 function IpInput({ items, onAdd, t }: { items: string[]; onAdd: (newItems: string[]) => void; t: (key: string) => string }) {
@@ -307,7 +306,7 @@ function IpInput({ items, onAdd, t }: { items: string[]; onAdd: (newItems: strin
       <p className="text-xs text-muted-foreground">{t("targeting.ipHint")}</p>
       <div className="flex gap-2">
         <Input value={value} onChange={e => setValue(e.target.value)}
-          placeholder="192.168.1.1, 2001:db8::1" className="bg-background border-border flex-1"
+          placeholder="192.168.1.1, 10.0.0.1" className="bg-background border-border flex-1"
           onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); handleAdd(); } }} />
         <Button type="button" size="icon" variant="outline" onClick={handleAdd} className="border-border shrink-0">
           <Plus className="h-4 w-4" />

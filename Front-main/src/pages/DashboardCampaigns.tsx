@@ -1,6 +1,6 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
-import { Plus, MoreHorizontal, Play, Pause, Pencil, Trash2, Eye, Filter, Copy, RotateCcw, XCircle } from "lucide-react";
+import { Plus, MoreHorizontal, Play, Pause, Pencil, Trash2, Eye, Filter, Copy, RotateCcw, XCircle, ArrowUpDown, ArrowUp, ArrowDown } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -22,10 +22,13 @@ function isDraftComplete(c: Campaign): boolean {
   if (!c.name.trim()) return false;
   if (!c.formatKey) return false;
   if (!c.creatives?.length || !c.creatives[0]?.url?.trim()) return false;
-  if (c.budget < 100) return false;
+  if (c.budget < 1) return false;
   if (!c.priceValue) return false;
   return true;
 }
+
+type SortKey = "name" | "status" | "format" | "budget" | "spent" | "impressions" | "ctr";
+type SortDir = "asc" | "desc";
 
 export default function DashboardCampaigns() {
   const navigate = useNavigate();
@@ -35,6 +38,8 @@ export default function DashboardCampaigns() {
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [searchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
+  const [sortKey, setSortKey] = useState<SortKey | null>(null);
+  const [sortDir, setSortDir] = useState<SortDir>("asc");
 
   const statusConfig: Record<string, { label: string; className: string }> = {
     active: { label: t("status.active"), className: "bg-green-500/10 text-green-500 border-green-500/20" },
@@ -49,6 +54,43 @@ export default function DashboardCampaigns() {
     const st = statusFilter === "all" || c.status === statusFilter;
     return s && st;
   });
+
+  const sorted = useMemo(() => {
+    if (!sortKey) return filtered;
+    return [...filtered].sort((a, b) => {
+      let cmp = 0;
+      switch (sortKey) {
+        case "name": cmp = a.name.localeCompare(b.name); break;
+        case "status": cmp = a.status.localeCompare(b.status); break;
+        case "format": cmp = a.format.localeCompare(b.format); break;
+        case "budget": cmp = a.budget - b.budget; break;
+        case "spent": cmp = a.spent - b.spent; break;
+        case "impressions": cmp = a.impressions - b.impressions; break;
+        case "ctr": cmp = a.ctr - b.ctr; break;
+      }
+      return sortDir === "asc" ? cmp : -cmp;
+    });
+  }, [filtered, sortKey, sortDir]);
+
+  const handleSort = (key: SortKey) => {
+    if (sortKey === key) {
+      setSortDir(prev => prev === "asc" ? "desc" : "asc");
+    } else {
+      setSortKey(key);
+      setSortDir("asc");
+    }
+  };
+
+  const SortIcon = ({ col }: { col: SortKey }) => {
+    if (sortKey !== col) return <ArrowUpDown className="h-3 w-3 ml-1 opacity-40" />;
+    return sortDir === "asc" ? <ArrowUp className="h-3 w-3 ml-1" /> : <ArrowDown className="h-3 w-3 ml-1" />;
+  };
+
+  // Stats based on filtered campaigns
+  const totalCount = filtered.length;
+  const activeCount = filtered.filter(c => c.status === "active").length;
+  const totalBudget = filtered.reduce((s, c) => s + c.budget, 0);
+  const totalSpent = filtered.reduce((s, c) => s + c.spent, 0);
 
   const toggleStatus = (id: string) => {
     const c = campaigns.find(x => x.id === id);
@@ -116,10 +158,10 @@ export default function DashboardCampaigns() {
         </div>
 
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          <Card className="bg-card border-border"><CardContent className="p-4"><p className="text-sm text-muted-foreground">{t("campaigns.total")}</p><p className="text-2xl font-bold">{campaigns.length}</p></CardContent></Card>
-          <Card className="bg-card border-border"><CardContent className="p-4"><p className="text-sm text-muted-foreground">{t("campaigns.activeCount")}</p><p className="text-2xl font-bold text-green-500">{campaigns.filter(c => c.status === "active").length}</p></CardContent></Card>
-          <Card className="bg-card border-border"><CardContent className="p-4"><p className="text-sm text-muted-foreground">{t("campaigns.budget")}</p><p className="text-2xl font-bold">${campaigns.reduce((s, c) => s + c.budget, 0).toLocaleString()}</p></CardContent></Card>
-          <Card className="bg-card border-border"><CardContent className="p-4"><p className="text-sm text-muted-foreground">{t("overview.spent")}</p><p className="text-2xl font-bold">${campaigns.reduce((s, c) => s + c.spent, 0).toLocaleString()}</p></CardContent></Card>
+          <Card className="bg-card border-border"><CardContent className="p-4"><p className="text-sm text-muted-foreground">{t("campaigns.total")}</p><p className="text-2xl font-bold">{totalCount}</p></CardContent></Card>
+          <Card className="bg-card border-border"><CardContent className="p-4"><p className="text-sm text-muted-foreground">{t("campaigns.activeCount")}</p><p className="text-2xl font-bold text-green-500">{activeCount}</p></CardContent></Card>
+          <Card className="bg-card border-border"><CardContent className="p-4"><p className="text-sm text-muted-foreground">{t("campaigns.budget")}</p><p className="text-2xl font-bold">${totalBudget.toLocaleString()}</p></CardContent></Card>
+          <Card className="bg-card border-border"><CardContent className="p-4"><p className="text-sm text-muted-foreground">{t("overview.spent")}</p><p className="text-2xl font-bold">${totalSpent.toLocaleString()}</p></CardContent></Card>
         </div>
 
         <Card className="bg-card border-border">
@@ -129,18 +171,32 @@ export default function DashboardCampaigns() {
                 <thead className="sticky top-0 bg-card z-10">
                   <tr className="border-b border-border">
                     <th className="text-left py-3 px-4 text-sm font-medium text-muted-foreground">{t("overview.id")}</th>
-                    <th className="text-left py-3 px-4 text-sm font-medium text-muted-foreground">{t("overview.name")}</th>
-                    <th className="text-left py-3 px-4 text-sm font-medium text-muted-foreground">{t("overview.status")}</th>
-                    <th className="text-left py-3 px-4 text-sm font-medium text-muted-foreground">{t("campaigns.format")}</th>
-                    <th className="text-left py-3 px-4 text-sm font-medium text-muted-foreground">{t("campaigns.budget")}</th>
-                    <th className="text-left py-3 px-4 text-sm font-medium text-muted-foreground">{t("overview.spent")}</th>
-                    <th className="text-left py-3 px-4 text-sm font-medium text-muted-foreground">{t("overview.impressions")}</th>
-                    <th className="text-left py-3 px-4 text-sm font-medium text-muted-foreground">CTR</th>
+                    <th className="text-left py-3 px-4 text-sm font-medium text-muted-foreground cursor-pointer select-none hover:text-foreground transition-colors" onClick={() => handleSort("name")}>
+                      <span className="inline-flex items-center">{t("overview.name")}<SortIcon col="name" /></span>
+                    </th>
+                    <th className="text-left py-3 px-4 text-sm font-medium text-muted-foreground cursor-pointer select-none hover:text-foreground transition-colors" onClick={() => handleSort("status")}>
+                      <span className="inline-flex items-center">{t("overview.status")}<SortIcon col="status" /></span>
+                    </th>
+                    <th className="text-left py-3 px-4 text-sm font-medium text-muted-foreground cursor-pointer select-none hover:text-foreground transition-colors" onClick={() => handleSort("format")}>
+                      <span className="inline-flex items-center">{t("campaigns.format")}<SortIcon col="format" /></span>
+                    </th>
+                    <th className="text-left py-3 px-4 text-sm font-medium text-muted-foreground cursor-pointer select-none hover:text-foreground transition-colors" onClick={() => handleSort("budget")}>
+                      <span className="inline-flex items-center">{t("campaigns.budget")}<SortIcon col="budget" /></span>
+                    </th>
+                    <th className="text-left py-3 px-4 text-sm font-medium text-muted-foreground cursor-pointer select-none hover:text-foreground transition-colors" onClick={() => handleSort("spent")}>
+                      <span className="inline-flex items-center">{t("overview.spent")}<SortIcon col="spent" /></span>
+                    </th>
+                    <th className="text-left py-3 px-4 text-sm font-medium text-muted-foreground cursor-pointer select-none hover:text-foreground transition-colors" onClick={() => handleSort("impressions")}>
+                      <span className="inline-flex items-center">{t("overview.impressions")}<SortIcon col="impressions" /></span>
+                    </th>
+                    <th className="text-left py-3 px-4 text-sm font-medium text-muted-foreground cursor-pointer select-none hover:text-foreground transition-colors" onClick={() => handleSort("ctr")}>
+                      <span className="inline-flex items-center">CTR<SortIcon col="ctr" /></span>
+                    </th>
                     <th className="text-left py-3 px-4 text-sm font-medium text-muted-foreground"></th>
                   </tr>
                 </thead>
                 <tbody>
-                  {filtered.map((campaign) => (
+                  {sorted.map((campaign) => (
                     <tr key={campaign.id} className="border-b border-border/50 hover:bg-muted/50 transition-colors">
                       <td className="py-4 px-4 text-muted-foreground font-mono text-sm">{campaign.id}</td>
                       <td className="py-4 px-4 font-medium">{campaign.name}</td>
@@ -155,41 +211,26 @@ export default function DashboardCampaigns() {
                           <DropdownMenuTrigger asChild><Button variant="ghost" size="icon" className="h-8 w-8"><MoreHorizontal className="h-4 w-4" /></Button></DropdownMenuTrigger>
                           <DropdownMenuContent align="end" className="bg-card border-border">
                             <DropdownMenuItem className="gap-2" onClick={() => setViewCampaign(campaign)}><Eye className="h-4 w-4" /> {t("campaigns.view")}</DropdownMenuItem>
-
-                            {/* No edit/delete for moderation */}
                             {campaign.status !== "moderation" && (
                               <DropdownMenuItem className="gap-2" onClick={() => navigate(`/dashboard/campaigns/${campaign.id}/edit`)}><Pencil className="h-4 w-4" /> {t("campaigns.edit")}</DropdownMenuItem>
                             )}
-
                             <DropdownMenuItem className="gap-2" onClick={() => duplicateCampaign(campaign)}><Copy className="h-4 w-4" /> {t("campaigns.copy")}</DropdownMenuItem>
                             <DropdownMenuSeparator />
-
-                            {/* Active -> pause */}
                             {campaign.status === "active" && (
                               <DropdownMenuItem className="gap-2" onClick={() => toggleStatus(campaign.id)}><Pause className="h-4 w-4" /> {t("campaigns.pause")}</DropdownMenuItem>
                             )}
-
-                            {/* Paused -> start */}
                             {campaign.status === "paused" && (
                               <DropdownMenuItem className="gap-2" onClick={() => toggleStatus(campaign.id)}><Play className="h-4 w-4" /> {t("campaigns.start")}</DropdownMenuItem>
                             )}
-
-                            {/* Draft: finish creation */}
                             {campaign.status === "draft" && (
                               <DropdownMenuItem className="gap-2" onClick={() => navigate(`/dashboard/campaigns/${campaign.id}/edit`)}><Pencil className="h-4 w-4" /> {t("campaigns.finishCreation")}</DropdownMenuItem>
                             )}
-
-                            {/* Completed: restart */}
                             {campaign.status === "completed" && (
                               <DropdownMenuItem className="gap-2" onClick={() => handleRestart(campaign)}><RotateCcw className="h-4 w-4" /> {t("campaigns.restart")}</DropdownMenuItem>
                             )}
-
-                            {/* Moderation: cancel moderation */}
                             {campaign.status === "moderation" && (
                               <DropdownMenuItem className="gap-2" onClick={() => handleCancelModeration(campaign.id)}><XCircle className="h-4 w-4" /> {t("campaigns.cancelModeration")}</DropdownMenuItem>
                             )}
-
-                            {/* No delete for moderation */}
                             {campaign.status !== "moderation" && (
                               <DropdownMenuItem className="gap-2 text-destructive" onClick={() => setDeleteId(campaign.id)}><Trash2 className="h-4 w-4" /> {t("campaigns.delete")}</DropdownMenuItem>
                             )}
@@ -198,7 +239,7 @@ export default function DashboardCampaigns() {
                       </td>
                     </tr>
                   ))}
-                  {filtered.length === 0 && <tr><td colSpan={9} className="py-12 text-center text-muted-foreground">{t("campaigns.notFound")}</td></tr>}
+                  {sorted.length === 0 && <tr><td colSpan={9} className="py-12 text-center text-muted-foreground">{t("campaigns.notFound")}</td></tr>}
                 </tbody>
               </table>
             </div>

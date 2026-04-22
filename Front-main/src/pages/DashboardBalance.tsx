@@ -4,11 +4,9 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
-import { Wallet, Plus, Receipt, Copy, ExternalLink, Tag } from "lucide-react";
+import { Wallet, Plus, Receipt, Tag } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
-import { useNotifications } from "@/contexts/NotificationContext";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { useProfile } from "@/contexts/ProfileContext";
 import { useAuth } from "@/contexts/AuthContext";
@@ -17,8 +15,8 @@ import { createTopupRequest, listTopupRequests, validatePromo } from "@/lib/api"
 const amounts = [100, 250, 500, 1000, 5000];
 
 const usdtMethods = [
-  { id: "usdt_trc20", label: "USDT (TRC-20)", desc: "Tether on Tron", address: "TXkRh4pKz7w9Yb2mN5vQx8Gp3jL6fD0eW" },
-  { id: "usdt_erc20", label: "USDT (ERC-20)", desc: "Tether on Ethereum", address: "0x3F7a9c2B1d5E8f4A6C0b9D1e2F3a4B5c6D7e8F9a" },
+  { id: "usdt_trc20", label: "USDT (TRC-20)", desc: "Tether on Tron" },
+  { id: "usdt_erc20", label: "USDT (ERC-20)", desc: "Tether on Ethereum" },
 ];
 
 interface TopupRequest {
@@ -35,17 +33,16 @@ export default function DashboardBalance() {
   const { t } = useLanguage();
   const { user } = useAuth();
   const { profile, loading: profileLoading } = useProfile();
-  const { addNotification, removeNotification } = useNotifications();
+  const {
+    pendingPayment, setPendingPayment,
+    openDialog, registerRefreshHandler,
+  } = usePendingPayment();
 
   const [selectedAmount, setSelectedAmount] = useState<number | null>(250);
   const [customAmount, setCustomAmount] = useState("");
   const [selectedMethod, setSelectedMethod] = useState("usdt_trc20");
-  const [showTxDialog, setShowTxDialog] = useState(false);
-  const [txHash, setTxHash] = useState("");
   const [promoCode, setPromoCode] = useState("");
   const [appliedPromo, setAppliedPromo] = useState<{ code: string; bonus: number } | null>(null);
-  const [pendingPayment, setPendingPayment] = useState<{ amount: number; method: string; promo?: string; bonus?: number } | null>(null);
-  const [pendingNotificationId, setPendingNotificationId] = useState<string | null>(null);
   const [topupRequests, setTopupRequests] = useState<TopupRequest[]>([]);
   const [loadingRequests, setLoadingRequests] = useState(true);
 
@@ -61,8 +58,10 @@ export default function DashboardBalance() {
 
   useEffect(() => { fetchTopupRequests(); }, [user]);
 
-  // Check if there's a pending topup request
-  const hasPendingRequest = topupRequests.some(r => r.status === "pending");
+  // Allow the global dialog to refresh our history after submission
+  useEffect(() => {
+    registerRefreshHandler(fetchTopupRequests);
+  }, [registerRefreshHandler, user]);
 
   const finalAmount = customAmount ? parseInt(customAmount) : selectedAmount;
 
@@ -86,8 +85,8 @@ export default function DashboardBalance() {
 
   const handleTopUp = () => {
     if (!finalAmount || finalAmount < 100) return;
-    if (hasPendingRequest || pendingPayment) {
-      toast.error(t("balance.toast.pendingExists"));
+    if (pendingPayment) {
+      toast.error(t("balance.disabledReason"));
       return;
     }
     setPendingPayment({ amount: finalAmount, method: selectedMethod, promo: appliedPromo?.code, bonus: appliedPromo?.bonus });
@@ -125,70 +124,10 @@ export default function DashboardBalance() {
         onClick: () => window.open("https://t.me/GregTwinbid", "_blank"),
       },
     });
-
-    addNotification({
-      title: t("balance.notif.paymentSuccess"),
-      description: t("balance.notif.paymentSuccessDesc").replace("${amount}", `$${pendingPayment.amount.toLocaleString()}`),
-      type: "info",
-      persistent: false,
-      action: {
-        label: "@GregTwinbid",
-        onClick: () => window.open("https://t.me/GregTwinbid", "_blank"),
-      },
-    });
-
-    setShowTxDialog(false);
-    setPendingPayment(null);
-    setTxHash("");
     setAppliedPromo(null);
     setPromoCode("");
-    if (pendingNotificationId) {
-      removeNotification(pendingNotificationId);
-      setPendingNotificationId(null);
-    }
-    fetchTopupRequests();
+    openDialog();
   };
-
-  const handleCancelPayment = () => {
-    setShowTxDialog(false);
-    setPendingPayment(null);
-    setTxHash("");
-    if (pendingNotificationId) {
-      removeNotification(pendingNotificationId);
-      setPendingNotificationId(null);
-    }
-    toast.info(t("balance.toast.paymentCanceled"));
-  };
-
-  const handleCloseTxDialog = (open: boolean) => {
-    if (!open && pendingPayment && !txHash.trim()) {
-      setShowTxDialog(false);
-      const nId = addNotification({
-        title: t("balance.notif.notCompleted"),
-        description: `${t("balance.notif.noHash")} $${pendingPayment.amount}`,
-        type: "warning",
-        persistent: true,
-        action: { label: t("balance.notif.completePayment"), onClick: () => setShowTxDialog(true) },
-        onDismiss: () => {
-          setPendingPayment(null);
-          setTxHash("");
-          setPendingNotificationId(null);
-          toast.info(t("balance.toast.paymentCanceled"));
-        },
-      });
-      setPendingNotificationId(nId);
-      toast(t("balance.toast.notCompleted"), { duration: 5000 });
-    } else {
-      setShowTxDialog(open);
-    }
-  };
-
-  const copyAddress = (address: string) => {
-    navigator.clipboard.writeText(address);
-    toast.success(t("balance.toast.addressCopied"));
-  };
-
-  const currentMethod = usdtMethods.find(m => m.id === selectedMethod);
 
   const formatDate = (dateStr: string) => {
     const d = new Date(dateStr);
@@ -254,7 +193,7 @@ export default function DashboardBalance() {
             </div>
 
             <div className="space-y-2">
-              <Label>{t("balance.network")}</Label>
+              <Label>{t("balance.paymentMethod")}</Label>
               <div className="grid sm:grid-cols-2 gap-3">
                 {usdtMethods.map((m) => (
                   <button key={m.id} onClick={() => setSelectedMethod(m.id)}
@@ -298,70 +237,20 @@ export default function DashboardBalance() {
               )}
             </div>
 
-            <Button onClick={handleTopUp} className="bg-accent hover:bg-accent/90 text-accent-foreground"
-              disabled={!finalAmount || finalAmount < 100 || hasPendingRequest}>
-              {t("balance.topUpBtn")} {finalAmount ? `$${finalAmount.toLocaleString()}` : ""}
-              {appliedPromo && finalAmount ? ` (+${Math.floor(finalAmount * appliedPromo.bonus / 100)}$ ${t("balance.promo.bonusShort")})` : ""}
-            </Button>
+            <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+              <Button onClick={handleTopUp} className="bg-accent hover:bg-accent/90 text-accent-foreground"
+                disabled={!finalAmount || finalAmount < 100 || !!pendingPayment}>
+                {t("balance.topUpBtn")} {finalAmount ? `$${finalAmount.toLocaleString()}` : ""}
+                {appliedPromo && finalAmount ? ` (+${Math.floor(finalAmount * appliedPromo.bonus / 100)}$ ${t("balance.promo.bonusShort")})` : ""}
+              </Button>
+              {pendingPayment && (
+                <p className="text-xs text-yellow-500">{t("balance.disabledReason")}</p>
+              )}
+            </div>
             <p className="text-xs text-muted-foreground">{t("balance.minAmount")}</p>
           </CardContent>
         </Card>
       </div>
-
-      {/* Transaction Hash Dialog */}
-      <Dialog open={showTxDialog} onOpenChange={handleCloseTxDialog}>
-        <DialogContent className="sm:max-w-[500px] bg-card border-border">
-          <DialogHeader>
-            <DialogTitle>{t("balance.paymentTitle")} {pendingPayment ? `$${pendingPayment.amount.toLocaleString()}` : ""}</DialogTitle>
-            <DialogDescription>{t("balance.paymentDesc")}</DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4 mt-2">
-            <div className="p-3 rounded-lg bg-primary/10 border border-primary/20">
-              <p className="text-sm font-medium">{t("balance.topUpAmount")} <span className="text-primary">${pendingPayment?.amount.toLocaleString()}</span></p>
-              {pendingPayment?.bonus && (
-                <p className="text-sm text-primary mt-1">
-                  + {t("balance.promo.bonusShort")}: +{Math.floor((pendingPayment.amount * pendingPayment.bonus) / 100)}$ ({pendingPayment.promo}, +{pendingPayment.bonus}%)
-                </p>
-              )}
-            </div>
-
-            <div className="space-y-2">
-              <Label>{t("balance.walletAddress")} ({currentMethod?.label})</Label>
-              <div className="flex gap-2">
-                <Input value={currentMethod?.address || ""} readOnly className="bg-background border-border font-mono text-xs" />
-                <Button variant="outline" size="icon" onClick={() => copyAddress(currentMethod?.address || "")} className="border-border shrink-0">
-                  <Copy className="h-4 w-4" />
-                </Button>
-              </div>
-              <p className="text-xs text-muted-foreground">{t("balance.transferNote")}</p>
-            </div>
-
-            <div className="space-y-2">
-              <Label>{t("balance.txHash")}</Label>
-              <Input value={txHash} onChange={(e) => setTxHash(e.target.value)}
-                placeholder="0x..." className="bg-background border-border font-mono text-sm" />
-            </div>
-
-            <Button onClick={handleSubmitTx} className="w-full bg-primary hover:bg-primary/90 text-primary-foreground"
-              disabled={!txHash.trim()}>
-              {t("balance.submit")}
-            </Button>
-
-            <Button variant="outline" className="w-full border-border" onClick={handleCancelPayment}>
-              {t("balance.cancelPayment")}
-            </Button>
-
-            <div className="flex items-center gap-2 p-3 rounded-lg bg-muted/50 border border-border">
-              <ExternalLink className="h-4 w-4 text-muted-foreground shrink-0" />
-              <p className="text-xs text-muted-foreground">
-                {t("balance.supportText")}{" "}
-                <a href="https://t.me/GregTwinbid" target="_blank" rel="noopener" className="text-primary hover:underline">@GregTwinbid</a>{" "}
-                {t("balance.inTelegram")}
-              </p>
-            </div>
-          </div>
-        </DialogContent>
-      </Dialog>
 
       {/* Transaction History */}
       <Card className="bg-card border-border">

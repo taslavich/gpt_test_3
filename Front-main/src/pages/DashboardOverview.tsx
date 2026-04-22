@@ -1,31 +1,63 @@
-import { StatsCards } from "@/components/dashboard/StatsCards";
-import { BalanceCard } from "@/components/dashboard/BalanceCard";
+import { useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { useCampaigns } from "@/contexts/CampaignContext";
+import { BalanceCard } from "@/components/dashboard/BalanceCard";
+import { Eye, MousePointer, Target } from "lucide-react";
 
 export default function DashboardOverview() {
   const { t } = useLanguage();
-  const { campaigns } = useCampaigns();
+  const { campaigns, refetch } = useCampaigns();
+
+  useEffect(() => { refetch(); }, []);
+
+  // Only show campaigns that are not draft or completed
+  const activeCampaigns = campaigns.filter(c => c.status !== "draft" && c.status !== "completed");
+
+  const totalImpressions = activeCampaigns.reduce((s, c) => s + c.impressions, 0);
+  const totalClicks = activeCampaigns.reduce((s, c) => s + c.clicks, 0);
+  const ctr = totalImpressions > 0 ? ((totalClicks / totalImpressions) * 100).toFixed(2) : "0.00";
+
+  const stats = [
+    { label: t("statsCards.impressions"), value: totalImpressions.toLocaleString(), icon: Eye, color: "text-primary" },
+    { label: t("statsCards.clicks"), value: totalClicks.toLocaleString(), icon: MousePointer, color: "text-primary" },
+    { label: t("statsCards.ctr"), value: `${ctr}%`, icon: Target, color: "text-primary" },
+  ];
 
   const statusConfig: Record<string, { label: string; className: string }> = {
     active: { label: t("status.active"), className: "bg-green-500/10 text-green-500 border-green-500/20" },
     paused: { label: t("status.paused"), className: "bg-yellow-500/10 text-yellow-500 border-yellow-500/20" },
     moderation: { label: t("status.moderation"), className: "bg-purple-500/10 text-purple-500 border-purple-500/20" },
-    draft: { label: t("status.draft"), className: "bg-muted text-muted-foreground border-border" },
-    completed: { label: t("status.completed"), className: "bg-blue-500/10 text-blue-500 border-blue-500/20" },
   };
 
   return (
     <div className="space-y-6">
       <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
-        <div className="lg:col-span-3"><StatsCards /></div>
+        <div className="lg:col-span-3">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            {stats.map((stat) => (
+              <Card key={stat.label} className="bg-card border-border">
+                <CardContent className="p-6">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-sm text-muted-foreground">{stat.label}</p>
+                      <p className="text-2xl font-bold mt-1">{stat.value}</p>
+                    </div>
+                    <div className={`h-12 w-12 rounded-lg bg-muted flex items-center justify-center ${stat.color}`}>
+                      <stat.icon className="h-6 w-6" />
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        </div>
         <div className="lg:col-span-1"><BalanceCard /></div>
       </div>
       <Card className="bg-card border-border">
-        <CardHeader><CardTitle>{t("overview.recentCampaigns")}</CardTitle></CardHeader>
+        <CardHeader><CardTitle>{t("campaigns.title")}</CardTitle></CardHeader>
         <CardContent>
           <div className="overflow-x-auto">
             <table className="w-full">
@@ -39,7 +71,9 @@ export default function DashboardOverview() {
                 </tr>
               </thead>
               <tbody>
-                {campaigns.map((c) => (
+                {activeCampaigns.length === 0 ? (
+                  <tr><td colSpan={5} className="py-12 text-center text-muted-foreground">{t("campaigns.notFound")}</td></tr>
+                ) : activeCampaigns.map((c) => (
                   <tr key={c.id} className="border-b border-border/50">
                     <td className="py-3 px-4 text-muted-foreground font-mono text-sm">{c.id}</td>
                     <td className="py-3 px-4 font-medium">{c.name}</td>
