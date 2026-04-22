@@ -8,6 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { ArrowLeft } from "lucide-react";
 import { toast } from "sonner";
 import { useCampaigns, type TargetingState, type PricingModel, type TrafficQuality, type TrafficType, type ListMode, type Creative, type Vertical, VERTICALS } from "@/contexts/CampaignContext";
+import { useNotifications } from "@/contexts/NotificationContext";
 import { TargetingSection, targetingConfigs } from "@/components/dashboard/TargetingSection";
 import { BudgetSection } from "@/components/dashboard/BudgetSection";
 import { CreativesEditor } from "@/components/dashboard/CreativesEditor";
@@ -39,6 +40,7 @@ export default function CreateCampaign() {
   const navigate = useNavigate();
   const { addCampaign } = useCampaigns();
   const { t } = useLanguage();
+  const { addNotification } = useNotifications();
   const [step, setStep] = useState(1);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [trafficType, setTrafficType] = useState<TrafficType>("mainstream");
@@ -59,6 +61,32 @@ export default function CreateCampaign() {
   const [evenSpend, setEvenSpend] = useState(false);
   const savedAsDraft = useRef(false);
 
+  const clearError = (...keys: string[]) => setErrors(prev => {
+    const next = { ...prev };
+    keys.forEach(k => delete next[k]);
+    return next;
+  });
+
+  // Reactively clear budget/date/price errors
+  useEffect(() => { if (totalBudget && parseNum(totalBudget) >= 1) clearError("totalBudget"); }, [totalBudget]);
+  useEffect(() => { if (startDate) clearError("startDate", "dates"); }, [startDate]);
+  useEffect(() => { if (endDate) { const today = new Date(); today.setHours(0,0,0,0); if (new Date(endDate) >= today) clearError("endDate", "dates"); } }, [endDate]);
+  useEffect(() => {
+    if (priceValue) {
+      const pv = parseNum(priceValue);
+      const formatMins: Record<string, Record<TrafficQuality, number>> = {
+        banner: { common: 0.01, high: 0.01, ultra: 0.01 },
+        native: { common: 0.01, high: 0.01, ultra: 0.01 },
+        push: { common: 0.005, high: 0.005, ultra: 0.005 },
+        popunder: { common: 0.3, high: 0.7, ultra: 0.9 },
+      };
+      const mins = formatMins[adFormat] || formatMins.banner;
+      const minCpm = mins[trafficQuality];
+      const min = pricingModel === "cpc" ? +(minCpm * 1.7 / 1000).toFixed(5) : minCpm;
+      if (pv >= min) clearError("priceValue");
+    }
+  }, [priceValue, pricingModel, trafficQuality, adFormat]);
+
   const updateList = (key: string, updates: Partial<TargetingState>) => {
     setLists(prev => ({ ...prev, [key]: { ...prev[key], ...updates } }));
   };
@@ -74,6 +102,7 @@ export default function CreateCampaign() {
 
     // Validate creatives
     creatives.forEach(c => {
+      if (!c.name?.trim()) e[`creative_${c.id}_name`] = t("create.required");
       if (!c.url.trim()) e[`creative_${c.id}_url`] = t("create.required");
       if (adFormat !== "popunder" && !c.imageUrl) e[`creative_${c.id}_image`] = t("create.required");
       if ((adFormat === "native" || adFormat === "push") && !c.title?.trim()) e[`creative_${c.id}_title`] = t("create.required");
@@ -88,7 +117,7 @@ export default function CreateCampaign() {
   const validateStep3 = () => {
     const e: Record<string, string> = {};
     const tb = parseNum(totalBudget);
-    if (!totalBudget || isNaN(tb) || tb < 100) e.totalBudget = t("edit.errorBudgetMin");
+    if (!totalBudget || isNaN(tb) || tb < 1) e.totalBudget = t("edit.errorBudgetMin");
     const pv = parseNum(priceValue);
     const { min } = getMinPrice();
     if (!priceValue || isNaN(pv) || pv < min) e.priceValue = `${t("budget.belowMin")} ($${min})`;
@@ -155,7 +184,14 @@ export default function CreateCampaign() {
     });
   };
 
-  const handleBack = () => { saveDraft(); navigate("/dashboard/campaigns"); };
+  const handleBack = () => {
+    const wasSaved = !savedAsDraft.current && (name.trim() || adFormat);
+    saveDraft();
+    if (wasSaved) {
+      addNotification({ title: t("create.draftSaved"), description: t("create.draftSavedDesc"), type: "warning" });
+    }
+    navigate("/dashboard/campaigns");
+  };
 
   useEffect(() => { return () => {}; }, []);
 
@@ -188,7 +224,7 @@ export default function CreateCampaign() {
             <>
               <div className="space-y-2">
                 <Label>{t("create.trafficType")} *</Label>
-                <Select value={trafficType} onValueChange={(v) => setTrafficType(v as TrafficType)}>
+                <Select value={trafficType} onValueChange={(v) => { setTrafficType(v as TrafficType); if (v === "mainstream") setVerticals(prev => prev.filter(x => x !== "Adult")); }}>
                   <SelectTrigger className="bg-background border-border">
                     <SelectValue />
                   </SelectTrigger>
@@ -201,9 +237,9 @@ export default function CreateCampaign() {
                 <p className="text-xs text-muted-foreground">{t("create.trafficTypeHint")}</p>
               </div>
               <div className="space-y-2">
-                <Label>{t("create.vertical")} ({t("create.optional")})</Label>
+                <Label>{t("create.vertical")}</Label>
                 <div className="flex flex-wrap gap-2">
-                  {VERTICALS.map(v => {
+                  {VERTICALS.filter(v => trafficType === "mainstream" ? v !== "Adult" : true).map(v => {
                     const isChecked = verticals.includes(v);
                     return (
                       <button
@@ -224,14 +260,14 @@ export default function CreateCampaign() {
               </div>
               <div className="space-y-2">
                 <Label>{t("create.campaignName")}</Label>
-                <Input value={name} onChange={(e) => setName(e.target.value)}
+                <Input value={name} onChange={(e) => { setName(e.target.value); if (e.target.value.trim()) clearError("name"); }}
                   placeholder={t("create.campaignNamePlaceholder")}
                   className={`bg-background border-border ${errors.name ? "border-destructive" : ""}`} />
                 {errors.name && <p className="text-xs text-destructive">{errors.name}</p>}
               </div>
               <div className="space-y-2">
                 <Label>{t("create.adFormat")}</Label>
-                <Select value={adFormat} onValueChange={(v) => { setAdFormat(v); setCreatives([{ id: generateId(), url: "" }]); }}>
+                <Select value={adFormat} onValueChange={(v) => { setAdFormat(v); clearError("adFormat"); setCreatives([{ id: generateId(), url: "" }]); }}>
                   <SelectTrigger className={`bg-background border-border ${errors.adFormat ? "border-destructive" : ""}`}>
                     <SelectValue placeholder={t("create.selectFormat")} />
                   </SelectTrigger>
@@ -247,7 +283,7 @@ export default function CreateCampaign() {
               {showBannerSize && (
                 <div className="space-y-2">
                   <Label>{t("create.bannerSize")} *</Label>
-                  <Select value={bannerSize} onValueChange={setBannerSize}>
+                  <Select value={bannerSize} onValueChange={(v) => { setBannerSize(v); clearError("bannerSize"); }}>
                     <SelectTrigger className={`bg-background border-border ${errors.bannerSize ? "border-destructive" : ""}`}>
                       <SelectValue placeholder={t("create.selectBannerSize")} />
                     </SelectTrigger>
@@ -261,7 +297,7 @@ export default function CreateCampaign() {
 
               {showBrandName && (
                 <div className="space-y-2">
-                  <Label>{t("create.brandName")} ({t("create.optional")})</Label>
+                  <Label>{t("create.brandName")}</Label>
                   <Input value={brandName} onChange={(e) => setBrandName(e.target.value)}
                     placeholder={t("create.brandNamePlaceholder")} className="bg-background border-border" />
                 </div>
@@ -271,7 +307,7 @@ export default function CreateCampaign() {
                 <>
                   <div className="pt-2">
                     <p className="text-sm font-medium text-muted-foreground mb-3">{t("create.creatives")}</p>
-                    <CreativesEditor formatKey={adFormat} creatives={creatives} onChange={setCreatives} errors={errors} />
+                    <CreativesEditor formatKey={adFormat} creatives={creatives} onChange={setCreatives} errors={errors} onClearError={clearError} />
                   </div>
                 </>
               )}
