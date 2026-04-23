@@ -1,13 +1,23 @@
-import { useRef, useMemo } from "react";
+import { useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
-import { Upload, Plus, Trash2 } from "lucide-react";
+import { Upload, Plus, Trash2, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { useLanguage } from "@/contexts/LanguageContext";
 import type { Creative } from "@/contexts/CampaignContext";
+// Read a File as a base64 data URL — used as a local preview until the next
+// reload, when the backend will return a presigned read URL.
+function readFileAsDataUrl(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result));
+    reader.onerror = () => reject(reader.error);
+    reader.readAsDataURL(file);
+  });
+}
 
 const URL_MACROS = [
   "click_id", "site_id", "country_code", "creative_id",
@@ -27,6 +37,7 @@ const generateId = () => String(Date.now()) + Math.random().toString(36).slice(2
 export function CreativesEditor({ formatKey, creatives, onChange, errors = {}, onClearError }: CreativesEditorProps) {
   const { t } = useLanguage();
   const fileInputRefs = useRef<Record<string, HTMLInputElement | null>>({});
+  const [uploadingId, setUploadingId] = useState<string | null>(null);
 
   const showTitle = formatKey === "native" || formatKey === "push";
   const showDescription = formatKey === "native" || formatKey === "push";
@@ -48,19 +59,34 @@ export function CreativesEditor({ formatKey, creatives, onChange, errors = {}, o
   const ALLOWED_IMAGE_TYPES = ["image/png", "image/jpeg", "image/jpg"];
   const ALLOWED_EXTENSIONS = [".png", ".jpg", ".jpeg"];
 
-  const handleImageUpload = (creativeId: string, e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleImageUpload = async (creativeId: string, e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (file) {
-      const ext = file.name.toLowerCase().slice(file.name.lastIndexOf("."));
-      if (!ALLOWED_EXTENSIONS.includes(ext) && !ALLOWED_IMAGE_TYPES.includes(file.type)) {
-        toast.error(t("create.imageFormatError"));
-        e.target.value = "";
-        return;
-      }
-      const url = URL.createObjectURL(file);
-      updateCreative(creativeId, { imageUrl: url, imageFileName: file.name });
+    if (!file) return;
+    const ext = file.name.toLowerCase().slice(file.name.lastIndexOf("."));
+    if (!ALLOWED_EXTENSIONS.includes(ext) && !ALLOWED_IMAGE_TYPES.includes(file.type)) {
+      toast.error(t("create.imageFormatError"));
+      e.target.value = "";
+      return;
+    }
+    setUploadingId(creativeId);
+    try {
+      // Local preview only. The actual file is uploaded by CampaignContext to
+      // the backend AFTER the creative row is created — backend then writes
+      // s3_file_path itself. Frontend never touches s3_file_path.
+      const previewUrl = await readFileAsDataUrl(file);
+      updateCreative(creativeId, {
+        imageUrl: previewUrl,
+        pendingFile: file,
+        imageFileName: file.name,
+      });
       onClearError?.(`creative_${creativeId}_image`);
       toast.success(t("create.imageUploaded"));
+    } catch (err) {
+      console.error("Image upload error:", err);
+      toast.error(t("create.imageFormatError"));
+    } finally {
+      setUploadingId(null);
+      e.target.value = "";
     }
   };
 
@@ -171,8 +197,12 @@ export function CreativesEditor({ formatKey, creatives, onChange, errors = {}, o
                   onChange={e => handleImageUpload(creative.id, e)} />
                 <p className="text-xs text-muted-foreground">{t("create.imageFormatHint")}</p>
                 <div className="flex items-center gap-3">
-                  <Button type="button" variant="outline" onClick={() => fileInputRefs.current[creative.id]?.click()} className="border-border gap-2">
-                    <Upload className="h-4 w-4" /> {t("create.uploadImage")}
+                  <Button type="button" variant="outline" disabled={uploadingId === creative.id}
+                    onClick={() => fileInputRefs.current[creative.id]?.click()} className="border-border gap-2">
+                    {uploadingId === creative.id
+                      ? <Loader2 className="h-4 w-4 animate-spin" />
+                      : <Upload className="h-4 w-4" />}
+                    {t("create.uploadImage")}
                   </Button>
                   {creative.imageFileName && <span className="text-sm text-muted-foreground">{creative.imageFileName}</span>}
                 </div>

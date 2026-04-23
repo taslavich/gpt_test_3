@@ -141,18 +141,52 @@ export const mockProvider = {
   },
 
   // -- creatives ----------------------------------------------------------
-  async listCreatives(campaignId: string): Promise<ApiCreative[]> {
+  /** Renamed read method per API contract. */
+  async readCreatives(campaignId: string): Promise<ApiCreative[]> {
     return delay(state.creatives.filter(c => c.campaign_id === campaignId));
   },
-  async createCreative(campaignId: string, body: Omit<ApiCreative, "id" | "campaign_id">): Promise<ApiCreative> {
+  async createCreative(
+    campaignId: string,
+    body: Omit<ApiCreative, "id" | "campaign_id">,
+    file?: File,
+    filename?: string,
+  ): Promise<ApiCreative> {
     const c = { ...body, id: uid(), campaign_id: campaignId } as ApiCreative;
+    if (file) {
+      // Mock backend: store base64 data URL as the presigned read URL.
+      const dataUrl = await new Promise<string>((resolve, reject) => {
+        const r = new FileReader();
+        r.onload = () => resolve(String(r.result));
+        r.onerror = () => reject(r.error);
+        r.readAsDataURL(file);
+      });
+      (c as any).name = filename || file.name;
+      (c as any).presigned_s3_url = dataUrl;
+    }
     state.creatives.push(c);
     saveState();
     return delay(c);
   },
-  async patchCreative(id: string, patch: Partial<ApiCreative>): Promise<ApiCreative> {
+  async patchCreative(
+    id: string,
+    patch: Partial<ApiCreative>,
+    file?: File,
+    filename?: string,
+  ): Promise<ApiCreative> {
     const i = state.creatives.findIndex(c => c.id === id);
-    if (i >= 0) state.creatives[i] = { ...state.creatives[i], ...patch } as ApiCreative;
+    if (i >= 0) {
+      state.creatives[i] = { ...state.creatives[i], ...patch } as ApiCreative;
+      if (file) {
+        const dataUrl = await new Promise<string>((resolve, reject) => {
+          const r = new FileReader();
+          r.onload = () => resolve(String(r.result));
+          r.onerror = () => reject(r.error);
+          r.readAsDataURL(file);
+        });
+        (state.creatives[i] as any).name = filename || file.name;
+        (state.creatives[i] as any).presigned_s3_url = dataUrl;
+      }
+    }
     saveState();
     return delay(state.creatives[i]);
   },
@@ -160,13 +194,6 @@ export const mockProvider = {
     state.creatives = state.creatives.filter(c => c.id !== id);
     saveState();
     return delay(undefined);
-  },
-  async getUploadUrl(body: { filename: string; content_type: string; size: number }) {
-    return delay({
-      upload_url: `https://mock-s3/upload/${body.filename}`,
-      s3_file_path: `s3://twinbid/creatives/${uid()}-${body.filename}`,
-      expires_in: 900,
-    });
   },
 
   // -- topups -------------------------------------------------------------

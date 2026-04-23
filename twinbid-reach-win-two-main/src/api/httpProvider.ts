@@ -6,6 +6,33 @@ import type {
 } from "./types";
 import type { ApiProvider } from "./mockProvider";
 
+const API_BASE = import.meta.env.VITE_API_BASE_URL ?? "";
+
+/** Build a multipart body that carries JSON fields plus an optional file+filename. */
+function buildCreativeForm(body: Record<string, unknown>, file?: File, filename?: string): FormData {
+  const fd = new FormData();
+  for (const [k, v] of Object.entries(body)) {
+    if (v === undefined || v === null) continue;
+    fd.append(k, typeof v === "string" ? v : JSON.stringify(v));
+  }
+  if (file) {
+    fd.append("file", file, filename || file.name);
+    fd.append("filename", filename || file.name);
+  }
+  return fd;
+}
+
+function authHeaders(): Record<string, string> {
+  const tok = localStorage.getItem("twinbid_access_token");
+  return tok ? { Authorization: `Bearer ${tok}` } : {};
+}
+
+async function multipart<T>(url: string, method: "POST" | "PATCH", fd: FormData): Promise<T> {
+  const r = await fetch(`${API_BASE}${url}`, { method, headers: authHeaders(), body: fd });
+  if (!r.ok) throw new Error(`${method} ${url} failed: ${r.status}`);
+  return r.json() as Promise<T>;
+}
+
 // HTTP implementation. Hits the real backend described in API_CONTRACT.md.
 export const httpProvider: ApiProvider = {
   // auth
@@ -27,13 +54,16 @@ export const httpProvider: ApiProvider = {
   patchCampaign:   (id,p)  => http<ApiCampaign>(`/api/campaigns/${id}`, { method: "PATCH", body: p }),
   deleteCampaign:  (id)    => http<void>(`/api/campaigns/${id}`, { method: "DELETE" }),
 
-  // creatives
-  listCreatives:   (cid)         => http<ApiCreative[]>(`/api/campaigns/${cid}/creatives`),
-  createCreative:  (cid, body)   => http<ApiCreative>(`/api/campaigns/${cid}/creatives`, { method: "POST", body }),
-  patchCreative:   (id,  p)      => http<ApiCreative>(`/api/creatives/${id}`, { method: "PATCH", body: p }),
+  // creatives — read uses the renamed endpoint, writes go as multipart so the
+  // backend receives `file` + `filename` together with the rest of the fields.
+  readCreatives:   (cid)         => http<ApiCreative[]>(`/api/campaigns/${cid}/creatives`),
+  createCreative:  (cid, body, file, filename) =>
+    multipart<ApiCreative>(`/api/campaigns/${cid}/creatives`, "POST",
+      buildCreativeForm(body as Record<string, unknown>, file, filename)),
+  patchCreative:   (id, p, file, filename) =>
+    multipart<ApiCreative>(`/api/creatives/${id}`, "PATCH",
+      buildCreativeForm(p as Record<string, unknown>, file, filename)),
   deleteCreative:  (id)          => http<void>(`/api/creatives/${id}`, { method: "DELETE" }),
-  getUploadUrl:    (body)        => http<{ upload_url: string; s3_file_path: string; expires_in: number }>(
-    "/api/creatives/upload-url", { method: "POST", body }),
 
   // topups
   listTopups:   ()        => http<{ items: ApiUserTransaction[]; total: number }>("/api/topups"),

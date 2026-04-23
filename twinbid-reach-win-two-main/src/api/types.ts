@@ -72,20 +72,22 @@ export interface ApiPopCreative extends ApiCreativeBase {}
 export interface ApiBanCreative extends ApiCreativeBase {
   w: number;
   h: number;
-  s3_file_path: string;
-  file_format: string;
+  /** File name of the uploaded creative image (set by backend on upload). */
+  name?: string;
+  /** Presigned read URL returned by the backend (GET creative). Not sent on write. */
+  presigned_s3_url?: string;
 }
 export interface ApiIppCreative extends ApiCreativeBase {
   title: string;
   description: string;
-  s3_file_path: string;
-  file_format: string;
+  name?: string;
+  presigned_s3_url?: string;
 }
 export interface ApiNatCreative extends ApiCreativeBase {
   title: string;
   description: string;
-  s3_file_path: string;
-  file_format: string;
+  name?: string;
+  presigned_s3_url?: string;
 }
 export type ApiCreative =
   | ApiPopCreative
