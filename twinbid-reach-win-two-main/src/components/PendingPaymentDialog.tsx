@@ -92,14 +92,26 @@ export function PendingPaymentDialog() {
     }
 
     try {
-      await api.createTopup({
+      // Send the full UserTransaction body. Front-end fills in everything it
+      // can compute locally (user_id, transaction_time, total_balance_increase,
+      // etc.). Backend only assigns the primary `id` and `created_at` /
+      // `updated_at` timestamps on persistence.
+      const depositAmount = pendingPayment.amount;
+      const bonusPercent = pendingPayment.bonus || 0;
+      const bonusAmount = Math.floor((depositAmount * bonusPercent) / 100);
+      const nowIso = new Date().toISOString();
+      await api.createTransaction({
+        user_id: user.id,
+        transaction_time: nowIso,
+        transaction_id: txHash.trim(),
         payment_method: pendingPayment.method,
-        deposit_amount: pendingPayment.amount,
-        currency: "USDT",
+        bonus_amount: bonusAmount,
         promocode_id: promocodeId,
-        bonus_amount: pendingPayment.bonus || 0,
         transaction_hash: txHash.trim(),
+        deposit_amount: depositAmount,
+        total_balance_increase: depositAmount + bonusAmount,
         status: "pending",
+        currency: "USDT",
       });
     } catch (e) {
       toast.error("Error submitting payment");

@@ -46,7 +46,7 @@ export default function DashboardBalance() {
     if (!user) return;
     setLoadingRequests(true);
     try {
-      const { items } = await api.listTopups();
+      const { items } = await api.listTransactions();
       setTopupRequests(items);
     } catch (e) {
       console.error("Topups fetch error:", e);
@@ -75,6 +75,14 @@ export default function DashboardBalance() {
       }
       if (promo.usage_limit != null && promo.usage_count >= promo.usage_limit) {
         toast.error(t("balance.promo.invalid"));
+        return;
+      }
+      // Reject if this user already has a transaction tied to this promocode.
+      const alreadyUsed = topupRequests.some(
+        (tx) => tx.promocode_id === promo.id && (!user || tx.user_id === user.id)
+      );
+      if (alreadyUsed) {
+        toast.error(t("balance.promo.alreadyUsed"));
         return;
       }
       setAppliedPromo({ code, bonus: Number(promo.bonus_percent) });

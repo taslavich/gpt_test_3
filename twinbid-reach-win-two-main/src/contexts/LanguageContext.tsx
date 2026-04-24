@@ -157,6 +157,7 @@ const translations: Record<string, Record<Lang, string>> = {
   "balance.promo.remove": { ru: "Убрать", en: "Remove" },
   "balance.promo.applied": { ru: "Промокод применён! Бонус +{percent}% к пополнению", en: "Promo code applied! +{percent}% bonus to deposit" },
   "balance.promo.invalid": { ru: "Промокод не найден", en: "Promo code not found" },
+  "balance.promo.alreadyUsed": { ru: "Вы уже использовали этот промокод", en: "You have already used this promo code" },
   "balance.promo.active": { ru: "Промокод {code} — бонус +{percent}%", en: "Promo code {code} — +{percent}% bonus" },
   "balance.promo.bonusShort": { ru: "бонус", en: "bonus" },
   "balance.paymentTitle": { ru: "Оплата", en: "Payment" },

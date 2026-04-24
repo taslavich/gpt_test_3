@@ -30,16 +30,24 @@ interface MockState {
   user: ApiUser;
   campaigns: ApiCampaign[];
   creatives: ApiCreative[];
-  topups: ApiUserTransaction[];
+  transactions: ApiUserTransaction[];
   notifications: ApiNotification[];
 }
 
 function loadState(): MockState {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
-    if (raw) return JSON.parse(raw);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      // Backwards compat: old key was `topups`.
+      if (parsed.topups && !parsed.transactions) {
+        parsed.transactions = parsed.topups;
+        delete parsed.topups;
+      }
+      return parsed;
+    }
   } catch { /* ignore */ }
-  return { user: { ...defaultUser }, campaigns: [], creatives: [], topups: [], notifications: [] };
+  return { user: { ...defaultUser }, campaigns: [], creatives: [], transactions: [], notifications: [] };
 }
 function saveState() {
   try { localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); } catch { /* ignore */ }
@@ -196,39 +204,36 @@ export const mockProvider = {
     return delay(undefined);
   },
 
-  // -- topups -------------------------------------------------------------
-  async listTopups(): Promise<{ items: ApiUserTransaction[]; total: number }> {
-    return delay({ items: state.topups, total: state.topups.length });
+  // -- transactions -------------------------------------------------------
+  async listTransactions(): Promise<{ items: ApiUserTransaction[]; total: number }> {
+    return delay({ items: state.transactions, total: state.transactions.length });
   },
-  async createTopup(body: { payment_method: string; deposit_amount: number; currency: string; promocode_id?: string | null; bonus_amount?: number; transaction_hash?: string | null; status?: ApiUserTransaction["status"] }): Promise<ApiUserTransaction> {
+  /**
+   * Front-end sends every field it can compute (`user_id`, `transaction_time`,
+   * `total_balance_increase`, etc.). Backend only assigns the primary `id` and
+   * stamps `created_at` / `updated_at`.
+   */
+  async createTransaction(
+    body: Omit<ApiUserTransaction, "id" | "created_at" | "updated_at">,
+  ): Promise<ApiUserTransaction> {
     const t: ApiUserTransaction = {
+      ...body,
       id: uid(),
-      user_id: "mock-user",
-      transaction_time: now(),
-      transaction_id: uid(),
-      payment_method: body.payment_method,
-      bonus_amount: body.bonus_amount ?? 0,
-      promocode_id: body.promocode_id ?? null,
-      transaction_hash: body.transaction_hash ?? null,
-      deposit_amount: body.deposit_amount,
-      total_balance_increase: body.deposit_amount * (1 + (body.bonus_amount ?? 0) / 100),
-      status: body.status ?? "pending",
-      currency: body.currency,
       created_at: now(),
       updated_at: now(),
     };
-    state.topups.unshift(t);
+    state.transactions.unshift(t);
     saveState();
     return delay(t);
   },
-  async patchTopup(id: string, patch: Partial<ApiUserTransaction>): Promise<ApiUserTransaction> {
-    const i = state.topups.findIndex(t => t.id === id);
-    if (i >= 0) state.topups[i] = { ...state.topups[i], ...patch, updated_at: now() };
+  async patchTransaction(id: string, patch: Partial<ApiUserTransaction>): Promise<ApiUserTransaction> {
+    const i = state.transactions.findIndex(t => t.id === id);
+    if (i >= 0) state.transactions[i] = { ...state.transactions[i], ...patch, updated_at: now() };
     saveState();
-    return delay(state.topups[i]);
+    return delay(state.transactions[i]);
   },
-  async cancelTopup(id: string): Promise<ApiUserTransaction> {
-    return this.patchTopup(id, { status: "cancelled" });
+  async cancelTransaction(id: string): Promise<ApiUserTransaction> {
+    return this.patchTransaction(id, { status: "cancelled" });
   },
 
   // -- promo --------------------------------------------------------------

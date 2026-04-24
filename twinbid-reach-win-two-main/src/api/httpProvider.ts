@@ -65,11 +65,11 @@ export const httpProvider: ApiProvider = {
       buildCreativeForm(p as Record<string, unknown>, file, filename)),
   deleteCreative:  (id)          => http<void>(`/api/creatives/${id}`, { method: "DELETE" }),
 
-  // topups
-  listTopups:   ()        => http<{ items: ApiUserTransaction[]; total: number }>("/api/topups"),
-  createTopup:  (body)    => http<ApiUserTransaction>("/api/topups", { method: "POST", body }),
-  patchTopup:   (id, p)   => http<ApiUserTransaction>(`/api/topups/${id}`, { method: "PATCH", body: p }),
-  cancelTopup:  (id)      => http<ApiUserTransaction>(`/api/topups/${id}/cancel`, { method: "POST" }),
+  // transactions
+  listTransactions:   ()        => http<{ items: ApiUserTransaction[]; total: number }>("/api/transactions"),
+  createTransaction:  (body)    => http<ApiUserTransaction>("/api/transactions", { method: "POST", body }),
+  patchTransaction:   (id, p)   => http<ApiUserTransaction>(`/api/transactions/${id}`, { method: "PATCH", body: p }),
+  cancelTransaction:  (id)      => http<ApiUserTransaction>(`/api/transactions/${id}/cancel`, { method: "POST" }),
 
   // promo
   getPromocode: (code)    => http<ApiPromocode>(`/api/promocodes/${encodeURIComponent(code)}`),
