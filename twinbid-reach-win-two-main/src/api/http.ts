@@ -40,12 +40,21 @@ export async function http<T>(path: string, opts: RequestOptions = {}): Promise<
     if (token) headers.Authorization = `Bearer ${token}`;
   }
 
-  const res = await fetch(buildUrl(path, query), {
-    method,
-    headers,
-    body: body !== undefined ? JSON.stringify(body) : undefined,
-    signal,
-  });
+  let res: Response;
+  try {
+    res = await fetch(buildUrl(path, query), {
+      method,
+      headers,
+      body: body !== undefined ? JSON.stringify(body) : undefined,
+      signal,
+    });
+  } catch (error) {
+    const message =
+      error instanceof TypeError
+        ? "Network error: failed to reach API. Check VITE_API_BASE_URL, backend availability, CORS, and HTTPS certificate."
+        : "Network error: request failed before receiving a response.";
+    throw new ApiError(0, message, "NETWORK_ERROR");
+  }
 
   if (res.status === 204) return undefined as T;
 
