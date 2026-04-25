@@ -40,21 +40,21 @@ export async function http<T>(path: string, opts: RequestOptions = {}): Promise<
     if (token) headers.Authorization = `Bearer ${token}`;
   }
 
-let res: Response;
-try {
-  res = await fetch(buildUrl(path, query), {
-    method,
-    headers,
-    body: body !== undefined ? JSON.stringify(body) : undefined,
-    signal,
-  });
-} catch (error) {
-  const message =
-    error instanceof TypeError
-      ? "Network error: failed to reach API. Check VITE_API_BASE_URL, backend availability, CORS, and HTTPS certificate."
-      : "Network error: request failed before receiving a response.";
-  throw new ApiError(0, message, "NETWORK_ERROR");
-}
+  let res: Response;
+  try {
+    res = await fetch(buildUrl(path, query), {
+      method,
+      headers,
+      body: body !== undefined ? JSON.stringify(body) : undefined,
+      signal,
+    });
+  } catch (error) {
+    const message =
+      error instanceof TypeError
+        ? "Network error: failed to reach API. Check VITE_API_BASE_URL, backend availability, CORS, and HTTPS certificate."
+        : "Network error: request failed before receiving a response.";
+    throw new ApiError(0, message, "NETWORK_ERROR");
+  }
 
   if (res.status === 204) return undefined as T;
 
@@ -77,10 +77,7 @@ try {
       err?.fields,
     );
   }
-  // 2xx but with `{ success: false, errorMsg }` envelope → throw too so
-  // callers can rely on a single error path.
-  if (data && typeof data === "object" && (data as any).success === false) {
-    throw new ApiError(res.status, (data as any).errorMsg || "Request failed");
-  }
+  // Return as-is. Envelope handling (`{ success, errorMsg, data }`) is done
+  // centrally in `api/index.ts` so both providers behave the same.
   return data as T;
 }

@@ -175,3 +175,13 @@ export interface AuthTokens {
 export interface AuthResponse extends AuthTokens {
   user: ApiUser;
 }
+
+// ---- Standard response envelope ----
+// Every backend handler returns this shape. The api layer unwraps it: on
+// `success: true` callers receive `data`; on `success: false` an `ApiError`
+// is thrown carrying `errorMsg`.
+export interface ApiEnvelope<T> {
+  success: boolean;
+  errorMsg: string;
+  data?: T;
+}

@@ -2,9 +2,9 @@ import { http } from "./http";
 import type {
   ApiUser, ApiCampaign, ApiCreative, ApiUserTransaction, ApiPromocode,
   ApiNotification, StatsQueryRequest, StatsQueryResponse, StatsSummary,
-  AuthResponse, AuthTokens,
+  AuthResponse, AuthTokens, ApiEnvelope,
 } from "./types";
-import type { ApiProvider } from "./mockProvider";
+import type { RawApiProvider } from "./mockProvider";
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL ?? "";
 
@@ -27,60 +27,70 @@ function authHeaders(): Record<string, string> {
   return tok ? { Authorization: `Bearer ${tok}` } : {};
 }
 
-async function multipart<T>(url: string, method: "POST" | "PATCH", fd: FormData): Promise<T> {
+async function multipart<T>(url: string, method: "POST" | "PATCH", fd: FormData): Promise<ApiEnvelope<T>> {
   const r = await fetch(`${API_BASE}${url}`, { method, headers: authHeaders(), body: fd });
-  if (!r.ok) throw new Error(`${method} ${url} failed: ${r.status}`);
-  return r.json() as Promise<T>;
+  let data: any = null;
+  const text = await r.text();
+  if (text) { try { data = JSON.parse(text); } catch { data = text; } }
+  if (!r.ok) {
+    return { success: false, errorMsg: data?.errorMsg || data?.error?.message || `HTTP ${r.status}` };
+  }
+  // Backend may return an envelope already, or a bare payload.
+  if (data && typeof data === "object" && "success" in data) {
+    return { errorMsg: "", ...(data as ApiEnvelope<T>) };
+  }
+  return { success: true, errorMsg: "", data: data as T };
 }
 
-// HTTP implementation. Hits the real backend described in API_CONTRACT.md.
-export const httpProvider: ApiProvider = {
+// HTTP implementation. Every method returns `ApiEnvelope<T>`; `api/index.ts`
+// unwraps it (throws on success:false, returns `data` on success:true) so
+// callers see the same shape that mocks used to return directly.
+export const httpProvider: RawApiProvider = {
   // auth
-  signup: (body) => http<AuthResponse>("/api/auth/signup", { method: "POST", body, auth: false }),
-  login:  (body) => http<AuthResponse>("/api/auth/login",  { method: "POST", body, auth: false }),
-  refresh:(body) => http<AuthTokens>  ("/api/auth/refresh",{ method: "POST", body, auth: false }),
-  logout: ()     => http<void>        ("/api/auth/logout", { method: "POST" }),
-  getSession:    () => http<{ user_id: string; email: string; full_name: string } | null>("/api/auth/session"),
-  changePassword:(body) => http<void>("/api/auth/password", { method: "POST", body }),
+  signup: (body) => http<ApiEnvelope<AuthResponse>>("/api/auth/signup", { method: "POST", body, auth: false }),
+  login:  (body) => http<ApiEnvelope<AuthResponse>>("/api/auth/login",  { method: "POST", body, auth: false }),
+  refresh:(body) => http<ApiEnvelope<AuthTokens>>  ("/api/auth/refresh",{ method: "POST", body, auth: false }),
+  logout: ()     => http<ApiEnvelope<void>>        ("/api/auth/logout", { method: "POST" }),
+  getSession:    () => http<ApiEnvelope<{ user_id: string; email: string; full_name: string } | null>>("/api/auth/session"),
+  changePassword:(body) => http<ApiEnvelope<void>>("/api/auth/password", { method: "POST", body }),
 
   // profile
-  getProfile:   ()     => http<ApiUser>("/api/profile"),
-  patchProfile: (p)    => http<ApiUser>("/api/profile", { method: "PATCH", body: p }),
+  getProfile:   ()     => http<ApiEnvelope<ApiUser>>("/api/profile"),
+  patchProfile: (p)    => http<ApiEnvelope<ApiUser>>("/api/profile", { method: "PATCH", body: p }),
 
   // campaigns
-  listCampaigns:   ()      => http<{ items: ApiCampaign[]; total: number }>("/api/campaigns"),
-  getCampaign:     (id)    => http<ApiCampaign>(`/api/campaigns/${id}`),
-  createCampaign:  (body)  => http<ApiCampaign>("/api/campaigns", { method: "POST", body }),
-  patchCampaign:   (id,p)  => http<ApiCampaign>(`/api/campaigns/${id}`, { method: "PATCH", body: p }),
-  deleteCampaign:  (id)    => http<void>(`/api/campaigns/${id}`, { method: "DELETE" }),
+  listCampaigns:   ()      => http<ApiEnvelope<{ items: ApiCampaign[]; total: number }>>("/api/campaigns"),
+  getCampaign:     (id)    => http<ApiEnvelope<ApiCampaign>>(`/api/campaigns/${id}`),
+  createCampaign:  (body)  => http<ApiEnvelope<ApiCampaign>>("/api/campaigns", { method: "POST", body }),
+  patchCampaign:   (id,p)  => http<ApiEnvelope<ApiCampaign>>(`/api/campaigns/${id}`, { method: "PATCH", body: p }),
+  deleteCampaign:  (id)    => http<ApiEnvelope<void>>(`/api/campaigns/${id}`, { method: "DELETE" }),
 
-  // creatives — read uses the renamed endpoint, writes go as multipart so the
-  // backend receives `file` + `filename` together with the rest of the fields.
-  readCreatives:   (cid)         => http<ApiCreative[]>(`/api/campaigns/${cid}/creatives`),
+  // creatives
+  readCreatives:   (cid)         => http<ApiEnvelope<ApiCreative[]>>(`/api/campaigns/${cid}/creatives`),
   createCreative:  (cid, body, file, filename) =>
     multipart<ApiCreative>(`/api/campaigns/${cid}/creatives`, "POST",
       buildCreativeForm(body as Record<string, unknown>, file, filename)),
   patchCreative:   (id, p, file, filename) =>
     multipart<ApiCreative>(`/api/creatives/${id}`, "PATCH",
       buildCreativeForm(p as Record<string, unknown>, file, filename)),
-  deleteCreative:  (id)          => http<void>(`/api/creatives/${id}`, { method: "DELETE" }),
+  deleteCreative:  (id)          => http<ApiEnvelope<void>>(`/api/creatives/${id}`, { method: "DELETE" }),
 
   // transactions
-  listTransactions:   ()        => http<{ items: ApiUserTransaction[]; total: number }>("/api/transactions"),
-  createTransaction:  (body)    => http<ApiUserTransaction>("/api/transactions", { method: "POST", body }),
-  patchTransaction:   (id, p)   => http<ApiUserTransaction>(`/api/transactions/${id}`, { method: "PATCH", body: p }),
-  cancelTransaction:  (id)      => http<ApiUserTransaction>(`/api/transactions/${id}/cancel`, { method: "POST" }),
+  listTransactions:   ()        => http<ApiEnvelope<{ items: ApiUserTransaction[]; total: number }>>("/api/transactions"),
+  createTransaction:  (body)    => http<ApiEnvelope<ApiUserTransaction>>("/api/transactions", { method: "POST", body }),
+  patchTransaction:   (id, p)   => http<ApiEnvelope<ApiUserTransaction>>(`/api/transactions/${id}`, { method: "PATCH", body: p }),
+  cancelTransaction:  (id)      => http<ApiEnvelope<ApiUserTransaction>>(`/api/transactions/${id}/cancel`, { method: "POST" }),
 
   // promo
-  getPromocode: (code)    => http<ApiPromocode>(`/api/promocodes/${encodeURIComponent(code)}`),
+  getPromocode: (code)    => http<ApiEnvelope<ApiPromocode>>(`/api/promocodes/${encodeURIComponent(code)}`),
 
   // notifications
-  listNotifications:   ()        => http<ApiNotification[]>("/api/notifications", { query: { status: "active" } }),
-  createNotification:  (body)    => http<ApiNotification>("/api/notifications", { method: "POST", body }),
-  patchNotification:   (id, p)   => http<ApiNotification>(`/api/notifications/${id}`, { method: "PATCH", body: p }),
+  listNotifications:   ()        => http<ApiEnvelope<ApiNotification[]>>("/api/notifications", { query: { status: "active" } }),
+  createNotification:  (body)    => http<ApiEnvelope<ApiNotification>>("/api/notifications", { method: "POST", body }),
+  patchNotification:   (id, p)   => http<ApiEnvelope<ApiNotification>>(`/api/notifications/${id}`, { method: "PATCH", body: p }),
 
   // ClickHouse stats
-  statsQuery:           (req)    => http<StatsQueryResponse>("/api/stats/query", { method: "POST", body: req }),
-  statsCampaignSummary: (id)     => http<StatsSummary>(`/api/stats/campaign/${id}/summary`),
-  statsOverview:        ()       => http<StatsSummary>("/api/stats/overview"),
+  statsQuery:           (req)    => http<ApiEnvelope<StatsQueryResponse>>("/api/stats/query", { method: "POST", body: req }),
+  statsCampaignSummary: (id)     => http<ApiEnvelope<StatsSummary>>(`/api/stats/campaign/${id}/summary`),
+  statsOverview:        ()       => http<ApiEnvelope<StatsSummary>>("/api/stats/overview"),
 };
