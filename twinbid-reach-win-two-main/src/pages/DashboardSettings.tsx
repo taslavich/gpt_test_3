@@ -12,6 +12,7 @@ import { toast } from "sonner";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { useProfile } from "@/contexts/ProfileContext";
 import { api } from "@/api";
+import { notifyError } from "@/lib/apiStatus";
 
 export default function DashboardSettings() {
   const { t } = useLanguage();
@@ -23,6 +24,10 @@ export default function DashboardSettings() {
   const [timezone, setTimezone] = useState("utc_3");
   const [notifyCampaign, setNotifyCampaign] = useState(true);
   const [notifyBalance, setNotifyBalance] = useState(true);
+  // Independent toggle for the campaign-budget alert. Previously bound to the
+  // same state as `notifyCampaign`, which caused both flags to flip together
+  // and always send `true` to the backend.
+  const [notifyBudget, setNotifyBudget] = useState(true);
   const [balanceThreshold, setBalanceThreshold] = useState("100");
   const [saving, setSaving] = useState(false);
 
@@ -34,6 +39,7 @@ export default function DashboardSettings() {
       setTimezone(profile.timezone || "utc_3");
       setNotifyCampaign(profile.notifyCampaignStatus);
       setNotifyBalance(profile.notifyLowBalance);
+      setNotifyBudget(profile.notifyCampaignBudget);
       setBalanceThreshold(String(profile.balanceThreshold));
     }
   }, [profile]);
@@ -48,7 +54,7 @@ export default function DashboardSettings() {
       });
       toast.success(t("settings.saved"));
     } catch (err) {
-      toast.error("Error saving profile");
+      notifyError(t("settings.saveError") || "Error saving profile", err);
     }
     setSaving(false);
   };
@@ -59,11 +65,12 @@ export default function DashboardSettings() {
       await updateProfile({
         notifyCampaignStatus: notifyCampaign,
         notifyLowBalance: notifyBalance,
+        notifyCampaignBudget: notifyBudget,
         balanceThreshold: parseInt(balanceThreshold) || 100,
       });
       toast.success(t("settings.saved"));
     } catch (err) {
-      toast.error("Error saving notifications");
+      notifyError(t("settings.saveError") || "Error saving notifications", err);
     }
     setSaving(false);
   };
@@ -88,7 +95,7 @@ export default function DashboardSettings() {
       setNewPassword("");
       setRepeatPassword("");
     } catch (e: any) {
-      toast.error(e?.message || "Error updating password");
+      notifyError(t("settings.passwordError") || "Error updating password", e);
     }
   };
 
@@ -168,7 +175,7 @@ export default function DashboardSettings() {
                     <Label>{t("settings.campaignBudgetAlert")}</Label>
                     <p className="text-xs text-muted-foreground mt-0.5">{t("settings.campaignBudgetAlertDesc")}</p>
                   </div>
-                  <Switch checked={notifyCampaign} onCheckedChange={setNotifyCampaign} />
+                  <Switch checked={notifyBudget} onCheckedChange={setNotifyBudget} />
                 </div>
               </div>
               <Separator />

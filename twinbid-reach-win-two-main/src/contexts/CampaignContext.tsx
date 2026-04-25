@@ -148,6 +148,17 @@ function mapApiCreativeToUi(cr: ApiCreative): Creative {
   };
 }
 
+/** Convert a `YYYY-MM-DD` form value into the timestamps the backend expects. */
+function startTimestamp(date: string): string {
+  if (!date) return "";
+  return `${date}T00:00:00Z`;
+}
+function endTimestamp(date: string): string {
+  if (!date) return "";
+  // Inclusive end-of-day for the chosen end date.
+  return `${date}T23:59:59Z`;
+}
+
 function buildApiCampaignBody(c: Omit<Campaign, "id">): Omit<ApiCampaign, "campaing_id" | "user_id" | "cum_done_dollars"> {
   let w: number | null = null, h: number | null = null;
   if (c.bannerSize && /^\d+x\d+$/.test(c.bannerSize)) {
@@ -167,11 +178,58 @@ function buildApiCampaignBody(c: Omit<Campaign, "id">): Omit<ApiCampaign, "campa
     base_price_cpc: c.pricingModel === "cpc" ? c.priceValue : 0,
     evenness_by_slot_mode: c.evenSpend,
     goal_total_dollars: c.budget,
-    start_ts: c.startDate || "",
-    end_ts: c.endDate || "",
+    start_ts: startTimestamp(c.startDate),
+    end_ts: endTimestamp(c.endDate),
     active_intervals: [],
     ...buildApiTargeting(c.targeting),
   };
+}
+
+/**
+ * Map a *partial* UI update to a partial API patch. Only fields that are
+ * actually present in `updates` are forwarded — this prevents bugs where
+ * toggling one switch (e.g. status) rewrites unrelated fields like
+ * notification preferences or budget.
+ */
+function buildApiCampaignPatch(updates: Partial<Campaign>): Partial<ApiCampaign> {
+  const p: Partial<ApiCampaign> = {};
+  if (updates.name !== undefined) p.campaign_name = updates.name;
+  if (updates.formatKey !== undefined || updates.format !== undefined) {
+    p.format_type = ((updates.formatKey ?? updates.format) || "") as FormatType;
+  }
+  if (updates.brandName !== undefined) p.brand_name = updates.brandName ?? null;
+  if (updates.bannerSize !== undefined) {
+    if (updates.bannerSize && /^\d+x\d+$/.test(updates.bannerSize)) {
+      const [ws, hs] = updates.bannerSize.split("x");
+      p.w = Number(ws); p.h = Number(hs);
+    } else {
+      p.w = null; p.h = null;
+    }
+  }
+  if (updates.status !== undefined) p.status = updates.status;
+  if (updates.trafficType !== undefined) p.traffic_type = updates.trafficType;
+  if (updates.verticals !== undefined) p.vertical = updates.verticals;
+  if (updates.pricingModel !== undefined || updates.priceValue !== undefined) {
+    // Both fields cooperate; require pricingModel to know which slot.
+    const pm = updates.pricingModel;
+    const pv = updates.priceValue;
+    if (pm !== undefined && pv !== undefined) {
+      p.pricing_model = pm;
+      p.base_price_cpm = pm === "cpm" ? pv : 0;
+      p.base_price_cpc = pm === "cpc" ? pv : 0;
+    } else if (pv !== undefined) {
+      // Fall back to writing both with whatever the caller sent.
+      p.base_price_cpm = pv;
+    } else if (pm !== undefined) {
+      p.pricing_model = pm;
+    }
+  }
+  if (updates.evenSpend !== undefined) p.evenness_by_slot_mode = updates.evenSpend;
+  if (updates.budget !== undefined) p.goal_total_dollars = updates.budget;
+  if (updates.startDate !== undefined) p.start_ts = startTimestamp(updates.startDate);
+  if (updates.endDate !== undefined) p.end_ts = endTimestamp(updates.endDate);
+  if (updates.targeting !== undefined) Object.assign(p, buildApiTargeting(updates.targeting));
+  return p;
 }
 
 interface CampaignContextType {
@@ -196,8 +254,16 @@ export function CampaignProvider({ children }: { children: ReactNode }) {
     setLoading(true);
     try {
       const { items } = await api.listCampaigns();
+      // Isolate creative loading per-campaign: a single failure must not
+      // break the whole list. Failed reads degrade to an empty creatives
+      // array so the rest of the campaign still shows up.
       const withCreatives = await Promise.all(items.map(async c => {
-        const crs = await api.readCreatives(c.campaing_id);
+        let crs: ApiCreative[] = [];
+        try {
+          crs = await api.readCreatives(c.campaing_id);
+        } catch (e) {
+          console.error(`readCreatives failed for ${c.campaing_id}:`, e);
+        }
         return mapApiCampaignToUi(c, crs.map(mapApiCreativeToUi));
       }));
       setCampaigns(withCreatives);
@@ -211,14 +277,43 @@ export function CampaignProvider({ children }: { children: ReactNode }) {
   useEffect(() => { fetchCampaigns(); }, [fetchCampaigns]);
 
   const addCampaign = useCallback(async (c: Omit<Campaign, "id">): Promise<string | undefined> => {
-    if (!user) return undefined;
-    try {
-      const created = await api.createCampaign(buildApiCampaignBody(c));
-      // Send file + filename together with the rest of the creative fields.
-      // Backend handles S3 storage and presigned URL generation on read.
-      for (const cr of c.creatives) {
+    if (!user) throw new Error("Not authenticated");
+    // Errors here propagate to the caller so the UI can show the real
+    // backend message instead of a fake success toast.
+    const created = await api.createCampaign(buildApiCampaignBody(c));
+    for (const cr of c.creatives) {
+      await api.createCreative(
+        created.campaing_id,
+        {
+          creative_name: cr.name || "",
+          link: cr.url,
+          trackers_macros: {},
+          ...(cr.title ? { title: cr.title } : {}),
+          ...(cr.description ? { description: cr.description } : {}),
+        } as any,
+        cr.pendingFile,
+        cr.pendingFile ? (cr.imageFileName || cr.pendingFile.name) : undefined,
+      );
+    }
+    await fetchCampaigns();
+    return created.campaing_id;
+  }, [user, fetchCampaigns]);
+
+  const updateCampaign = useCallback(async (id: string, updates: Partial<Campaign>) => {
+    if (!user) throw new Error("Not authenticated");
+    // Build a *partial* patch so toggling a single field (status, budget,
+    // ...) does not rewrite unrelated fields.
+    const patch = buildApiCampaignPatch(updates);
+    if (Object.keys(patch).length > 0) {
+      await api.patchCampaign(id, patch);
+    }
+
+    if (updates.creatives !== undefined) {
+      const existing = await api.readCreatives(id).catch(() => [] as ApiCreative[]);
+      await Promise.all(existing.map(cr => api.deleteCreative(cr.id)));
+      for (const cr of updates.creatives) {
         await api.createCreative(
-          created.campaing_id,
+          id,
           {
             creative_name: cr.name || "",
             link: cr.url,
@@ -230,55 +325,14 @@ export function CampaignProvider({ children }: { children: ReactNode }) {
           cr.pendingFile ? (cr.imageFileName || cr.pendingFile.name) : undefined,
         );
       }
-      await fetchCampaigns();
-      return created.campaing_id;
-    } catch (e) {
-      console.error("Add campaign error:", e);
-      return undefined;
     }
+    await fetchCampaigns();
   }, [user, fetchCampaigns]);
 
-  const updateCampaign = useCallback(async (id: string, updates: Partial<Campaign>) => {
-    if (!user) return;
-    try {
-      const current = campaigns.find(c => c.id === id);
-      if (!current) return;
-      const merged: Campaign = { ...current, ...updates };
-      const body = buildApiCampaignBody(merged);
-      await api.patchCampaign(id, body as Partial<ApiCampaign>);
-
-      if (updates.creatives !== undefined) {
-        const existing = await api.readCreatives(id);
-        await Promise.all(existing.map(cr => api.deleteCreative(cr.id)));
-        for (const cr of updates.creatives) {
-          await api.createCreative(
-            id,
-            {
-              creative_name: cr.name || "",
-              link: cr.url,
-              trackers_macros: {},
-              ...(cr.title ? { title: cr.title } : {}),
-              ...(cr.description ? { description: cr.description } : {}),
-            } as any,
-            cr.pendingFile,
-            cr.pendingFile ? (cr.imageFileName || cr.pendingFile.name) : undefined,
-          );
-        }
-      }
-      await fetchCampaigns();
-    } catch (e) {
-      console.error("Update campaign error:", e);
-    }
-  }, [user, fetchCampaigns, campaigns]);
-
   const deleteCampaign = useCallback(async (id: string) => {
-    if (!user) return;
-    try {
-      await api.deleteCampaign(id);
-      await fetchCampaigns();
-    } catch (e) {
-      console.error("Delete campaign error:", e);
-    }
+    if (!user) throw new Error("Not authenticated");
+    await api.deleteCampaign(id);
+    await fetchCampaigns();
   }, [user, fetchCampaigns]);
 
   const getCampaign = useCallback((id: string) => campaigns.find(c => c.id === id), [campaigns]);

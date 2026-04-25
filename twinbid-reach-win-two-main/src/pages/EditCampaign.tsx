@@ -128,7 +128,7 @@ export default function EditCampaign() {
 
   const parseNum = (v: string) => parseFloat(v.replace(",", ".")) || 0;
 
-  const handleSave = () => {
+  const handleSave = async () => {
     const e: Record<string, string> = {};
     const tb = parseNum(totalBudget);
     if (!totalBudget || isNaN(tb) || tb < 1) e.totalBudget = t("edit.errorBudgetMin");
@@ -153,7 +153,6 @@ export default function EditCampaign() {
     }
     if (!name.trim()) e.name = t("create.required");
 
-    // Validate creatives
     creatives.forEach(c => {
       if (!c.name?.trim()) e[`creative_${c.id}_name`] = t("create.required");
       if (!c.url.trim()) e[`creative_${c.id}_url`] = t("create.required");
@@ -175,14 +174,19 @@ export default function EditCampaign() {
       newStatus = "moderation";
     }
 
-    updateCampaign(campaign.id, {
-      name: name.trim(), creatives, trafficType, verticals,
-      targeting: Object.fromEntries(Object.entries(lists).map(([k, v]) => [k, { mode: v.mode, items: v.items }])),
-      budget: tb, dailyBudget: null,
-      priceValue: pv, pricingModel, trafficQuality, startDate, endDate, evenSpend, status: newStatus,
-      bannerSize: showBannerSize ? bannerSize : undefined,
-      brandName: showBrandName ? brandName : undefined,
-    });
+    try {
+      await updateCampaign(campaign.id, {
+        name: name.trim(), creatives, trafficType, verticals,
+        targeting: Object.fromEntries(Object.entries(lists).map(([k, v]) => [k, { mode: v.mode, items: v.items }])),
+        budget: tb, dailyBudget: null,
+        priceValue: pv, pricingModel, trafficQuality, startDate, endDate, evenSpend, status: newStatus,
+        bannerSize: showBannerSize ? bannerSize : undefined,
+        brandName: showBrandName ? brandName : undefined,
+      });
+    } catch (err: any) {
+      toast.error(`${t("edit.saveFailed") || "Failed to save campaign"}: ${err?.message || err}`);
+      return;
+    }
 
     if (campaign.status === "draft") {
       toast.success(t("edit.savedModeration"));

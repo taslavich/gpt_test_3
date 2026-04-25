@@ -99,7 +99,7 @@ export default function DashboardCampaigns() {
   const totalBudget = filtered.reduce((s, c) => s + c.budget, 0);
   const totalSpent = filtered.reduce((s, c) => s + statOf(statsById, c.id).spent, 0);
 
-  const toggleStatus = (id: string) => {
+  const toggleStatus = async (id: string) => {
     const c = campaigns.find(x => x.id === id);
     if (!c) return;
     if (c.status === "draft" && !isDraftComplete(c)) {
@@ -107,27 +107,42 @@ export default function DashboardCampaigns() {
       return;
     }
     const ns = c.status === "active" ? "paused" : "active";
-    updateCampaign(id, { status: ns as any });
-    toast.success(ns === "active" ? t("campaigns.started") : t("campaigns.paused"));
-  };
-
-  const handleDelete = () => {
-    if (deleteId) {
-      ctxDelete(deleteId);
-      toast.success(t("campaigns.deleted"));
-      setDeleteId(null);
+    try {
+      await updateCampaign(id, { status: ns as any });
+      toast.success(ns === "active" ? t("campaigns.started") : t("campaigns.paused"));
+    } catch (e: any) {
+      toast.error(`${t("campaigns.updateFailed") || "Failed to update campaign"}: ${e?.message || e}`);
     }
   };
 
-  const duplicateCampaign = (c: Campaign) => {
-    const { id: _id, ...rest } = c;
-    addCampaign({ ...rest, name: `${c.name} ${t("campaigns.copyPostfix")}`, status: "draft", spent: 0, impressions: 0, clicks: 0, ctr: 0 });
-    toast.success(t("campaigns.copied"));
+  const handleDelete = async () => {
+    if (!deleteId) return;
+    try {
+      await ctxDelete(deleteId);
+      toast.success(t("campaigns.deleted"));
+    } catch (e: any) {
+      toast.error(`${t("campaigns.deleteFailed") || "Failed to delete campaign"}: ${e?.message || e}`);
+    }
+    setDeleteId(null);
   };
 
-  const handleCancelModeration = (id: string) => {
-    updateCampaign(id, { status: "draft" });
-    toast.success(t("campaigns.moderationCanceled"));
+  const duplicateCampaign = async (c: Campaign) => {
+    const { id: _id, ...rest } = c;
+    try {
+      const id = await addCampaign({ ...rest, name: `${c.name} ${t("campaigns.copyPostfix")}`, status: "draft", spent: 0, impressions: 0, clicks: 0, ctr: 0 });
+      if (id) toast.success(t("campaigns.copied"));
+    } catch (e: any) {
+      toast.error(`${t("campaigns.copyFailed") || "Failed to copy campaign"}: ${e?.message || e}`);
+    }
+  };
+
+  const handleCancelModeration = async (id: string) => {
+    try {
+      await updateCampaign(id, { status: "draft" });
+      toast.success(t("campaigns.moderationCanceled"));
+    } catch (e: any) {
+      toast.error(`${t("campaigns.updateFailed") || "Failed to update campaign"}: ${e?.message || e}`);
+    }
   };
 
   const handleRestart = (c: Campaign) => {

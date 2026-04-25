@@ -144,48 +144,61 @@ export default function CreateCampaign() {
     return { min: minCpm };
   };
 
-  const handleNext = () => {
+  const handleNext = async () => {
     if (step === 1 && !validateStep1()) return;
-    if (step === 3) { if (!validateStep3()) return; handleCreate(); return; }
+    if (step === 3) { if (!validateStep3()) return; await handleCreate(); return; }
     setStep(step + 1);
     setErrors({});
   };
 
-  const handleCreate = () => {
-    addCampaign({
-      name: name.trim(), status: "moderation", format: formatLabels[adFormat] || adFormat,
-      formatKey: adFormat, trafficType, verticals, budget: parseNum(totalBudget), dailyBudget: null,
-      spent: 0, impressions: 0, clicks: 0, ctr: 0, pricingModel, priceValue: parseNum(priceValue),
-      trafficQuality, startDate, endDate, creatives,
-      targeting: Object.fromEntries(Object.entries(lists).map(([k, v]) => [k, { mode: v.mode, items: v.items }])),
-      evenSpend, bannerSize: adFormat === "banner" ? bannerSize : undefined,
-      brandName: showBrandName ? brandName : undefined,
-    });
-    savedAsDraft.current = true;
-    toast.success(t("create.created"));
-    navigate("/dashboard/campaigns");
+  const handleCreate = async () => {
+    try {
+      const id = await addCampaign({
+        name: name.trim(), status: "moderation", format: formatLabels[adFormat] || adFormat,
+        formatKey: adFormat, trafficType, verticals, budget: parseNum(totalBudget), dailyBudget: null,
+        spent: 0, impressions: 0, clicks: 0, ctr: 0, pricingModel, priceValue: parseNum(priceValue),
+        trafficQuality, startDate, endDate, creatives,
+        targeting: Object.fromEntries(Object.entries(lists).map(([k, v]) => [k, { mode: v.mode, items: v.items }])),
+        evenSpend, bannerSize: adFormat === "banner" ? bannerSize : undefined,
+        brandName: showBrandName ? brandName : undefined,
+      });
+      if (!id) {
+        // addCampaign resolved without an id (treated as silent failure)
+        toast.error(t("create.failed") || "Failed to create campaign");
+        return;
+      }
+      savedAsDraft.current = true;
+      toast.success(t("create.created"));
+      navigate("/dashboard/campaigns");
+    } catch (e: any) {
+      toast.error(`${t("create.failed") || "Failed to create campaign"}: ${e?.message || e}`);
+    }
   };
 
-  const saveDraft = () => {
+  const saveDraft = async () => {
     if (savedAsDraft.current) return;
     if (!name.trim() && !adFormat) return;
     savedAsDraft.current = true;
-    addCampaign({
-      name: name.trim() || "Draft", status: "draft",
-      format: formatLabels[adFormat] || adFormat || "",
-      formatKey: adFormat || "", trafficType, verticals, budget: totalBudget ? parseNum(totalBudget) : 0,
-      dailyBudget: null,
-      spent: 0, impressions: 0, clicks: 0, ctr: 0, pricingModel, priceValue: priceValue ? parseNum(priceValue) : 0,
-      trafficQuality, startDate, endDate, creatives,
-      targeting: Object.fromEntries(Object.entries(lists).map(([k, v]) => [k, { mode: v.mode, items: v.items }])),
-      evenSpend, bannerSize: adFormat === "banner" ? bannerSize : undefined,
-      brandName: showBrandName ? brandName : undefined,
-    });
+    try {
+      await addCampaign({
+        name: name.trim() || "Draft", status: "draft",
+        format: formatLabels[adFormat] || adFormat || "",
+        formatKey: adFormat || "", trafficType, verticals, budget: totalBudget ? parseNum(totalBudget) : 0,
+        dailyBudget: null,
+        spent: 0, impressions: 0, clicks: 0, ctr: 0, pricingModel, priceValue: priceValue ? parseNum(priceValue) : 0,
+        trafficQuality, startDate, endDate, creatives,
+        targeting: Object.fromEntries(Object.entries(lists).map(([k, v]) => [k, { mode: v.mode, items: v.items }])),
+        evenSpend, bannerSize: adFormat === "banner" ? bannerSize : undefined,
+        brandName: showBrandName ? brandName : undefined,
+      });
+    } catch (e: any) {
+      toast.error(`${t("create.failed") || "Failed to save draft"}: ${e?.message || e}`);
+    }
   };
 
-  const handleBack = () => {
+  const handleBack = async () => {
     const wasSaved = !savedAsDraft.current && (name.trim() || adFormat);
-    saveDraft();
+    await saveDraft();
     if (wasSaved) {
       void addNotification({ title: t("create.draftSaved"), description: t("create.draftSavedDesc"), type: "warning" });
     }

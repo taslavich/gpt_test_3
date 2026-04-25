@@ -13,6 +13,8 @@ export interface Profile {
   balanceThreshold: number;
   notifyCampaignStatus: boolean;
   notifyLowBalance: boolean;
+  /** Toggle for the "campaign budget alert" notification. Persisted as `campaign_balanse_notifications` on the backend. */
+  notifyCampaignBudget: boolean;
   managerTelegram: string;
 }
 
@@ -36,6 +38,7 @@ function fromApi(u: ApiUser, id: string): Profile {
     balanceThreshold: Number(u.balance_treshold) || 100,
     notifyCampaignStatus: u.campaign_status_notifications,
     notifyLowBalance: u.low_balance_notifications,
+    notifyCampaignBudget: u.campaign_balanse_notifications,
     managerTelegram: u.manager_telegram || "",
   };
 }
@@ -70,6 +73,7 @@ export function ProfileProvider({ children }: { children: ReactNode }) {
     if (updates.balanceThreshold !== undefined) patch.balance_treshold = updates.balanceThreshold;
     if (updates.notifyCampaignStatus !== undefined) patch.campaign_status_notifications = updates.notifyCampaignStatus;
     if (updates.notifyLowBalance !== undefined) patch.low_balance_notifications = updates.notifyLowBalance;
+    if (updates.notifyCampaignBudget !== undefined) patch.campaign_balanse_notifications = updates.notifyCampaignBudget;
     const updated = await api.patchProfile(patch);
     setProfile(fromApi(updated, user.id));
   }, [user]);

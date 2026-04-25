@@ -86,16 +86,13 @@ export function PendingPaymentDialog() {
       try {
         const promo = await api.getPromocode(pendingPayment.promo);
         promocodeId = promo.id;
-      } catch {
-        // Promo unknown to backend — submit without it.
+      } catch (e: any) {
+        // Promo unknown to backend — submit without it but tell the user.
+        toast.warning(`${t("balance.promo.invalid") || "Promo code lookup failed"}: ${e?.message || e}`);
       }
     }
 
     try {
-      // Send the full UserTransaction body. Front-end fills in everything it
-      // can compute locally (user_id, transaction_time, total_balance_increase,
-      // etc.). Backend only assigns the primary `id` and `created_at` /
-      // `updated_at` timestamps on persistence.
       const depositAmount = pendingPayment.amount;
       const bonusPercent = pendingPayment.bonus || 0;
       const bonusAmount = Math.floor((depositAmount * bonusPercent) / 100);
@@ -113,8 +110,8 @@ export function PendingPaymentDialog() {
         status: "pending",
         currency: "USDT",
       });
-    } catch (e) {
-      toast.error("Error submitting payment");
+    } catch (e: any) {
+      toast.error(`${t("balance.toast.submitError") || "Error submitting payment"}: ${e?.message || e}`);
       console.error(e);
       return;
     }

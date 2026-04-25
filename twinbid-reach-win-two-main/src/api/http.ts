@@ -40,21 +40,21 @@ export async function http<T>(path: string, opts: RequestOptions = {}): Promise<
     if (token) headers.Authorization = `Bearer ${token}`;
   }
 
-  let res: Response;
-  try {
-    res = await fetch(buildUrl(path, query), {
-      method,
-      headers,
-      body: body !== undefined ? JSON.stringify(body) : undefined,
-      signal,
-    });
-  } catch (error) {
-    const message =
-      error instanceof TypeError
-        ? "Network error: failed to reach API. Check VITE_API_BASE_URL, backend availability, CORS, and HTTPS certificate."
-        : "Network error: request failed before receiving a response.";
-    throw new ApiError(0, message, "NETWORK_ERROR");
-  }
+let res: Response;
+try {
+  res = await fetch(buildUrl(path, query), {
+    method,
+    headers,
+    body: body !== undefined ? JSON.stringify(body) : undefined,
+    signal,
+  });
+} catch (error) {
+  const message =
+    error instanceof TypeError
+      ? "Network error: failed to reach API. Check VITE_API_BASE_URL, backend availability, CORS, and HTTPS certificate."
+      : "Network error: request failed before receiving a response.";
+  throw new ApiError(0, message, "NETWORK_ERROR");
+}
 
   if (res.status === 204) return undefined as T;
 
@@ -65,13 +65,22 @@ export async function http<T>(path: string, opts: RequestOptions = {}): Promise<
   }
 
   if (!res.ok) {
+    // Backend may return either `{ error: { message, code, fields } }`
+    // or a flat `{ success: false, errorMsg: "..." }` envelope. Surface
+    // whichever is present.
     const err = data?.error;
+    const flatMsg = data?.errorMsg;
     throw new ApiError(
       res.status,
-      err?.message || (typeof data === "string" ? data : `HTTP ${res.status}`),
+      err?.message || flatMsg || (typeof data === "string" ? data : `HTTP ${res.status}`),
       err?.code,
       err?.fields,
     );
+  }
+  // 2xx but with `{ success: false, errorMsg }` envelope → throw too so
+  // callers can rely on a single error path.
+  if (data && typeof data === "object" && (data as any).success === false) {
+    throw new ApiError(res.status, (data as any).errorMsg || "Request failed");
   }
   return data as T;
 }
