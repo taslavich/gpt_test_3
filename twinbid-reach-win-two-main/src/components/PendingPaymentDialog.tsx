@@ -130,26 +130,43 @@ export function PendingPaymentDialog() {
 
     try {
       const hash = txHash.trim();
+      const depositAmount = pendingPayment.amount;
+      const bonusPercent = pendingPayment.bonus || 0;
+      const bonusAmount = Math.floor((depositAmount * bonusPercent) / 100);
+
       // Prefer PATCH on the existing draft transaction so the promo info
       // (promocode_id, bonus_amount, total_balance_increase) is preserved
       // server-side without re-validating the promo code.
+      let patched = false;
       if (pendingPayment.transaction_id) {
-        await api.patchTransaction(pendingPayment.transaction_id, {
-          transaction_id: hash,
-          transaction_hash: hash,
-          status: "pending",
-        });
-      } else {
-        // Fallback: no draft existed (legacy). Create a fresh tx, no promo.
-        const depositAmount = pendingPayment.amount;
-        const bonusPercent = pendingPayment.bonus || 0;
-        const bonusAmount = Math.floor((depositAmount * bonusPercent) / 100);
+        try {
+          await api.patchTransaction(pendingPayment.transaction_id, {
+            transaction_id: hash,
+            transaction_hash: hash,
+            status: "pending",
+          });
+          patched = true;
+        } catch (patchErr: any) {
+          // Fallback for backends that don't expose PATCH (e.g. 404 page not found):
+          // cancel the draft and POST a fresh transaction. We carry the bonus over
+          // with promocode_id=null so the backend doesn't re-validate the promo
+          // (which would fail because the code was already linked to the draft).
+          const msg = String(patchErr?.message || "").toLowerCase();
+          const is404 = msg.includes("404") || msg.includes("not found");
+          if (!is404) throw patchErr;
+          console.warn("[topup] PATCH not supported, falling back to cancel+recreate");
+          try { await api.cancelTransaction(pendingPayment.transaction_id); }
+          catch (e) { console.error("cancel during fallback failed", e); }
+        }
+      }
+      if (!patched) {
         await api.createTransaction({
           user_id: user.id,
           transaction_time: new Date().toISOString(),
           transaction_id: hash,
           payment_method: pendingPayment.method,
           bonus_amount: bonusAmount,
+          // Promo already consumed on the original draft; do not re-resolve.
           promocode_id: null,
           transaction_hash: hash,
           deposit_amount: depositAmount,
