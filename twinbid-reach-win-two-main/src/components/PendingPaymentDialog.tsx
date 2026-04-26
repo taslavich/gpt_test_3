@@ -133,23 +133,31 @@ export function PendingPaymentDialog() {
       const depositAmount = pendingPayment.amount;
       const bonusPercent = pendingPayment.bonus || 0;
       const bonusAmount = Math.floor((depositAmount * bonusPercent) / 100);
+      const totalBalanceIncrease = depositAmount + bonusAmount;
 
       // Prefer PATCH on the existing draft transaction so the promo info
       // (promocode_id, bonus_amount, total_balance_increase) is preserved
       // server-side without re-validating the promo code.
       let patched = false;
-      // Resolve the promocode UUID from the draft transaction so it can be
-      // carried over verbatim if we need to recreate the tx (PATCH fallback).
       let carriedPromocodeId: string | null = pendingPayment.promocode_id ?? null;
+      let carriedPromoCode: string | null = pendingPayment.promo ?? null;
+
       if (pendingPayment.transaction_id) {
         try {
           const res = await api.listTransactions();
           const items = Array.isArray(res?.items) ? res.items : [];
           const draft = items.find(x => x.id === pendingPayment.transaction_id);
           if (draft?.promocode_id) carriedPromocodeId = draft.promocode_id;
+          if (!carriedPromoCode && draft?.promocode_id) {
+            try {
+              const map = JSON.parse(localStorage.getItem("twinbid_promo_codes") || "{}");
+              carriedPromoCode = map[draft.id] || map[draft.promocode_id] || null;
+            } catch {}
+          }
         } catch (e) {
           console.warn("[topup] could not fetch draft promocode_id", e);
         }
+
         try {
           await api.patchTransaction(pendingPayment.transaction_id, {
             transaction_id: hash,
@@ -158,9 +166,6 @@ export function PendingPaymentDialog() {
           });
           patched = true;
         } catch (patchErr: any) {
-          // Fallback for backends that don't expose PATCH (e.g. 404 page not found):
-          // cancel the draft and POST a fresh transaction carrying over the
-          // promocode_id (UUID) resolved from the draft above.
           const msg = String(patchErr?.message || "").toLowerCase();
           const is404 = msg.includes("404") || msg.includes("not found");
           if (!is404) throw patchErr;
@@ -169,22 +174,48 @@ export function PendingPaymentDialog() {
           catch (e) { console.error("cancel during fallback failed", e); }
         }
       }
+
       if (!patched) {
-        await api.createTransaction({
+        const baseBody = {
           user_id: user.id,
           transaction_time: new Date().toISOString(),
           transaction_id: hash,
           payment_method: pendingPayment.method,
           bonus_amount: bonusAmount,
-          // Carry over the promocode UUID from the cancelled draft so the
-          // new pending tx is still linked to the promo (no re-validation).
-          promocode_id: carriedPromocodeId,
           transaction_hash: hash,
           deposit_amount: depositAmount,
-          total_balance_increase: depositAmount + bonusAmount,
-          status: "pending",
+          total_balance_increase: totalBalanceIncrease,
+          status: "pending" as const,
           currency: "usdt",
-        });
+        };
+
+        let created;
+        try {
+          // Keep the working fallback: use the original promo code when we have it
+          // so backend resolves and writes the DB promo id. If that validation fails,
+          // retry without promo instead of blocking payment submission.
+          created = await api.createTransaction({
+            ...baseBody,
+            promocode_id: carriedPromoCode || null,
+          });
+        } catch (createWithPromoErr) {
+          console.warn("[topup] recreate with promo failed, retrying without promo", createWithPromoErr);
+          created = await api.createTransaction({
+            ...baseBody,
+            promocode_id: null,
+          });
+        }
+
+        if (created?.id && carriedPromocodeId) {
+          try {
+            const map = JSON.parse(localStorage.getItem("twinbid_promo_codes") || "{}");
+            if (carriedPromoCode) {
+              map[created.id] = carriedPromoCode;
+              map[carriedPromocodeId] = carriedPromoCode;
+            }
+            localStorage.setItem("twinbid_promo_codes", JSON.stringify(map));
+          } catch {}
+        }
       }
     } catch (e: any) {
       toast.error(`${t("balance.toast.submitError") || "Error submitting payment"}: ${e?.message || e}`);
@@ -236,9 +267,13 @@ export function PendingPaymentDialog() {
       closeDialog();
       // Avoid duplicating the notification
       clearPendingNotif();
+      const bonusAmount = pendingPayment.bonus
+        ? Math.floor((pendingPayment.amount * pendingPayment.bonus) / 100)
+        : 0;
+      const notificationAmount = pendingPayment.amount + bonusAmount;
       const id = await addNotification({
         title: t("balance.notif.notCompleted"),
-        description: `${t("balance.notif.noHash")} $${pendingPayment.amount}`,
+        description: `${t("balance.notif.noHash")} $${notificationAmount}`,
         type: "warning",
         persistent: true,
         apiType: "incomplete_topup",
