@@ -7,6 +7,8 @@ export interface PendingPaymentData {
   bonus?: number;
   /** Resolved promocode id captured at apply-time to avoid re-lookup at submit. */
   promocode_id?: string | null;
+  /** Actual bonus amount in $ (from backend tx.bonus_amount on rehydrate). Source of truth for the notification total. */
+  bonus_amount?: number;
   /** Backend transaction id (status="created") created when the dialog opens. */
   transaction_id?: string | null;
 }

@@ -60,13 +60,24 @@ export function PendingPaymentDialog() {
             const items = Array.isArray(res?.items) ? res.items : [];
             const tx = items.find(x => x.id === txId);
             if (tx) {
-              const pct = tx.deposit_amount > 0
-                ? Math.round((tx.bonus_amount / tx.deposit_amount) * 100)
-                : 0;
+              const depositAmt = Number(tx.deposit_amount) || 0;
+              const bonusAmt = Number(tx.bonus_amount) || 0;
+              const exactPct = depositAmt > 0 ? (bonusAmt / depositAmt) * 100 : 0;
+              // Resolve promo code name from promo_codes table
+              let promoName: string | undefined;
+              if (tx.promocode_id) {
+                try {
+                  const { supabase } = await import("@/integrations/supabase/client");
+                  const { data } = await supabase.from("promo_codes").select("code").eq("id", tx.promocode_id).maybeSingle();
+                  if (data?.code) promoName = data.code;
+                } catch (e) { console.error("promo code lookup failed", e); }
+              }
               setPendingPayment({
-                amount: Number(tx.deposit_amount) || 0,
+                amount: depositAmt,
                 method: tx.payment_method || "usdt_trc20",
-                bonus: pct || undefined,
+                bonus: exactPct || undefined,
+                bonus_amount: bonusAmt,
+                promo: promoName,
                 promocode_id: tx.promocode_id ?? null,
                 transaction_id: tx.id,
               });
@@ -270,9 +281,9 @@ export function PendingPaymentDialog() {
       if (pendingNotifId && notifications.some(n => n.id === pendingNotifId)) {
         return;
       }
-      const bonusAmount = pendingPayment.bonus
-        ? Math.floor((pendingPayment.amount * pendingPayment.bonus) / 100)
-        : 0;
+      const bonusAmount = pendingPayment.bonus_amount != null
+        ? pendingPayment.bonus_amount
+        : (pendingPayment.bonus ? Math.floor((pendingPayment.amount * pendingPayment.bonus) / 100) : 0);
       const notificationAmount = pendingPayment.amount + bonusAmount;
       const id = await addNotification({
         title: t("balance.notif.notCompleted"),
@@ -309,19 +320,21 @@ export function PendingPaymentDialog() {
     <Dialog open={isDialogOpen} onOpenChange={handleOpenChange}>
       <DialogContent className="sm:max-w-[500px] bg-card border-border">
         <DialogHeader>
-          <DialogTitle>{t("balance.paymentTitle")} {pendingPayment ? `$${((pendingPayment.amount || 0) + (pendingPayment.bonus ? Math.floor((pendingPayment.amount * pendingPayment.bonus) / 100) : 0)).toLocaleString()}` : ""}</DialogTitle>
+          <DialogTitle>{t("balance.paymentTitle")} {pendingPayment ? `$${((pendingPayment.amount || 0) + (pendingPayment.bonus_amount ?? (pendingPayment.bonus ? Math.floor((pendingPayment.amount * pendingPayment.bonus) / 100) : 0))).toLocaleString()}` : ""}</DialogTitle>
           <DialogDescription>{t("balance.paymentDesc")}</DialogDescription>
         </DialogHeader>
         <div className="space-y-4 mt-2">
           <div className="p-3 rounded-lg bg-primary/10 border border-primary/20">
             <p className="text-sm font-medium">{t("balance.topUpAmount")} <span className="text-primary">${pendingPayment?.amount.toLocaleString()}</span></p>
-            {pendingPayment?.bonus ? (() => {
-              const bonusAmt = Math.floor((pendingPayment.amount * pendingPayment.bonus) / 100);
+            {pendingPayment && (pendingPayment.bonus_amount || pendingPayment.bonus) ? (() => {
+              const bonusAmt = pendingPayment.bonus_amount ?? Math.floor((pendingPayment.amount * (pendingPayment.bonus || 0)) / 100);
               const total = (pendingPayment.amount || 0) + bonusAmt;
+              const exactPct = pendingPayment.amount > 0 ? (bonusAmt / pendingPayment.amount) * 100 : (pendingPayment.bonus || 0);
+              const pctLabel = Number.isInteger(exactPct) ? exactPct.toString() : exactPct.toFixed(1).replace(/\.0$/, "");
               return (
                 <>
                   <p className="text-sm text-primary mt-1">
-                    + {t("balance.promo.bonusShort")}: +{bonusAmt}$ {pendingPayment.promo ? `(${pendingPayment.promo}, +${pendingPayment.bonus}%)` : `(+${pendingPayment.bonus}%)`}
+                    + {t("balance.promo.bonusShort")}: +{bonusAmt}$ {pendingPayment.promo ? `(${pendingPayment.promo}, +${pctLabel}%)` : `(+${pctLabel}%)`}
                   </p>
                   <p className="text-sm font-medium mt-1">
                     = <span className="text-primary">${total.toLocaleString()}</span>
