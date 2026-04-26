@@ -138,7 +138,18 @@ export function PendingPaymentDialog() {
       // (promocode_id, bonus_amount, total_balance_increase) is preserved
       // server-side without re-validating the promo code.
       let patched = false;
+      // Resolve the promocode UUID from the draft transaction so it can be
+      // carried over verbatim if we need to recreate the tx (PATCH fallback).
+      let carriedPromocodeId: string | null = pendingPayment.promocode_id ?? null;
       if (pendingPayment.transaction_id) {
+        try {
+          const res = await api.listTransactions();
+          const items = Array.isArray(res?.items) ? res.items : [];
+          const draft = items.find(x => x.id === pendingPayment.transaction_id);
+          if (draft?.promocode_id) carriedPromocodeId = draft.promocode_id;
+        } catch (e) {
+          console.warn("[topup] could not fetch draft promocode_id", e);
+        }
         try {
           await api.patchTransaction(pendingPayment.transaction_id, {
             transaction_id: hash,
@@ -148,9 +159,8 @@ export function PendingPaymentDialog() {
           patched = true;
         } catch (patchErr: any) {
           // Fallback for backends that don't expose PATCH (e.g. 404 page not found):
-          // cancel the draft and POST a fresh transaction. We carry the bonus over
-          // with promocode_id=null so the backend doesn't re-validate the promo
-          // (which would fail because the code was already linked to the draft).
+          // cancel the draft and POST a fresh transaction carrying over the
+          // promocode_id (UUID) resolved from the draft above.
           const msg = String(patchErr?.message || "").toLowerCase();
           const is404 = msg.includes("404") || msg.includes("not found");
           if (!is404) throw patchErr;
@@ -166,8 +176,9 @@ export function PendingPaymentDialog() {
           transaction_id: hash,
           payment_method: pendingPayment.method,
           bonus_amount: bonusAmount,
-          // Promo already consumed on the original draft; do not re-resolve.
-          promocode_id: null,
+          // Carry over the promocode UUID from the cancelled draft so the
+          // new pending tx is still linked to the promo (no re-validation).
+          promocode_id: carriedPromocodeId,
           transaction_hash: hash,
           deposit_amount: depositAmount,
           total_balance_increase: depositAmount + bonusAmount,
