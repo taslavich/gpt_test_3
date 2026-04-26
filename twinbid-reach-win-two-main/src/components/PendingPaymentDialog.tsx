@@ -39,25 +39,72 @@ export function PendingPaymentDialog() {
   }, [isDialogOpen]);
 
   // Re-bind UI handlers to the persisted "incomplete_topup" notification on reload,
-  // and rehydrate pendingPayment from it so the user can resume.
+  // and rehydrate pendingPayment from the linked transaction so all bonus info
+  // (promocode_id, bonus_amount) is restored without re-asking the user.
   useEffect(() => {
     const persisted = notifications.find(n => n.apiType === "incomplete_topup");
     if (!persisted) return;
 
     pendingNotifId = persisted.id;
 
-    if (!pendingPayment && persisted.apiPayload?.deposit_amount) {
-      setPendingPayment({
-        amount: Number(persisted.apiPayload.deposit_amount) || 0,
-        method: "usdt_trc20",
-      });
+    if (!pendingPayment) {
+      const txId = persisted.apiPayload?.transaction_id;
+      if (txId) {
+        // Pull the full transaction (status="created") from backend so we
+        // recover promocode_id + bonus_amount + deposit_amount. This is the
+        // single source of truth, so we don't need to re-validate the promo
+        // string at submit time.
+        (async () => {
+          try {
+            const res = await api.listTransactions();
+            const items = Array.isArray(res?.items) ? res.items : [];
+            const tx = items.find(x => x.id === txId);
+            if (tx) {
+              const pct = tx.deposit_amount > 0
+                ? Math.round((tx.bonus_amount / tx.deposit_amount) * 100)
+                : 0;
+              setPendingPayment({
+                amount: Number(tx.deposit_amount) || 0,
+                method: tx.payment_method || "usdt_trc20",
+                bonus: pct || undefined,
+                promocode_id: tx.promocode_id ?? null,
+                transaction_id: tx.id,
+              });
+            } else if (persisted.apiPayload?.deposit_amount) {
+              setPendingPayment({
+                amount: Number(persisted.apiPayload.deposit_amount) || 0,
+                method: "usdt_trc20",
+                transaction_id: txId,
+              });
+            }
+          } catch (e) {
+            console.error("[topup] resume: listTransactions failed", e);
+            if (persisted.apiPayload?.deposit_amount) {
+              setPendingPayment({
+                amount: Number(persisted.apiPayload.deposit_amount) || 0,
+                method: "usdt_trc20",
+                transaction_id: txId,
+              });
+            }
+          }
+        })();
+      } else if (persisted.apiPayload?.deposit_amount) {
+        setPendingPayment({
+          amount: Number(persisted.apiPayload.deposit_amount) || 0,
+          method: "usdt_trc20",
+        });
+      }
     }
     attachHandlers(persisted.id, {
       action: { label: t("balance.notif.completePayment"), onClick: () => openDialog() },
       onDismiss: () => {
+        // Cancel the underlying transaction (status -> cancelled) on dismiss.
+        const txId = pendingPayment?.transaction_id ?? persisted.apiPayload?.transaction_id ?? null;
+        if (txId) api.cancelTransaction(txId).catch(e => console.error("cancelTransaction failed", e));
         setPendingPayment(null);
         setTxHash("");
         pendingNotifId = null;
+        triggerRefresh();
         toast.info(t("balance.toast.paymentCanceled"));
       },
     });
@@ -81,50 +128,38 @@ export function PendingPaymentDialog() {
   const handleSubmitTx = async () => {
     if (!txHash.trim() || !user || !pendingPayment) return;
 
-    // Resolve promocode_id. Prefer the id captured at apply-time, but ALWAYS
-    // re-validate the promo on submit so post-reload flows still work.
-    let promocodeId: string | null = pendingPayment.promocode_id ?? null;
-    if (pendingPayment.promo) {
-      // Normalise: trim + uppercase. The backend endpoint is case-sensitive
-      // and our apply-time lookup uses the uppercased code, so the second
-      // lookup MUST use the exact same string. Previously we passed
-      // `pendingPayment.promo` raw, which (after a page reload restoring
-      // state from a notification) could end up lower-cased and 404.
-      const normalized = pendingPayment.promo.trim().toUpperCase();
-      try {
-        const promo = await api.getPromocode(normalized);
-        // Trust the freshly-resolved id over any stale cached one.
-        promocodeId = promo.id;
-      } catch (e: any) {
-        console.warn("[topup] promo re-validation failed:", normalized, e);
-        if (promocodeId) {
-          // We already have an id from apply-time → proceed silently with it.
-          toast.info(t("balance.promo.usingCached") || "Using previously validated promo code");
-        } else {
-          // No cached id and lookup failed → submit without promo, warn user.
-          toast.warning(`${t("balance.promo.invalid") || "Promo code lookup failed"}: ${e?.message || e}`);
-        }
-      }
-    }
-
     try {
-      const depositAmount = pendingPayment.amount;
-      const bonusPercent = pendingPayment.bonus || 0;
-      const bonusAmount = Math.floor((depositAmount * bonusPercent) / 100);
-      const nowIso = new Date().toISOString();
-      await api.createTransaction({
-        user_id: user.id,
-        transaction_time: nowIso,
-        transaction_id: txHash.trim(),
-        payment_method: pendingPayment.method,
-        bonus_amount: bonusAmount,
-        promocode_id: promocodeId,
-        transaction_hash: txHash.trim(),
-        deposit_amount: depositAmount,
-        total_balance_increase: depositAmount + bonusAmount,
-        status: "pending",
-        currency: "USDT",
-      });
+      const hash = txHash.trim();
+      if (pendingPayment.transaction_id) {
+        // Promote the existing `created` transaction to `pending` and attach
+        // the hash. All bonus/promocode info is already on the row, so we do
+        // NOT re-validate the promo here — that was the source of the
+        // "promocode not found" error after a reload.
+        await api.patchTransaction(pendingPayment.transaction_id, {
+          status: "pending",
+          transaction_hash: hash,
+          transaction_id: hash,
+          transaction_time: new Date().toISOString(),
+        });
+      } else {
+        // Legacy path: no pre-created tx (e.g. first run before this fix).
+        const depositAmount = pendingPayment.amount;
+        const bonusPercent = pendingPayment.bonus || 0;
+        const bonusAmount = Math.floor((depositAmount * bonusPercent) / 100);
+        await api.createTransaction({
+          user_id: user.id,
+          transaction_time: new Date().toISOString(),
+          transaction_id: hash,
+          payment_method: pendingPayment.method,
+          bonus_amount: bonusAmount,
+          promocode_id: pendingPayment.promocode_id ?? null,
+          transaction_hash: hash,
+          deposit_amount: depositAmount,
+          total_balance_increase: depositAmount + bonusAmount,
+          status: "pending",
+          currency: "USDT",
+        });
+      }
     } catch (e: any) {
       toast.error(`${t("balance.toast.submitError") || "Error submitting payment"}: ${e?.message || e}`);
       console.error(e);
@@ -150,11 +185,18 @@ export function PendingPaymentDialog() {
     triggerRefresh();
   };
 
-  const handleCancelPayment = () => {
+  const handleCancelPayment = async () => {
+    // Mark the backend transaction as cancelled so it's purged from the
+    // user-visible history (the table filters out `cancelled`).
+    if (pendingPayment?.transaction_id) {
+      try { await api.cancelTransaction(pendingPayment.transaction_id); }
+      catch (e) { console.error("cancelTransaction failed", e); }
+    }
     closeDialog();
     setPendingPayment(null);
     setTxHash("");
     clearPendingNotif();
+    triggerRefresh();
     toast.info(t("balance.toast.paymentCanceled"));
   };
 
@@ -174,12 +216,21 @@ export function PendingPaymentDialog() {
         type: "warning",
         persistent: true,
         apiType: "incomplete_topup",
-        apiPayload: { deposit_amount: pendingPayment.amount },
+        apiPayload: {
+          deposit_amount: pendingPayment.amount,
+          // Persist the tx id so a reload can rehydrate full bonus info.
+          transaction_id: pendingPayment.transaction_id ?? null,
+        },
         action: { label: t("balance.notif.completePayment"), onClick: () => openDialog() },
-        onDismiss: () => {
+        onDismiss: async () => {
+          if (pendingPayment.transaction_id) {
+            try { await api.cancelTransaction(pendingPayment.transaction_id); }
+            catch (e) { console.error("cancelTransaction failed", e); }
+          }
           setPendingPayment(null);
           setTxHash("");
           pendingNotifId = null;
+          triggerRefresh();
           toast.info(t("balance.toast.paymentCanceled"));
         },
       });
@@ -202,7 +253,7 @@ export function PendingPaymentDialog() {
             <p className="text-sm font-medium">{t("balance.topUpAmount")} <span className="text-primary">${pendingPayment?.amount.toLocaleString()}</span></p>
             {pendingPayment?.bonus ? (
               <p className="text-sm text-primary mt-1">
-                + {t("balance.promo.bonusShort")}: +{Math.floor((pendingPayment.amount * pendingPayment.bonus) / 100)}$ ({pendingPayment.promo}, +{pendingPayment.bonus}%)
+                + {t("balance.promo.bonusShort")}: +{Math.floor((pendingPayment.amount * pendingPayment.bonus) / 100)}$ {pendingPayment.promo ? `(${pendingPayment.promo}, +${pendingPayment.bonus}%)` : `(+${pendingPayment.bonus}%)`}
               </p>
             ) : null}
           </div>

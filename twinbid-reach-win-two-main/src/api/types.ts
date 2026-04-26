@@ -6,7 +6,7 @@ export type CampaignStatus = "active" | "paused" | "draft" | "completed" | "mode
 export type PricingModel = "cpm" | "cpc";
 export type TrafficType = "mainstream" | "adult" | "mixed";
 export type FormatType = "banner" | "popunder" | "native" | "push";
-export type TopupStatus = "draft" | "pending" | "approved" | "rejected" | "cancelled";
+export type TopupStatus = "created" | "draft" | "pending" | "approved" | "rejected" | "cancelled";
 export type NotificationType = "incomplete_topup" | "low_balance" | "campaign_status" | "other";
 export type NotificationStatus = "active" | "inactive";
 
@@ -49,8 +49,8 @@ export interface ApiCampaign {
   goal_total_dollars: number;
   /** filled by backend only */
   cum_done_dollars: number;
-  start_ts: string;
-  end_ts: string;
+  start_ts: string | null;
+  end_ts: string | null;
   active_intervals: ScheduleInterval[];
   country: TargetingMap;
   language: TargetingMap;

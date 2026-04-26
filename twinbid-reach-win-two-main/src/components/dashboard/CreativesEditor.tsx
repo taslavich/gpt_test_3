@@ -152,9 +152,11 @@ export function CreativesEditor({ formatKey, creatives, onChange, errors = {}, o
 
             {showDescription && (
               <div className="space-y-2">
-                <Label>{t("create.creativeDescription")}</Label>
-                <Textarea value={creative.description || ""} onChange={e => updateCreative(creative.id, { description: e.target.value })}
-                  placeholder={t("create.descriptionPlaceholder")} className="bg-background border-border resize-none" rows={2} />
+                <Label>{t("create.creativeDescription")} *</Label>
+                <Textarea value={creative.description || ""} onChange={e => { updateCreative(creative.id, { description: e.target.value }); if (e.target.value.trim()) onClearError?.(`creative_${creative.id}_description`); }}
+                  placeholder={t("create.descriptionPlaceholder")}
+                  className={`bg-background border-border resize-none ${errors[`creative_${creative.id}_description`] ? "border-destructive" : ""}`} rows={2} />
+                {errors[`creative_${creative.id}_description`] && <p className="text-xs text-destructive">{errors[`creative_${creative.id}_description`]}</p>}
               </div>
             )}
 

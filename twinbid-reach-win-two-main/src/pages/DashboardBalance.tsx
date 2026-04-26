@@ -58,11 +58,11 @@ export default function DashboardBalance() {
 
   useEffect(() => { fetchTopupRequests(); }, [user]);
 
-  // Auto-refresh: poll every 15s and on window focus so DB-side status changes
-  // (e.g. admin approves a topup) become visible without a manual reload.
+  // Auto-refresh: poll every 5 minutes and on window focus / page show.
+  // (Previously 15s, which was too aggressive.)
   useEffect(() => {
     if (!user) return;
-    const interval = setInterval(fetchTopupRequests, 15000);
+    const interval = setInterval(fetchTopupRequests, 5 * 60 * 1000);
     const onFocus = () => fetchTopupRequests();
     window.addEventListener("focus", onFocus);
     return () => { clearInterval(interval); window.removeEventListener("focus", onFocus); };
@@ -88,9 +88,13 @@ export default function DashboardBalance() {
         toast.error(t("balance.promo.invalid"));
         return;
       }
-      // Reject if this user already has a transaction tied to this promocode.
+      // Reject if this user already has a *completed/pending* transaction tied to this promo.
+      // Ignore created/cancelled transactions which represent abandoned attempts.
       const alreadyUsed = topupRequests.some(
-        (tx) => tx.promocode_id === promo.id && (!user || tx.user_id === user.id)
+        (tx) => tx.promocode_id === promo.id
+          && (!user || tx.user_id === user.id)
+          && tx.status !== "created"
+          && tx.status !== "cancelled"
       );
       if (alreadyUsed) {
         toast.error(t("balance.promo.alreadyUsed"));
@@ -109,10 +113,36 @@ export default function DashboardBalance() {
     setPromoCode("");
   };
 
-  const handleTopUp = () => {
-    if (!finalAmount || finalAmount < 100) return;
+  const handleTopUp = async () => {
+    if (!finalAmount || finalAmount < 100 || !user) return;
     if (pendingPayment) {
       toast.error(t("balance.disabledReason"));
+      return;
+    }
+    // Create the transaction immediately with status="created" so the bonus
+    // info (promocode_id, bonus_amount, deposit_amount) is persisted server-
+    // side. If the user closes the dialog or reloads, we rehydrate from this
+    // record via the notification's transaction_id payload.
+    const bonusPercent = appliedPromo?.bonus || 0;
+    const bonusAmount = Math.floor((finalAmount * bonusPercent) / 100);
+    let txId: string | null = null;
+    try {
+      const created = await api.createTransaction({
+        user_id: user.id,
+        transaction_time: new Date().toISOString(),
+        transaction_id: "",
+        payment_method: selectedMethod,
+        bonus_amount: bonusAmount,
+        promocode_id: appliedPromo?.id ?? null,
+        transaction_hash: null,
+        deposit_amount: finalAmount,
+        total_balance_increase: finalAmount + bonusAmount,
+        status: "created",
+        currency: "USDT",
+      });
+      txId = created.id;
+    } catch (e: any) {
+      toast.error(`${t("balance.toast.submitError") || "Error"}: ${e?.message || e}`);
       return;
     }
     setPendingPayment({
@@ -121,10 +151,12 @@ export default function DashboardBalance() {
       promo: appliedPromo?.code,
       bonus: appliedPromo?.bonus,
       promocode_id: appliedPromo?.id ?? null,
+      transaction_id: txId,
     });
     setAppliedPromo(null);
     setPromoCode("");
     openDialog();
+    fetchTopupRequests();
   };
 
   const formatDate = (dateStr: string) => {
@@ -259,11 +291,19 @@ export default function DashboardBalance() {
         </CardHeader>
         <CardContent className="p-0">
           <div className="overflow-x-auto">
-            {loadingRequests ? (
-              <div className="py-12 text-center text-muted-foreground">Loading...</div>
-            ) : topupRequests.length === 0 ? (
-              <div className="py-12 text-center text-muted-foreground">{t("balance.noTransactions")}</div>
-            ) : (
+            {(() => {
+              // `created` and `cancelled` are internal-only states (incomplete or
+              // abandoned attempts) — never shown in the user-facing history.
+              const visible = topupRequests.filter(
+                tx => tx.status !== "created" && tx.status !== "cancelled",
+              );
+              if (loadingRequests) {
+                return <div className="py-12 text-center text-muted-foreground">Loading...</div>;
+              }
+              if (visible.length === 0) {
+                return <div className="py-12 text-center text-muted-foreground">{t("balance.noTransactions")}</div>;
+              }
+              return (
               <table className="w-full">
                 <thead>
                   <tr className="border-b border-border">
@@ -274,7 +314,7 @@ export default function DashboardBalance() {
                   </tr>
                 </thead>
                 <tbody>
-                  {topupRequests.map((req) => {
+                  {visible.map((req) => {
                     const methodLabel = usdtMethods.find(m => m.id === req.payment_method)?.label || req.payment_method;
                     const st = statusMap[req.status] || statusMap.pending;
                     return (
@@ -297,7 +337,8 @@ export default function DashboardBalance() {
                   })}
                 </tbody>
               </table>
-            )}
+              );
+            })()}
           </div>
         </CardContent>
       </Card>

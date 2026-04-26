@@ -7,6 +7,8 @@ export interface PendingPaymentData {
   bonus?: number;
   /** Resolved promocode id captured at apply-time to avoid re-lookup at submit. */
   promocode_id?: string | null;
+  /** Backend transaction id (status="created") created when the dialog opens. */
+  transaction_id?: string | null;
 }
 
 interface PendingPaymentContextType {
