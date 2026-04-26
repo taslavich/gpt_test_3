@@ -36,7 +36,7 @@ export default function DashboardBalance() {
   const [customAmount, setCustomAmount] = useState("");
   const [selectedMethod, setSelectedMethod] = useState("usdt_trc20");
   const [promoCode, setPromoCode] = useState("");
-  const [appliedPromo, setAppliedPromo] = useState<{ code: string; bonus: number } | null>(null);
+  const [appliedPromo, setAppliedPromo] = useState<{ code: string; bonus: number; id: string } | null>(null);
   const [topupRequests, setTopupRequests] = useState<TopupRequest[]>([]);
   const [loadingRequests, setLoadingRequests] = useState(true);
 
@@ -46,16 +46,27 @@ export default function DashboardBalance() {
     if (!user) return;
     setLoadingRequests(true);
     try {
-      const { items } = await api.listTransactions();
-      setTopupRequests(items);
+      const res = await api.listTransactions();
+      setTopupRequests(Array.isArray(res?.items) ? res.items : []);
     } catch (e) {
       console.error("Topups fetch error:", e);
+      setTopupRequests([]);
     } finally {
       setLoadingRequests(false);
     }
   };
 
   useEffect(() => { fetchTopupRequests(); }, [user]);
+
+  // Auto-refresh: poll every 15s and on window focus so DB-side status changes
+  // (e.g. admin approves a topup) become visible without a manual reload.
+  useEffect(() => {
+    if (!user) return;
+    const interval = setInterval(fetchTopupRequests, 15000);
+    const onFocus = () => fetchTopupRequests();
+    window.addEventListener("focus", onFocus);
+    return () => { clearInterval(interval); window.removeEventListener("focus", onFocus); };
+  }, [user]);
 
   // Allow the global dialog to refresh our history after submission
   useEffect(() => {
@@ -85,7 +96,7 @@ export default function DashboardBalance() {
         toast.error(t("balance.promo.alreadyUsed"));
         return;
       }
-      setAppliedPromo({ code, bonus: Number(promo.bonus_percent) });
+      setAppliedPromo({ code, bonus: Number(promo.bonus_percent), id: promo.id });
       toast.success(t("balance.promo.applied").replace("{percent}", `${promo.bonus_percent}`));
     } catch {
       setAppliedPromo(null);
@@ -109,6 +120,7 @@ export default function DashboardBalance() {
       method: selectedMethod,
       promo: appliedPromo?.code,
       bonus: appliedPromo?.bonus,
+      promocode_id: appliedPromo?.id ?? null,
     });
     setAppliedPromo(null);
     setPromoCode("");

@@ -5,6 +5,8 @@ export interface PendingPaymentData {
   method: string;
   promo?: string;
   bonus?: number;
+  /** Resolved promocode id captured at apply-time to avoid re-lookup at submit. */
+  promocode_id?: string | null;
 }
 
 interface PendingPaymentContextType {

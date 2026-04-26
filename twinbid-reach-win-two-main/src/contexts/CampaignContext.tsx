@@ -253,14 +253,18 @@ export function CampaignProvider({ children }: { children: ReactNode }) {
     if (!user) { setCampaigns([]); setLoading(false); return; }
     setLoading(true);
     try {
-      const { items } = await api.listCampaigns();
+      const res = await api.listCampaigns();
+      // Backend may return `items: null` when the user has no campaigns yet.
+      // Treat null/undefined as an empty list instead of crashing on .map.
+      const items: ApiCampaign[] = Array.isArray(res?.items) ? res.items : [];
       // Isolate creative loading per-campaign: a single failure must not
       // break the whole list. Failed reads degrade to an empty creatives
       // array so the rest of the campaign still shows up.
       const withCreatives = await Promise.all(items.map(async c => {
         let crs: ApiCreative[] = [];
         try {
-          crs = await api.readCreatives(c.campaing_id);
+          const r = await api.readCreatives(c.campaing_id);
+          crs = Array.isArray(r) ? r : [];
         } catch (e) {
           console.error(`readCreatives failed for ${c.campaing_id}:`, e);
         }
@@ -269,6 +273,7 @@ export function CampaignProvider({ children }: { children: ReactNode }) {
       setCampaigns(withCreatives);
     } catch (e) {
       console.error("Campaigns fetch error:", e);
+      setCampaigns([]);
     } finally {
       setLoading(false);
     }
@@ -309,7 +314,8 @@ export function CampaignProvider({ children }: { children: ReactNode }) {
     }
 
     if (updates.creatives !== undefined) {
-      const existing = await api.readCreatives(id).catch(() => [] as ApiCreative[]);
+      const existingRaw = await api.readCreatives(id).catch(() => [] as ApiCreative[]);
+      const existing: ApiCreative[] = Array.isArray(existingRaw) ? existingRaw : [];
       await Promise.all(existing.map(cr => api.deleteCreative(cr.id)));
       for (const cr of updates.creatives) {
         await api.createCreative(

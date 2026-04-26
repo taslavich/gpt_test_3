@@ -81,14 +81,29 @@ export function PendingPaymentDialog() {
   const handleSubmitTx = async () => {
     if (!txHash.trim() || !user || !pendingPayment) return;
 
-    let promocodeId: string | null = null;
+    // Resolve promocode_id. Prefer the id captured at apply-time, but ALWAYS
+    // re-validate the promo on submit so post-reload flows still work.
+    let promocodeId: string | null = pendingPayment.promocode_id ?? null;
     if (pendingPayment.promo) {
+      // Normalise: trim + uppercase. The backend endpoint is case-sensitive
+      // and our apply-time lookup uses the uppercased code, so the second
+      // lookup MUST use the exact same string. Previously we passed
+      // `pendingPayment.promo` raw, which (after a page reload restoring
+      // state from a notification) could end up lower-cased and 404.
+      const normalized = pendingPayment.promo.trim().toUpperCase();
       try {
-        const promo = await api.getPromocode(pendingPayment.promo);
+        const promo = await api.getPromocode(normalized);
+        // Trust the freshly-resolved id over any stale cached one.
         promocodeId = promo.id;
       } catch (e: any) {
-        // Promo unknown to backend — submit without it but tell the user.
-        toast.warning(`${t("balance.promo.invalid") || "Promo code lookup failed"}: ${e?.message || e}`);
+        console.warn("[topup] promo re-validation failed:", normalized, e);
+        if (promocodeId) {
+          // We already have an id from apply-time → proceed silently with it.
+          toast.info(t("balance.promo.usingCached") || "Using previously validated promo code");
+        } else {
+          // No cached id and lookup failed → submit without promo, warn user.
+          toast.warning(`${t("balance.promo.invalid") || "Promo code lookup failed"}: ${e?.message || e}`);
+        }
       }
     }
 
