@@ -61,8 +61,9 @@ export function PendingPaymentDialog() {
             const tx = items.find(x => x.id === txId);
             if (tx) {
               const depositAmt = Number(tx.deposit_amount) || 0;
-              const bonusAmt = Number(tx.bonus_amount) || 0;
-              const exactPct = depositAmt > 0 ? (bonusAmt / depositAmt) * 100 : 0;
+              // bonus_amount in DB is the PERCENT (e.g. 1.3 means +1.3%), not a $ amount.
+              const bonusPct = Number(tx.bonus_amount) || 0;
+              const bonusUsd = (depositAmt * bonusPct) / 100;
               // Resolve promo code name from promo_codes table
               let promoName: string | undefined;
               if (tx.promocode_id) {
@@ -75,8 +76,8 @@ export function PendingPaymentDialog() {
               setPendingPayment({
                 amount: depositAmt,
                 method: tx.payment_method || "usdt_trc20",
-                bonus: exactPct || undefined,
-                bonus_amount: bonusAmt,
+                bonus: bonusPct || undefined,
+                bonus_amount: bonusUsd,
                 promo: promoName,
                 promocode_id: tx.promocode_id ?? null,
                 transaction_id: tx.id,
