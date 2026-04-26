@@ -265,8 +265,11 @@ export function PendingPaymentDialog() {
     // Closing without submitting hash → keep pending payment & raise persistent notification
     if (pendingPayment && !txHash.trim()) {
       closeDialog();
-      // Avoid duplicating the notification
-      clearPendingNotif();
+      // If a notification already exists (e.g. dialog was reopened from it),
+      // keep it as-is — do NOT clear or recreate.
+      if (pendingNotifId && notifications.some(n => n.id === pendingNotifId)) {
+        return;
+      }
       const bonusAmount = pendingPayment.bonus
         ? Math.floor((pendingPayment.amount * pendingPayment.bonus) / 100)
         : 0;
@@ -306,7 +309,7 @@ export function PendingPaymentDialog() {
     <Dialog open={isDialogOpen} onOpenChange={handleOpenChange}>
       <DialogContent className="sm:max-w-[500px] bg-card border-border">
         <DialogHeader>
-          <DialogTitle>{t("balance.paymentTitle")} {pendingPayment ? `$${pendingPayment.amount.toLocaleString()}` : ""}</DialogTitle>
+          <DialogTitle>{t("balance.paymentTitle")} {pendingPayment ? `$${((pendingPayment.amount || 0) + (pendingPayment.bonus ? Math.floor((pendingPayment.amount * pendingPayment.bonus) / 100) : 0)).toLocaleString()}` : ""}</DialogTitle>
           <DialogDescription>{t("balance.paymentDesc")}</DialogDescription>
         </DialogHeader>
         <div className="space-y-4 mt-2">

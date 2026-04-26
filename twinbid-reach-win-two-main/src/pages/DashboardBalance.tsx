@@ -12,7 +12,11 @@ import { useProfile } from "@/contexts/ProfileContext";
 import { useAuth } from "@/contexts/AuthContext";
 import { usePendingPayment } from "@/contexts/PendingPaymentContext";
 import { api } from "@/api";
+import { supabase } from "@/integrations/supabase/client";
 import type { ApiUserTransaction } from "@/api/types";
+
+const fmtMoney = (n: number | string | null | undefined) =>
+  Number(n || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
 const amounts = [100, 250, 500, 1000, 5000];
 
@@ -40,6 +44,8 @@ export default function DashboardBalance() {
   const [topupRequests, setTopupRequests] = useState<TopupRequest[]>([]);
   const [loadingRequests, setLoadingRequests] = useState(true);
 
+  const [promoNames, setPromoNames] = useState<Record<string, string>>({});
+
   const balance = profile?.balance ?? 0;
 
   const fetchTopupRequests = async () => {
@@ -57,6 +63,28 @@ export default function DashboardBalance() {
   };
 
   useEffect(() => { fetchTopupRequests(); }, [user]);
+
+  // Resolve promo code names (id → code text) for transactions that reference one.
+  useEffect(() => {
+    const ids = Array.from(new Set(
+      topupRequests
+        .map(r => r.promocode_id)
+        .filter((v): v is string => !!v && /^[0-9a-f-]{36}$/i.test(v) && !promoNames[v])
+    ));
+    if (ids.length === 0) return;
+    (async () => {
+      try {
+        const { data } = await supabase.from("promo_codes").select("id, code").in("id", ids);
+        if (data) {
+          setPromoNames(prev => {
+            const next = { ...prev };
+            data.forEach((p: any) => { next[p.id] = p.code; });
+            return next;
+          });
+        }
+      } catch (e) { console.warn("promo names fetch failed", e); }
+    })();
+  }, [topupRequests]);
 
   // Auto-refresh: poll every 5 minutes and on window focus / page show.
   // (Previously 15s, which was too aggressive.)
@@ -199,7 +227,7 @@ export default function DashboardBalance() {
               <div>
                 <p className="text-sm text-muted-foreground">{t("balance.current")}</p>
                 <p className="text-3xl font-bold bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
-                  {profileLoading ? "..." : `$${balance.toLocaleString()}`}
+                  {profileLoading ? "..." : `$${fmtMoney(balance)}`}
                 </p>
               </div>
             </div>
@@ -331,10 +359,14 @@ export default function DashboardBalance() {
                     const st = statusMap[req.status] || statusMap.pending;
                     let promoLabel: string | null = null;
                     if (req.promocode_id) {
-                      try {
-                        const map = JSON.parse(localStorage.getItem("twinbid_promo_codes") || "{}");
-                        promoLabel = map[req.id] || map[req.promocode_id] || null;
-                      } catch {}
+                      // Prefer the resolved DB name; fall back to the local cache used by submission flow.
+                      promoLabel = promoNames[req.promocode_id] || null;
+                      if (!promoLabel) {
+                        try {
+                          const map = JSON.parse(localStorage.getItem("twinbid_promo_codes") || "{}");
+                          promoLabel = map[req.id] || map[req.promocode_id] || null;
+                        } catch {}
+                      }
                     }
                     const bonusAmt = Math.max(0, Number(req.total_balance_increase || 0) - Number(req.deposit_amount || 0));
                     return (
@@ -344,12 +376,12 @@ export default function DashboardBalance() {
                           {t("balance.topUpVia")} · {methodLabel}
                           {req.promocode_id && (
                             <span className="text-primary ml-1">
-                              ({promoLabel || t("balance.promo.label")}{bonusAmt > 0 ? `, +$${bonusAmt}` : ""})
+                              ({promoLabel || t("balance.promo.label")}{bonusAmt > 0 ? `, +$${fmtMoney(bonusAmt)}` : ""})
                             </span>
                           )}
                         </td>
                         <td className="py-3 px-4 text-sm text-left font-medium text-green-500">
-                          +${Number(req.total_balance_increase || req.deposit_amount).toLocaleString()}
+                          +${fmtMoney(req.total_balance_increase || req.deposit_amount)}
                         </td>
                         <td className="py-3 px-4 text-left">
                           <Badge variant="outline" className={cn("font-normal", st.className)}>
