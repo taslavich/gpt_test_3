@@ -331,11 +331,29 @@ export default function EditCampaign() {
         </TabsContent>
       </Tabs>
 
-      {activeTab === "budget" && (
-        <Button onClick={handleSave} className="bg-primary hover:bg-primary/90 text-primary-foreground">
-          <Save className="h-4 w-4 mr-2" /> {t("edit.save")}
-        </Button>
-      )}
+      {(() => {
+        const tabs = ["general", "targeting", "budget"];
+        const idx = tabs.indexOf(activeTab);
+        const isLast = activeTab === "budget";
+        return (
+          <div className="flex justify-between">
+            {idx > 0 ? (
+              <Button variant="outline" onClick={() => setActiveTab(tabs[idx - 1])} className="border-border">
+                {t("create.back")}
+              </Button>
+            ) : <div />}
+            {isLast ? (
+              <Button onClick={handleSave} className="bg-primary hover:bg-primary/90 text-primary-foreground">
+                <Save className="h-4 w-4 mr-2" /> {t("edit.save")}
+              </Button>
+            ) : (
+              <Button onClick={() => setActiveTab(tabs[idx + 1])} className="bg-primary hover:bg-primary/90 text-primary-foreground">
+                {t("create.next")}
+              </Button>
+            )}
+          </div>
+        );
+      })()}
     </div>
   );
 }

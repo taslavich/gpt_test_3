@@ -91,7 +91,7 @@ export default function DashboardBalance() {
       // Reject if this user already has a *completed/pending* transaction tied to this promo.
       // Ignore created/cancelled transactions which represent abandoned attempts.
       const alreadyUsed = topupRequests.some(
-        (tx) => (tx.promocode_id === promo.id || tx.promocode_id === code)
+        (tx) => tx.promocode_id === promo.id
           && (!user || tx.user_id === user.id)
           && tx.status !== "draft"
           && tx.status !== "cancelled"
@@ -129,7 +129,8 @@ export default function DashboardBalance() {
       transaction_id: "",
       payment_method: selectedMethod,
       bonus_amount: bonusAmount,
-      promocode_id: appliedPromo?.code ?? null,
+      // Per contract this must be the promo UUID, not the code text.
+      promocode_id: appliedPromo?.id ?? null,
       transaction_hash: null,
       deposit_amount: finalAmount,
       total_balance_increase: finalAmount + bonusAmount,
@@ -144,12 +145,22 @@ export default function DashboardBalance() {
       toast.error(`${t("balance.toast.submitError") || "Error"}: ${e?.message || e}`);
       return;
     }
+    // Cache promo code text by tx id for history display (backend returns UUID).
+    if (txId && appliedPromo) {
+      try {
+        const map = JSON.parse(localStorage.getItem("twinbid_promo_codes") || "{}");
+        map[txId] = appliedPromo.code;
+        // Also key by promo id so other transactions made with the same promo show the code.
+        map[appliedPromo.id] = appliedPromo.code;
+        localStorage.setItem("twinbid_promo_codes", JSON.stringify(map));
+      } catch {}
+    }
     setPendingPayment({
       amount: finalAmount,
       method: selectedMethod,
       promo: appliedPromo?.code,
       bonus: appliedPromo?.bonus,
-      promocode_id: appliedPromo?.code ?? null,
+      promocode_id: appliedPromo?.id ?? null,
       transaction_id: txId,
     });
     setAppliedPromo(null);
@@ -316,15 +327,27 @@ export default function DashboardBalance() {
                   {visible.map((req) => {
                     const methodLabel = usdtMethods.find(m => m.id === req.payment_method)?.label || req.payment_method;
                     const st = statusMap[req.status] || statusMap.pending;
+                    let promoLabel: string | null = null;
+                    if (req.promocode_id) {
+                      try {
+                        const map = JSON.parse(localStorage.getItem("twinbid_promo_codes") || "{}");
+                        promoLabel = map[req.id] || map[req.promocode_id] || null;
+                      } catch {}
+                    }
+                    const bonusAmt = Math.max(0, Number(req.total_balance_increase || 0) - Number(req.deposit_amount || 0));
                     return (
                       <tr key={req.id} className="border-b border-border/50 hover:bg-muted/50 transition-colors">
                         <td className="py-3 px-4 text-sm">{formatDate(req.created_at)}</td>
                         <td className="py-3 px-4 text-sm">
                           {t("balance.topUpVia")} · {methodLabel}
-                          {req.promocode_id && <span className="text-primary ml-1">({req.promocode_id})</span>}
+                          {req.promocode_id && (
+                            <span className="text-primary ml-1">
+                              ({promoLabel || t("balance.promo.label")}{bonusAmt > 0 ? `, +$${bonusAmt}` : ""})
+                            </span>
+                          )}
                         </td>
                         <td className="py-3 px-4 text-sm text-left font-medium text-green-500">
-                          +${req.deposit_amount.toLocaleString()}
+                          +${Number(req.total_balance_increase || req.deposit_amount).toLocaleString()}
                         </td>
                         <td className="py-3 px-4 text-left">
                           <Badge variant="outline" className={cn("font-normal", st.className)}>

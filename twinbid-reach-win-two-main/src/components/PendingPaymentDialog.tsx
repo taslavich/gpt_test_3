@@ -130,25 +130,34 @@ export function PendingPaymentDialog() {
 
     try {
       const hash = txHash.trim();
-      const depositAmount = pendingPayment.amount;
-      const bonusPercent = pendingPayment.bonus || 0;
-      const bonusAmount = Math.floor((depositAmount * bonusPercent) / 100);
+      // Prefer PATCH on the existing draft transaction so the promo info
+      // (promocode_id, bonus_amount, total_balance_increase) is preserved
+      // server-side without re-validating the promo code.
       if (pendingPayment.transaction_id) {
-        await api.cancelTransaction(pendingPayment.transaction_id);
+        await api.patchTransaction(pendingPayment.transaction_id, {
+          transaction_id: hash,
+          transaction_hash: hash,
+          status: "pending",
+        });
+      } else {
+        // Fallback: no draft existed (legacy). Create a fresh tx, no promo.
+        const depositAmount = pendingPayment.amount;
+        const bonusPercent = pendingPayment.bonus || 0;
+        const bonusAmount = Math.floor((depositAmount * bonusPercent) / 100);
+        await api.createTransaction({
+          user_id: user.id,
+          transaction_time: new Date().toISOString(),
+          transaction_id: hash,
+          payment_method: pendingPayment.method,
+          bonus_amount: bonusAmount,
+          promocode_id: null,
+          transaction_hash: hash,
+          deposit_amount: depositAmount,
+          total_balance_increase: depositAmount + bonusAmount,
+          status: "pending",
+          currency: "usdt",
+        });
       }
-      await api.createTransaction({
-        user_id: user.id,
-        transaction_time: new Date().toISOString(),
-        transaction_id: hash,
-        payment_method: pendingPayment.method,
-        bonus_amount: bonusAmount,
-        promocode_id: pendingPayment.promocode_id ?? null,
-        transaction_hash: hash,
-        deposit_amount: depositAmount,
-        total_balance_increase: depositAmount + bonusAmount,
-        status: "pending",
-        currency: "usdt",
-      });
     } catch (e: any) {
       toast.error(`${t("balance.toast.submitError") || "Error submitting payment"}: ${e?.message || e}`);
       console.error(e);
@@ -240,11 +249,20 @@ export function PendingPaymentDialog() {
         <div className="space-y-4 mt-2">
           <div className="p-3 rounded-lg bg-primary/10 border border-primary/20">
             <p className="text-sm font-medium">{t("balance.topUpAmount")} <span className="text-primary">${pendingPayment?.amount.toLocaleString()}</span></p>
-            {pendingPayment?.bonus ? (
-              <p className="text-sm text-primary mt-1">
-                + {t("balance.promo.bonusShort")}: +{Math.floor((pendingPayment.amount * pendingPayment.bonus) / 100)}$ {pendingPayment.promo ? `(${pendingPayment.promo}, +${pendingPayment.bonus}%)` : `(+${pendingPayment.bonus}%)`}
-              </p>
-            ) : null}
+            {pendingPayment?.bonus ? (() => {
+              const bonusAmt = Math.floor((pendingPayment.amount * pendingPayment.bonus) / 100);
+              const total = (pendingPayment.amount || 0) + bonusAmt;
+              return (
+                <>
+                  <p className="text-sm text-primary mt-1">
+                    + {t("balance.promo.bonusShort")}: +{bonusAmt}$ {pendingPayment.promo ? `(${pendingPayment.promo}, +${pendingPayment.bonus}%)` : `(+${pendingPayment.bonus}%)`}
+                  </p>
+                  <p className="text-sm font-medium mt-1">
+                    = <span className="text-primary">${total.toLocaleString()}</span>
+                  </p>
+                </>
+              );
+            })() : null}
           </div>
 
           <div className="space-y-2">
