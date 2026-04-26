@@ -300,7 +300,7 @@ export default function DashboardCampaigns() {
                 [t("overview.impressions"), vs.impressions.toLocaleString()],
                 [t("stats.clicks"), vs.clicks.toLocaleString()],
                 ["CTR", `${vs.ctr}%`],
-                [t("stats.spent"), `$${viewCampaign.priceValue} (${viewCampaign.pricingModel.toUpperCase()})`],
+                [t("view.bid"), `$${viewCampaign.priceValue} (${viewCampaign.pricingModel.toUpperCase()})`],
               ].map(([label, val], i) => (
                 <div key={i} className="space-y-1"><p className="text-sm text-muted-foreground">{label as string}</p><div className="font-medium">{val}</div></div>
               ))}

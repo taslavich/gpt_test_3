@@ -93,7 +93,7 @@ export default function DashboardBalance() {
       const alreadyUsed = topupRequests.some(
         (tx) => tx.promocode_id === promo.id
           && (!user || tx.user_id === user.id)
-          && tx.status !== "created"
+          && tx.status !== "draft"
           && tx.status !== "cancelled"
       );
       if (alreadyUsed) {
@@ -137,7 +137,7 @@ export default function DashboardBalance() {
         transaction_hash: null,
         deposit_amount: finalAmount,
         total_balance_increase: finalAmount + bonusAmount,
-        status: "created",
+        status: "draft",
         currency: "USDT",
       });
       txId = created.id;
@@ -292,10 +292,10 @@ export default function DashboardBalance() {
         <CardContent className="p-0">
           <div className="overflow-x-auto">
             {(() => {
-              // `created` and `cancelled` are internal-only states (incomplete or
+              // `draft` and `cancelled` are internal-only states (incomplete or
               // abandoned attempts) — never shown in the user-facing history.
               const visible = topupRequests.filter(
-                tx => tx.status !== "created" && tx.status !== "cancelled",
+                tx => tx.status !== "draft" && tx.status !== "cancelled",
               );
               if (loadingRequests) {
                 return <div className="py-12 text-center text-muted-foreground">Loading...</div>;

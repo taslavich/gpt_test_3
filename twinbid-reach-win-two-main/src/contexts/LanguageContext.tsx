@@ -420,6 +420,7 @@ const translations: Record<string, Record<Lang, string>> = {
   "budget.cpcLabel": { ru: "CPC (стоимость за клик)", en: "CPC (cost per click)" },
   "budget.min": { ru: "Мин", en: "Min" },
   "budget.recommended": { ru: "Рекомендованная", en: "Recommended" },
+  "view.bid": { ru: "Ставка", en: "Bid" },
   "budget.belowMin": { ru: "Ставка ниже минимальной", en: "Bid is below minimum" },
   "budget.belowRec": { ru: "Ставка ниже рекомендованной — может быть мало показов", en: "Bid is below recommended — may result in few impressions" },
   "budget.startDate": { ru: "Дата начала", en: "Start date" },
