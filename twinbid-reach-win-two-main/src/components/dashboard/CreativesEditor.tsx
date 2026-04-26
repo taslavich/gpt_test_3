@@ -34,6 +34,9 @@ interface CreativesEditorProps {
 
 const generateId = () => String(Date.now()) + Math.random().toString(36).slice(2, 6);
 
+const MAX_CREATIVES = 10;
+const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
+
 export function CreativesEditor({ formatKey, creatives, onChange, errors = {}, onClearError }: CreativesEditorProps) {
   const { t } = useLanguage();
   const fileInputRefs = useRef<Record<string, HTMLInputElement | null>>({});
@@ -48,6 +51,10 @@ export function CreativesEditor({ formatKey, creatives, onChange, errors = {}, o
   };
 
   const addCreative = () => {
+    if (creatives.length >= MAX_CREATIVES) {
+      toast.error(t("create.creativeLimit").replace("{max}", String(MAX_CREATIVES)));
+      return;
+    }
     onChange([...creatives, { id: generateId(), url: "" }]);
   };
 
@@ -65,6 +72,11 @@ export function CreativesEditor({ formatKey, creatives, onChange, errors = {}, o
     const ext = file.name.toLowerCase().slice(file.name.lastIndexOf("."));
     if (!ALLOWED_EXTENSIONS.includes(ext) && !ALLOWED_IMAGE_TYPES.includes(file.type)) {
       toast.error(t("create.imageFormatError"));
+      e.target.value = "";
+      return;
+    }
+    if (file.size > MAX_IMAGE_BYTES) {
+      toast.error(t("create.imageSizeError"));
       e.target.value = "";
       return;
     }
@@ -219,8 +231,10 @@ export function CreativesEditor({ formatKey, creatives, onChange, errors = {}, o
       })}
 
       {formatKey !== "popunder" && (
-        <Button type="button" variant="outline" onClick={addCreative} className="border-border gap-2 w-full">
-          <Plus className="h-4 w-4" /> {t("create.addCreative")}
+        <Button type="button" variant="outline" onClick={addCreative}
+          disabled={creatives.length >= MAX_CREATIVES}
+          className="border-border gap-2 w-full">
+          <Plus className="h-4 w-4" /> {t("create.addCreative")} ({creatives.length}/{MAX_CREATIVES})
         </Button>
       )}
     </div>

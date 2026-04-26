@@ -130,36 +130,25 @@ export function PendingPaymentDialog() {
 
     try {
       const hash = txHash.trim();
+      const depositAmount = pendingPayment.amount;
+      const bonusPercent = pendingPayment.bonus || 0;
+      const bonusAmount = Math.floor((depositAmount * bonusPercent) / 100);
       if (pendingPayment.transaction_id) {
-        // Promote the existing `created` transaction to `pending` and attach
-        // the hash. All bonus/promocode info is already on the row, so we do
-        // NOT re-validate the promo here — that was the source of the
-        // "promocode not found" error after a reload.
-        await api.patchTransaction(pendingPayment.transaction_id, {
-          status: "pending",
-          transaction_hash: hash,
-          transaction_id: hash,
-          transaction_time: new Date().toISOString(),
-        });
-      } else {
-        // Legacy path: no pre-created tx (e.g. first run before this fix).
-        const depositAmount = pendingPayment.amount;
-        const bonusPercent = pendingPayment.bonus || 0;
-        const bonusAmount = Math.floor((depositAmount * bonusPercent) / 100);
-        await api.createTransaction({
-          user_id: user.id,
-          transaction_time: new Date().toISOString(),
-          transaction_id: hash,
-          payment_method: pendingPayment.method,
-          bonus_amount: bonusAmount,
-          promocode_id: pendingPayment.promocode_id ?? null,
-          transaction_hash: hash,
-          deposit_amount: depositAmount,
-          total_balance_increase: depositAmount + bonusAmount,
-          status: "pending",
-          currency: "USDT",
-        });
+        await api.cancelTransaction(pendingPayment.transaction_id);
       }
+      await api.createTransaction({
+        user_id: user.id,
+        transaction_time: new Date().toISOString(),
+        transaction_id: hash,
+        payment_method: pendingPayment.method,
+        bonus_amount: bonusAmount,
+        promocode_id: pendingPayment.promocode_id ?? null,
+        transaction_hash: hash,
+        deposit_amount: depositAmount,
+        total_balance_increase: depositAmount + bonusAmount,
+        status: "pending",
+        currency: "usdt",
+      });
     } catch (e: any) {
       toast.error(`${t("balance.toast.submitError") || "Error submitting payment"}: ${e?.message || e}`);
       console.error(e);

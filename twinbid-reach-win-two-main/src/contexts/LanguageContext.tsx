@@ -353,6 +353,8 @@ const translations: Record<string, Record<Lang, string>> = {
   "create.imageUploaded": { ru: "Изображение загружено", en: "Image uploaded" },
   "create.imageFormatError": { ru: "Неверный формат. Поддерживаются: PNG, JPG, JPEG", en: "Invalid format. Supported: PNG, JPG, JPEG" },
   "create.imageFormatHint": { ru: "Поддерживаемые форматы: PNG, JPG, JPEG", en: "Supported formats: PNG, JPG, JPEG" },
+  "create.imageSizeError": { ru: "Картинка должна весить не более 5 МБ", en: "Image must be 5 MB or less" },
+  "create.creativeLimit": { ru: "Можно добавить не более {max} креативов на кампанию", en: "You can add up to {max} creatives per campaign" },
   "create.creativeTitle": { ru: "Заголовок", en: "Title" },
   "create.creativeDescription": { ru: "Описание", en: "Description" },
   "create.creativeUrl": { ru: "Ссылка", en: "URL" },

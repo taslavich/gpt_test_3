@@ -42,6 +42,7 @@ export default function EditCampaign() {
   const [initialTrafficType, setInitialTrafficType] = useState<TrafficType>("mainstream");
   const [verticals, setVerticals] = useState<Vertical[]>([]);
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const [activeTab, setActiveTab] = useState(defaultTab);
 
   useEffect(() => {
     if (campaign) {
@@ -216,7 +217,7 @@ export default function EditCampaign() {
         </div>
       )}
 
-      <Tabs defaultValue={defaultTab}>
+      <Tabs value={activeTab} onValueChange={setActiveTab}>
         <TabsList className="bg-card border border-border">
           <TabsTrigger value="general">{t("edit.general")}</TabsTrigger>
           <TabsTrigger value="targeting">{t("edit.targeting")}</TabsTrigger>
@@ -330,9 +331,11 @@ export default function EditCampaign() {
         </TabsContent>
       </Tabs>
 
-      <Button onClick={handleSave} className="bg-primary hover:bg-primary/90 text-primary-foreground">
-        <Save className="h-4 w-4 mr-2" /> {t("edit.save")}
-      </Button>
+      {activeTab === "budget" && (
+        <Button onClick={handleSave} className="bg-primary hover:bg-primary/90 text-primary-foreground">
+          <Save className="h-4 w-4 mr-2" /> {t("edit.save")}
+        </Button>
+      )}
     </div>
   );
 }

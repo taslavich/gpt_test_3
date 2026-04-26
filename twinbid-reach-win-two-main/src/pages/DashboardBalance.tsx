@@ -91,7 +91,7 @@ export default function DashboardBalance() {
       // Reject if this user already has a *completed/pending* transaction tied to this promo.
       // Ignore created/cancelled transactions which represent abandoned attempts.
       const alreadyUsed = topupRequests.some(
-        (tx) => tx.promocode_id === promo.id
+        (tx) => (tx.promocode_id === promo.id || tx.promocode_id === code)
           && (!user || tx.user_id === user.id)
           && tx.status !== "draft"
           && tx.status !== "cancelled"
@@ -119,27 +119,26 @@ export default function DashboardBalance() {
       toast.error(t("balance.disabledReason"));
       return;
     }
-    // Create the transaction immediately with status="created" so the bonus
-    // info (promocode_id, bonus_amount, deposit_amount) is persisted server-
-    // side. If the user closes the dialog or reloads, we rehydrate from this
-    // record via the notification's transaction_id payload.
+    // Create the transaction immediately as an internal draft so amount and
+    // bonus survive reloads before the user submits the blockchain hash.
     const bonusPercent = appliedPromo?.bonus || 0;
     const bonusAmount = Math.floor((finalAmount * bonusPercent) / 100);
+    const body = {
+      user_id: user.id,
+      transaction_time: new Date().toISOString(),
+      transaction_id: "",
+      payment_method: selectedMethod,
+      bonus_amount: bonusAmount,
+      promocode_id: appliedPromo?.code ?? null,
+      transaction_hash: null,
+      deposit_amount: finalAmount,
+      total_balance_increase: finalAmount + bonusAmount,
+      status: "draft" as const,
+      currency: "usdt",
+    };
     let txId: string | null = null;
     try {
-      const created = await api.createTransaction({
-        user_id: user.id,
-        transaction_time: new Date().toISOString(),
-        transaction_id: "",
-        payment_method: selectedMethod,
-        bonus_amount: bonusAmount,
-        promocode_id: appliedPromo?.id ?? null,
-        transaction_hash: null,
-        deposit_amount: finalAmount,
-        total_balance_increase: finalAmount + bonusAmount,
-        status: "draft",
-        currency: "USDT",
-      });
+      const created = await api.createTransaction(body);
       txId = created.id;
     } catch (e: any) {
       toast.error(`${t("balance.toast.submitError") || "Error"}: ${e?.message || e}`);
@@ -150,7 +149,7 @@ export default function DashboardBalance() {
       method: selectedMethod,
       promo: appliedPromo?.code,
       bonus: appliedPromo?.bonus,
-      promocode_id: appliedPromo?.id ?? null,
+      promocode_id: appliedPromo?.code ?? null,
       transaction_id: txId,
     });
     setAppliedPromo(null);

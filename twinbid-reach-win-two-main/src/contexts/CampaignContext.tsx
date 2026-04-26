@@ -78,16 +78,71 @@ function targetingMapToState(m: TargetingMap | undefined): TargetingState {
   return { mode: allWhite ? "white" : "black", items: entries.map(([k]) => k) };
 }
 
-const TARGET_KEYS = ["country", "language", "device_type", "os", "browser", "site_id", "ip"] as const;
-type TargetKey = typeof TARGET_KEYS[number];
+const TARGET_KEY_MAP = [
+  ["country", "country"], ["language", "language"], ["deviceType", "device_type"],
+  ["os", "os"], ["browser", "browser"], ["sites", "site_id"], ["ip", "ip"],
+] as const;
+type TargetKey = typeof TARGET_KEY_MAP[number][1];
+
+const DAY_ORDER = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"];
+const DAY_TO_API: Record<string, string> = { monday: "mon", tuesday: "tue", wednesday: "wed", thursday: "thu", friday: "fri", saturday: "sat", sunday: "sun" };
+const API_TO_DAY: Record<string, string> = { mon: "monday", tue: "tuesday", wed: "wednesday", wen: "wednesday", thu: "thursday", fri: "friday", sat: "saturday", sun: "sunday" };
+
+function scheduleItemIndex(item: string): number | null {
+  const [day, hourRaw] = item.split(":");
+  const dayIndex = DAY_ORDER.indexOf(day);
+  const hour = Number(hourRaw);
+  return dayIndex >= 0 && Number.isInteger(hour) && hour >= 0 && hour <= 23 ? dayIndex * 24 + hour : null;
+}
+
+function indexToApiPoint(index: number): string {
+  const day = DAY_ORDER[Math.floor(index / 24)] || "monday";
+  return `${DAY_TO_API[day]},${index % 24}`;
+}
+
+function apiPointToIndex(point: string): number | null {
+  const [dayRaw, hourRaw] = point.split(",");
+  const day = API_TO_DAY[dayRaw?.trim().toLowerCase()];
+  return scheduleItemIndex(`${day}:${hourRaw}`);
+}
+
+function scheduleToActiveIntervals(schedule?: TargetingState): ApiCampaign["active_intervals"] {
+  if (!schedule || schedule.mode === "none" || schedule.items.length === 0) return [["mon,1", "sun,23"]];
+  const indexes = Array.from(new Set(schedule.items.map(scheduleItemIndex).filter((v): v is number => v !== null))).sort((a, b) => a - b);
+  if (!indexes.length) return [["mon,1", "sun,23"]];
+  const intervals: ApiCampaign["active_intervals"] = [];
+  let start = indexes[0], prev = indexes[0];
+  for (let i = 1; i < indexes.length; i += 1) {
+    if (indexes[i] === prev + 1) { prev = indexes[i]; continue; }
+    intervals.push([indexToApiPoint(start), indexToApiPoint(prev)]);
+    start = prev = indexes[i];
+  }
+  intervals.push([indexToApiPoint(start), indexToApiPoint(prev)]);
+  return intervals;
+}
+
+function activeIntervalsToSchedule(intervals: ApiCampaign["active_intervals"] | undefined): TargetingState {
+  if (!Array.isArray(intervals) || intervals.length === 0) return { mode: "none", items: [] };
+  const indexes = new Set<number>();
+  for (const [from, to] of intervals) {
+    const start = apiPointToIndex(from), end = apiPointToIndex(to);
+    if (start === null || end === null) continue;
+    for (let i = Math.min(start, end); i <= Math.max(start, end); i += 1) indexes.add(i);
+  }
+  const items = Array.from(indexes).sort((a, b) => a - b).map(i => `${DAY_ORDER[Math.floor(i / 24)]}:${i % 24}`);
+  return items.length ? { mode: "white", items } : { mode: "none", items: [] };
+}
 
 function buildApiTargeting(targeting: Record<string, TargetingState>): Pick<ApiCampaign, TargetKey> {
   const out = {} as Pick<ApiCampaign, TargetKey>;
-  for (const k of TARGET_KEYS) out[k] = targetingStateToMap(targeting[k] || { mode: "none", items: [] });
+  for (const [uiKey, apiKey] of TARGET_KEY_MAP) out[apiKey] = targetingStateToMap(targeting[uiKey] || { mode: "none", items: [] });
   return out;
 }
 function readApiTargeting(c: ApiCampaign): Record<string, TargetingState> {
-  return Object.fromEntries(TARGET_KEYS.map(k => [k, targetingMapToState(c[k])]));
+  return {
+    ...Object.fromEntries(TARGET_KEY_MAP.map(([uiKey, apiKey]) => [uiKey, targetingMapToState(c[apiKey])])),
+    schedule: activeIntervalsToSchedule(c.active_intervals),
+  };
 }
 
 // ---- Mapping --------------------------------------------------------------
@@ -185,7 +240,7 @@ function buildApiCampaignBody(c: Omit<Campaign, "id">): Omit<ApiCampaign, "campa
     goal_total_dollars: c.budget,
     start_ts: startTimestamp(c.startDate),
     end_ts: endTimestamp(c.endDate),
-    active_intervals: [],
+    active_intervals: scheduleToActiveIntervals(c.targeting.schedule),
     ...buildApiTargeting(c.targeting),
   };
 }
@@ -233,7 +288,10 @@ function buildApiCampaignPatch(updates: Partial<Campaign>): Partial<ApiCampaign>
   if (updates.budget !== undefined) p.goal_total_dollars = updates.budget;
   if (updates.startDate !== undefined) p.start_ts = startTimestamp(updates.startDate);
   if (updates.endDate !== undefined) p.end_ts = endTimestamp(updates.endDate);
-  if (updates.targeting !== undefined) Object.assign(p, buildApiTargeting(updates.targeting));
+  if (updates.targeting !== undefined) {
+    Object.assign(p, buildApiTargeting(updates.targeting));
+    p.active_intervals = scheduleToActiveIntervals(updates.targeting.schedule);
+  }
   return p;
 }
 
