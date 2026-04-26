@@ -129,8 +129,10 @@ export default function DashboardBalance() {
       transaction_id: "",
       payment_method: selectedMethod,
       bonus_amount: bonusAmount,
-      // Per contract this must be the promo UUID, not the code text.
-      promocode_id: appliedPromo?.id ?? null,
+      // Backend resolves promo by its code text on create (it then stores the
+      // UUID internally). Sending the UUID makes the lookup fail with
+      // "promocode not found", so we send the code text here.
+      promocode_id: appliedPromo?.code ?? null,
       transaction_hash: null,
       deposit_amount: finalAmount,
       total_balance_increase: finalAmount + bonusAmount,
