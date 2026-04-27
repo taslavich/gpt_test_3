@@ -70,6 +70,17 @@ export async function http<T>(path: string, opts: RequestOptions = {}): Promise<
     // whichever is present.
     const err = data?.error;
     const flatMsg = data?.errorMsg;
+    // For expired/invalid session, show a friendly message instead of the raw token error.
+    if (res.status === 401) {
+      const lang = (typeof navigator !== "undefined" && navigator.language || "").toLowerCase().startsWith("ru")
+        ? "ru"
+        : "en";
+      const message =
+        lang === "ru"
+          ? "Сессия истекла. Пожалуйста, войдите заново."
+          : "Your session has expired. Please sign in again.";
+      throw new ApiError(401, message, err?.code || "SESSION_EXPIRED", err?.fields);
+    }
     throw new ApiError(
       res.status,
       err?.message || flatMsg || (typeof data === "string" ? data : `HTTP ${res.status}`),

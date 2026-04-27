@@ -88,6 +88,20 @@ function targetingMapToState(m: TargetingMap | undefined): TargetingState {
   return { mode: allWhite ? "white" : "black", items: entries.map(([k]) => k) };
 }
 
+function verticalsToApiArray(verticals: readonly string[] | undefined): Record<string, 1> {
+  return Object.fromEntries((verticals || []).map(v => [v, 1])) as Record<string, 1>;
+}
+
+const URL_MACRO_TOKENS = [
+  "click_id", "site_id", "country_code", "creative_id",
+  "campaign_id", "browser", "device", "device_os", "ip_address",
+] as const;
+function extractMacrosFromUrl(url: string | undefined): Record<string, 0 | 1> {
+  return Object.fromEntries(
+    URL_MACRO_TOKENS.map(m => [m, (url && url.includes(`{${m}}`)) ? 1 : 0])
+  ) as Record<string, 0 | 1>;
+}
+
 const TARGET_KEY_MAP = [
   ["country", "country"], ["language", "language"], ["deviceType", "device_type"],
   ["os", "os"], ["browser", "browser"], ["sites", "site_id"], ["ip", "ip"],
@@ -181,9 +195,11 @@ function mapApiCampaignToUi(c: ApiCampaign, creatives: Creative[]): Campaign {
     bannerSize: c.w && c.h ? `${c.w}x${c.h}` : undefined,
     brandName: c.brand_name || undefined,
     trafficType: c.traffic_type,
-    verticals: (c.vertical && typeof c.vertical === "object" && !Array.isArray(c.vertical)
-      ? Object.entries(c.vertical).filter(([, v]) => v === 1).map(([k]) => k)
-      : Array.isArray(c.vertical) ? (c.vertical as unknown as string[]) : []) as Vertical[],
+    verticals: (Array.isArray(c.vertical)
+      ? (c.vertical as string[])
+      : c.vertical && typeof c.vertical === "object"
+        ? Object.entries(c.vertical as Record<string, 0 | 1>).filter(([, v]) => v === 1).map(([k]) => k)
+        : []) as Vertical[],
     description: undefined,
   };
 }
@@ -251,7 +267,7 @@ function buildApiCampaignBody(c: Omit<Campaign, "id">): Omit<ApiCampaign, "campa
     h, w,
     status: c.status,
     traffic_type: c.trafficType,
-    vertical: Object.fromEntries((c.verticals || []).map(v => [v, 1])) as Record<string, 0 | 1>,
+    vertical: verticalsToApiArray(c.verticals),
     pricing_model: c.pricingModel,
     base_price_cpm: c.pricingModel === "cpm" ? c.priceValue : 0,
     base_price_cpc: c.pricingModel === "cpc" ? c.priceValue : 0,
@@ -288,7 +304,7 @@ function buildApiCampaignPatch(updates: Partial<Campaign>): Partial<ApiCampaign>
   }
   if (updates.status !== undefined) p.status = updates.status;
   if (updates.trafficType !== undefined) p.traffic_type = updates.trafficType;
-  if (updates.verticals !== undefined) p.vertical = Object.fromEntries(updates.verticals.map(v => [v, 1])) as Record<string, 0 | 1>;
+  if (updates.verticals !== undefined) p.vertical = verticalsToApiArray(updates.verticals);
   if (updates.pricingModel !== undefined || updates.priceValue !== undefined) {
     // Both fields cooperate; require pricingModel to know which slot.
     const pm = updates.pricingModel;
@@ -382,7 +398,7 @@ export function CampaignProvider({ children }: { children: ReactNode }) {
         {
           creative_name: cr.name || "",
           link: cr.url,
-          trackers_macros: {},
+          trackers_macros: extractMacrosFromUrl(cr.url),
           ...(cw && ch ? { w: cw, h: ch } : {}),
           ...(cr.title ? { title: cr.title } : {}),
           ...(cr.description ? { description: cr.description } : {}),
@@ -440,7 +456,7 @@ export function CampaignProvider({ children }: { children: ReactNode }) {
           {
             creative_name: cr.name || "",
             link: cr.url,
-            trackers_macros: {},
+            trackers_macros: extractMacrosFromUrl(cr.url),
             ...(cw && ch ? { w: cw, h: ch } : {}),
             ...(cr.title ? { title: cr.title } : {}),
             ...(cr.description ? { description: cr.description } : {}),
