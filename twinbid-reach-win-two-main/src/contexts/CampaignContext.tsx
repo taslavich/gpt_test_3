@@ -13,6 +13,16 @@ export type TrafficQuality = "common" | "high" | "ultra";
 export type ListMode = "none" | "white" | "black";
 export type TrafficType = ApiTraffic;
 
+type ApiQuality = ApiCampaign["quality_type"];
+const uiQualityToApi = (q: TrafficQuality): ApiQuality =>
+  q === "common" ? "usual" : q === "high" ? "high_quality" : "ultra_high_quality";
+const apiQualityToUi = (q: ApiQuality | string | undefined): TrafficQuality => {
+  if (q === "usual" || q === "common") return "common";
+  if (q === "high_quality" || q === "high") return "high";
+  if (q === "ultra_high_quality" || q === "ultra") return "ultra";
+  return "common";
+};
+
 export interface TargetingState {
   mode: ListMode;
   items: string[];
@@ -149,7 +159,7 @@ function readApiTargeting(c: ApiCampaign): Record<string, TargetingState> {
 function mapApiCampaignToUi(c: ApiCampaign, creatives: Creative[]): Campaign {
   const priceValue = c.pricing_model === "cpc" ? c.base_price_cpc : c.base_price_cpm;
   return {
-    id: c.campaing_id,
+    id: c.campaign_id,
     name: c.campaign_name,
     status: c.status,
     format: c.format_type, // human label = key for now
@@ -162,7 +172,7 @@ function mapApiCampaignToUi(c: ApiCampaign, creatives: Creative[]): Campaign {
     ctr: 0,
     pricingModel: c.pricing_model,
     priceValue: Number(priceValue) || 0,
-    trafficQuality: (c.quality_type as TrafficQuality) || "common",
+    trafficQuality: apiQualityToUi(c.quality_type),
     startDate: c.start_ts ? c.start_ts.slice(0, 10) : "",
     endDate: c.end_ts ? c.end_ts.slice(0, 10) : "",
     creatives,
@@ -171,7 +181,9 @@ function mapApiCampaignToUi(c: ApiCampaign, creatives: Creative[]): Campaign {
     bannerSize: c.w && c.h ? `${c.w}x${c.h}` : undefined,
     brandName: c.brand_name || undefined,
     trafficType: c.traffic_type,
-    verticals: (c.vertical || []) as Vertical[],
+    verticals: (c.vertical && typeof c.vertical === "object" && !Array.isArray(c.vertical)
+      ? Object.entries(c.vertical).filter(([, v]) => v === 1).map(([k]) => k)
+      : Array.isArray(c.vertical) ? (c.vertical as unknown as string[]) : []) as Vertical[],
     description: undefined,
   };
 }
@@ -226,7 +238,7 @@ function endTimestamp(date: string): string | null {
   return `${date}T23:59:59Z`;
 }
 
-function buildApiCampaignBody(c: Omit<Campaign, "id">): Omit<ApiCampaign, "campaing_id" | "user_id" | "cum_done_dollars"> {
+function buildApiCampaignBody(c: Omit<Campaign, "id">): Omit<ApiCampaign, "campaign_id" | "user_id" | "cum_done_dollars"> {
   let w: number | null = null, h: number | null = null;
   if (c.bannerSize && /^\d+x\d+$/.test(c.bannerSize)) {
     const [ws, hs] = c.bannerSize.split("x");
@@ -239,7 +251,7 @@ function buildApiCampaignBody(c: Omit<Campaign, "id">): Omit<ApiCampaign, "campa
     h, w,
     status: c.status,
     traffic_type: c.trafficType,
-    vertical: c.verticals,
+    vertical: Object.fromEntries((c.verticals || []).map(v => [v, 1])) as Record<string, 0 | 1>,
     pricing_model: c.pricingModel,
     base_price_cpm: c.pricingModel === "cpm" ? c.priceValue : 0,
     base_price_cpc: c.pricingModel === "cpc" ? c.priceValue : 0,
@@ -248,7 +260,7 @@ function buildApiCampaignBody(c: Omit<Campaign, "id">): Omit<ApiCampaign, "campa
     start_ts: startTimestamp(c.startDate),
     end_ts: endTimestamp(c.endDate),
     active_intervals: scheduleToActiveIntervals(c.targeting.schedule),
-    quality_type: c.trafficQuality,
+    quality_type: uiQualityToApi(c.trafficQuality),
     ...buildApiTargeting(c.targeting),
   };
 }
@@ -276,7 +288,7 @@ function buildApiCampaignPatch(updates: Partial<Campaign>): Partial<ApiCampaign>
   }
   if (updates.status !== undefined) p.status = updates.status;
   if (updates.trafficType !== undefined) p.traffic_type = updates.trafficType;
-  if (updates.verticals !== undefined) p.vertical = updates.verticals;
+  if (updates.verticals !== undefined) p.vertical = Object.fromEntries(updates.verticals.map(v => [v, 1])) as Record<string, 0 | 1>;
   if (updates.pricingModel !== undefined || updates.priceValue !== undefined) {
     // Both fields cooperate; require pricingModel to know which slot.
     const pm = updates.pricingModel;
@@ -293,7 +305,7 @@ function buildApiCampaignPatch(updates: Partial<Campaign>): Partial<ApiCampaign>
     }
   }
   if (updates.evenSpend !== undefined) p.evenness_by_slot_mode = updates.evenSpend;
-  if (updates.trafficQuality !== undefined) p.quality_type = updates.trafficQuality;
+  if (updates.trafficQuality !== undefined) p.quality_type = uiQualityToApi(updates.trafficQuality);
   if (updates.budget !== undefined) p.goal_total_dollars = updates.budget;
   if (updates.startDate !== undefined) p.start_ts = startTimestamp(updates.startDate);
   if (updates.endDate !== undefined) p.end_ts = endTimestamp(updates.endDate);
@@ -335,10 +347,10 @@ export function CampaignProvider({ children }: { children: ReactNode }) {
       const withCreatives = await Promise.all(items.map(async c => {
         let crs: ApiCreative[] = [];
         try {
-          const r = await api.readCreatives(c.campaing_id);
+          const r = await api.readCreatives(c.campaign_id);
           crs = Array.isArray(r) ? r : [];
         } catch (e) {
-          console.error(`readCreatives failed for ${c.campaing_id}:`, e);
+          console.error(`readCreatives failed for ${c.campaign_id}:`, e);
         }
         return mapApiCampaignToUi(c, crs.map(mapApiCreativeToUi));
       }));
@@ -358,11 +370,6 @@ export function CampaignProvider({ children }: { children: ReactNode }) {
     // Errors here propagate to the caller so the UI can show the real
     // backend message instead of a fake success toast.
     const created = await api.createCampaign(buildApiCampaignBody(c));
-
-    console.log("targeting:", c.targeting);
-    console.log("targeting.sites:", c.targeting?.sites);
-    console.log("targeting.ip:", c.targeting?.ip);
-
     // Banner creatives need w/h on the creative body itself (backend expectation).
     let cw: number | null = null, ch: number | null = null;
     if (c.formatKey === "banner" && c.bannerSize && /^\d+x\d+$/.test(c.bannerSize)) {
@@ -371,7 +378,7 @@ export function CampaignProvider({ children }: { children: ReactNode }) {
     }
     for (const cr of c.creatives) {
       await api.createCreative(
-        created.campaing_id,
+        created.campaign_id,
         {
           creative_name: cr.name || "",
           link: cr.url,
@@ -385,7 +392,7 @@ export function CampaignProvider({ children }: { children: ReactNode }) {
       );
     }
     await fetchCampaigns();
-    return created.campaing_id;
+    return created.campaign_id;
   }, [user, fetchCampaigns]);
 
   const updateCampaign = useCallback(async (id: string, updates: Partial<Campaign>) => {

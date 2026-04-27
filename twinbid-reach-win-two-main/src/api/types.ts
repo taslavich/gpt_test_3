@@ -32,7 +32,7 @@ export interface ApiUser {
 }
 
 export interface ApiCampaign {
-  campaing_id: string;
+  campaign_id: string;
   user_id: string;
   campaign_name: string;
   format_type: FormatType;
@@ -41,7 +41,7 @@ export interface ApiCampaign {
   w?: number | null;
   status: CampaignStatus;
   traffic_type: TrafficType;
-  vertical: string[];
+  vertical: Record<string, 0 | 1>;
   pricing_model: PricingModel;
   base_price_cpm: number;
   base_price_cpc: number;
@@ -59,7 +59,7 @@ export interface ApiCampaign {
   browser: TargetingMap;
   site_id: TargetingMap;
   ip: TargetingMap;
-  quality_type?: "common" | "high" | "ultra";
+  quality_type: "usual" | "high_quality" | "ultra_high_quality";
 }
 
 export interface ApiCreativeBase {

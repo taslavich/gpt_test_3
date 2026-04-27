@@ -75,7 +75,7 @@ Resp: `User`.
 ### `Campaign` schema (соответствует таблице)
 ```json
 {
-  "campaing_id": "uuid",
+  "campaign_id": "uuid",
   "user_id": "uuid",
   "campaign_name": "string",
   "format_type": "banner | popunder | native | push",
@@ -108,7 +108,7 @@ Resp: `User`.
 
 ### GET `/api/campaigns?status=&limit=&offset=` → `{ items: Campaign[], total }`
 ### GET `/api/campaigns/:id` → `Campaign`
-### POST `/api/campaigns` (без `cum_done_dollars`, без `campaing_id`) → `Campaign`
+### POST `/api/campaigns` (без `cum_done_dollars`, без `campaign_id`) → `Campaign`
 ### PATCH `/api/campaigns/:id` → `Campaign`
 ### DELETE `/api/campaigns/:id` → 204
 ### POST `/api/campaigns/:id/status` body `{ status }` → `Campaign`

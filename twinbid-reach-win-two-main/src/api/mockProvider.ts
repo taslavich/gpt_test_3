@@ -140,25 +140,25 @@ export const mockProvider = {
     return ok({ items: state.campaigns, total: state.campaigns.length });
   },
   async getCampaign(id: string): Promise<ApiEnvelope<ApiCampaign | undefined>> {
-    const c = state.campaigns.find(c => c.campaing_id === id);
+    const c = state.campaigns.find(c => c.campaign_id === id);
     if (!c) return fail("Campaign not found");
     return ok(c);
   },
-  async createCampaign(body: Omit<ApiCampaign, "campaing_id" | "user_id" | "cum_done_dollars">): Promise<ApiEnvelope<ApiCampaign>> {
-    const c: ApiCampaign = { ...body, campaing_id: uid(), user_id: "mock-user", cum_done_dollars: 0 };
+  async createCampaign(body: Omit<ApiCampaign, "campaign_id" | "user_id" | "cum_done_dollars">): Promise<ApiEnvelope<ApiCampaign>> {
+    const c: ApiCampaign = { ...body, campaign_id: uid(), user_id: "mock-user", cum_done_dollars: 0 };
     state.campaigns.unshift(c);
     saveState();
     return ok(c);
   },
   async patchCampaign(id: string, patch: Partial<ApiCampaign>): Promise<ApiEnvelope<ApiCampaign>> {
-    const i = state.campaigns.findIndex(c => c.campaing_id === id);
+    const i = state.campaigns.findIndex(c => c.campaign_id === id);
     if (i < 0) return fail("Campaign not found");
     state.campaigns[i] = { ...state.campaigns[i], ...patch };
     saveState();
     return ok(state.campaigns[i]);
   },
   async deleteCampaign(id: string): Promise<ApiEnvelope<void>> {
-    state.campaigns = state.campaigns.filter(c => c.campaing_id !== id);
+    state.campaigns = state.campaigns.filter(c => c.campaign_id !== id);
     state.creatives = state.creatives.filter(cr => cr.campaign_id !== id);
     saveState();
     return ok(undefined as unknown as void);
@@ -279,7 +279,7 @@ export const mockProvider = {
 
   // -- ClickHouse stats ---------------------------------------------------
   async statsQuery(req: StatsQueryRequest): Promise<ApiEnvelope<StatsQueryResponse>> {
-    const ids = req.campaign_ids?.length ? req.campaign_ids : state.campaigns.map(c => c.campaing_id);
+    const ids = req.campaign_ids?.length ? req.campaign_ids : state.campaigns.map(c => c.campaign_id);
     const groupBy = req.group_by?.[0] || "campaign";
 
     const rng = (seed: string) => {
