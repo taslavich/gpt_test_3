@@ -203,6 +203,13 @@ function mapApiCreativeToUi(cr: ApiCreative): Creative {
   };
 }
 
+async function downloadCreativeImage(imageUrl: string, filename: string): Promise<File> {
+  const resp = await fetch(imageUrl);
+  if (!resp.ok) throw new Error(`Failed to download creative image: HTTP ${resp.status}`);
+  const blob = await resp.blob();
+  return new File([blob], filename, { type: blob.type || "image/jpeg" });
+}
+
 /**
  * Convert a `YYYY-MM-DD` form value into the timestamps the backend expects.
  * Returns `null` for empty values — the backend's Go time parser rejects "" with
@@ -388,7 +395,7 @@ export function CampaignProvider({ children }: { children: ReactNode }) {
     if (updates.creatives !== undefined) {
       const existingRaw = await api.readCreatives(id).catch(() => [] as ApiCreative[]);
       const existing: ApiCreative[] = Array.isArray(existingRaw) ? existingRaw : [];
-      await Promise.all(existing.map(cr => api.deleteCreative(cr.id)));
+      const existingById = new Map(existing.map(cr => [cr.id, cr]));
       // Resolve current banner size for w/h on creative body.
       const current = campaigns.find(c => c.id === id);
       const formatKey = updates.formatKey ?? current?.formatKey;
@@ -398,27 +405,24 @@ export function CampaignProvider({ children }: { children: ReactNode }) {
         const [ws, hs] = bannerSize.split("x");
         cw = Number(ws); ch = Number(hs);
       }
-      for (const cr of updates.creatives) {
-        // If user did not pick a new file, but the creative still has an
-        // imageUrl from the previous backend (presigned S3 URL), download
-        // it and re-send it as a File so the backend keeps the image.
+      const preparedCreatives = await Promise.all(updates.creatives.map(async cr => {
         let fileToSend: File | undefined = cr.pendingFile;
         let filenameToSend: string | undefined = cr.pendingFile
           ? (cr.imageFileName || cr.pendingFile.name)
           : undefined;
-        if (!fileToSend && cr.imageUrl && /^https?:\/\//i.test(cr.imageUrl)) {
-          try {
-            const resp = await fetch(cr.imageUrl);
-            if (resp.ok) {
-              const blob = await resp.blob();
-              const fname = cr.imageFileName || "image.jpg";
-              fileToSend = new File([blob], fname, { type: blob.type || "image/jpeg" });
-              filenameToSend = fname;
-            }
-          } catch (err) {
-            console.warn("Failed to re-fetch existing creative image:", err);
-          }
+        const existingCreative = existingById.get(cr.id) as (ApiCreative & { name?: string; presigned_s3_url?: string }) | undefined;
+        const sourceImageUrl = existingCreative?.presigned_s3_url || cr.imageUrl;
+        if (!fileToSend && sourceImageUrl && /^https?:\/\//i.test(sourceImageUrl)) {
+          const fname = cr.imageFileName || existingCreative?.name || fileNameFromPath(sourceImageUrl) || "image.jpg";
+          fileToSend = await downloadCreativeImage(sourceImageUrl, fname);
+          filenameToSend = fname;
         }
+        return { cr, fileToSend, filenameToSend };
+      }));
+
+      await Promise.all(existing.map(cr => api.deleteCreative(cr.id)));
+
+      for (const { cr, fileToSend, filenameToSend } of preparedCreatives) {
         await api.createCreative(
           id,
           {
