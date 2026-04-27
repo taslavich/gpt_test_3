@@ -399,6 +399,26 @@ export function CampaignProvider({ children }: { children: ReactNode }) {
         cw = Number(ws); ch = Number(hs);
       }
       for (const cr of updates.creatives) {
+        // If user did not pick a new file, but the creative still has an
+        // imageUrl from the previous backend (presigned S3 URL), download
+        // it and re-send it as a File so the backend keeps the image.
+        let fileToSend: File | undefined = cr.pendingFile;
+        let filenameToSend: string | undefined = cr.pendingFile
+          ? (cr.imageFileName || cr.pendingFile.name)
+          : undefined;
+        if (!fileToSend && cr.imageUrl && /^https?:\/\//i.test(cr.imageUrl)) {
+          try {
+            const resp = await fetch(cr.imageUrl);
+            if (resp.ok) {
+              const blob = await resp.blob();
+              const fname = cr.imageFileName || "image.jpg";
+              fileToSend = new File([blob], fname, { type: blob.type || "image/jpeg" });
+              filenameToSend = fname;
+            }
+          } catch (err) {
+            console.warn("Failed to re-fetch existing creative image:", err);
+          }
+        }
         await api.createCreative(
           id,
           {
@@ -409,8 +429,8 @@ export function CampaignProvider({ children }: { children: ReactNode }) {
             ...(cr.title ? { title: cr.title } : {}),
             ...(cr.description ? { description: cr.description } : {}),
           } as any,
-          cr.pendingFile,
-          cr.pendingFile ? (cr.imageFileName || cr.pendingFile.name) : undefined,
+          fileToSend,
+          filenameToSend,
         );
       }
     }

@@ -335,6 +335,27 @@ export default function EditCampaign() {
         const tabs = ["general", "targeting", "budget"];
         const idx = tabs.indexOf(activeTab);
         const isLast = activeTab === "budget";
+
+        const validateGeneral = () => {
+          const e: Record<string, string> = {};
+          if (!name.trim()) e.name = t("create.required");
+          if (showBannerSize && !bannerSize) e.bannerSize = t("create.required");
+          creatives.forEach(c => {
+            if (!c.name?.trim()) e[`creative_${c.id}_name`] = t("create.required");
+            if (!c.url.trim()) e[`creative_${c.id}_url`] = t("create.required");
+            if (campaign.formatKey !== "popunder" && !c.imageUrl) e[`creative_${c.id}_image`] = t("create.required");
+            if ((campaign.formatKey === "native" || campaign.formatKey === "push") && !c.title?.trim()) e[`creative_${c.id}_title`] = t("create.required");
+            if ((campaign.formatKey === "native" || campaign.formatKey === "push") && !c.description?.trim()) e[`creative_${c.id}_description`] = t("create.required");
+          });
+          setErrors(prev => ({ ...prev, ...e }));
+          return Object.keys(e).length === 0;
+        };
+
+        const handleNextTab = () => {
+          if (activeTab === "general" && !validateGeneral()) return;
+          setActiveTab(tabs[idx + 1]);
+        };
+
         return (
           <div className="flex justify-between">
             {idx > 0 ? (
@@ -347,7 +368,7 @@ export default function EditCampaign() {
                 <Save className="h-4 w-4 mr-2" /> {t("edit.save")}
               </Button>
             ) : (
-              <Button onClick={() => setActiveTab(tabs[idx + 1])} className="bg-primary hover:bg-primary/90 text-primary-foreground">
+              <Button onClick={handleNextTab} className="bg-primary hover:bg-primary/90 text-primary-foreground">
                 {t("create.next")}
               </Button>
             )}
