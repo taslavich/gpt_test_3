@@ -358,6 +358,11 @@ export function CampaignProvider({ children }: { children: ReactNode }) {
     // Errors here propagate to the caller so the UI can show the real
     // backend message instead of a fake success toast.
     const created = await api.createCampaign(buildApiCampaignBody(c));
+
+    console.log("targeting:", c.targeting);
+    console.log("targeting.sites:", c.targeting?.sites);
+    console.log("targeting.ip:", c.targeting?.ip);
+
     // Banner creatives need w/h on the creative body itself (backend expectation).
     let cw: number | null = null, ch: number | null = null;
     if (c.formatKey === "banner" && c.bannerSize && /^\d+x\d+$/.test(c.bannerSize)) {
