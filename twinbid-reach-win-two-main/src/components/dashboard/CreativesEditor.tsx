@@ -4,6 +4,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
+import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { Upload, Plus, Trash2, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { useLanguage } from "@/contexts/LanguageContext";
@@ -41,6 +42,7 @@ export function CreativesEditor({ formatKey, creatives, onChange, errors = {}, o
   const { t } = useLanguage();
   const fileInputRefs = useRef<Record<string, HTMLInputElement | null>>({});
   const [uploadingId, setUploadingId] = useState<string | null>(null);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
 
   const showTitle = formatKey === "native" || formatKey === "push";
   const showDescription = formatKey === "native" || formatKey === "push";
@@ -124,6 +126,7 @@ export function CreativesEditor({ formatKey, creatives, onChange, errors = {}, o
   };
 
   return (
+    <>
     <div className="space-y-4">
       {creatives.map((creative, idx) => {
         // Compute active macros for this creative
@@ -221,7 +224,9 @@ export function CreativesEditor({ formatKey, creatives, onChange, errors = {}, o
                   {creative.imageFileName && <span className="text-sm text-muted-foreground">{creative.imageFileName}</span>}
                 </div>
                 {creative.imageUrl && (
-                  <img src={creative.imageUrl} alt="Preview" className="mt-2 max-h-32 rounded border border-border" />
+                  <button type="button" onClick={() => setPreviewUrl(creative.imageUrl!)} className="block">
+                    <img src={creative.imageUrl} alt="Preview" className="mt-2 max-h-32 rounded border border-border cursor-zoom-in hover:opacity-90 transition-opacity" />
+                  </button>
                 )}
                 {errors[`creative_${creative.id}_image`] && <p className="text-xs text-destructive">{errors[`creative_${creative.id}_image`]}</p>}
               </div>
@@ -238,5 +243,13 @@ export function CreativesEditor({ formatKey, creatives, onChange, errors = {}, o
         </Button>
       )}
     </div>
+    <Dialog open={!!previewUrl} onOpenChange={(o) => { if (!o) setPreviewUrl(null); }}>
+      <DialogContent className="max-w-4xl p-2 bg-card border-border">
+        {previewUrl && (
+          <img src={previewUrl} alt="Preview" className="w-full h-auto max-h-[85vh] object-contain rounded" />
+        )}
+      </DialogContent>
+    </Dialog>
+    </>
   );
 }

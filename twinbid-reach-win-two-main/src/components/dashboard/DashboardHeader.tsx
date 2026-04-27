@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { Bell, User, X, Send } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -6,45 +6,19 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { useNotifications, type Notification } from "@/contexts/NotificationContext";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { useAuth } from "@/contexts/AuthContext";
-import { useCampaigns } from "@/contexts/CampaignContext";
 import { useProfile } from "@/contexts/ProfileContext";
-import { useCampaignStats, statOf } from "@/hooks/use-campaign-stats";
-import { useMemo } from "react";
 import { LanguageSelector } from "@/components/LanguageSelector";
 import { cn } from "@/lib/utils";
 import { useNavigate } from "react-router-dom";
 
 export function DashboardHeader() {
-  const { notifications, addNotification, removeNotification } = useNotifications();
+  const { notifications, removeNotification } = useNotifications();
   const { t } = useLanguage();
   const { user } = useAuth();
-  const { campaigns } = useCampaigns();
   const { profile } = useProfile();
   const [open, setOpen] = useState(false);
   const navigate = useNavigate();
   const [confirmDismiss, setConfirmDismiss] = useState<Notification | null>(null);
-
-  // Campaign budget alerts - notify when <10% budget remaining (spend from stats)
-  const activeIds = useMemo(
-    () => campaigns.filter(c => c.status === "active" && c.budget > 0).map(c => c.id),
-    [campaigns]
-  );
-  const { byId: statsById } = useCampaignStats(activeIds);
-  useEffect(() => {
-    if (!profile?.notifyCampaignStatus) return;
-    campaigns
-      .filter(c => c.status === "active" && c.budget > 0)
-      .forEach(c => {
-        const spent = statOf(statsById, c.id).spent;
-        if (spent < c.budget * 0.9) return;
-        void addNotification({
-          title: t("notif.campaignBudgetLow"),
-          description: `${c.name}: ${Math.round((1 - spent / c.budget) * 100)}% ${t("notif.budgetRemaining")}`,
-          type: "warning",
-          persistent: false,
-        });
-      });
-  }, [campaigns, statsById]);
 
   const handleDismissClick = (n: Notification) => {
     if (n.onDismiss) {

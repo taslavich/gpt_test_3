@@ -59,6 +59,7 @@ export interface ApiCampaign {
   browser: TargetingMap;
   site_id: TargetingMap;
   ip: TargetingMap;
+  quality_type?: "common" | "high" | "ultra";
 }
 
 export interface ApiCreativeBase {
