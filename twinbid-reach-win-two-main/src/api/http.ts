@@ -1,4 +1,4 @@
-import { ACCESS_TOKEN_KEY, API_BASE_URL } from "./config";
+import { ACCESS_TOKEN_KEY, API_BASE_URL, REFRESH_TOKEN_KEY } from "./config";
 
 export class ApiError extends Error {
   status: number;
@@ -18,7 +18,10 @@ interface RequestOptions {
   query?: Record<string, string | number | boolean | undefined | null>;
   auth?: boolean;
   signal?: AbortSignal;
+  retryOnUnauthorized?: boolean;
 }
+
+let refreshPromise: Promise<boolean> | null = null;
 
 function buildUrl(path: string, query?: RequestOptions["query"]): string {
   const url = new URL(path.startsWith("http") ? path : `${API_BASE_URL}${path}`);
@@ -31,8 +34,48 @@ function buildUrl(path: string, query?: RequestOptions["query"]): string {
   return url.toString();
 }
 
+async function refreshAccessToken(): Promise<boolean> {
+  const refreshToken = localStorage.getItem(REFRESH_TOKEN_KEY);
+  if (!refreshToken) return false;
+
+  if (!refreshPromise) {
+    refreshPromise = (async () => {
+      try {
+        const res = await fetch(buildUrl("/api/auth/refresh"), {
+          method: "POST",
+          headers: { Accept: "application/json", "Content-Type": "application/json" },
+          body: JSON.stringify({ refresh_token: refreshToken }),
+        });
+
+        const text = await res.text();
+        let data: any = null;
+        if (text) {
+          try { data = JSON.parse(text); } catch { data = text; }
+        }
+
+        if (!res.ok) return false;
+
+        const payload = data && typeof data === "object" && "data" in data ? data.data : data;
+        const access = payload?.access_token;
+        const refresh = payload?.refresh_token;
+        if (!access || !refresh) return false;
+
+        localStorage.setItem(ACCESS_TOKEN_KEY, access);
+        localStorage.setItem(REFRESH_TOKEN_KEY, refresh);
+        return true;
+      } catch {
+        return false;
+      } finally {
+        refreshPromise = null;
+      }
+    })();
+  }
+
+  return refreshPromise;
+}
+
 export async function http<T>(path: string, opts: RequestOptions = {}): Promise<T> {
-  const { method = "GET", body, query, auth = true, signal } = opts;
+  const { method = "GET", body, query, auth = true, signal, retryOnUnauthorized = true } = opts;
   const headers: Record<string, string> = { Accept: "application/json" };
   if (body !== undefined) headers["Content-Type"] = "application/json";
   if (auth) {
@@ -71,7 +114,11 @@ export async function http<T>(path: string, opts: RequestOptions = {}): Promise<
     const err = data?.error;
     const flatMsg = data?.errorMsg;
 
-    // Localized message for expired/invalid sessions (401 on authed requests).
+    if (res.status === 401 && auth && retryOnUnauthorized && await refreshAccessToken()) {
+      return http<T>(path, { method, body, query, auth, signal, retryOnUnauthorized: false });
+    }
+
+    // Localized message for expired/invalid sessions when refresh is unavailable or failed.
     if (res.status === 401 && auth) {
       const lang = (typeof navigator !== "undefined" && navigator.language || "").toLowerCase().startsWith("ru") ? "ru" : "en";
       const message = lang === "ru"
