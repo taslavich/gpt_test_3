@@ -96,6 +96,20 @@ const translations: Record<string, Record<Lang, string>> = {
   "auth.passwordMismatch": { ru: "Пароли не совпадают", en: "Passwords do not match" },
   "auth.passwordTooShort": { ru: "Пароль должен содержать минимум 6 символов", en: "Password must be at least 6 characters" },
   "auth.checkEmail": { ru: "Проверьте вашу почту для подтверждения аккаунта", en: "Check your email to confirm your account" },
+  "auth.error.confirmEmail": { ru: "Подтвердите email", en: "Please confirm your email" },
+  "auth.error.invalidCredentials": { ru: "Неверный email или пароль", en: "Invalid email or password" },
+  "auth.error.loginFailed": { ru: "Не удалось войти", en: "Sign in failed" },
+
+  // Verify email page
+  "verify.loading": { ru: "Подтверждаем ваш аккаунт...", en: "Confirming your account..." },
+  "verify.success.title": { ru: "Аккаунт подтверждён", en: "Account confirmed" },
+  "verify.success.desc": { ru: "Ваш email успешно подтверждён. Теперь вы можете войти в кабинет.", en: "Your email has been confirmed. You can now sign in to your account." },
+  "verify.already.title": { ru: "Аккаунт уже подтверждён", en: "Account already confirmed" },
+  "verify.already.desc": { ru: "Этот аккаунт уже был подтверждён ранее.", en: "This account has already been confirmed." },
+  "verify.invalid.title": { ru: "Недействительная ссылка", en: "Invalid link" },
+  "verify.invalid.desc": { ru: "Ссылка для подтверждения недействительна или устарела, пройдите регистрацию заново.", en: "The confirmation link is invalid or expired, please sign up again." },
+  "verify.goHome": { ru: "На главную", en: "Go home" },
+  "verify.goLogin": { ru: "Войти", en: "Sign in" },
 
   // Dashboard Sidebar
   "sidebar.overview": { ru: "Обзор", en: "Overview" },

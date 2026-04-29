@@ -53,6 +53,7 @@ export const httpProvider: RawApiProvider = {
   logout: ()     => http<ApiEnvelope<void>>        ("/api/auth/logout", { method: "POST" }),
   getSession:    () => http<ApiEnvelope<{ user_id: string; email: string; full_name: string } | null>>("/api/auth/session"),
   changePassword:(body) => http<ApiEnvelope<void>>("/api/auth/password", { method: "POST", body }),
+  verifyEmail:   (body) => http<ApiEnvelope<void>>("/api/auth/verify",   { method: "PATCH", body, auth: false }),
 
   // profile
   getProfile:   ()     => http<ApiEnvelope<ApiUser>>("/api/profile"),

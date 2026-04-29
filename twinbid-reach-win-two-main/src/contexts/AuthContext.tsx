@@ -1,7 +1,8 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
-import { api } from "@/api";
+import { api, ApiError } from "@/api";
 import { ACCESS_TOKEN_KEY, REFRESH_TOKEN_KEY } from "@/api/config";
 import { DEFAULT_MANAGER_TELEGRAM } from "@/lib/constants";
+import { useLanguage } from "@/contexts/LanguageContext";
 
 /** Minimal user shape consumed by the rest of the UI. */
 export interface AuthUser {
@@ -32,6 +33,7 @@ function clearTokens() {
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<AuthUser | null>(null);
   const [loading, setLoading] = useState(true);
+  const { t } = useLanguage();
 
   // Hydrate session on boot.
   useEffect(() => {
@@ -69,7 +71,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setUser({ id: "mock-user", email: res.user.mail, full_name: res.user.name });
       return { error: null };
     } catch (e: any) {
-      return { error: e?.message || "Sign in failed" };
+      if (e instanceof ApiError) {
+        if (e.status === 403) return { error: t("auth.error.confirmEmail") };
+        if (e.status === 401 || e.status === 404) return { error: t("auth.error.invalidCredentials") };
+      }
+      return { error: e?.message || t("auth.error.loginFailed") };
     }
   };
 

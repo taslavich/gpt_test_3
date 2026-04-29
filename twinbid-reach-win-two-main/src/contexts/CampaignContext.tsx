@@ -101,6 +101,29 @@ function extractMacrosFromUrl(url: string | undefined): Record<string, 0 | 1> {
     URL_MACRO_TOKENS.map(m => [m, (url && url.includes(`{${m}}`)) ? 1 : 0])
   ) as Record<string, 0 | 1>;
 }
+// Strip macro query params (e.g. `click_id={click_id}`) so the backend
+// receives only the bare landing URL. Macros are sent separately via
+// `trackers_macros`.
+function stripMacrosFromUrl(url: string | undefined): string {
+  if (!url) return "";
+  let result = url;
+  for (const m of URL_MACRO_TOKENS) {
+    const re = new RegExp(`[?&]${m}=\\{${m}\\}`, "g");
+    result = result.replace(re, "");
+  }
+  // If we removed the first query param, the URL may now look like
+  // `https://x.com&foo=bar` — fix that by promoting the first `&` to `?`.
+  const qIdx = result.indexOf("?");
+  if (qIdx === -1) {
+    const ampIdx = result.indexOf("&");
+    if (ampIdx !== -1) {
+      result = result.slice(0, ampIdx) + "?" + result.slice(ampIdx + 1);
+    }
+  }
+  // Trim a trailing `?` or `&` left over from removals.
+  result = result.replace(/[?&]+$/, "");
+  return result;
+}
 
 const TARGET_KEY_MAP = [
   ["country", "country"], ["language", "language"], ["deviceType", "device_type"],
@@ -397,7 +420,7 @@ export function CampaignProvider({ children }: { children: ReactNode }) {
         created.campaign_id,
         {
           creative_name: cr.name || "",
-          link: cr.url,
+          link: stripMacrosFromUrl(cr.url),
           trackers_macros: extractMacrosFromUrl(cr.url),
           ...(cw && ch ? { w: cw, h: ch } : {}),
           ...(cr.title ? { title: cr.title } : {}),
@@ -455,7 +478,7 @@ export function CampaignProvider({ children }: { children: ReactNode }) {
           id,
           {
             creative_name: cr.name || "",
-            link: cr.url,
+            link: stripMacrosFromUrl(cr.url),
             trackers_macros: extractMacrosFromUrl(cr.url),
             ...(cw && ch ? { w: cw, h: ch } : {}),
             ...(cr.title ? { title: cr.title } : {}),
