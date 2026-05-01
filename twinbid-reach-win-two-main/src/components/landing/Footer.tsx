@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { Mail, Send } from "lucide-react";
+import { Link } from "react-router-dom";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Copy } from "lucide-react";
@@ -28,8 +29,8 @@ export function Footer() {
             <p className="text-sm text-muted-foreground">© {new Date().getFullYear()} TwinBid. All rights reserved.</p>
           </div>
           <div className="flex flex-wrap items-center justify-center gap-6 text-sm">
-            <a href="#" className="text-muted-foreground hover:text-foreground transition-colors">{t("footer.privacy")}</a>
-            <a href="#" className="text-muted-foreground hover:text-foreground transition-colors">{t("footer.terms")}</a>
+            <Link to="/legal#privacy" className="text-muted-foreground hover:text-foreground transition-colors">{t("footer.privacy")}</Link>
+            <Link to="/legal#terms" className="text-muted-foreground hover:text-foreground transition-colors">{t("footer.terms")}</Link>
             <a href="#" className="text-muted-foreground hover:text-foreground transition-colors">{t("footer.docs")}</a>
           </div>
           <div className="flex items-center gap-4">

@@ -133,6 +133,9 @@ export default function EditCampaign() {
     const e: Record<string, string> = {};
     const tb = parseNum(totalBudget);
     if (!totalBudget || isNaN(tb) || tb < 1) e.totalBudget = t("edit.errorBudgetMin");
+    if (campaign.status === "no_budget" && tb <= campaign.budget) {
+      e.totalBudget = t("edit.errorBudgetMustIncrease");
+    }
 
     const formatMins: Record<string, Record<TrafficQuality, number>> = {
       banner: { common: 0.01, high: 0.01, ultra: 0.01 },
@@ -165,12 +168,17 @@ export default function EditCampaign() {
     if (campaign.formatKey === "banner" && !bannerSize) e.bannerSize = t("create.required");
 
     setErrors(e);
-    if (Object.keys(e).length > 0) return;
+    if (Object.keys(e).length > 0) {
+      if (e.totalBudget) setActiveTab("budget");
+      return;
+    }
 
     let newStatus = campaign.status;
     if (campaign.status === "draft") {
       newStatus = "moderation";
     } else if (isRestart) {
+      newStatus = needsModeration ? "moderation" : "active";
+    } else if (campaign.status === "no_budget") {
       newStatus = needsModeration ? "moderation" : "active";
     } else if (needsModeration) {
       newStatus = "moderation";
@@ -194,6 +202,8 @@ export default function EditCampaign() {
       toast.success(t("edit.savedModeration"));
     } else if (isRestart) {
       toast.success(needsModeration ? t("edit.savedModeration") : t("edit.restartedActive"));
+    } else if (campaign.status === "no_budget") {
+      toast.success(needsModeration ? t("edit.savedModeration") : t("campaigns.started"));
     } else {
       toast.success(needsModeration ? t("edit.savedModeration") : t("edit.saved"));
     }

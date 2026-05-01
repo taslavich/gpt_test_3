@@ -2,7 +2,7 @@
 // These are the *transport* shapes (snake_case) the backend will return.
 // UI contexts may map them into their own camelCase view models.
 
-export type CampaignStatus = "active" | "paused" | "draft" | "completed" | "moderation";
+export type CampaignStatus = "active" | "paused" | "draft" | "completed" | "moderation" | "no_budget";
 export type PricingModel = "cpm" | "cpc";
 export type TrafficType = "mainstream" | "adult" | "mixed";
 export type FormatType = "banner" | "popunder" | "native" | "push";

@@ -99,6 +99,28 @@ const translations: Record<string, Record<Lang, string>> = {
   "auth.error.confirmEmail": { ru: "Подтвердите email", en: "Please confirm your email" },
   "auth.error.invalidCredentials": { ru: "Неверный email или пароль", en: "Invalid email or password" },
   "auth.error.loginFailed": { ru: "Не удалось войти", en: "Sign in failed" },
+  "auth.consent": {
+    ru: "Я ознакомлен(а) и согласен(на) с Условиями использования и Политикой конфиденциальности, а также даю согласие на обработку моих персональных данных",
+    en: "I have read and agree to the Terms of Use and Privacy Policy, and I consent to the processing of my personal data",
+  },
+  "auth.consent.terms": { ru: "Условиями использования", en: "Terms of Use" },
+  "auth.consent.privacy": { ru: "Политикой конфиденциальности", en: "Privacy Policy" },
+  "auth.consent.required": {
+    ru: "Необходимо принять условия для регистрации",
+    en: "You must accept the terms to sign up",
+  },
+
+  // Legal page
+  "legal.pageTitle": { ru: "Правовая информация", en: "Legal" },
+  "legal.pageSubtitle": {
+    ru: "Условия использования и Политика конфиденциальности TwinBid",
+    en: "TwinBid Terms of Use and Privacy Policy",
+  },
+  "legal.back": { ru: "Назад", en: "Back" },
+  "legal.contactText": {
+    ru: "Остались вопросы? Свяжитесь с нами:",
+    en: "Have questions? Contact us:",
+  },
 
   // Verify email page
   "verify.loading": { ru: "Подтверждаем ваш аккаунт...", en: "Confirming your account..." },
@@ -150,6 +172,7 @@ const translations: Record<string, Record<Lang, string>> = {
   "status.draft": { ru: "Черновик", en: "Draft" },
   "status.completed": { ru: "Завершена", en: "Completed" },
   "status.moderation": { ru: "На модерации", en: "In moderation" },
+  "status.no_budget": { ru: "Нет бюджета", en: "No budget" },
 
   // Balance page
   "balance.title": { ru: "Баланс и платежи", en: "Balance & Payments" },
@@ -277,6 +300,7 @@ const translations: Record<string, Record<Lang, string>> = {
   "campaigns.draftsFilter": { ru: "Черновики", en: "Drafts" },
   "campaigns.moderationFilter": { ru: "На модерации", en: "In moderation" },
   "campaigns.completedFilter": { ru: "Завершённые", en: "Completed" },
+  "campaigns.noBudgetFilter": { ru: "Нет бюджета", en: "No budget" },
   "campaigns.total": { ru: "Всего", en: "Total" },
   "campaigns.activeCount": { ru: "Активных", en: "Active" },
   "campaigns.budget": { ru: "Бюджет", en: "Budget" },
@@ -299,6 +323,9 @@ const translations: Record<string, Record<Lang, string>> = {
   "campaigns.copied": { ru: "Кампания скопирована", en: "Campaign copied" },
   "campaigns.restart": { ru: "Перезапустить", en: "Restart" },
   "campaigns.restarted": { ru: "Обновите даты и сохраните для перезапуска", en: "Update dates and save to restart" },
+  "campaigns.increaseBudget": { ru: "Увеличить бюджет", en: "Increase budget" },
+  "campaigns.increaseBudgetHint": { ru: "Увеличьте бюджет и сохраните, чтобы возобновить кампанию", en: "Increase the budget and save to resume the campaign" },
+  "edit.errorBudgetMustIncrease": { ru: "Чтобы возобновить кампанию, увеличьте бюджет", en: "Increase the budget to resume the campaign" },
   "campaigns.cancelModeration": { ru: "Отменить модерацию", en: "Cancel moderation" },
   "campaigns.moderationCanceled": { ru: "Модерация отменена", en: "Moderation cancelled" },
   "campaigns.draftIncomplete": { ru: "Завершите настройку кампании перед запуском", en: "Complete campaign setup before launching" },

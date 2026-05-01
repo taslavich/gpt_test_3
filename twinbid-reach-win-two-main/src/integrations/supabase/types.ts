@@ -351,6 +351,7 @@ export type Database = {
         | "draft"
         | "completed"
         | "moderation"
+        | "no_budget"
       pricing_model: "cpm" | "cpc"
       topup_status: "pending" | "approved" | "rejected"
       traffic_quality: "common" | "high" | "ultra"
@@ -483,7 +484,14 @@ export type CompositeTypes<
 export const Constants = {
   public: {
     Enums: {
-      campaign_status: ["active", "paused", "draft", "completed", "moderation"],
+      campaign_status: [
+        "active",
+        "paused",
+        "draft",
+        "completed",
+        "moderation",
+        "no_budget",
+      ],
       pricing_model: ["cpm", "cpc"],
       topup_status: ["pending", "approved", "rejected"],
       traffic_quality: ["common", "high", "ultra"],

@@ -34,6 +34,7 @@ export default function DashboardOverview() {
     active: { label: t("status.active"), className: "bg-green-500/10 text-green-500 border-green-500/20" },
     paused: { label: t("status.paused"), className: "bg-yellow-500/10 text-yellow-500 border-yellow-500/20" },
     moderation: { label: t("status.moderation"), className: "bg-purple-500/10 text-purple-500 border-purple-500/20" },
+    no_budget: { label: t("status.no_budget"), className: "bg-cyan-500/10 text-cyan-400 border-cyan-500/20" },
   };
 
   return (

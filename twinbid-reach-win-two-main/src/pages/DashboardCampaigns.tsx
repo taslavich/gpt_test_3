@@ -48,6 +48,7 @@ export default function DashboardCampaigns() {
     draft: { label: t("status.draft"), className: "bg-muted text-muted-foreground border-border" },
     completed: { label: t("status.completed"), className: "bg-blue-500/10 text-blue-500 border-blue-500/20" },
     moderation: { label: t("status.moderation"), className: "bg-purple-500/10 text-purple-500 border-purple-500/20" },
+    no_budget: { label: t("status.no_budget"), className: "bg-cyan-500/10 text-cyan-400 border-cyan-500/20" },
   };
 
   const filtered = campaigns.filter((c) => {
@@ -175,6 +176,7 @@ export default function DashboardCampaigns() {
               <SelectItem value="draft">{t("campaigns.draftsFilter")}</SelectItem>
               <SelectItem value="moderation">{t("campaigns.moderationFilter")}</SelectItem>
               <SelectItem value="completed">{t("campaigns.completedFilter")}</SelectItem>
+              <SelectItem value="no_budget">{t("campaigns.noBudgetFilter")}</SelectItem>
             </SelectContent>
           </Select>
         </div>
@@ -245,6 +247,11 @@ export default function DashboardCampaigns() {
                             )}
                             {campaign.status === "paused" && (
                               <DropdownMenuItem className="gap-2" onClick={() => toggleStatus(campaign.id)}><Play className="h-4 w-4" /> {t("campaigns.start")}</DropdownMenuItem>
+                            )}
+                            {campaign.status === "no_budget" && (
+                              <DropdownMenuItem className="gap-2" onClick={() => { toast.info(t("campaigns.increaseBudgetHint")); navigate(`/dashboard/campaigns/${campaign.id}/edit?tab=budget`); }}>
+                                <Plus className="h-4 w-4" /> {t("campaigns.increaseBudget")}
+                              </DropdownMenuItem>
                             )}
                             {campaign.status === "draft" && (
                               <DropdownMenuItem className="gap-2" onClick={() => navigate(`/dashboard/campaigns/${campaign.id}/edit`)}><Pencil className="h-4 w-4" /> {t("campaigns.finishCreation")}</DropdownMenuItem>
