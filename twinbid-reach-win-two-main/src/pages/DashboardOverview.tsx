@@ -72,12 +72,13 @@ export default function DashboardOverview() {
                   <th className="text-left py-3 px-4 text-sm font-medium text-muted-foreground">{t("overview.name")}</th>
                   <th className="text-left py-3 px-4 text-sm font-medium text-muted-foreground">{t("overview.status")}</th>
                   <th className="text-left py-3 px-4 text-sm font-medium text-muted-foreground">{t("overview.impressions")}</th>
+                  <th className="text-left py-3 px-4 text-sm font-medium text-muted-foreground">{t("statsCards.clicks")}</th>
                   <th className="text-left py-3 px-4 text-sm font-medium text-muted-foreground">{t("overview.spent")}</th>
                 </tr>
               </thead>
               <tbody>
                 {activeCampaigns.length === 0 ? (
-                  <tr><td colSpan={5} className="py-12 text-center text-muted-foreground">{t("campaigns.notFound")}</td></tr>
+                  <tr><td colSpan={6} className="py-12 text-center text-muted-foreground">{t("campaigns.notFound")}</td></tr>
                 ) : activeCampaigns.map((c) => {
                   const s = statOf(byId, c.id);
                   return (
@@ -90,6 +91,7 @@ export default function DashboardOverview() {
                         </Badge>
                       </td>
                       <td className="py-3 px-4">{s.impressions.toLocaleString()}</td>
+                      <td className="py-3 px-4">{s.clicks.toLocaleString()}</td>
                       <td className="py-3 px-4">${s.spent.toLocaleString()}</td>
                     </tr>
                   );

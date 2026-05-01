@@ -1,6 +1,6 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
 import { api, ApiError } from "@/api";
-import { ACCESS_TOKEN_KEY, REFRESH_TOKEN_KEY } from "@/api/config";
+import { ACCESS_TOKEN_KEY, REFRESH_TOKEN_KEY, API_BASE_URL } from "@/api/config";
 import { DEFAULT_MANAGER_TELEGRAM } from "@/lib/constants";
 import { useLanguage } from "@/contexts/LanguageContext";
 
@@ -38,17 +38,57 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // Hydrate session on boot.
   useEffect(() => {
     let cancelled = false;
-    (async () => {
+
+    // Force a refresh-token round-trip before hitting /session, so we don't
+    // rely on the backend returning 401 for an expired access token (some
+    // endpoints return success with empty data instead, which would log us
+    // out on every reload after the access token expires).
+    async function forceRefresh(): Promise<boolean> {
+      const refreshToken = localStorage.getItem(REFRESH_TOKEN_KEY);
+      if (!refreshToken) return false;
+      try {
+        const res = await fetch(`${API_BASE_URL}/api/auth/refresh`, {
+          method: "POST",
+          headers: { Accept: "application/json", "Content-Type": "application/json" },
+          body: JSON.stringify({ refresh_token: refreshToken }),
+        });
+        if (!res.ok) return false;
+        const text = await res.text();
+        const data = text ? JSON.parse(text) : null;
+        const payload = data && typeof data === "object" && "data" in data ? data.data : data;
+        const access = payload?.access_token;
+        const refresh = payload?.refresh_token;
+        if (!access || !refresh) return false;
+        localStorage.setItem(ACCESS_TOKEN_KEY, access);
+        localStorage.setItem(REFRESH_TOKEN_KEY, refresh);
+        return true;
+      } catch {
+        return false;
+      }
+    }
+
+    async function hydrate(): Promise<AuthUser | null> {
       try {
         const session = await api.getSession();
-        if (!cancelled) {
-          setUser(session ? { id: session.user_id, email: session.email, full_name: session.full_name } : null);
-        }
+        if (session) return { id: session.user_id, email: session.email, full_name: session.full_name };
+      } catch { /* fallthrough to refresh */ }
+
+      // Either no session or the call failed — try refreshing once and retry.
+      const refreshed = await forceRefresh();
+      if (!refreshed) return null;
+      try {
+        const session = await api.getSession();
+        return session ? { id: session.user_id, email: session.email, full_name: session.full_name } : null;
       } catch {
-        if (!cancelled) setUser(null);
-      } finally {
-        if (!cancelled) setLoading(false);
+        return null;
       }
+    }
+
+    (async () => {
+      const next = await hydrate();
+      if (cancelled) return;
+      setUser(next);
+      setLoading(false);
     })();
     return () => { cancelled = true; };
   }, []);

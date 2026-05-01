@@ -22,7 +22,6 @@ const defaultUser: ApiUser = {
   email_notifications: true,
   campaign_status_notifications: true,
   low_balance_notifications: true,
-  campaign_balanse_notifications: true,
   balance_treshold: 100,
 };
 

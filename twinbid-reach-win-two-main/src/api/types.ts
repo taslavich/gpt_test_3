@@ -27,7 +27,6 @@ export interface ApiUser {
   email_notifications: boolean;
   campaign_status_notifications: boolean;
   low_balance_notifications: boolean;
-  campaign_balanse_notifications: boolean;
   balance_treshold: number;
 }
 

@@ -28,7 +28,7 @@ function isDraftComplete(c: Campaign): boolean {
   return true;
 }
 
-type SortKey = "name" | "status" | "format" | "budget" | "spent" | "impressions" | "ctr";
+type SortKey = "name" | "status" | "format" | "budget" | "spent" | "impressions" | "clicks" | "ctr";
 type SortDir = "asc" | "desc";
 
 export default function DashboardCampaigns() {
@@ -74,6 +74,7 @@ export default function DashboardCampaigns() {
         case "budget": cmp = a.budget - b.budget; break;
         case "spent": cmp = sa.spent - sb.spent; break;
         case "impressions": cmp = sa.impressions - sb.impressions; break;
+        case "clicks": cmp = sa.clicks - sb.clicks; break;
         case "ctr": cmp = sa.ctr - sb.ctr; break;
       }
       return sortDir === "asc" ? cmp : -cmp;
@@ -213,6 +214,9 @@ export default function DashboardCampaigns() {
                     <th className="text-left py-3 px-4 text-sm font-medium text-muted-foreground cursor-pointer select-none hover:text-foreground transition-colors" onClick={() => handleSort("impressions")}>
                       <span className="inline-flex items-center">{t("overview.impressions")}<SortIcon col="impressions" /></span>
                     </th>
+                    <th className="text-left py-3 px-4 text-sm font-medium text-muted-foreground cursor-pointer select-none hover:text-foreground transition-colors" onClick={() => handleSort("clicks")}>
+                      <span className="inline-flex items-center">{t("statsCards.clicks")}<SortIcon col="clicks" /></span>
+                    </th>
                     <th className="text-left py-3 px-4 text-sm font-medium text-muted-foreground cursor-pointer select-none hover:text-foreground transition-colors" onClick={() => handleSort("ctr")}>
                       <span className="inline-flex items-center">CTR<SortIcon col="ctr" /></span>
                     </th>
@@ -231,6 +235,7 @@ export default function DashboardCampaigns() {
                       <td className="py-4 px-4">${campaign.budget.toLocaleString()}</td>
                       <td className="py-4 px-4">${cs.spent.toLocaleString()}</td>
                       <td className="py-4 px-4">{cs.impressions.toLocaleString()}</td>
+                      <td className="py-4 px-4">{cs.clicks.toLocaleString()}</td>
                       <td className="py-4 px-4">{cs.ctr}%</td>
                       <td className="py-4 px-4 text-right">
                         <DropdownMenu>
@@ -271,7 +276,7 @@ export default function DashboardCampaigns() {
                     </tr>
                     );
                   })}
-                  {sorted.length === 0 && <tr><td colSpan={9} className="py-12 text-center text-muted-foreground">{t("campaigns.notFound")}</td></tr>}
+                  {sorted.length === 0 && <tr><td colSpan={10} className="py-12 text-center text-muted-foreground">{t("campaigns.notFound")}</td></tr>}
                 </tbody>
               </table>
             </div>

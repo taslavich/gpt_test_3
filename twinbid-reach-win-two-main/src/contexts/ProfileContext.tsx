@@ -13,8 +13,6 @@ export interface Profile {
   balanceThreshold: number;
   notifyCampaignStatus: boolean;
   notifyLowBalance: boolean;
-  /** Toggle for the "campaign budget alert" notification. Persisted as `campaign_balanse_notifications` on the backend. */
-  notifyCampaignBudget: boolean;
   managerTelegram: string;
 }
 
@@ -27,12 +25,7 @@ interface ProfileContextType {
 
 const ProfileContext = createContext<ProfileContextType | null>(null);
 
-function fromApi(u: ApiUser, id: string, prev?: Profile | null): Profile {
-  // Backend may use either `campaign_balanse_notifications` (typo) or
-  // `campaign_balance_notifications`. Accept both, fall back to previous value.
-  const budgetRaw =
-    (u as any).campaign_balanse_notifications ??
-    (u as any).campaign_balance_notifications;
+function fromApi(u: ApiUser, id: string, _prev?: Profile | null): Profile {
   return {
     id,
     email: u.mail,
@@ -43,8 +36,6 @@ function fromApi(u: ApiUser, id: string, prev?: Profile | null): Profile {
     balanceThreshold: Number(u.balance_treshold) || 100,
     notifyCampaignStatus: u.campaign_status_notifications,
     notifyLowBalance: u.low_balance_notifications,
-    notifyCampaignBudget:
-      typeof budgetRaw === "boolean" ? budgetRaw : prev?.notifyCampaignBudget ?? true,
     managerTelegram: u.manager_telegram || "",
   };
 }
@@ -79,21 +70,8 @@ export function ProfileProvider({ children }: { children: ReactNode }) {
     if (updates.balanceThreshold !== undefined) patch.balance_treshold = updates.balanceThreshold;
     if (updates.notifyCampaignStatus !== undefined) patch.campaign_status_notifications = updates.notifyCampaignStatus;
     if (updates.notifyLowBalance !== undefined) patch.low_balance_notifications = updates.notifyLowBalance;
-    if (updates.notifyCampaignBudget !== undefined) {
-      // Send both spellings so the backend picks up the right key regardless
-      // of the historical `balanse` typo.
-      patch.campaign_balanse_notifications = updates.notifyCampaignBudget;
-      (patch as any).campaign_balance_notifications = updates.notifyCampaignBudget;
-    }
     const updated = await api.patchProfile(patch);
-    setProfile((prev) => {
-      const next = fromApi(updated, user.id, prev);
-      // If backend didn't echo back the budget flag, trust what we just sent.
-      if (updates.notifyCampaignBudget !== undefined) {
-        next.notifyCampaignBudget = updates.notifyCampaignBudget;
-      }
-      return next;
-    });
+    setProfile((prev) => fromApi(updated, user.id, prev));
   }, [user]);
 
   return (

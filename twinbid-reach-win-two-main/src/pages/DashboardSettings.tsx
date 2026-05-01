@@ -24,10 +24,6 @@ export default function DashboardSettings() {
   const [timezone, setTimezone] = useState("utc_3");
   const [notifyCampaign, setNotifyCampaign] = useState(true);
   const [notifyBalance, setNotifyBalance] = useState(true);
-  // Independent toggle for the campaign-budget alert. Previously bound to the
-  // same state as `notifyCampaign`, which caused both flags to flip together
-  // and always send `true` to the backend.
-  const [notifyBudget, setNotifyBudget] = useState(true);
   const [balanceThreshold, setBalanceThreshold] = useState("100");
   const [saving, setSaving] = useState(false);
 
@@ -39,7 +35,6 @@ export default function DashboardSettings() {
       setTimezone(profile.timezone || "utc_3");
       setNotifyCampaign(profile.notifyCampaignStatus);
       setNotifyBalance(profile.notifyLowBalance);
-      setNotifyBudget(profile.notifyCampaignBudget);
       setBalanceThreshold(String(profile.balanceThreshold));
     }
   }, [profile]);
@@ -65,7 +60,6 @@ export default function DashboardSettings() {
       await updateProfile({
         notifyCampaignStatus: notifyCampaign,
         notifyLowBalance: notifyBalance,
-        notifyCampaignBudget: notifyBudget,
         balanceThreshold: parseInt(balanceThreshold) || 100,
       });
       toast.success(t("settings.saved"));
