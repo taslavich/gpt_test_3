@@ -21,6 +21,7 @@ export function AuthDialog({ trigger, defaultTab = "login" }: AuthDialogProps) {
   const [loginEmail, setLoginEmail] = useState("");
   const [loginPassword, setLoginPassword] = useState("");
   const [regName, setRegName] = useState("");
+  const [regTelegram, setRegTelegram] = useState("");
   const [regEmail, setRegEmail] = useState("");
   const [regPassword, setRegPassword] = useState("");
   const [regConfirm, setRegConfirm] = useState("");
@@ -48,6 +49,10 @@ export function AuthDialog({ trigger, defaultTab = "login" }: AuthDialogProps) {
       toast.error(t("auth.consent.required"));
       return;
     }
+    if (!regTelegram.trim()) {
+      toast.error(t("auth.telegramRequired"));
+      return;
+    }
     if (regPassword !== regConfirm) {
       toast.error(t("auth.passwordMismatch") || "Passwords do not match");
       return;
@@ -57,7 +62,7 @@ export function AuthDialog({ trigger, defaultTab = "login" }: AuthDialogProps) {
       return;
     }
     setLoading(true);
-    const { error } = await signUp(regEmail, regPassword, regName);
+    const { error } = await signUp(regEmail, regPassword, regName, regTelegram.trim());
     setLoading(false);
     if (error) {
       toast.error(error);
@@ -121,6 +126,11 @@ export function AuthDialog({ trigger, defaultTab = "login" }: AuthDialogProps) {
                 <Label htmlFor="password-confirm">{t("auth.confirmPassword")}</Label>
                 <Input id="password-confirm" type="password" placeholder="••••••••" className="bg-background border-border"
                   value={regConfirm} onChange={(e) => setRegConfirm(e.target.value)} required />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="telegram-register">{t("auth.telegram")}</Label>
+                <Input id="telegram-register" placeholder="@username" className="bg-background border-border"
+                  value={regTelegram} onChange={(e) => setRegTelegram(e.target.value)} required />
               </div>
               <div className="flex items-start gap-2 pt-1">
                 <Checkbox

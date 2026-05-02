@@ -14,7 +14,7 @@ export interface AuthUser {
 interface AuthContextType {
   user: AuthUser | null;
   loading: boolean;
-  signUp: (email: string, password: string, fullName?: string) => Promise<{ error: string | null }>;
+  signUp: (email: string, password: string, fullName: string | undefined, telegram: string) => Promise<{ error: string | null }>;
   signIn: (email: string, password: string) => Promise<{ error: string | null }>;
   signOut: () => Promise<void>;
 }
@@ -93,9 +93,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return () => { cancelled = true; };
   }, []);
 
-  const signUp = async (email: string, password: string, fullName?: string) => {
+  const signUp = async (email: string, password: string, fullName: string | undefined, telegram: string) => {
     try {
-      const res = await api.signup({ email, password, full_name: fullName, manager_telegram: DEFAULT_MANAGER_TELEGRAM });
+      const res = await api.signup({ email, password, full_name: fullName, telegram, manager_telegram: DEFAULT_MANAGER_TELEGRAM });
       storeTokens(res.access_token, res.refresh_token);
       setUser({ id: "mock-user", email: res.user.mail, full_name: res.user.name });
       return { error: null };

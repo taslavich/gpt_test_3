@@ -90,6 +90,8 @@ const translations: Record<string, Record<Lang, string>> = {
   "auth.password": { ru: "Пароль", en: "Password" },
   "auth.name": { ru: "Имя (опционально)", en: "Name (optional)" },
   "auth.phone": { ru: "Телефон", en: "Phone" },
+  "auth.telegram": { ru: "Telegram", en: "Telegram" },
+  "auth.telegramRequired": { ru: "Укажите ваш Telegram", en: "Please enter your Telegram" },
   "auth.confirmPassword": { ru: "Подтвердите пароль", en: "Confirm password" },
   "auth.loginBtn": { ru: "Войти", en: "Log in" },
   "auth.registerBtn": { ru: "Зарегистрироваться", en: "Sign up" },
