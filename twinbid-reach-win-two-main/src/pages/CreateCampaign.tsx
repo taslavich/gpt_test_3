@@ -38,7 +38,7 @@ const generateId = () => String(Date.now()) + Math.random().toString(36).slice(2
 
 export default function CreateCampaign() {
   const navigate = useNavigate();
-  const { addCampaign } = useCampaigns();
+  const { addCampaign, updateCampaign } = useCampaigns();
   const { t } = useLanguage();
   const { addNotification } = useNotifications();
   const [step, setStep] = useState(1);
@@ -154,8 +154,9 @@ export default function CreateCampaign() {
 
   const handleCreate = async () => {
     try {
+      // Create as draft first, then PATCH to moderation (per backend flow)
       const id = await addCampaign({
-        name: name.trim(), status: "moderation", format: formatLabels[adFormat] || adFormat,
+        name: name.trim(), status: "draft", format: formatLabels[adFormat] || adFormat,
         formatKey: adFormat, trafficType, verticals, budget: parseNum(totalBudget), dailyBudget: null,
         spent: 0, impressions: 0, clicks: 0, ctr: 0, pricingModel, priceValue: parseNum(priceValue),
         trafficQuality, startDate, endDate, creatives,
@@ -164,11 +165,16 @@ export default function CreateCampaign() {
         brandName: showBrandName ? brandName : undefined,
       });
       if (!id) {
-        // addCampaign resolved without an id (treated as silent failure)
         toast.error(t("create.failed") || "Failed to create campaign");
         return;
       }
       savedAsDraft.current = true;
+      try {
+        await updateCampaign(id, { status: "moderation" });
+      } catch (e: any) {
+        toast.error(`${t("create.failed") || "Failed to submit campaign"}: ${e?.message || e}`);
+        return;
+      }
       toast.success(t("create.created"));
       navigate("/dashboard/campaigns");
     } catch (e: any) {
