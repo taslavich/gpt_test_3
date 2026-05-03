@@ -35,10 +35,48 @@ export function PendingPaymentDialog() {
   const [txHash, setTxHash] = useState("");
   const hydratedTxRef = useRef<string | null>(null);
   const handlersAttachedRef = useRef<string | null>(null);
+  const draftCheckedRef = useRef<string | null>(null);
 
   useEffect(() => {
     if (isDialogOpen) setTxHash("");
   }, [isDialogOpen]);
+
+  // If user has a draft transaction but no "incomplete_topup" notification,
+  // create one so the reminder is visible. Runs once per user session.
+  useEffect(() => {
+    if (!user) { draftCheckedRef.current = null; return; }
+    if (draftCheckedRef.current === user.id) return;
+    const hasIncompleteNotif = notifications.some(n => n.apiType === "incomplete_topup");
+    if (hasIncompleteNotif) { draftCheckedRef.current = user.id; return; }
+    draftCheckedRef.current = user.id;
+    (async () => {
+      try {
+        const res = await api.listTransactions();
+        const items = Array.isArray(res?.items) ? res.items : [];
+        const draft = items.find(x => x.status === "draft" && x.user_id === user.id);
+        if (!draft) return;
+        // Re-check to avoid race with hydration creating the notif elsewhere.
+        if (notifications.some(n => n.apiType === "incomplete_topup")) return;
+        const depositAmt = Number(draft.deposit_amount) || 0;
+        const bonusPct = Number(draft.bonus_amount) || 0;
+        const bonusUsd = Math.floor((depositAmt * bonusPct) / 100);
+        const total = depositAmt + bonusUsd;
+        await addNotification({
+          title: t("balance.notif.notCompleted"),
+          description: `${t("balance.notif.noHash")} $${total}`,
+          type: "warning",
+          persistent: true,
+          apiType: "incomplete_topup",
+          apiPayload: {
+            deposit_amount: depositAmt,
+            transaction_id: draft.id,
+          },
+        });
+      } catch (e) {
+        console.error("[topup] draft auto-notify failed", e);
+      }
+    })();
+  }, [user, notifications, addNotification, t]);
 
   // Re-bind UI handlers to the persisted "incomplete_topup" notification on reload,
   // and rehydrate pendingPayment from the linked transaction so all bonus info
