@@ -150,11 +150,17 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const attachHandlers = useCallback<NotificationContextType["attachHandlers"]>((apiId, handlers) => {
-    setNotifications(prev => prev.map(n =>
-      n.apiId === apiId
-        ? { ...n, action: handlers.action ?? n.action, onDismiss: handlers.onDismiss ?? n.onDismiss }
-        : n,
-    ));
+    setNotifications(prev => {
+      const target = prev.find(n => n.apiId === apiId);
+      if (!target) return prev;
+      const nextAction = handlers.action ?? target.action;
+      const nextDismiss = handlers.onDismiss ?? target.onDismiss;
+      // No-op if nothing actually changes — prevents re-render loops.
+      if (nextAction === target.action && nextDismiss === target.onDismiss) return prev;
+      return prev.map(n =>
+        n.apiId === apiId ? { ...n, action: nextAction, onDismiss: nextDismiss } : n,
+      );
+    });
   }, []);
 
   return (

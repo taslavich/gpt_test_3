@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -33,6 +33,8 @@ export function PendingPaymentDialog() {
   } = usePendingPayment();
 
   const [txHash, setTxHash] = useState("");
+  const hydratedTxRef = useRef<string | null>(null);
+  const handlersAttachedRef = useRef<string | null>(null);
 
   useEffect(() => {
     if (isDialogOpen) setTxHash("");
@@ -43,17 +45,20 @@ export function PendingPaymentDialog() {
   // (promocode_id, bonus_amount) is restored without re-asking the user.
   useEffect(() => {
     const persisted = notifications.find(n => n.apiType === "incomplete_topup");
-    if (!persisted) return;
+    if (!persisted) {
+      pendingNotifId = null;
+      hydratedTxRef.current = null;
+      handlersAttachedRef.current = null;
+      return;
+    }
 
     pendingNotifId = persisted.id;
+    const txId = persisted.apiPayload?.transaction_id ?? null;
 
-    if (!pendingPayment) {
-      const txId = persisted.apiPayload?.transaction_id;
+    // Hydrate pendingPayment from backend tx — only ONCE per txId to avoid loop.
+    if (!pendingPayment && hydratedTxRef.current !== (txId ?? persisted.id)) {
+      hydratedTxRef.current = txId ?? persisted.id;
       if (txId) {
-        // Pull the full transaction (status="created") from backend so we
-        // recover promocode_id + bonus_amount + deposit_amount. This is the
-        // single source of truth, so we don't need to re-validate the promo
-        // string at submit time.
         (async () => {
           try {
             const res = await api.listTransactions();
@@ -61,10 +66,8 @@ export function PendingPaymentDialog() {
             const tx = items.find(x => x.id === txId);
             if (tx) {
               const depositAmt = Number(tx.deposit_amount) || 0;
-              // bonus_amount in DB is the PERCENT (e.g. 1.3 means +1.3%), not a $ amount.
               const bonusPct = Number(tx.bonus_amount) || 0;
               const bonusUsd = (depositAmt * bonusPct) / 100;
-              // Resolve promo code name from promo_codes table
               let promoName: string | undefined;
               if (tx.promocode_id) {
                 try {
@@ -107,20 +110,26 @@ export function PendingPaymentDialog() {
         });
       }
     }
-    attachHandlers(persisted.id, {
-      action: { label: t("balance.notif.completePayment"), onClick: () => openDialog() },
-      onDismiss: () => {
-        // Cancel the underlying transaction (status -> cancelled) on dismiss.
-        const txId = pendingPayment?.transaction_id ?? persisted.apiPayload?.transaction_id ?? null;
-        if (txId) api.cancelTransaction(txId).catch(e => console.error("cancelTransaction failed", e));
-        setPendingPayment(null);
-        setTxHash("");
-        pendingNotifId = null;
-        triggerRefresh();
-        toast.info(t("balance.toast.paymentCanceled"));
-      },
-    });
-    // We intentionally depend only on the notifications list snapshot
+
+    // Attach handlers only once per notification to avoid setNotifications loop.
+    if (handlersAttachedRef.current !== persisted.id) {
+      handlersAttachedRef.current = persisted.id;
+      attachHandlers(persisted.id, {
+        action: { label: t("balance.notif.completePayment"), onClick: () => openDialog() },
+        onDismiss: () => {
+          const txId2 = pendingPayment?.transaction_id ?? persisted.apiPayload?.transaction_id ?? null;
+          if (txId2) api.cancelTransaction(txId2).catch(e => console.error("cancelTransaction failed", e));
+          setPendingPayment(null);
+          setTxHash("");
+          pendingNotifId = null;
+          hydratedTxRef.current = null;
+          handlersAttachedRef.current = null;
+          triggerRefresh();
+          toast.info(t("balance.toast.paymentCanceled"));
+        },
+      });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [notifications]);
 
   const currentMethod = usdtMethods.find(m => m.id === pendingPayment?.method);
