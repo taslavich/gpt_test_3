@@ -25,7 +25,7 @@ export function PendingPaymentDialog() {
   const { t } = useLanguage();
   const { user } = useAuth();
   const { profile } = useProfile();
-  const { notifications, addNotification, removeNotification, attachHandlers } = useNotifications();
+  const { notifications, notificationsLoaded, addNotification, removeNotification, attachHandlers } = useNotifications();
   const {
     pendingPayment, setPendingPayment,
     isDialogOpen, openDialog, closeDialog,
@@ -42,9 +42,12 @@ export function PendingPaymentDialog() {
   }, [isDialogOpen]);
 
   // If user has a draft transaction but no "incomplete_topup" notification,
-  // create one so the reminder is visible. Runs once per user session.
+  // create one so the reminder is visible. Runs once per user session and ONLY
+  // after notifications have been hydrated from the backend (otherwise we'd
+  // create a duplicate on every reload before the existing one loads).
   useEffect(() => {
     if (!user) { draftCheckedRef.current = null; return; }
+    if (!notificationsLoaded) return;
     if (draftCheckedRef.current === user.id) return;
     const hasIncompleteNotif = notifications.some(n => n.apiType === "incomplete_topup");
     if (hasIncompleteNotif) { draftCheckedRef.current = user.id; return; }
@@ -56,7 +59,7 @@ export function PendingPaymentDialog() {
         const draft = items.find(x => x.status === "draft" && x.user_id === user.id);
         if (!draft) return;
         // Re-check to avoid race with hydration creating the notif elsewhere.
-        if (notifications.some(n => n.apiType === "incomplete_topup")) return;
+        if (notifications.some(n => n.apiType === "incomplete_topup" || n.apiPayload?.transaction_id === draft.id)) return;
         const depositAmt = Number(draft.deposit_amount) || 0;
         const bonusPct = Number(draft.bonus_amount) || 0;
         const bonusUsd = Math.floor((depositAmt * bonusPct) / 100);
@@ -76,7 +79,7 @@ export function PendingPaymentDialog() {
         console.error("[topup] draft auto-notify failed", e);
       }
     })();
-  }, [user, notifications, addNotification, t]);
+  }, [user, notificationsLoaded, notifications, addNotification, t]);
 
   // Re-bind UI handlers to the persisted "incomplete_topup" notification on reload,
   // and rehydrate pendingPayment from the linked transaction so all bonus info

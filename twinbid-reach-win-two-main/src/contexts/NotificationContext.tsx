@@ -23,6 +23,8 @@ export interface Notification {
 
 interface NotificationContextType {
   notifications: Notification[];
+  /** True after the initial fetch from the backend has completed (success or error). */
+  notificationsLoaded: boolean;
   /** Add a notification. If `persistent` is true and `apiType` is provided, it is also saved on the backend. */
   addNotification: (n: Omit<Notification, "id">) => Promise<string>;
   removeNotification: (id: string) => void;
@@ -62,11 +64,13 @@ function descFor(n: ApiNotification): string | undefined {
 export function NotificationProvider({ children }: { children: ReactNode }) {
   const { user } = useAuth();
   const [notifications, setNotifications] = useState<Notification[]>([]);
+  const [notificationsLoaded, setNotificationsLoaded] = useState(false);
 
   // Hydrate from backend on login / mount
   useEffect(() => {
-    if (!user) { setNotifications([]); return; }
+    if (!user) { setNotifications([]); setNotificationsLoaded(false); return; }
     let cancelled = false;
+    setNotificationsLoaded(false);
     (async () => {
       try {
         const list = await api.listNotifications();
@@ -91,6 +95,8 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
         );
       } catch (e) {
         console.error("listNotifications failed", e);
+      } finally {
+        if (!cancelled) setNotificationsLoaded(true);
       }
     })();
     return () => { cancelled = true; };
@@ -164,7 +170,7 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
   }, []);
 
   return (
-    <NotificationContext.Provider value={{ notifications, addNotification, removeNotification, clearAll, attachHandlers }}>
+    <NotificationContext.Provider value={{ notifications, notificationsLoaded, addNotification, removeNotification, clearAll, attachHandlers }}>
       {children}
     </NotificationContext.Provider>
   );
