@@ -352,6 +352,7 @@ export type Database = {
         | "completed"
         | "moderation"
         | "no_budget"
+        | "waiting"
       pricing_model: "cpm" | "cpc"
       topup_status: "pending" | "approved" | "rejected"
       traffic_quality: "common" | "high" | "ultra"
@@ -491,6 +492,7 @@ export const Constants = {
         "completed",
         "moderation",
         "no_budget",
+        "waiting",
       ],
       pricing_model: ["cpm", "cpc"],
       topup_status: ["pending", "approved", "rejected"],

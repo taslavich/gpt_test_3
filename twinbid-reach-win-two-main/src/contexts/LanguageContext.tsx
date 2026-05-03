@@ -175,6 +175,7 @@ const translations: Record<string, Record<Lang, string>> = {
   "status.completed": { ru: "Завершена", en: "Completed" },
   "status.moderation": { ru: "На модерации", en: "In moderation" },
   "status.no_budget": { ru: "Нет бюджета", en: "No budget" },
+  "status.waiting": { ru: "Ожидает запуска", en: "Waiting" },
 
   // Balance page
   "balance.title": { ru: "Баланс и платежи", en: "Balance & Payments" },
@@ -303,6 +304,7 @@ const translations: Record<string, Record<Lang, string>> = {
   "campaigns.moderationFilter": { ru: "На модерации", en: "In moderation" },
   "campaigns.completedFilter": { ru: "Завершённые", en: "Completed" },
   "campaigns.noBudgetFilter": { ru: "Нет бюджета", en: "No budget" },
+  "campaigns.waitingFilter": { ru: "Ожидает запуска", en: "Waiting" },
   "campaigns.total": { ru: "Всего", en: "Total" },
   "campaigns.activeCount": { ru: "Активных", en: "Active" },
   "campaigns.budget": { ru: "Бюджет", en: "Budget" },
