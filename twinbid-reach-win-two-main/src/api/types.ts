@@ -139,9 +139,11 @@ export type StatsGroupBy =
   | "creative" | "os" | "browser" | "device_type" | "language" | "site_id";
 
 export interface StatsQueryRequest {
-  from: string; // YYYY-MM-DD
+  from: string; // YYYY-MM-DD (UTC). For a single day send from === to.
   to: string;
   campaign_ids?: string[];
+  /** Optional UUID list of creatives to narrow the result down to specific creatives. */
+  creative_ids?: string[];
   group_by: StatsGroupBy[];
   filters?: Partial<Record<StatsGroupBy, string[]>>;
 }

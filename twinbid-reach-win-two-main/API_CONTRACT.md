@@ -244,35 +244,130 @@ Resp: `User`.
 
 ## 7. Statistics — ClickHouse
 
-> Все ручки ниже — read-only выборки из ClickHouse. Ни одна не пишет в Postgres.
+> Все ручки ниже — read-only выборки из таблицы `ads.agg_stats` (ClickHouse).
+> **Весь SQL живёт на бэкенде.** Фронт никогда не формирует и не отправляет SQL —
+> он только передаёт параметры (даты, фильтры, group_by) в JSON.
+> Референсные SQL-запросы для бэка лежат в `src/api/clickhouse-queries.sql`
+> (этот файл — временный, существует только как образец, его удалит бэкендер
+> после интеграции).
+>
+> Авторизация: `Authorization: Bearer <jwt>`. Бэк извлекает `user_id` из JWT и
+> ВСЕГДА подставляет его в `WHERE user_id = ...`. Фронт `user_id` НЕ шлёт.
+>
+> Все даты — `YYYY-MM-DD` в UTC 0. Бэк маппит их в `{date_from:Date}` /
+> `{date_to:Date}`. Если `from`/`to` пустые строки — бэк не накладывает
+> фильтр по датам (или применяет дефолт «последние 90 дней»).
 
-### POST `/api/stats/query`
-Универсальная ручка для страницы Статистика.
-Body:
+---
+
+### 7.1 POST `/api/stats/query` — универсальная ручка для всех 3 экранов
+
+Используется страницами **Overview**, **Campaigns** и **Statistics**. Бэк по
+значению `group_by[0]` выбирает соответствующий запрос из секции 3
+`clickhouse-queries.sql` и одновременно выполняет totals-запрос (секция 4) с
+теми же фильтрами.
+
+**Request body:**
 ```json
 {
-  "from": "2025-04-15", "to": "2025-04-22",
-  "campaign_ids": ["uuid"],
-  "group_by": ["date","campaign","country","format","creative","os","browser","device_type","language"],
-  "filters": { "country": ["US","RU"], "device_type": ["mobile"] }
+  "from": "2025-04-22",
+  "to":   "2025-04-22",
+  "campaign_ids":  ["uuid", "..."],
+  "creative_ids":  ["uuid", "..."],
+  "group_by": ["date"],
+  "filters": {
+    "country":     ["US", "RU"],
+    "browser":     ["chrome"],
+    "os":          ["android"],
+    "device_type": ["mobile"],
+    "site_id":     ["12345"]
+  }
 }
 ```
-Resp:
+
+| Поле | Тип | Обяз. | Описание / маппинг на ClickHouse-параметры |
+|---|---|---|---|
+| `from` | `string YYYY-MM-DD` | да* | `{date_from:Date}`. Пустая строка = без нижней границы. Для одной конкретной даты фронт шлёт `from = to`. |
+| `to`   | `string YYYY-MM-DD` | да* | `{date_to:Date}`. Пустая строка = без верхней границы. |
+| `campaign_ids` | `string[]` (UUID) | нет | `{campaign_ids:Array(UUID)}`. `[]` = все кампании пользователя. Сужает выборку до выбранных кампаний. |
+| `creative_ids` | `string[]` (UUID) | нет | `{creative_ids:Array(UUID)}`. `[]` = все креативы. Подставляется в `WHERE creative_id IN (...)`. Используется когда в UI выбран конкретный креатив (или несколько). |
+| `group_by` | `StatsGroupBy[]` | да | Фронт всегда шлёт массив длины 1. Допустимые значения: `date`, `hour`, `campaign`, `country`, `creative`, `os`, `browser`, `device_type`, `site_id`. |
+| `filters.country` | `string[]` | нет | `{f_geo:Array(String)}` (колонка `geo`). |
+| `filters.browser` | `string[]` | нет | `{f_browser:Array(String)}`. |
+| `filters.os` | `string[]` | нет | `{f_os:Array(String)}`. |
+| `filters.device_type` | `string[]` | нет | `{f_device_type:Array(String)}`. |
+| `filters.site_id` | `string[]` | нет | `{f_site_id:Array(String)}`. |
+
+\* Поля присутствуют всегда; пустая строка означает «не фильтровать».
+
+
+**Response:**
 ```json
 {
   "rows": [
-    { "date": "2025-04-22", "campaign_id": "uuid", "country": "US",
-      "impressions": 12345, "clicks": 67, "spent": 12.34, "ctr": 0.005425 }
+    { "date": "2025-04-22", "impressions": 12345, "clicks": 67, "spent": 12.34, "ctr": 0.54 }
   ],
-  "totals": { "impressions": 12345, "clicks": 67, "spent": 12.34, "ctr": 0.005425 }
+  "totals": { "impressions": 12345, "clicks": 67, "spent": 12.34, "ctr": 0.54 }
 }
 ```
 
-### GET `/api/stats/campaign/:id/summary?from=&to=` → `{ impressions, clicks, spent, ctr }`
-Используется в строках списка кампаний (`DashboardCampaigns`) и в обзоре (`DashboardOverview`/`StatsCards`).
+Имя bucket-колонки в каждой строке = значению `group_by[0]`:
 
-### GET `/api/stats/overview?from=&to=` → `{ impressions, clicks, spent, ctr }`
-Агрегат по всем кампаниям пользователя (для `StatsCards` на overview).
+| `group_by[0]` | Ключ в `row` | Тип значения |
+|---|---|---|
+| `date` | `date` | `"YYYY-MM-DD"` |
+| `hour` | `hour` | `"YYYY-MM-DD HH:00"` (UTC) |
+| `campaign` | `campaign` | UUID кампании (string) |
+| `creative` | `creative` | UUID креатива (string) |
+| `country` | `country` | ISO-код (`"US"`) |
+| `os` | `os` | строка |
+| `browser` | `browser` | строка |
+| `device_type` | `device_type` | строка |
+| `site_id` | `site_id` | строка |
+
+Поля метрик во всех строках одинаковые: `impressions:int`, `clicks:int`,
+`spent:number` (USD, 2 знака), `ctr:number` (проценты, 2 знака).
+
+`totals` считается на тех же `WHERE`-условиях, без `GROUP BY`.
+
+---
+
+### 7.2 GET `/api/stats/overview?from=&to=` → `StatsSummary`
+
+Сводный KPI по всем кампаниям пользователя. Используется в `StatsCards` на
+Overview. Эквивалент `/api/stats/query` с `group_by: []` без `campaign_ids`.
+
+Query-параметры: `from=YYYY-MM-DD`, `to=YYYY-MM-DD` (оба опциональны).
+
+Response:
+```json
+{ "impressions": 12345, "clicks": 67, "spent": 12.34, "ctr": 0.54 }
+```
+
+---
+
+### 7.3 GET `/api/stats/campaign/:id/summary?from=&to=` → `StatsSummary`
+
+KPI по одной кампании. Используется в строках `DashboardCampaigns`. Бэк
+дополнительно проверяет, что `campaign.user_id` = `user_id` из JWT (иначе 403).
+
+Response: тот же `StatsSummary`, что и в 7.2.
+
+---
+
+### 7.4 Где это лежит на фронте
+
+- Типы запроса/ответа: `src/api/types.ts`
+  (`StatsQueryRequest`, `StatsQueryResponse`, `StatsRow`, `StatsSummary`, `StatsGroupBy`).
+- Клиентские методы (имена в `ApiProvider`):
+  - `statsQuery(req: StatsQueryRequest): Promise<StatsQueryResponse>` → `POST /api/stats/query`
+  - `statsOverview(from?: string, to?: string): Promise<StatsSummary>` → `GET /api/stats/overview`
+  - `statsCampaignSummary(id: string, from?: string, to?: string): Promise<StatsSummary>` → `GET /api/stats/campaign/:id/summary`
+- HTTP-реализация: `src/api/httpProvider.ts` (только сериализация JSON, никакой бизнес-логики).
+- Потребители:
+  - `src/components/dashboard/StatsCards.tsx` + `src/hooks/use-campaign-stats.ts` — Overview KPI.
+  - `src/pages/DashboardCampaigns.tsx` — per-row summary.
+  - `src/pages/DashboardStatistics.tsx` (через `src/contexts/StatisticsContext.tsx`) — flexible group_by.
 
 ---
 
