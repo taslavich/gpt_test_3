@@ -190,8 +190,19 @@ export default function DashboardStatistics() {
     if (!hasSelection) { setData([]); return; }
     let cancelled = false;
     const apiGroup = GROUP_MAP[appliedGroupBy].api;
-    const from = appliedDateRange?.from ? appliedDateRange.from.toISOString().slice(0, 10) : "";
-    const to = appliedDateRange?.to ? appliedDateRange.to.toISOString().slice(0, 10) : from;
+    // All statistics are queried in UTC 0. The calendar visually represents
+    // calendar days (no time-of-day component), so we serialize the picked
+    // day as a UTC date string (YYYY-MM-DD) using its Y/M/D fields directly.
+    // We deliberately do NOT use toISOString(), which would shift the day
+    // for users in positive timezones (local midnight → previous UTC day).
+    const fmtUtcDay = (d: Date) => {
+      const y = d.getFullYear();
+      const m = String(d.getMonth() + 1).padStart(2, "0");
+      const day = String(d.getDate()).padStart(2, "0");
+      return `${y}-${m}-${day}`;
+    };
+    const from = appliedDateRange?.from ? fmtUtcDay(appliedDateRange.from) : "";
+    const to = appliedDateRange?.to ? fmtUtcDay(appliedDateRange.to) : from;
     const filters: Partial<Record<StatsFilterBy, string[]>> = {};
     if (appliedFilterCountry.size) filters.country = Array.from(appliedFilterCountry);
     if (appliedFilterBrowser.size) filters.browser = Array.from(appliedFilterBrowser);
