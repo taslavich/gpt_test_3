@@ -28,18 +28,16 @@ export function useCampaignStats(campaignIds: string[]): CampaignStatsMap {
     }
     let cancelled = false;
     setLoading(true);
-    api.statsQuery({ from: "", to: "", campaign_ids: campaignIds, group_by: ["campaign"] })
+    api.statsQuery({ from: "", to: "", campaign_ids: campaignIds, group_by: "campaign" })
       .then(res => {
         if (cancelled) return;
         const map = new Map<string, StatsSummary>();
-        for (const row of res.rows) {
-          const id = String(row.campaign ?? "");
-          if (!id) continue;
+        for (const [id, summary] of Object.entries(res.rows)) {
           map.set(id, {
-            impressions: Number(row.impressions) || 0,
-            clicks: Number(row.clicks) || 0,
-            spent: Number(row.spent) || 0,
-            ctr: Number(row.ctr) || 0,
+            impressions: Number(summary.impressions) || 0,
+            clicks: Number(summary.clicks) || 0,
+            spent: Number(summary.spent) || 0,
+            ctr: Number(summary.ctr) || 0,
           });
         }
         setById(map);

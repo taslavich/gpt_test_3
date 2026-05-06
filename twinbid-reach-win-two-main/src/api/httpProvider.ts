@@ -1,7 +1,7 @@
 import { http } from "./http";
 import type {
   ApiUser, ApiCampaign, ApiCreative, ApiUserTransaction, ApiPromocode,
-  ApiNotification, StatsQueryRequest, StatsQueryResponse, StatsSummary,
+  ApiNotification, StatsQueryRequest, StatsQueryResponse,
   AuthResponse, AuthTokens, ApiEnvelope,
 } from "./types";
 import type { RawApiProvider } from "./mockProvider";
@@ -90,8 +90,6 @@ export const httpProvider: RawApiProvider = {
   createNotification:  (body)    => http<ApiEnvelope<ApiNotification>>("/api/notifications", { method: "POST", body }),
   patchNotification:   (id, p)   => http<ApiEnvelope<ApiNotification>>(`/api/notifications/${id}`, { method: "PATCH", body: p }),
 
-  // ClickHouse stats
-  statsQuery:           (req)    => http<ApiEnvelope<StatsQueryResponse>>("/api/stats/query", { method: "POST", body: req }),
-  statsCampaignSummary: (id)     => http<ApiEnvelope<StatsSummary>>(`/api/stats/campaign/${id}/summary`),
-  statsOverview:        ()       => http<ApiEnvelope<StatsSummary>>("/api/stats/overview"),
+  // ClickHouse stats — single universal endpoint for Overview / Campaigns / Statistics.
+  statsQuery: (req) => http<ApiEnvelope<StatsQueryResponse>>("/api/stats/query", { method: "POST", body: req }),
 };

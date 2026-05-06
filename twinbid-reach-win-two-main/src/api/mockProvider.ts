@@ -283,7 +283,7 @@ export const mockProvider = {
   // -- ClickHouse stats ---------------------------------------------------
   async statsQuery(req: StatsQueryRequest): Promise<ApiEnvelope<StatsQueryResponse>> {
     const ids = req.campaign_ids?.length ? req.campaign_ids : state.campaigns.map(c => c.campaign_id);
-    const groupBy = req.group_by?.[0] || "campaign";
+    const groupBy = req.group_by || "campaign";
 
     const rng = (seed: string) => {
       let h = 0;
@@ -316,39 +316,26 @@ export const mockProvider = {
         case "browser":     return ["Chrome","Safari","Firefox","Edge","Opera","Samsung Internet"];
         case "device_type": return ["Mobile","Desktop","Tablet","Smart TV"];
         case "os":          return ["Android","iOS","Windows","macOS","Linux","ChromeOS"];
-        case "language":    return ["en","ru","de","fr","es","pt","it","ja","ko"];
-        case "format":      return ["banner","push","popunder","native"];
         case "site_id":     return ["site_landing_1","site_banner_top","site_video_pre","site_native_feed","site_push_main","site_pop_exit"];
-        case "creative":    return state.creatives.filter(c => ids.includes(c.campaign_id)).map(c => c.id);
         case "campaign":
         default:            return ids;
       }
     })();
 
     let totalImp = 0, totalClicks = 0, totalSpent = 0;
-    const rows = buckets.map(bucket => {
+    const rows: Record<string, StatsSummary> = {};
+    for (const bucket of buckets) {
       const r = rng(`${groupBy}|${bucket}|${ids.join(",")}`);
       const impressions = Math.floor(r() * 80000) + 1000;
       const clicks = Math.floor(impressions * (0.005 + r() * 0.03));
       const spent = Math.round((impressions / 1000) * (0.5 + r() * 2.5) * 100) / 100;
       const ctr = impressions > 0 ? Number(((clicks / impressions) * 100).toFixed(2)) : 0;
       totalImp += impressions; totalClicks += clicks; totalSpent += spent;
-      return { [groupBy]: bucket, impressions, clicks, spent, ctr };
-    });
+      rows[bucket] = { impressions, clicks, spent, ctr };
+    }
 
     const totalCtr = totalImp > 0 ? Number(((totalClicks / totalImp) * 100).toFixed(2)) : 0;
     return ok({ rows, totals: { impressions: totalImp, clicks: totalClicks, spent: totalSpent, ctr: totalCtr } });
-  },
-  async statsCampaignSummary(id: string): Promise<ApiEnvelope<StatsSummary>> {
-    const env = await this.statsQuery({ from: "", to: "", campaign_ids: [id], group_by: ["campaign"] });
-    const r = env.data?.rows[0];
-    return ok(r
-      ? { impressions: Number(r.impressions), clicks: Number(r.clicks), spent: Number(r.spent), ctr: Number(r.ctr) }
-      : { impressions: 0, clicks: 0, spent: 0, ctr: 0 });
-  },
-  async statsOverview(): Promise<ApiEnvelope<StatsSummary>> {
-    const env = await this.statsQuery({ from: "", to: "", group_by: ["campaign"] });
-    return ok(env.data?.totals ?? { impressions: 0, clicks: 0, spent: 0, ctr: 0 });
   },
 };
 

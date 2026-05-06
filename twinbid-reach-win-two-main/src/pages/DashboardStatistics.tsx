@@ -8,7 +8,7 @@ import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContai
 import { format, subDays } from "date-fns";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+
 import { cn } from "@/lib/utils";
 import type { DateRange } from "react-day-picker";
 import { toast } from "sonner";
@@ -17,7 +17,7 @@ import { useLanguage } from "@/contexts/LanguageContext";
 import { useStatistics } from "@/contexts/StatisticsContext";
 import { formatCountryLabel } from "@/lib/countries";
 import { api } from "@/api";
-import type { StatsGroupBy } from "@/api/types";
+import type { StatsGroupBy, StatsFilterBy } from "@/api/types";
 
 type GroupBy = "dates" | "hours" | "browsers" | "siteid" | "devices" | "os" | "country";
 type SortKey = "label" | "impressions" | "clicks" | "spent";
@@ -192,7 +192,7 @@ export default function DashboardStatistics() {
     const apiGroup = GROUP_MAP[appliedGroupBy].api;
     const from = appliedDateRange?.from ? appliedDateRange.from.toISOString().slice(0, 10) : "";
     const to = appliedDateRange?.to ? appliedDateRange.to.toISOString().slice(0, 10) : from;
-    const filters: Partial<Record<StatsGroupBy, string[]>> = {};
+    const filters: Partial<Record<StatsFilterBy, string[]>> = {};
     if (appliedFilterCountry.size) filters.country = Array.from(appliedFilterCountry);
     if (appliedFilterBrowser.size) filters.browser = Array.from(appliedFilterBrowser);
     if (appliedFilterDevice.size)  filters.device_type = Array.from(appliedFilterDevice);
@@ -201,26 +201,26 @@ export default function DashboardStatistics() {
     api.statsQuery({
       from, to,
       campaign_ids: Array.from(appliedCampaignIds),
-      group_by: [apiGroup],
+      creative_ids: appliedCreativeIds.size ? Array.from(appliedCreativeIds) : undefined,
+      group_by: apiGroup,
       filters,
     }).then(res => {
       if (cancelled) return;
-      const rows: UiRow[] = res.rows.map(r => {
-        const raw = String(r[apiGroup] ?? "");
-        const label = apiGroup === "date" ? formatDateLabel(raw)
-                    : apiGroup === "hour" ? formatHourLabel(raw)
-                    : raw;
+      const rows: UiRow[] = Object.entries(res.rows).map(([key, m]) => {
+        const label = apiGroup === "date" ? formatDateLabel(key)
+                    : apiGroup === "hour" ? formatHourLabel(key)
+                    : key;
         return {
           label,
-          impressions: Number(r.impressions) || 0,
-          clicks: Number(r.clicks) || 0,
-          spent: Number(r.spent) || 0,
+          impressions: Number(m.impressions) || 0,
+          clicks: Number(m.clicks) || 0,
+          spent: Number(m.spent) || 0,
         };
       });
       setData(rows);
     }).catch(e => { if (!cancelled) console.error("Stats query error:", e); });
     return () => { cancelled = true; };
-  }, [appliedCampaignIds, appliedGroupBy, appliedDateRange, appliedFilterCountry, appliedFilterBrowser, appliedFilterDevice, appliedFilterOS, hasSelection]);
+  }, [appliedCampaignIds, appliedCreativeIds, appliedGroupBy, appliedDateRange, appliedFilterCountry, appliedFilterBrowser, appliedFilterDevice, appliedFilterOS, hasSelection]);
 
   const metricCards = useMemo(() => {
     const totalImpressions = data.reduce((s, r) => s + r.impressions, 0);
@@ -258,13 +258,12 @@ export default function DashboardStatistics() {
     toast.success(t("stats.refreshed"));
   }, [selectedCampaignIds, selectedCreativeIds, dateRange, filterCountry, filterBrowser, filterDevice, filterOS, t, activeCampaigns]);
 
-  const handleCampaignSelect = (value: string) => {
-    if (value === "all") {
-      setSelectedCampaignIds(new Set());
-    } else {
-      setSelectedCampaignIds(new Set([value]));
-    }
-    // Reset creative selection when campaign changes
+  const toggleCampaign = (id: string) => {
+    setSelectedCampaignIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
     setSelectedCreativeIds(new Set());
   };
 
@@ -330,19 +329,34 @@ export default function DashboardStatistics() {
       <div className="flex flex-wrap items-end gap-6">
         <div className="flex flex-col gap-2">
           <Label className="text-sm text-muted-foreground font-medium">{t("stats.campaigns")}</Label>
-          <Select value={selectedCampaignId || "all"} onValueChange={handleCampaignSelect}>
-            <SelectTrigger className="w-[280px] bg-background border-border">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">{t("stats.allCampaigns")}</SelectItem>
-              {activeCampaigns.map(c => (
-                <SelectItem key={c.id} value={c.id}>
-                  <span className="text-muted-foreground mr-1">{c.id}</span> — {c.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          <Popover>
+            <PopoverTrigger asChild>
+              <Button variant="outline" className="w-[280px] justify-start bg-background border-border text-left font-normal truncate">
+                {selectedCampaignIds.size === 0
+                  ? t("stats.allCampaigns")
+                  : selectedCampaignIds.size === 1
+                    ? (activeCampaigns.find(c => c.id === Array.from(selectedCampaignIds)[0])?.name ?? `${t("stats.selected")} 1`)
+                    : `${t("stats.selected")} ${selectedCampaignIds.size}`}
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent className="w-[320px] p-2" align="start">
+              <div className="space-y-1 max-h-64 overflow-y-auto">
+                <label className="flex items-center gap-2 px-2 py-1.5 rounded hover:bg-muted/50 cursor-pointer text-sm font-medium border-b border-border pb-2 mb-1">
+                  <Checkbox checked={selectedCampaignIds.size === 0} onCheckedChange={(checked) => {
+                    if (checked) { setSelectedCampaignIds(new Set()); setSelectedCreativeIds(new Set()); }
+                  }} />
+                  {t("stats.allCampaigns")}
+                </label>
+                {activeCampaigns.map(c => (
+                  <label key={c.id} className="flex items-center gap-2 px-2 py-1.5 rounded hover:bg-muted/50 cursor-pointer text-sm">
+                    <Checkbox checked={selectedCampaignIds.has(c.id)} onCheckedChange={() => toggleCampaign(c.id)} />
+                    <span className="text-muted-foreground mr-1">{c.id}</span>
+                    <span className="truncate">— {c.name}</span>
+                  </label>
+                ))}
+              </div>
+            </PopoverContent>
+          </Popover>
         </div>
 
         <div className="flex flex-col gap-2">

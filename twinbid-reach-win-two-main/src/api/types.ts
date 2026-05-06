@@ -134,32 +134,23 @@ export interface ApiNotification {
 }
 
 // ---- ClickHouse statistics ----
+/** Allowed values for `group_by` (single value, not array). */
 export type StatsGroupBy =
-  | "date" | "hour" | "campaign" | "country" | "format"
-  | "creative" | "os" | "browser" | "device_type" | "language" | "site_id";
+  | "date" | "hour" | "country" | "os" | "browser" | "device_type" | "site_id" | "campaign";
+
+/** Allowed keys inside `filters` — narrower than `group_by`. */
+export type StatsFilterBy = "country" | "os" | "browser" | "device_type";
 
 export interface StatsQueryRequest {
   from: string; // YYYY-MM-DD (UTC). For a single day send from === to.
   to: string;
+  /** Optional UUID list of campaigns. Empty/omitted = all user campaigns. Multi-select supported. */
   campaign_ids?: string[];
-  /** Optional UUID list of creatives to narrow the result down to specific creatives. */
+  /** Optional UUID list of creatives. */
   creative_ids?: string[];
-  group_by: StatsGroupBy[];
-  filters?: Partial<Record<StatsGroupBy, string[]>>;
-}
-
-export interface StatsRow {
-  // any of the group_by keys present
-  [key: string]: string | number | undefined;
-  impressions: number;
-  clicks: number;
-  spent: number;
-  ctr: number;
-}
-
-export interface StatsQueryResponse {
-  rows: StatsRow[];
-  totals: { impressions: number; clicks: number; spent: number; ctr: number };
+  /** Single grouping. The frontend re-issues the request whenever the user picks another group. */
+  group_by: StatsGroupBy;
+  filters?: Partial<Record<StatsFilterBy, string[]>>;
 }
 
 export interface StatsSummary {
@@ -167,6 +158,16 @@ export interface StatsSummary {
   clicks: number;
   spent: number;
   ctr: number;
+}
+
+/**
+ * Map keyed by the bucket value (e.g. country code "DE", campaign UUID, "YYYY-MM-DD"…).
+ * Each value is the metrics object for that bucket. `totals` aggregates across all rows
+ * with the same WHERE filters but no GROUP BY.
+ */
+export interface StatsQueryResponse {
+  rows: Record<string, StatsSummary>;
+  totals: StatsSummary;
 }
 
 // ---- Auth ----
