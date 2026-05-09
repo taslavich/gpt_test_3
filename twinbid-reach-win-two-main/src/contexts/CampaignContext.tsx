@@ -283,10 +283,9 @@ function buildApiCampaignBody(c: Omit<Campaign, "id">): Omit<ApiCampaign, "campa
     const [ws, hs] = c.bannerSize.split("x");
     w = Number(ws); h = Number(hs);
   }
-  return {
+  const body: any = {
     campaign_name: c.name,
     format_type: (c.formatKey || c.format) as FormatType,
-    brand_name: c.brandName ?? null,
     h, w,
     status: c.status,
     traffic_type: c.trafficType,
@@ -302,6 +301,10 @@ function buildApiCampaignBody(c: Omit<Campaign, "id">): Omit<ApiCampaign, "campa
     quality_type: uiQualityToApi(c.trafficQuality),
     ...buildApiTargeting(c.targeting),
   };
+  // brand_name is optional. Only include when the user provided a value
+  // so the backend can apply its own default / nullability handling.
+  if (c.brandName) body.brand_name = c.brandName;
+  return body;
 }
 
 /**

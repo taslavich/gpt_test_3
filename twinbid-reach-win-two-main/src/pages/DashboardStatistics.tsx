@@ -16,6 +16,7 @@ import { useCampaigns } from "@/contexts/CampaignContext";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { useStatistics } from "@/contexts/StatisticsContext";
 import { formatCountryLabel } from "@/lib/countries";
+import { COUNTRY_CODES, OPERATING_SYSTEMS, BROWSERS, DEVICE_TYPES } from "@/lib/dimensions";
 import { api } from "@/api";
 import type { StatsGroupBy, StatsFilterBy } from "@/api/types";
 
@@ -47,18 +48,12 @@ function formatHourLabel(raw: string): string {
   return `${formatDateLabel(day)} ${hour}`;
 }
 
-function seedRandom(seed: string) {
-  let h = 0;
-  for (let i = 0; i < seed.length; i++) { h = Math.imul(31, h) + seed.charCodeAt(i) | 0; }
-  return () => { h = Math.imul(h ^ (h >>> 16), 0x45d9f3b); h = Math.imul(h ^ (h >>> 13), 0x45d9f3b); return ((h ^ (h >>> 16)) >>> 0) / 4294967296; };
-}
-
 // Dictionaries used purely for filter UI options.
 const DIMENSION_MAP: Record<string, string[]> = {
-  country: ["US","GB","DE","FR","BR","IN","JP","RU","AU","CA","ES","IT","KR","TR","PL"],
-  browsers: ["Chrome","Safari","Firefox","Edge","Opera","Samsung Internet"],
-  devices: ["Mobile","Desktop","Tablet","Smart TV"],
-  os: ["Android","iOS","Windows","macOS","Linux","ChromeOS"],
+  country: COUNTRY_CODES,
+  browsers: BROWSERS,
+  devices: DEVICE_TYPES,
+  os: OPERATING_SYSTEMS,
 };
 
 // Multi-select filter component (supports plain string options or {value,label} pairs)
@@ -157,9 +152,8 @@ export default function DashboardStatistics() {
     const campaign = campaigns.find(c => c.id === selectedCampaignId);
     if (!campaign) return result;
     (campaign.creatives || []).forEach((cr, idx) => {
-      const creativeId = `${selectedCampaignId}.${idx + 1}`;
       const label = cr.name || cr.title || cr.url || `Creative #${idx + 1}`;
-      result.push({ id: creativeId, label });
+      result.push({ id: cr.id, label });
     });
     return result;
   }, [selectedCampaignId, campaigns]);
@@ -185,6 +179,7 @@ export default function DashboardStatistics() {
   const hasSelection = appliedCampaignIds.size > 0 && appliedDateRange?.from;
 
   const [data, setData] = useState<UiRow[]>([]);
+  const [slowLoading, setSlowLoading] = useState(false);
 
   useEffect(() => {
     if (!hasSelection) { setData([]); return; }
@@ -209,6 +204,11 @@ export default function DashboardStatistics() {
     if (appliedFilterDevice.size)  filters.device_type = Array.from(appliedFilterDevice);
     if (appliedFilterOS.size)      filters.os = Array.from(appliedFilterOS);
 
+    // If the request takes longer than 1s, surface a centered overlay so the
+    // user knows the stats are still loading (slow network etc.). The overlay
+    // disappears immediately when the response arrives.
+    const slowTimer = window.setTimeout(() => { if (!cancelled) setSlowLoading(true); }, 1000);
+
     api.statsQuery({
       from, to,
       campaign_ids: Array.from(appliedCampaignIds),
@@ -217,20 +217,62 @@ export default function DashboardStatistics() {
       filters,
     }).then(res => {
       if (cancelled) return;
-      const rows: UiRow[] = Object.entries(res.rows).map(([key, m]) => {
-        const label = apiGroup === "date" ? formatDateLabel(key)
-                    : apiGroup === "hour" ? formatHourLabel(key)
-                    : key;
-        return {
-          label,
+      const byKey = new Map<string, { impressions: number; clicks: number; spent: number }>();
+      for (const [key, m] of Object.entries(res.rows)) {
+        byKey.set(key, {
           impressions: Number(m.impressions) || 0,
           clicks: Number(m.clicks) || 0,
           spent: Number(m.spent) || 0,
-        };
-      });
+        });
+      }
+      const empty = { impressions: 0, clicks: 0, spent: 0 };
+      let rows: UiRow[];
+      if (apiGroup === "hour") {
+        // Fill every hour in the selected range with zeros for missing buckets,
+        // so both the table and the chart show a continuous timeline.
+        const keys: string[] = [];
+        const start = new Date(`${from}T00:00:00Z`);
+        const end = new Date(`${to}T00:00:00Z`);
+        for (let d = new Date(start); d <= end; d.setUTCDate(d.getUTCDate() + 1)) {
+          const y = d.getUTCFullYear();
+          const mo = String(d.getUTCMonth() + 1).padStart(2, "0");
+          const da = String(d.getUTCDate()).padStart(2, "0");
+          for (let h = 0; h < 24; h++) {
+            keys.push(`${y}-${mo}-${da} ${String(h).padStart(2, "0")}:00`);
+          }
+        }
+        rows = keys.map(k => {
+          const m = byKey.get(k) ?? empty;
+          return { label: formatHourLabel(k), ...m };
+        });
+      } else if (apiGroup === "date") {
+        const keys: string[] = [];
+        const start = new Date(`${from}T00:00:00Z`);
+        const end = new Date(`${to}T00:00:00Z`);
+        for (let d = new Date(start); d <= end; d.setUTCDate(d.getUTCDate() + 1)) {
+          const y = d.getUTCFullYear();
+          const mo = String(d.getUTCMonth() + 1).padStart(2, "0");
+          const da = String(d.getUTCDate()).padStart(2, "0");
+          keys.push(`${y}-${mo}-${da}`);
+        }
+        rows = keys.map(k => {
+          const m = byKey.get(k) ?? empty;
+          return { label: formatDateLabel(k), ...m };
+        });
+      } else {
+        rows = Array.from(byKey.entries()).map(([key, m]) => ({ label: key, ...m }));
+      }
       setData(rows);
-    }).catch(e => { if (!cancelled) console.error("Stats query error:", e); });
-    return () => { cancelled = true; };
+    }).catch(e => { if (!cancelled) console.error("Stats query error:", e); })
+      .finally(() => {
+        window.clearTimeout(slowTimer);
+        if (!cancelled) setSlowLoading(false);
+      });
+    return () => {
+      cancelled = true;
+      window.clearTimeout(slowTimer);
+      setSlowLoading(false);
+    };
   }, [appliedCampaignIds, appliedCreativeIds, appliedGroupBy, appliedDateRange, appliedFilterCountry, appliedFilterBrowser, appliedFilterDevice, appliedFilterOS, hasSelection]);
 
   const metricCards = useMemo(() => {
@@ -289,7 +331,8 @@ export default function DashboardStatistics() {
 
   const chartData = useMemo(() => {
     if (appliedGroupBy !== "dates" && appliedGroupBy !== "hours") return [];
-    return [...data].sort((a, b) => a.label.localeCompare(b.label));
+    // `data` is already inserted in chronological order by the fill loop above.
+    return data;
   }, [data, appliedGroupBy]);
 
   const sortedData = useMemo(() => {
@@ -332,6 +375,14 @@ export default function DashboardStatistics() {
 
   return (
     <div className="space-y-6">
+      {slowLoading && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/60 backdrop-blur-sm pointer-events-none">
+          <div className="pointer-events-auto rounded-lg border border-border bg-card px-6 py-4 shadow-lg flex items-center gap-3">
+            <RefreshCw className="h-5 w-5 animate-spin text-primary" />
+            <span className="text-sm text-foreground">{t("stats.loading")}</span>
+          </div>
+        </div>
+      )}
       <div>
         <h2 className="text-2xl font-bold">{t("stats.title")}</h2>
         <p className="text-muted-foreground text-sm">{t("stats.subtitle")}</p>

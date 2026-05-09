@@ -255,6 +255,7 @@ const translations: Record<string, Record<Lang, string>> = {
   "stats.selectAll": { ru: "Все кампании", en: "All campaigns" },
   "stats.refresh": { ru: "Обновить", en: "Refresh" },
   "stats.refreshed": { ru: "Статистика обновлена", en: "Statistics refreshed" },
+  "stats.loading": { ru: "Статистика обновляется, подождите...", en: "Statistics are loading, please wait..." },
   "stats.impressions": { ru: "Показы", en: "Impressions" },
   "stats.clicks": { ru: "Клики", en: "Clicks" },
   "stats.ctr": { ru: "CTR", en: "CTR" },

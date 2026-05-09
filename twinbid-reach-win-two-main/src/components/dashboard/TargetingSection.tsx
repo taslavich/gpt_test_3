@@ -8,21 +8,22 @@ import type { TargetingState, ListMode } from "@/contexts/CampaignContext";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
+import {
+  COUNTRIES, LANGUAGES, OPERATING_SYSTEMS, BROWSERS,
+  COUNTRY_CODES, LANGUAGE_CODES, DEVICE_TYPES,
+} from "@/lib/dimensions";
 
-const countryNames: Record<string, string> = {
-  US:"United States",GB:"United Kingdom",DE:"Germany",FR:"France",IT:"Italy",ES:"Spain",BR:"Brazil",RU:"Russia",IN:"India",JP:"Japan",KR:"South Korea",CN:"China",AU:"Australia",CA:"Canada",MX:"Mexico",AR:"Argentina",CO:"Colombia",PL:"Poland",NL:"Netherlands",SE:"Sweden",NO:"Norway",DK:"Denmark",FI:"Finland",CZ:"Czech Republic",AT:"Austria",CH:"Switzerland",BE:"Belgium",PT:"Portugal",GR:"Greece",TR:"Turkey",UA:"Ukraine",RO:"Romania",HU:"Hungary",BG:"Bulgaria",HR:"Croatia",SK:"Slovakia",SI:"Slovenia",LT:"Lithuania",LV:"Latvia",EE:"Estonia",IE:"Ireland",IL:"Israel",SA:"Saudi Arabia",AE:"UAE",EG:"Egypt",ZA:"South Africa",NG:"Nigeria",KE:"Kenya",TH:"Thailand",VN:"Vietnam",PH:"Philippines",ID:"Indonesia",MY:"Malaysia",SG:"Singapore",TW:"Taiwan",HK:"Hong Kong",NZ:"New Zealand",CL:"Chile",PE:"Peru"
-};
-
-const languageNames: Record<string, string> = {
-  EN:"English",ES:"Spanish",FR:"French",DE:"German",IT:"Italian",PT:"Portuguese",RU:"Russian",ZH:"Chinese",JA:"Japanese",KO:"Korean",AR:"Arabic",HI:"Hindi",TR:"Turkish",PL:"Polish",NL:"Dutch",SV:"Swedish",NO:"Norwegian",DA:"Danish",FI:"Finnish",CS:"Czech",RO:"Romanian",HU:"Hungarian",BG:"Bulgarian",HR:"Croatian",SK:"Slovak",SL:"Slovenian",LT:"Lithuanian",LV:"Latvian",ET:"Estonian",EL:"Greek",HE:"Hebrew",TH:"Thai",VI:"Vietnamese",ID:"Indonesian",MS:"Malay",UK:"Ukrainian",SR:"Serbian",BS:"Bosnian",MK:"Macedonian",SQ:"Albanian",KA:"Georgian",HY:"Armenian",AZ:"Azerbaijani",UZ:"Uzbek",KK:"Kazakh",TG:"Tajik",KY:"Kyrgyz",MN:"Mongolian",MY:"Burmese",KM:"Khmer",LO:"Lao",BN:"Bengali",TA:"Tamil",TE:"Telugu",ML:"Malayalam",KN:"Kannada",MR:"Marathi",GU:"Gujarati",PA:"Punjabi",SI:"Sinhala",NE:"Nepali"
-};
+const countryNames: Record<string, { ru: string; en: string }> =
+  Object.fromEntries(COUNTRIES.map(c => [c.code, { ru: c.ru, en: c.en }]));
+const languageNames: Record<string, string> =
+  Object.fromEntries(LANGUAGES.map(l => [l.code, l.en]));
 
 const targetingOptions: Record<string, string[]> = {
-  country: Object.keys(countryNames),
-  language: Object.keys(languageNames),
-  deviceType: ["Mobile","Desktop","Tablet","Smart TV","Console"],
-  os: ["Android","iOS","Windows","macOS","Linux","ChromeOS","HarmonyOS"],
-  browser: ["Chrome","Safari","Firefox","Edge","Opera","Samsung Internet","UC Browser","Brave","Vivaldi","Yandex Browser"],
+  country: COUNTRY_CODES,
+  language: LANGUAGE_CODES,
+  deviceType: DEVICE_TYPES,
+  os: OPERATING_SYSTEMS,
+  browser: BROWSERS,
   sites: [],
 };
 
@@ -40,7 +41,7 @@ interface TargetingSectionProps {
 }
 
 function AutocompleteInput({
-  options, value, onChange, onAdd, existingItems, placeholder, t,
+  options, value, onChange, onAdd, existingItems, placeholder, t, lang,
 }: {
   options: string[];
   value: string;
@@ -49,6 +50,7 @@ function AutocompleteInput({
   existingItems: string[];
   placeholder: string;
   t: (key: string) => string;
+  lang: "ru" | "en";
 }) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
@@ -56,7 +58,7 @@ function AutocompleteInput({
   const keepOpenRef = useRef(false);
 
   const getDisplayLabel = (option: string) => {
-    if (countryNames[option]) return `${countryNames[option]} (${option})`;
+    if (countryNames[option]) return `${countryNames[option][lang]} (${option})`;
     if (languageNames[option]) return `${languageNames[option]} (${option})`;
     return option;
   };
@@ -324,7 +326,7 @@ function ListItem({ config, list: rawList, onUpdate }: {
   onUpdate: (updates: Partial<TargetingState>) => void;
 }) {
   const list = { mode: rawList?.mode ?? "none", items: rawList?.items ?? [] };
-  const { t } = useLanguage();
+  const { t, lang } = useLanguage();
   const [inputValue, setInputValue] = useState("");
   const options = targetingOptions[config.key] || [];
   const isSchedule = config.key === "schedule";
@@ -332,7 +334,7 @@ function ListItem({ config, list: rawList, onUpdate }: {
   const isIp = config.key === "ip";
 
   const getDisplayLabel = (item: string) => {
-    if (countryNames[item]) return `${countryNames[item]} (${item})`;
+    if (countryNames[item]) return `${countryNames[item][lang]} (${item})`;
     if (languageNames[item]) return `${languageNames[item]} (${item})`;
     return item;
   };
@@ -384,7 +386,7 @@ function ListItem({ config, list: rawList, onUpdate }: {
             <AutocompleteInput
               options={options} value={inputValue} onChange={setInputValue}
               onAdd={addItem} existingItems={list.items}
-              placeholder={t("targeting.autocompletePlaceholder")} t={t}
+              placeholder={t("targeting.autocompletePlaceholder")} t={t} lang={lang}
             />
           )}
           {list.items.length > 0 && !isSchedule && (
