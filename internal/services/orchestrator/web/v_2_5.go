@@ -11,9 +11,6 @@ import (
 	bidEngineGrpc "gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/proto/services/bidEngine"
 	dspRouterGrpc "gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/proto/services/dspRouter"
 	orchestratorGrpc "gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/proto/services/orchestrator"
-	"gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/proto/types/ortb_V2_5"
-	utils "gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/utils_grpc"
-	clickhouse_types "gitlab.com/twinbid-exchange/RTB-exchange/internal/types/clickhouse"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
@@ -90,27 +87,6 @@ func (s *Server) GetWinnerBid_V2_5(
 		}
 
 		return nil, status.Errorf(grpcCode, newErr.Error())
-	}
-
-	if len(bids.BidResponses) == 0 {
-		clickhouseBid := clickhouse_types.GetEmpty(req.ImpIdUuid)
-
-		for _, uuid := range req.ImpIdUuid {
-			if err := utils.WriteWinStats(ctx, s.redisClient, uuid, clickhouseBid[uuid], req.Logged); err != nil {
-				log.Printf("failed to WriteJsonToRedis Bid BID_RESPONSE_WINNER in GetWinnerBid_V2_5: %w", err)
-			}
-		}
-
-		return &orchestratorGrpc.OrchestratorResponse_V2_5{
-			BidResponse: &ortb_V2_5.BidResponse{
-				Id: req.BidRequest.Id,
-				Seatbid: []*ortb_V2_5.SeatBid{
-					{
-						Bid: []*ortb_V2_5.Bid{},
-					},
-				},
-			},
-		}, nil
 	}
 
 	getWinnerBidReqCtx, cancel := context.WithTimeout(ctx, s.getWinnerBidTimeout)
