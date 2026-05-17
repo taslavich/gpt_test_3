@@ -69,7 +69,7 @@ func ProcessKafkaMessagesClicks(
 	if err := reader.CommitMessages(ctx, messages...); err != nil {
 		log.Printf("⚠️ Failed to commit Kafka offsets: %v", err)
 	} else {
-		log.Println("COMMITED %d", len(records))
+		log.Printf("COMMITED %d", len(records))
 	}
 
 	return nil
