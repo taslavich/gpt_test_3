@@ -27,6 +27,14 @@ type KafkaWriters struct {
 	Clicks      *kafka.Writer
 }
 
+func kafkaTopics(cfg config.KafkaConfig) []string {
+	return []string{
+		cfg.KafkaTopicOrtb,
+		cfg.KafkaTopicImpressions,
+		cfg.KafkaTopicClicks,
+	}
+}
+
 func checkKafkaBrokers(brokers []string) error {
 	if len(brokers) == 0 {
 		return fmt.Errorf("kafka brokers list is empty")
@@ -142,15 +150,9 @@ func ensureTopicExists(brokers []string, topic string, numPartitions int) error 
 	return nil
 }
 
-func EnsureTopicsExist(brokers []string) error {
-	topics := []string{
-		TopicOrtb,
-		TopicImpressions,
-		TopicClicks,
-	}
-
-	for _, topic := range topics {
-		if err := ensureTopicExists(brokers, topic, DefaultTopicPartitions); err != nil {
+func EnsureTopicsExist(cfg config.KafkaConfig) error {
+	for _, topic := range kafkaTopics(cfg) {
+		if err := ensureTopicExists(cfg.KafkaBrokers, topic, DefaultTopicPartitions); err != nil {
 			return fmt.Errorf("failed to ensure Kafka topic %s exists: %w", topic, err)
 		}
 	}
@@ -197,22 +199,34 @@ func InitKafkaReader(cfg config.KafkaConfig, topic string, groupID string) (*kaf
 }
 
 func InitKafkaReaders(cfg config.KafkaConfig) (*KafkaReaders, error) {
-	if err := EnsureTopicsExist(cfg.KafkaBrokers); err != nil {
+	if err := EnsureTopicsExist(cfg); err != nil {
 		return nil, fmt.Errorf("failed to ensure Kafka topics exist: %w", err)
 	}
 
-	ortbReader, err := InitKafkaReader(cfg, TopicOrtb, KafkaGroupIDOrtb)
+	ortbReader, err := InitKafkaReader(
+		cfg,
+		cfg.KafkaTopicOrtb,
+		cfg.KafkaGroupIDOrtb,
+	)
 	if err != nil {
 		return nil, err
 	}
 
-	impressionsReader, err := InitKafkaReader(cfg, TopicImpressions, KafkaGroupIDImpressions)
+	impressionsReader, err := InitKafkaReader(
+		cfg,
+		cfg.KafkaTopicImpressions,
+		cfg.KafkaGroupIDImpressions,
+	)
 	if err != nil {
 		_ = ortbReader.Close()
 		return nil, err
 	}
 
-	clicksReader, err := InitKafkaReader(cfg, TopicClicks, KafkaGroupIDClicks)
+	clicksReader, err := InitKafkaReader(
+		cfg,
+		cfg.KafkaTopicClicks,
+		cfg.KafkaGroupIDClicks,
+	)
 	if err != nil {
 		_ = ortbReader.Close()
 		_ = impressionsReader.Close()
@@ -291,23 +305,23 @@ func CreateKafkaWriter(brokers []string, topic string) (*kafka.Writer, error) {
 	return writer, nil
 }
 
-func CreateKafkaWriters(brokers []string) (*KafkaWriters, error) {
-	if err := EnsureTopicsExist(brokers); err != nil {
+func CreateKafkaWriters(cfg config.KafkaConfig) (*KafkaWriters, error) {
+	if err := EnsureTopicsExist(cfg); err != nil {
 		return nil, fmt.Errorf("failed to ensure Kafka topics exist: %w", err)
 	}
 
-	ortbWriter, err := CreateKafkaWriter(brokers, TopicOrtb)
+	ortbWriter, err := CreateKafkaWriter(cfg.KafkaBrokers, cfg.KafkaTopicOrtb)
 	if err != nil {
 		return nil, err
 	}
 
-	impressionsWriter, err := CreateKafkaWriter(brokers, TopicImpressions)
+	impressionsWriter, err := CreateKafkaWriter(cfg.KafkaBrokers, cfg.KafkaTopicImpressions)
 	if err != nil {
 		_ = ortbWriter.Close()
 		return nil, err
 	}
 
-	clicksWriter, err := CreateKafkaWriter(brokers, TopicClicks)
+	clicksWriter, err := CreateKafkaWriter(cfg.KafkaBrokers, cfg.KafkaTopicClicks)
 	if err != nil {
 		_ = ortbWriter.Close()
 		_ = impressionsWriter.Close()

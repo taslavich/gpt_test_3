@@ -219,6 +219,14 @@ type ClickhouseConfig struct {
 	Port            string `yaml:"CLICKHOUSE_PORT" env:"CLICKHOUSE_PORT" env-default:"9440"`
 	Database        string `yaml:"CLICKHOUSE_DB" env:"CLICKHOUSE_DB" env-default:"rtb"`
 	DatabaseDefault string `yaml:"CLICKHOUSE_DEFAULT_DB" env:"CLICKHOUSE_DEFAULT_DB" env-default:"default"`
+
+	// ClickHouse tables and batches by event type
+	TableOrtb            string `yaml:"CLICKHOUSE_TABLE_ORTB" env:"CLICKHOUSE_TABLE_ORTB" env-default:"ads.ortb"`
+	TableImpressions     string `yaml:"CLICKHOUSE_TABLE_IMPRESSIONS" env:"CLICKHOUSE_TABLE_IMPRESSIONS" env-default:"ads.impressions_in"`
+	TableClicks          string `yaml:"CLICKHOUSE_TABLE_CLICKS" env:"CLICKHOUSE_TABLE_CLICKS" env-default:"ads.clicks_in"`
+	BatchSizeOrtb        int    `yaml:"CLICKHOUSE_BATCH_SIZE_ORTB" env:"CLICKHOUSE_BATCH_SIZE_ORTB"`
+	BatchSizeImpressions int    `yaml:"CLICKHOUSE_BATCH_SIZE_IMPRESSIONS" env:"CLICKHOUSE_BATCH_SIZE_IMPRESSIONS"`
+	BatchSizeClicks      int    `yaml:"CLICKHOUSE_BATCH_SIZE_CLICKS" env:"CLICKHOUSE_BATCH_SIZE_CLICKS"`
 }
 
 type PercenterConfig struct {
@@ -264,6 +272,16 @@ type RedisConfig struct {
 type KafkaConfig struct {
 	KafkaBrokers     []string `yaml:"KAFKA_BROKERS" env:"KAFKA_BROKERS"`
 	FlushIntervalSec int      `yaml:"FLUSH_INTERVAL_SEC" env:"FLUSH_INTERVAL_SEC"`
+
+	// Kafka topics
+	KafkaTopicOrtb        string `yaml:"KAFKA_TOPIC_ORTB" env:"KAFKA_TOPIC_ORTB" env-default:"ortb"`
+	KafkaTopicImpressions string `yaml:"KAFKA_TOPIC_IMPRESSIONS" env:"KAFKA_TOPIC_IMPRESSIONS" env-default:"impressions"`
+	KafkaTopicClicks      string `yaml:"KAFKA_TOPIC_CLICKS" env:"KAFKA_TOPIC_CLICKS" env-default:"clicks"`
+
+	// Kafka consumer groups
+	KafkaGroupIDOrtb        string `yaml:"KAFKA_GROUP_ID_ORTB" env:"KAFKA_GROUP_ID_ORTB" env-default:"groupIdOrtb"`
+	KafkaGroupIDImpressions string `yaml:"KAFKA_GROUP_ID_IMPRESSIONS" env:"KAFKA_GROUP_ID_IMPRESSIONS" env-default:"groupIdImpressions"`
+	KafkaGroupIDClicks      string `yaml:"KAFKA_GROUP_ID_CLICKS" env:"KAFKA_GROUP_ID_CLICKS" env-default:"groupIdClicks"`
 }
 
 type HttpServer struct {
