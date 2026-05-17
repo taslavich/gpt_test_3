@@ -48,12 +48,32 @@ func main() {
 	if err := conn.Ping(ctx); err != nil {
 		log.Fatalf("❌ ClickHouse ping failed: %v", err)
 	}
-	log.Println("✅ Connected to ClickHouse")
+	log.Println("✅ Connected to Default ClickHouse")
 
 	if err := clickhouse_loader.CreateDB(ctx, conn); err != nil {
 		log.Fatalf("❌ Failed to create table: %v", err)
 	}
 	log.Printf("✅ Db %s ready", cfg.Clickhouse.Database)
+
+	connProd, err := clickhouse.Open(&clickhouse.Options{
+		Addr:     []string{addr},
+		Protocol: clickhouse.Native,
+		TLS:      &tls.Config{},
+		Auth: clickhouse.Auth{
+			Username: cfg.Clickhouse.Username,
+			Password: cfg.Clickhouse.Password,
+			Database: cfg.Clickhouse.Database,
+		},
+	})
+	if err != nil {
+		log.Fatalf("❌ Prod ClickHouse Open connection failed: %v", err)
+	}
+	defer connProd.Close()
+
+	if err := connProd.Ping(ctx); err != nil {
+		log.Fatalf("❌ Prod ClickHouse ping failed: %v", err)
+	}
+	log.Println("✅ Connected to Prod ClickHouse")
 
 	kafkaReaders, err := kafka_service.InitKafkaReaders(cfg.Kafka)
 	if err != nil {
@@ -86,7 +106,7 @@ func main() {
 			err := clickhouse_loader.ProcessKafkaMessages(
 				ctx,
 				kafkaReaders,
-				conn,
+				connProd,
 				cfg.Clickhouse,
 				cfg.TimeoutSec,
 			)
