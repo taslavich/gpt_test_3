@@ -6,9 +6,9 @@ import (
 	"log"
 
 	"github.com/go-chi/chi/v5"
-	"github.com/redis/go-redis/v9"
 	"gitlab.com/twinbid-exchange/RTB-exchange/internal/config"
 	httpServer "gitlab.com/twinbid-exchange/RTB-exchange/internal/http"
+	redis_service "gitlab.com/twinbid-exchange/RTB-exchange/internal/services/redis"
 	sppAdapterWeb "gitlab.com/twinbid-exchange/RTB-exchange/internal/services/sspAdapter/web"
 )
 
@@ -22,25 +22,33 @@ func main() {
 	}
 	log.Println("Config initialized!")
 
-	redisClient := redis.NewClient(&redis.Options{
-		Addr:     fmt.Sprintf("%s:%s", cfg.RedisHost, cfg.RedisPort),
-		Password: cfg.RedisPassword,
-		DB:       cfg.RedisDB,
-	})
-	defer redisClient.Close()
+	redisClientImp, redisClientClicks := redis_service.NewRedisImpClicksClients(
+		fmt.Sprintf("%s:%s", cfg.RedisHost, cfg.RedisPort),
+		cfg.RedisPassword,
+		cfg.RedisDBImpressions,
+		cfg.RedisDBClicks,
+	)
+	defer redisClientImp.Close()
+	defer redisClientClicks.Close()
 
 	log.Println(cfg.RedisHost, cfg.RedisPort)
 
-	if err := redisClient.Ping(ctx).Err(); err != nil {
-		log.Fatalf("Failed to connect to Redis: %v", err)
+	if err := redisClientImp.Ping(ctx).Err(); err != nil {
+		log.Fatalf("Failed to connect to Imp Redis: %v", err)
 	}
-	log.Println("✅ Connected to Redis")
+	log.Println("✅ Connected to Imp Redis")
+
+	if err := redisClientClicks.Ping(ctx).Err(); err != nil {
+		log.Fatalf("Failed to connect to Clicks Redis: %v", err)
+	}
+	log.Println("✅ Connected to Clicks Redis")
 
 	router := httpServer.InitHttpRouter(chi.NewRouter())
 	sppAdapterWeb.InitHttpsRoutes(
 		ctx,
 		router,
-		redisClient,
+		redisClientImp,
+		redisClientClicks,
 		cfg.AdmTimeout,
 		cfg.NurlTimeout,
 	)
