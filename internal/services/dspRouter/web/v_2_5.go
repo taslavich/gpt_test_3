@@ -154,13 +154,6 @@ func (s *Server) GetBids_V2_5(
 		return nil, status.Error(grpcCode, newErr.Error())
 	}
 
-	bg, cancel := context.WithTimeout(context.Background(), 10*time.Millisecond)
-	defer cancel()
-
-	if err := utils.WriteJsonToRedis(bg, s.redisClient, req.GlobalId, constants.BID_REQUEST_COLUMN, jsonData, req.Logged); err != nil {
-		log.Printf("failed to WriteJsonToRedis Bid Request in postBid_V2_5: %w", err)
-	}
-
 	var (
 		wg sync.WaitGroup
 	)
@@ -201,6 +194,14 @@ func (s *Server) GetBids_V2_5(
 		filtersCid = nil
 		filterBoxChanger = nil
 	}
+
+	globalUuid := func() string {
+		for _, uuid := range req.ImpIdUuid {
+			return uuid
+		}
+
+		return ""
+	}()
 
 	for endpoint, domain := range dspList {
 		endpoint := endpoint
@@ -315,7 +316,7 @@ func (s *Server) GetBids_V2_5(
 			reqCtx, cancel := context.WithTimeout(context.Background(), timeout)
 			defer cancel()
 
-			dspResp, code, err := s.getBidsFromDSPbyHTTP_V_2_5(reqCtx, req.GlobalId, jsonDataTmp, endpoint, client_v_2_5)
+			dspResp, code, err := s.getBidsFromDSPbyHTTP_V_2_5(reqCtx, globalUuid, jsonDataTmp, endpoint, client_v_2_5)
 			if err != nil {
 				/*log.Printf(
 					"Cannot getBidsFromDSPbyHTTP_V_2_5, uuid: %s,ssp_domain: %s, dsp_domain: %s, timeout max %d ms, tmax: %d, error: %v",
@@ -395,7 +396,9 @@ func (s *Server) GetBids_V2_5(
 		clickResponses[c.domain] = c.code
 	}
 
-	writeMetadataToRedis(ctx, s.redisClient, req.GlobalId, clickResponses, req.Logged)
+	for _, uuid := range req.ImpIdUuid {
+		writeMetadataToRedis(ctx, s.redisClient, uuid, clickResponses, req.Logged)
+	}
 
 	responses := make(map[string]*ortb_V2_5.BidResponse)
 	for r := range responsesCh {
@@ -405,7 +408,6 @@ func (s *Server) GetBids_V2_5(
 	return &dspRouterGrpc.DspRouterResponse_V2_5{
 		BidRequest:   req.BidRequest,
 		BidResponses: responses,
-		GlobalId:     req.GlobalId,
 		SspDomain:    req.SspDomain,
 	}, nil
 }
@@ -460,13 +462,13 @@ func (s *Server) getBidsFromDSPbyHTTP_V_2_5(ctx context.Context, uuid string, js
 func writeMetadataToRedis(ctx context.Context, redisClient *redis.Client, globalId string, data map[string]int, logged bool) {
 	bidRespsData, err := json.Marshal(data)
 	if err != nil {
-		log.Printf("failed to marshal data: %v", err)
+		log.Printf("uuid %s, failed to marshal data: %v", globalId, err)
 		return
 	}
 	bg, cancel := context.WithTimeout(context.Background(), 10*time.Millisecond)
 	defer cancel()
 
 	if err := utils.WriteJsonToRedis(bg, redisClient, globalId, constants.BID_RESPONSES_COLUMN, bidRespsData, logged); err != nil {
-		log.Printf("failed to WriteJsonToRedis: %v", err)
+		log.Printf("uuid %s, failed to WriteJsonToRedis: %v", globalId, err)
 	}
 }

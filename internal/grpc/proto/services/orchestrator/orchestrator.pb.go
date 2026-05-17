@@ -25,7 +25,7 @@ const (
 type OrchestratorRequest_V2_5 struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	BidRequest    *ortb_V2_5.BidRequest  `protobuf:"bytes,1,opt,name=bidRequest,proto3" json:"bidRequest,omitempty"`
-	GlobalId      string                 `protobuf:"bytes,2,opt,name=globalId,proto3" json:"globalId,omitempty"`
+	ImpIdUuid     map[string]string      `protobuf:"bytes,2,rep,name=impIdUuid,proto3" json:"impIdUuid,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
 	SspDomain     string                 `protobuf:"bytes,3,opt,name=ssp_domain,json=sspDomain,proto3" json:"ssp_domain,omitempty"`
 	Logged        bool                   `protobuf:"varint,4,opt,name=logged,proto3" json:"logged,omitempty"`
 	Typic         string                 `protobuf:"bytes,5,opt,name=typic,proto3" json:"typic,omitempty"`
@@ -71,11 +71,11 @@ func (x *OrchestratorRequest_V2_5) GetBidRequest() *ortb_V2_5.BidRequest {
 	return nil
 }
 
-func (x *OrchestratorRequest_V2_5) GetGlobalId() string {
+func (x *OrchestratorRequest_V2_5) GetImpIdUuid() map[string]string {
 	if x != nil {
-		return x.GlobalId
+		return x.ImpIdUuid
 	}
-	return ""
+	return nil
 }
 
 func (x *OrchestratorRequest_V2_5) GetSspDomain() string {
@@ -162,17 +162,20 @@ var File_services_orchestrator_proto protoreflect.FileDescriptor
 
 const file_services_orchestrator_proto_rawDesc = "" +
 	"\n" +
-	"\x1bservices/orchestrator.proto\x12\forchestrator\x1a\x1atypes/ortb_V2_5/ortb.proto\"\xd2\x01\n" +
+	"\x1bservices/orchestrator.proto\x12\forchestrator\x1a\x1atypes/ortb_V2_5/ortb.proto\"\xc9\x02\n" +
 	"\x18OrchestratorRequest_V2_5\x125\n" +
 	"\n" +
 	"bidRequest\x18\x01 \x01(\v2\x15.ortb_V2_5.BidRequestR\n" +
-	"bidRequest\x12\x1a\n" +
-	"\bglobalId\x18\x02 \x01(\tR\bglobalId\x12\x1d\n" +
+	"bidRequest\x12S\n" +
+	"\timpIdUuid\x18\x02 \x03(\v25.orchestrator.OrchestratorRequest_V2_5.ImpIdUuidEntryR\timpIdUuid\x12\x1d\n" +
 	"\n" +
 	"ssp_domain\x18\x03 \x01(\tR\tsspDomain\x12\x16\n" +
 	"\x06logged\x18\x04 \x01(\bR\x06logged\x12\x14\n" +
 	"\x05typic\x18\x05 \x01(\tR\x05typic\x12\x16\n" +
-	"\x06format\x18\x06 \x01(\tR\x06format\"q\n" +
+	"\x06format\x18\x06 \x01(\tR\x06format\x1a<\n" +
+	"\x0eImpIdUuidEntry\x12\x10\n" +
+	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"q\n" +
 	"\x19OrchestratorResponse_V2_5\x128\n" +
 	"\vbidResponse\x18\x01 \x01(\v2\x16.ortb_V2_5.BidResponseR\vbidResponse\x12\x1a\n" +
 	"\bglobalId\x18\x02 \x01(\tR\bglobalId2}\n" +
@@ -191,23 +194,25 @@ func file_services_orchestrator_proto_rawDescGZIP() []byte {
 	return file_services_orchestrator_proto_rawDescData
 }
 
-var file_services_orchestrator_proto_msgTypes = make([]protoimpl.MessageInfo, 2)
+var file_services_orchestrator_proto_msgTypes = make([]protoimpl.MessageInfo, 3)
 var file_services_orchestrator_proto_goTypes = []any{
 	(*OrchestratorRequest_V2_5)(nil),  // 0: orchestrator.OrchestratorRequest_V2_5
 	(*OrchestratorResponse_V2_5)(nil), // 1: orchestrator.OrchestratorResponse_V2_5
-	(*ortb_V2_5.BidRequest)(nil),      // 2: ortb_V2_5.BidRequest
-	(*ortb_V2_5.BidResponse)(nil),     // 3: ortb_V2_5.BidResponse
+	nil,                               // 2: orchestrator.OrchestratorRequest_V2_5.ImpIdUuidEntry
+	(*ortb_V2_5.BidRequest)(nil),      // 3: ortb_V2_5.BidRequest
+	(*ortb_V2_5.BidResponse)(nil),     // 4: ortb_V2_5.BidResponse
 }
 var file_services_orchestrator_proto_depIdxs = []int32{
-	2, // 0: orchestrator.OrchestratorRequest_V2_5.bidRequest:type_name -> ortb_V2_5.BidRequest
-	3, // 1: orchestrator.OrchestratorResponse_V2_5.bidResponse:type_name -> ortb_V2_5.BidResponse
-	0, // 2: orchestrator.OrchestratorService.getWinnerBid_V2_5:input_type -> orchestrator.OrchestratorRequest_V2_5
-	1, // 3: orchestrator.OrchestratorService.getWinnerBid_V2_5:output_type -> orchestrator.OrchestratorResponse_V2_5
-	3, // [3:4] is the sub-list for method output_type
-	2, // [2:3] is the sub-list for method input_type
-	2, // [2:2] is the sub-list for extension type_name
-	2, // [2:2] is the sub-list for extension extendee
-	0, // [0:2] is the sub-list for field type_name
+	3, // 0: orchestrator.OrchestratorRequest_V2_5.bidRequest:type_name -> ortb_V2_5.BidRequest
+	2, // 1: orchestrator.OrchestratorRequest_V2_5.impIdUuid:type_name -> orchestrator.OrchestratorRequest_V2_5.ImpIdUuidEntry
+	4, // 2: orchestrator.OrchestratorResponse_V2_5.bidResponse:type_name -> ortb_V2_5.BidResponse
+	0, // 3: orchestrator.OrchestratorService.getWinnerBid_V2_5:input_type -> orchestrator.OrchestratorRequest_V2_5
+	1, // 4: orchestrator.OrchestratorService.getWinnerBid_V2_5:output_type -> orchestrator.OrchestratorResponse_V2_5
+	4, // [4:5] is the sub-list for method output_type
+	3, // [3:4] is the sub-list for method input_type
+	3, // [3:3] is the sub-list for extension type_name
+	3, // [3:3] is the sub-list for extension extendee
+	0, // [0:3] is the sub-list for field type_name
 }
 
 func init() { file_services_orchestrator_proto_init() }
@@ -221,7 +226,7 @@ func file_services_orchestrator_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_services_orchestrator_proto_rawDesc), len(file_services_orchestrator_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   2,
+			NumMessages:   3,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

@@ -9,10 +9,10 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/redis/go-redis/v9"
 	"gitlab.com/twinbid-exchange/RTB-exchange/internal/config"
 	kafka_service "gitlab.com/twinbid-exchange/RTB-exchange/internal/services/kafka"
 	kafka_loader "gitlab.com/twinbid-exchange/RTB-exchange/internal/services/kafka-loader"
+	redis_service "gitlab.com/twinbid-exchange/RTB-exchange/internal/services/redis"
 )
 
 func main() {
@@ -25,23 +25,43 @@ func main() {
 	}
 	log.Println("Config initialized!")
 
-	redisClient := redis.NewClient(&redis.Options{
-		Addr:     fmt.Sprintf("%s:%s", cfg.RedisHost, cfg.RedisPort),
-		Password: cfg.RedisPassword,
-		DB:       cfg.RedisDB,
-	})
-	defer redisClient.Close()
+	redisClient := redis_service.NewRedisClients(
+		fmt.Sprintf(
+			"%s:%s",
+			cfg.RedisHost,
+			cfg.RedisPort,
+		),
+		cfg.RedisPassword,
+		cfg.Ortb.RedisDB,
+		cfg.Impressions.RedisDB,
+		cfg.CLicks.RedisDB,
+	)
+	defer redisClient.Ortb.Close()
+	defer redisClient.Impressions.Close()
+	defer redisClient.Clicks.Close()
 
-	if err := redisClient.Ping(ctx).Err(); err != nil {
-		log.Fatalf("Failed to connect to Redis: %v", err)
+	if err := redisClient.Ortb.Ping(ctx).Err(); err != nil {
+		log.Fatalf("Failed to connect to Ortb Redis: %v", err)
 	}
-	log.Println("✅ Connected to Redis")
+	log.Println("✅ Connected to Ortb Redis")
 
-	kafkaWriter, err := kafka_service.CreateKafkaWriter(cfg.KafkaBrokers, cfg.KafkaTopic)
+	if err := redisClient.Impressions.Ping(ctx).Err(); err != nil {
+		log.Fatalf("Failed to connect to Impressions Redis: %v", err)
+	}
+	log.Println("✅ Connected to Impressions Redis")
+
+	if err := redisClient.Clicks.Ping(ctx).Err(); err != nil {
+		log.Fatalf("Failed to connect to Clicks Redis: %v", err)
+	}
+	log.Println("✅ Connected to Clicks Redis")
+
+	kafkaWriter, err := kafka_service.CreateKafkaWriters(cfg.KafkaBrokers)
 	if err != nil {
 		log.Fatalf("Cannot init kafka: %v", err)
 	}
-	defer kafkaWriter.Close()
+	defer kafkaWriter.Clicks.Close()
+	defer kafkaWriter.Impressions.Close()
+	defer kafkaWriter.Ortb.Close()
 
 	log.Println("✅ Kafka writer initialized")
 
@@ -60,7 +80,7 @@ func main() {
 			log.Printf("🛑 Shutting down Kafka Loader. Total processed: %d records", totalProcessed)
 			return
 		case <-ticker.C:
-			err := kafka_loader.ProcessBatch(context.Background(), redisClient, kafkaWriter, cfg.BatchSize)
+			err := kafka_loader.ProcessKafkaMessages(context.Background(), redisClient, kafkaWriter, cfg.BatchSize)
 			if err != nil {
 				log.Printf("❌ Batch processing error: %v", err)
 				continue

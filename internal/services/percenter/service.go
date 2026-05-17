@@ -1,6 +1,6 @@
 package percenter
 
-import (
+/*import (
 	"context"
 	"database/sql"
 	"fmt"
@@ -144,7 +144,7 @@ func GotDynamicGeoPercentPerSsp(ctx context.Context, conn *sql.DB, client bidEng
 
 	// Вывод результата
 	/*jsonData, _ := json.MarshalIndent(dItog, "", "  ")
-	fmt.Printf("Result: %s\n", string(jsonData))*/
+	fmt.Printf("Result: %s\n", string(jsonData))
 	return nil
 }
 
@@ -172,3 +172,4 @@ func (s *TPercenter) GetGrpClient() (
 
 	return client, conn.Close
 }
+*/

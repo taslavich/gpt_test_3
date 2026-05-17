@@ -19,13 +19,13 @@ func GetWinnerBidInternal_V_2_5(
 	ctx context.Context,
 	req *bidEngineGrpc.BidEngineRequest_V2_5,
 	profitPercent float32,
-	globalId string,
+	ImpIdUuid map[string]string,
 	percentMapAdult *map[string]map[string]map[string]*types.PercentAndBidfloor,
 	percentMapMainstream *map[string]map[string]map[string]*types.PercentAndBidfloor,
 	logged bool,
 	typic string,
 	admDomain string,
-) (*ortb_V2_5.BidResponse, *clickhouse_types.BidResponse) {
+) (*ortb_V2_5.BidResponse, clickhouse_types.UuidImpBidResponse) {
 	type bidWithDomain struct {
 		bid        *ortb_V2_5.Bid
 		finalPrice float32
@@ -63,23 +63,23 @@ func GetWinnerBidInternal_V_2_5(
 			log.Printf("Got len of impBids = 0, Error marshaling: %v", err)
 		}
 
-		log.Printf("Got len of impBids = 0, global id %s, bid responses %s", req.GlobalId, string(jsonData))
-		return &ortb_V2_5.BidResponse{
-				Id: req.BidRequest.Id,
-				Seatbid: []*ortb_V2_5.SeatBid{
-					{
-						Bid: []*ortb_V2_5.Bid{},
-					},
-				},
-			}, &clickhouse_types.BidResponse{
-				Id: req.BidRequest.Id,
-				Seatbid: []*clickhouse_types.SeatBid{
-					{
-						Bid: []*clickhouse_types.Bid{},
-					},
-				},
-				Error: fmt.Sprintf("Got len of impBids = 0, bid request id: %s", req.BidRequest.GetId()),
+		globalUuid := func() string {
+			for _, uuid := range ImpIdUuid {
+				return uuid
 			}
+
+			return ""
+		}()
+
+		log.Printf("Got len of impBids = 0, global id %s, bid responses %s", globalUuid, string(jsonData))
+		return &ortb_V2_5.BidResponse{
+			Id: req.BidRequest.Id,
+			Seatbid: []*ortb_V2_5.SeatBid{
+				{
+					Bid: []*ortb_V2_5.Bid{},
+				},
+			},
+		}, clickhouse_types.GetEmpty(ImpIdUuid)
 	}
 
 	seatBid := []*ortb_V2_5.SeatBid{
@@ -87,13 +87,8 @@ func GetWinnerBidInternal_V_2_5(
 			Bid: []*ortb_V2_5.Bid{},
 		},
 	}
-	clickhouseSeatBid := []*clickhouse_types.SeatBid{
-		{
-			Bid: []*clickhouse_types.Bid{},
-		},
-	}
+	clickhouseSeatBid := clickhouse_types.GetEmpty(ImpIdUuid)
 
-	var errStr string = "None"
 	for impID, bids := range impBids {
 		if len(bids) == 0 {
 			continue // добавляем защиту
@@ -145,10 +140,10 @@ func GetWinnerBidInternal_V_2_5(
 
 		var finalBid *ortb_V2_5.Bid
 
-		wrappedNurl := utils.WrapURL(admDomain, winner.bid.GetNurl(), globalId, utils.NURL)
+		wrappedNurl := utils.WrapURL(admDomain, winner.bid.GetNurl(), ImpIdUuid[impID], utils.NURL)
 
 		if logged {
-			wrappedAdm := utils.WrapURL(admDomain, winner.bid.GetAdm(), globalId, utils.ADM)
+			wrappedAdm := utils.WrapURL(admDomain, winner.bid.GetAdm(), ImpIdUuid[impID], utils.ADM)
 			finalBid = &ortb_V2_5.Bid{
 				Id:    winner.bid.Id,
 				Impid: winner.bid.Impid,
@@ -172,19 +167,21 @@ func GetWinnerBidInternal_V_2_5(
 			}
 		}
 
+		userId := ""
+		winFlag := "1"
+
 		clickhouseBid := &clickhouse_types.Bid{
-			DspDomain: &winner.domain,
-			Id:        winner.bid.Id,
-			Impid:     winner.bid.Impid,
-			Price:     &winner.finalPrice,
-			DspPrice:  winner.bid.Price,
-			Adid:      winner.bid.Adid,
-			Cid:       winner.bid.Cid,
-			Crid:      winner.bid.Crid,
+			WinDspDomain: &winner.domain,
+			WinPrice:     &winner.finalPrice,
+			WinDspPrice:  winner.bid.Price,
+			WinCid:       winner.bid.Cid,
+			WinCrid:      winner.bid.Crid,
+			WinUserId:    &userId,
+			WinFlag:      &winFlag,
 		}
 
 		seatBid[0].Bid = append(seatBid[0].Bid, finalBid)
-		clickhouseSeatBid[0].Bid = append(clickhouseSeatBid[0].Bid, clickhouseBid)
+		clickhouseSeatBid[ImpIdUuid[impID]] = clickhouseBid
 	}
 
 	bidResponse := &ortb_V2_5.BidResponse{
@@ -192,13 +189,7 @@ func GetWinnerBidInternal_V_2_5(
 		Seatbid: seatBid,
 	}
 
-	clickhouseBidResponse := &clickhouse_types.BidResponse{
-		Id:      req.BidRequest.Id,
-		Seatbid: clickhouseSeatBid,
-		Error:   errStr,
-	}
-
-	return bidResponse, clickhouseBidResponse
+	return bidResponse, clickhouseSeatBid
 }
 
 func applyPriceConstraintsAndPercent(dspPrice, bidFloor, profitPercent float32, needed bool) (

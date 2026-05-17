@@ -10,7 +10,7 @@ service DspRouterService {
 
 message DspRouterRequest_V2_5 {
   ortb_V2_5.BidRequest bidRequest = 1;
-  string globalId = 2;
+  map<string, string> impIdUuid = 2;
   string ssp_domain = 3;
   bool logged = 4;
   string typic = 5;
@@ -20,6 +20,5 @@ message DspRouterRequest_V2_5 {
 message DspRouterResponse_V2_5 {
   ortb_V2_5.BidRequest bidRequest = 1;
   map<string, ortb_V2_5.BidResponse> bidResponses = 2;
-  string globalId = 3;
-  string ssp_domain = 4;
+  string ssp_domain = 3;
 }

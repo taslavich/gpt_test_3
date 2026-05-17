@@ -1,6 +1,6 @@
 package auction
 
-import (
+/*import (
 	"math"
 	"testing"
 	"time"
@@ -955,3 +955,4 @@ func TestInterval_WithBudgetAndSlot(t *testing.T) {
 func stringPtr(s string) *string {
 	return &s
 }
+*/

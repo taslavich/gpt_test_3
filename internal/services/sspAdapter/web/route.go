@@ -189,6 +189,6 @@ func InitHttpsRoutes(
 	httpRouter.With(
 		httpin.NewInput(admNurlRequest{}),
 	).Get(GetNurlUrl, func(w http.ResponseWriter, r *http.Request) {
-		getNurl(w, r)
+		getNurl(ctx, w, r, redisClient)
 	})
 }
