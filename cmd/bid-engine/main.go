@@ -71,6 +71,7 @@ func main() {
 		bidEngineWeb.NewServer(
 			cfg.ProfitPercent,
 			redisClient,
+			cfg.RedisSetOrtb,
 			bidEngine.GetWinnerBidInternal_V_2_5,
 			cfg.SspGeoDspPercentsAdultFilePath,
 			&sspGeoDspMapAdult,

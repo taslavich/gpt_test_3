@@ -49,6 +49,8 @@ func main() {
 		router,
 		redisClientImp,
 		redisClientClicks,
+		cfg.RedisSetImpressions,
+		cfg.RedisSetClicks,
 		cfg.AdmTimeout,
 		cfg.NurlTimeout,
 	)
