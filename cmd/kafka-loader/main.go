@@ -55,7 +55,7 @@ func main() {
 	}
 	log.Println("✅ Connected to Clicks Redis")
 
-	kafkaWriter, err := kafka_service.CreateKafkaWriters(cfg.KafkaBrokers)
+	kafkaWriter, err := kafka_service.CreateKafkaWriters(cfg.KafkaConfig)
 	if err != nil {
 		log.Fatalf("Cannot init kafka: %v", err)
 	}
