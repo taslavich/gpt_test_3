@@ -85,16 +85,9 @@ func main() {
 		case <-ticker.C:
 			err := clickhouse_loader.ProcessKafkaMessages(
 				ctx,
-				kafkaReaders.Ortb,
-				kafkaReaders.Clicks,
-				kafkaReaders.Impressions,
+				kafkaReaders,
 				conn,
-				cfg.Clickhouse.TableOrtb,
-				cfg.Clickhouse.TableClicks,
-				cfg.Clickhouse.TableImpressions,
-				cfg.Clickhouse.BatchSizeOrtb,
-				cfg.Clickhouse.BatchSizeClicks,
-				cfg.Clickhouse.BatchSizeImpressions,
+				cfg.Clickhouse,
 				cfg.TimeoutSec,
 			)
 			if err != nil {
