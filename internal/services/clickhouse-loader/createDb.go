@@ -8,16 +8,21 @@ import (
 	"github.com/ClickHouse/clickhouse-go/v2"
 )
 
-func CreateDB(ctx context.Context, ch clickhouse.Conn) error {
-	const ddl = `
+func CreateDB(ctx context.Context, ch clickhouse.Conn, database string) error {
+	database = strings.TrimSpace(database)
+	if database == "" {
+		return fmt.Errorf("clickhouse database name is empty")
+	}
 
-CREATE DATABASE IF NOT EXISTS ads;
+	const ddlTemplate = `
+
+CREATE DATABASE IF NOT EXISTS {db};
 
 -- ============================================================
 -- ORTB TABLE
 -- ============================================================
 
-CREATE TABLE IF NOT EXISTS ads.ortb
+CREATE TABLE IF NOT EXISTS {db}.ortb
 (
     uuid              UUID,
 
@@ -68,7 +73,7 @@ SETTINGS index_granularity = 8192;
 -- INPUT TABLES
 -- ============================================================
 
-CREATE TABLE IF NOT EXISTS ads.impressions_in
+CREATE TABLE IF NOT EXISTS {db}.impressions_in
 (
     event_time_impressions DateTime64(3, 'UTC') DEFAULT now64(3),
     uuid                   UUID
@@ -76,7 +81,7 @@ CREATE TABLE IF NOT EXISTS ads.impressions_in
 ENGINE = Null;
 
 
-CREATE TABLE IF NOT EXISTS ads.clicks_in
+CREATE TABLE IF NOT EXISTS {db}.clicks_in
 (
     event_time_clicks DateTime64(3, 'UTC') DEFAULT now64(3),
     uuid              UUID
@@ -88,7 +93,7 @@ ENGINE = Null;
 -- FACT IMPRESSIONS
 -- ============================================================
 
-CREATE TABLE IF NOT EXISTS ads.fact_impressions
+CREATE TABLE IF NOT EXISTS {db}.fact_impressions
 (
     event_time_impressions DateTime64(3, 'UTC'),
     event_time             DateTime64(3, 'UTC'),
@@ -142,7 +147,7 @@ SETTINGS index_granularity = 8192;
 -- FACT CLICKS
 -- ============================================================
 
-CREATE TABLE IF NOT EXISTS ads.fact_clicks
+CREATE TABLE IF NOT EXISTS {db}.fact_clicks
 (
     event_time_clicks DateTime64(3, 'UTC'),
     event_time        DateTime64(3, 'UTC'),
@@ -197,7 +202,7 @@ SETTINGS index_granularity = 8192;
 -- browser_version здесь специально НЕ используется
 -- ============================================================
 
-CREATE TABLE IF NOT EXISTS ads.agg_stats
+CREATE TABLE IF NOT EXISTS {db}.agg_stats
 (
     win_user_id         UUID,
     win_cid             UUID,
@@ -242,8 +247,8 @@ SETTINGS index_granularity = 8192;
 -- MV: IMPRESSIONS INPUT -> FACT IMPRESSIONS
 -- ============================================================
 
-CREATE MATERIALIZED VIEW IF NOT EXISTS ads.mv_impressions_to_fact
-TO ads.fact_impressions
+CREATE MATERIALIZED VIEW IF NOT EXISTS {db}.mv_impressions_to_fact
+TO {db}.fact_impressions
 AS
 SELECT
     i.event_time_impressions AS event_time_impressions,
@@ -286,16 +291,16 @@ SELECT
     o.win_cid AS win_cid,
     o.win_crid AS win_crid,
     o.win_user_id AS win_user_id
-FROM ads.impressions_in AS i
-ANY INNER JOIN ads.ortb AS o ON i.uuid = o.uuid;
+FROM {db}.impressions_in AS i
+ANY INNER JOIN {db}.ortb AS o ON i.uuid = o.uuid;
 
 
 -- ============================================================
 -- MV: CLICKS INPUT -> FACT CLICKS
 -- ============================================================
 
-CREATE MATERIALIZED VIEW IF NOT EXISTS ads.mv_clicks_to_fact
-TO ads.fact_clicks
+CREATE MATERIALIZED VIEW IF NOT EXISTS {db}.mv_clicks_to_fact
+TO {db}.fact_clicks
 AS
 SELECT
     c.event_time_clicks AS event_time_clicks,
@@ -338,8 +343,8 @@ SELECT
     o.win_cid AS win_cid,
     o.win_crid AS win_crid,
     o.win_user_id AS win_user_id
-FROM ads.clicks_in AS c
-ANY INNER JOIN ads.ortb AS o ON c.uuid = o.uuid;
+FROM {db}.clicks_in AS c
+ANY INNER JOIN {db}.ortb AS o ON c.uuid = o.uuid;
 
 
 -- ============================================================
@@ -347,8 +352,8 @@ ANY INNER JOIN ads.ortb AS o ON c.uuid = o.uuid;
 -- browser_version здесь специально НЕ группируется
 -- ============================================================
 
-CREATE MATERIALIZED VIEW IF NOT EXISTS ads.mv_fact_impressions_to_agg_stats
-TO ads.agg_stats
+CREATE MATERIALIZED VIEW IF NOT EXISTS {db}.mv_fact_impressions_to_agg_stats
+TO {db}.agg_stats
 AS
 SELECT
     win_user_id,
@@ -371,7 +376,7 @@ SELECT
     toFloat64(0) AS spend_clicks_table,
 
     sum(win_dsp_price / 1000) AS spend_views_table
-FROM ads.fact_impressions
+FROM {db}.fact_impressions
 GROUP BY
     win_user_id,
     win_cid,
@@ -393,8 +398,8 @@ GROUP BY
 -- browser_version здесь специально НЕ группируется
 -- ============================================================
 
-CREATE MATERIALIZED VIEW IF NOT EXISTS ads.mv_fact_clicks_to_agg_stats
-TO ads.agg_stats
+CREATE MATERIALIZED VIEW IF NOT EXISTS {db}.mv_fact_clicks_to_agg_stats
+TO {db}.agg_stats
 AS
 SELECT
     win_user_id,
@@ -416,7 +421,7 @@ SELECT
 
     sum(win_dsp_price) AS spend_clicks_table,
     toFloat64(0) AS spend_views_table
-FROM ads.fact_clicks
+FROM {db}.fact_clicks
 GROUP BY
     win_user_id,
     win_cid,
@@ -433,6 +438,7 @@ GROUP BY
     site_id;
 `
 
+	ddl := strings.ReplaceAll(ddlTemplate, "{db}", database)
 	statements := splitClickHouseStatements(ddl)
 
 	for i, statement := range statements {
