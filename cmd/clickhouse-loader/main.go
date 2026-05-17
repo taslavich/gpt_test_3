@@ -50,7 +50,7 @@ func main() {
 	}
 	log.Println("✅ Connected to Default ClickHouse")
 
-	if err := clickhouse_loader.CreateDB(ctx, conn); err != nil {
+	if err := clickhouse_loader.CreateDB(ctx, conn, cfg.Clickhouse.Database); err != nil {
 		log.Fatalf("❌ Failed to create table: %v", err)
 	}
 	log.Printf("✅ Db %s ready", cfg.Clickhouse.Database)
