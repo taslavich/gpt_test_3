@@ -6,33 +6,27 @@ import (
 	"log"
 
 	"github.com/ClickHouse/clickhouse-go/v2"
-	"github.com/segmentio/kafka-go"
+	"gitlab.com/twinbid-exchange/RTB-exchange/internal/config"
+	kafka_service "gitlab.com/twinbid-exchange/RTB-exchange/internal/services/kafka"
 )
 
 func ProcessKafkaMessages(
 	ctx context.Context,
-	readerOrtb *kafka.Reader,
-	readerClicks *kafka.Reader,
-	readerImpressions *kafka.Reader,
+	kafkaReaders *kafka_service.KafkaReaders,
 	ch clickhouse.Conn,
-	tableOrtb string,
-	tableClicks string,
-	tableImpressions string,
-	batchSizeOrtb int,
-	batchSizeClicks int,
-	batchSizeImpressions int,
+	Clickhouse config.ClickhouseConfig,
 	timeoutSec int,
 ) error {
 
-	if err := ProcessKafkaMessagesOrtb(ctx, readerOrtb, ch, tableOrtb, batchSizeOrtb, timeoutSec); err != nil {
+	if err := ProcessKafkaMessagesOrtb(ctx, kafkaReaders.Ortb, ch, Clickhouse.TableOrtb, Clickhouse.BatchSizeOrtb, timeoutSec); err != nil {
 		return fmt.Errorf("Cannot ProcessKafkaMessagesOrtb: %w", err)
 	}
 
-	if err := ProcessKafkaMessagesImpressions(ctx, readerImpressions, ch, tableImpressions, batchSizeImpressions, timeoutSec); err != nil {
+	if err := ProcessKafkaMessagesImpressions(ctx, kafkaReaders.Impressions, ch, Clickhouse.TableImpressions, Clickhouse.BatchSizeImpressions, timeoutSec); err != nil {
 		log.Printf("Cannot ProcessKafkaMessagesImpressions: %v", err)
 	}
 
-	if err := ProcessKafkaMessagesClicks(ctx, readerClicks, ch, tableClicks, batchSizeClicks, timeoutSec); err != nil {
+	if err := ProcessKafkaMessagesClicks(ctx, kafkaReaders.Clicks, ch, Clickhouse.TableClicks, Clickhouse.BatchSizeClicks, timeoutSec); err != nil {
 		log.Printf("Cannot ProcessKafkaMessagesClicks: %v", err)
 	}
 
