@@ -21,13 +21,13 @@ func NewRedisClients(addr string, password string, ortbDb, impressionsDb, clicks
 		Clicks: redis.NewClient(&redis.Options{
 			Addr:     addr,
 			Password: password,
-			DB:       impressionsDb,
+			DB:       clicksDb,
 		}),
 
 		Impressions: redis.NewClient(&redis.Options{
 			Addr:     addr,
 			Password: password,
-			DB:       clicksDb,
+			DB:       impressionsDb,
 		}),
 	}
 }

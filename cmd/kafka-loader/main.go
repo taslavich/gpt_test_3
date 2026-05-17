@@ -91,6 +91,9 @@ func main() {
 				cfg.BatchSizeOrtb,        // batchSizeOrtb
 				cfg.BatchSizeImpressions, // batchSizeImpressions
 				cfg.BatchSizeClicks,      // batchSizeClicks
+				cfg.RedisSetOrtb,         // redisSetOrtb
+				cfg.RedisSetImpressions,  // redisSetImpressions
+				cfg.RedisSetClicks,       // redisSetClicks
 			)
 			if err != nil {
 				log.Printf("❌ Batch processing error: %v", err)

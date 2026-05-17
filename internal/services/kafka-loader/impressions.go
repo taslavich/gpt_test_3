@@ -12,39 +12,36 @@ import (
 	"gitlab.com/twinbid-exchange/RTB-exchange/internal/types"
 )
 
-func ProcessBatchImpressions(ctx context.Context, redisClient *redis.Client, kafkaWriter *kafka.Writer, batchSize int64) error {
+func ProcessBatchImpressions(ctx context.Context, redisClient *redis.Client, kafkaWriter *kafka.Writer, batchSize int64, setName string) error {
 	if batchSize <= 0 {
 		return nil
 	}
 
-	allKeys, err := redisClient.Keys(ctx, "*").Result()
+	if setName == "" {
+		return fmt.Errorf("redis set name is empty")
+	}
+
+	uuids, err := redisClient.SRandMemberN(ctx, setName, batchSize).Result()
 	if err != nil {
-		return fmt.Errorf("failed to get keys: %v", err)
+		return fmt.Errorf("failed to get UUIDs from Redis set %q: %v", setName, err)
 	}
 
-	keysToProcess := len(allKeys)
-	if int64(keysToProcess) > batchSize {
-		keysToProcess = int(batchSize)
-	}
-
-	if keysToProcess == 0 {
+	if len(uuids) == 0 {
 		return nil
 	}
 
-	uuids := allKeys[:keysToProcess]
-
-	pipe := redisClient.Pipeline()
+	readPipe := redisClient.Pipeline()
 	for _, uuid := range uuids {
-		pipe.HGetAll(ctx, uuid)
+		readPipe.HGetAll(ctx, uuid)
 	}
 
-	cmds, err := pipe.Exec(ctx)
+	cmds, err := readPipe.Exec(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to get data from Redis: %v", err)
 	}
 
 	var kafkaMessages []kafka.Message
-	fieldsToDelete := make(map[string][]string)
+	uuidsToDelete := make([]string, 0, len(uuids))
 
 	for i, cmd := range cmds {
 		data, err := cmd.(*redis.MapStringStringCmd).Result()
@@ -59,7 +56,6 @@ func ProcessBatchImpressions(ctx context.Context, redisClient *redis.Client, kaf
 
 		if eventTimeImpressions, exists := data[constants.EVENT_TIME_IMPRESSIONS_COLUMN]; exists {
 			record.EVENT_TIME_IMPRESSIONS = eventTimeImpressions
-			fieldsToDelete[key] = append(fieldsToDelete[key], constants.EVENT_TIME_IMPRESSIONS_COLUMN)
 		}
 
 		record.UUID = key
@@ -75,6 +71,7 @@ func ProcessBatchImpressions(ctx context.Context, redisClient *redis.Client, kaf
 			kafkaMessages = append(kafkaMessages, kafka.Message{
 				Value: jsonData,
 			})
+			uuidsToDelete = append(uuidsToDelete, key)
 		}
 	}
 
@@ -82,17 +79,21 @@ func ProcessBatchImpressions(ctx context.Context, redisClient *redis.Client, kaf
 		if err := kafkaWriter.WriteMessages(ctx, kafkaMessages...); err != nil {
 			return fmt.Errorf("failed to write to Kafka: %v", err)
 		}
+
+		if err := redisClient.SRem(ctx, setName, stringSliceToAny(uuidsToDelete)...).Err(); err != nil {
+			log.Printf("⚠️ Failed to remove UUIDs from set %q: %v", setName, err)
+		}
 	}
 
-	if len(fieldsToDelete) > 0 {
-		pipe := redisClient.Pipeline()
+	if len(uuidsToDelete) > 0 {
+		delPipe := redisClient.Pipeline()
 
-		for key, fields := range fieldsToDelete {
-			pipe.HDel(ctx, key, fields...)
+		for _, uuid := range uuidsToDelete {
+			delPipe.Del(ctx, uuid)
 		}
 
-		if _, err := pipe.Exec(ctx); err != nil {
-			log.Printf("⚠️ Failed to delete some fields from Redis: %v", err)
+		if _, err := delPipe.Exec(ctx); err != nil {
+			log.Printf("⚠️ Failed to delete processed Redis records from set %q: %v", setName, err)
 		}
 	}
 

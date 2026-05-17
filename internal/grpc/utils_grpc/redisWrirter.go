@@ -89,6 +89,17 @@ func WriteFloat64ToRedis(ctx context.Context, redisClient *redis.Client, uuid, c
 	return nil
 }
 
+func AddUUIDToRedisSet(ctx context.Context, redisClient *redis.Client, setName, uuid string, logged bool) error {
+	if !logged || setName == "" {
+		return nil
+	}
+
+	if err := redisClient.SAdd(ctx, setName, uuid).Err(); err != nil {
+		return fmt.Errorf("failed to add UUID to Redis set: %v", err)
+	}
+	return nil
+}
+
 func WriteWinStats(
 	ctx context.Context,
 	redisClient *redis.Client,
