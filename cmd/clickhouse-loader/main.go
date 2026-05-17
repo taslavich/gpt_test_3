@@ -37,7 +37,7 @@ func main() {
 		Auth: clickhouse.Auth{
 			Username: cfg.Clickhouse.Username,
 			Password: cfg.Clickhouse.Password,
-			Database: cfg.Clickhouse.Database,
+			Database: cfg.Clickhouse.DatabaseDefault,
 		},
 	})
 	if err != nil {
@@ -50,19 +50,21 @@ func main() {
 	}
 	log.Println("✅ Connected to ClickHouse")
 
-	if err := clickhouse_loader.CreateTable(ctx, conn, cfg.Clickhouse.ClickHouseTable); err != nil {
+	if err := clickhouse_loader.CreateDB(ctx, conn); err != nil {
 		log.Fatalf("❌ Failed to create table: %v", err)
 	}
-	log.Printf("✅ Table %s ready", cfg.Clickhouse.ClickHouseTable)
+	log.Printf("✅ Db %s ready", cfg.Clickhouse.Database)
 
-	kafkaReader, err := kafka_service.InitKafkaReader(cfg.Kafka)
+	kafkaReaders, err := kafka_service.InitKafkaReaders(cfg.Kafka)
 	if err != nil {
 		log.Fatalf("Cannot init kafka: %v", err)
 	}
-	defer kafkaReader.Close()
-	log.Println("✅ Kafka reader initialized")
+	defer kafkaReaders.Ortb.Close()
+	defer kafkaReaders.Impressions.Close()
+	defer kafkaReaders.Clicks.Close()
+	log.Println("✅ Kafka readers initialized")
 
-	log.Println("GROUP_ID", cfg.Kafka.KafkaGroupID)
+	log.Println("GROUP_ID", cfg)
 
 	log.Println("🔄 Waiting for Kafka group coordinator to be ready...")
 	time.Sleep(10 * time.Second)
@@ -81,9 +83,11 @@ func main() {
 			log.Print("🛑 Shutting down ClickHouse Loader")
 			return
 		case <-ticker.C:
-			err := clickhouse_loader.ProcessKafkaMessagesOrtb(
+			err := clickhouse_loader.ProcessKafkaMessages(
 				ctx,
-				kafkaReader,
+				kafkaReaders.Ortb,
+				kafkaReaders.Impressions,
+				kafkaReaders.Clicks,
 				conn,
 				cfg.Clickhouse.ClickHouseTable,
 				cfg.Clickhouse.BatchSize,

@@ -31,3 +31,16 @@ func NewRedisClients(addr string, password string, ortbDb, impressionsDb, clicks
 		}),
 	}
 }
+
+func NewRedisImpClicksClients(addr string, password string, impressionsDb, clicksDb int) (*redis.Client, *redis.Client) {
+	return redis.NewClient(&redis.Options{
+			Addr:     addr,
+			Password: password,
+			DB:       impressionsDb,
+		}),
+		redis.NewClient(&redis.Options{
+			Addr:     addr,
+			Password: password,
+			DB:       clicksDb,
+		})
+}

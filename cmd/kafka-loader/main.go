@@ -32,9 +32,9 @@ func main() {
 			cfg.RedisPort,
 		),
 		cfg.RedisPassword,
-		cfg.Ortb.RedisDB,
-		cfg.Impressions.RedisDB,
-		cfg.CLicks.RedisDB,
+		cfg.RedisDBOrtb,
+		cfg.RedisDBImpressions,
+		cfg.RedisDBClicks,
 	)
 	defer redisClient.Ortb.Close()
 	defer redisClient.Impressions.Close()
@@ -80,7 +80,18 @@ func main() {
 			log.Printf("🛑 Shutting down Kafka Loader. Total processed: %d records", totalProcessed)
 			return
 		case <-ticker.C:
-			err := kafka_loader.ProcessKafkaMessages(context.Background(), redisClient, kafkaWriter, cfg.BatchSize)
+			err := kafka_loader.ProcessKafkaMessages(
+				context.Background(),
+				redisClient.Ortb,         // redisClientOrtb
+				redisClient.Impressions,  // redisClientImpressions
+				redisClient.Clicks,       // redisClientClicks
+				kafkaWriter.Ortb,         // kafkaWriterOrtb
+				kafkaWriter.Impressions,  // kafkaWriterImpressions
+				kafkaWriter.Clicks,       // kafkaWriterClicks
+				cfg.BatchSizeOrtb,        // batchSizeOrtb
+				cfg.BatchSizeImpressions, // batchSizeImpressions
+				cfg.BatchSizeClicks,      // batchSizeClicks
+			)
 			if err != nil {
 				log.Printf("❌ Batch processing error: %v", err)
 				continue

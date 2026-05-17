@@ -206,26 +206,19 @@ type AdmAdapterConfig struct {
 
 	RedisConfig
 }
-
 type KafkaLoaderConfig struct {
-	Ortb          RedisConfig
-	Impressions   RedisConfig
-	CLicks        RedisConfig
-	RedisHost     string `yaml:"REDIS_HOST" env:"REDIS_HOST"`
-	RedisPort     string `yaml:"REDIS_PORT" env:"REDIS_PORT"`
-	RedisPassword string `yaml:"REDIS_PASSWORD" env:"REDIS_PASSWORD"`
+	RedisConfig
 	KafkaConfig
-	BatchSize int64 `yaml:"BATCH_SIZE" env:"BATCH_SIZE"`
 }
 
 type ClickhouseConfig struct {
-	ClickHouseTable string `yaml:"CLICK_HOUSE_TABLE" env:"CLICK_HOUSE_TABLE"`
 	BatchSize       int    `yaml:"CLICKHOUSE_BATCH_SIZE" env:"CLICKHOUSE_BATCH_SIZE"`
 	Username        string `yaml:"CLICKHOUSE_USERNAME" env:"CLICKHOUSE_USERNAME"`
 	Password        string `yaml:"CLICKHOUSE_PASSWORD" env:"CLICKHOUSE_PASSWORD"`
 	Host            string `yaml:"CLICKHOUSE_HOST" env:"CLICKHOUSE_HOST" env-default:"hntzp0jsnf.europe-west4.gcp.clickhouse.cloud"`
 	Port            string `yaml:"CLICKHOUSE_PORT" env:"CLICKHOUSE_PORT" env-default:"9440"`
 	Database        string `yaml:"CLICKHOUSE_DB" env:"CLICKHOUSE_DB" env-default:"rtb"`
+	DatabaseDefault string `yaml:"CLICKHOUSE_DEFAULT_DB" env:"CLICKHOUSE_DEFAULT_DB" env-default:"default"`
 }
 
 type PercenterConfig struct {
@@ -236,6 +229,7 @@ type PercenterConfig struct {
 type ClickhouseLoaderConfig struct {
 	Kafka      KafkaConfig
 	Clickhouse ClickhouseConfig
+
 	TimeoutSec int `yaml:"TIMEOUT_SEC" env:"TIMEOUT_SEC"`
 }
 
@@ -248,7 +242,23 @@ type MockDspConfig struct {
 }
 
 type RedisConfig struct {
-	RedisDB int `yaml:"REDIS_DB" env:"REDIS_DB"`
+	RedisDB       int    `yaml:"REDIS_DB" env:"REDIS_DB"`
+	BatchSize     int64  `yaml:"BATCH_SIZE" env:"BATCH_SIZE"`
+	RedisHost     string `yaml:"REDIS_HOST" env:"REDIS_HOST"`
+	RedisPort     string `yaml:"REDIS_PORT" env:"REDIS_PORT"`
+	RedisPassword string `yaml:"REDIS_PASSWORD" env:"REDIS_PASSWORD"`
+
+	// Redis ORTB
+	RedisDBOrtb   int   `yaml:"REDIS_DB_ORTB" env:"REDIS_DB_ORTB"`
+	BatchSizeOrtb int64 `yaml:"BATCH_SIZE_ORTB" env:"BATCH_SIZE_ORTB"`
+
+	// Redis Impressions
+	RedisDBImpressions   int   `yaml:"REDIS_DB_IMPRESSIONS" env:"REDIS_DB_IMPRESSIONS"`
+	BatchSizeImpressions int64 `yaml:"BATCH_SIZE_IMPRESSIONS" env:"BATCH_SIZE_IMPRESSIONS"`
+
+	// Redis Clicks
+	RedisDBClicks   int   `yaml:"REDIS_DB_CLICKS" env:"REDIS_DB_CLICKS"`
+	BatchSizeClicks int64 `yaml:"BATCH_SIZE_CLICKS" env:"BATCH_SIZE_CLICKS"`
 }
 
 type KafkaConfig struct {
