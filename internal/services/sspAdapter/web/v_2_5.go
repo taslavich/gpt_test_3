@@ -14,11 +14,11 @@ import (
 	"github.com/google/uuid"
 	grpcRuntime "github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
 	"github.com/redis/go-redis/v9"
-	"gitlab.com/twinbid-exchange/RTB-exchange/internal/constants"
 	"gitlab.com/twinbid-exchange/RTB-exchange/internal/geoBadIp"
 	orchestratorProto "gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/proto/services/orchestrator"
 	"gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/proto/types/ortb_V2_5"
 	utils "gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/utils_grpc"
+	"gitlab.com/twinbid-exchange/RTB-exchange/internal/ua"
 	"google.golang.org/grpc/status"
 )
 
@@ -63,7 +63,7 @@ func postBid_V2_5(
 				payloadInfo = "nil payload"
 			}
 			err := fmt.Errorf("Recovered from panic in postBid_V2_5: %v, req: %s, stack %s", r, payloadInfo, string(debug.Stack()))
-			log.Printf(err.Error())
+			log.Print(err.Error())
 			http.Error(w, "", http.StatusInternalServerError)
 		}
 	}()
@@ -108,6 +108,37 @@ func postBid_V2_5(
 	} else if device.Ip == nil && device.Ipv6 != nil {
 		input.Payload.BidRequest.Device.Ip = device.Ipv6
 	}
+
+	if device.Ua == nil {
+		err := fmt.Errorf(
+			"There is no device ua",
+		)
+		log.Printf("error: %s, feed: %s,  ua: %s", err.Error(), ssp_domain, device.GetUa())
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+
+	}
+
+	if input.Payload.Site == nil {
+		err := fmt.Errorf(
+			"There is no site object",
+		)
+		log.Print(err.Error(), r.RemoteAddr)
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	if input.Payload.Site.Id == nil {
+		err := fmt.Errorf(
+			"There is no site id",
+		)
+		log.Printf("error: %s, feed: %s,  site id: %s", err.Error(), ssp_domain, input.Payload.Site.GetId())
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+
+	}
+
+	//////////////////////////////////////////////////////
 
 	bad, err := isBadIp(input.Payload.BidRequest.Device.GetIp())
 	if err != nil && bad == false {
@@ -190,38 +221,6 @@ func postBid_V2_5(
 		}
 	}
 
-	logged := shouldPass(counter)
-
-	globalId := uuid.New().String()
-
-	if err := utils.WriteStringToRedis(ctx, redisClient, globalId, constants.FORMAT_COLUMN, format, logged); err != nil {
-		log.Printf("failed to WriteStringToRedis Format in postBid_V2_5: %w", err)
-	}
-
-	if err := utils.WriteStringToRedis(ctx, redisClient, globalId, constants.TYPIC_COLUMN, typic, logged); err != nil {
-		log.Printf("failed to WriteStringToRedis Domain in postBid_V2_5: %w", err)
-	}
-
-	if err := utils.WriteStringToRedis(ctx, redisClient, globalId, constants.SPP_DOMAIN_COLUMN, ssp_domain, logged); err != nil {
-		log.Printf("failed to WriteStringToRedis Domain in postBid_V2_5: %w", err)
-	}
-
-	if err := utils.WriteStringToRedis(ctx, redisClient, globalId, constants.GEO_COLUMN, countryISO, logged); err != nil {
-		log.Printf("failed to WriteStringToRedis Geo in postBid_V2_5: %w", err)
-	}
-
-	if err := utils.WriteUint32ToRedis(ctx, redisClient, globalId, constants.CITY_ID_COLUMN, cityId, logged); err != nil {
-		log.Printf("failed to WriteStringToRedis CITY_ID_COLUMN in postBid_V2_5: %w", err)
-	}
-
-	if err := utils.WriteStringToRedis(ctx, redisClient, globalId, constants.ADM_COLUMN, constants.FALSE, logged); err != nil {
-		log.Printf("failed to WriteStringToRedis ADM in postBid_V2_5: %w", err)
-	}
-
-	if err := utils.WriteStringToRedis(ctx, redisClient, globalId, constants.TIMESTAMP_COLUMN, time.Now().UTC().Format("2006-01-02 15:04:05.000"), logged); err != nil {
-		log.Printf("failed to WriteJsonToRedis TimeStamp in postBid_V2_5: %w", err)
-	}
-
 	if countryISO != "" {
 		if input.Payload.BidRequest.Device.Geo == nil {
 			input.Payload.BidRequest.Device.Geo = &ortb_V2_5.Geo{
@@ -239,6 +238,40 @@ func postBid_V2_5(
 
 	input.Payload.BidRequest.Device.Language = &lang
 
+	siteId := input.Payload.Site.GetId()
+	siteDomain := input.Payload.Site.GetDomain()
+
+	logged := shouldPass(counter)
+
+	uaFileds := ua.ParseUA(input.Payload.Device.GetUa())
+
+	impIdUuid := make(map[string]string, len(input.Payload.Imp))
+
+	for i := range input.Payload.Imp {
+		globalId := uuid.New().String()
+		impIdUuid[input.Payload.Imp[i].GetId()] = globalId
+		if err := utils.WriteStatsOrtb(
+			ctx,
+			redisClient,
+			globalId,
+			logged,
+			format,
+			typic,
+			ssp_domain,
+			device.GetIp(),
+			device.GetIpv6(),
+			lang,
+			countryISO,
+			cityId,
+			uaFileds,
+			siteId,
+			siteDomain,
+			float64(input.Payload.Imp[i].GetBidfloor()),
+		); err != nil {
+			log.Printf("failed to WriteStats in postBid_V2_5: %v", err)
+		}
+	}
+
 	reqCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
@@ -246,11 +279,11 @@ func postBid_V2_5(
 		reqCtx,
 		&orchestratorProto.OrchestratorRequest_V2_5{
 			BidRequest: input.Payload.BidRequest,
-			GlobalId:   globalId,
 			SspDomain:  ssp_domain,
 			Logged:     logged,
 			Typic:      typic,
 			Format:     format,
+			ImpIdUuid:  impIdUuid,
 		},
 	)
 	if err != nil {
@@ -264,7 +297,7 @@ func postBid_V2_5(
 		}
 
 		http.Error(w, httpErr.Error(), httpCode)
-		log.Printf(err.Error())
+		log.Print(err.Error())
 		return
 	}
 	statusCode := http.StatusOK

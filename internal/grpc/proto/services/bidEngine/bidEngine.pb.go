@@ -26,7 +26,7 @@ type BidEngineRequest_V2_5 struct {
 	state         protoimpl.MessageState            `protogen:"open.v1"`
 	BidRequest    *ortb_V2_5.BidRequest             `protobuf:"bytes,1,opt,name=bidRequest,proto3" json:"bidRequest,omitempty"`
 	BidResponses  map[string]*ortb_V2_5.BidResponse `protobuf:"bytes,2,rep,name=bidResponses,proto3" json:"bidResponses,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
-	GlobalId      string                            `protobuf:"bytes,3,opt,name=globalId,proto3" json:"globalId,omitempty"`
+	ImpIdUuid     map[string]string                 `protobuf:"bytes,3,rep,name=impIdUuid,proto3" json:"impIdUuid,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
 	SspDomain     string                            `protobuf:"bytes,4,opt,name=ssp_domain,json=sspDomain,proto3" json:"ssp_domain,omitempty"`
 	Logged        bool                              `protobuf:"varint,5,opt,name=logged,proto3" json:"logged,omitempty"`
 	Typic         string                            `protobuf:"bytes,6,opt,name=typic,proto3" json:"typic,omitempty"`
@@ -79,11 +79,11 @@ func (x *BidEngineRequest_V2_5) GetBidResponses() map[string]*ortb_V2_5.BidRespo
 	return nil
 }
 
-func (x *BidEngineRequest_V2_5) GetGlobalId() string {
+func (x *BidEngineRequest_V2_5) GetImpIdUuid() map[string]string {
 	if x != nil {
-		return x.GlobalId
+		return x.ImpIdUuid
 	}
-	return ""
+	return nil
 }
 
 func (x *BidEngineRequest_V2_5) GetSspDomain() string {
@@ -170,13 +170,13 @@ var File_services_bidEngine_proto protoreflect.FileDescriptor
 
 const file_services_bidEngine_proto_rawDesc = "" +
 	"\n" +
-	"\x18services/bidEngine.proto\x12\tbidEngine\x1a\x1atypes/ortb_V2_5/ortb.proto\"\x80\x03\n" +
+	"\x18services/bidEngine.proto\x12\tbidEngine\x1a\x1atypes/ortb_V2_5/ortb.proto\"\xf1\x03\n" +
 	"\x15BidEngineRequest_V2_5\x125\n" +
 	"\n" +
 	"bidRequest\x18\x01 \x01(\v2\x15.ortb_V2_5.BidRequestR\n" +
 	"bidRequest\x12V\n" +
-	"\fbidResponses\x18\x02 \x03(\v22.bidEngine.BidEngineRequest_V2_5.BidResponsesEntryR\fbidResponses\x12\x1a\n" +
-	"\bglobalId\x18\x03 \x01(\tR\bglobalId\x12\x1d\n" +
+	"\fbidResponses\x18\x02 \x03(\v22.bidEngine.BidEngineRequest_V2_5.BidResponsesEntryR\fbidResponses\x12M\n" +
+	"\timpIdUuid\x18\x03 \x03(\v2/.bidEngine.BidEngineRequest_V2_5.ImpIdUuidEntryR\timpIdUuid\x12\x1d\n" +
 	"\n" +
 	"ssp_domain\x18\x04 \x01(\tR\tsspDomain\x12\x16\n" +
 	"\x06logged\x18\x05 \x01(\bR\x06logged\x12\x14\n" +
@@ -184,7 +184,10 @@ const file_services_bidEngine_proto_rawDesc = "" +
 	"\x06format\x18\a \x01(\tR\x06format\x1aW\n" +
 	"\x11BidResponsesEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12,\n" +
-	"\x05value\x18\x02 \x01(\v2\x16.ortb_V2_5.BidResponseR\x05value:\x028\x01\"n\n" +
+	"\x05value\x18\x02 \x01(\v2\x16.ortb_V2_5.BidResponseR\x05value:\x028\x01\x1a<\n" +
+	"\x0eImpIdUuidEntry\x12\x10\n" +
+	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"n\n" +
 	"\x16BidEngineResponse_V2_5\x128\n" +
 	"\vbidResponse\x18\x01 \x01(\v2\x16.ortb_V2_5.BidResponseR\vbidResponse\x12\x1a\n" +
 	"\bglobalId\x18\x02 \x01(\tR\bglobalId2n\n" +
@@ -203,26 +206,28 @@ func file_services_bidEngine_proto_rawDescGZIP() []byte {
 	return file_services_bidEngine_proto_rawDescData
 }
 
-var file_services_bidEngine_proto_msgTypes = make([]protoimpl.MessageInfo, 3)
+var file_services_bidEngine_proto_msgTypes = make([]protoimpl.MessageInfo, 4)
 var file_services_bidEngine_proto_goTypes = []any{
 	(*BidEngineRequest_V2_5)(nil),  // 0: bidEngine.BidEngineRequest_V2_5
 	(*BidEngineResponse_V2_5)(nil), // 1: bidEngine.BidEngineResponse_V2_5
 	nil,                            // 2: bidEngine.BidEngineRequest_V2_5.BidResponsesEntry
-	(*ortb_V2_5.BidRequest)(nil),   // 3: ortb_V2_5.BidRequest
-	(*ortb_V2_5.BidResponse)(nil),  // 4: ortb_V2_5.BidResponse
+	nil,                            // 3: bidEngine.BidEngineRequest_V2_5.ImpIdUuidEntry
+	(*ortb_V2_5.BidRequest)(nil),   // 4: ortb_V2_5.BidRequest
+	(*ortb_V2_5.BidResponse)(nil),  // 5: ortb_V2_5.BidResponse
 }
 var file_services_bidEngine_proto_depIdxs = []int32{
-	3, // 0: bidEngine.BidEngineRequest_V2_5.bidRequest:type_name -> ortb_V2_5.BidRequest
+	4, // 0: bidEngine.BidEngineRequest_V2_5.bidRequest:type_name -> ortb_V2_5.BidRequest
 	2, // 1: bidEngine.BidEngineRequest_V2_5.bidResponses:type_name -> bidEngine.BidEngineRequest_V2_5.BidResponsesEntry
-	4, // 2: bidEngine.BidEngineResponse_V2_5.bidResponse:type_name -> ortb_V2_5.BidResponse
-	4, // 3: bidEngine.BidEngineRequest_V2_5.BidResponsesEntry.value:type_name -> ortb_V2_5.BidResponse
-	0, // 4: bidEngine.BidEngineService.getWinnerBid_V2_5:input_type -> bidEngine.BidEngineRequest_V2_5
-	1, // 5: bidEngine.BidEngineService.getWinnerBid_V2_5:output_type -> bidEngine.BidEngineResponse_V2_5
-	5, // [5:6] is the sub-list for method output_type
-	4, // [4:5] is the sub-list for method input_type
-	4, // [4:4] is the sub-list for extension type_name
-	4, // [4:4] is the sub-list for extension extendee
-	0, // [0:4] is the sub-list for field type_name
+	3, // 2: bidEngine.BidEngineRequest_V2_5.impIdUuid:type_name -> bidEngine.BidEngineRequest_V2_5.ImpIdUuidEntry
+	5, // 3: bidEngine.BidEngineResponse_V2_5.bidResponse:type_name -> ortb_V2_5.BidResponse
+	5, // 4: bidEngine.BidEngineRequest_V2_5.BidResponsesEntry.value:type_name -> ortb_V2_5.BidResponse
+	0, // 5: bidEngine.BidEngineService.getWinnerBid_V2_5:input_type -> bidEngine.BidEngineRequest_V2_5
+	1, // 6: bidEngine.BidEngineService.getWinnerBid_V2_5:output_type -> bidEngine.BidEngineResponse_V2_5
+	6, // [6:7] is the sub-list for method output_type
+	5, // [5:6] is the sub-list for method input_type
+	5, // [5:5] is the sub-list for extension type_name
+	5, // [5:5] is the sub-list for extension extendee
+	0, // [0:5] is the sub-list for field type_name
 }
 
 func init() { file_services_bidEngine_proto_init() }
@@ -236,7 +241,7 @@ func file_services_bidEngine_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_services_bidEngine_proto_rawDesc), len(file_services_bidEngine_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   3,
+			NumMessages:   4,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

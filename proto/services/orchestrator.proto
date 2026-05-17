@@ -10,7 +10,7 @@ service OrchestratorService {
 
 message OrchestratorRequest_V2_5 {
   ortb_V2_5.BidRequest bidRequest = 1;
-  string globalId = 2;
+  map<string, string> impIdUuid = 2;
   string ssp_domain = 3;
   bool logged = 4;
   string typic = 5;

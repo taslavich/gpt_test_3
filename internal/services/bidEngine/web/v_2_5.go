@@ -2,14 +2,12 @@ package bidEngineWeb
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"log"
 	"runtime/debug"
 	"time"
 
 	"github.com/redis/go-redis/v9"
-	"gitlab.com/twinbid-exchange/RTB-exchange/internal/constants"
 	bidEngineGrpc "gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/proto/services/bidEngine"
 	pb "gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/proto/services/bidEngine"
 	"gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/proto/types/ortb_V2_5"
@@ -34,13 +32,13 @@ type Server struct {
 		ctx context.Context,
 		req *bidEngineGrpc.BidEngineRequest_V2_5,
 		profitPercent float32,
-		globalId string,
+		ImpIdUuid map[string]string,
 		percentMapAdult *map[string]map[string]map[string]*types.PercentAndBidfloor,
 		percentMapMainstream *map[string]map[string]map[string]*types.PercentAndBidfloor,
 		logged bool,
 		typic string,
 		admDomain string,
-	) (*ortb_V2_5.BidResponse, *clickhouse_types.BidResponse)
+	) (*ortb_V2_5.BidResponse, clickhouse_types.UuidImpBidResponse)
 
 	pb.BidEngineServiceServer
 }
@@ -52,13 +50,13 @@ func NewServer(
 		ctx context.Context,
 		req *bidEngineGrpc.BidEngineRequest_V2_5,
 		profitPercent float32,
-		globalId string,
+		ImpIdUuid map[string]string,
 		percentMapAdult *map[string]map[string]map[string]*types.PercentAndBidfloor,
 		percentMapMainstream *map[string]map[string]map[string]*types.PercentAndBidfloor,
 		logged bool,
 		typic string,
 		admDomain string,
-	) (*ortb_V2_5.BidResponse, *clickhouse_types.BidResponse),
+	) (*ortb_V2_5.BidResponse, clickhouse_types.UuidImpBidResponse),
 	percentFilename_adult string,
 	percentMap_adult *map[string]map[string]map[string]*types.PercentAndBidfloor,
 
@@ -97,11 +95,11 @@ func (s *Server) GetWinnerBid_V2_5(
 			funcErr = status.Errorf(grpcCode, err.Error())
 		}
 	}()
-	bidResponse, clickhouseBidResponse := s.GetWinnerBidInternal_V_2_5(
+	bidResponse, clickhouseBid := s.GetWinnerBidInternal_V_2_5(
 		ctx,
 		req,
 		s.ProfitPercent,
-		req.GlobalId,
+		req.ImpIdUuid,
 		s.percentMap_adult,
 		s.percentMap_mainstream,
 		req.Logged,
@@ -109,13 +107,10 @@ func (s *Server) GetWinnerBid_V2_5(
 		s.admDomain,
 	)
 
-	clickhouseData, err := json.Marshal(clickhouseBidResponse)
-	if err != nil {
-		log.Printf("failed to marshal JSON in GetWinnerBidInternal: %w", err)
-	}
-
-	if err := utils.WriteJsonToRedis(ctx, s.redisClient, req.GlobalId, constants.BID_RESPONSE_WINNER_COLUMN, clickhouseData, req.Logged); err != nil {
-		log.Printf("failed to WriteJsonToRedis Bid BID_RESPONSE_WINNER in GetWinnerBidInternal: %w", err)
+	for _, uuid := range req.ImpIdUuid {
+		if err := utils.WriteWinStats(ctx, s.redisClient, uuid, clickhouseBid[uuid], req.Logged); err != nil {
+			log.Printf("failed to WriteJsonToRedis Bid BID_RESPONSE_WINNER in GetWinnerBidInternal: %w", err)
+		}
 	}
 
 	return &bidEngineGrpc.BidEngineResponse_V2_5{

@@ -208,7 +208,12 @@ type AdmAdapterConfig struct {
 }
 
 type KafkaLoaderConfig struct {
-	RedisConfig
+	Ortb          RedisConfig
+	Impressions   RedisConfig
+	CLicks        RedisConfig
+	RedisHost     string `yaml:"REDIS_HOST" env:"REDIS_HOST"`
+	RedisPort     string `yaml:"REDIS_PORT" env:"REDIS_PORT"`
+	RedisPassword string `yaml:"REDIS_PASSWORD" env:"REDIS_PASSWORD"`
 	KafkaConfig
 	BatchSize int64 `yaml:"BATCH_SIZE" env:"BATCH_SIZE"`
 }
@@ -243,17 +248,12 @@ type MockDspConfig struct {
 }
 
 type RedisConfig struct {
-	RedisHost     string `yaml:"REDIS_HOST" env:"REDIS_HOST"`
-	RedisPort     string `yaml:"REDIS_PORT" env:"REDIS_PORT"`
-	RedisDB       int    `yaml:"REDIS_DB" env:"REDIS_DB"`
-	RedisPassword string `yaml:"REDIS_PASSWORD" env:"REDIS_PASSWORD"`
+	RedisDB int `yaml:"REDIS_DB" env:"REDIS_DB"`
 }
 
 type KafkaConfig struct {
 	KafkaBrokers     []string `yaml:"KAFKA_BROKERS" env:"KAFKA_BROKERS"`
-	KafkaTopic       string   `yaml:"KAFKA_TOPIC" env:"KAFKA_TOPIC"`
 	FlushIntervalSec int      `yaml:"FLUSH_INTERVAL_SEC" env:"FLUSH_INTERVAL_SEC"`
-	KafkaGroupID     string   `yaml:"KAFKA_GROUP_ID" env:"KAFKA_GROUP_ID"`
 }
 
 type HttpServer struct {

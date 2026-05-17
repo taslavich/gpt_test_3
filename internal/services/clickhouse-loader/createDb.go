@@ -1,0 +1,466 @@
+package clickhouse_loader
+
+import (
+	"context"
+	"fmt"
+	"strings"
+
+	"github.com/ClickHouse/clickhouse-go/v2"
+)
+
+func CreateDB(ctx context.Context, ch clickhouse.Conn) error {
+	const ddl = `
+
+CREATE DATABASE IF NOT EXISTS ads;
+
+-- ============================================================
+-- ORTB TABLE
+-- ============================================================
+
+CREATE TABLE IF NOT EXISTS ads.ortb
+(
+    uuid              UUID,
+
+    event_time        DateTime64(3, 'UTC'),
+
+    format            LowCardinality(String),
+    typic             Int16,
+
+    spp_domain        Nullable(String),
+
+    ip                Nullable(IPv4),
+    ipv6              Nullable(IPv6),
+
+    lang              Nullable(String),
+    browser           Nullable(String),
+    browser_version   Nullable(String),
+    os                Nullable(String),
+    os_version        Nullable(String),
+    device            Nullable(String),
+
+    site_id           Nullable(String),
+    site_domain       Nullable(String),
+
+    bid_floor         Decimal(10, 4) DEFAULT 0,
+
+    geo               Nullable(String),
+    city_id           Nullable(Int32),
+
+    bid_responses     Map(String, Int32) DEFAULT CAST(map(), 'Map(String, Int32)'),
+
+    win_dsp_domain    Nullable(String),
+
+    win_final_price   Float64 DEFAULT 0,
+    win_dsp_price     Float64 DEFAULT 0,
+    win_flag          Bool DEFAULT false,
+
+    win_cid           UUID,
+    win_crid          UUID,
+    win_user_id       UUID
+)
+ENGINE = MergeTree
+ORDER BY uuid
+TTL event_time + INTERVAL 1 HOUR DELETE
+SETTINGS index_granularity = 8192;
+
+
+-- ============================================================
+-- INPUT TABLES
+-- ============================================================
+
+CREATE TABLE IF NOT EXISTS ads.impressions_in
+(
+    event_time_impressions DateTime64(3, 'UTC') DEFAULT now64(3),
+    uuid                   UUID
+)
+ENGINE = Null;
+
+
+CREATE TABLE IF NOT EXISTS ads.clicks_in
+(
+    event_time_clicks DateTime64(3, 'UTC') DEFAULT now64(3),
+    uuid              UUID
+)
+ENGINE = Null;
+
+
+-- ============================================================
+-- FACT IMPRESSIONS
+-- ============================================================
+
+CREATE TABLE IF NOT EXISTS ads.fact_impressions
+(
+    event_time_impressions DateTime64(3, 'UTC'),
+    event_time             DateTime64(3, 'UTC'),
+    event_date             Date,
+    event_hour             DateTime('UTC'),
+
+    uuid                   UUID,
+
+    format                 LowCardinality(String),
+    typic                  Int16,
+
+    spp_domain             Nullable(String),
+
+    ip                     Nullable(IPv4),
+    ipv6                   Nullable(IPv6),
+
+    lang                   LowCardinality(String),
+    browser                LowCardinality(String),
+    browser_version        LowCardinality(String),
+    os                     LowCardinality(String),
+    os_version             LowCardinality(String),
+    device_type            LowCardinality(String),
+
+    site_id                LowCardinality(String),
+    site_domain            LowCardinality(String),
+
+    bid_floor              Decimal(10, 4),
+
+    geo                    LowCardinality(String),
+    city_id                Nullable(Int32),
+
+    bid_responses          Map(String, Int32),
+
+    win_dsp_domain         LowCardinality(String),
+
+    win_final_price        Float64,
+    win_dsp_price          Float64,
+
+    win_cid                UUID,
+    win_crid               UUID,
+    win_user_id            UUID
+)
+ENGINE = MergeTree
+PARTITION BY toYYYYMMDD(event_date)
+ORDER BY event_time
+TTL event_date + INTERVAL 6 MONTH DELETE
+SETTINGS index_granularity = 8192;
+
+
+-- ============================================================
+-- FACT CLICKS
+-- ============================================================
+
+CREATE TABLE IF NOT EXISTS ads.fact_clicks
+(
+    event_time_clicks DateTime64(3, 'UTC'),
+    event_time        DateTime64(3, 'UTC'),
+    event_date        Date,
+    event_hour        DateTime('UTC'),
+
+    uuid              UUID,
+
+    format            LowCardinality(String),
+    typic             Int16,
+
+    spp_domain        Nullable(String),
+
+    ip                Nullable(IPv4),
+    ipv6              Nullable(IPv6),
+
+    lang              LowCardinality(String),
+    browser           LowCardinality(String),
+    browser_version   LowCardinality(String),
+    os                LowCardinality(String),
+    os_version        LowCardinality(String),
+    device_type       LowCardinality(String),
+
+    site_id           LowCardinality(String),
+    site_domain       LowCardinality(String),
+
+    bid_floor         Decimal(10, 4),
+
+    geo               LowCardinality(String),
+    city_id           Nullable(Int32),
+
+    bid_responses     Map(String, Int32),
+
+    win_dsp_domain    LowCardinality(String),
+
+    win_final_price   Float64,
+    win_dsp_price     Float64,
+
+    win_cid           UUID,
+    win_crid          UUID,
+    win_user_id       UUID
+)
+ENGINE = MergeTree
+PARTITION BY toYYYYMMDD(event_date)
+ORDER BY event_time
+TTL event_date + INTERVAL 6 MONTH DELETE
+SETTINGS index_granularity = 8192;
+
+
+-- ============================================================
+-- AGGREGATED STATS
+-- browser_version здесь специально НЕ используется
+-- ============================================================
+
+CREATE TABLE IF NOT EXISTS ads.agg_stats
+(
+    win_user_id         UUID,
+    win_cid             UUID,
+    win_crid            UUID,
+
+    event_date          Date,
+
+    device_type         LowCardinality(String),
+    os                  LowCardinality(String),
+
+    event_hour          DateTime('UTC'),
+
+    browser             LowCardinality(String),
+    geo                 LowCardinality(String),
+    site_id             LowCardinality(String),
+
+    impressions         UInt64,
+    clicks              UInt64,
+
+    spend_clicks_table  Float64,
+    spend_views_table   Float64
+)
+ENGINE = SummingMergeTree
+PARTITION BY toYYYYMMDD(event_date)
+ORDER BY
+(
+    win_user_id,
+    win_cid,
+    win_crid,
+    event_date,
+    device_type,
+    os,
+    event_hour,
+    browser,
+    geo,
+    site_id
+)
+SETTINGS index_granularity = 8192;
+
+
+-- ============================================================
+-- MV: IMPRESSIONS INPUT -> FACT IMPRESSIONS
+-- ============================================================
+
+CREATE MATERIALIZED VIEW IF NOT EXISTS ads.mv_impressions_to_fact
+TO ads.fact_impressions
+AS
+SELECT
+    i.event_time_impressions AS event_time_impressions,
+    o.event_time AS event_time,
+    toDate(o.event_time) AS event_date,
+    toStartOfHour(toDateTime(o.event_time, 'UTC')) AS event_hour,
+
+    o.uuid AS uuid,
+
+    o.format AS format,
+    o.typic AS typic,
+
+    o.spp_domain AS spp_domain,
+
+    o.ip AS ip,
+    o.ipv6 AS ipv6,
+
+    ifNull(o.lang, '') AS lang,
+    ifNull(o.browser, '') AS browser,
+    ifNull(o.browser_version, '') AS browser_version,
+    ifNull(o.os, '') AS os,
+    ifNull(o.os_version, '') AS os_version,
+    ifNull(o.device, '') AS device_type,
+
+    ifNull(o.site_id, '') AS site_id,
+    ifNull(o.site_domain, '') AS site_domain,
+
+    o.bid_floor AS bid_floor,
+
+    ifNull(o.geo, '') AS geo,
+    o.city_id AS city_id,
+
+    o.bid_responses AS bid_responses,
+
+    ifNull(o.win_dsp_domain, '') AS win_dsp_domain,
+
+    o.win_final_price AS win_final_price,
+    o.win_dsp_price AS win_dsp_price,
+
+    o.win_cid AS win_cid,
+    o.win_crid AS win_crid,
+    o.win_user_id AS win_user_id
+FROM ads.impressions_in AS i
+ANY INNER JOIN ads.ortb AS o ON i.uuid = o.uuid;
+
+
+-- ============================================================
+-- MV: CLICKS INPUT -> FACT CLICKS
+-- ============================================================
+
+CREATE MATERIALIZED VIEW IF NOT EXISTS ads.mv_clicks_to_fact
+TO ads.fact_clicks
+AS
+SELECT
+    c.event_time_clicks AS event_time_clicks,
+    o.event_time AS event_time,
+    toDate(o.event_time) AS event_date,
+    toStartOfHour(toDateTime(o.event_time, 'UTC')) AS event_hour,
+
+    o.uuid AS uuid,
+
+    o.format AS format,
+    o.typic AS typic,
+
+    o.spp_domain AS spp_domain,
+
+    o.ip AS ip,
+    o.ipv6 AS ipv6,
+
+    ifNull(o.lang, '') AS lang,
+    ifNull(o.browser, '') AS browser,
+    ifNull(o.browser_version, '') AS browser_version,
+    ifNull(o.os, '') AS os,
+    ifNull(o.os_version, '') AS os_version,
+    ifNull(o.device, '') AS device_type,
+
+    ifNull(o.site_id, '') AS site_id,
+    ifNull(o.site_domain, '') AS site_domain,
+
+    o.bid_floor AS bid_floor,
+
+    ifNull(o.geo, '') AS geo,
+    o.city_id AS city_id,
+
+    o.bid_responses AS bid_responses,
+
+    ifNull(o.win_dsp_domain, '') AS win_dsp_domain,
+
+    o.win_final_price AS win_final_price,
+    o.win_dsp_price AS win_dsp_price,
+
+    o.win_cid AS win_cid,
+    o.win_crid AS win_crid,
+    o.win_user_id AS win_user_id
+FROM ads.clicks_in AS c
+ANY INNER JOIN ads.ortb AS o ON c.uuid = o.uuid;
+
+
+-- ============================================================
+-- MV: FACT IMPRESSIONS -> AGG STATS
+-- browser_version здесь специально НЕ группируется
+-- ============================================================
+
+CREATE MATERIALIZED VIEW IF NOT EXISTS ads.mv_fact_impressions_to_agg_stats
+TO ads.agg_stats
+AS
+SELECT
+    win_user_id,
+    win_cid,
+    win_crid,
+
+    event_date,
+
+    device_type,
+    os,
+    event_hour,
+
+    browser,
+    geo,
+    site_id,
+
+    count() AS impressions,
+    toUInt64(0) AS clicks,
+
+    toFloat64(0) AS spend_clicks_table,
+
+    sum(win_dsp_price / 1000) AS spend_views_table
+FROM ads.fact_impressions
+GROUP BY
+    win_user_id,
+    win_cid,
+    win_crid,
+
+    event_date,
+
+    device_type,
+    os,
+    event_hour,
+
+    browser,
+    geo,
+    site_id;
+
+
+-- ============================================================
+-- MV: FACT CLICKS -> AGG STATS
+-- browser_version здесь специально НЕ группируется
+-- ============================================================
+
+CREATE MATERIALIZED VIEW IF NOT EXISTS ads.mv_fact_clicks_to_agg_stats
+TO ads.agg_stats
+AS
+SELECT
+    win_user_id,
+    win_cid,
+    win_crid,
+
+    event_date,
+
+    device_type,
+    os,
+    event_hour,
+
+    browser,
+    geo,
+    site_id,
+
+    toUInt64(0) AS impressions,
+    count() AS clicks,
+
+    sum(win_dsp_price) AS spend_clicks_table,
+    toFloat64(0) AS spend_views_table
+FROM ads.fact_clicks
+GROUP BY
+    win_user_id,
+    win_cid,
+    win_crid,
+
+    event_date,
+
+    device_type,
+    os,
+    event_hour,
+
+    browser,
+    geo,
+    site_id;
+`
+
+	statements := splitClickHouseStatements(ddl)
+
+	for i, statement := range statements {
+		statement = strings.TrimSpace(statement)
+		if statement == "" {
+			continue
+		}
+
+		if err := ch.Exec(ctx, statement); err != nil {
+			return fmt.Errorf("failed to execute DDL statement #%d: %w\nSQL:\n%s", i+1, err, statement)
+		}
+	}
+
+	return nil
+}
+
+func splitClickHouseStatements(sql string) []string {
+	rawStatements := strings.Split(sql, ";")
+	statements := make([]string, 0, len(rawStatements))
+
+	for _, statement := range rawStatements {
+		statement = strings.TrimSpace(statement)
+		if statement == "" {
+			continue
+		}
+
+		statements = append(statements, statement)
+	}
+
+	return statements
+}

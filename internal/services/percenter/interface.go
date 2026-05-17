@@ -1,6 +1,6 @@
 package percenter
 
-import (
+/*import (
 	"time"
 
 	bidEngineGrpc "gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/proto/services/bidEngine"
@@ -55,3 +55,4 @@ type IPercenter interface {
 		func() error,
 	)
 }
+*/

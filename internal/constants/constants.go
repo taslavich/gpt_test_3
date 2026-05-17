@@ -6,18 +6,39 @@ const (
 )
 
 const (
-	UUID_COLUMN                = "UUID"
-	TIMESTAMP_COLUMN           = "TIMESTAMP"
-	TYPIC_COLUMN               = "TYPIC"
-	FORMAT_COLUMN              = "FORMAT"
-	SPP_DOMAIN_COLUMN          = "SPP_DOMAIN"
-	BID_REQUEST_COLUMN         = "BID_REQUEST"
-	GEO_COLUMN                 = "GEO"
-	CITY_ID_COLUMN             = "CITY_ID"
-	BID_RESPONSES_COLUMN       = "BID_RESPONSES"
-	BID_RESPONSE_WINNER_COLUMN = "BID_RESPONSE_WINNER"
-	ADM_IP_COLUMN              = "ADM_IP"
-	ADM_COLUMN                 = "ADM"
+	EVENT_TIME_COLUMN      = "EVENT_TIME"
+	TYPIC_COLUMN           = "TYPIC"
+	FORMAT_COLUMN          = "FORMAT"
+	SPP_DOMAIN_COLUMN      = "SPP_DOMAIN"
+	GEO_COLUMN             = "GEO"
+	CITY_ID_COLUMN         = "CITY_ID"
+	BID_RESPONSES_COLUMN   = "BID_RESPONSES"
+	IP_COLUMN              = "IP"
+	IPV6_COLUMN            = "IPV6"
+	LANG_COLUMN            = "LANG"
+	BROWSER_COLUMN         = "BROWSER"
+	BROWSER_VERSION_COLUMN = "BROWSER_VERSION"
+	OS_COLUMN              = "OS"
+	OS_VERSION_COLUMN      = "OS_VERSION"
+	DEVICE_COLUMN          = "DEVICE"
+	SITE_ID_COLUMN         = "SITE_ID"
+	SITE_DOMAIN_COLUMN     = "SITE_DOMAIN"
+	BID_FLOOR_COLUMN       = "BID_FLOOR"
+	WIN_DSP_DOMAIN_COLUMN  = "WIN_DSP_DOMAIN"
+	WIN_PRICE_COLUMN       = "WIN_PRICE"
+	WIN_DSP_PRICE_COLUMN   = "WIN_DSP_PRICE"
+	WIN_CID_COLUMN         = "WIN_CID"
+	WIN_CRID_COLUMN        = "WIN_CRID"
+	WIN_USER_ID_COLUMN     = "WIN_USER_ID"
+	WIN_FLAG_COLUMN        = "WIN_FLAG"
+)
+
+const (
+	EVENT_TIME_CLICKS_COLUMN = "EVENT_TIME_CLICKS"
+)
+
+const (
+	EVENT_TIME_IMPRESSIONS_COLUMN = "EVENT_TIME_IMPRESSIONS"
 )
 
 const (
@@ -29,4 +50,9 @@ const (
 	POP string = "POP"
 	BAN string = "BAN"
 	NAT string = "NAT"
+)
+
+const (
+	BOOLEAN_FALSE = false
+	BOOLEAN_TRUE  = true
 )

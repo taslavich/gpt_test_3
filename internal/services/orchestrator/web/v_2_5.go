@@ -2,14 +2,12 @@ package orchestratorWeb
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"log"
 	"runtime/debug"
 	"time"
 
 	"github.com/redis/go-redis/v9"
-	"gitlab.com/twinbid-exchange/RTB-exchange/internal/constants"
 	bidEngineGrpc "gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/proto/services/bidEngine"
 	dspRouterGrpc "gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/proto/services/dspRouter"
 	orchestratorGrpc "gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/proto/services/orchestrator"
@@ -73,11 +71,11 @@ func (s *Server) GetWinnerBid_V2_5(
 		getBidsReqCtx,
 		&dspRouterGrpc.DspRouterRequest_V2_5{
 			BidRequest: req.BidRequest,
-			GlobalId:   req.GlobalId,
 			SspDomain:  req.SspDomain,
 			Logged:     req.Logged,
 			Typic:      req.Typic,
 			Format:     req.Format,
+			ImpIdUuid:  req.ImpIdUuid,
 		},
 	)
 	if err != nil {
@@ -95,21 +93,12 @@ func (s *Server) GetWinnerBid_V2_5(
 	}
 
 	if len(bids.BidResponses) == 0 {
-		clickhouseData, err := json.Marshal(&clickhouse_types.BidResponse{
-			Id: req.BidRequest.Id,
-			Seatbid: []*clickhouse_types.SeatBid{
-				{
-					Bid: []*clickhouse_types.Bid{},
-				},
-			},
-			Error: fmt.Sprintf("Got len of BidResponses = 0, bid request id: %s", req.BidRequest.GetId()),
-		})
-		if err != nil {
-			log.Printf("failed to marshal JSON in GetWinnerBidInternal: %w", err)
-		}
+		clickhouseBid := clickhouse_types.GetEmpty(req.ImpIdUuid)
 
-		if err := utils.WriteJsonToRedis(ctx, s.redisClient, req.GlobalId, constants.BID_RESPONSE_WINNER_COLUMN, clickhouseData, req.Logged); err != nil {
-			log.Printf("failed to WriteJsonToRedis Bid BID_RESPONSE_WINNER in GetWinnerBidInternal: %w", err)
+		for _, uuid := range req.ImpIdUuid {
+			if err := utils.WriteWinStats(ctx, s.redisClient, uuid, clickhouseBid[uuid], req.Logged); err != nil {
+				log.Printf("failed to WriteJsonToRedis Bid BID_RESPONSE_WINNER in GetWinnerBid_V2_5: %w", err)
+			}
 		}
 
 		return &orchestratorGrpc.OrchestratorResponse_V2_5{
@@ -132,11 +121,11 @@ func (s *Server) GetWinnerBid_V2_5(
 		&bidEngineGrpc.BidEngineRequest_V2_5{
 			BidRequest:   bids.BidRequest,
 			BidResponses: bids.BidResponses,
-			GlobalId:     bids.GlobalId,
 			SspDomain:    bids.SspDomain,
 			Logged:       req.Logged,
 			Typic:        req.Typic,
 			Format:       req.Format,
+			ImpIdUuid:    req.ImpIdUuid,
 		},
 	)
 	if err != nil {

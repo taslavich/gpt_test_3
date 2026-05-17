@@ -81,7 +81,7 @@ func main() {
 			log.Print("🛑 Shutting down ClickHouse Loader")
 			return
 		case <-ticker.C:
-			err := clickhouse_loader.ProcessKafkaMessages(
+			err := clickhouse_loader.ProcessKafkaMessagesOrtb(
 				ctx,
 				kafkaReader,
 				conn,

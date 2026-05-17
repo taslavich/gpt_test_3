@@ -5,6 +5,7 @@ import (
 	"log"
 	"net/http"
 	"net/url"
+	"time"
 
 	"github.com/ggicci/httpin"
 	"github.com/redis/go-redis/v9"
@@ -27,20 +28,18 @@ func getAdm(
 		return
 	}
 
-	if err := utils.WriteStringToRedis(ctx, redisClient, input.GlobalId, constants.ADM_COLUMN, constants.TRUE, true); err != nil {
-		log.Printf("failed to WriteStringToRedis ADM in getAdm: %w", err)
-	}
-
-	if err := utils.WriteStringToRedis(ctx, redisClient, input.GlobalId, constants.ADM_IP_COLUMN, r.RemoteAddr, true); err != nil {
-		log.Printf("failed to WriteStringToRedis ADM_IP in getAdm: %w", err)
+	if err := utils.WriteStringToRedis(ctx, redisClient, input.GlobalId, constants.EVENT_TIME_CLICKS_COLUMN, time.Now().UTC().Format("2006-01-02 15:04:05.000"), true); err != nil {
+		log.Printf("failed to WriteStringToRedis EVENT_TIME_CLICKS_COLUMN in getAdm: %w", err)
 	}
 
 	http.Redirect(w, r, decodedURL, http.StatusFound)
 }
 
 func getNurl(
+	ctx context.Context,
 	w http.ResponseWriter,
 	r *http.Request,
+	redisClient *redis.Client,
 ) {
 	input := r.Context().Value(httpin.Input).(*admNurlRequest)
 
@@ -49,6 +48,10 @@ func getNurl(
 		log.Printf("in getNurl Failed to decode original URL: %v", err)
 		w.WriteHeader(http.StatusBadRequest)
 		return
+	}
+
+	if err := utils.WriteStringToRedis(ctx, redisClient, input.GlobalId, constants.EVENT_TIME_IMPRESSIONS_COLUMN, time.Now().UTC().Format("2006-01-02 15:04:05.000"), true); err != nil {
+		log.Printf("failed to WriteStringToRedis EVENT_TIME_IMPRESSIONS_COLUMN in getAdm: %w", err)
 	}
 
 	http.Redirect(w, r, decodedURL, http.StatusFound)
