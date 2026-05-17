@@ -26,6 +26,17 @@ func GetWinnerBidInternal_V_2_5(
 	typic string,
 	admDomain string,
 ) (*ortb_V2_5.BidResponse, clickhouse_types.UuidImpBidResponse) {
+	if len(req.BidResponses) == 0 {
+		return &ortb_V2_5.BidResponse{
+			Id: req.BidRequest.Id,
+			Seatbid: []*ortb_V2_5.SeatBid{
+				{
+					Bid: []*ortb_V2_5.Bid{},
+				},
+			},
+		}, clickhouse_types.GetEmpty(ImpIdUuid)
+	}
+
 	type bidWithDomain struct {
 		bid        *ortb_V2_5.Bid
 		finalPrice float32
