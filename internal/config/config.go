@@ -257,16 +257,19 @@ type RedisConfig struct {
 	RedisPassword string `yaml:"REDIS_PASSWORD" env:"REDIS_PASSWORD"`
 
 	// Redis ORTB
-	RedisDBOrtb   int   `yaml:"REDIS_DB_ORTB" env:"REDIS_DB_ORTB"`
-	BatchSizeOrtb int64 `yaml:"BATCH_SIZE_ORTB" env:"BATCH_SIZE_ORTB"`
+	RedisDBOrtb   int    `yaml:"REDIS_DB_ORTB" env:"REDIS_DB_ORTB"`
+	BatchSizeOrtb int64  `yaml:"BATCH_SIZE_ORTB" env:"BATCH_SIZE_ORTB"`
+	RedisSetOrtb  string `yaml:"REDIS_SET_ORTB" env:"REDIS_SET_ORTB" env-default:"ortb:ready"`
 
 	// Redis Impressions
-	RedisDBImpressions   int   `yaml:"REDIS_DB_IMPRESSIONS" env:"REDIS_DB_IMPRESSIONS"`
-	BatchSizeImpressions int64 `yaml:"BATCH_SIZE_IMPRESSIONS" env:"BATCH_SIZE_IMPRESSIONS"`
+	RedisDBImpressions   int    `yaml:"REDIS_DB_IMPRESSIONS" env:"REDIS_DB_IMPRESSIONS"`
+	BatchSizeImpressions int64  `yaml:"BATCH_SIZE_IMPRESSIONS" env:"BATCH_SIZE_IMPRESSIONS"`
+	RedisSetImpressions  string `yaml:"REDIS_SET_IMPRESSIONS" env:"REDIS_SET_IMPRESSIONS" env-default:"impressions:ready"`
 
 	// Redis Clicks
-	RedisDBClicks   int   `yaml:"REDIS_DB_CLICKS" env:"REDIS_DB_CLICKS"`
-	BatchSizeClicks int64 `yaml:"BATCH_SIZE_CLICKS" env:"BATCH_SIZE_CLICKS"`
+	RedisDBClicks   int    `yaml:"REDIS_DB_CLICKS" env:"REDIS_DB_CLICKS"`
+	BatchSizeClicks int64  `yaml:"BATCH_SIZE_CLICKS" env:"BATCH_SIZE_CLICKS"`
+	RedisSetClicks  string `yaml:"REDIS_SET_CLICKS" env:"REDIS_SET_CLICKS" env-default:"clicks:ready"`
 }
 
 type KafkaConfig struct {
@@ -295,7 +298,7 @@ type GrpcServer struct {
 }
 
 func getEnvFileNames() []string {
-	return []string{".env.local", ".env", "bid-engine.env", "clickhouse-loader.env", "kafka-loader.env", "dsp1.env", "dsp2.env", "dsp3.env", "orchestrator.env", "router.env", "spp-adapter.env"}
+	return []string{".env.local", ".env", "bid-engine.env", "clickhouse-loader.env", "kafka-loader.env", "dsp1.env", "dsp2.env", "dsp3.env", "orchestrator.env", "router.env", "spp-adapter.env", "adm-adapter.env"}
 }
 
 func LoadConfig[
