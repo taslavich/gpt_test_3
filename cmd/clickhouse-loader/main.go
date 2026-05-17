@@ -75,7 +75,7 @@ func main() {
 	ticker := time.NewTicker(time.Duration(cfg.TimeoutSec) * time.Second)
 	defer ticker.Stop()
 
-	log.Printf("🚀 ClickHouse Loader started. Reading from topic: %s", cfg.Kafka.KafkaTopic)
+	log.Printf("🚀 ClickHouse Loader started. Reading from topics: %s, %s, %s", cfg.Kafka.KafkaTopicOrtb, cfg.Kafka.KafkaTopicImpressions, cfg.Kafka.KafkaTopicClicks)
 
 	for {
 		select {
@@ -86,11 +86,15 @@ func main() {
 			err := clickhouse_loader.ProcessKafkaMessages(
 				ctx,
 				kafkaReaders.Ortb,
-				kafkaReaders.Impressions,
 				kafkaReaders.Clicks,
+				kafkaReaders.Impressions,
 				conn,
-				cfg.Clickhouse.ClickHouseTable,
-				cfg.Clickhouse.BatchSize,
+				cfg.Clickhouse.TableOrtb,
+				cfg.Clickhouse.TableClicks,
+				cfg.Clickhouse.TableImpressions,
+				cfg.Clickhouse.BatchSizeOrtb,
+				cfg.Clickhouse.BatchSizeClicks,
+				cfg.Clickhouse.BatchSizeImpressions,
 				cfg.TimeoutSec,
 			)
 			if err != nil {
