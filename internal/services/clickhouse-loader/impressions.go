@@ -14,6 +14,11 @@ import (
 	"gitlab.com/twinbid-exchange/RTB-exchange/internal/types"
 )
 
+var (
+	impressionsMessagesBuffer []kafka.Message
+	impressionsRecordsBuffer  []types.Impressions
+)
+
 func ProcessKafkaMessagesImpressions(
 	ctx context.Context,
 	reader *kafka.Reader,
@@ -25,16 +30,9 @@ func ProcessKafkaMessagesImpressions(
 	readCtx, cancel := context.WithTimeout(ctx, time.Duration(timeoutSec)*time.Second)
 	defer cancel()
 
-	var (
-		messages []kafka.Message
-		records  []types.Impressions
-	)
-
-	for i := 0; i < batchSize; i++ {
-
+	for len(impressionsRecordsBuffer) < batchSize {
 		msg, err := reader.FetchMessage(readCtx)
 		if err != nil {
-			// таймаут — значит новых сообщений пока нет
 			if errors.Is(err, context.DeadlineExceeded) {
 				break
 			}
@@ -43,40 +41,64 @@ func ProcessKafkaMessagesImpressions(
 
 		var record types.Impressions
 		if err := json.Unmarshal(msg.Value, &record); err != nil {
-			log.Printf("!!! Failed to parse Kafka message: %v", err)
+			log.Printf("!!! Failed to parse Kafka impression message: %v, value=%s", err, string(msg.Value))
+
+			// Битое сообщение коммитим, чтобы consumer не застрял на нем
+			if err := reader.CommitMessages(ctx, msg); err != nil {
+				return fmt.Errorf("commit bad impression message: %w", err)
+			}
+
 			continue
 		}
 
 		if !types.HasDataImpressions(record) {
+			log.Printf("!!! Empty impression message, skip and commit: value=%s", string(msg.Value))
+
+			// Пустое сообщение тоже коммитим отдельно
+			if err := reader.CommitMessages(ctx, msg); err != nil {
+				return fmt.Errorf("commit empty impression message: %w", err)
+			}
+
 			continue
 		}
 
-		records = append(records, record)
-		messages = append(messages, msg)
+		impressionsRecordsBuffer = append(impressionsRecordsBuffer, record)
+		impressionsMessagesBuffer = append(impressionsMessagesBuffer, msg)
 	}
 
-	if len(records) < batchSize {
+	if len(impressionsRecordsBuffer) < batchSize {
 		log.Printf(
-			"IMPRESSIONS SKIP: records=%d messages=%d batchSize=%d timeoutSec=%d",
-			len(records),
-			len(messages),
+			"IMPRESSIONS BUFFER WAIT: records=%d messages=%d batchSize=%d timeoutSec=%d",
+			len(impressionsRecordsBuffer),
+			len(impressionsMessagesBuffer),
 			batchSize,
 			timeoutSec,
 		)
 		return nil
 	}
 
-	// native batch insert в ClickHouse
+	records := impressionsRecordsBuffer[:batchSize]
+	messages := impressionsMessagesBuffer[:batchSize]
+
+	log.Printf(
+		"IMPRESSIONS READY: records=%d messages=%d batchSize=%d",
+		len(records),
+		len(messages),
+		batchSize,
+	)
+
 	if err := insertBatchImpressions(ctx, ch, table, records); err != nil {
 		return err
 	}
 
-	// коммит offsets ТОЛЬКО после успешной вставки
 	if err := reader.CommitMessages(ctx, messages...); err != nil {
-		log.Printf("⚠️ Failed to commit Kafka offsets: %v", err)
-	} else {
-		log.Printf("COMMITED %d", len(records))
+		return fmt.Errorf("commit impression messages: %w", err)
 	}
+
+	log.Printf("COMMITED IMPRESSIONS %d", len(records))
+
+	impressionsRecordsBuffer = impressionsRecordsBuffer[batchSize:]
+	impressionsMessagesBuffer = impressionsMessagesBuffer[batchSize:]
 
 	return nil
 }
@@ -87,7 +109,6 @@ func insertBatchImpressions(
 	table string,
 	records []types.Impressions,
 ) error {
-
 	if len(records) == 0 {
 		return nil
 	}
@@ -105,7 +126,6 @@ func insertBatchImpressions(
 	}
 
 	for _, r := range records {
-
 		u, err := uuid.Parse(r.UUID)
 		if err != nil {
 			u = uuid.Nil

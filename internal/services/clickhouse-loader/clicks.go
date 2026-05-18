@@ -14,6 +14,11 @@ import (
 	"gitlab.com/twinbid-exchange/RTB-exchange/internal/types"
 )
 
+var (
+	clicksMessagesBuffer []kafka.Message
+	clicksRecordsBuffer  []types.Clicks
+)
+
 func ProcessKafkaMessagesClicks(
 	ctx context.Context,
 	reader *kafka.Reader,
@@ -25,16 +30,9 @@ func ProcessKafkaMessagesClicks(
 	readCtx, cancel := context.WithTimeout(ctx, time.Duration(timeoutSec)*time.Second)
 	defer cancel()
 
-	var (
-		messages []kafka.Message
-		records  []types.Clicks
-	)
-
-	for i := 0; i < batchSize; i++ {
-
+	for len(clicksRecordsBuffer) < batchSize {
 		msg, err := reader.FetchMessage(readCtx)
 		if err != nil {
-			// таймаут — значит новых сообщений пока нет
 			if errors.Is(err, context.DeadlineExceeded) {
 				break
 			}
@@ -43,28 +41,44 @@ func ProcessKafkaMessagesClicks(
 
 		var record types.Clicks
 		if err := json.Unmarshal(msg.Value, &record); err != nil {
-			log.Printf("!!!! Failed to parse Kafka message: %v", err)
+			log.Printf("!!!! Failed to parse Kafka click message: %v, value=%s", err, string(msg.Value))
+
+			// Битое сообщение лучше закоммитить, иначе можно застрять на нем
+			if err := reader.CommitMessages(ctx, msg); err != nil {
+				return fmt.Errorf("commit bad click message: %w", err)
+			}
+
 			continue
 		}
 
 		if !types.HasDataClicks(record) {
+			log.Printf("!!!! Empty click message, skip and commit: value=%s", string(msg.Value))
+
+			// Пустое сообщение тоже лучше закоммитить отдельно
+			if err := reader.CommitMessages(ctx, msg); err != nil {
+				return fmt.Errorf("commit empty click message: %w", err)
+			}
+
 			continue
 		}
 
-		records = append(records, record)
-		messages = append(messages, msg)
+		clicksRecordsBuffer = append(clicksRecordsBuffer, record)
+		clicksMessagesBuffer = append(clicksMessagesBuffer, msg)
 	}
 
-	if len(records) < batchSize {
+	if len(clicksRecordsBuffer) < batchSize {
 		log.Printf(
-			"CLICKS SKIP: records=%d messages=%d batchSize=%d timeoutSec=%d",
-			len(records),
-			len(messages),
+			"CLICKS BUFFER WAIT: records=%d messages=%d batchSize=%d timeoutSec=%d",
+			len(clicksRecordsBuffer),
+			len(clicksMessagesBuffer),
 			batchSize,
 			timeoutSec,
 		)
 		return nil
 	}
+
+	records := clicksRecordsBuffer[:batchSize]
+	messages := clicksMessagesBuffer[:batchSize]
 
 	log.Printf(
 		"CLICKS READY: records=%d messages=%d batchSize=%d",
@@ -73,17 +87,18 @@ func ProcessKafkaMessagesClicks(
 		batchSize,
 	)
 
-	// native batch insert в ClickHouse
 	if err := insertBatchClicks(ctx, ch, table, records); err != nil {
 		return err
 	}
 
-	// коммит offsets ТОЛЬКО после успешной вставки
 	if err := reader.CommitMessages(ctx, messages...); err != nil {
-		log.Printf("⚠️ Failed to commit Kafka offsets: %v", err)
-	} else {
-		log.Printf("COMMITED %d", len(records))
+		return fmt.Errorf("commit click messages: %w", err)
 	}
+
+	log.Printf("COMMITED CLICKS %d", len(records))
+
+	clicksRecordsBuffer = clicksRecordsBuffer[batchSize:]
+	clicksMessagesBuffer = clicksMessagesBuffer[batchSize:]
 
 	return nil
 }
@@ -94,7 +109,6 @@ func insertBatchClicks(
 	table string,
 	records []types.Clicks,
 ) error {
-
 	if len(records) == 0 {
 		return nil
 	}
@@ -112,7 +126,6 @@ func insertBatchClicks(
 	}
 
 	for _, r := range records {
-
 		u, err := uuid.Parse(r.UUID)
 		if err != nil {
 			u = uuid.Nil
