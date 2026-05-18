@@ -180,13 +180,21 @@ func GetWinnerBidInternal_V_2_5(
 
 		userId := ""
 		winFlag := "1"
+		cid := winner.bid.Cid
+		if cid == nil {
+			cid = &userId
+		}
+		crid := winner.bid.Crid
+		if crid == nil {
+			crid = &userId
+		}
 
 		clickhouseBid := &clickhouse_types.Bid{
 			WinDspDomain: &winner.domain,
 			WinPrice:     &winner.finalPrice,
 			WinDspPrice:  winner.bid.Price,
-			WinCid:       winner.bid.Cid,
-			WinCrid:      winner.bid.Crid,
+			WinCid:       cid,
+			WinCrid:      crid,
 			WinUserId:    &userId,
 			WinFlag:      &winFlag,
 		}
