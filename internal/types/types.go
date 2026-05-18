@@ -26,7 +26,6 @@ type Ortb struct {
 	WIN_CID         string `json:"WIN_CID"`
 	WIN_CRID        string `json:"WIN_CRID"`
 	WIN_USER_ID     string `json:"WIN_USER_ID"`
-	WIN_FLAG        string `json:"WIN_FLAG"`
 }
 
 type Clicks struct {
@@ -69,8 +68,7 @@ func HasDataOrtb(record Ortb) bool {
 		record.WIN_DSP_PRICE != "" ||
 		record.WIN_CID != "" ||
 		record.WIN_CRID != "" ||
-		record.WIN_USER_ID != "" ||
-		record.WIN_FLAG != ""
+		record.WIN_USER_ID != ""
 }
 
 func HasDataClicks(record Clicks) bool {

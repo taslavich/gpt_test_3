@@ -150,10 +150,6 @@ func ProcessBatchOrtb(ctx context.Context, redisClient *redis.Client, kafkaWrite
 			record.WIN_USER_ID = winUserId
 		}
 
-		if winFlag, exists := data[constants.WIN_FLAG_COLUMN]; exists {
-			record.WIN_FLAG = winFlag
-		}
-
 		record.UUID = key
 
 		// Проверяем есть ли данные в записи

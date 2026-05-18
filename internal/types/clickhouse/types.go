@@ -9,14 +9,12 @@ type Bid struct {
 	WinCid       *string  `json:"win_cid,omitempty"`
 	WinCrid      *string  `json:"win_crid,omitempty"`
 	WinUserId    *string  `json:"win_user_id,omitempty"`
-	WinFlag      *string  `json:"win_flag,omitempty"`
 }
 
 func GetEmpty(impIdUuid map[string]string) UuidImpBidResponse {
 	bidResponse := make(UuidImpBidResponse)
 	str := ""
 	var flo float32 = 0
-	srtFalse := "0"
 	for _, uuid := range impIdUuid {
 		bidResponse[uuid] = &Bid{
 			&str,
@@ -25,7 +23,6 @@ func GetEmpty(impIdUuid map[string]string) UuidImpBidResponse {
 			&str,
 			&str,
 			&str,
-			&srtFalse,
 		}
 	}
 	return bidResponse

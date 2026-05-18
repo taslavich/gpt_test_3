@@ -179,7 +179,6 @@ func GetWinnerBidInternal_V_2_5(
 		}
 
 		userId := ""
-		winFlag := "1"
 		cid := winner.bid.Cid
 		if cid == nil {
 			cid = &userId
@@ -196,7 +195,6 @@ func GetWinnerBidInternal_V_2_5(
 			WinCid:       cid,
 			WinCrid:      crid,
 			WinUserId:    &userId,
-			WinFlag:      &winFlag,
 		}
 
 		////

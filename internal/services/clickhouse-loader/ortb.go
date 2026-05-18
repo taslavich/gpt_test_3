@@ -112,7 +112,6 @@ func insertBatchOrtb(
 			win_dsp_domain,
 			win_final_price,
 			win_dsp_price,
-			win_flag,
 			win_cid,
 			win_crid,
 			win_user_id
@@ -220,18 +219,6 @@ func insertBatchOrtb(
 			}
 		}
 
-		// WIN_FLAG (string to bool)
-		var winFlag bool
-		if r.WIN_FLAG != "" {
-			parsed, err := strconv.ParseBool(r.WIN_FLAG)
-			if err != nil {
-				log.Printf("Record %d: Cannot parse WIN_FLAG '%s': %v, using false", i, r.WIN_FLAG, err)
-				winFlag = false
-			} else {
-				winFlag = parsed
-			}
-		}
-
 		// CID (простая строка, не UUID)
 		winCid := r.WIN_CID
 
@@ -264,7 +251,6 @@ func insertBatchOrtb(
 			&r.WIN_DSP_DOMAIN,  // win_dsp_domain (nullable)
 			winFinalPrice,      // win_final_price
 			winDspPrice,        // win_dsp_price
-			winFlag,            // win_flag
 			winCid,             // cid (строка)
 			winCrid,            // crid (строка)
 			winUserID,          // user_id (строка)

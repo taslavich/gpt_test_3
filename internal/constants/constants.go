@@ -30,7 +30,6 @@ const (
 	WIN_CID_COLUMN         = "WIN_CID"
 	WIN_CRID_COLUMN        = "WIN_CRID"
 	WIN_USER_ID_COLUMN     = "WIN_USER_ID"
-	WIN_FLAG_COLUMN        = "WIN_FLAG"
 )
 
 const (

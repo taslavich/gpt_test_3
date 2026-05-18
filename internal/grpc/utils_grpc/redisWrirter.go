@@ -133,10 +133,6 @@ func WriteWinStats(
 		combinedErr = errors.Join(combinedErr, fmt.Errorf("failed to write WinUserId: %w", err))
 	}
 
-	if err := WriteStringToRedis(ctx, redisClient, globalId, constants.WIN_FLAG_COLUMN, *win.WinFlag, logged); err != nil {
-		combinedErr = errors.Join(combinedErr, fmt.Errorf("failed to write WinFlag: %w", err))
-	}
-
 	return combinedErr
 }
 func WriteStatsOrtb(
