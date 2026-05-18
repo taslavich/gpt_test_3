@@ -199,6 +199,8 @@ func GetWinnerBidInternal_V_2_5(
 			WinFlag:      &winFlag,
 		}
 
+		////
+
 		seatBid[0].Bid = append(seatBid[0].Bid, finalBid)
 		clickhouseSeatBid[ImpIdUuid[impID]] = clickhouseBid
 	}
