@@ -59,9 +59,9 @@ CREATE TABLE IF NOT EXISTS {db}.ortb
     win_dsp_price     Float64 DEFAULT 0,
     win_flag          Bool DEFAULT false,
 
-    win_cid           Nullable(String),
-    win_crid          Nullable(String),
-    win_user_id       Nullable(String)
+    win_cid           String DEFAULT '',
+    win_crid          String DEFAULT '',
+    win_user_id       String DEFAULT ''
 )
 ENGINE = MergeTree
 ORDER BY uuid
@@ -136,9 +136,9 @@ CREATE TABLE IF NOT EXISTS {db}.fact_impressions
     win_final_price        Float64,
     win_dsp_price          Float64,
 
-    win_cid                Nullable(String),
-    win_crid               Nullable(String),
-    win_user_id            Nullable(String)
+    win_cid                String DEFAULT '',
+    win_crid               String DEFAULT '',
+    win_user_id            String DEFAULT ''
 )
 ENGINE = MergeTree
 PARTITION BY toYYYYMMDD(event_date)
@@ -190,9 +190,9 @@ CREATE TABLE IF NOT EXISTS {db}.fact_clicks
     win_final_price   Float64,
     win_dsp_price     Float64,
 
-    win_cid           Nullable(String),
-    win_crid          Nullable(String),
-    win_user_id       Nullable(String)
+    win_cid           String DEFAULT '',
+    win_crid          String DEFAULT '',
+    win_user_id       String DEFAULT ''
 )
 ENGINE = MergeTree
 PARTITION BY toYYYYMMDD(event_date)
@@ -208,9 +208,9 @@ SETTINGS index_granularity = 8192;
 
 CREATE TABLE IF NOT EXISTS {db}.agg_stats
 (
-    win_user_id         Nullable(String),
-    win_cid             Nullable(String),
-    win_crid            Nullable(String),
+    win_user_id         String DEFAULT '',
+    win_cid             String DEFAULT '',
+    win_crid            String DEFAULT '',
 
     event_date          Date,
 
