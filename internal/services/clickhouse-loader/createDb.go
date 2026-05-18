@@ -223,6 +223,9 @@ CREATE TABLE IF NOT EXISTS {db}.agg_stats
     geo                 LowCardinality(String),
     site_id             LowCardinality(String),
 
+    format              LowCardinality(String),
+    typic               Nullable(String),
+
     impressions         UInt64,
     clicks              UInt64,
 
@@ -242,7 +245,9 @@ ORDER BY
     event_hour,
     browser,
     geo,
-    site_id
+    site_id,
+    format,
+    typic
 )
 SETTINGS index_granularity = 8192;
 
