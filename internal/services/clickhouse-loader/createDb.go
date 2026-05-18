@@ -210,7 +210,7 @@ CREATE TABLE IF NOT EXISTS {db}.agg_stats
 (
     win_user_id         Nullable(String),
     win_cid             Nullable(String),
-    win_crid            UUNullable(String)ID,
+    win_crid            Nullable(String),
 
     event_date          Date,
 
