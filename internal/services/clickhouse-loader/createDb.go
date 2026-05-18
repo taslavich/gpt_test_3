@@ -57,7 +57,6 @@ CREATE TABLE IF NOT EXISTS {db}.ortb
 
     win_final_price   Float64 DEFAULT 0,
     win_dsp_price     Float64 DEFAULT 0,
-    win_flag          Bool DEFAULT false,
 
     win_cid           String DEFAULT '',
     win_crid          String DEFAULT '',
