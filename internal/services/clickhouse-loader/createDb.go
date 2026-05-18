@@ -76,17 +76,21 @@ SETTINGS index_granularity = 8192;
 CREATE TABLE IF NOT EXISTS {db}.impressions_in
 (
     event_time_impressions DateTime64(3, 'UTC') DEFAULT now64(3),
-    uuid                   UUID
+    uuid UUID
 )
-ENGINE = Null;
+ENGINE = MergeTree
+ORDER BY (event_time_impressions, uuid)
+TTL event_time_impressions + INTERVAL 5 MINUTE DELETE;
 
 
 CREATE TABLE IF NOT EXISTS {db}.clicks_in
 (
     event_time_clicks DateTime64(3, 'UTC') DEFAULT now64(3),
-    uuid              UUID
+    uuid UUID
 )
-ENGINE = Null;
+ENGINE = MergeTree
+ORDER BY (event_time_clicks, uuid)
+TTL event_time_clicks + INTERVAL 5 MINUTE DELETE;
 
 
 -- ============================================================
