@@ -103,7 +103,7 @@ CREATE TABLE IF NOT EXISTS {db}.fact_impressions
     uuid                   UUID,
 
     format                 LowCardinality(String),
-    typic                  Int16,
+    typic                  Nullable(String),
 
     spp_domain             Nullable(String),
 
@@ -157,7 +157,7 @@ CREATE TABLE IF NOT EXISTS {db}.fact_clicks
     uuid              UUID,
 
     format            LowCardinality(String),
-    typic             Int16,
+    typic             Nullable(String),
 
     spp_domain        Nullable(String),
 
