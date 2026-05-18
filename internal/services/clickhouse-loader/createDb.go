@@ -59,9 +59,9 @@ CREATE TABLE IF NOT EXISTS {db}.ortb
     win_dsp_price     Float64 DEFAULT 0,
     win_flag          Bool DEFAULT false,
 
-    win_cid           UUID,
-    win_crid          UUID,
-    win_user_id       UUID
+    win_cid           Nullable(String),
+    win_crid          Nullable(String),
+    win_user_id       Nullable(String)
 )
 ENGINE = MergeTree
 ORDER BY uuid
