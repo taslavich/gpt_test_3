@@ -56,7 +56,6 @@ func ProcessKafkaMessagesClicks(
 	}
 
 	if len(records) < batchSize {
-		time.Sleep(1 * time.Second)
 		return nil
 	}
 
