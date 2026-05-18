@@ -13,3 +13,4 @@ registry-data/
 
 # TLS сертификаты для nginx-gateway (хранятся локально)
 deploy/docker-swarm/ssl-certs/*.pem
+proj.zip
