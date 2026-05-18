@@ -425,10 +425,16 @@ SELECT
     geo,
     site_id,
 
+    format,
+    typic,
+
     toUInt64(0) AS impressions,
     count() AS clicks,
 
-    sum(win_dsp_price) AS spend_clicks_table,
+    CASE 
+        WHEN format = 'POP' THEN sum(win_dsp_price) / 1000
+        ELSE sum(win_dsp_price)
+    END AS spend_clicks_table,
     toFloat64(0) AS spend_views_table
 FROM {db}.fact_clicks
 GROUP BY
@@ -444,7 +450,10 @@ GROUP BY
 
     browser,
     geo,
-    site_id;
+    site_id,
+
+    format,
+    typic
 `
 
 	ddl := strings.ReplaceAll(ddlTemplate, "{db}", database)
