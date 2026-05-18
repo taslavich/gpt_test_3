@@ -55,7 +55,7 @@ func ProcessKafkaMessagesImpressions(
 		messages = append(messages, msg)
 	}
 
-	if len(records) == 0 {
+	if len(records) < batchSize {
 		time.Sleep(1 * time.Second)
 		return nil
 	}

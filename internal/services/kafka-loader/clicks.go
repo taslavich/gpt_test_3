@@ -26,7 +26,7 @@ func ProcessBatchClicks(ctx context.Context, redisClient *redis.Client, kafkaWri
 		return fmt.Errorf("failed to get UUIDs from Redis set %q: %v", setName, err)
 	}
 
-	if len(uuids) == 0 {
+	if len(uuids) < int(batchSize) {
 		return nil
 	}
 
