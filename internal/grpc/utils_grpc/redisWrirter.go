@@ -12,7 +12,7 @@ import (
 	"gitlab.com/twinbid-exchange/RTB-exchange/internal/ua"
 )
 
-const RedisKeyTTL = 5 * time.Minute
+const RedisKeyTTL = 50 * time.Minute
 
 func WriteStringToRedis(ctx context.Context, redisClient *redis.Client, uuid, column string, data string, logged bool) error {
 	if !logged {
