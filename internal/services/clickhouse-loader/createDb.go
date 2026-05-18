@@ -224,7 +224,6 @@ CREATE TABLE IF NOT EXISTS {db}.agg_stats
     site_id             LowCardinality(String),
 
     format              LowCardinality(String),
-    typic               Nullable(String),
 
     impressions         UInt64,
     clicks              UInt64,
@@ -246,8 +245,7 @@ ORDER BY
     browser,
     geo,
     site_id,
-    format,
-    typic
+    format
 )
 SETTINGS index_granularity = 8192;
 
@@ -379,6 +377,8 @@ SELECT
     geo,
     site_id,
 
+    format,
+
     count() AS impressions,
     toUInt64(0) AS clicks,
 
@@ -399,7 +399,9 @@ GROUP BY
 
     browser,
     geo,
-    site_id;
+    site_id,
+
+    format;
 
 
 -- ============================================================
@@ -426,7 +428,6 @@ SELECT
     site_id,
 
     format,
-    typic,
 
     toUInt64(0) AS impressions,
     count() AS clicks,
@@ -452,8 +453,7 @@ GROUP BY
     geo,
     site_id,
 
-    format,
-    typic
+    format;
 `
 
 	ddl := strings.ReplaceAll(ddlTemplate, "{db}", database)
