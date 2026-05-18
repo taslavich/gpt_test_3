@@ -139,18 +139,6 @@ func insertBatchOrtb(
 			log.Printf("Record %d: Failed to parse EVENT_TIME '%s'", i, r.EVENT_TIME)
 		}
 
-		// TYPIC (string to int16)
-		var typic int16
-		if r.TYPIC != "" {
-			typic64, err := strconv.ParseInt(r.TYPIC, 10, 16)
-			if err != nil {
-				log.Printf("Record %d: Cannot parse TYPIC '%s': %v, using 0", i, r.TYPIC, err)
-				typic = 0
-			} else {
-				typic = int16(typic64)
-			}
-		}
-
 		// IP (string to IPv4)
 		var ip *net.IP
 		if r.IP != "" {
@@ -257,7 +245,7 @@ func insertBatchOrtb(
 			u,                  // uuid (UUID)
 			ts,                 // event_time
 			r.FORMAT,           // format
-			typic,              // typic
+			r.TYPIC,            // typic
 			&r.SPP_DOMAIN,      // spp_domain (nullable)
 			ip,                 // ip (nullable)
 			ipv6,               // ipv6 (nullable)

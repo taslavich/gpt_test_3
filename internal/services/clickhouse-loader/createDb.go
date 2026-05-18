@@ -29,7 +29,7 @@ CREATE TABLE IF NOT EXISTS {db}.ortb
     event_time        DateTime64(3, 'UTC'),
 
     format            LowCardinality(String),
-    typic             Int16,
+    typic             Nullable(String),
 
     spp_domain        Nullable(String),
 
