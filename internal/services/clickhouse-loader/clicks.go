@@ -56,7 +56,6 @@ func ProcessKafkaMessagesClicks(
 	}
 
 	if len(records) == 0 {
-		time.Sleep(1 * time.Second)
 		return nil
 	}
 
