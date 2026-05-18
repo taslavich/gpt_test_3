@@ -56,8 +56,22 @@ func ProcessKafkaMessagesClicks(
 	}
 
 	if len(records) < batchSize {
+		log.Printf(
+			"CLICKS SKIP: records=%d messages=%d batchSize=%d timeoutSec=%d",
+			len(records),
+			len(messages),
+			batchSize,
+			timeoutSec,
+		)
 		return nil
 	}
+
+	log.Printf(
+		"CLICKS READY: records=%d messages=%d batchSize=%d",
+		len(records),
+		len(messages),
+		batchSize,
+	)
 
 	// native batch insert в ClickHouse
 	if err := insertBatchClicks(ctx, ch, table, records); err != nil {

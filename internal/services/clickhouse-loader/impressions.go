@@ -56,6 +56,13 @@ func ProcessKafkaMessagesImpressions(
 	}
 
 	if len(records) < batchSize {
+		log.Printf(
+			"IMPRESSIONS SKIP: records=%d messages=%d batchSize=%d timeoutSec=%d",
+			len(records),
+			len(messages),
+			batchSize,
+			timeoutSec,
+		)
 		return nil
 	}
 

@@ -180,9 +180,9 @@ func InitKafkaReader(cfg config.KafkaConfig, topic string, groupID string) (*kaf
 		Topic:   topic,
 		GroupID: groupID,
 
-		MinBytes: 10 << 20,
+		MinBytes: 1,
 		MaxBytes: 100 << 20,
-		MaxWait:  5 * time.Millisecond,
+		MaxWait:  100 * time.Millisecond,
 
 		QueueCapacity: 50000,
 
