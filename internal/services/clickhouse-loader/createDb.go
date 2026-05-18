@@ -27,6 +27,7 @@ CREATE TABLE IF NOT EXISTS {db}.ortb
     uuid              UUID,
 
     event_time        DateTime64(3, 'UTC'),
+    created_at        DateTime64(3, 'UTC') DEFAULT now64(3),
 
     format            LowCardinality(String),
     typic             Nullable(String),
@@ -64,7 +65,7 @@ CREATE TABLE IF NOT EXISTS {db}.ortb
 )
 ENGINE = MergeTree
 ORDER BY uuid
-TTL event_time + INTERVAL 1 HOUR DELETE
+TTL created_at + INTERVAL 1 HOUR DELETE
 SETTINGS index_granularity = 8192;
 
 
@@ -75,21 +76,25 @@ SETTINGS index_granularity = 8192;
 CREATE TABLE IF NOT EXISTS {db}.impressions_in
 (
     event_time_impressions DateTime64(3, 'UTC') DEFAULT now64(3),
+    created_at             DateTime64(3, 'UTC') DEFAULT now64(3),
+
     uuid UUID
 )
 ENGINE = MergeTree
 ORDER BY (event_time_impressions, uuid)
-TTL event_time_impressions + INTERVAL 5 MINUTE DELETE;
+TTL created_at + INTERVAL 5 MINUTE DELETE;
 
 
 CREATE TABLE IF NOT EXISTS {db}.clicks_in
 (
     event_time_clicks DateTime64(3, 'UTC') DEFAULT now64(3),
+    created_at        DateTime64(3, 'UTC') DEFAULT now64(3),
+
     uuid UUID
 )
 ENGINE = MergeTree
 ORDER BY (event_time_clicks, uuid)
-TTL event_time_clicks + INTERVAL 5 MINUTE DELETE;
+TTL created_at + INTERVAL 5 MINUTE DELETE;
 
 
 -- ============================================================
