@@ -33,7 +33,7 @@ CREATE TABLE IF NOT EXISTS {db}.ortb
 
     spp_domain        Nullable(String),
 
-    ip                Nullable(IPv4),
+    ip                Nullable(IPv6),
     ipv6              Nullable(IPv6),
 
     lang              Nullable(String),
@@ -110,7 +110,7 @@ CREATE TABLE IF NOT EXISTS {db}.fact_impressions
 
     spp_domain             Nullable(String),
 
-    ip                     Nullable(IPv4),
+    ip                     Nullable(IPv6),
     ipv6                   Nullable(IPv6),
 
     lang                   LowCardinality(String),
@@ -164,7 +164,7 @@ CREATE TABLE IF NOT EXISTS {db}.fact_clicks
 
     spp_domain        Nullable(String),
 
-    ip                Nullable(IPv4),
+    ip                Nullable(IPv6),
     ipv6              Nullable(IPv6),
 
     lang              LowCardinality(String),
