@@ -138,12 +138,12 @@ func insertBatchOrtb(
 			log.Printf("Record %d: Failed to parse EVENT_TIME '%s'", i, r.EVENT_TIME)
 		}
 
-		// IP (string to IPv4)
-		var ip *net.IP
+		// IP может быть и IPv4 и IPv6
+		var ip string
 		if r.IP != "" {
 			parsedIP := net.ParseIP(r.IP)
-			if parsedIP != nil && parsedIP.To4() != nil {
-				ip = &parsedIP
+			if parsedIP != nil {
+				ip = r.IP // ClickHouse IPv6 тип примет и IPv4
 			} else {
 				log.Printf("Record %d: Cannot parse IP '%s', using nil", i, r.IP)
 			}
