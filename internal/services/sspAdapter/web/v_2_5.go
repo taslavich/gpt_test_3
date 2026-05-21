@@ -7,7 +7,6 @@ import (
 	"log"
 	"net/http"
 	"runtime/debug"
-	"sync/atomic"
 	"time"
 
 	"github.com/ggicci/httpin"
@@ -22,20 +21,9 @@ import (
 	"google.golang.org/grpc/status"
 )
 
-func checkRegion(countryISO string) error {
-	allowed := []string{"RU", "US", "AR", "CN", "VN", "BD", "AZ", "IN", "ZA", "DE", "TH", "UA", "GB", "MY", "PK", "TR", "KZ", "UZ"}
-	for _, region := range allowed {
-		if countryISO == region {
-			return nil
-		}
-	}
-
-	return fmt.Errorf("region %s not allowed", countryISO)
-}
-
-func shouldPass(counter *uint64) bool {
+/*func shouldPass(counter *uint64) bool {
 	return atomic.AddUint64(counter, 1)%100 < 5
-}
+}*/
 
 func postBid_V2_5(
 	ctx context.Context,
@@ -241,7 +229,7 @@ func postBid_V2_5(
 	siteId := input.Payload.Site.GetId()
 	siteDomain := input.Payload.Site.GetDomain()
 
-	logged := shouldPass(counter)
+	logged := true //shouldPass(counter)
 
 	uaFileds := ua.ParseUA(input.Payload.Device.GetUa())
 
