@@ -7,6 +7,7 @@ import (
 	"log"
 	"net/http"
 	"runtime/debug"
+	"sync/atomic"
 	"time"
 
 	"github.com/ggicci/httpin"
@@ -21,9 +22,9 @@ import (
 	"google.golang.org/grpc/status"
 )
 
-/*func shouldPass(counter *uint64) bool {
+func shouldPass(counter *uint64) bool {
 	return atomic.AddUint64(counter, 1)%100 < 5
-}*/
+}
 
 func postBid_V2_5(
 	ctx context.Context,
@@ -229,7 +230,7 @@ func postBid_V2_5(
 	siteId := input.Payload.Site.GetId()
 	siteDomain := input.Payload.Site.GetDomain()
 
-	logged := true //shouldPass(counter)
+	logged := shouldPass(counter)
 
 	uaFileds := ua.ParseUA(input.Payload.Device.GetUa())
 
