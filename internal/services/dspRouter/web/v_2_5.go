@@ -465,7 +465,7 @@ func writeMetadataToRedis(ctx context.Context, redisClient *redis.Client, global
 		log.Printf("uuid %s, failed to marshal data: %v", globalId, err)
 		return
 	}
-	bg, cancel := context.WithTimeout(context.Background(), 10*time.Millisecond)
+	bg, cancel := context.WithTimeout(context.Background(), 30*time.Millisecond)
 	defer cancel()
 
 	if err := utils.WriteJsonToRedis(bg, redisClient, globalId, constants.BID_RESPONSES_COLUMN, bidRespsData, logged); err != nil {
