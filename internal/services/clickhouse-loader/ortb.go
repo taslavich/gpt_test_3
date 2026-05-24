@@ -139,11 +139,11 @@ func insertBatchOrtb(
 		}
 
 		// IP может быть и IPv4 и IPv6
-		var ip string
+		var ip *net.IP
 		if r.IP != "" {
 			parsedIP := net.ParseIP(r.IP)
 			if parsedIP != nil {
-				ip = r.IP // ClickHouse IPv6 тип примет и IPv4
+				ip = &parsedIP
 			} else {
 				log.Printf("Record %d: Cannot parse IP '%s', using nil", i, r.IP)
 			}
