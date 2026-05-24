@@ -40,6 +40,10 @@ func main() {
 	defer redisClient.Impressions.Close()
 	defer redisClient.Clicks.Close()
 
+	log.Printf("Redis config: Host=%s, Port=%s, Password=%s, DB_ORTB=%d, DB_IMPRESSIONS=%d, DB_CLICKS=%d",
+		cfg.RedisHost, cfg.RedisPort, cfg.RedisPassword,
+		cfg.RedisDBOrtb, cfg.RedisDBImpressions, cfg.RedisDBClicks)
+
 	if err := redisClient.Ortb.Ping(ctx).Err(); err != nil {
 		log.Fatalf("Failed to connect to Ortb Redis: %v", err)
 	}
