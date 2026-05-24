@@ -18,30 +18,18 @@ func NewRedisClients(addr string, password string, ortbDb, impressionsDb, clicks
 			Addr:     addr,
 			Password: password,
 			DB:       ortbDb,
-			TLSConfig: &tls.Config{
-				InsecureSkipVerify: true, // для Let's Encrypt самоподписанного
-				// MinVersion: tls.VersionTLS12,
-			},
 		}),
 
 		Clicks: redis.NewClient(&redis.Options{
 			Addr:     addr,
 			Password: password,
 			DB:       clicksDb,
-			TLSConfig: &tls.Config{
-				InsecureSkipVerify: true, // для Let's Encrypt самоподписанного
-				// MinVersion: tls.VersionTLS12,
-			},
 		}),
 
 		Impressions: redis.NewClient(&redis.Options{
 			Addr:     addr,
 			Password: password,
 			DB:       impressionsDb,
-			TLSConfig: &tls.Config{
-				InsecureSkipVerify: true, // для Let's Encrypt самоподписанного
-				// MinVersion: tls.VersionTLS12,
-			},
 		}),
 	}
 }
