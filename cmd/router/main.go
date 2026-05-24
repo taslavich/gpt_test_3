@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"crypto/tls"
 	"fmt"
 	"log"
 	"net"
@@ -50,6 +51,10 @@ func main() {
 		Addr:     fmt.Sprintf("%s:%s", cfg.RedisHost, cfg.RedisPort),
 		Password: cfg.RedisPassword,
 		DB:       cfg.RedisDB,
+		TLSConfig: &tls.Config{
+			InsecureSkipVerify: true, // для Let's Encrypt самоподписанного
+			// MinVersion: tls.VersionTLS12,
+		},
 	})
 	defer redisClient.Close()
 
