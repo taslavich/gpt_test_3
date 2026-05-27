@@ -1,0 +1,26 @@
+[Unit]
+Description=Redis shard 7000 In-Memory Data Store
+After=network.target
+
+[Service]
+Type=simple
+User=root
+Group=root
+ExecStart=/usr/local/bin/redis-server /etc/redis-shards/redis-7000.conf --daemonize no
+ExecStop=/usr/local/bin/redis-cli -a redis121 -p 7000 shutdown
+Restart=always
+RestartSec=3
+TimeoutStopSec=60
+
+# Logging
+StandardOutput=file:/var/log/rtb/redis-7000.log
+StandardError=file:/var/log/rtb/redis-7000.error.log
+SyslogIdentifier=rtb-redis-7000
+
+# Security
+NoNewPrivileges=yes
+PrivateTmp=yes
+LimitNOFILE=65536
+
+[Install]
+WantedBy=multi-user.target
