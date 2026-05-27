@@ -3,21 +3,19 @@ set -e
 
 PROJECT_DIR="/root/RTB/gpt_test_3"
 
-# Data Pipeline сервисы (хранилище и загрузчики)
+REDIS_SERVICES=(
+    "rtb-redis-7000"
+    "rtb-redis-7001"
+    "rtb-redis-7002"
+    "rtb-redis-7003"
+    "rtb-redis-7004"
+)
+
 DATA_PIPELINE_SERVICES=(
-    "rtb-redis"
+    "${REDIS_SERVICES[@]}"
     "rtb-kafka"
     "rtb-kafka-loader"
     "rtb-clickhouse-loader"
-)
-
-# Core RTB сервисы (всё остальное, без загрузчиков)
-CORE_SERVICES=(
-    "rtb-bid-engine"
-    "rtb-orchestrator"
-    "rtb-spp-adapter"
-    "rtb-adm-adapter"
-    "rtb-router"
 )
 
 # Все сервисы вместе
@@ -58,12 +56,39 @@ show_status() {
 }
 
 wait_for_redis() {
-    echo "⏳ Waiting for Redis..."
-    while ! redis-cli -a redis121 ping >/dev/null 2>&1; do
-        sleep 2
-        echo -n "."
+    echo "⏳ Waiting for Redis shards..."
+
+    for i in 0 1 2 3 4; do
+        plain_port=$((7000 + i))
+        tls_port=$((8000 + i))
+
+        echo -n "Redis shard ${i} plain port ${plain_port}: "
+
+        while ! redis-cli \
+            -a redis121 \
+            -p "${plain_port}" \
+            ping >/dev/null 2>&1; do
+            sleep 2
+            echo -n "."
+        done
+
+        echo " ✅ ready"
+
+        echo -n "Redis shard ${i} TLS port ${tls_port}: "
+
+        while ! redis-cli --tls \
+            --cacert /etc/letsencrypt/live/buffer.twinbidexchange.com/redis/ca-bundle.pem \
+            -a redis121 \
+            -p "${tls_port}" \
+            ping >/dev/null 2>&1; do
+            sleep 2
+            echo -n "."
+        done
+
+        echo " ✅ ready"
     done
-    echo " ✅ Redis ready"
+
+    echo "✅ All Redis plain and TLS shards ready"
 }
 
 wait_for_kafka() {
@@ -101,7 +126,7 @@ wait_for_loaders() {
 case "$1" in
     # --- Data Pipeline (D) ---
     startD|start-data-pipeline)
-        echo "🚀 Starting Data Pipeline (Redis, Kafka, Kafka-loader, ClickHouse-loader)..."
+        echo "🚀 Starting Data Pipeline (Redis shards, Kafka, Kafka-loader, ClickHouse-loader)..."
         start_services "${DATA_PIPELINE_SERVICES[@]}"
         wait_for_redis
         wait_for_kafka
@@ -114,7 +139,7 @@ case "$1" in
         stop_services "rtb-clickhouse-loader"
         stop_services "rtb-kafka-loader"
         stop_services "rtb-kafka"
-        stop_services "rtb-redis"
+        stop_services "${REDIS_SERVICES[@]}"
         echo "✅ Data pipeline stopped"
         ;;
 
@@ -295,7 +320,7 @@ case "$1" in
         echo "Usage: $0 <command>"
         echo ""
         echo "Data Pipeline (D):"
-        echo "  startD              Start Redis, Kafka, Kafka-loader, ClickHouse-loader"
+        echo "  startD              Start Redis shards, Kafka, Kafka-loader, ClickHouse-loader"
         echo "  stopD               Stop Data Pipeline services"
         echo "  restartD            Restart Data Pipeline"
         echo "  statusD             Show Data Pipeline status"
