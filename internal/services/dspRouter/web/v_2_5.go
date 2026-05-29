@@ -3,7 +3,6 @@ package dspRouterWeb
 import (
 	"bytes"
 	"context"
-	"encoding/json"
 	"fmt"
 	"io"
 	"log"
@@ -20,6 +19,7 @@ import (
 	"gitlab.com/twinbid-exchange/RTB-exchange/internal/config"
 	"gitlab.com/twinbid-exchange/RTB-exchange/internal/constants"
 	"gitlab.com/twinbid-exchange/RTB-exchange/internal/filter"
+	eventspb "gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/proto/buffer"
 	dspRouterGrpc "gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/proto/services/dspRouter"
 	"gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/proto/types/ortb_V2_5"
 	utils "gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/utils_grpc"
@@ -37,7 +37,7 @@ type Server struct {
 	dspEndpoints_adult_v_2_5      config.MapStringToString
 	dspEndpoints_mainstream_v_2_5 config.MapStringToString
 
-	redisClient *redis.Client
+	redisClients []*redis.Client
 
 	clients map[string]*http.Client
 
@@ -70,7 +70,7 @@ func NewServer(
 	processor *filter.OptimizedFilterProcessor,
 	dspEndpoints_v_2_5,
 	dspEndpoints_mainstream_v_2_5 config.MapStringToString,
-	redisClient *redis.Client,
+	redisClients []*redis.Client,
 	timeout time.Duration,
 	linkMap_adult *map[string]map[string]map[string]bool,
 	linkMap_mainstream *map[string]map[string]map[string]bool,
@@ -91,7 +91,7 @@ func NewServer(
 		processor:                     processor,
 		dspEndpoints_adult_v_2_5:      dspEndpoints_v_2_5,
 		dspEndpoints_mainstream_v_2_5: dspEndpoints_mainstream_v_2_5,
-		redisClient:                   redisClient,
+		redisClients:                  redisClients,
 		clients:                       clients,
 		timeout:                       timeout,
 		bufferPool: sync.Pool{
@@ -119,7 +119,7 @@ type dspDomainResp struct {
 
 type dspDomainCode struct {
 	domain string
-	code   int
+	code   int32
 }
 
 func (s *Server) GetBids_V2_5(
@@ -391,13 +391,13 @@ func (s *Server) GetBids_V2_5(
 		close(responsesCh)
 	}()
 
-	clickResponses := make(map[string]int)
+	clickResponses := make(map[string]int32)
 	for c := range codesCh {
 		clickResponses[c.domain] = c.code
 	}
 
 	for _, uuid := range req.ImpIdUuid {
-		writeMetadataToRedis(ctx, s.redisClient, uuid, clickResponses, req.Logged)
+		writeBidResponsesToRedis(s.redisClients, uuid, clickResponses, req.Logged)
 	}
 
 	responses := make(map[string]*ortb_V2_5.BidResponse)
@@ -413,7 +413,7 @@ func (s *Server) GetBids_V2_5(
 }
 
 func (s *Server) getBidsFromDSPbyHTTP_V_2_5(ctx context.Context, uuid string, jsonData []byte, dspEndpoint string, client_v_2_5 *http.Client) (
-	ddr *ortb_V2_5.BidResponse, code int, err error) {
+	ddr *ortb_V2_5.BidResponse, code int32, err error) {
 	/*if dspEndpoint == "none" {
 		return nil, http.StatusNoContent, nil
 	}*/
@@ -454,21 +454,30 @@ func (s *Server) getBidsFromDSPbyHTTP_V_2_5(ctx context.Context, uuid string, js
 			log.Printf("uuid: %s, body: %s", uuid, string(body))
 			return nil, 3, fmt.Errorf("decode: %v, body: %s", err, string(body))
 		}
-		return &grpcResp, resp.StatusCode, nil
+		return &grpcResp, int32(resp.StatusCode), nil
 	}
-	return nil, resp.StatusCode, nil
+	return nil, int32(resp.StatusCode), nil
 }
 
-func writeMetadataToRedis(ctx context.Context, redisClient *redis.Client, globalId string, data map[string]int, logged bool) {
-	bidRespsData, err := json.Marshal(data)
-	if err != nil {
-		log.Printf("uuid %s, failed to marshal data: %v", globalId, err)
-		return
+func writeBidResponsesToRedis(
+	redisClients []*redis.Client,
+	uuid string,
+	data map[string]int32,
+	logged bool,
+) error {
+	if !logged {
+		return nil
 	}
+
 	bg, cancel := context.WithTimeout(context.Background(), 30*time.Millisecond)
 	defer cancel()
 
-	if err := utils.WriteJsonToRedis(bg, redisClient, globalId, constants.BID_RESPONSES_COLUMN, bidRespsData, logged); err != nil {
-		log.Printf("uuid %s, failed to WriteJsonToRedis: %v", globalId, err)
+	payload, err := proto.Marshal(&eventspb.BidResponses{
+		Items: data,
+	})
+	if err != nil {
+		return fmt.Errorf("failed to marshal bid responses protobuf: %w", err)
 	}
+
+	return utils.WriteBytesToRedis(bg, redisClients, uuid, constants.BID_RESPONSES_COLUMN, payload, logged)
 }

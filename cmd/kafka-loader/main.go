@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"fmt"
 	"log"
 	"os"
 	"os/signal"
@@ -25,39 +24,40 @@ func main() {
 	}
 	log.Println("Config initialized!")
 
-	redisClient := redis_service.NewRedisClients(
-		fmt.Sprintf(
-			"%s:%s",
-			cfg.RedisHost,
-			cfg.RedisPort,
-		),
+	redisAddrs := cfg.RedisShardAddrs
+	if cfg.RedisUseTLS {
+		redisAddrs = cfg.RedisShardTLSAddrs
+	}
+
+	redisClients, err := redis_service.NewRedisShardedClients(
+		redisAddrs,
 		cfg.RedisPassword,
 		cfg.RedisDBOrtb,
 		cfg.RedisDBImpressions,
 		cfg.RedisDBClicks,
+		cfg.RedisUseTLS,
+		cfg.RedisPoolSize,
+		cfg.RedisMinIdleConns,
 	)
-	defer redisClient.Ortb.Close()
-	defer redisClient.Impressions.Close()
-	defer redisClient.Clicks.Close()
-
-	log.Printf("Redis config: Host=%s, Port=%s, Password=%s, DB_ORTB=%d, DB_IMPRESSIONS=%d, DB_CLICKS=%d",
-		cfg.RedisHost, cfg.RedisPort, cfg.RedisPassword,
-		cfg.RedisDBOrtb, cfg.RedisDBImpressions, cfg.RedisDBClicks)
-
-	if err := redisClient.Ortb.Ping(ctx).Err(); err != nil {
-		log.Fatalf("Failed to connect to Ortb Redis: %v", err)
+	if err != nil {
+		log.Fatalf("Cannot init redis shards: %v", err)
 	}
-	log.Println("✅ Connected to Ortb Redis")
+	defer redisClients.Close()
 
-	if err := redisClient.Impressions.Ping(ctx).Err(); err != nil {
-		log.Fatalf("Failed to connect to Impressions Redis: %v", err)
+	if err := redis_service.PingClients(ctx, "ORTB", redisClients.Ortb); err != nil {
+		log.Fatalf("Failed to connect to ORTB redis shards: %v", err)
 	}
-	log.Println("✅ Connected to Impressions Redis")
+	log.Println("✅ Connected to ORTB Redis shards")
 
-	if err := redisClient.Clicks.Ping(ctx).Err(); err != nil {
-		log.Fatalf("Failed to connect to Clicks Redis: %v", err)
+	if err := redis_service.PingClients(ctx, "Impressions", redisClients.Impressions); err != nil {
+		log.Fatalf("Failed to connect to Impressions redis shards: %v", err)
 	}
-	log.Println("✅ Connected to Clicks Redis")
+	log.Println("✅ Connected to Impressions Redis shards")
+
+	if err := redis_service.PingClients(ctx, "Clicks", redisClients.Clicks); err != nil {
+		log.Fatalf("Failed to connect to Clicks redis shards: %v", err)
+	}
+	log.Println("✅ Connected to Clicks Redis shards")
 
 	kafkaWriter, err := kafka_service.CreateKafkaWriters(cfg.KafkaConfig)
 	if err != nil {
@@ -72,36 +72,54 @@ func main() {
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
 
-	var totalProcessed int64
-	ticker := time.NewTicker(time.Duration(cfg.FlushIntervalSec) * time.Second)
-	defer ticker.Stop()
+	ortbTicker := time.NewTicker(time.Duration(cfg.FlushIntervalSec) * time.Second)
+	defer ortbTicker.Stop()
 
-	log.Printf("🚀 Kafka Loader started. Processing every %d seconds", cfg.FlushIntervalSec)
+	impressionClickInterval := time.Duration(cfg.ImpressionClickFlushIntervalSec) * time.Second
+	lastImpressionClickRun := time.Now()
+
+	log.Printf(
+		"🚀 Kafka Loader started. ORTB every %d sec, impressions/clicks every %d sec",
+		cfg.FlushIntervalSec,
+		cfg.ImpressionClickFlushIntervalSec,
+	)
 
 	for {
 		select {
 		case <-sigChan:
-			log.Printf("🛑 Shutting down Kafka Loader. Total processed: %d records", totalProcessed)
+			log.Println("🛑 Shutting down Kafka Loader")
 			return
-		case <-ticker.C:
+
+		case <-ortbTicker.C:
+			runImpressionsClicks := time.Since(lastImpressionClickRun) >= impressionClickInterval
+
 			err := kafka_loader.ProcessKafkaMessages(
 				context.Background(),
-				redisClient.Ortb,         // redisClientOrtb
-				redisClient.Impressions,  // redisClientImpressions
-				redisClient.Clicks,       // redisClientClicks
-				kafkaWriter.Ortb,         // kafkaWriterOrtb
-				kafkaWriter.Impressions,  // kafkaWriterImpressions
-				kafkaWriter.Clicks,       // kafkaWriterClicks
-				cfg.BatchSizeOrtb,        // batchSizeOrtb
-				cfg.BatchSizeImpressions, // batchSizeImpressions
-				cfg.BatchSizeClicks,      // batchSizeClicks
-				cfg.RedisSetOrtb,         // redisSetOrtb
-				cfg.RedisSetImpressions,  // redisSetImpressions
-				cfg.RedisSetClicks,       // redisSetClicks
+
+				redisClients.Ortb,
+				redisClients.Impressions,
+				redisClients.Clicks,
+
+				kafkaWriter.Ortb,
+				kafkaWriter.Impressions,
+				kafkaWriter.Clicks,
+
+				cfg.BatchSizeOrtb,
+				cfg.BatchSizeImpressions,
+				cfg.BatchSizeClicks,
+
+				cfg.RedisSetOrtb,
+				cfg.RedisSetImpressions,
+				cfg.RedisSetClicks,
+				runImpressionsClicks,
 			)
 			if err != nil {
 				log.Printf("❌ Batch processing error: %v", err)
 				continue
+			}
+
+			if runImpressionsClicks {
+				lastImpressionClickRun = time.Now()
 			}
 		}
 	}

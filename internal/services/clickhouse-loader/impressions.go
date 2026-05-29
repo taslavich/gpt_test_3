@@ -2,7 +2,6 @@ package clickhouse_loader
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"log"
@@ -11,12 +10,13 @@ import (
 	"github.com/ClickHouse/clickhouse-go/v2"
 	"github.com/google/uuid"
 	"github.com/segmentio/kafka-go"
-	"gitlab.com/twinbid-exchange/RTB-exchange/internal/types"
+	eventspb "gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/proto/buffer"
+	"google.golang.org/protobuf/proto"
 )
 
 var (
 	impressionsMessagesBuffer []kafka.Message
-	impressionsRecordsBuffer  []types.Impressions
+	impressionsRecordsBuffer  []*eventspb.ImpressionEvent
 )
 
 func ProcessKafkaMessagesImpressions(
@@ -39,11 +39,10 @@ func ProcessKafkaMessagesImpressions(
 			return err
 		}
 
-		var record types.Impressions
-		if err := json.Unmarshal(msg.Value, &record); err != nil {
-			log.Printf("!!! Failed to parse Kafka impression message: %v, value=%s", err, string(msg.Value))
+		record := &eventspb.ImpressionEvent{}
+		if err := proto.Unmarshal(msg.Value, record); err != nil {
+			log.Printf("!!! Failed to parse Kafka impression protobuf message: %v", err)
 
-			// Битое сообщение коммитим, чтобы consumer не застрял на нем
 			if err := reader.CommitMessages(ctx, msg); err != nil {
 				return fmt.Errorf("commit bad impression message: %w", err)
 			}
@@ -51,10 +50,7 @@ func ProcessKafkaMessagesImpressions(
 			continue
 		}
 
-		if !types.HasDataImpressions(record) {
-			log.Printf("!!! Empty impression message, skip and commit: value=%s", string(msg.Value))
-
-			// Пустое сообщение тоже коммитим отдельно
+		if record.Uuid == "" || record.EventTimeImpressionsMs == 0 {
 			if err := reader.CommitMessages(ctx, msg); err != nil {
 				return fmt.Errorf("commit empty impression message: %w", err)
 			}
@@ -107,7 +103,7 @@ func insertBatchImpressions(
 	ctx context.Context,
 	ch clickhouse.Conn,
 	table string,
-	records []types.Impressions,
+	records []*eventspb.ImpressionEvent,
 ) error {
 	if len(records) == 0 {
 		return nil
@@ -126,12 +122,12 @@ func insertBatchImpressions(
 	}
 
 	for _, r := range records {
-		u, err := uuid.Parse(r.UUID)
+		u, err := uuid.Parse(r.Uuid)
 		if err != nil {
 			u = uuid.Nil
 		}
 
-		ts := parseTimestampUTC(r.EVENT_TIME_IMPRESSIONS)
+		ts := time.UnixMilli(r.EventTimeImpressionsMs).UTC()
 
 		if err := batch.Append(
 			u,

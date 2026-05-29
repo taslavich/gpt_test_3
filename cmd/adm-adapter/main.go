@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"fmt"
 	"log"
 
 	"github.com/go-chi/chi/v5"
@@ -22,33 +21,42 @@ func main() {
 	}
 	log.Println("Config initialized!")
 
-	redisClientImp, redisClientClicks := redis_service.NewRedisImpClicksClients(
-		fmt.Sprintf("%s:%s", cfg.RedisHost, cfg.RedisPort),
+	redisAddrs := cfg.RedisShardAddrs
+	if cfg.RedisUseTLS {
+		redisAddrs = cfg.RedisShardTLSAddrs
+	}
+
+	redisClients, err := redis_service.NewRedisShardedClients(
+		redisAddrs,
 		cfg.RedisPassword,
+		cfg.RedisDB,
 		cfg.RedisDBImpressions,
 		cfg.RedisDBClicks,
+		cfg.RedisUseTLS,
+		cfg.RedisPoolSize,
+		cfg.RedisMinIdleConns,
 	)
-	defer redisClientImp.Close()
-	defer redisClientClicks.Close()
-
-	log.Println(cfg.RedisHost, cfg.RedisPort)
-
-	if err := redisClientImp.Ping(ctx).Err(); err != nil {
-		log.Fatalf("Failed to connect to Imp Redis: %v", err)
+	if err != nil {
+		log.Fatalf("Cannot init redis shards: %v", err)
 	}
-	log.Println("✅ Connected to Imp Redis")
+	defer redisClients.Close()
 
-	if err := redisClientClicks.Ping(ctx).Err(); err != nil {
-		log.Fatalf("Failed to connect to Clicks Redis: %v", err)
+	if err := redis_service.PingClients(ctx, "Imp", redisClients.Impressions); err != nil {
+		log.Fatalf("Failed to connect to Imp Redis shards: %v", err)
 	}
-	log.Println("✅ Connected to Clicks Redis")
+	log.Println("✅ Connected to Imp Redis shards")
+
+	if err := redis_service.PingClients(ctx, "Clicks", redisClients.Clicks); err != nil {
+		log.Fatalf("Failed to connect to Clicks Redis shards: %v", err)
+	}
+	log.Println("✅ Connected to Clicks Redis shards")
 
 	router := httpServer.InitHttpRouter(chi.NewRouter())
 	sppAdapterWeb.InitHttpsRoutes(
 		ctx,
 		router,
-		redisClientImp,
-		redisClientClicks,
+		redisClients.Impressions,
+		redisClients.Clicks,
 		cfg.RedisSetImpressions,
 		cfg.RedisSetClicks,
 		cfg.AdmTimeout,

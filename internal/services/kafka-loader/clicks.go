@@ -2,17 +2,25 @@ package kafka_loader
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"log"
+	"sync"
 
 	"github.com/redis/go-redis/v9"
 	"github.com/segmentio/kafka-go"
 	"gitlab.com/twinbid-exchange/RTB-exchange/internal/constants"
+	eventspb "gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/proto/buffer"
 	"gitlab.com/twinbid-exchange/RTB-exchange/internal/types"
+	"google.golang.org/protobuf/proto"
 )
 
-func ProcessBatchClicks(ctx context.Context, redisClient *redis.Client, kafkaWriter *kafka.Writer, batchSize int64, setName string) error {
+func ProcessBatchClicks(
+	ctx context.Context,
+	redisClients []*redis.Client,
+	kafkaWriter *kafka.Writer,
+	batchSize int64,
+	setName string,
+) error {
 	if batchSize <= 0 {
 		return nil
 	}
@@ -21,81 +29,137 @@ func ProcessBatchClicks(ctx context.Context, redisClient *redis.Client, kafkaWri
 		return fmt.Errorf("redis set name is empty")
 	}
 
-	uuids, err := redisClient.SRandMemberN(ctx, setName, batchSize).Result()
-	if err != nil {
-		return fmt.Errorf("failed to get UUIDs from Redis set %q: %v", setName, err)
+	if len(redisClients) == 0 {
+		return fmt.Errorf("redis clients list is empty")
 	}
 
-	if len(uuids) < int(batchSize) {
+	perShardLimit := kafkaLoaderSplitLimit(batchSize, len(redisClients))
+
+	var wg sync.WaitGroup
+	errCh := make(chan error, len(redisClients))
+
+	for shardID, redisClient := range redisClients {
+		wg.Add(1)
+
+		go func(shardID int, redisClient *redis.Client) {
+			defer wg.Done()
+
+			if err := processClicksShard(
+				ctx,
+				shardID,
+				redisClient,
+				kafkaWriter,
+				perShardLimit,
+				setName,
+			); err != nil {
+				errCh <- err
+			}
+		}(shardID, redisClient)
+	}
+
+	wg.Wait()
+	close(errCh)
+
+	for err := range errCh {
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func processClicksShard(
+	ctx context.Context,
+	shardID int,
+	redisClient *redis.Client,
+	kafkaWriter *kafka.Writer,
+	batchSize int64,
+	setName string,
+) error {
+	processingSetName := fmt.Sprintf("%s:processing:%d", setName, shardID)
+
+	uuids, err := popUUIDsToProcessing(ctx, redisClient, setName, processingSetName, batchSize)
+	if err != nil {
+		return fmt.Errorf("shard %d: failed to pop click UUIDs to processing: %w", shardID, err)
+	}
+
+	if len(uuids) == 0 {
 		return nil
 	}
 
 	readPipe := redisClient.Pipeline()
+	cmds := make([]*redis.SliceCmd, 0, len(uuids))
+
 	for _, uuid := range uuids {
-		readPipe.HGetAll(ctx, uuid)
+		cmds = append(cmds, readPipe.HMGet(ctx, uuid, constants.EVENT_TIME_CLICKS_COLUMN))
 	}
 
-	cmds, err := readPipe.Exec(ctx)
-	if err != nil {
-		return fmt.Errorf("failed to get data from Redis: %v", err)
+	if _, err := readPipe.Exec(ctx); err != nil {
+		return fmt.Errorf("shard %d: failed to HMGET clicks data from Redis: %w", shardID, err)
 	}
 
-	var kafkaMessages []kafka.Message
+	kafkaMessages := make([]kafka.Message, 0, len(uuids))
 	uuidsToDelete := make([]string, 0, len(uuids))
 
 	for i, cmd := range cmds {
-		data, err := cmd.(*redis.MapStringStringCmd).Result()
+		values, err := cmd.Result()
 		if err != nil {
-			log.Printf("⚠️ Failed to get data for UUID %s: %v", uuids[i], err)
+			log.Printf("⚠️ shard %d: failed to get click data for UUID %s: %v", shardID, uuids[i], err)
 			continue
 		}
 
-		// Используем структуру вместо map
-		record := types.Clicks{}
 		key := uuids[i]
+		eventTime := valueAsString(values, 0)
 
-		if eventTimeClicks, exists := data[constants.EVENT_TIME_CLICKS_COLUMN]; exists {
-			record.EVENT_TIME_CLICKS = eventTimeClicks
+		rawRecord := types.Clicks{
+			UUID:              key,
+			EVENT_TIME_CLICKS: eventTime,
 		}
 
-		record.UUID = key
-
-		// Проверяем есть ли данные в записи
-		if types.HasDataClicks(record) {
-			jsonData, err := json.Marshal(record)
-			if err != nil {
-				log.Printf("❌ Failed to marshal record for UUID %s: %v", uuids[i], err)
-				continue
-			}
-
-			kafkaMessages = append(kafkaMessages, kafka.Message{
-				Value: jsonData,
-			})
-			uuidsToDelete = append(uuidsToDelete, key)
+		if !types.HasDataClicks(rawRecord) {
+			continue
 		}
+
+		record := &eventspb.ClickEvent{
+			Uuid:              rawRecord.UUID,
+			EventTimeClicksMs: parseUnixMsSafe(rawRecord.EVENT_TIME_CLICKS),
+		}
+
+		protoData, err := proto.Marshal(record)
+		if err != nil {
+			log.Printf("❌ shard %d: failed to marshal click protobuf for UUID %s: %v", shardID, key, err)
+			continue
+		}
+
+		kafkaMessages = append(kafkaMessages, kafka.Message{
+			Key:   []byte(key),
+			Value: protoData,
+		})
+
+		uuidsToDelete = append(uuidsToDelete, key)
+	}
+
+	if len(kafkaMessages) == 0 {
+		restoreUUIDsFromProcessingToReady(ctx, redisClient, setName, processingSetName, uuids)
+		return nil
 	}
 
 	if len(kafkaMessages) > 0 {
 		if err := kafkaWriter.WriteMessages(ctx, kafkaMessages...); err != nil {
-			return fmt.Errorf("failed to write to Kafka: %v", err)
-		}
-
-		if err := redisClient.SRem(ctx, setName, stringSliceToAny(uuidsToDelete)...).Err(); err != nil {
-			log.Printf("⚠️ Failed to remove UUIDs from set %q: %v", setName, err)
+			restoreUUIDsFromProcessingToReady(ctx, redisClient, setName, processingSetName, uuids)
+			return fmt.Errorf("shard %d: failed to write clicks messages to Kafka: %w", shardID, err)
 		}
 	}
 
-	if len(uuidsToDelete) > 0 {
-		delPipe := redisClient.Pipeline()
+	cleanupProcessedRedisRecordsFromProcessing(ctx, redisClient, processingSetName, uuidsToDelete)
 
-		for _, uuid := range uuidsToDelete {
-			delPipe.Del(ctx, uuid)
-		}
-
-		if _, err := delPipe.Exec(ctx); err != nil {
-			log.Printf("⚠️ Failed to delete processed Redis records from set %q: %v", setName, err)
-		}
-	}
+	log.Printf(
+		"✅ Clicks shard %d processed: uuids=%d kafka_messages=%d",
+		shardID,
+		len(uuids),
+		len(kafkaMessages),
+	)
 
 	return nil
 }

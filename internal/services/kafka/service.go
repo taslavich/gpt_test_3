@@ -11,8 +11,8 @@ import (
 )
 
 const (
-	DefaultTopicPartitions = 3
-	DefaultRetentionHours  = 24
+	DefaultTopicPartitions = 48
+	DefaultRetentionHours  = 6
 )
 
 type KafkaReaders struct {
@@ -292,12 +292,16 @@ func CreateKafkaWriter(brokers []string, topic string) (*kafka.Writer, error) {
 	}
 
 	writer := &kafka.Writer{
-		Addr:         kafka.TCP(brokers...),
-		Topic:        topic,
-		Balancer:     &kafka.LeastBytes{},
-		Async:        false,
-		BatchTimeout: 100 * time.Millisecond,
+		Addr:     kafka.TCP(brokers...),
+		Topic:    topic,
+		Balancer: &kafka.LeastBytes{},
+
+		Async: false,
+
+		RequiredAcks: kafka.RequireOne,
+
 		MaxAttempts:  3,
+		WriteTimeout: 5 * time.Second,
 	}
 
 	log.Printf("✅ Kafka writer initialized: topic=%s", topic)

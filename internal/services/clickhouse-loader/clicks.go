@@ -2,7 +2,6 @@ package clickhouse_loader
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"log"
@@ -11,12 +10,13 @@ import (
 	"github.com/ClickHouse/clickhouse-go/v2"
 	"github.com/google/uuid"
 	"github.com/segmentio/kafka-go"
-	"gitlab.com/twinbid-exchange/RTB-exchange/internal/types"
+	eventspb "gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/proto/buffer"
+	"google.golang.org/protobuf/proto"
 )
 
 var (
 	clicksMessagesBuffer []kafka.Message
-	clicksRecordsBuffer  []types.Clicks
+	clicksRecordsBuffer  []*eventspb.ClickEvent
 )
 
 func ProcessKafkaMessagesClicks(
@@ -39,11 +39,10 @@ func ProcessKafkaMessagesClicks(
 			return err
 		}
 
-		var record types.Clicks
-		if err := json.Unmarshal(msg.Value, &record); err != nil {
-			log.Printf("!!!! Failed to parse Kafka click message: %v, value=%s", err, string(msg.Value))
+		record := &eventspb.ClickEvent{}
+		if err := proto.Unmarshal(msg.Value, record); err != nil {
+			log.Printf("!!!! Failed to parse Kafka click protobuf message: %v", err)
 
-			// Битое сообщение лучше закоммитить, иначе можно застрять на нем
 			if err := reader.CommitMessages(ctx, msg); err != nil {
 				return fmt.Errorf("commit bad click message: %w", err)
 			}
@@ -51,10 +50,7 @@ func ProcessKafkaMessagesClicks(
 			continue
 		}
 
-		if !types.HasDataClicks(record) {
-			log.Printf("!!!! Empty click message, skip and commit: value=%s", string(msg.Value))
-
-			// Пустое сообщение тоже лучше закоммитить отдельно
+		if record.Uuid == "" || record.EventTimeClicksMs == 0 {
 			if err := reader.CommitMessages(ctx, msg); err != nil {
 				return fmt.Errorf("commit empty click message: %w", err)
 			}
@@ -107,7 +103,7 @@ func insertBatchClicks(
 	ctx context.Context,
 	ch clickhouse.Conn,
 	table string,
-	records []types.Clicks,
+	records []*eventspb.ClickEvent,
 ) error {
 	if len(records) == 0 {
 		return nil
@@ -126,12 +122,12 @@ func insertBatchClicks(
 	}
 
 	for _, r := range records {
-		u, err := uuid.Parse(r.UUID)
+		u, err := uuid.Parse(r.Uuid)
 		if err != nil {
 			u = uuid.Nil
 		}
 
-		ts := parseTimestampUTC(r.EVENT_TIME_CLICKS)
+		ts := time.UnixMilli(r.EventTimeClicksMs).UTC()
 
 		if err := batch.Append(
 			u,

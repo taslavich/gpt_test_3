@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"crypto/tls"
 	"fmt"
 	"log"
 	"net"
@@ -11,13 +10,13 @@ import (
 	"syscall"
 
 	"github.com/go-chi/chi/v5"
-	"github.com/redis/go-redis/v9"
 	"gitlab.com/twinbid-exchange/RTB-exchange/internal/config"
 	bidEngineGrpc "gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/proto/services/bidEngine"
 	utils "gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/utils_grpc"
 	httpServer "gitlab.com/twinbid-exchange/RTB-exchange/internal/http"
 	bidEngine "gitlab.com/twinbid-exchange/RTB-exchange/internal/services/bidEngine/service"
 	bidEngineWeb "gitlab.com/twinbid-exchange/RTB-exchange/internal/services/bidEngine/web"
+	redis_service "gitlab.com/twinbid-exchange/RTB-exchange/internal/services/redis"
 	"gitlab.com/twinbid-exchange/RTB-exchange/internal/types"
 
 	"google.golang.org/grpc"
@@ -33,21 +32,30 @@ func main() {
 	}
 	log.Println("Config initialized!")
 
-	redisClient := redis.NewClient(&redis.Options{
-		Addr:     fmt.Sprintf("%s:%s", cfg.RedisHost, cfg.RedisPort),
-		Password: cfg.RedisPassword,
-		DB:       cfg.RedisDB,
-		TLSConfig: &tls.Config{
-			InsecureSkipVerify: true, // для Let's Encrypt самоподписанного
-			// MinVersion: tls.VersionTLS12,
-		},
-	})
-	defer redisClient.Close()
-
-	if err := redisClient.Ping(ctx).Err(); err != nil {
-		log.Fatalf("Failed to connect to Redis: %v", err)
+	redisAddrs := cfg.RedisShardAddrs
+	if cfg.RedisUseTLS {
+		redisAddrs = cfg.RedisShardTLSAddrs
 	}
-	log.Println("✅ Connected to Redis")
+
+	redisClients, err := redis_service.NewRedisShardedClients(
+		redisAddrs,
+		cfg.RedisPassword,
+		cfg.RedisDB,
+		cfg.RedisDB,
+		cfg.RedisDB,
+		cfg.RedisUseTLS,
+		cfg.RedisPoolSize,
+		cfg.RedisMinIdleConns,
+	)
+	if err != nil {
+		log.Fatalf("Cannot init redis shards: %v", err)
+	}
+	defer redisClients.Close()
+
+	if err := redis_service.PingClients(ctx, "bid-engine", redisClients.Ortb); err != nil {
+		log.Fatalf("Failed to connect to Redis shards: %v", err)
+	}
+	log.Println("✅ Connected to Redis shards")
 
 	sspGeoDspMapAdult, err := utils.InitSspGeoDspMap[*types.PercentAndBidfloor](cfg.SspGeoDspPercentsAdultFilePath)
 	if err != nil {
@@ -75,7 +83,7 @@ func main() {
 		s,
 		bidEngineWeb.NewServer(
 			cfg.ProfitPercent,
-			redisClient,
+			redisClients.Ortb,
 			cfg.RedisSetOrtb,
 			bidEngine.GetWinnerBidInternal_V_2_5,
 			cfg.SspGeoDspPercentsAdultFilePath,
