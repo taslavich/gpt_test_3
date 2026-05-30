@@ -64,6 +64,14 @@ func main() {
 			Password: cfg.Clickhouse.Password,
 			Database: cfg.Clickhouse.Database,
 		},
+		Compression: &clickhouse.Compression{
+			Method: clickhouse.CompressionLZ4,
+		},
+		MaxOpenConns: 4,
+		MaxIdleConns: 4,
+		Settings: clickhouse.Settings{
+			"max_insert_threads": 8,
+		},
 	})
 	if err != nil {
 		log.Fatalf("❌ Prod ClickHouse Open connection failed: %v", err)
@@ -92,9 +100,6 @@ func main() {
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
 
-	ticker := time.NewTicker(time.Duration(cfg.TimeoutSec) * time.Second)
-	defer ticker.Stop()
-
 	log.Printf("🚀 ClickHouse Loader started. Reading from topics: %s, %s, %s", cfg.Kafka.KafkaTopicOrtb, cfg.Kafka.KafkaTopicImpressions, cfg.Kafka.KafkaTopicClicks)
 
 	for {
@@ -102,17 +107,17 @@ func main() {
 		case <-sigChan:
 			log.Print("🛑 Shutting down ClickHouse Loader")
 			return
-		case <-ticker.C:
+		default:
 			err := clickhouse_loader.ProcessKafkaMessages(
 				ctx,
 				kafkaReaders,
 				connProd,
 				cfg.Clickhouse,
 				cfg.TimeoutSec,
+				cfg.BatchTimeoutMS,
 			)
 			if err != nil {
 				log.Printf("❌ Processing error: %v", err)
-				continue
 			}
 		}
 	}

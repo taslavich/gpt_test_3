@@ -14,11 +14,6 @@ import (
 	"google.golang.org/protobuf/proto"
 )
 
-var (
-	clicksMessagesBuffer []kafka.Message
-	clicksRecordsBuffer  []*eventspb.ClickEvent
-)
-
 func ProcessKafkaMessagesClicks(
 	ctx context.Context,
 	reader *kafka.Reader,
@@ -26,11 +21,22 @@ func ProcessKafkaMessagesClicks(
 	table string,
 	batchSize int,
 	timeoutSec int,
+	timeoutMS int,
 ) error {
-	readCtx, cancel := context.WithTimeout(ctx, time.Duration(timeoutSec)*time.Second)
+	start := time.Now()
+	readCtx, cancel := context.WithTimeout(ctx, batchTimeout(timeoutSec, timeoutMS))
 	defer cancel()
 
-	for len(clicksRecordsBuffer) < batchSize {
+	commitMap := make(map[int]kafka.Message, 64)
+	records := make([]eventspb.ClickEvent, 0, batchSize)
+
+	var (
+		readCount     int
+		badProtoCount int
+		emptyCount    int
+	)
+
+	for len(records) < batchSize {
 		msg, err := reader.FetchMessage(readCtx)
 		if err != nil {
 			if errors.Is(err, context.DeadlineExceeded) {
@@ -39,62 +45,52 @@ func ProcessKafkaMessagesClicks(
 			return err
 		}
 
-		record := &eventspb.ClickEvent{}
-		if err := proto.Unmarshal(msg.Value, record); err != nil {
-			log.Printf("!!!! Failed to parse Kafka click protobuf message: %v", err)
+		readCount++
+		rememberCommitMessage(commitMap, msg)
 
-			if err := reader.CommitMessages(ctx, msg); err != nil {
-				return fmt.Errorf("commit bad click message: %w", err)
-			}
-
+		var record eventspb.ClickEvent
+		if err := proto.Unmarshal(msg.Value, &record); err != nil {
+			badProtoCount++
 			continue
 		}
 
 		if record.Uuid == "" || record.EventTimeClicksMs == 0 {
-			if err := reader.CommitMessages(ctx, msg); err != nil {
-				return fmt.Errorf("commit empty click message: %w", err)
-			}
-
+			emptyCount++
 			continue
 		}
 
-		clicksRecordsBuffer = append(clicksRecordsBuffer, record)
-		clicksMessagesBuffer = append(clicksMessagesBuffer, msg)
+		records = append(records, record)
 	}
 
-	if len(clicksRecordsBuffer) < batchSize {
-		log.Printf(
-			"CLICKS BUFFER WAIT: records=%d messages=%d batchSize=%d timeoutSec=%d",
-			len(clicksRecordsBuffer),
-			len(clicksMessagesBuffer),
-			batchSize,
-			timeoutSec,
-		)
+	if len(records) == 0 {
+		if len(commitMap) > 0 {
+			commitMessages := compactCommitMessages(commitMap)
+			if err := reader.CommitMessages(ctx, commitMessages...); err != nil {
+				return fmt.Errorf("commit skipped click messages: %w", err)
+			}
+		}
+
 		return nil
 	}
-
-	records := clicksRecordsBuffer[:batchSize]
-	messages := clicksMessagesBuffer[:batchSize]
-
-	log.Printf(
-		"CLICKS READY: records=%d messages=%d batchSize=%d",
-		len(records),
-		len(messages),
-		batchSize,
-	)
 
 	if err := insertBatchClicks(ctx, ch, table, records); err != nil {
 		return err
 	}
 
-	if err := reader.CommitMessages(ctx, messages...); err != nil {
+	commitMessages := compactCommitMessages(commitMap)
+	if err := reader.CommitMessages(ctx, commitMessages...); err != nil {
 		return fmt.Errorf("commit click messages: %w", err)
 	}
 
-	log.Printf("COMMITED CLICKS %d", len(records))
-
-	clicksRecordsBuffer = clicksRecordsBuffer[batchSize:]
-	clicksMessagesBuffer = clicksMessagesBuffer[batchSize:]
+	log.Printf(
+		"CLICKS batch: read=%d inserted=%d bad_proto=%d empty=%d offsets=%d duration=%s",
+		readCount,
+		len(records),
+		badProtoCount,
+		emptyCount,
+		len(commitMessages),
+		time.Since(start),
+	)
 
 	return nil
 }
@@ -103,7 +99,7 @@ func insertBatchClicks(
 	ctx context.Context,
 	ch clickhouse.Conn,
 	table string,
-	records []*eventspb.ClickEvent,
+	records []eventspb.ClickEvent,
 ) error {
 	if len(records) == 0 {
 		return nil

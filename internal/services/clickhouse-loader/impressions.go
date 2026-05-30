@@ -14,11 +14,6 @@ import (
 	"google.golang.org/protobuf/proto"
 )
 
-var (
-	impressionsMessagesBuffer []kafka.Message
-	impressionsRecordsBuffer  []*eventspb.ImpressionEvent
-)
-
 func ProcessKafkaMessagesImpressions(
 	ctx context.Context,
 	reader *kafka.Reader,
@@ -26,11 +21,22 @@ func ProcessKafkaMessagesImpressions(
 	table string,
 	batchSize int,
 	timeoutSec int,
+	timeoutMS int,
 ) error {
-	readCtx, cancel := context.WithTimeout(ctx, time.Duration(timeoutSec)*time.Second)
+	start := time.Now()
+	readCtx, cancel := context.WithTimeout(ctx, batchTimeout(timeoutSec, timeoutMS))
 	defer cancel()
 
-	for len(impressionsRecordsBuffer) < batchSize {
+	commitMap := make(map[int]kafka.Message, 64)
+	records := make([]eventspb.ImpressionEvent, 0, batchSize)
+
+	var (
+		readCount     int
+		badProtoCount int
+		emptyCount    int
+	)
+
+	for len(records) < batchSize {
 		msg, err := reader.FetchMessage(readCtx)
 		if err != nil {
 			if errors.Is(err, context.DeadlineExceeded) {
@@ -39,62 +45,52 @@ func ProcessKafkaMessagesImpressions(
 			return err
 		}
 
-		record := &eventspb.ImpressionEvent{}
-		if err := proto.Unmarshal(msg.Value, record); err != nil {
-			log.Printf("!!! Failed to parse Kafka impression protobuf message: %v", err)
+		readCount++
+		rememberCommitMessage(commitMap, msg)
 
-			if err := reader.CommitMessages(ctx, msg); err != nil {
-				return fmt.Errorf("commit bad impression message: %w", err)
-			}
-
+		var record eventspb.ImpressionEvent
+		if err := proto.Unmarshal(msg.Value, &record); err != nil {
+			badProtoCount++
 			continue
 		}
 
 		if record.Uuid == "" || record.EventTimeImpressionsMs == 0 {
-			if err := reader.CommitMessages(ctx, msg); err != nil {
-				return fmt.Errorf("commit empty impression message: %w", err)
-			}
-
+			emptyCount++
 			continue
 		}
 
-		impressionsRecordsBuffer = append(impressionsRecordsBuffer, record)
-		impressionsMessagesBuffer = append(impressionsMessagesBuffer, msg)
+		records = append(records, record)
 	}
 
-	if len(impressionsRecordsBuffer) < batchSize {
-		log.Printf(
-			"IMPRESSIONS BUFFER WAIT: records=%d messages=%d batchSize=%d timeoutSec=%d",
-			len(impressionsRecordsBuffer),
-			len(impressionsMessagesBuffer),
-			batchSize,
-			timeoutSec,
-		)
+	if len(records) == 0 {
+		if len(commitMap) > 0 {
+			commitMessages := compactCommitMessages(commitMap)
+			if err := reader.CommitMessages(ctx, commitMessages...); err != nil {
+				return fmt.Errorf("commit skipped impression messages: %w", err)
+			}
+		}
+
 		return nil
 	}
-
-	records := impressionsRecordsBuffer[:batchSize]
-	messages := impressionsMessagesBuffer[:batchSize]
-
-	log.Printf(
-		"IMPRESSIONS READY: records=%d messages=%d batchSize=%d",
-		len(records),
-		len(messages),
-		batchSize,
-	)
 
 	if err := insertBatchImpressions(ctx, ch, table, records); err != nil {
 		return err
 	}
 
-	if err := reader.CommitMessages(ctx, messages...); err != nil {
+	commitMessages := compactCommitMessages(commitMap)
+	if err := reader.CommitMessages(ctx, commitMessages...); err != nil {
 		return fmt.Errorf("commit impression messages: %w", err)
 	}
 
-	log.Printf("COMMITED IMPRESSIONS %d", len(records))
-
-	impressionsRecordsBuffer = impressionsRecordsBuffer[batchSize:]
-	impressionsMessagesBuffer = impressionsMessagesBuffer[batchSize:]
+	log.Printf(
+		"IMPRESSIONS batch: read=%d inserted=%d bad_proto=%d empty=%d offsets=%d duration=%s",
+		readCount,
+		len(records),
+		badProtoCount,
+		emptyCount,
+		len(commitMessages),
+		time.Since(start),
+	)
 
 	return nil
 }
@@ -103,7 +99,7 @@ func insertBatchImpressions(
 	ctx context.Context,
 	ch clickhouse.Conn,
 	table string,
-	records []*eventspb.ImpressionEvent,
+	records []eventspb.ImpressionEvent,
 ) error {
 	if len(records) == 0 {
 		return nil

@@ -47,12 +47,12 @@ CREATE TABLE IF NOT EXISTS {db}.ortb
     site_id           Nullable(String),
     site_domain       Nullable(String),
 
-    bid_floor         Decimal(10, 4) DEFAULT 0,
+    bid_floor         Float64 DEFAULT 0,
 
     geo               Nullable(String),
     city_id           Nullable(Int32),
 
-    bid_responses     Map(String, Int32) DEFAULT CAST(map(), 'Map(String, Int32)'),
+    bid_responses_raw String DEFAULT '',
 
     win_dsp_domain    Nullable(String),
 
@@ -64,7 +64,8 @@ CREATE TABLE IF NOT EXISTS {db}.ortb
     win_user_id       String DEFAULT ''
 )
 ENGINE = MergeTree
-ORDER BY uuid
+PARTITION BY toYYYYMMDDHH(created_at)
+ORDER BY (created_at, uuid)
 TTL created_at + INTERVAL 1 HOUR DELETE
 SETTINGS index_granularity = 8192;
 
@@ -128,12 +129,12 @@ CREATE TABLE IF NOT EXISTS {db}.fact_impressions
     site_id                LowCardinality(String),
     site_domain            LowCardinality(String),
 
-    bid_floor              Decimal(10, 4),
+    bid_floor              Float64,
 
     geo                    LowCardinality(String),
     city_id                Nullable(Int32),
 
-    bid_responses          Map(String, Int32),
+    bid_responses_raw      String,
 
     win_dsp_domain         LowCardinality(String),
 
@@ -182,12 +183,12 @@ CREATE TABLE IF NOT EXISTS {db}.fact_clicks
     site_id           LowCardinality(String),
     site_domain       LowCardinality(String),
 
-    bid_floor         Decimal(10, 4),
+    bid_floor         Float64,
 
     geo               LowCardinality(String),
     city_id           Nullable(Int32),
 
-    bid_responses     Map(String, Int32),
+    bid_responses_raw String,
 
     win_dsp_domain    LowCardinality(String),
 
@@ -294,7 +295,7 @@ SELECT
     ifNull(o.geo, '') AS geo,
     o.city_id AS city_id,
 
-    o.bid_responses AS bid_responses,
+    o.bid_responses_raw AS bid_responses_raw,
 
     ifNull(o.win_dsp_domain, '') AS win_dsp_domain,
 
@@ -346,7 +347,7 @@ SELECT
     ifNull(o.geo, '') AS geo,
     o.city_id AS city_id,
 
-    o.bid_responses AS bid_responses,
+    o.bid_responses_raw AS bid_responses_raw,
 
     ifNull(o.win_dsp_domain, '') AS win_dsp_domain,
 

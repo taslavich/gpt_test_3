@@ -115,7 +115,6 @@ func main() {
 			)
 			if err != nil {
 				log.Printf("❌ Batch processing error: %v", err)
-				continue
 			}
 
 			if runImpressionsClicks {

@@ -33,7 +33,6 @@ require (
 	github.com/robfig/cron/v3 v3.0.1 // indirect
 	github.com/rogpeppe/go-internal v1.9.0 // indirect
 	github.com/segmentio/asm v1.2.0 // indirect
-	github.com/shopspring/decimal v1.4.0 // indirect
 	github.com/valyala/bytebufferpool v1.0.0 // indirect
 	github.com/valyala/fasttemplate v1.2.2 // indirect
 	go.opentelemetry.io/otel v1.38.0 // indirect
@@ -64,6 +63,7 @@ require (
 	github.com/oschwald/maxminddb-golang v1.12.0
 	github.com/redis/go-redis/v9 v9.14.0
 	github.com/segmentio/kafka-go v0.4.49
+	github.com/shopspring/decimal v1.4.0 // indirect
 	github.com/yl2chen/cidranger v1.0.2
 	golang.org/x/sys v0.36.0 // indirect
 )

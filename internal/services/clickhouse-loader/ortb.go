@@ -11,7 +11,6 @@ import (
 	"github.com/ClickHouse/clickhouse-go/v2"
 	"github.com/google/uuid"
 	"github.com/segmentio/kafka-go"
-	"github.com/shopspring/decimal"
 	eventspb "gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/proto/buffer"
 	"google.golang.org/protobuf/proto"
 )
@@ -23,14 +22,22 @@ func ProcessKafkaMessagesOrtb(
 	table string,
 	batchSize int,
 	timeoutSec int,
+	timeoutMS int,
 ) error {
-	readCtx, cancel := context.WithTimeout(ctx, time.Duration(timeoutSec)*time.Second)
+	start := time.Now()
+	readCtx, cancel := context.WithTimeout(ctx, batchTimeout(timeoutSec, timeoutMS))
 	defer cancel()
 
-	messages := make([]kafka.Message, 0, batchSize)
-	records := make([]*eventspb.OrtbEvent, 0, batchSize)
+	commitMap := make(map[int]kafka.Message, 64)
+	records := make([]eventspb.OrtbEvent, 0, batchSize)
 
-	for i := 0; i < batchSize; i++ {
+	var (
+		readCount     int
+		badProtoCount int
+		emptyCount    int
+	)
+
+	for len(records) < batchSize {
 		msg, err := reader.FetchMessage(readCtx)
 		if err != nil {
 			if errors.Is(err, context.DeadlineExceeded) {
@@ -39,45 +46,77 @@ func ProcessKafkaMessagesOrtb(
 			return err
 		}
 
-		record := &eventspb.OrtbEvent{}
-		if err := proto.Unmarshal(msg.Value, record); err != nil {
-			log.Printf("!!! Failed to parse Kafka ORTB protobuf message: %v", err)
+		readCount++
+		rememberCommitMessage(commitMap, msg)
+
+		var record eventspb.OrtbEvent
+		if err := proto.Unmarshal(msg.Value, &record); err != nil {
+			badProtoCount++
 			continue
 		}
 
-		if !hasDataOrtbProtoCH(record) {
+		if !hasDataOrtbProtoCH(&record) {
+			emptyCount++
 			continue
 		}
 
 		records = append(records, record)
-		messages = append(messages, msg)
 	}
 
 	if len(records) == 0 {
+		if len(commitMap) > 0 {
+			commitMessages := compactCommitMessages(commitMap)
+			if err := reader.CommitMessages(ctx, commitMessages...); err != nil {
+				return fmt.Errorf("commit skipped ORTB offsets: %w", err)
+			}
+		}
+
 		return nil
 	}
 
-	if err := insertBatchOrtb(ctx, ch, table, records); err != nil {
+	stats, err := insertBatchOrtb(ctx, ch, table, records)
+	if err != nil {
 		return err
 	}
 
-	if err := reader.CommitMessages(ctx, messages...); err != nil {
-		log.Printf("⚠️ Failed to commit Kafka offsets: %v", err)
-	} else {
-		log.Printf("COMMITED ORTB %d", len(records))
+	commitMessages := compactCommitMessages(commitMap)
+	if err := reader.CommitMessages(ctx, commitMessages...); err != nil {
+		return fmt.Errorf("commit ORTB offsets after insert: %w", err)
 	}
 
+	log.Printf("COMMITED ORTB records=%d offsets=%d", len(records), len(commitMessages))
+
+	log.Printf(
+		"ORTB batch: read=%d inserted=%d bad_proto=%d empty=%d bad_uuid=%d bad_ip=%d append_errors=%d duration=%s",
+		readCount,
+		len(records),
+		badProtoCount,
+		emptyCount,
+		stats.badUUIDCount,
+		stats.badIPCount,
+		stats.appendErrors,
+		time.Since(start),
+	)
+
 	return nil
+}
+
+type ortbInsertStats struct {
+	badUUIDCount int
+	badIPCount   int
+	appendErrors int
 }
 
 func insertBatchOrtb(
 	ctx context.Context,
 	ch clickhouse.Conn,
 	table string,
-	records []*eventspb.OrtbEvent,
-) error {
+	records []eventspb.OrtbEvent,
+) (ortbInsertStats, error) {
+	stats := ortbInsertStats{}
+
 	if len(records) == 0 {
-		return nil
+		return stats, nil
 	}
 
 	query := fmt.Sprintf(`
@@ -100,7 +139,7 @@ func insertBatchOrtb(
 			bid_floor,
 			geo,
 			city_id,
-			bid_responses,
+			bid_responses_raw,
 			win_dsp_domain,
 			win_final_price,
 			win_dsp_price,
@@ -112,12 +151,13 @@ func insertBatchOrtb(
 
 	batch, err := ch.PrepareBatch(ctx, query)
 	if err != nil {
-		return fmt.Errorf("PrepareBatch: %w", err)
+		return stats, fmt.Errorf("PrepareBatch: %w", err)
 	}
 
-	for i, r := range records {
+	for _, r := range records {
 		u, err := uuid.Parse(r.Uuid)
 		if err != nil {
+			stats.badUUIDCount++
 			u = uuid.Nil
 		}
 
@@ -128,6 +168,8 @@ func insertBatchOrtb(
 			parsedIP := net.ParseIP(r.Ip)
 			if parsedIP != nil {
 				ip = &parsedIP
+			} else {
+				stats.badIPCount++
 			}
 		}
 
@@ -136,20 +178,13 @@ func insertBatchOrtb(
 			parsedIP := net.ParseIP(r.Ipv6)
 			if parsedIP != nil && parsedIP.To16() != nil {
 				ipv6 = &parsedIP
+			} else {
+				stats.badIPCount++
 			}
 		}
 
 		cityID := int32(r.CityId)
-
-		bidFloor := decimal.NewFromFloat(r.BidFloor)
-
-		bidResponses := r.BidResponses
-		if bidResponses == nil {
-			bidResponses = make(map[string]int32)
-		}
-
-		winFinalPrice := r.WinPrice
-		winDspPrice := r.WinDspPrice
+		bidResponsesRaw := marshalBidResponsesRaw(r.BidResponses)
 
 		if err := batch.Append(
 			u,
@@ -167,28 +202,27 @@ func insertBatchOrtb(
 			&r.Device,
 			&r.SiteId,
 			&r.SiteDomain,
-			bidFloor,
+			r.BidFloor,
 			&r.Geo,
 			cityID,
-			bidResponses,
+			bidResponsesRaw,
 			&r.WinDspDomain,
-			winFinalPrice,
-			winDspPrice,
+			r.WinPrice,
+			r.WinDspPrice,
 			r.WinCid,
 			r.WinCrid,
 			r.WinUserId,
 		); err != nil {
-			log.Printf("Record %d: batch.Append error: %v, skipping record", i, err)
-			continue
+			stats.appendErrors++
+			return stats, fmt.Errorf("batch.Append: %w", err)
 		}
 	}
 
 	if err := batch.Send(); err != nil {
-		return fmt.Errorf("batch.Send: %w", err)
+		return stats, fmt.Errorf("batch.Send: %w", err)
 	}
 
-	log.Printf("ORTB batch successfully sent to ClickHouse: %d", len(records))
-	return nil
+	return stats, nil
 }
 
 func hasDataOrtbProtoCH(record *eventspb.OrtbEvent) bool {
@@ -197,6 +231,19 @@ func hasDataOrtbProtoCH(record *eventspb.OrtbEvent) bool {
 	}
 
 	return record.Uuid != "" && record.EventTimeMs != 0
+}
+
+func marshalBidResponsesRaw(items map[string]int32) string {
+	if len(items) == 0 {
+		return ""
+	}
+
+	payload, err := proto.Marshal(&eventspb.BidResponses{Items: items})
+	if err != nil {
+		return ""
+	}
+
+	return string(payload)
 }
 
 func parseTimestampUTC(s string) time.Time {

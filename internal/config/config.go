@@ -238,7 +238,8 @@ type ClickhouseLoaderConfig struct {
 	Kafka      KafkaConfig
 	Clickhouse ClickhouseConfig
 
-	TimeoutSec int `yaml:"TIMEOUT_SEC" env:"TIMEOUT_SEC"`
+	TimeoutSec     int `yaml:"TIMEOUT_SEC" env:"TIMEOUT_SEC"`
+	BatchTimeoutMS int `yaml:"CLICKHOUSE_BATCH_TIMEOUT_MS" env:"CLICKHOUSE_BATCH_TIMEOUT_MS" env-default:"800"`
 }
 
 type MockDspConfig struct {
