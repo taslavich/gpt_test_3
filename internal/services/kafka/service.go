@@ -180,11 +180,11 @@ func InitKafkaReader(cfg config.KafkaConfig, topic string, groupID string) (*kaf
 		Topic:   topic,
 		GroupID: groupID,
 
-		MinBytes: 1,
-		MaxBytes: 100 << 20,
+		MinBytes: 1 << 20,
+		MaxBytes: 128 << 20,
 		MaxWait:  100 * time.Millisecond,
 
-		QueueCapacity: 50000,
+		QueueCapacity: 10000,
 
 		// Если читаешь через FetchMessage + CommitMessages,
 		// auto-commit через CommitInterval не нужен.

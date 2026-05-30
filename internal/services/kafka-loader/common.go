@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"sync"
 
 	"github.com/redis/go-redis/v9"
 	"github.com/segmentio/kafka-go"
@@ -32,12 +33,32 @@ func ProcessKafkaMessages(
 		return fmt.Errorf("Cannot ProcessBatchOrtb: %w", err)
 	}
 
-	if err := ProcessBatchImpressions(ctx, redisClientImpressions, kafkaWriterImpressions, batchSizeImpressions, redisSetImpressions); err != nil {
-		log.Printf("Cannot ProcessBatchImpressions: %v", err)
-	}
+	var wg sync.WaitGroup
+	errCh := make(chan error, 2)
 
-	if err := ProcessBatchClicks(ctx, redisClientClicks, kafkaWriterClicks, batchSizeClicks, redisSetClicks); err != nil {
-		log.Printf("Cannot ProcessBatchClicks: %v", err)
+	wg.Add(2)
+
+	go func() {
+		defer wg.Done()
+		if err := ProcessBatchImpressions(ctx, redisClientImpressions, kafkaWriterImpressions, batchSizeImpressions, redisSetImpressions); err != nil {
+			errCh <- fmt.Errorf("Cannot ProcessBatchImpressions: %w", err)
+		}
+	}()
+
+	go func() {
+		defer wg.Done()
+		if err := ProcessBatchClicks(ctx, redisClientClicks, kafkaWriterClicks, batchSizeClicks, redisSetClicks); err != nil {
+			errCh <- fmt.Errorf("Cannot ProcessBatchClicks: %w", err)
+		}
+	}()
+
+	wg.Wait()
+	close(errCh)
+
+	for err := range errCh {
+		if err != nil {
+			log.Printf("⚠️ %v", err)
+		}
 	}
 
 	return nil

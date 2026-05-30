@@ -22,8 +22,11 @@ func (m *MapStringToString) SetValue(value string) error {
 
 	pairs := strings.Split(value, ",")
 	for _, pair := range pairs {
-		// Ищем только ПЕРВЫЙ знак = как разделитель ключ-значение
-		idx := strings.Index(pair, "|")
+		// Ищем только ПЕРВЫЙ знак = или | как разделитель ключ-значение.
+		idx := strings.Index(pair, "=")
+		if idx == -1 {
+			idx = strings.Index(pair, "|")
+		}
 		if idx == -1 {
 			continue // пропускаем некорректные пары
 		}
@@ -227,6 +230,7 @@ type ClickhouseConfig struct {
 	BatchSizeOrtb        int    `yaml:"CLICKHOUSE_BATCH_SIZE_ORTB" env:"CLICKHOUSE_BATCH_SIZE_ORTB"`
 	BatchSizeImpressions int    `yaml:"CLICKHOUSE_BATCH_SIZE_IMPRESSIONS" env:"CLICKHOUSE_BATCH_SIZE_IMPRESSIONS"`
 	BatchSizeClicks      int    `yaml:"CLICKHOUSE_BATCH_SIZE_CLICKS" env:"CLICKHOUSE_BATCH_SIZE_CLICKS"`
+	BatchTimeoutMS       int    `yaml:"CLICKHOUSE_BATCH_TIMEOUT_MS" env:"CLICKHOUSE_BATCH_TIMEOUT_MS" env-default:"800"`
 }
 
 type PercenterConfig struct {

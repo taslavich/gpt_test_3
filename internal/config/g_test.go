@@ -28,7 +28,7 @@ func Test_Main(t *testing.T) {
 	encode := "https%3A%2F%2Fkts.vasstycom.com%2Fin%2F2660%2F%3Fkatd"
 	gotAdrr, err := url.QueryUnescape(encode)
 	if err != nil {
-		log.Fatalf(err.Error())
+		log.Fatalf("%v", err)
 	}
 
 	log.Println(gotAdrr)

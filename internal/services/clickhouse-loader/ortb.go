@@ -13,9 +13,13 @@ import (
 	"github.com/ClickHouse/clickhouse-go/v2"
 	"github.com/google/uuid"
 	"github.com/segmentio/kafka-go"
-	"github.com/shopspring/decimal"
 	"gitlab.com/twinbid-exchange/RTB-exchange/internal/types"
 )
+
+type ortbInsertStats struct {
+	badUUIDCount int
+	badIPCount   int
+}
 
 func ProcessKafkaMessagesOrtb(
 	ctx context.Context,
@@ -24,54 +28,96 @@ func ProcessKafkaMessagesOrtb(
 	table string,
 	batchSize int,
 	timeoutSec int,
+	timeoutMs int,
 ) error {
-	readCtx, cancel := context.WithTimeout(ctx, time.Duration(timeoutSec)*time.Second)
+	if batchSize <= 0 {
+		return nil
+	}
+
+	start := time.Now()
+	readCtx, cancel := context.WithTimeout(ctx, batchTimeout(timeoutSec, timeoutMs))
 	defer cancel()
 
+	records := make([]types.Ortb, 0, batchSize)
+	commitMap := make(map[int]kafka.Message, 64)
+
 	var (
-		messages []kafka.Message
-		records  []types.Ortb
+		readCount     int
+		badJSONCount  int
+		emptyCount    int
+		commitOnlyCnt int
 	)
 
-	for i := 0; i < batchSize; i++ {
-
+	for len(records) < batchSize {
 		msg, err := reader.FetchMessage(readCtx)
 		if err != nil {
-			// таймаут — значит новых сообщений пока нет
-			if errors.Is(err, context.DeadlineExceeded) {
+			if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) {
 				break
 			}
 			return err
 		}
 
+		readCount++
+
 		var record types.Ortb
 		if err := json.Unmarshal(msg.Value, &record); err != nil {
-			log.Printf("!!! Failed to parse Kafka message: %v", err)
+			badJSONCount++
+			commitOnlyCnt++
+			rememberCommitMessage(commitMap, msg)
 			continue
 		}
 
 		if !types.HasDataOrtb(record) {
+			emptyCount++
+			commitOnlyCnt++
+			rememberCommitMessage(commitMap, msg)
 			continue
 		}
 
 		records = append(records, record)
-		messages = append(messages, msg)
+		rememberCommitMessage(commitMap, msg)
 	}
 
-	if len(records) == 0 {
+	if len(records) > 0 {
+		stats, err := insertBatchOrtb(ctx, ch, table, records)
+		if err != nil {
+			return err
+		}
+
+		commitMessages := compactCommitMessages(commitMap)
+		if err := reader.CommitMessages(ctx, commitMessages...); err != nil {
+			return fmt.Errorf("commit ORTB offsets after successful insert: %w", err)
+		}
+
+		log.Printf(
+			"ORTB batch: read=%d inserted=%d offsets=%d bad_json=%d empty=%d commit_only=%d bad_uuid=%d bad_ip=%d duration=%s",
+			readCount,
+			len(records),
+			len(commitMessages),
+			badJSONCount,
+			emptyCount,
+			commitOnlyCnt,
+			stats.badUUIDCount,
+			stats.badIPCount,
+			time.Since(start),
+		)
 		return nil
 	}
 
-	// native batch insert в ClickHouse
-	if err := insertBatchOrtb(ctx, ch, table, records); err != nil {
-		return err
-	}
-
-	// коммит offsets ТОЛЬКО после успешной вставки
-	if err := reader.CommitMessages(ctx, messages...); err != nil {
-		log.Printf("⚠️ Failed to commit Kafka offsets: %v", err)
-	} else {
-		log.Printf("COMMITED %d", len(records))
+	commitMessages := compactCommitMessages(commitMap)
+	if len(commitMessages) > 0 {
+		if err := reader.CommitMessages(ctx, commitMessages...); err != nil {
+			return fmt.Errorf("commit ORTB skipped offsets: %w", err)
+		}
+		log.Printf(
+			"ORTB batch: read=%d inserted=0 offsets=%d bad_json=%d empty=%d commit_only=%d duration=%s",
+			readCount,
+			len(commitMessages),
+			badJSONCount,
+			emptyCount,
+			commitOnlyCnt,
+			time.Since(start),
+		)
 	}
 
 	return nil
@@ -82,10 +128,10 @@ func insertBatchOrtb(
 	ch clickhouse.Conn,
 	table string,
 	records []types.Ortb,
-) error {
-
+) (ortbInsertStats, error) {
+	var stats ortbInsertStats
 	if len(records) == 0 {
-		return nil
+		return stats, nil
 	}
 
 	query := fmt.Sprintf(`
@@ -108,7 +154,7 @@ func insertBatchOrtb(
 			bid_floor,
 			geo,
 			city_id,
-			bid_responses,
+			bid_responses_raw,
 			win_dsp_domain,
 			win_final_price,
 			win_dsp_price,
@@ -120,157 +166,109 @@ func insertBatchOrtb(
 
 	batch, err := ch.PrepareBatch(ctx, query)
 	if err != nil {
-		log.Printf("PrepareBatch error: %v", err)
-		return fmt.Errorf("PrepareBatch: %w", err)
+		return stats, fmt.Errorf("PrepareBatch: %w", err)
 	}
 
-	for i, r := range records {
-		// UUID (только это поле парсим как UUID)
+	for _, r := range records {
 		u, err := uuid.Parse(r.UUID)
 		if err != nil {
-			log.Printf("Record %d: Cannot parse UUID '%s': %v, using nil UUID", i, r.UUID, err)
+			stats.badUUIDCount++
 			u = uuid.Nil
 		}
 
-		// EVENT_TIME
 		ts := parseTimestampUTC(r.EVENT_TIME)
-		if ts.IsZero() && r.EVENT_TIME != "" {
-			log.Printf("Record %d: Failed to parse EVENT_TIME '%s'", i, r.EVENT_TIME)
-		}
 
-		// IP может быть и IPv4 и IPv6
 		var ip *net.IP
 		if r.IP != "" {
 			parsedIP := net.ParseIP(r.IP)
 			if parsedIP != nil {
 				ip = &parsedIP
 			} else {
-				log.Printf("Record %d: Cannot parse IP '%s', using nil", i, r.IP)
+				stats.badIPCount++
 			}
 		}
 
-		// IPV6 (string to IPv6)
 		var ipv6 *net.IP
 		if r.IPV6 != "" {
 			parsedIP := net.ParseIP(r.IPV6)
 			if parsedIP != nil && parsedIP.To16() != nil {
 				ipv6 = &parsedIP
 			} else {
-				log.Printf("Record %d: Cannot parse IPV6 '%s', using nil", i, r.IPV6)
+				stats.badIPCount++
 			}
 		}
 
-		// CITY_ID (string to uint32)
-		var cityID uint32
+		var cityID int32
 		if r.CITY_ID != "" {
-			id64, err := strconv.ParseUint(r.CITY_ID, 10, 32)
-			if err != nil {
-				log.Printf("Record %d: Cannot parse CITY_ID '%s': %v, using 0", i, r.CITY_ID, err)
-				cityID = 0
-			} else {
-				cityID = uint32(id64)
+			id64, err := strconv.ParseInt(r.CITY_ID, 10, 32)
+			if err == nil {
+				cityID = int32(id64)
 			}
 		}
 
-		// BID_FLOOR (string to decimal)
-		var bidFloor decimal.Decimal
+		var bidFloor float64
 		if r.BID_FLOOR != "" {
-			bidFloor, err = decimal.NewFromString(r.BID_FLOOR)
-			if err != nil {
-				log.Printf("Record %d: Cannot parse BID_FLOOR '%s': %v, using 0", i, r.BID_FLOOR, err)
-				bidFloor = decimal.NewFromInt(0)
+			parsed, err := strconv.ParseFloat(r.BID_FLOOR, 64)
+			if err == nil {
+				bidFloor = parsed
 			}
-		} else {
-			bidFloor = decimal.NewFromInt(0)
 		}
 
-		// BID_RESPONSES (string JSON to Map)
-		var bidResponses map[string]int32
-		if r.BID_RESPONSES != "" {
-			if err := json.Unmarshal([]byte(r.BID_RESPONSES), &bidResponses); err != nil {
-				log.Printf("Record %d: Cannot parse BID_RESPONSES '%s': %v, using empty map", i, r.BID_RESPONSES, err)
-				bidResponses = make(map[string]int32)
-			}
-		} else {
-			bidResponses = make(map[string]int32)
-		}
-
-		// WIN_PRICE (string to float64)
 		var winFinalPrice float64
 		if r.WIN_PRICE != "" {
 			parsed, err := strconv.ParseFloat(r.WIN_PRICE, 64)
-			if err != nil {
-				log.Printf("Record %d: Cannot parse WIN_PRICE '%s': %v, using 0", i, r.WIN_PRICE, err)
-				winFinalPrice = 0
-			} else {
+			if err == nil {
 				winFinalPrice = parsed
 			}
 		}
 
-		// WIN_DSP_PRICE (string to float64)
 		var winDspPrice float64
 		if r.WIN_DSP_PRICE != "" {
 			parsed, err := strconv.ParseFloat(r.WIN_DSP_PRICE, 64)
-			if err != nil {
-				log.Printf("Record %d: Cannot parse WIN_DSP_PRICE '%s': %v, using 0", i, r.WIN_DSP_PRICE, err)
-				winDspPrice = 0
-			} else {
+			if err == nil {
 				winDspPrice = parsed
 			}
 		}
 
-		// CID (простая строка, не UUID)
-		winCid := r.WIN_CID
-
-		// CRID (простая строка, не UUID)
-		winCrid := r.WIN_CRID
-
-		// USER_ID (простая строка, не UUID)
-		winUserID := r.WIN_USER_ID
-
 		if err := batch.Append(
-			u,                  // uuid (UUID)
-			ts,                 // event_time
-			r.FORMAT,           // format
-			r.TYPIC,            // typic
-			&r.SPP_DOMAIN,      // spp_domain (nullable)
-			ip,                 // ip (nullable)
-			ipv6,               // ipv6 (nullable)
-			&r.LANG,            // lang (nullable)
-			&r.BROWSER,         // browser (nullable)
-			&r.BROWSER_VERSION, // browser_version (nullable)
-			&r.OS,              // os (nullable)
-			&r.OS_VERSION,      // os_version (nullable)
-			&r.DEVICE,          // device (nullable)
-			&r.SITE_ID,         // site_id (nullable)
-			&r.SITE_DOMAIN,     // site_domain (nullable)
-			bidFloor,           // bid_floor
-			&r.GEO,             // geo (nullable)
-			cityID,             // city_id (nullable)
-			bidResponses,       // bid_responses
-			&r.WIN_DSP_DOMAIN,  // win_dsp_domain (nullable)
-			winFinalPrice,      // win_final_price
-			winDspPrice,        // win_dsp_price
-			winCid,             // cid (строка)
-			winCrid,            // crid (строка)
-			winUserID,          // user_id (строка)
+			u,
+			ts,
+			r.FORMAT,
+			r.TYPIC,
+			&r.SPP_DOMAIN,
+			ip,
+			ipv6,
+			&r.LANG,
+			&r.BROWSER,
+			&r.BROWSER_VERSION,
+			&r.OS,
+			&r.OS_VERSION,
+			&r.DEVICE,
+			&r.SITE_ID,
+			&r.SITE_DOMAIN,
+			bidFloor,
+			&r.GEO,
+			cityID,
+			r.BID_RESPONSES,
+			&r.WIN_DSP_DOMAIN,
+			winFinalPrice,
+			winDspPrice,
+			r.WIN_CID,
+			r.WIN_CRID,
+			r.WIN_USER_ID,
 		); err != nil {
-			log.Printf("Record %d: batch.Append error: %v, skipping record", i, err)
-			continue
+			return stats, fmt.Errorf("batch.Append: %w", err)
 		}
 	}
 
 	if err := batch.Send(); err != nil {
-		log.Printf("batch.Send error: %v", err)
-		return fmt.Errorf("batch.Send: %w", err)
+		return stats, fmt.Errorf("batch.Send: %w", err)
 	}
 
-	log.Printf("Batch successfully sent to ClickHouse")
-	return nil
+	return stats, nil
 }
 
 func parseTimestampUTC(s string) time.Time {
-	// fallback: начало Unix-времени
 	fallback := time.Unix(0, 0).UTC()
 
 	if s == "" {

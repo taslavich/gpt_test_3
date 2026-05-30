@@ -14,11 +14,6 @@ import (
 	"gitlab.com/twinbid-exchange/RTB-exchange/internal/types"
 )
 
-var (
-	impressionsMessagesBuffer []kafka.Message
-	impressionsRecordsBuffer  []types.Impressions
-)
-
 func ProcessKafkaMessagesImpressions(
 	ctx context.Context,
 	reader *kafka.Reader,
@@ -26,79 +21,70 @@ func ProcessKafkaMessagesImpressions(
 	table string,
 	batchSize int,
 	timeoutSec int,
+	timeoutMs int,
 ) error {
-	readCtx, cancel := context.WithTimeout(ctx, time.Duration(timeoutSec)*time.Second)
+	if batchSize <= 0 {
+		return nil
+	}
+
+	start := time.Now()
+	readCtx, cancel := context.WithTimeout(ctx, batchTimeout(timeoutSec, timeoutMs))
 	defer cancel()
 
-	for len(impressionsRecordsBuffer) < batchSize {
+	records := make([]types.Impressions, 0, batchSize)
+	commitMap := make(map[int]kafka.Message, 64)
+
+	var readCount, badJSONCount, emptyCount int
+
+	for len(records) < batchSize {
 		msg, err := reader.FetchMessage(readCtx)
 		if err != nil {
-			if errors.Is(err, context.DeadlineExceeded) {
+			if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) {
 				break
 			}
 			return err
 		}
 
+		readCount++
+
 		var record types.Impressions
 		if err := json.Unmarshal(msg.Value, &record); err != nil {
-			log.Printf("!!! Failed to parse Kafka impression message: %v, value=%s", err, string(msg.Value))
-
-			// Битое сообщение коммитим, чтобы consumer не застрял на нем
-			if err := reader.CommitMessages(ctx, msg); err != nil {
-				return fmt.Errorf("commit bad impression message: %w", err)
-			}
-
+			badJSONCount++
+			rememberCommitMessage(commitMap, msg)
 			continue
 		}
 
 		if !types.HasDataImpressions(record) {
-			log.Printf("!!! Empty impression message, skip and commit: value=%s", string(msg.Value))
-
-			// Пустое сообщение тоже коммитим отдельно
-			if err := reader.CommitMessages(ctx, msg); err != nil {
-				return fmt.Errorf("commit empty impression message: %w", err)
-			}
-
+			emptyCount++
+			rememberCommitMessage(commitMap, msg)
 			continue
 		}
 
-		impressionsRecordsBuffer = append(impressionsRecordsBuffer, record)
-		impressionsMessagesBuffer = append(impressionsMessagesBuffer, msg)
+		records = append(records, record)
+		rememberCommitMessage(commitMap, msg)
 	}
 
-	if len(impressionsRecordsBuffer) < batchSize {
+	if len(records) > 0 {
+		if err := insertBatchImpressions(ctx, ch, table, records); err != nil {
+			return err
+		}
+	}
+
+	commitMessages := compactCommitMessages(commitMap)
+	if len(commitMessages) > 0 {
+		if err := reader.CommitMessages(ctx, commitMessages...); err != nil {
+			return fmt.Errorf("commit impression offsets: %w", err)
+		}
 		log.Printf(
-			"IMPRESSIONS BUFFER WAIT: records=%d messages=%d batchSize=%d timeoutSec=%d",
-			len(impressionsRecordsBuffer),
-			len(impressionsMessagesBuffer),
-			batchSize,
-			timeoutSec,
+			"IMPRESSIONS batch: read=%d inserted=%d offsets=%d bad_json=%d empty=%d duration=%s",
+			readCount,
+			len(records),
+			len(commitMessages),
+			badJSONCount,
+			emptyCount,
+			time.Since(start),
 		)
-		return nil
 	}
-
-	records := impressionsRecordsBuffer[:batchSize]
-	messages := impressionsMessagesBuffer[:batchSize]
-
-	log.Printf(
-		"IMPRESSIONS READY: records=%d messages=%d batchSize=%d",
-		len(records),
-		len(messages),
-		batchSize,
-	)
-
-	if err := insertBatchImpressions(ctx, ch, table, records); err != nil {
-		return err
-	}
-
-	if err := reader.CommitMessages(ctx, messages...); err != nil {
-		return fmt.Errorf("commit impression messages: %w", err)
-	}
-
-	log.Printf("COMMITED IMPRESSIONS %d", len(records))
-
-	impressionsRecordsBuffer = impressionsRecordsBuffer[batchSize:]
-	impressionsMessagesBuffer = impressionsMessagesBuffer[batchSize:]
 
 	return nil
 }
