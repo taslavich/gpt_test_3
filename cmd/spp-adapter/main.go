@@ -2,19 +2,17 @@ package main
 
 import (
 	"context"
-	"crypto/tls"
-	"fmt"
 	"log"
 	"os"
 	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-co-op/gocron"
-	"github.com/redis/go-redis/v9"
 	"gitlab.com/twinbid-exchange/RTB-exchange/internal/config"
 	"gitlab.com/twinbid-exchange/RTB-exchange/internal/geoBadIp"
 	utils "gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/utils_grpc"
 	httpServer "gitlab.com/twinbid-exchange/RTB-exchange/internal/http"
+	redis_service "gitlab.com/twinbid-exchange/RTB-exchange/internal/services/redis"
 	sppAdapter "gitlab.com/twinbid-exchange/RTB-exchange/internal/services/sspAdapter/service"
 	sppAdapterWeb "gitlab.com/twinbid-exchange/RTB-exchange/internal/services/sspAdapter/web"
 )
@@ -32,23 +30,30 @@ func main() {
 	}
 	log.Println("Config initialized!")
 
-	redisClient := redis.NewClient(&redis.Options{
-		Addr:     fmt.Sprintf("%s:%s", cfg.RedisHost, cfg.RedisPort),
-		Password: cfg.RedisPassword,
-		DB:       cfg.RedisDB,
-		TLSConfig: &tls.Config{
-			InsecureSkipVerify: true, // для Let's Encrypt самоподписанного
-			// MinVersion: tls.VersionTLS12,
-		},
-	})
-	defer redisClient.Close()
-
-	log.Println(cfg.RedisHost, cfg.RedisPort)
-
-	if err := redisClient.Ping(ctx).Err(); err != nil {
-		log.Fatalf("Failed to connect to Redis: %v", err)
+	redisAddrs := cfg.RedisShardAddrs
+	if cfg.RedisUseTLS {
+		redisAddrs = cfg.RedisShardTLSAddrs
 	}
-	log.Println("✅ Connected to Redis")
+
+	redisClients, err := redis_service.NewRedisShardedClients(
+		redisAddrs,
+		cfg.RedisPassword,
+		cfg.RedisDB,
+		cfg.RedisDB,
+		cfg.RedisDB,
+		cfg.RedisUseTLS,
+		cfg.RedisPoolSize,
+		cfg.RedisMinIdleConns,
+	)
+	if err != nil {
+		log.Fatalf("Cannot init redis shards: %v", err)
+	}
+	defer redisClients.Close()
+
+	if err := redis_service.PingClients(ctx, "spp-adapter", redisClients.Ortb); err != nil {
+		log.Fatalf("Failed to connect to Redis shards: %v", err)
+	}
+	log.Println("✅ Connected to Redis shards")
 
 	if _, err := os.Stat(cfg.GeoIpDbPath); os.IsNotExist(err) {
 		log.Fatalf("GeoIP file does not exist at path: %s", cfg.GeoIpDbPath)
@@ -99,7 +104,7 @@ func main() {
 	sppAdapterWeb.InitHttpRoutes(
 		ctx,
 		router,
-		redisClient,
+		redisClients.Ortb,
 		badIp.IsBad,
 		geoIp.GetCountryAndCityIdISO,
 		client,

@@ -134,7 +134,11 @@ CREATE TABLE IF NOT EXISTS {db}.fact_impressions
     geo                    LowCardinality(String),
     city_id                Nullable(Int32),
 
+<<<<<<< HEAD
     bid_responses_raw      String DEFAULT '',
+=======
+    bid_responses_raw      String,
+>>>>>>> opt
 
     win_dsp_domain         LowCardinality(String),
 
@@ -188,7 +192,11 @@ CREATE TABLE IF NOT EXISTS {db}.fact_clicks
     geo               LowCardinality(String),
     city_id           Nullable(Int32),
 
+<<<<<<< HEAD
     bid_responses_raw String DEFAULT '',
+=======
+    bid_responses_raw String,
+>>>>>>> opt
 
     win_dsp_domain    LowCardinality(String),
 

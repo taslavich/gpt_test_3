@@ -30,7 +30,7 @@ func postBid_V2_5(
 	ctx context.Context,
 	w http.ResponseWriter,
 	r *http.Request,
-	redisClient *redis.Client,
+	redisClients []*redis.Client,
 	isBadIp func(ipStr string) (bool, error),
 	getCountryISO func(ipStr string) (string, uint32, error),
 	orchestratorClient orchestratorProto.OrchestratorServiceClient,
@@ -241,7 +241,7 @@ func postBid_V2_5(
 		impIdUuid[input.Payload.Imp[i].GetId()] = globalId
 		if err := utils.WriteStatsOrtb(
 			ctx,
-			redisClient,
+			redisClients,
 			globalId,
 			logged,
 			format,

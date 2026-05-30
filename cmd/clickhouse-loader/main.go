@@ -114,6 +114,7 @@ func main() {
 				connProd,
 				cfg.Clickhouse,
 				cfg.TimeoutSec,
+				cfg.BatchTimeoutMS,
 			)
 			if err != nil {
 				log.Printf("❌ Processing error: %v", err)

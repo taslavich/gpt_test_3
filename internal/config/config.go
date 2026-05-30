@@ -242,7 +242,8 @@ type ClickhouseLoaderConfig struct {
 	Kafka      KafkaConfig
 	Clickhouse ClickhouseConfig
 
-	TimeoutSec int `yaml:"TIMEOUT_SEC" env:"TIMEOUT_SEC"`
+	TimeoutSec     int `yaml:"TIMEOUT_SEC" env:"TIMEOUT_SEC"`
+	BatchTimeoutMS int `yaml:"CLICKHOUSE_BATCH_TIMEOUT_MS" env:"CLICKHOUSE_BATCH_TIMEOUT_MS" env-default:"800"`
 }
 
 type MockDspConfig struct {
@@ -259,6 +260,12 @@ type RedisConfig struct {
 	RedisHost     string `yaml:"REDIS_HOST" env:"REDIS_HOST"`
 	RedisPort     string `yaml:"REDIS_PORT" env:"REDIS_PORT"`
 	RedisPassword string `yaml:"REDIS_PASSWORD" env:"REDIS_PASSWORD"`
+
+	RedisShardAddrs    []string `yaml:"REDIS_SHARD_ADDRS" env:"REDIS_SHARD_ADDRS"`
+	RedisShardTLSAddrs []string `yaml:"REDIS_SHARD_TLS_ADDRS" env:"REDIS_SHARD_TLS_ADDRS"`
+	RedisUseTLS        bool     `yaml:"REDIS_USE_TLS" env:"REDIS_USE_TLS" env-default:"false"`
+	RedisPoolSize      int      `yaml:"REDIS_POOL_SIZE" env:"REDIS_POOL_SIZE" env-default:"64"`
+	RedisMinIdleConns  int      `yaml:"REDIS_MIN_IDLE_CONNS" env:"REDIS_MIN_IDLE_CONNS" env-default:"16"`
 
 	// Redis ORTB
 	RedisDBOrtb   int    `yaml:"REDIS_DB_ORTB" env:"REDIS_DB_ORTB"`
@@ -279,6 +286,8 @@ type RedisConfig struct {
 type KafkaConfig struct {
 	KafkaBrokers     []string `yaml:"KAFKA_BROKERS" env:"KAFKA_BROKERS"`
 	FlushIntervalSec int      `yaml:"FLUSH_INTERVAL_SEC" env:"FLUSH_INTERVAL_SEC"`
+
+	ImpressionClickFlushIntervalSec int `yaml:"IMPRESSION_CLICK_FLUSH_INTERVAL_SEC" env:"IMPRESSION_CLICK_FLUSH_INTERVAL_SEC" env-default:"60"`
 
 	// Kafka topics
 	KafkaTopicOrtb        string `yaml:"KAFKA_TOPIC_ORTB" env:"KAFKA_TOPIC_ORTB" env-default:"ortb"`

@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"crypto/tls"
 	"fmt"
 	"log"
 	"net"
@@ -19,6 +18,7 @@ import (
 	httpServer "gitlab.com/twinbid-exchange/RTB-exchange/internal/http"
 	maxproc "gitlab.com/twinbid-exchange/RTB-exchange/internal/mp"
 	dspRouterWeb "gitlab.com/twinbid-exchange/RTB-exchange/internal/services/dspRouter/web"
+	redis_service "gitlab.com/twinbid-exchange/RTB-exchange/internal/services/redis"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/redis/go-redis/v9"
@@ -47,21 +47,30 @@ func main() {
 
 	log.Println("Timeout", cfg.BidResponsesTimeout)
 
-	redisClient := redis.NewClient(&redis.Options{
-		Addr:     fmt.Sprintf("%s:%s", cfg.RedisHost, cfg.RedisPort),
-		Password: cfg.RedisPassword,
-		DB:       cfg.RedisDB,
-		TLSConfig: &tls.Config{
-			InsecureSkipVerify: true, // для Let's Encrypt самоподписанного
-			// MinVersion: tls.VersionTLS12,
-		},
-	})
-	defer redisClient.Close()
-
-	if err := waitForRedis(ctx, redisClient, 10, 2*time.Second); err != nil {
-		log.Fatalf("Failed to connect to Redis: %v", err)
+	redisAddrs := cfg.RedisShardAddrs
+	if cfg.RedisUseTLS {
+		redisAddrs = cfg.RedisShardTLSAddrs
 	}
-	log.Println("✅ Connected to Redis")
+
+	redisClients, err := redis_service.NewRedisShardedClients(
+		redisAddrs,
+		cfg.RedisPassword,
+		cfg.RedisDB,
+		cfg.RedisDB,
+		cfg.RedisDB,
+		cfg.RedisUseTLS,
+		cfg.RedisPoolSize,
+		cfg.RedisMinIdleConns,
+	)
+	if err != nil {
+		log.Fatalf("Cannot init redis shards: %v", err)
+	}
+	defer redisClients.Close()
+
+	if err := redis_service.PingClients(ctx, "router", redisClients.Ortb); err != nil {
+		log.Fatalf("Failed to connect to Redis shards: %v", err)
+	}
+	log.Println("✅ Connected to Redis shards")
 
 	ruleManager := filter.NewRuleManager()
 
@@ -144,7 +153,7 @@ func main() {
 		processor,
 		cfg.DSPEndpointsAdult_v_2_5,
 		cfg.DSPEndpointsMainstream_v_2_5,
-		redisClient,
+		redisClients.Ortb,
 		cfg.BidResponsesTimeout,
 		&sspGeoDspMapAdult,
 		&sspGeoDspMapMainstream,

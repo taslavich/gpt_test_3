@@ -20,7 +20,7 @@ import (
 
 type Server struct {
 	ProfitPercent              float32
-	redisClient                *redis.Client
+	redisClients               []*redis.Client
 	redisSetOrtb               string
 	timeout                    time.Duration
 	percentFilename_adult      string
@@ -46,7 +46,7 @@ type Server struct {
 
 func NewServer(
 	ProfitPercent float32,
-	redisClient *redis.Client,
+	redisClients []*redis.Client,
 	redisSetOrtb string,
 	GetWinnerBidInternal_V_2_5 func(
 		ctx context.Context,
@@ -69,7 +69,7 @@ func NewServer(
 ) *Server {
 	return &Server{
 		ProfitPercent:              ProfitPercent,
-		redisClient:                redisClient,
+		redisClients:               redisClients,
 		redisSetOrtb:               redisSetOrtb,
 		GetWinnerBidInternal_V_2_5: GetWinnerBidInternal_V_2_5,
 		percentFilename_adult:      percentFilename_adult,
@@ -111,11 +111,11 @@ func (s *Server) GetWinnerBid_V2_5(
 	)
 
 	for _, uuid := range req.ImpIdUuid {
-		if err := utils.WriteWinStats(ctx, s.redisClient, uuid, clickhouseBid[uuid], req.Logged); err != nil {
+		if err := utils.WriteWinStats(ctx, s.redisClients, uuid, clickhouseBid[uuid], req.Logged); err != nil {
 			log.Printf("failed to WriteJsonToRedis Bid BID_RESPONSE_WINNER in GetWinnerBidInternal: %v", err)
 		}
 
-		if err := utils.AddUUIDToRedisSet(ctx, s.redisClient, s.redisSetOrtb, uuid, req.Logged); err != nil {
+		if err := utils.AddUUIDToRedisSet(ctx, s.redisClients, s.redisSetOrtb, uuid, req.Logged); err != nil {
 			log.Printf("failed to add ORTB UUID to Redis set in GetWinnerBidInternal: %v", err)
 		}
 	}

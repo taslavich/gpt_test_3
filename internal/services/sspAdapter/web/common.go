@@ -17,7 +17,7 @@ func getAdm(
 	ctx context.Context,
 	w http.ResponseWriter,
 	r *http.Request,
-	redisClient *redis.Client,
+	redisClients []*redis.Client,
 	redisSetClicks string,
 ) {
 	input := r.Context().Value(httpin.Input).(*admNurlRequest)
@@ -29,9 +29,9 @@ func getAdm(
 		return
 	}
 
-	if err := utils.WriteStringToRedis(ctx, redisClient, input.GlobalId, constants.EVENT_TIME_CLICKS_COLUMN, time.Now().UTC().Format("2006-01-02 15:04:05.000"), true); err != nil {
+	if err := utils.WriteStringToRedis(ctx, redisClients, input.GlobalId, constants.EVENT_TIME_CLICKS_COLUMN, time.Now().UTC().Format("2006-01-02 15:04:05.000"), true); err != nil {
 		log.Printf("failed to WriteStringToRedis EVENT_TIME_CLICKS_COLUMN in getAdm: %v", err)
-	} else if err := utils.AddUUIDToRedisSet(ctx, redisClient, redisSetClicks, input.GlobalId, true); err != nil {
+	} else if err := utils.AddUUIDToRedisSet(ctx, redisClients, redisSetClicks, input.GlobalId, true); err != nil {
 		log.Printf("failed to add click UUID to Redis set in getAdm: %v", err)
 	}
 
@@ -42,7 +42,7 @@ func getNurl(
 	ctx context.Context,
 	w http.ResponseWriter,
 	r *http.Request,
-	redisClient *redis.Client,
+	redisClients []*redis.Client,
 	redisSetImpressions string,
 ) {
 	input := r.Context().Value(httpin.Input).(*admNurlRequest)
@@ -54,9 +54,9 @@ func getNurl(
 		return
 	}
 
-	if err := utils.WriteStringToRedis(ctx, redisClient, input.GlobalId, constants.EVENT_TIME_IMPRESSIONS_COLUMN, time.Now().UTC().Format("2006-01-02 15:04:05.000"), true); err != nil {
+	if err := utils.WriteStringToRedis(ctx, redisClients, input.GlobalId, constants.EVENT_TIME_IMPRESSIONS_COLUMN, time.Now().UTC().Format("2006-01-02 15:04:05.000"), true); err != nil {
 		log.Printf("failed to WriteStringToRedis EVENT_TIME_IMPRESSIONS_COLUMN in getAdm: %v", err)
-	} else if err := utils.AddUUIDToRedisSet(ctx, redisClient, redisSetImpressions, input.GlobalId, true); err != nil {
+	} else if err := utils.AddUUIDToRedisSet(ctx, redisClients, redisSetImpressions, input.GlobalId, true); err != nil {
 		log.Printf("failed to add impression UUID to Redis set in getNurl: %v", err)
 	}
 
