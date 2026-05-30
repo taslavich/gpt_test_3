@@ -7,7 +7,6 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
-	"time"
 
 	"gitlab.com/twinbid-exchange/RTB-exchange/internal/config"
 	kafka_service "gitlab.com/twinbid-exchange/RTB-exchange/internal/services/kafka"
@@ -72,36 +71,31 @@ func main() {
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
 
-	var totalProcessed int64
-	ticker := time.NewTicker(time.Duration(cfg.FlushIntervalSec) * time.Second)
-	defer ticker.Stop()
-
-	log.Printf("🚀 Kafka Loader started. Processing every %d seconds", cfg.FlushIntervalSec)
+	log.Printf("🚀 Kafka Loader started. Continuous Redis -> Kafka processing")
 
 	for {
 		select {
 		case <-sigChan:
-			log.Printf("🛑 Shutting down Kafka Loader. Total processed: %d records", totalProcessed)
+			log.Print("🛑 Shutting down Kafka Loader")
 			return
-		case <-ticker.C:
+		default:
 			err := kafka_loader.ProcessKafkaMessages(
-				context.Background(),
-				redisClient.Ortb,         // redisClientOrtb
-				redisClient.Impressions,  // redisClientImpressions
-				redisClient.Clicks,       // redisClientClicks
-				kafkaWriter.Ortb,         // kafkaWriterOrtb
-				kafkaWriter.Impressions,  // kafkaWriterImpressions
-				kafkaWriter.Clicks,       // kafkaWriterClicks
-				cfg.BatchSizeOrtb,        // batchSizeOrtb
-				cfg.BatchSizeImpressions, // batchSizeImpressions
-				cfg.BatchSizeClicks,      // batchSizeClicks
-				cfg.RedisSetOrtb,         // redisSetOrtb
-				cfg.RedisSetImpressions,  // redisSetImpressions
-				cfg.RedisSetClicks,       // redisSetClicks
+				ctx,
+				redisClient.Ortb,
+				redisClient.Impressions,
+				redisClient.Clicks,
+				kafkaWriter.Ortb,
+				kafkaWriter.Impressions,
+				kafkaWriter.Clicks,
+				cfg.BatchSizeOrtb,
+				cfg.BatchSizeImpressions,
+				cfg.BatchSizeClicks,
+				cfg.RedisSetOrtb,
+				cfg.RedisSetImpressions,
+				cfg.RedisSetClicks,
 			)
 			if err != nil {
 				log.Printf("❌ Batch processing error: %v", err)
-				continue
 			}
 		}
 	}

@@ -14,11 +14,6 @@ import (
 	"gitlab.com/twinbid-exchange/RTB-exchange/internal/types"
 )
 
-var (
-	clicksMessagesBuffer []kafka.Message
-	clicksRecordsBuffer  []types.Clicks
-)
-
 func ProcessKafkaMessagesClicks(
 	ctx context.Context,
 	reader *kafka.Reader,
@@ -26,79 +21,70 @@ func ProcessKafkaMessagesClicks(
 	table string,
 	batchSize int,
 	timeoutSec int,
+	timeoutMs int,
 ) error {
-	readCtx, cancel := context.WithTimeout(ctx, time.Duration(timeoutSec)*time.Second)
+	if batchSize <= 0 {
+		return nil
+	}
+
+	start := time.Now()
+	readCtx, cancel := context.WithTimeout(ctx, batchTimeout(timeoutSec, timeoutMs))
 	defer cancel()
 
-	for len(clicksRecordsBuffer) < batchSize {
+	records := make([]types.Clicks, 0, batchSize)
+	commitMap := make(map[int]kafka.Message, 64)
+
+	var readCount, badJSONCount, emptyCount int
+
+	for len(records) < batchSize {
 		msg, err := reader.FetchMessage(readCtx)
 		if err != nil {
-			if errors.Is(err, context.DeadlineExceeded) {
+			if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) {
 				break
 			}
 			return err
 		}
 
+		readCount++
+
 		var record types.Clicks
 		if err := json.Unmarshal(msg.Value, &record); err != nil {
-			log.Printf("!!!! Failed to parse Kafka click message: %v, value=%s", err, string(msg.Value))
-
-			// Битое сообщение лучше закоммитить, иначе можно застрять на нем
-			if err := reader.CommitMessages(ctx, msg); err != nil {
-				return fmt.Errorf("commit bad click message: %w", err)
-			}
-
+			badJSONCount++
+			rememberCommitMessage(commitMap, msg)
 			continue
 		}
 
 		if !types.HasDataClicks(record) {
-			log.Printf("!!!! Empty click message, skip and commit: value=%s", string(msg.Value))
-
-			// Пустое сообщение тоже лучше закоммитить отдельно
-			if err := reader.CommitMessages(ctx, msg); err != nil {
-				return fmt.Errorf("commit empty click message: %w", err)
-			}
-
+			emptyCount++
+			rememberCommitMessage(commitMap, msg)
 			continue
 		}
 
-		clicksRecordsBuffer = append(clicksRecordsBuffer, record)
-		clicksMessagesBuffer = append(clicksMessagesBuffer, msg)
+		records = append(records, record)
+		rememberCommitMessage(commitMap, msg)
 	}
 
-	if len(clicksRecordsBuffer) < batchSize {
+	if len(records) > 0 {
+		if err := insertBatchClicks(ctx, ch, table, records); err != nil {
+			return err
+		}
+	}
+
+	commitMessages := compactCommitMessages(commitMap)
+	if len(commitMessages) > 0 {
+		if err := reader.CommitMessages(ctx, commitMessages...); err != nil {
+			return fmt.Errorf("commit click offsets: %w", err)
+		}
 		log.Printf(
-			"CLICKS BUFFER WAIT: records=%d messages=%d batchSize=%d timeoutSec=%d",
-			len(clicksRecordsBuffer),
-			len(clicksMessagesBuffer),
-			batchSize,
-			timeoutSec,
+			"CLICKS batch: read=%d inserted=%d offsets=%d bad_json=%d empty=%d duration=%s",
+			readCount,
+			len(records),
+			len(commitMessages),
+			badJSONCount,
+			emptyCount,
+			time.Since(start),
 		)
-		return nil
 	}
-
-	records := clicksRecordsBuffer[:batchSize]
-	messages := clicksMessagesBuffer[:batchSize]
-
-	log.Printf(
-		"CLICKS READY: records=%d messages=%d batchSize=%d",
-		len(records),
-		len(messages),
-		batchSize,
-	)
-
-	if err := insertBatchClicks(ctx, ch, table, records); err != nil {
-		return err
-	}
-
-	if err := reader.CommitMessages(ctx, messages...); err != nil {
-		return fmt.Errorf("commit click messages: %w", err)
-	}
-
-	log.Printf("COMMITED CLICKS %d", len(records))
-
-	clicksRecordsBuffer = clicksRecordsBuffer[batchSize:]
-	clicksMessagesBuffer = clicksMessagesBuffer[batchSize:]
 
 	return nil
 }
