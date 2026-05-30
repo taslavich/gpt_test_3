@@ -108,7 +108,7 @@ func main() {
 			log.Print("🛑 Shutting down ClickHouse Loader")
 			return
 		default:
-			err := clickhouse_loader.ProcessKafkaMessages(
+			inserted, err := clickhouse_loader.ProcessKafkaMessages(
 				ctx,
 				kafkaReaders,
 				connProd,
@@ -118,6 +118,15 @@ func main() {
 			)
 			if err != nil {
 				log.Printf("❌ Processing error: %v", err)
+			}
+
+			if inserted == 0 {
+				select {
+				case <-sigChan:
+					log.Print("🛑 Shutting down ClickHouse Loader")
+					return
+				case <-time.After(200 * time.Millisecond):
+				}
 			}
 		}
 	}

@@ -3,10 +3,7 @@ package kafka_loader
 import (
 	"context"
 	"fmt"
-<<<<<<< HEAD
 	"log"
-=======
->>>>>>> opt
 	"sync"
 
 	"github.com/redis/go-redis/v9"
@@ -31,44 +28,35 @@ func ProcessKafkaMessages(
 	redisSetImpressions string,
 	redisSetClicks string,
 	runImpressionsClicks bool,
-) error {
-	if err := ProcessBatchOrtb(ctx, redisClientsOrtb, kafkaWriterOrtb, batchSizeOrtb, redisSetOrtb); err != nil {
-		return fmt.Errorf("Cannot ProcessBatchOrtb: %w", err)
+) (int, error) {
+	ortbProcessed, err := ProcessBatchOrtb(ctx, redisClientsOrtb, kafkaWriterOrtb, batchSizeOrtb, redisSetOrtb)
+	if err != nil {
+		return ortbProcessed, fmt.Errorf("Cannot ProcessBatchOrtb: %w", err)
 	}
 
-<<<<<<< HEAD
-	var wg sync.WaitGroup
-	errCh := make(chan error, 2)
+	if ortbProcessed == 0 {
+		return 0, nil
+	}
 
-=======
 	if !runImpressionsClicks {
-		return nil
+		return ortbProcessed, nil
 	}
 
 	var wg sync.WaitGroup
 	errCh := make(chan error, 2)
 
->>>>>>> opt
 	wg.Add(2)
 
 	go func() {
 		defer wg.Done()
-<<<<<<< HEAD
-		if err := ProcessBatchImpressions(ctx, redisClientImpressions, kafkaWriterImpressions, batchSizeImpressions, redisSetImpressions); err != nil {
-=======
 		if err := ProcessBatchImpressions(ctx, redisClientsImpressions, kafkaWriterImpressions, batchSizeImpressions, redisSetImpressions); err != nil {
->>>>>>> opt
 			errCh <- fmt.Errorf("Cannot ProcessBatchImpressions: %w", err)
 		}
 	}()
 
 	go func() {
 		defer wg.Done()
-<<<<<<< HEAD
-		if err := ProcessBatchClicks(ctx, redisClientClicks, kafkaWriterClicks, batchSizeClicks, redisSetClicks); err != nil {
-=======
 		if err := ProcessBatchClicks(ctx, redisClientsClicks, kafkaWriterClicks, batchSizeClicks, redisSetClicks); err != nil {
->>>>>>> opt
 			errCh <- fmt.Errorf("Cannot ProcessBatchClicks: %w", err)
 		}
 	}()
@@ -78,15 +66,11 @@ func ProcessKafkaMessages(
 
 	for err := range errCh {
 		if err != nil {
-<<<<<<< HEAD
 			log.Printf("⚠️ %v", err)
-=======
-			return err
->>>>>>> opt
 		}
 	}
 
-	return nil
+	return ortbProcessed, nil
 }
 
 func stringSliceToAny(slice []string) []interface{} {

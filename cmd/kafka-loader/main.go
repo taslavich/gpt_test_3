@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"gitlab.com/twinbid-exchange/RTB-exchange/internal/config"
 	kafka_service "gitlab.com/twinbid-exchange/RTB-exchange/internal/services/kafka"
@@ -71,68 +72,30 @@ func main() {
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
 
-<<<<<<< HEAD
-	log.Printf("🚀 Kafka Loader started. Continuous Redis -> Kafka processing")
-=======
-	ortbTicker := time.NewTicker(time.Duration(cfg.FlushIntervalSec) * time.Second)
-	defer ortbTicker.Stop()
-
 	impressionClickInterval := time.Duration(cfg.ImpressionClickFlushIntervalSec) * time.Second
 	lastImpressionClickRun := time.Now()
 
-	log.Printf(
-		"🚀 Kafka Loader started. ORTB every %d sec, impressions/clicks every %d sec",
-		cfg.FlushIntervalSec,
-		cfg.ImpressionClickFlushIntervalSec,
-	)
->>>>>>> opt
+	log.Printf("🚀 Kafka Loader started. Continuous Redis -> Kafka processing")
 
 	for {
 		select {
 		case <-sigChan:
-<<<<<<< HEAD
 			log.Print("🛑 Shutting down Kafka Loader")
 			return
 		default:
-			err := kafka_loader.ProcessKafkaMessages(
-				ctx,
-				redisClient.Ortb,
-				redisClient.Impressions,
-				redisClient.Clicks,
-				kafkaWriter.Ortb,
-				kafkaWriter.Impressions,
-				kafkaWriter.Clicks,
-				cfg.BatchSizeOrtb,
-				cfg.BatchSizeImpressions,
-				cfg.BatchSizeClicks,
-				cfg.RedisSetOrtb,
-				cfg.RedisSetImpressions,
-				cfg.RedisSetClicks,
-			)
-			if err != nil {
-				log.Printf("❌ Batch processing error: %v", err)
-=======
-			log.Println("🛑 Shutting down Kafka Loader")
-			return
-
-		case <-ortbTicker.C:
 			runImpressionsClicks := time.Since(lastImpressionClickRun) >= impressionClickInterval
 
-			err := kafka_loader.ProcessKafkaMessages(
-				context.Background(),
-
+			ortbProcessed, err := kafka_loader.ProcessKafkaMessages(
+				ctx,
 				redisClients.Ortb,
 				redisClients.Impressions,
 				redisClients.Clicks,
-
 				kafkaWriter.Ortb,
 				kafkaWriter.Impressions,
 				kafkaWriter.Clicks,
-
 				cfg.BatchSizeOrtb,
 				cfg.BatchSizeImpressions,
 				cfg.BatchSizeClicks,
-
 				cfg.RedisSetOrtb,
 				cfg.RedisSetImpressions,
 				cfg.RedisSetClicks,
@@ -142,9 +105,17 @@ func main() {
 				log.Printf("❌ Batch processing error: %v", err)
 			}
 
-			if runImpressionsClicks {
+			if runImpressionsClicks && ortbProcessed > 0 {
 				lastImpressionClickRun = time.Now()
->>>>>>> opt
+			}
+
+			if ortbProcessed == 0 {
+				select {
+				case <-sigChan:
+					log.Print("🛑 Shutting down Kafka Loader")
+					return
+				case <-time.After(200 * time.Millisecond):
+				}
 			}
 		}
 	}

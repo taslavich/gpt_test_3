@@ -18,9 +18,8 @@ func ProcessKafkaMessages(
 	Clickhouse config.ClickhouseConfig,
 	timeoutSec int,
 	timeoutMS int,
-) error {
-<<<<<<< HEAD
-	if err := ProcessKafkaMessagesOrtb(
+) (int, error) {
+	ortbInserted, err := ProcessKafkaMessagesOrtb(
 		ctx,
 		kafkaReaders.Ortb,
 		ch,
@@ -28,11 +27,13 @@ func ProcessKafkaMessages(
 		Clickhouse.BatchSizeOrtb,
 		timeoutSec,
 		Clickhouse.BatchTimeoutMS,
-	); err != nil {
-=======
-	if err := ProcessKafkaMessagesOrtb(ctx, kafkaReaders.Ortb, ch, Clickhouse.TableOrtb, Clickhouse.BatchSizeOrtb, timeoutSec, timeoutMS); err != nil {
->>>>>>> opt
-		return fmt.Errorf("Cannot ProcessKafkaMessagesOrtb: %w", err)
+	)
+	if err != nil {
+		return ortbInserted, fmt.Errorf("Cannot ProcessKafkaMessagesOrtb: %w", err)
+	}
+
+	if ortbInserted == 0 {
+		return 0, nil
 	}
 
 	var wg sync.WaitGroup
@@ -42,7 +43,6 @@ func ProcessKafkaMessages(
 
 	go func() {
 		defer wg.Done()
-<<<<<<< HEAD
 		if err := ProcessKafkaMessagesImpressions(
 			ctx,
 			kafkaReaders.Impressions,
@@ -52,16 +52,12 @@ func ProcessKafkaMessages(
 			timeoutSec,
 			Clickhouse.BatchTimeoutMS,
 		); err != nil {
-=======
-		if err := ProcessKafkaMessagesImpressions(ctx, kafkaReaders.Impressions, ch, Clickhouse.TableImpressions, Clickhouse.BatchSizeImpressions, timeoutSec, timeoutMS); err != nil {
->>>>>>> opt
 			errCh <- fmt.Errorf("Cannot ProcessKafkaMessagesImpressions: %w", err)
 		}
 	}()
 
 	go func() {
 		defer wg.Done()
-<<<<<<< HEAD
 		if err := ProcessKafkaMessagesClicks(
 			ctx,
 			kafkaReaders.Clicks,
@@ -71,9 +67,6 @@ func ProcessKafkaMessages(
 			timeoutSec,
 			Clickhouse.BatchTimeoutMS,
 		); err != nil {
-=======
-		if err := ProcessKafkaMessagesClicks(ctx, kafkaReaders.Clicks, ch, Clickhouse.TableClicks, Clickhouse.BatchSizeClicks, timeoutSec, timeoutMS); err != nil {
->>>>>>> opt
 			errCh <- fmt.Errorf("Cannot ProcessKafkaMessagesClicks: %w", err)
 		}
 	}()
@@ -87,5 +80,5 @@ func ProcessKafkaMessages(
 		}
 	}
 
-	return nil
+	return ortbInserted, nil
 }

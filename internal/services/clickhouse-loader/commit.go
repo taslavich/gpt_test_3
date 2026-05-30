@@ -18,8 +18,15 @@ func compactCommitMessages(commitMap map[int]kafka.Message) []kafka.Message {
 	for _, msg := range commitMap {
 		messages = append(messages, msg)
 	}
-<<<<<<< HEAD
 	return messages
+}
+
+func compactCommitMessagesFromSlice(input []kafka.Message) []kafka.Message {
+	commitMap := make(map[int]kafka.Message, len(input))
+	for _, msg := range input {
+		rememberCommitMessage(commitMap, msg)
+	}
+	return compactCommitMessages(commitMap)
 }
 
 func batchTimeout(timeoutSec int, timeoutMs int) time.Duration {
@@ -30,16 +37,4 @@ func batchTimeout(timeoutSec int, timeoutMs int) time.Duration {
 		return time.Duration(timeoutSec) * time.Second
 	}
 	return 800 * time.Millisecond
-=======
-
-	return messages
-}
-
-func batchTimeout(timeoutSec int, timeoutMS int) time.Duration {
-	if timeoutMS > 0 {
-		return time.Duration(timeoutMS) * time.Millisecond
-	}
-
-	return time.Duration(timeoutSec) * time.Second
->>>>>>> opt
 }

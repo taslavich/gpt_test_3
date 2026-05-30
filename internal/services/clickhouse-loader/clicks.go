@@ -10,12 +10,13 @@ import (
 	"github.com/ClickHouse/clickhouse-go/v2"
 	"github.com/google/uuid"
 	"github.com/segmentio/kafka-go"
-<<<<<<< HEAD
-	"gitlab.com/twinbid-exchange/RTB-exchange/internal/types"
-=======
 	eventspb "gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/proto/buffer"
 	"google.golang.org/protobuf/proto"
->>>>>>> opt
+)
+
+var (
+	clicksMessagesBuffer []kafka.Message
+	clicksRecordsBuffer  []eventspb.ClickEvent
 )
 
 func ProcessKafkaMessagesClicks(
@@ -25,7 +26,6 @@ func ProcessKafkaMessagesClicks(
 	table string,
 	batchSize int,
 	timeoutSec int,
-<<<<<<< HEAD
 	timeoutMs int,
 ) error {
 	if batchSize <= 0 {
@@ -36,28 +36,10 @@ func ProcessKafkaMessagesClicks(
 	readCtx, cancel := context.WithTimeout(ctx, batchTimeout(timeoutSec, timeoutMs))
 	defer cancel()
 
-	records := make([]types.Clicks, 0, batchSize)
-	commitMap := make(map[int]kafka.Message, 64)
+	commitOnlyMap := make(map[int]kafka.Message, 64)
+	var readCount, badProtoCount, emptyCount int
 
-	var readCount, badJSONCount, emptyCount int
-=======
-	timeoutMS int,
-) error {
-	start := time.Now()
-	readCtx, cancel := context.WithTimeout(ctx, batchTimeout(timeoutSec, timeoutMS))
-	defer cancel()
-
-	commitMap := make(map[int]kafka.Message, 64)
-	records := make([]eventspb.ClickEvent, 0, batchSize)
-
-	var (
-		readCount     int
-		badProtoCount int
-		emptyCount    int
-	)
->>>>>>> opt
-
-	for len(records) < batchSize {
+	for len(clicksRecordsBuffer) < batchSize {
 		msg, err := reader.FetchMessage(readCtx)
 		if err != nil {
 			if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) {
@@ -67,94 +49,64 @@ func ProcessKafkaMessagesClicks(
 		}
 
 		readCount++
-<<<<<<< HEAD
-
-		var record types.Clicks
-		if err := json.Unmarshal(msg.Value, &record); err != nil {
-			badJSONCount++
-			rememberCommitMessage(commitMap, msg)
-			continue
-		}
-
-		if !types.HasDataClicks(record) {
-			emptyCount++
-			rememberCommitMessage(commitMap, msg)
-=======
-		rememberCommitMessage(commitMap, msg)
 
 		var record eventspb.ClickEvent
 		if err := proto.Unmarshal(msg.Value, &record); err != nil {
 			badProtoCount++
+			rememberCommitMessage(commitOnlyMap, msg)
 			continue
 		}
 
 		if record.Uuid == "" || record.EventTimeClicksMs == 0 {
 			emptyCount++
->>>>>>> opt
+			rememberCommitMessage(commitOnlyMap, msg)
 			continue
 		}
 
-		records = append(records, record)
-<<<<<<< HEAD
-		rememberCommitMessage(commitMap, msg)
+		clicksRecordsBuffer = append(clicksRecordsBuffer, record)
+		clicksMessagesBuffer = append(clicksMessagesBuffer, msg)
 	}
 
-	if len(records) > 0 {
-		if err := insertBatchClicks(ctx, ch, table, records); err != nil {
-			return err
+	if len(clicksRecordsBuffer) < batchSize {
+		commitSkipped(ctx, reader, commitOnlyMap, "click skipped")
+		if readCount > 0 {
+			log.Printf(
+				"CLICKS BUFFER WAIT: records=%d batchSize=%d read=%d bad_proto=%d empty=%d duration=%s",
+				len(clicksRecordsBuffer),
+				batchSize,
+				readCount,
+				badProtoCount,
+				emptyCount,
+				time.Since(start),
+			)
 		}
-	}
-
-	commitMessages := compactCommitMessages(commitMap)
-	if len(commitMessages) > 0 {
-		if err := reader.CommitMessages(ctx, commitMessages...); err != nil {
-			return fmt.Errorf("commit click offsets: %w", err)
-		}
-		log.Printf(
-			"CLICKS batch: read=%d inserted=%d offsets=%d bad_json=%d empty=%d duration=%s",
-			readCount,
-			len(records),
-			len(commitMessages),
-			badJSONCount,
-			emptyCount,
-			time.Since(start),
-		)
-	}
-
-=======
-	}
-
-	if len(records) == 0 {
-		if len(commitMap) > 0 {
-			commitMessages := compactCommitMessages(commitMap)
-			if err := reader.CommitMessages(ctx, commitMessages...); err != nil {
-				return fmt.Errorf("commit skipped click messages: %w", err)
-			}
-		}
-
 		return nil
 	}
+
+	records := clicksRecordsBuffer[:batchSize]
+	messages := clicksMessagesBuffer[:batchSize]
 
 	if err := insertBatchClicks(ctx, ch, table, records); err != nil {
 		return err
 	}
 
-	commitMessages := compactCommitMessages(commitMap)
+	commitMessages := compactCommitMessagesFromSlice(messages)
 	if err := reader.CommitMessages(ctx, commitMessages...); err != nil {
-		return fmt.Errorf("commit click messages: %w", err)
+		return fmt.Errorf("commit click offsets after successful insert failed: %w", err)
 	}
 
 	log.Printf(
-		"CLICKS batch: read=%d inserted=%d bad_proto=%d empty=%d offsets=%d duration=%s",
-		readCount,
+		"CLICKS batch: inserted=%d offsets=%d read=%d bad_proto=%d empty=%d duration=%s",
 		len(records),
+		len(commitMessages),
+		readCount,
 		badProtoCount,
 		emptyCount,
-		len(commitMessages),
 		time.Since(start),
 	)
 
->>>>>>> opt
+	clicksRecordsBuffer = clicksRecordsBuffer[batchSize:]
+	clicksMessagesBuffer = clicksMessagesBuffer[batchSize:]
 	return nil
 }
 
@@ -180,7 +132,8 @@ func insertBatchClicks(
 		return fmt.Errorf("PrepareBatch: %w", err)
 	}
 
-	for _, r := range records {
+	for i := range records {
+		r := &records[i]
 		u, err := uuid.Parse(r.Uuid)
 		if err != nil {
 			u = uuid.Nil
@@ -188,10 +141,7 @@ func insertBatchClicks(
 
 		ts := time.UnixMilli(r.EventTimeClicksMs).UTC()
 
-		if err := batch.Append(
-			u,
-			ts,
-		); err != nil {
+		if err := batch.Append(u, ts); err != nil {
 			return fmt.Errorf("batch.Append: %w", err)
 		}
 	}

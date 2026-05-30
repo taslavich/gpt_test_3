@@ -51,23 +51,25 @@ func ProcessBatchOrtb(
 	kafkaWriter *kafka.Writer,
 	batchSize int64,
 	setName string,
-) error {
+) (int, error) {
 	if batchSize <= 0 {
-		return nil
+		return 0, nil
 	}
 
 	if setName == "" {
-		return fmt.Errorf("redis set name is empty")
+		return 0, fmt.Errorf("redis set name is empty")
 	}
 
 	if len(redisClients) == 0 {
-		return fmt.Errorf("redis clients list is empty")
+		return 0, fmt.Errorf("redis clients list is empty")
 	}
 
 	perShardLimit := kafkaLoaderSplitLimit(batchSize, len(redisClients))
 
 	var wg sync.WaitGroup
 	errCh := make(chan error, len(redisClients))
+	var mu sync.Mutex
+	totalProcessed := 0
 
 	for shardID, redisClient := range redisClients {
 		wg.Add(1)
@@ -75,16 +77,22 @@ func ProcessBatchOrtb(
 		go func(shardID int, redisClient *redis.Client) {
 			defer wg.Done()
 
-			if err := processOrtbShard(
+			processed, err := processOrtbShard(
 				ctx,
 				shardID,
 				redisClient,
 				kafkaWriter,
 				perShardLimit,
 				setName,
-			); err != nil {
+			)
+			if err != nil {
 				errCh <- err
+				return
 			}
+
+			mu.Lock()
+			totalProcessed += processed
+			mu.Unlock()
 		}(shardID, redisClient)
 	}
 
@@ -93,11 +101,11 @@ func ProcessBatchOrtb(
 
 	for err := range errCh {
 		if err != nil {
-			return err
+			return totalProcessed, err
 		}
 	}
 
-	return nil
+	return totalProcessed, nil
 }
 
 func processOrtbShard(
@@ -107,16 +115,16 @@ func processOrtbShard(
 	kafkaWriter *kafka.Writer,
 	batchSize int64,
 	setName string,
-) error {
+) (int, error) {
 	processingSetName := fmt.Sprintf("%s:processing:%d", setName, shardID)
 
 	uuids, err := popUUIDsToProcessing(ctx, redisClient, setName, processingSetName, batchSize)
 	if err != nil {
-		return fmt.Errorf("shard %d: failed to pop UUIDs to processing: %w", shardID, err)
+		return 0, fmt.Errorf("shard %d: failed to pop UUIDs to processing: %w", shardID, err)
 	}
 
 	if len(uuids) == 0 {
-		return nil
+		return 0, nil
 	}
 
 	readPipe := redisClient.Pipeline()
@@ -127,7 +135,7 @@ func processOrtbShard(
 	}
 
 	if _, err := readPipe.Exec(ctx); err != nil {
-		return fmt.Errorf("shard %d: failed to HMGET data from Redis: %w", shardID, err)
+		return 0, fmt.Errorf("shard %d: failed to HMGET data from Redis: %w", shardID, err)
 	}
 
 	kafkaMessages := make([]kafka.Message, 0, len(uuids))
@@ -224,13 +232,13 @@ func processOrtbShard(
 
 	if len(kafkaMessages) == 0 {
 		restoreUUIDsFromProcessingToReady(ctx, redisClient, setName, processingSetName, uuids)
-		return nil
+		return 0, nil
 	}
 
 	if len(kafkaMessages) > 0 {
 		if err := kafkaWriter.WriteMessages(ctx, kafkaMessages...); err != nil {
 			restoreUUIDsFromProcessingToReady(ctx, redisClient, setName, processingSetName, uuids)
-			return fmt.Errorf("shard %d: failed to write ORTB messages to Kafka: %w", shardID, err)
+			return 0, fmt.Errorf("shard %d: failed to write ORTB messages to Kafka: %w", shardID, err)
 		}
 	}
 
@@ -243,7 +251,7 @@ func processOrtbShard(
 		len(kafkaMessages),
 	)
 
-	return nil
+	return len(kafkaMessages), nil
 }
 
 func kafkaLoaderSplitLimit(total int64, shardCount int) int64 {

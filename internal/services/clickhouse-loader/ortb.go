@@ -11,17 +11,14 @@ import (
 	"github.com/ClickHouse/clickhouse-go/v2"
 	"github.com/google/uuid"
 	"github.com/segmentio/kafka-go"
-<<<<<<< HEAD
-	"gitlab.com/twinbid-exchange/RTB-exchange/internal/types"
-=======
 	eventspb "gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/proto/buffer"
 	"google.golang.org/protobuf/proto"
->>>>>>> opt
 )
 
 type ortbInsertStats struct {
 	badUUIDCount int
 	badIPCount   int
+	appendErrors int
 }
 
 func ProcessKafkaMessagesOrtb(
@@ -31,192 +28,114 @@ func ProcessKafkaMessagesOrtb(
 	table string,
 	batchSize int,
 	timeoutSec int,
-<<<<<<< HEAD
 	timeoutMs int,
-) error {
+) (int, error) {
 	if batchSize <= 0 {
-		return nil
+		return 0, nil
 	}
 
 	start := time.Now()
 	readCtx, cancel := context.WithTimeout(ctx, batchTimeout(timeoutSec, timeoutMs))
 	defer cancel()
 
-	records := make([]types.Ortb, 0, batchSize)
-	commitMap := make(map[int]kafka.Message, 64)
-
-	var (
-		readCount     int
-		badJSONCount  int
-		emptyCount    int
-		commitOnlyCnt int
-=======
-	timeoutMS int,
-) error {
-	start := time.Now()
-	readCtx, cancel := context.WithTimeout(ctx, batchTimeout(timeoutSec, timeoutMS))
-	defer cancel()
-
-	commitMap := make(map[int]kafka.Message, 64)
 	records := make([]eventspb.OrtbEvent, 0, batchSize)
+	commitMap := make(map[int]kafka.Message, 64)
 
 	var (
 		readCount     int
 		badProtoCount int
 		emptyCount    int
->>>>>>> opt
+		commitOnlyCnt int
 	)
 
 	for len(records) < batchSize {
 		msg, err := reader.FetchMessage(readCtx)
 		if err != nil {
-<<<<<<< HEAD
 			if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) {
-=======
-			if errors.Is(err, context.DeadlineExceeded) {
->>>>>>> opt
 				break
 			}
-			return err
+			return 0, err
 		}
 
 		readCount++
-<<<<<<< HEAD
-
-		var record types.Ortb
-		if err := json.Unmarshal(msg.Value, &record); err != nil {
-			badJSONCount++
-			commitOnlyCnt++
-			rememberCommitMessage(commitMap, msg)
-			continue
-		}
-
-		if !types.HasDataOrtb(record) {
-			emptyCount++
-			commitOnlyCnt++
-			rememberCommitMessage(commitMap, msg)
-=======
-		rememberCommitMessage(commitMap, msg)
 
 		var record eventspb.OrtbEvent
 		if err := proto.Unmarshal(msg.Value, &record); err != nil {
 			badProtoCount++
+			commitOnlyCnt++
+			rememberCommitMessage(commitMap, msg)
 			continue
 		}
 
 		if !hasDataOrtbProtoCH(&record) {
 			emptyCount++
->>>>>>> opt
+			commitOnlyCnt++
+			rememberCommitMessage(commitMap, msg)
 			continue
 		}
 
 		records = append(records, record)
-<<<<<<< HEAD
 		rememberCommitMessage(commitMap, msg)
 	}
 
 	if len(records) > 0 {
 		stats, err := insertBatchOrtb(ctx, ch, table, records)
 		if err != nil {
-			return err
+			return 0, err
 		}
 
 		commitMessages := compactCommitMessages(commitMap)
 		if err := reader.CommitMessages(ctx, commitMessages...); err != nil {
-			return fmt.Errorf("commit ORTB offsets after successful insert: %w", err)
+			return 0, fmt.Errorf("commit ORTB offsets after successful insert failed: %w", err)
 		}
 
+		log.Printf("COMMITED ORTB records=%d offsets=%d", len(records), len(commitMessages))
+
 		log.Printf(
-			"ORTB batch: read=%d inserted=%d offsets=%d bad_json=%d empty=%d commit_only=%d bad_uuid=%d bad_ip=%d duration=%s",
+			"ORTB batch: read=%d inserted=%d offsets=%d bad_proto=%d empty=%d commit_only=%d bad_uuid=%d bad_ip=%d append_errors=%d duration=%s",
 			readCount,
 			len(records),
 			len(commitMessages),
-			badJSONCount,
+			badProtoCount,
 			emptyCount,
 			commitOnlyCnt,
 			stats.badUUIDCount,
 			stats.badIPCount,
+			stats.appendErrors,
 			time.Since(start),
 		)
-		return nil
+		return len(records), nil
 	}
 
 	commitMessages := compactCommitMessages(commitMap)
 	if len(commitMessages) > 0 {
 		if err := reader.CommitMessages(ctx, commitMessages...); err != nil {
-			return fmt.Errorf("commit ORTB skipped offsets: %w", err)
+			log.Printf("⚠️ Failed to commit skipped ORTB offsets: %v", err)
 		}
+	}
+
+	if readCount > 0 {
 		log.Printf(
-			"ORTB batch: read=%d inserted=0 offsets=%d bad_json=%d empty=%d commit_only=%d duration=%s",
+			"ORTB batch: read=%d inserted=0 offsets=%d bad_proto=%d empty=%d commit_only=%d duration=%s",
 			readCount,
 			len(commitMessages),
-			badJSONCount,
+			badProtoCount,
 			emptyCount,
 			commitOnlyCnt,
 			time.Since(start),
 		)
-=======
 	}
 
-	if len(records) == 0 {
-		if len(commitMap) > 0 {
-			commitMessages := compactCommitMessages(commitMap)
-			if err := reader.CommitMessages(ctx, commitMessages...); err != nil {
-				return fmt.Errorf("commit skipped ORTB offsets: %w", err)
-			}
-		}
-
-		return nil
-	}
-
-	stats, err := insertBatchOrtb(ctx, ch, table, records)
-	if err != nil {
-		return err
-	}
-
-	commitMessages := compactCommitMessages(commitMap)
-	if err := reader.CommitMessages(ctx, commitMessages...); err != nil {
-		return fmt.Errorf("commit ORTB offsets after insert: %w", err)
->>>>>>> opt
-	}
-
-	log.Printf("COMMITED ORTB records=%d offsets=%d", len(records), len(commitMessages))
-
-	log.Printf(
-		"ORTB batch: read=%d inserted=%d bad_proto=%d empty=%d bad_uuid=%d bad_ip=%d append_errors=%d duration=%s",
-		readCount,
-		len(records),
-		badProtoCount,
-		emptyCount,
-		stats.badUUIDCount,
-		stats.badIPCount,
-		stats.appendErrors,
-		time.Since(start),
-	)
-
-	return nil
-}
-
-type ortbInsertStats struct {
-	badUUIDCount int
-	badIPCount   int
-	appendErrors int
+	return 0, nil
 }
 
 func insertBatchOrtb(
 	ctx context.Context,
 	ch clickhouse.Conn,
 	table string,
-<<<<<<< HEAD
-	records []types.Ortb,
-) (ortbInsertStats, error) {
-	var stats ortbInsertStats
-=======
 	records []eventspb.OrtbEvent,
 ) (ortbInsertStats, error) {
-	stats := ortbInsertStats{}
-
->>>>>>> opt
+	var stats ortbInsertStats
 	if len(records) == 0 {
 		return stats, nil
 	}
@@ -256,22 +175,16 @@ func insertBatchOrtb(
 		return stats, fmt.Errorf("PrepareBatch: %w", err)
 	}
 
-	for _, r := range records {
-<<<<<<< HEAD
-		u, err := uuid.Parse(r.UUID)
-=======
+	for i := range records {
+		r := &records[i]
+
 		u, err := uuid.Parse(r.Uuid)
->>>>>>> opt
 		if err != nil {
 			stats.badUUIDCount++
 			u = uuid.Nil
 		}
 
-<<<<<<< HEAD
-		ts := parseTimestampUTC(r.EVENT_TIME)
-=======
 		ts := time.UnixMilli(r.EventTimeMs).UTC()
->>>>>>> opt
 
 		var ip *net.IP
 		if r.Ip != "" {
@@ -293,72 +206,12 @@ func insertBatchOrtb(
 			}
 		}
 
-<<<<<<< HEAD
-		var cityID int32
-		if r.CITY_ID != "" {
-			id64, err := strconv.ParseInt(r.CITY_ID, 10, 32)
-			if err == nil {
-				cityID = int32(id64)
-			}
-		}
-
-		var bidFloor float64
-		if r.BID_FLOOR != "" {
-			parsed, err := strconv.ParseFloat(r.BID_FLOOR, 64)
-			if err == nil {
-				bidFloor = parsed
-			}
-		}
-
-		var winFinalPrice float64
-		if r.WIN_PRICE != "" {
-			parsed, err := strconv.ParseFloat(r.WIN_PRICE, 64)
-			if err == nil {
-				winFinalPrice = parsed
-			}
-		}
-
-		var winDspPrice float64
-		if r.WIN_DSP_PRICE != "" {
-			parsed, err := strconv.ParseFloat(r.WIN_DSP_PRICE, 64)
-			if err == nil {
-				winDspPrice = parsed
-			}
-		}
-=======
 		cityID := int32(r.CityId)
-		bidResponsesRaw := marshalBidResponsesRaw(r.BidResponses)
->>>>>>> opt
+		bidResponsesRaw := encodeBidResponsesRaw(r.BidResponses)
 
 		if err := batch.Append(
 			u,
 			ts,
-<<<<<<< HEAD
-			r.FORMAT,
-			r.TYPIC,
-			&r.SPP_DOMAIN,
-			ip,
-			ipv6,
-			&r.LANG,
-			&r.BROWSER,
-			&r.BROWSER_VERSION,
-			&r.OS,
-			&r.OS_VERSION,
-			&r.DEVICE,
-			&r.SITE_ID,
-			&r.SITE_DOMAIN,
-			bidFloor,
-			&r.GEO,
-			cityID,
-			r.BID_RESPONSES,
-			&r.WIN_DSP_DOMAIN,
-			winFinalPrice,
-			winDspPrice,
-			r.WIN_CID,
-			r.WIN_CRID,
-			r.WIN_USER_ID,
-		); err != nil {
-=======
 			r.Format,
 			r.Typic,
 			&r.SppDomain,
@@ -384,8 +237,8 @@ func insertBatchOrtb(
 			r.WinUserId,
 		); err != nil {
 			stats.appendErrors++
->>>>>>> opt
-			return stats, fmt.Errorf("batch.Append: %w", err)
+			log.Printf("Record %d: batch.Append error: %v, skipping record", i, err)
+			continue
 		}
 	}
 
@@ -394,19 +247,9 @@ func insertBatchOrtb(
 	}
 
 	return stats, nil
-<<<<<<< HEAD
-=======
 }
 
-func hasDataOrtbProtoCH(record *eventspb.OrtbEvent) bool {
-	if record == nil {
-		return false
-	}
-
-	return record.Uuid != "" && record.EventTimeMs != 0
-}
-
-func marshalBidResponsesRaw(items map[string]int32) string {
+func encodeBidResponsesRaw(items map[string]int32) string {
 	if len(items) == 0 {
 		return ""
 	}
@@ -417,7 +260,14 @@ func marshalBidResponsesRaw(items map[string]int32) string {
 	}
 
 	return string(payload)
->>>>>>> opt
+}
+
+func hasDataOrtbProtoCH(record *eventspb.OrtbEvent) bool {
+	if record == nil {
+		return false
+	}
+
+	return record.Uuid != "" && record.EventTimeMs != 0
 }
 
 func parseTimestampUTC(s string) time.Time {
