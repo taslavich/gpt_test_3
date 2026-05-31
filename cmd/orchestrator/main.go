@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"crypto/tls"
 	"fmt"
 	"log"
 	"net"
@@ -15,7 +14,6 @@ import (
 	orchestrator "gitlab.com/twinbid-exchange/RTB-exchange/internal/services/orchestrator/service"
 	orchestratorWeb "gitlab.com/twinbid-exchange/RTB-exchange/internal/services/orchestrator/web"
 
-	"github.com/redis/go-redis/v9"
 	"google.golang.org/grpc"
 )
 
@@ -29,22 +27,6 @@ func main() {
 	}
 	log.Println("Config initialized!")
 
-	redisClient := redis.NewClient(&redis.Options{
-		Addr:     fmt.Sprintf("%s:%s", cfg.RedisHost, cfg.RedisPort),
-		Password: cfg.RedisPassword,
-		DB:       cfg.RedisDB,
-		TLSConfig: &tls.Config{
-			InsecureSkipVerify: true, // для Let's Encrypt самоподписанного
-			// MinVersion: tls.VersionTLS12,
-		},
-	})
-	defer redisClient.Close()
-
-	if err := redisClient.Ping(ctx).Err(); err != nil {
-		log.Fatalf("Failed to connect to Redis: %v", err)
-	}
-	log.Println("✅ Connected to Redis")
-
 	o := orchestrator.NewOrchestrator(cfg.UriOfBidEngine, cfg.UriOfDspRouter)
 
 	clients, cancelFunc := o.GetGrpClients()
@@ -57,7 +39,6 @@ func main() {
 		orchestratorWeb.NewServer(
 			clients.BidEngineGrpcClient,
 			clients.DspRouterGrpcClient,
-			redisClient,
 			cfg.GetBidsTimeout,
 			cfg.AuctionTimeout,
 		),

@@ -7,7 +7,6 @@ import (
 	"runtime/debug"
 	"time"
 
-	"github.com/redis/go-redis/v9"
 	bidEngineGrpc "gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/proto/services/bidEngine"
 	dspRouterGrpc "gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/proto/services/dspRouter"
 	orchestratorGrpc "gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/proto/services/orchestrator"
@@ -19,8 +18,6 @@ type Server struct {
 	bidEngineGrpcClient bidEngineGrpc.BidEngineServiceClient
 	dspRouterGrpcClient dspRouterGrpc.DspRouterServiceClient
 
-	redisClient *redis.Client
-
 	getBidsTimeout      time.Duration
 	getWinnerBidTimeout time.Duration
 
@@ -30,14 +27,12 @@ type Server struct {
 func NewServer(
 	bidEngineGrpcClient bidEngineGrpc.BidEngineServiceClient,
 	dspRouterGrpcClient dspRouterGrpc.DspRouterServiceClient,
-	redisClient *redis.Client,
 	getBidsTimeout,
 	getWinnerBidTimeout time.Duration,
 ) *Server {
 	return &Server{
 		bidEngineGrpcClient: bidEngineGrpcClient,
 		dspRouterGrpcClient: dspRouterGrpcClient,
-		redisClient:         redisClient,
 		getBidsTimeout:      getBidsTimeout,
 		getWinnerBidTimeout: getWinnerBidTimeout,
 	}

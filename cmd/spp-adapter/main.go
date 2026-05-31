@@ -38,9 +38,9 @@ func main() {
 	redisClients, err := redis_service.NewRedisShardedClients(
 		redisAddrs,
 		cfg.RedisPassword,
-		cfg.RedisDB,
-		cfg.RedisDB,
-		cfg.RedisDB,
+		cfg.RedisDBOrtb,
+		cfg.RedisDBImpressions,
+		cfg.RedisDBClicks,
 		cfg.RedisUseTLS,
 		cfg.RedisPoolSize,
 		cfg.RedisMinIdleConns,

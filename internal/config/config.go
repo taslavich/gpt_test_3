@@ -255,10 +255,6 @@ type MockDspConfig struct {
 }
 
 type RedisConfig struct {
-	RedisDB       int    `yaml:"REDIS_DB" env:"REDIS_DB"`
-	BatchSize     int64  `yaml:"BATCH_SIZE" env:"BATCH_SIZE"`
-	RedisHost     string `yaml:"REDIS_HOST" env:"REDIS_HOST"`
-	RedisPort     string `yaml:"REDIS_PORT" env:"REDIS_PORT"`
 	RedisPassword string `yaml:"REDIS_PASSWORD" env:"REDIS_PASSWORD"`
 
 	RedisShardAddrs    []string `yaml:"REDIS_SHARD_ADDRS" env:"REDIS_SHARD_ADDRS"`
