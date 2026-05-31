@@ -17,9 +17,12 @@ const RedisKeyTTL = 50 * time.Minute
 
 // WriteStringToRedis записывает строку в Redis, автоматически выбирая шард по uuid
 func WriteStringToRedis(ctx context.Context, redisClients []*redis.Client, uuid, column string, data string, logged bool) error {
-	if !logged {
-		return nil
-	}
+	/*
+		if !logged {
+			return nil
+		}
+	*/
+	return nil
 
 	client, idx, err := redis_service.SelectShard(redisClients, uuid)
 	if err != nil {
@@ -37,9 +40,12 @@ func WriteStringToRedis(ctx context.Context, redisClients []*redis.Client, uuid,
 
 // WriteUint32ToRedis записывает uint32 в Redis, автоматически выбирая шард по uuid
 func WriteUint32ToRedis(ctx context.Context, redisClients []*redis.Client, uuid, column string, data uint32, logged bool) error {
-	if !logged {
-		return nil
-	}
+	/*
+		if !logged {
+			return nil
+		}
+	*/
+	return nil
 
 	client, idx, err := redis_service.SelectShard(redisClients, uuid)
 	if err != nil {
@@ -56,9 +62,12 @@ func WriteUint32ToRedis(ctx context.Context, redisClients []*redis.Client, uuid,
 }
 
 func WriteBytesToRedis(ctx context.Context, redisClients []*redis.Client, uuid, column string, data []byte, logged bool) error {
-	if !logged {
-		return nil
-	}
+	/*
+		if !logged {
+			return nil
+		}
+	*/
+	return nil
 
 	client, idx, err := redis_service.SelectShard(redisClients, uuid)
 	if err != nil {
@@ -78,9 +87,12 @@ func WriteBytesToRedis(ctx context.Context, redisClients []*redis.Client, uuid, 
 
 // WriteFloat32ToRedis записывает float32 в Redis, автоматически выбирая шард по uuid
 func WriteFloat32ToRedis(ctx context.Context, redisClients []*redis.Client, uuid, column string, data float32, logged bool) error {
-	if !logged {
-		return nil
-	}
+	/*
+		if !logged {
+			return nil
+		}
+	*/
+	return nil
 
 	client, idx, err := redis_service.SelectShard(redisClients, uuid)
 	if err != nil {
@@ -98,9 +110,12 @@ func WriteFloat32ToRedis(ctx context.Context, redisClients []*redis.Client, uuid
 
 // WriteFloat64ToRedis записывает float64 в Redis, автоматически выбирая шард по uuid
 func WriteFloat64ToRedis(ctx context.Context, redisClients []*redis.Client, uuid, column string, data float64, logged bool) error {
-	if !logged {
-		return nil
-	}
+	/*
+		if !logged {
+			return nil
+		}
+	*/
+	return nil
 
 	client, idx, err := redis_service.SelectShard(redisClients, uuid)
 	if err != nil {
@@ -118,9 +133,11 @@ func WriteFloat64ToRedis(ctx context.Context, redisClients []*redis.Client, uuid
 
 // AddUUIDToRedisSet добавляет uuid в Redis set, выбирая шард по uuid
 func AddUUIDToRedisSet(ctx context.Context, redisClients []*redis.Client, setName, uuid string, logged bool) error {
-	if !logged || setName == "" {
+	/*if !logged || setName == "" {
 		return nil
-	}
+	}*/
+
+	return nil
 
 	client, idx, err := redis_service.SelectShard(redisClients, uuid)
 	if err != nil {
