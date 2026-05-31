@@ -22,11 +22,8 @@ func (m *MapStringToString) SetValue(value string) error {
 
 	pairs := strings.Split(value, ",")
 	for _, pair := range pairs {
-		// Ищем только ПЕРВЫЙ знак = или | как разделитель ключ-значение.
-		idx := strings.Index(pair, "=")
-		if idx == -1 {
-			idx = strings.Index(pair, "|")
-		}
+		// Ищем только ПЕРВЫЙ знак | как разделитель ключ-значение
+		idx := strings.Index(pair, "|")
 		if idx == -1 {
 			continue // пропускаем некорректные пары
 		}
