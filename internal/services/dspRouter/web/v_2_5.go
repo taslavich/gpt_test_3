@@ -119,7 +119,7 @@ type dspDomainResp struct {
 
 type dspDomainCode struct {
 	domain string
-	code   int
+	code   int32
 }
 
 func (s *Server) GetBids_V2_5(
@@ -391,7 +391,7 @@ func (s *Server) GetBids_V2_5(
 		close(responsesCh)
 	}()
 
-	clickResponses := make(map[string]int)
+	clickResponses := make(map[string]int32)
 	for c := range codesCh {
 		clickResponses[c.domain] = c.code
 	}
@@ -413,7 +413,7 @@ func (s *Server) GetBids_V2_5(
 }
 
 func (s *Server) getBidsFromDSPbyHTTP_V_2_5(ctx context.Context, uuid string, jsonData []byte, dspEndpoint string, client_v_2_5 *http.Client) (
-	ddr *ortb_V2_5.BidResponse, code int, err error) {
+	ddr *ortb_V2_5.BidResponse, code int32, err error) {
 	/*if dspEndpoint == "none" {
 		return nil, http.StatusNoContent, nil
 	}*/
@@ -454,27 +454,26 @@ func (s *Server) getBidsFromDSPbyHTTP_V_2_5(ctx context.Context, uuid string, js
 			log.Printf("uuid: %s, body: %s", uuid, string(body))
 			return nil, 3, fmt.Errorf("decode: %v, body: %s", err, string(body))
 		}
-		return &grpcResp, resp.StatusCode, nil
+		return &grpcResp, int32(resp.StatusCode), nil
 	}
-	return nil, resp.StatusCode, nil
+	return nil, int32(resp.StatusCode), nil
 }
 
 func writeBidResponsesToRedis(
 	redisClients []*redis.Client,
 	uuid string,
-	data map[string]int,
+	data map[string]int32,
 	logged bool,
 ) error {
-	/*
-		if !logged {
-			return nil
-		}*/
-	return nil
+	if !logged {
+		return nil
+	}
+
 	bg, cancel := context.WithTimeout(context.Background(), 30*time.Millisecond)
 	defer cancel()
 
 	payload, err := proto.Marshal(&eventspb.BidResponses{
-		Items: nil,
+		Items: data,
 	})
 	if err != nil {
 		return fmt.Errorf("failed to marshal bid responses protobuf: %w", err)
