@@ -18,6 +18,7 @@ func ProcessKafkaMessages(
 	Clickhouse config.ClickhouseConfig,
 	timeoutSec int,
 	timeoutMS int,
+	runImpressionsClicks bool,
 ) (int, error) {
 	ortbInserted, err := ProcessKafkaMessagesOrtb(
 		ctx,
@@ -34,6 +35,10 @@ func ProcessKafkaMessages(
 
 	if ortbInserted == 0 {
 		return 0, nil
+	}
+
+	if !runImpressionsClicks {
+		return ortbInserted, nil
 	}
 
 	var wg sync.WaitGroup

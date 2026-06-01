@@ -102,12 +102,18 @@ func main() {
 
 	log.Printf("🚀 ClickHouse Loader started. Reading from topics: %s, %s, %s", cfg.Kafka.KafkaTopicOrtb, cfg.Kafka.KafkaTopicImpressions, cfg.Kafka.KafkaTopicClicks)
 
+	// В main.go ClickHouse Loader добавить:
+	impressionClickInterval := time.Duration(cfg.ImpressionClickFlushIntervalSec) * time.Second
+	lastImpressionClickRun := time.Now()
+
 	for {
 		select {
 		case <-sigChan:
 			log.Print("🛑 Shutting down ClickHouse Loader")
 			return
 		default:
+			runImpressionsClicks := time.Since(lastImpressionClickRun) >= impressionClickInterval
+
 			inserted, err := clickhouse_loader.ProcessKafkaMessages(
 				ctx,
 				kafkaReaders,
@@ -115,15 +121,19 @@ func main() {
 				cfg.Clickhouse,
 				cfg.TimeoutSec,
 				cfg.BatchTimeoutMS,
+				runImpressionsClicks, // ← передать флаг
 			)
 			if err != nil {
 				log.Printf("❌ Processing error: %v", err)
 			}
 
+			if runImpressionsClicks && inserted > 0 {
+				lastImpressionClickRun = time.Now()
+			}
+
 			if inserted == 0 {
 				select {
 				case <-sigChan:
-					log.Print("🛑 Shutting down ClickHouse Loader")
 					return
 				case <-time.After(200 * time.Millisecond):
 				}
