@@ -23,8 +23,8 @@ import (
 
 func shouldPass(counter *uint64) bool {
 	//return atomic.AddUint64(counter, 1)%100 < 100
-	return false
-	//return true
+	//return false
+	return true
 }
 
 func postBid_V2_5(
