@@ -2,7 +2,6 @@ package utils
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"time"
 
@@ -133,7 +132,7 @@ func AddUUIDToRedisSet(ctx context.Context, redisClients []*redis.Client, setNam
 	return nil
 }
 
-// WriteWinStats записывает статистику выигрыша в Redis (несколько полей)
+// WriteWinStats записывает статистику выигрыша в Redis (несколько полей одним HSET)
 func WriteWinStats(
 	ctx context.Context,
 	redisClients []*redis.Client,
@@ -141,31 +140,36 @@ func WriteWinStats(
 	win *clickhouse_types.Bid,
 	logged bool,
 ) error {
-	var combinedErr error
-
-	if err := WriteStringToRedis(ctx, redisClients, globalId, constants.WIN_DSP_DOMAIN_COLUMN, *win.WinDspDomain, logged); err != nil {
-		combinedErr = errors.Join(combinedErr, fmt.Errorf("WinDspDomain: %w", err))
-	}
-	if err := WriteFloat32ToRedis(ctx, redisClients, globalId, constants.WIN_PRICE_COLUMN, *win.WinPrice, logged); err != nil {
-		combinedErr = errors.Join(combinedErr, fmt.Errorf("WinPrice: %w", err))
-	}
-	if err := WriteFloat32ToRedis(ctx, redisClients, globalId, constants.WIN_DSP_PRICE_COLUMN, *win.WinDspPrice, logged); err != nil {
-		combinedErr = errors.Join(combinedErr, fmt.Errorf("WinDspPrice: %w", err))
-	}
-	if err := WriteStringToRedis(ctx, redisClients, globalId, constants.WIN_CID_COLUMN, *win.WinCid, logged); err != nil {
-		combinedErr = errors.Join(combinedErr, fmt.Errorf("WinCid: %w", err))
-	}
-	if err := WriteStringToRedis(ctx, redisClients, globalId, constants.WIN_CRID_COLUMN, *win.WinCrid, logged); err != nil {
-		combinedErr = errors.Join(combinedErr, fmt.Errorf("WinCrid: %w", err))
-	}
-	if err := WriteStringToRedis(ctx, redisClients, globalId, constants.WIN_USER_ID_COLUMN, *win.WinUserId, logged); err != nil {
-		combinedErr = errors.Join(combinedErr, fmt.Errorf("WinUserId: %w", err))
+	if !logged {
+		return nil
 	}
 
-	return combinedErr
+	client, idx, err := redis_service.SelectShard(redisClients, globalId)
+	if err != nil {
+		return fmt.Errorf("failed to select shard for uuid %s: %w", globalId, err)
+	}
+
+	fields := map[string]interface{}{
+		constants.WIN_DSP_DOMAIN_COLUMN: *win.WinDspDomain,
+		constants.WIN_PRICE_COLUMN:      *win.WinPrice,
+		constants.WIN_DSP_PRICE_COLUMN:  *win.WinDspPrice,
+		constants.WIN_CID_COLUMN:        *win.WinCid,
+		constants.WIN_CRID_COLUMN:       *win.WinCrid,
+		constants.WIN_USER_ID_COLUMN:    *win.WinUserId,
+	}
+
+	pipe := client.Pipeline()
+	pipe.HSet(ctx, globalId, fields)
+	pipe.Expire(ctx, globalId, RedisKeyTTL)
+
+	if _, err := pipe.Exec(ctx); err != nil {
+		return fmt.Errorf("failed to write win stats to Redis (uuid=%s, shard=%d): %w", globalId, idx, err)
+	}
+
+	return nil
 }
 
-// WriteStatsOrtb записывает ORTB-статистику в Redis
+// WriteStatsOrtb записывает ORTB-статистику в Redis одним HSET
 func WriteStatsOrtb(
 	ctx context.Context,
 	redisClients []*redis.Client,
@@ -184,59 +188,42 @@ func WriteStatsOrtb(
 	siteDomain string,
 	bidFloor float64,
 ) error {
-	var combinedErr error
-
-	if err := WriteStringToRedis(ctx, redisClients, globalId, constants.EVENT_TIME_COLUMN, time.Now().UTC().Format("2006-01-02 15:04:05.000"), logged); err != nil {
-		combinedErr = errors.Join(combinedErr, fmt.Errorf("EventTime: %w", err))
-	}
-	if err := WriteStringToRedis(ctx, redisClients, globalId, constants.FORMAT_COLUMN, format, logged); err != nil {
-		combinedErr = errors.Join(combinedErr, fmt.Errorf("Format: %w", err))
-	}
-	if err := WriteStringToRedis(ctx, redisClients, globalId, constants.TYPIC_COLUMN, typic, logged); err != nil {
-		combinedErr = errors.Join(combinedErr, fmt.Errorf("Typic: %w", err))
-	}
-	if err := WriteStringToRedis(ctx, redisClients, globalId, constants.SPP_DOMAIN_COLUMN, ssp_domain, logged); err != nil {
-		combinedErr = errors.Join(combinedErr, fmt.Errorf("SSP_Domain: %w", err))
-	}
-	if err := WriteStringToRedis(ctx, redisClients, globalId, constants.IP_COLUMN, ip, logged); err != nil {
-		combinedErr = errors.Join(combinedErr, fmt.Errorf("IP: %w", err))
-	}
-	if err := WriteStringToRedis(ctx, redisClients, globalId, constants.IPV6_COLUMN, ipv6, logged); err != nil {
-		combinedErr = errors.Join(combinedErr, fmt.Errorf("IPv6: %w", err))
-	}
-	if err := WriteStringToRedis(ctx, redisClients, globalId, constants.LANG_COLUMN, lang, logged); err != nil {
-		combinedErr = errors.Join(combinedErr, fmt.Errorf("Language: %w", err))
-	}
-	if err := WriteStringToRedis(ctx, redisClients, globalId, constants.BROWSER_COLUMN, uaFields.Browser, logged); err != nil {
-		combinedErr = errors.Join(combinedErr, fmt.Errorf("Browser: %w", err))
-	}
-	if err := WriteStringToRedis(ctx, redisClients, globalId, constants.BROWSER_VERSION_COLUMN, uaFields.BrowserVersion, logged); err != nil {
-		combinedErr = errors.Join(combinedErr, fmt.Errorf("BrowserVersion: %w", err))
-	}
-	if err := WriteStringToRedis(ctx, redisClients, globalId, constants.OS_COLUMN, uaFields.OS, logged); err != nil {
-		combinedErr = errors.Join(combinedErr, fmt.Errorf("OS: %w", err))
-	}
-	if err := WriteStringToRedis(ctx, redisClients, globalId, constants.OS_VERSION_COLUMN, uaFields.OSVersion, logged); err != nil {
-		combinedErr = errors.Join(combinedErr, fmt.Errorf("OSVersion: %w", err))
-	}
-	if err := WriteStringToRedis(ctx, redisClients, globalId, constants.DEVICE_COLUMN, uaFields.Device, logged); err != nil {
-		combinedErr = errors.Join(combinedErr, fmt.Errorf("Device: %w", err))
-	}
-	if err := WriteStringToRedis(ctx, redisClients, globalId, constants.SITE_ID_COLUMN, siteId, logged); err != nil {
-		combinedErr = errors.Join(combinedErr, fmt.Errorf("SiteID: %w", err))
-	}
-	if err := WriteStringToRedis(ctx, redisClients, globalId, constants.SITE_DOMAIN_COLUMN, siteDomain, logged); err != nil {
-		combinedErr = errors.Join(combinedErr, fmt.Errorf("SiteDomain: %w", err))
-	}
-	if err := WriteFloat64ToRedis(ctx, redisClients, globalId, constants.BID_FLOOR_COLUMN, bidFloor, logged); err != nil {
-		combinedErr = errors.Join(combinedErr, fmt.Errorf("BidFloor: %w", err))
-	}
-	if err := WriteStringToRedis(ctx, redisClients, globalId, constants.GEO_COLUMN, countryISO, logged); err != nil {
-		combinedErr = errors.Join(combinedErr, fmt.Errorf("Geo: %w", err))
-	}
-	if err := WriteUint32ToRedis(ctx, redisClients, globalId, constants.CITY_ID_COLUMN, cityId, logged); err != nil {
-		combinedErr = errors.Join(combinedErr, fmt.Errorf("CityID: %w", err))
+	if !logged {
+		return nil
 	}
 
-	return combinedErr
+	client, idx, err := redis_service.SelectShard(redisClients, globalId)
+	if err != nil {
+		return fmt.Errorf("failed to select shard for uuid %s: %w", globalId, err)
+	}
+
+	fields := map[string]interface{}{
+		constants.EVENT_TIME_COLUMN:      time.Now().UTC().Format("2006-01-02 15:04:05.000"),
+		constants.FORMAT_COLUMN:          format,
+		constants.TYPIC_COLUMN:           typic,
+		constants.SPP_DOMAIN_COLUMN:      ssp_domain,
+		constants.IP_COLUMN:              ip,
+		constants.IPV6_COLUMN:            ipv6,
+		constants.LANG_COLUMN:            lang,
+		constants.BROWSER_COLUMN:         uaFields.Browser,
+		constants.BROWSER_VERSION_COLUMN: uaFields.BrowserVersion,
+		constants.OS_COLUMN:              uaFields.OS,
+		constants.OS_VERSION_COLUMN:      uaFields.OSVersion,
+		constants.DEVICE_COLUMN:          uaFields.Device,
+		constants.SITE_ID_COLUMN:         siteId,
+		constants.SITE_DOMAIN_COLUMN:     siteDomain,
+		constants.BID_FLOOR_COLUMN:       bidFloor,
+		constants.GEO_COLUMN:             countryISO,
+		constants.CITY_ID_COLUMN:         cityId,
+	}
+
+	pipe := client.Pipeline()
+	pipe.HSet(ctx, globalId, fields)
+	pipe.Expire(ctx, globalId, RedisKeyTTL)
+
+	if _, err := pipe.Exec(ctx); err != nil {
+		return fmt.Errorf("failed to write ORTB stats to Redis (uuid=%s, shard=%d): %w", globalId, idx, err)
+	}
+
+	return nil
 }
