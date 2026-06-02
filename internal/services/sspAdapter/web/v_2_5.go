@@ -23,7 +23,7 @@ import (
 )
 
 func shouldPass(counter *uint64) bool {
-	return atomic.AddUint64(counter, 1)%100 < 10
+	return atomic.AddUint64(counter, 1)%100 < 3
 	//return false
 }
 
