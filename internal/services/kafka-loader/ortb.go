@@ -64,6 +64,11 @@ func ProcessBatchOrtb(
 		return 0, fmt.Errorf("redis clients list is empty")
 	}
 
+	start := time.Now()
+	defer func() {
+		log.Printf("⏱️ ORTB batch took %s", time.Since(start))
+	}()
+
 	perShardLimit := kafkaLoaderSplitLimit(batchSize, len(redisClients))
 
 	var wg sync.WaitGroup
