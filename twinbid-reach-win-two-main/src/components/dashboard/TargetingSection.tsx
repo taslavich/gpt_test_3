@@ -50,7 +50,7 @@ function AutocompleteInput({
   existingItems: string[];
   placeholder: string;
   t: (key: string) => string;
-  lang: "ru" | "en";
+  lang: import("@/contexts/LanguageContext").Lang;
 }) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);

@@ -132,7 +132,30 @@ export default function DashboardCampaigns() {
   const duplicateCampaign = async (c: Campaign) => {
     const { id: _id, ...rest } = c;
     try {
-      const id = await addCampaign({ ...rest, name: `${c.name} ${t("campaigns.copyPostfix")}`, status: "draft", spent: 0, impressions: 0, clicks: 0, ctr: 0 });
+      // For formats with a visual (banner/native/push), the backend requires
+      // a file on creative create. The duplicated source creatives only have
+      // a presigned `imageUrl` — download those bytes and attach as
+      // `pendingFile` so the copy is uploaded with the same image.
+      const needsFile = c.formatKey === "banner" || c.formatKey === "native" || c.formatKey === "push";
+      const creatives = needsFile
+        ? await Promise.all(
+            (rest.creatives || []).map(async (cr) => {
+              if (cr.pendingFile || !cr.imageUrl) return cr;
+              try {
+                const resp = await fetch(cr.imageUrl);
+                if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+                const blob = await resp.blob();
+                const filename = cr.imageFileName || "image.jpg";
+                const file = new File([blob], filename, { type: blob.type || "image/jpeg" });
+                return { ...cr, pendingFile: file, imageFileName: filename };
+              } catch (err) {
+                console.error("Failed to download creative image for copy:", err);
+                return cr;
+              }
+            })
+          )
+        : rest.creatives;
+      const id = await addCampaign({ ...rest, creatives, name: `${c.name} ${t("campaigns.copyPostfix")}`, status: "draft", spent: 0, impressions: 0, clicks: 0, ctr: 0 });
       if (id) toast.success(t("campaigns.copied"));
     } catch (e: any) {
       toast.error(`${t("campaigns.copyFailed") || "Failed to copy campaign"}: ${e?.message || e}`);

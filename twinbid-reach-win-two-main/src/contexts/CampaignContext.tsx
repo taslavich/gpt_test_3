@@ -194,7 +194,7 @@ function readApiTargeting(c: ApiCampaign): Record<string, TargetingState> {
 
 // ---- Mapping --------------------------------------------------------------
 function mapApiCampaignToUi(c: ApiCampaign, creatives: Creative[]): Campaign {
-  const priceValue = c.pricing_model === "cpc" ? c.base_price_cpc : c.base_price_cpm;
+  const priceValue = Number(c.base_price) || 0;
   return {
     id: c.campaign_id,
     name: c.campaign_name,
@@ -291,8 +291,7 @@ function buildApiCampaignBody(c: Omit<Campaign, "id">): Omit<ApiCampaign, "campa
     traffic_type: c.trafficType,
     vertical: verticalsToApiArray(c.verticals),
     pricing_model: c.pricingModel,
-    base_price_cpm: c.pricingModel === "cpm" ? c.priceValue : 0,
-    base_price_cpc: c.pricingModel === "cpc" ? c.priceValue : 0,
+    base_price: c.priceValue,
     evenness_by_slot_mode: c.evenSpend,
     goal_total_dollars: c.budget,
     start_ts: startTimestamp(c.startDate),
@@ -304,6 +303,12 @@ function buildApiCampaignBody(c: Omit<Campaign, "id">): Omit<ApiCampaign, "campa
   // brand_name is optional. Only include when the user provided a value
   // so the backend can apply its own default / nullability handling.
   if (c.brandName) body.brand_name = c.brandName;
+  // For popunder, the backend only stores CPM. If the user selected CPC,
+  // convert the value to an equivalent CPM and send CPM as the model.
+  if (c.formatKey === "popunder" && c.pricingModel === "cpc") {
+    body.pricing_model = "cpm";
+    body.base_price = c.priceValue * 1000;
+  }
   return body;
 }
 
@@ -332,16 +337,13 @@ function buildApiCampaignPatch(updates: Partial<Campaign>): Partial<ApiCampaign>
   if (updates.trafficType !== undefined) p.traffic_type = updates.trafficType;
   if (updates.verticals !== undefined) p.vertical = verticalsToApiArray(updates.verticals);
   if (updates.pricingModel !== undefined || updates.priceValue !== undefined) {
-    // Both fields cooperate; require pricingModel to know which slot.
     const pm = updates.pricingModel;
     const pv = updates.priceValue;
     if (pm !== undefined && pv !== undefined) {
       p.pricing_model = pm;
-      p.base_price_cpm = pm === "cpm" ? pv : 0;
-      p.base_price_cpc = pm === "cpc" ? pv : 0;
+      p.base_price = pv;
     } else if (pv !== undefined) {
-      // Fall back to writing both with whatever the caller sent.
-      p.base_price_cpm = pv;
+      p.base_price = pv;
     } else if (pm !== undefined) {
       p.pricing_model = pm;
     }
@@ -439,9 +441,20 @@ export function CampaignProvider({ children }: { children: ReactNode }) {
 
   const updateCampaign = useCallback(async (id: string, updates: Partial<Campaign>) => {
     if (!user) throw new Error("Not authenticated");
+    // If the user selected CPC for popunder, convert to CPM before sending.
+    const current = campaigns.find(c => c.id === id);
+    const effectiveUpdates: Partial<Campaign> = { ...updates };
+    const fmt = effectiveUpdates.formatKey ?? current?.formatKey;
+    const pm = effectiveUpdates.pricingModel ?? current?.pricingModel;
+    if (fmt === "popunder" && pm === "cpc") {
+      effectiveUpdates.pricingModel = "cpm";
+      if (effectiveUpdates.priceValue !== undefined) {
+        effectiveUpdates.priceValue = (effectiveUpdates.priceValue as number) * 1000;
+      }
+    }
     // Build a *partial* patch so toggling a single field (status, budget,
     // ...) does not rewrite unrelated fields.
-    const patch = buildApiCampaignPatch(updates);
+    const patch = buildApiCampaignPatch(effectiveUpdates);
     if (Object.keys(patch).length > 0) {
       await api.patchCampaign(id, patch);
     }

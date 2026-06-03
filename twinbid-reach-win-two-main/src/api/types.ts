@@ -42,8 +42,7 @@ export interface ApiCampaign {
   traffic_type: TrafficType;
   vertical: Record<string, 0 | 1>;
   pricing_model: PricingModel;
-  base_price_cpm: number;
-  base_price_cpc: number;
+  base_price: number;
   evenness_by_slot_mode: boolean;
   goal_total_dollars: number;
   /** filled by backend only */

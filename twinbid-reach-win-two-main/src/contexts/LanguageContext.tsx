@@ -1,8 +1,15 @@
 import { createContext, useContext, useState, useCallback, type ReactNode } from "react";
 
-type Lang = "ru" | "en";
+export type Lang = "en" | "ru" | "es";
 
-const translations: Record<string, Record<Lang, string>> = {
+export const LANGUAGE_OPTIONS: { code: Lang; label: string; name: string }[] = [
+  { code: "en", label: "EN", name: "English" },
+  { code: "ru", label: "RU", name: "Russian" },
+  { code: "es", label: "ES", name: "Spanish" },
+];
+
+const translations: Record<string, Record<"ru" | "en", string>> = {
+
   // Header / Nav
   "nav.benefits": { ru: "Преимущества", en: "Benefits" },
   "nav.formats": { ru: "Форматы", en: "Formats" },
@@ -111,6 +118,13 @@ const translations: Record<string, Record<Lang, string>> = {
     ru: "Необходимо принять условия для регистрации",
     en: "You must accept the terms to sign up",
   },
+  "auth.consent.intro": { ru: "Я ознакомлен(а) и согласен(на) с ", en: "I have read and agree to the " },
+  "auth.consent.and": { ru: "и", en: "and" },
+  "auth.consent.outro": {
+    ru: ", а также даю согласие на обработку моих персональных данных",
+    en: ", and I consent to the processing of my personal data",
+  },
+
 
   // Legal page
   "legal.pageTitle": { ru: "Правовая информация", en: "Legal" },
@@ -564,6 +578,11 @@ const translations: Record<string, Record<Lang, string>> = {
   "notif.budgetRemaining": { ru: "бюджета осталось", en: "budget remaining" },
 };
 
+
+
+
+import { ES_TRANSLATIONS } from "@/lib/translations-es";
+
 interface LanguageContextType {
   lang: Lang;
   setLang: (lang: Lang) => void;
@@ -576,9 +595,9 @@ export function LanguageProvider({ children }: { children: ReactNode }) {
   const [lang, setLang] = useState<Lang>(() => {
     try {
       const stored = localStorage.getItem("twinbid_lang");
-      if (stored === "en" || stored === "ru") return stored;
+      if (stored === "en" || stored === "ru" || stored === "es") return stored;
     } catch {}
-    return "ru";
+    return "en";
   });
 
   const handleSetLang = useCallback((newLang: Lang) => {
@@ -587,9 +606,14 @@ export function LanguageProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const t = useCallback((key: string): string => {
+    if (lang === "es") {
+      const es = ES_TRANSLATIONS[key];
+      if (es !== undefined) return es;
+    }
     const entry = translations[key];
     if (!entry) return key;
-    return entry[lang] || entry.ru || key;
+    if (lang === "ru") return entry.ru || entry.en || key;
+    return entry.en || entry.ru || key;
   }, [lang]);
 
   return (
@@ -604,3 +628,4 @@ export function useLanguage() {
   if (!ctx) throw new Error("useLanguage must be used within LanguageProvider");
   return ctx;
 }
+

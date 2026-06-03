@@ -27,7 +27,7 @@ export function AuthDialog({ trigger, defaultTab = "login" }: AuthDialogProps) {
   const [regConfirm, setRegConfirm] = useState("");
   const [regConsent, setRegConsent] = useState(false);
   const navigate = useNavigate();
-  const { t, lang } = useLanguage();
+  const { t } = useLanguage();
   const { signIn, signUp } = useAuth();
 
   const handleLogin = async (e: React.FormEvent) => {
@@ -140,17 +140,15 @@ export function AuthDialog({ trigger, defaultTab = "login" }: AuthDialogProps) {
                   className="mt-0.5"
                 />
                 <Label htmlFor="reg-consent" className="text-xs leading-snug font-normal text-muted-foreground cursor-pointer">
-                  {lang === "ru" ? "Я ознакомлен(а) и согласен(на) с " : "I have read and agree to the "}
+                  {t("auth.consent.intro")}
                   <Link to="/legal#terms" target="_blank" className="text-primary hover:underline" onClick={(e) => e.stopPropagation()}>
                     {t("auth.consent.terms")}
                   </Link>
-                  {" "}{lang === "ru" ? "и" : "and"}{" "}
+                  {" "}{t("auth.consent.and")}{" "}
                   <Link to="/legal#privacy" target="_blank" className="text-primary hover:underline" onClick={(e) => e.stopPropagation()}>
                     {t("auth.consent.privacy")}
                   </Link>
-                  {lang === "ru"
-                    ? ", а также даю согласие на обработку моих персональных данных"
-                    : ", and I consent to the processing of my personal data"}
+                  {t("auth.consent.outro")}
                 </Label>
               </div>
               <Button type="submit" className="w-full bg-accent hover:bg-accent/90 text-accent-foreground" disabled={loading || !regConsent}>

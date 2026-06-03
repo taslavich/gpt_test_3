@@ -502,4 +502,4 @@ export const BROWSERS: string[] = [
 export const COUNTRY_CODES: string[] = COUNTRIES.map(c => c.code);
 export const LANGUAGE_CODES: string[] = LANGUAGES.map(l => l.code);
 
-export const DEVICE_TYPES = ["mobile", "tablet", "desktop", "bot", "other"];
+export const DEVICE_TYPES = ["mobile", "tablet", "desktop", "other"];
