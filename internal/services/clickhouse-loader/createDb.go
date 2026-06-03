@@ -64,7 +64,7 @@ CREATE TABLE IF NOT EXISTS {db}.ortb
     win_user_id       String DEFAULT ''
 )
 ENGINE = MergeTree
-PARTITION BY toYYYYMMDDHH(created_at)
+PARTITION BY toStartOfHour(created_at)
 ORDER BY (created_at, uuid)
 TTL created_at + INTERVAL 1 HOUR DELETE
 SETTINGS index_granularity = 8192;
