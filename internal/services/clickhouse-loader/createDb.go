@@ -379,7 +379,7 @@ WHERE a.uuid NOT IN (
     FROM {db}.fact_clicks
     WHERE created_at >= now() - INTERVAL 6 MINUTE
 )
-AND a.created_at >= now() - INTERVAL 5 MINUTE
+AND a.created_at >= now() - INTERVAL 5 MINUTE;
 -- ============================================================
 -- MV: FACT IMPRESSIONS -> AGG STATS
 -- browser_version здесь специально НЕ группируется
