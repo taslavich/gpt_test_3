@@ -83,7 +83,7 @@ CREATE TABLE IF NOT EXISTS {db}.impressions_in
 )
 ENGINE = MergeTree
 ORDER BY (event_time_impressions, uuid)
-TTL created_at + INTERVAL 5 MINUTE DELETE;
+TTL created_at + INTERVAL 1 HOUR DELETE;
 
 
 CREATE TABLE IF NOT EXISTS {db}.clicks_in
@@ -95,7 +95,7 @@ CREATE TABLE IF NOT EXISTS {db}.clicks_in
 )
 ENGINE = MergeTree
 ORDER BY (event_time_clicks, uuid)
-TTL created_at + INTERVAL 5 MINUTE DELETE;
+TTL created_at + INTERVAL 1 HOUR DELETE;
 
 
 -- ============================================================
