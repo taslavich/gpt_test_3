@@ -317,7 +317,7 @@ WHERE a.uuid NOT IN (
     FROM {db}.fact_impressions
     WHERE created_at >= now() - INTERVAL 6 MINUTE
 )
-AND a.created_at >= now() - INTERVAL 5 MINUTE
+AND a.created_at >= now() - INTERVAL 5 MINUTE;
 
 
 -- ============================================================
