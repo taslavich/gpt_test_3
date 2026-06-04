@@ -143,7 +143,9 @@ CREATE TABLE IF NOT EXISTS {db}.fact_impressions
 
     win_cid                String DEFAULT '',
     win_crid               String DEFAULT '',
-    win_user_id            String DEFAULT ''
+    win_user_id            String DEFAULT '',
+
+    created_at             DateTime64(3, 'UTC') DEFAULT now64(3)
 )
 ENGINE = MergeTree
 PARTITION BY toYYYYMMDD(event_date)
@@ -197,7 +199,8 @@ CREATE TABLE IF NOT EXISTS {db}.fact_clicks
 
     win_cid           String DEFAULT '',
     win_crid          String DEFAULT '',
-    win_user_id       String DEFAULT ''
+    win_user_id       String DEFAULT '',
+    created_at        DateTime64(3, 'UTC') DEFAULT now64(3)
 )
 ENGINE = MergeTree
 PARTITION BY toYYYYMMDD(event_date)
@@ -262,10 +265,11 @@ SETTINGS index_granularity = 8192;
 -- ============================================================
 
 CREATE MATERIALIZED VIEW IF NOT EXISTS {db}.mv_impressions_to_fact
-TO {db}.fact_impressions
+REFRESH EVERY 1 MINUTE
+APPEND TO {db}.fact_impressions
 AS
 SELECT
-    i.event_time_impressions AS event_time_impressions,
+    a.event_time_impressions AS event_time_impressions,
     o.event_time AS event_time,
     toDate(o.event_time) AS event_date,
     toStartOfHour(toDateTime(o.event_time, 'UTC')) AS event_hour,
@@ -305,19 +309,29 @@ SELECT
     o.win_cid AS win_cid,
     o.win_crid AS win_crid,
     o.win_user_id AS win_user_id
-FROM {db}.impressions_in AS i
-ANY INNER JOIN {db}.ortb AS o ON i.uuid = o.uuid;
+FROM {db}.impressions_in AS a
+ANY INNER JOIN {db}.ortb AS o
+    ON a.uuid = o.uuid
+WHERE a.uuid NOT IN (
+    SELECT uuid
+    FROM {db}.fact_impressions
+    WHERE created_at >= now() - INTERVAL 6 MINUTE
+)
+AND a.created_at >= now() - INTERVAL 5 MINUTE
 
 
 -- ============================================================
--- MV: CLICKS INPUT -> FACT CLICKS
+-- REFRESHABLE MV: CLICKS INPUT -> FACT CLICKS
+-- Запускается раз в минуту
+-- Берёт только uuid, которых нет в fact_clicks за последние 5 минут
 -- ============================================================
 
 CREATE MATERIALIZED VIEW IF NOT EXISTS {db}.mv_clicks_to_fact
-TO {db}.fact_clicks
+REFRESH EVERY 1 MINUTE
+APPEND TO {db}.fact_clicks
 AS
 SELECT
-    c.event_time_clicks AS event_time_clicks,
+    a.event_time_clicks AS event_time_clicks,
     o.event_time AS event_time,
     toDate(o.event_time) AS event_date,
     toStartOfHour(toDateTime(o.event_time, 'UTC')) AS event_hour,
@@ -357,10 +371,15 @@ SELECT
     o.win_cid AS win_cid,
     o.win_crid AS win_crid,
     o.win_user_id AS win_user_id
-FROM {db}.clicks_in AS c
-ANY INNER JOIN {db}.ortb AS o ON c.uuid = o.uuid;
-
-
+FROM {db}.clicks_in AS a
+ANY INNER JOIN {db}.ortb AS o
+    ON a.uuid = o.uuid
+WHERE a.uuid NOT IN (
+    SELECT uuid
+    FROM {db}.fact_clicks
+    WHERE created_at >= now() - INTERVAL 6 MINUTE
+)
+AND a.created_at >= now() - INTERVAL 5 MINUTE
 -- ============================================================
 -- MV: FACT IMPRESSIONS -> AGG STATS
 -- browser_version здесь специально НЕ группируется
