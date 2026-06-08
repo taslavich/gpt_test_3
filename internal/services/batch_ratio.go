@@ -67,11 +67,11 @@ func (m *BatchRatioManager) BatchSizesInt64(ortbBatch int64) (int64, int64) {
 }
 
 func batchSizeFromPercent(ortbBatch int, percent float64) int {
-	return int(math.Round(float64(ortbBatch) * percent / 100))
+	return int(math.Round(float64(ortbBatch) * percent))
 }
 
 func batchSizeFromPercentInt64(ortbBatch int64, percent float64) int64 {
-	return int64(math.Round(float64(ortbBatch) * percent / 100))
+	return int64(math.Round(float64(ortbBatch) * percent))
 }
 
 func (m *BatchRatioManager) SetManual(impressionsPercent, clicksPercent float64) error {

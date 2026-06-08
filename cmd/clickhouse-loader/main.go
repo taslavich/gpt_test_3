@@ -87,11 +87,11 @@ func main() {
 
 	impressionsPercent := cfg.Clickhouse.BatchSizeImpressionsPercent
 	if impressionsPercent == 0 && cfg.Clickhouse.BatchSizeOrtb > 0 {
-		impressionsPercent = float64(cfg.Clickhouse.BatchSizeImpressions) * 100 / float64(cfg.Clickhouse.BatchSizeOrtb)
+		impressionsPercent = float64(cfg.Clickhouse.BatchSizeImpressions) / float64(cfg.Clickhouse.BatchSizeOrtb)
 	}
 	clicksPercent := cfg.Clickhouse.BatchSizeClicksPercent
 	if clicksPercent == 0 && cfg.Clickhouse.BatchSizeOrtb > 0 {
-		clicksPercent = float64(cfg.Clickhouse.BatchSizeClicks) * 100 / float64(cfg.Clickhouse.BatchSizeOrtb)
+		clicksPercent = float64(cfg.Clickhouse.BatchSizeClicks) / float64(cfg.Clickhouse.BatchSizeOrtb)
 	}
 	batchRatioManager := services.NewBatchRatioManager(impressionsPercent, clicksPercent, cfg.BatchRatioConfig.TickerEnabled)
 	batchRatioManager.StartClickHouseTicker(ctx, connProd, cfg.BatchRatioConfig)

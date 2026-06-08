@@ -98,11 +98,11 @@ func main() {
 
 	impressionsPercent := cfg.RedisConfig.BatchSizeImpressionsPercent
 	if impressionsPercent == 0 && cfg.RedisConfig.BatchSizeOrtb > 0 {
-		impressionsPercent = float64(cfg.RedisConfig.BatchSizeImpressions) * 100 / float64(cfg.RedisConfig.BatchSizeOrtb)
+		impressionsPercent = float64(cfg.RedisConfig.BatchSizeImpressions) / float64(cfg.RedisConfig.BatchSizeOrtb)
 	}
 	clicksPercent := cfg.RedisConfig.BatchSizeClicksPercent
 	if clicksPercent == 0 && cfg.RedisConfig.BatchSizeOrtb > 0 {
-		clicksPercent = float64(cfg.RedisConfig.BatchSizeClicks) * 100 / float64(cfg.RedisConfig.BatchSizeOrtb)
+		clicksPercent = float64(cfg.RedisConfig.BatchSizeClicks) / float64(cfg.RedisConfig.BatchSizeOrtb)
 	}
 	batchRatioManager := services.NewBatchRatioManager(impressionsPercent, clicksPercent, cfg.BatchRatioConfig.TickerEnabled)
 	batchRatioManager.StartClickHouseTicker(ctx, connProd, cfg.BatchRatioConfig)
