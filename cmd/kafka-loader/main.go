@@ -2,13 +2,19 @@ package main
 
 import (
 	"context"
+	"crypto/tls"
 	"log"
+	"net"
 	"os"
 	"os/signal"
+	"sync"
 	"syscall"
 	"time"
 
+	"github.com/ClickHouse/clickhouse-go/v2"
+
 	"gitlab.com/twinbid-exchange/RTB-exchange/internal/config"
+	services "gitlab.com/twinbid-exchange/RTB-exchange/internal/services"
 	kafka_service "gitlab.com/twinbid-exchange/RTB-exchange/internal/services/kafka"
 	kafka_loader "gitlab.com/twinbid-exchange/RTB-exchange/internal/services/kafka-loader"
 	redis_service "gitlab.com/twinbid-exchange/RTB-exchange/internal/services/redis"
@@ -69,54 +75,156 @@ func main() {
 
 	log.Println("✅ Kafka writer initialized")
 
+	addr := net.JoinHostPort(cfg.ClickhouseConfig.Host, cfg.ClickhouseConfig.Port)
+	connProd, err := clickhouse.Open(&clickhouse.Options{
+		Addr:     []string{addr},
+		Protocol: clickhouse.Native,
+		TLS:      &tls.Config{},
+		Auth: clickhouse.Auth{
+			Username: cfg.ClickhouseConfig.Username,
+			Password: cfg.ClickhouseConfig.Password,
+			Database: cfg.ClickhouseConfig.Database,
+		},
+	})
+	if err != nil {
+		log.Fatalf("❌ ClickHouse Open connection failed: %v", err)
+	}
+	defer connProd.Close()
+
+	if err := connProd.Ping(ctx); err != nil {
+		log.Fatalf("❌ ClickHouse ping failed: %v", err)
+	}
+	log.Println("✅ Connected to ClickHouse for batch ratio")
+
+	impressionsPercent := cfg.RedisConfig.BatchSizeImpressionsPercent
+	if impressionsPercent == 0 && cfg.RedisConfig.BatchSizeOrtb > 0 {
+		impressionsPercent = int(cfg.RedisConfig.BatchSizeImpressions * 100 / cfg.RedisConfig.BatchSizeOrtb)
+	}
+	clicksPercent := cfg.RedisConfig.BatchSizeClicksPercent
+	if clicksPercent == 0 && cfg.RedisConfig.BatchSizeOrtb > 0 {
+		clicksPercent = int(cfg.RedisConfig.BatchSizeClicks * 100 / cfg.RedisConfig.BatchSizeOrtb)
+	}
+	batchRatioManager := services.NewBatchRatioManager(impressionsPercent, clicksPercent, cfg.BatchRatioConfig.TickerEnabled)
+	batchRatioManager.StartClickHouseTicker(ctx, connProd, cfg.BatchRatioConfig)
+	batchRatioManager.StartHTTPServer(ctx, cfg.BatchRatioConfig)
+
+	loaderCtx, stopLoaders := context.WithCancel(ctx)
+	defer stopLoaders()
+
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
 
 	impressionClickInterval := time.Duration(cfg.ImpressionClickFlushIntervalSec) * time.Second
-	lastImpressionClickRun := time.Now()
+	if impressionClickInterval <= 0 {
+		impressionClickInterval = time.Minute
+	}
+	loaderErrCh := make(chan error, 3)
+	var loaderWG sync.WaitGroup
+	emptyPause := time.Duration(cfg.EmptyLoopPauseMS) * time.Millisecond
+	if emptyPause <= 0 {
+		emptyPause = 200 * time.Millisecond
+	}
 
 	log.Printf("🚀 Kafka Loader started. Continuous Redis -> Kafka processing")
 
-	for {
-		select {
-		case <-sigChan:
-			log.Print("🛑 Shutting down Kafka Loader")
-			return
-		default:
-			runImpressionsClicks := time.Since(lastImpressionClickRun) >= impressionClickInterval
+	loaderWG.Add(1)
+	go func() {
+		defer loaderWG.Done()
+		for {
+			select {
+			case <-loaderCtx.Done():
+				return
+			default:
+			}
 
-			ortbProcessed, err := kafka_loader.ProcessKafkaMessages(
-				ctx,
+			processed, err := kafka_loader.ProcessBatchOrtb(
+				loaderCtx,
 				redisClients.Ortb,
-				redisClients.Impressions,
-				redisClients.Clicks,
 				kafkaWriter.Ortb,
-				kafkaWriter.Impressions,
-				kafkaWriter.Clicks,
-				cfg.BatchSizeOrtb,
-				cfg.BatchSizeImpressions,
-				cfg.BatchSizeClicks,
+				cfg.RedisConfig.BatchSizeOrtb,
 				cfg.RedisSetOrtb,
-				cfg.RedisSetImpressions,
-				cfg.RedisSetClicks,
-				runImpressionsClicks,
 			)
 			if err != nil {
-				log.Printf("❌ Batch processing error: %v", err)
+				loaderErrCh <- err
+				stopLoaders()
+				return
 			}
-
-			if runImpressionsClicks && ortbProcessed > 0 {
-				lastImpressionClickRun = time.Now()
-			}
-
-			if ortbProcessed == 0 {
+			if processed == 0 {
 				select {
-				case <-sigChan:
-					log.Print("🛑 Shutting down Kafka Loader")
+				case <-loaderCtx.Done():
 					return
-				case <-time.After(200 * time.Millisecond):
+				case <-time.After(emptyPause):
 				}
 			}
 		}
+	}()
+
+	loaderWG.Add(1)
+	go func() {
+		defer loaderWG.Done()
+		ticker := time.NewTicker(impressionClickInterval)
+		defer ticker.Stop()
+
+		for {
+			batchSizeImpressions, _ := batchRatioManager.BatchSizesInt64(cfg.RedisConfig.BatchSizeOrtb)
+			err := kafka_loader.ProcessBatchImpressions(
+				loaderCtx,
+				redisClients.Impressions,
+				kafkaWriter.Impressions,
+				batchSizeImpressions,
+				cfg.RedisSetImpressions,
+			)
+			if err != nil {
+				loaderErrCh <- err
+				stopLoaders()
+				return
+			}
+
+			select {
+			case <-loaderCtx.Done():
+				return
+			case <-ticker.C:
+			}
+		}
+	}()
+
+	loaderWG.Add(1)
+	go func() {
+		defer loaderWG.Done()
+		ticker := time.NewTicker(impressionClickInterval)
+		defer ticker.Stop()
+
+		for {
+			_, batchSizeClicks := batchRatioManager.BatchSizesInt64(cfg.RedisConfig.BatchSizeOrtb)
+			err := kafka_loader.ProcessBatchClicks(
+				loaderCtx,
+				redisClients.Clicks,
+				kafkaWriter.Clicks,
+				batchSizeClicks,
+				cfg.RedisSetClicks,
+			)
+			if err != nil {
+				loaderErrCh <- err
+				stopLoaders()
+				return
+			}
+
+			select {
+			case <-loaderCtx.Done():
+				return
+			case <-ticker.C:
+			}
+		}
+	}()
+
+	select {
+	case <-sigChan:
+		log.Print("🛑 Shutting down Kafka Loader")
+		stopLoaders()
+	case err := <-loaderErrCh:
+		log.Printf("❌ Kafka Loader stream error, stopping all streams: %v", err)
+		stopLoaders()
+	case <-loaderCtx.Done():
 	}
+	loaderWG.Wait()
 }
