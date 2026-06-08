@@ -7,11 +7,13 @@ import (
 	"net"
 	"os"
 	"os/signal"
+	"sync"
 	"syscall"
 	"time"
 
 	"github.com/ClickHouse/clickhouse-go/v2"
 	"gitlab.com/twinbid-exchange/RTB-exchange/internal/config"
+	services "gitlab.com/twinbid-exchange/RTB-exchange/internal/services"
 	clickhouse_loader "gitlab.com/twinbid-exchange/RTB-exchange/internal/services/clickhouse-loader"
 	kafka_service "gitlab.com/twinbid-exchange/RTB-exchange/internal/services/kafka"
 )
@@ -83,6 +85,18 @@ func main() {
 	}
 	log.Println("✅ Connected to Prod ClickHouse")
 
+	impressionsPercent := cfg.Clickhouse.BatchSizeImpressionsPercent
+	if impressionsPercent == 0 && cfg.Clickhouse.BatchSizeOrtb > 0 {
+		impressionsPercent = cfg.Clickhouse.BatchSizeImpressions * 100 / cfg.Clickhouse.BatchSizeOrtb
+	}
+	clicksPercent := cfg.Clickhouse.BatchSizeClicksPercent
+	if clicksPercent == 0 && cfg.Clickhouse.BatchSizeOrtb > 0 {
+		clicksPercent = cfg.Clickhouse.BatchSizeClicks * 100 / cfg.Clickhouse.BatchSizeOrtb
+	}
+	batchRatioManager := services.NewBatchRatioManager(impressionsPercent, clicksPercent, cfg.BatchRatioConfig.TickerEnabled)
+	batchRatioManager.StartClickHouseTicker(ctx, connProd, cfg.BatchRatioConfig)
+	batchRatioManager.StartHTTPServer(ctx, cfg.BatchRatioConfig)
+
 	kafkaReaders, err := kafka_service.InitKafkaReaders(cfg.Kafka)
 	if err != nil {
 		log.Fatalf("Cannot init kafka: %v", err)
@@ -97,47 +111,129 @@ func main() {
 	log.Println("🔄 Waiting for Kafka group coordinator to be ready...")
 	time.Sleep(10 * time.Second)
 
+	loaderCtx, stopLoaders := context.WithCancel(ctx)
+	defer stopLoaders()
+
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
 
 	log.Printf("🚀 ClickHouse Loader started. Reading from topics: %s, %s, %s", cfg.Kafka.KafkaTopicOrtb, cfg.Kafka.KafkaTopicImpressions, cfg.Kafka.KafkaTopicClicks)
 
-	// В main.go ClickHouse Loader добавить:
 	impressionClickInterval := time.Duration(cfg.ImpressionClickFlushIntervalSec) * time.Second
-	lastImpressionClickRun := time.Now()
+	if impressionClickInterval <= 0 {
+		impressionClickInterval = time.Minute
+	}
+	loaderErrCh := make(chan error, 3)
+	var loaderWG sync.WaitGroup
+	emptyPause := time.Duration(cfg.EmptyLoopPauseMS) * time.Millisecond
+	if emptyPause <= 0 {
+		emptyPause = 200 * time.Millisecond
+	}
 
-	for {
-		select {
-		case <-sigChan:
-			log.Print("🛑 Shutting down ClickHouse Loader")
-			return
-		default:
-			runImpressionsClicks := time.Since(lastImpressionClickRun) >= impressionClickInterval
+	loaderWG.Add(1)
+	go func() {
+		defer loaderWG.Done()
+		for {
+			select {
+			case <-loaderCtx.Done():
+				return
+			default:
+			}
 
-			inserted, err := clickhouse_loader.ProcessKafkaMessages(
-				ctx,
-				kafkaReaders,
+			inserted, err := clickhouse_loader.ProcessKafkaMessagesOrtb(
+				loaderCtx,
+				kafkaReaders.Ortb,
 				connProd,
-				cfg.Clickhouse,
+				cfg.Clickhouse.TableOrtb,
+				cfg.Clickhouse.BatchSizeOrtb,
 				cfg.TimeoutSec,
-				cfg.BatchTimeoutMS,
-				runImpressionsClicks, // ← передать флаг
+				cfg.Clickhouse.BatchTimeoutMS,
 			)
 			if err != nil {
-				log.Printf("❌ Processing error: %v", err)
+				loaderErrCh <- err
+				stopLoaders()
+				return
 			}
-
-			if runImpressionsClicks && inserted > 0 {
-				lastImpressionClickRun = time.Now()
-			}
-
 			if inserted == 0 {
 				select {
-				case <-sigChan:
+				case <-loaderCtx.Done():
 					return
-				case <-time.After(200 * time.Millisecond):
+				case <-time.After(emptyPause):
 				}
 			}
 		}
+	}()
+
+	loaderWG.Add(1)
+	go func() {
+		defer loaderWG.Done()
+		ticker := time.NewTicker(impressionClickInterval)
+		defer ticker.Stop()
+
+		for {
+			batchSizeImpressions, _ := batchRatioManager.BatchSizes(cfg.Clickhouse.BatchSizeOrtb)
+			err := clickhouse_loader.ProcessKafkaMessagesImpressions(
+				loaderCtx,
+				kafkaReaders.Impressions,
+				connProd,
+				cfg.Clickhouse.TableImpressions,
+				batchSizeImpressions,
+				cfg.TimeoutSec,
+				cfg.Clickhouse.BatchTimeoutMS,
+			)
+			if err != nil {
+				loaderErrCh <- err
+				stopLoaders()
+				return
+			}
+
+			select {
+			case <-loaderCtx.Done():
+				return
+			case <-ticker.C:
+			}
+		}
+	}()
+
+	loaderWG.Add(1)
+	go func() {
+		defer loaderWG.Done()
+		ticker := time.NewTicker(impressionClickInterval)
+		defer ticker.Stop()
+
+		for {
+			_, batchSizeClicks := batchRatioManager.BatchSizes(cfg.Clickhouse.BatchSizeOrtb)
+			err := clickhouse_loader.ProcessKafkaMessagesClicks(
+				loaderCtx,
+				kafkaReaders.Clicks,
+				connProd,
+				cfg.Clickhouse.TableClicks,
+				batchSizeClicks,
+				cfg.TimeoutSec,
+				cfg.Clickhouse.BatchTimeoutMS,
+			)
+			if err != nil {
+				loaderErrCh <- err
+				stopLoaders()
+				return
+			}
+
+			select {
+			case <-loaderCtx.Done():
+				return
+			case <-ticker.C:
+			}
+		}
+	}()
+
+	select {
+	case <-sigChan:
+		log.Print("🛑 Shutting down ClickHouse Loader")
+		stopLoaders()
+	case err := <-loaderErrCh:
+		log.Printf("❌ ClickHouse Loader stream error, stopping all streams: %v", err)
+		stopLoaders()
+	case <-loaderCtx.Done():
 	}
+	loaderWG.Wait()
 }

@@ -209,6 +209,9 @@ type AdmAdapterConfig struct {
 type KafkaLoaderConfig struct {
 	RedisConfig
 	KafkaConfig
+	ClickhouseConfig
+	BatchRatioConfig
+	EmptyLoopPauseMS int `yaml:"EMPTY_LOOP_PAUSE_MS" env:"EMPTY_LOOP_PAUSE_MS" env-default:"200"`
 }
 
 type ClickhouseConfig struct {
@@ -221,13 +224,28 @@ type ClickhouseConfig struct {
 	DatabaseDefault string `yaml:"CLICKHOUSE_DEFAULT_DB" env:"CLICKHOUSE_DEFAULT_DB" env-default:"default"`
 
 	// ClickHouse tables and batches by event type
-	TableOrtb            string `yaml:"CLICKHOUSE_TABLE_ORTB" env:"CLICKHOUSE_TABLE_ORTB" env-default:"ortb"`
-	TableImpressions     string `yaml:"CLICKHOUSE_TABLE_IMPRESSIONS" env:"CLICKHOUSE_TABLE_IMPRESSIONS" env-default:"impressions_in"`
-	TableClicks          string `yaml:"CLICKHOUSE_TABLE_CLICKS" env:"CLICKHOUSE_TABLE_CLICKS" env-default:"clicks_in"`
-	BatchSizeOrtb        int    `yaml:"CLICKHOUSE_BATCH_SIZE_ORTB" env:"CLICKHOUSE_BATCH_SIZE_ORTB"`
-	BatchSizeImpressions int    `yaml:"CLICKHOUSE_BATCH_SIZE_IMPRESSIONS" env:"CLICKHOUSE_BATCH_SIZE_IMPRESSIONS"`
-	BatchSizeClicks      int    `yaml:"CLICKHOUSE_BATCH_SIZE_CLICKS" env:"CLICKHOUSE_BATCH_SIZE_CLICKS"`
-	BatchTimeoutMS       int    `yaml:"CLICKHOUSE_BATCH_TIMEOUT_MS" env:"CLICKHOUSE_BATCH_TIMEOUT_MS" env-default:"800"`
+	TableOrtb                   string `yaml:"CLICKHOUSE_TABLE_ORTB" env:"CLICKHOUSE_TABLE_ORTB" env-default:"ortb"`
+	TableImpressions            string `yaml:"CLICKHOUSE_TABLE_IMPRESSIONS" env:"CLICKHOUSE_TABLE_IMPRESSIONS" env-default:"impressions_in"`
+	TableClicks                 string `yaml:"CLICKHOUSE_TABLE_CLICKS" env:"CLICKHOUSE_TABLE_CLICKS" env-default:"clicks_in"`
+	BatchSizeOrtb               int    `yaml:"CLICKHOUSE_BATCH_SIZE_ORTB" env:"CLICKHOUSE_BATCH_SIZE_ORTB"`
+	BatchSizeImpressions        int    `yaml:"CLICKHOUSE_BATCH_SIZE_IMPRESSIONS" env:"CLICKHOUSE_BATCH_SIZE_IMPRESSIONS"`
+	BatchSizeClicks             int    `yaml:"CLICKHOUSE_BATCH_SIZE_CLICKS" env:"CLICKHOUSE_BATCH_SIZE_CLICKS"`
+	BatchSizeImpressionsPercent int    `yaml:"CLICKHOUSE_BATCH_SIZE_IMPRESSIONS_PERCENT" env:"CLICKHOUSE_BATCH_SIZE_IMPRESSIONS_PERCENT"`
+	BatchSizeClicksPercent      int    `yaml:"CLICKHOUSE_BATCH_SIZE_CLICKS_PERCENT" env:"CLICKHOUSE_BATCH_SIZE_CLICKS_PERCENT"`
+	BatchTimeoutMS              int    `yaml:"CLICKHOUSE_BATCH_TIMEOUT_MS" env:"CLICKHOUSE_BATCH_TIMEOUT_MS" env-default:"800"`
+}
+
+type BatchRatioConfig struct {
+	Table                    string `yaml:"BATCH_RATIO_TABLE" env:"BATCH_RATIO_TABLE"`
+	ImpressionsPercentColumn string `yaml:"BATCH_RATIO_IMPRESSIONS_PERCENT_COLUMN" env:"BATCH_RATIO_IMPRESSIONS_PERCENT_COLUMN" env-default:"impressions_percent"`
+	ClicksPercentColumn      string `yaml:"BATCH_RATIO_CLICKS_PERCENT_COLUMN" env:"BATCH_RATIO_CLICKS_PERCENT_COLUMN" env-default:"clicks_percent"`
+	OrderColumn              string `yaml:"BATCH_RATIO_ORDER_COLUMN" env:"BATCH_RATIO_ORDER_COLUMN" env-default:"updated_at"`
+	TickerEnabled            bool   `yaml:"BATCH_RATIO_TICKER_ENABLED" env:"BATCH_RATIO_TICKER_ENABLED" env-default:"true"`
+	TickerIntervalSec        int    `yaml:"BATCH_RATIO_TICKER_INTERVAL_SEC" env:"BATCH_RATIO_TICKER_INTERVAL_SEC" env-default:"60"`
+	TickerRequestTimeoutMS   int    `yaml:"BATCH_RATIO_TICKER_REQUEST_TIMEOUT_MS" env:"BATCH_RATIO_TICKER_REQUEST_TIMEOUT_MS" env-default:"2000"`
+	TickerRetryAttempts      int    `yaml:"BATCH_RATIO_TICKER_RETRY_ATTEMPTS" env:"BATCH_RATIO_TICKER_RETRY_ATTEMPTS" env-default:"3"`
+	HTTPHost                 string `yaml:"BATCH_RATIO_HTTP_HOST" env:"BATCH_RATIO_HTTP_HOST" env-default:"0.0.0.0"`
+	HTTPPort                 uint16 `yaml:"BATCH_RATIO_HTTP_PORT" env:"BATCH_RATIO_HTTP_PORT" env-default:"8090"`
 }
 
 type PercenterConfig struct {
@@ -238,11 +256,13 @@ type PercenterConfig struct {
 type ClickhouseLoaderConfig struct {
 	Kafka      KafkaConfig
 	Clickhouse ClickhouseConfig
+	BatchRatioConfig
 
 	TimeoutSec     int `yaml:"TIMEOUT_SEC" env:"TIMEOUT_SEC"`
 	BatchTimeoutMS int `yaml:"CLICKHOUSE_BATCH_TIMEOUT_MS" env:"CLICKHOUSE_BATCH_TIMEOUT_MS" env-default:"800"`
 
 	ImpressionClickFlushIntervalSec int `yaml:"IMPRESSION_CLICK_FLUSH_INTERVAL_SEC" env:"IMPRESSION_CLICK_FLUSH_INTERVAL_SEC" env-default:"60"`
+	EmptyLoopPauseMS                int `yaml:"EMPTY_LOOP_PAUSE_MS" env:"EMPTY_LOOP_PAUSE_MS" env-default:"200"`
 }
 
 type MockDspConfig struct {
@@ -268,14 +288,16 @@ type RedisConfig struct {
 	RedisSetOrtb  string `yaml:"REDIS_SET_ORTB" env:"REDIS_SET_ORTB" env-default:"ortb:ready"`
 
 	// Redis Impressions
-	RedisDBImpressions   int    `yaml:"REDIS_DB_IMPRESSIONS" env:"REDIS_DB_IMPRESSIONS"`
-	BatchSizeImpressions int64  `yaml:"BATCH_SIZE_IMPRESSIONS" env:"BATCH_SIZE_IMPRESSIONS"`
-	RedisSetImpressions  string `yaml:"REDIS_SET_IMPRESSIONS" env:"REDIS_SET_IMPRESSIONS" env-default:"impressions:ready"`
+	RedisDBImpressions          int    `yaml:"REDIS_DB_IMPRESSIONS" env:"REDIS_DB_IMPRESSIONS"`
+	BatchSizeImpressions        int64  `yaml:"BATCH_SIZE_IMPRESSIONS" env:"BATCH_SIZE_IMPRESSIONS"`
+	BatchSizeImpressionsPercent int    `yaml:"BATCH_SIZE_IMPRESSIONS_PERCENT" env:"BATCH_SIZE_IMPRESSIONS_PERCENT"`
+	RedisSetImpressions         string `yaml:"REDIS_SET_IMPRESSIONS" env:"REDIS_SET_IMPRESSIONS" env-default:"impressions:ready"`
 
 	// Redis Clicks
-	RedisDBClicks   int    `yaml:"REDIS_DB_CLICKS" env:"REDIS_DB_CLICKS"`
-	BatchSizeClicks int64  `yaml:"BATCH_SIZE_CLICKS" env:"BATCH_SIZE_CLICKS"`
-	RedisSetClicks  string `yaml:"REDIS_SET_CLICKS" env:"REDIS_SET_CLICKS" env-default:"clicks:ready"`
+	RedisDBClicks          int    `yaml:"REDIS_DB_CLICKS" env:"REDIS_DB_CLICKS"`
+	BatchSizeClicks        int64  `yaml:"BATCH_SIZE_CLICKS" env:"BATCH_SIZE_CLICKS"`
+	BatchSizeClicksPercent int    `yaml:"BATCH_SIZE_CLICKS_PERCENT" env:"BATCH_SIZE_CLICKS_PERCENT"`
+	RedisSetClicks         string `yaml:"REDIS_SET_CLICKS" env:"REDIS_SET_CLICKS" env-default:"clicks:ready"`
 }
 
 type KafkaConfig struct {

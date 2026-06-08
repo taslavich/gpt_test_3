@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log"
 	"time"
 
 	"github.com/ClickHouse/clickhouse-go/v2"
@@ -32,12 +31,10 @@ func ProcessKafkaMessagesClicks(
 		return nil
 	}
 
-	start := time.Now()
 	readCtx, cancel := context.WithTimeout(ctx, batchTimeout(timeoutSec, timeoutMs))
 	defer cancel()
 
 	commitOnlyMap := make(map[int]kafka.Message, 64)
-	var readCount, badProtoCount, emptyCount int
 
 	for len(clicksRecordsBuffer) < batchSize {
 		msg, err := reader.FetchMessage(readCtx)
@@ -48,17 +45,13 @@ func ProcessKafkaMessagesClicks(
 			return err
 		}
 
-		readCount++
-
 		var record eventspb.ClickEvent
 		if err := proto.Unmarshal(msg.Value, &record); err != nil {
-			badProtoCount++
 			rememberCommitMessage(commitOnlyMap, msg)
 			continue
 		}
 
 		if record.Uuid == "" || record.EventTimeClicksMs == 0 {
-			emptyCount++
 			rememberCommitMessage(commitOnlyMap, msg)
 			continue
 		}
@@ -67,24 +60,18 @@ func ProcessKafkaMessagesClicks(
 		clicksMessagesBuffer = append(clicksMessagesBuffer, msg)
 	}
 
-	if len(clicksRecordsBuffer) < batchSize {
+	if len(clicksRecordsBuffer) == 0 {
 		commitSkipped(ctx, reader, commitOnlyMap, "click skipped")
-		if readCount > 0 {
-			log.Printf(
-				"CLICKS BUFFER WAIT: records=%d batchSize=%d read=%d bad_proto=%d empty=%d duration=%s",
-				len(clicksRecordsBuffer),
-				batchSize,
-				readCount,
-				badProtoCount,
-				emptyCount,
-				time.Since(start),
-			)
-		}
 		return nil
 	}
 
-	records := clicksRecordsBuffer[:batchSize]
-	messages := clicksMessagesBuffer[:batchSize]
+	insertCount := len(clicksRecordsBuffer)
+	if insertCount > batchSize {
+		insertCount = batchSize
+	}
+
+	records := clicksRecordsBuffer[:insertCount]
+	messages := clicksMessagesBuffer[:insertCount]
 
 	if err := insertBatchClicks(ctx, ch, table, records); err != nil {
 		return err
@@ -95,18 +82,8 @@ func ProcessKafkaMessagesClicks(
 		return fmt.Errorf("commit click offsets after successful insert failed: %w", err)
 	}
 
-	log.Printf(
-		"CLICKS batch: inserted=%d offsets=%d read=%d bad_proto=%d empty=%d duration=%s",
-		len(records),
-		len(commitMessages),
-		readCount,
-		badProtoCount,
-		emptyCount,
-		time.Since(start),
-	)
-
-	clicksRecordsBuffer = clicksRecordsBuffer[batchSize:]
-	clicksMessagesBuffer = clicksMessagesBuffer[batchSize:]
+	clicksRecordsBuffer = clicksRecordsBuffer[insertCount:]
+	clicksMessagesBuffer = clicksMessagesBuffer[insertCount:]
 	return nil
 }
 
