@@ -32,12 +32,10 @@ func ProcessKafkaMessagesImpressions(
 		return nil
 	}
 
-	start := time.Now()
 	readCtx, cancel := context.WithTimeout(ctx, batchTimeout(timeoutSec, timeoutMs))
 	defer cancel()
 
 	commitOnlyMap := make(map[int]kafka.Message, 64)
-	var readCount, badProtoCount, emptyCount int
 
 	for len(impressionsRecordsBuffer) < batchSize {
 		msg, err := reader.FetchMessage(readCtx)
@@ -48,17 +46,13 @@ func ProcessKafkaMessagesImpressions(
 			return err
 		}
 
-		readCount++
-
 		var record eventspb.ImpressionEvent
 		if err := proto.Unmarshal(msg.Value, &record); err != nil {
-			badProtoCount++
 			rememberCommitMessage(commitOnlyMap, msg)
 			continue
 		}
 
 		if record.Uuid == "" || record.EventTimeImpressionsMs == 0 {
-			emptyCount++
 			rememberCommitMessage(commitOnlyMap, msg)
 			continue
 		}
@@ -67,24 +61,18 @@ func ProcessKafkaMessagesImpressions(
 		impressionsMessagesBuffer = append(impressionsMessagesBuffer, msg)
 	}
 
-	if len(impressionsRecordsBuffer) < batchSize {
+	if len(impressionsRecordsBuffer) == 0 {
 		commitSkipped(ctx, reader, commitOnlyMap, "impression skipped")
-		if readCount > 0 {
-			log.Printf(
-				"IMPRESSIONS BUFFER WAIT: records=%d batchSize=%d read=%d bad_proto=%d empty=%d duration=%s",
-				len(impressionsRecordsBuffer),
-				batchSize,
-				readCount,
-				badProtoCount,
-				emptyCount,
-				time.Since(start),
-			)
-		}
 		return nil
 	}
 
-	records := impressionsRecordsBuffer[:batchSize]
-	messages := impressionsMessagesBuffer[:batchSize]
+	insertCount := len(impressionsRecordsBuffer)
+	if insertCount > batchSize {
+		insertCount = batchSize
+	}
+
+	records := impressionsRecordsBuffer[:insertCount]
+	messages := impressionsMessagesBuffer[:insertCount]
 
 	if err := insertBatchImpressions(ctx, ch, table, records); err != nil {
 		return err
@@ -95,18 +83,8 @@ func ProcessKafkaMessagesImpressions(
 		return fmt.Errorf("commit impression offsets after successful insert failed: %w", err)
 	}
 
-	log.Printf(
-		"IMPRESSIONS batch: inserted=%d offsets=%d read=%d bad_proto=%d empty=%d duration=%s",
-		len(records),
-		len(commitMessages),
-		readCount,
-		badProtoCount,
-		emptyCount,
-		time.Since(start),
-	)
-
-	impressionsRecordsBuffer = impressionsRecordsBuffer[batchSize:]
-	impressionsMessagesBuffer = impressionsMessagesBuffer[batchSize:]
+	impressionsRecordsBuffer = impressionsRecordsBuffer[insertCount:]
+	impressionsMessagesBuffer = impressionsMessagesBuffer[insertCount:]
 	return nil
 }
 
