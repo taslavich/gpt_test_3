@@ -124,7 +124,12 @@ func main() {
 		emptyPause = 200 * time.Millisecond
 	}
 
-	log.Printf("🚀 Kafka Loader initialized. Batch processing is stopped until POST /loader/start")
+	log.Printf(
+		"🚀 Kafka Loader initialized. Batch processing is stopped until POST /loader/start. Topics: %s, %s, %s",
+		cfg.KafkaConfig.KafkaTopicOrtb,
+		cfg.KafkaConfig.KafkaTopicImpressions,
+		cfg.KafkaConfig.KafkaTopicClicks,
+	)
 
 	loaderWG.Add(1)
 	go func() {
