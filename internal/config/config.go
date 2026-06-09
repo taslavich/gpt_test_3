@@ -224,15 +224,15 @@ type ClickhouseConfig struct {
 	DatabaseDefault string `yaml:"CLICKHOUSE_DEFAULT_DB" env:"CLICKHOUSE_DEFAULT_DB" env-default:"default"`
 
 	// ClickHouse tables and batches by event type
-	TableOrtb                   string `yaml:"CLICKHOUSE_TABLE_ORTB" env:"CLICKHOUSE_TABLE_ORTB" env-default:"ortb"`
-	TableImpressions            string `yaml:"CLICKHOUSE_TABLE_IMPRESSIONS" env:"CLICKHOUSE_TABLE_IMPRESSIONS" env-default:"impressions_in"`
-	TableClicks                 string `yaml:"CLICKHOUSE_TABLE_CLICKS" env:"CLICKHOUSE_TABLE_CLICKS" env-default:"clicks_in"`
-	BatchSizeOrtb               int    `yaml:"CLICKHOUSE_BATCH_SIZE_ORTB" env:"CLICKHOUSE_BATCH_SIZE_ORTB"`
-	BatchSizeImpressions        int    `yaml:"CLICKHOUSE_BATCH_SIZE_IMPRESSIONS" env:"CLICKHOUSE_BATCH_SIZE_IMPRESSIONS"`
-	BatchSizeClicks             int    `yaml:"CLICKHOUSE_BATCH_SIZE_CLICKS" env:"CLICKHOUSE_BATCH_SIZE_CLICKS"`
-	BatchSizeImpressionsPercent int    `yaml:"CLICKHOUSE_BATCH_SIZE_IMPRESSIONS_PERCENT" env:"CLICKHOUSE_BATCH_SIZE_IMPRESSIONS_PERCENT"`
-	BatchSizeClicksPercent      int    `yaml:"CLICKHOUSE_BATCH_SIZE_CLICKS_PERCENT" env:"CLICKHOUSE_BATCH_SIZE_CLICKS_PERCENT"`
-	BatchTimeoutMS              int    `yaml:"CLICKHOUSE_BATCH_TIMEOUT_MS" env:"CLICKHOUSE_BATCH_TIMEOUT_MS" env-default:"800"`
+	TableOrtb                   string  `yaml:"CLICKHOUSE_TABLE_ORTB" env:"CLICKHOUSE_TABLE_ORTB" env-default:"ortb"`
+	TableImpressions            string  `yaml:"CLICKHOUSE_TABLE_IMPRESSIONS" env:"CLICKHOUSE_TABLE_IMPRESSIONS" env-default:"impressions_in"`
+	TableClicks                 string  `yaml:"CLICKHOUSE_TABLE_CLICKS" env:"CLICKHOUSE_TABLE_CLICKS" env-default:"clicks_in"`
+	BatchSizeOrtb               int     `yaml:"CLICKHOUSE_BATCH_SIZE_ORTB" env:"CLICKHOUSE_BATCH_SIZE_ORTB"`
+	BatchSizeImpressions        int     `yaml:"CLICKHOUSE_BATCH_SIZE_IMPRESSIONS" env:"CLICKHOUSE_BATCH_SIZE_IMPRESSIONS"`
+	BatchSizeClicks             int     `yaml:"CLICKHOUSE_BATCH_SIZE_CLICKS" env:"CLICKHOUSE_BATCH_SIZE_CLICKS"`
+	BatchSizeImpressionsPercent float64 `yaml:"CLICKHOUSE_BATCH_SIZE_IMPRESSIONS_PERCENT" env:"CLICKHOUSE_BATCH_SIZE_IMPRESSIONS_PERCENT"`
+	BatchSizeClicksPercent      float64 `yaml:"CLICKHOUSE_BATCH_SIZE_CLICKS_PERCENT" env:"CLICKHOUSE_BATCH_SIZE_CLICKS_PERCENT"`
+	BatchTimeoutMS              int     `yaml:"CLICKHOUSE_BATCH_TIMEOUT_MS" env:"CLICKHOUSE_BATCH_TIMEOUT_MS" env-default:"800"`
 }
 
 type BatchRatioConfig struct {
@@ -288,16 +288,16 @@ type RedisConfig struct {
 	RedisSetOrtb  string `yaml:"REDIS_SET_ORTB" env:"REDIS_SET_ORTB" env-default:"ortb:ready"`
 
 	// Redis Impressions
-	RedisDBImpressions          int    `yaml:"REDIS_DB_IMPRESSIONS" env:"REDIS_DB_IMPRESSIONS"`
-	BatchSizeImpressions        int64  `yaml:"BATCH_SIZE_IMPRESSIONS" env:"BATCH_SIZE_IMPRESSIONS"`
-	BatchSizeImpressionsPercent int    `yaml:"BATCH_SIZE_IMPRESSIONS_PERCENT" env:"BATCH_SIZE_IMPRESSIONS_PERCENT"`
-	RedisSetImpressions         string `yaml:"REDIS_SET_IMPRESSIONS" env:"REDIS_SET_IMPRESSIONS" env-default:"impressions:ready"`
+	RedisDBImpressions          int     `yaml:"REDIS_DB_IMPRESSIONS" env:"REDIS_DB_IMPRESSIONS"`
+	BatchSizeImpressions        int64   `yaml:"BATCH_SIZE_IMPRESSIONS" env:"BATCH_SIZE_IMPRESSIONS"`
+	BatchSizeImpressionsPercent float64 `yaml:"BATCH_SIZE_IMPRESSIONS_PERCENT" env:"BATCH_SIZE_IMPRESSIONS_PERCENT"`
+	RedisSetImpressions         string  `yaml:"REDIS_SET_IMPRESSIONS" env:"REDIS_SET_IMPRESSIONS" env-default:"impressions:ready"`
 
 	// Redis Clicks
-	RedisDBClicks          int    `yaml:"REDIS_DB_CLICKS" env:"REDIS_DB_CLICKS"`
-	BatchSizeClicks        int64  `yaml:"BATCH_SIZE_CLICKS" env:"BATCH_SIZE_CLICKS"`
-	BatchSizeClicksPercent int    `yaml:"BATCH_SIZE_CLICKS_PERCENT" env:"BATCH_SIZE_CLICKS_PERCENT"`
-	RedisSetClicks         string `yaml:"REDIS_SET_CLICKS" env:"REDIS_SET_CLICKS" env-default:"clicks:ready"`
+	RedisDBClicks          int     `yaml:"REDIS_DB_CLICKS" env:"REDIS_DB_CLICKS"`
+	BatchSizeClicks        int64   `yaml:"BATCH_SIZE_CLICKS" env:"BATCH_SIZE_CLICKS"`
+	BatchSizeClicksPercent float64 `yaml:"BATCH_SIZE_CLICKS_PERCENT" env:"BATCH_SIZE_CLICKS_PERCENT"`
+	RedisSetClicks         string  `yaml:"REDIS_SET_CLICKS" env:"REDIS_SET_CLICKS" env-default:"clicks:ready"`
 }
 
 type KafkaConfig struct {

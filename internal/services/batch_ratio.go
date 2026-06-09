@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"math"
 	"net"
 	"net/http"
 	"regexp"
@@ -18,25 +19,25 @@ import (
 
 type BatchRatioManager struct {
 	mu                 sync.RWMutex
-	impressionsPercent int
-	clicksPercent      int
+	impressionsPercent float64
+	clicksPercent      float64
 	tickerEnabled      bool
 	manualMode         bool
 }
 
 type BatchRatioState struct {
-	ImpressionsPercent int  `json:"impressions_percent"`
-	ClicksPercent      int  `json:"clicks_percent"`
-	TickerEnabled      bool `json:"ticker_enabled"`
-	ManualMode         bool `json:"manual_mode"`
+	ImpressionsPercent float64 `json:"impressions_percent"`
+	ClicksPercent      float64 `json:"clicks_percent"`
+	TickerEnabled      bool    `json:"ticker_enabled"`
+	ManualMode         bool    `json:"manual_mode"`
 }
 
 type BatchRatioUpdateRequest struct {
-	ImpressionsPercent int `json:"impressions_percent"`
-	ClicksPercent      int `json:"clicks_percent"`
+	ImpressionsPercent float64 `json:"impressions_percent"`
+	ClicksPercent      float64 `json:"clicks_percent"`
 }
 
-func NewBatchRatioManager(impressionsPercent, clicksPercent int, tickerEnabled bool) *BatchRatioManager {
+func NewBatchRatioManager(impressionsPercent, clicksPercent float64, tickerEnabled bool) *BatchRatioManager {
 	return &BatchRatioManager{
 		impressionsPercent: impressionsPercent,
 		clicksPercent:      clicksPercent,
@@ -57,15 +58,23 @@ func (m *BatchRatioManager) State() BatchRatioState {
 
 func (m *BatchRatioManager) BatchSizes(ortbBatch int) (int, int) {
 	state := m.State()
-	return ortbBatch * state.ImpressionsPercent / 100, ortbBatch * state.ClicksPercent / 100
+	return batchSizeFromPercent(ortbBatch, state.ImpressionsPercent), batchSizeFromPercent(ortbBatch, state.ClicksPercent)
 }
 
 func (m *BatchRatioManager) BatchSizesInt64(ortbBatch int64) (int64, int64) {
 	state := m.State()
-	return ortbBatch * int64(state.ImpressionsPercent) / 100, ortbBatch * int64(state.ClicksPercent) / 100
+	return batchSizeFromPercentInt64(ortbBatch, state.ImpressionsPercent), batchSizeFromPercentInt64(ortbBatch, state.ClicksPercent)
 }
 
-func (m *BatchRatioManager) SetManual(impressionsPercent, clicksPercent int) error {
+func batchSizeFromPercent(ortbBatch int, percent float64) int {
+	return int(math.Round(float64(ortbBatch) * percent))
+}
+
+func batchSizeFromPercentInt64(ortbBatch int64, percent float64) int64 {
+	return int64(math.Round(float64(ortbBatch) * percent))
+}
+
+func (m *BatchRatioManager) SetManual(impressionsPercent, clicksPercent float64) error {
 	if impressionsPercent < 0 || clicksPercent < 0 {
 		return fmt.Errorf("batch ratio percents cannot be negative")
 	}
@@ -91,7 +100,7 @@ func (m *BatchRatioManager) PauseTicker() {
 	m.tickerEnabled = false
 }
 
-func (m *BatchRatioManager) updateFromTicker(impressionsPercent, clicksPercent int) {
+func (m *BatchRatioManager) updateFromTicker(impressionsPercent, clicksPercent float64) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if !m.tickerEnabled || m.manualMode {
@@ -133,13 +142,13 @@ func (m *BatchRatioManager) StartClickHouseTicker(ctx context.Context, ch clickh
 				}
 
 				m.updateFromTicker(impressionsPercent, clicksPercent)
-				log.Printf("✅ batch ratio updated from ClickHouse: impressions=%d clicks=%d", impressionsPercent, clicksPercent)
+				log.Printf("✅ batch ratio updated from ClickHouse: impressions=%.4f clicks=%.4f", impressionsPercent, clicksPercent)
 			}
 		}
 	}()
 }
 
-func FetchBatchRatioWithRetries(ctx context.Context, ch clickhouse.Conn, cfg config.BatchRatioConfig) (int, int, error) {
+func FetchBatchRatioWithRetries(ctx context.Context, ch clickhouse.Conn, cfg config.BatchRatioConfig) (float64, float64, error) {
 	attempts := cfg.TickerRetryAttempts
 	if attempts <= 0 {
 		attempts = 3
@@ -172,7 +181,7 @@ func FetchBatchRatioWithRetries(ctx context.Context, ch clickhouse.Conn, cfg con
 	return 0, 0, lastErr
 }
 
-func FetchBatchRatio(ctx context.Context, ch clickhouse.Conn, cfg config.BatchRatioConfig) (int, int, error) {
+func FetchBatchRatio(ctx context.Context, ch clickhouse.Conn, cfg config.BatchRatioConfig) (float64, float64, error) {
 	if strings.TrimSpace(cfg.Table) == "" {
 		return 0, 0, fmt.Errorf("BATCH_RATIO_TABLE is empty")
 	}
@@ -185,8 +194,8 @@ func FetchBatchRatio(ctx context.Context, ch clickhouse.Conn, cfg config.BatchRa
 		quoteIdentifier(cfg.OrderColumn),
 	)
 
-	var impressionsPercent int
-	var clicksPercent int
+	var impressionsPercent float64
+	var clicksPercent float64
 	if err := ch.QueryRow(ctx, query).Scan(&impressionsPercent, &clicksPercent); err != nil {
 		return 0, 0, err
 	}
