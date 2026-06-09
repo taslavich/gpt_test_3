@@ -299,6 +299,14 @@ func valueAsString(values []interface{}, index int) string {
 	}
 }
 
+func stringSliceToAny(slice []string) []interface{} {
+	result := make([]interface{}, len(slice))
+	for i, v := range slice {
+		result[i] = v
+	}
+	return result
+}
+
 func popUUIDsToProcessing(
 	ctx context.Context,
 	redisClient *redis.Client,
