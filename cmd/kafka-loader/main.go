@@ -117,6 +117,7 @@ func main() {
 	if impressionClickInterval <= 0 {
 		impressionClickInterval = time.Minute
 	}
+
 	var loaderWG sync.WaitGroup
 	emptyPause := time.Duration(cfg.EmptyLoopPauseMS) * time.Millisecond
 	if emptyPause <= 0 {
@@ -158,7 +159,6 @@ func main() {
 	loaderWG.Add(1)
 	go func() {
 		defer loaderWG.Done()
-
 		for {
 			if err := loaderControl.Wait(ctx); err != nil {
 				return
@@ -199,6 +199,8 @@ func main() {
 			if err := loaderControl.Wait(ctx); err != nil {
 				return
 			}
+		}
+	}()
 
 			select {
 			case <-ctx.Done():
