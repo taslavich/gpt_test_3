@@ -29,6 +29,8 @@ CREATE TABLE IF NOT EXISTS {db}.ortb
     event_time        DateTime64(3, 'UTC'),
     created_at        DateTime64(3, 'UTC') DEFAULT now64(3),
 
+    code              UInt16 DEFAULT 0,
+
     format            LowCardinality(String),
     typic             LowCardinality(String),
 
@@ -259,6 +261,35 @@ ORDER BY
 )
 SETTINGS index_granularity = 8192;
 
+-- ============================================================
+-- ORTB MINUTE METRICS
+-- ============================================================
+
+CREATE TABLE IF NOT EXISTS {db}.ortb_minute_metrics
+(
+    minute                  DateTime('UTC'),
+
+    total_ortb              UInt64,
+
+    code_counts             Map(String, UInt64),
+    code_percents           Map(String, Float64),
+
+    cnt_clicks_5m           UInt64,
+    click_ortb_ratio        Float64,
+
+    cnt_impressions_5m      UInt64,
+    impression_ortb_ratio   Float64,
+
+    cnt_ortb_5m             UInt64,
+
+    created_at              DateTime('UTC') DEFAULT now('UTC')
+)
+ENGINE = ReplacingMergeTree(created_at)
+PARTITION BY toYYYYMMDD(minute)
+ORDER BY minute
+TTL minute + INTERVAL 32 DAY DELETE
+SETTINGS index_granularity = 8192;
+
 
 -- ============================================================
 -- MV: IMPRESSIONS INPUT -> FACT IMPRESSIONS
@@ -484,6 +515,104 @@ GROUP BY
 
     format,
     typic;
+
+-- ============================================================
+-- REFRESHABLE MV: ORTB MINUTE METRICS
+-- ============================================================
+
+CREATE MATERIALIZED VIEW IF NOT EXISTS {db}.mv_ortb_minute_metrics
+REFRESH EVERY 1 MINUTE
+APPEND TO {db}.ortb_minute_metrics
+AS
+WITH
+    toStartOfMinute(now('UTC')) AS current_minute,
+
+    -- последняя полностью закрытая минута
+    current_minute - INTERVAL 1 MINUTE AS metric_minute,
+
+    -- окно для коэффициентов: последние 5 полных минут без текущей минуты
+    current_minute - INTERVAL 6 MINUTE AS ratio_from,
+    current_minute - INTERVAL 1 MINUTE AS ratio_to
+SELECT
+    metric_minute AS minute,
+
+    m.total_ortb AS total_ortb,
+
+    mapFromArrays(m.codes, m.counts) AS code_counts,
+
+    mapFromArrays(
+        m.codes,
+        arrayMap(
+            x -> if(
+                m.total_ortb = 0,
+                toFloat64(0),
+                round(toFloat64(x) / toFloat64(m.total_ortb) * 100, 4)
+            ),
+            m.counts
+        )
+    ) AS code_percents,
+
+    c.cnt_clicks_5m AS cnt_clicks_5m,
+
+    if(
+        o.cnt_ortb_5m = 0,
+        toFloat64(0),
+        round(toFloat64(c.cnt_clicks_5m) / toFloat64(o.cnt_ortb_5m), 6)
+    ) AS click_ortb_ratio,
+
+    i.cnt_impressions_5m AS cnt_impressions_5m,
+
+    if(
+        o.cnt_ortb_5m = 0,
+        toFloat64(0),
+        round(toFloat64(i.cnt_impressions_5m) / toFloat64(o.cnt_ortb_5m), 6)
+    ) AS impression_ortb_ratio,
+
+    o.cnt_ortb_5m AS cnt_ortb_5m,
+
+    now('UTC') AS created_at
+
+FROM
+(
+    SELECT
+        sum(cnt) AS total_ortb,
+        groupArray(code_str) AS codes,
+        groupArray(cnt) AS counts
+    FROM
+    (
+        SELECT
+            toString(code) AS code_str,
+            count() AS cnt
+        FROM {db}.ortb
+        WHERE event_time >= metric_minute
+          AND event_time < current_minute
+        GROUP BY code_str
+    )
+) AS m
+
+CROSS JOIN
+(
+    SELECT count() AS cnt_clicks_5m
+    FROM {db}.fact_clicks
+    WHERE event_time >= ratio_from
+      AND event_time < ratio_to
+) AS c
+
+CROSS JOIN
+(
+    SELECT count() AS cnt_impressions_5m
+    FROM {db}.fact_impressions
+    WHERE event_time >= ratio_from
+      AND event_time < ratio_to
+) AS i
+
+CROSS JOIN
+(
+    SELECT count() AS cnt_ortb_5m
+    FROM {db}.ortb
+    WHERE event_time >= ratio_from
+      AND event_time < ratio_to
+) AS o;
 `
 
 	ddl := strings.ReplaceAll(ddlTemplate, "{db}", database)

@@ -117,6 +117,7 @@ func main() {
 	if impressionClickInterval <= 0 {
 		impressionClickInterval = time.Minute
 	}
+
 	var loaderWG sync.WaitGroup
 	emptyPause := time.Duration(cfg.EmptyLoopPauseMS) * time.Millisecond
 	if emptyPause <= 0 {
