@@ -557,7 +557,7 @@ SELECT
     if(
         o.cnt_ortb_5m = 0,
         toFloat64(0),
-        round(toFloat64(c.cnt_clicks_5m) / toFloat64(o.cnt_ortb_5m) * 100, 4)
+        round(toFloat64(c.cnt_clicks_5m) / toFloat64(o.cnt_ortb_5m), 6)
     ) AS click_ortb_ratio,
 
     i.cnt_impressions_5m AS cnt_impressions_5m,
@@ -565,7 +565,7 @@ SELECT
     if(
         o.cnt_ortb_5m = 0,
         toFloat64(0),
-        round(toFloat64(i.cnt_impressions_5m) / toFloat64(o.cnt_ortb_5m) * 100, 4)
+        round(toFloat64(i.cnt_impressions_5m) / toFloat64(o.cnt_ortb_5m), 6)
     ) AS impression_ortb_ratio,
 
     o.cnt_ortb_5m AS cnt_ortb_5m,
