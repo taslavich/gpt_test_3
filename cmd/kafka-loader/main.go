@@ -159,17 +159,10 @@ func main() {
 	loaderWG.Add(1)
 	go func() {
 		defer loaderWG.Done()
+		ticker := time.NewTicker(impressionClickInterval)
+		defer ticker.Stop()
+
 		for {
-			if err := loaderControl.Wait(ctx); err != nil {
-				return
-			}
-
-			select {
-			case <-ctx.Done():
-				return
-			case <-time.After(impressionClickInterval):
-			}
-
 			if err := loaderControl.Wait(ctx); err != nil {
 				return
 			}
@@ -188,26 +181,21 @@ func main() {
 				continue
 			}
 
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+			}
 		}
 	}()
 
 	loaderWG.Add(1)
 	go func() {
 		defer loaderWG.Done()
+		ticker := time.NewTicker(impressionClickInterval)
+		defer ticker.Stop()
 
 		for {
-			if err := loaderControl.Wait(ctx); err != nil {
-				return
-			}
-		}
-	}()
-
-			select {
-			case <-ctx.Done():
-				return
-			case <-time.After(impressionClickInterval):
-			}
-
 			if err := loaderControl.Wait(ctx); err != nil {
 				return
 			}
@@ -226,6 +214,11 @@ func main() {
 				continue
 			}
 
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+			}
 		}
 	}()
 
