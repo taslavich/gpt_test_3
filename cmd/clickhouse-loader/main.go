@@ -113,9 +113,6 @@ func main() {
 	log.Println("🔄 Waiting for Kafka group coordinator to be ready...")
 	time.Sleep(10 * time.Second)
 
-	loaderCtx, stopLoaders := context.WithCancel(ctx)
-	defer stopLoaders()
-
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
 
