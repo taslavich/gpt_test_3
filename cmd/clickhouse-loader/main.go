@@ -125,7 +125,7 @@ func main() {
 	if impressionClickInterval <= 0 {
 		impressionClickInterval = time.Minute
 	}
-  
+
 	var loaderWG sync.WaitGroup
 	emptyPause := time.Duration(cfg.EmptyLoopPauseMS) * time.Millisecond
 	if emptyPause <= 0 {
@@ -167,10 +167,17 @@ func main() {
 	loaderWG.Add(1)
 	go func() {
 		defer loaderWG.Done()
-		ticker := time.NewTicker(impressionClickInterval)
-		defer ticker.Stop()
-
 		for {
+			if err := loaderControl.Wait(ctx); err != nil {
+				return
+			}
+
+			select {
+			case <-ctx.Done():
+				return
+			case <-time.After(impressionClickInterval):
+			}
+
 			if err := loaderControl.Wait(ctx); err != nil {
 				return
 			}
@@ -190,22 +197,23 @@ func main() {
 				loaderControl.Stop()
 				continue
 			}
-
-			select {
-			case <-ctx.Done():
-				return
-			case <-ticker.C:
-			}
 		}
 	}()
 
 	loaderWG.Add(1)
 	go func() {
 		defer loaderWG.Done()
-		ticker := time.NewTicker(impressionClickInterval)
-		defer ticker.Stop()
-
 		for {
+			if err := loaderControl.Wait(ctx); err != nil {
+				return
+			}
+
+			select {
+			case <-ctx.Done():
+				return
+			case <-time.After(impressionClickInterval):
+			}
+
 			if err := loaderControl.Wait(ctx); err != nil {
 				return
 			}
@@ -224,12 +232,6 @@ func main() {
 				log.Printf("❌ ClickHouse Loader stream error, stopping batch processing: %v", err)
 				loaderControl.Stop()
 				continue
-			}
-
-			select {
-			case <-ctx.Done():
-				return
-			case <-ticker.C:
 			}
 		}
 	}()
