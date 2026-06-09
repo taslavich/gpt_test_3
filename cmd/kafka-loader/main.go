@@ -105,11 +105,10 @@ func main() {
 		clicksPercent = float64(cfg.RedisConfig.BatchSizeClicks) / float64(cfg.RedisConfig.BatchSizeOrtb)
 	}
 	batchRatioManager := services.NewBatchRatioManager(impressionsPercent, clicksPercent, cfg.BatchRatioConfig.TickerEnabled)
-	batchRatioManager.StartClickHouseTicker(ctx, connProd, cfg.BatchRatioConfig)
-	batchRatioManager.StartHTTPServer(ctx, cfg.BatchRatioConfig)
+	loaderControl := services.NewLoaderControl(false)
 
-	loaderCtx, stopLoaders := context.WithCancel(ctx)
-	defer stopLoaders()
+	batchRatioManager.StartClickHouseTicker(ctx, connProd, cfg.BatchRatioConfig)
+	batchRatioManager.StartHTTPServer(ctx, cfg.BatchRatioConfig, loaderControl)
 
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
@@ -118,40 +117,38 @@ func main() {
 	if impressionClickInterval <= 0 {
 		impressionClickInterval = time.Minute
 	}
-	loaderErrCh := make(chan error, 3)
+
 	var loaderWG sync.WaitGroup
 	emptyPause := time.Duration(cfg.EmptyLoopPauseMS) * time.Millisecond
 	if emptyPause <= 0 {
 		emptyPause = 200 * time.Millisecond
 	}
 
-	log.Printf("🚀 Kafka Loader started. Continuous Redis -> Kafka processing")
+	log.Printf("🚀 Kafka Loader initialized. Batch processing is stopped until POST /loader/start")
 
 	loaderWG.Add(1)
 	go func() {
 		defer loaderWG.Done()
 		for {
-			select {
-			case <-loaderCtx.Done():
+			if err := loaderControl.Wait(ctx); err != nil {
 				return
-			default:
 			}
 
 			processed, err := kafka_loader.ProcessBatchOrtb(
-				loaderCtx,
+				ctx,
 				redisClients.Ortb,
 				kafkaWriter.Ortb,
 				cfg.RedisConfig.BatchSizeOrtb,
 				cfg.RedisSetOrtb,
 			)
 			if err != nil {
-				loaderErrCh <- err
-				stopLoaders()
-				return
+				log.Printf("❌ Kafka Loader stream error, stopping batch processing: %v", err)
+				loaderControl.Stop()
+				continue
 			}
 			if processed == 0 {
 				select {
-				case <-loaderCtx.Done():
+				case <-ctx.Done():
 					return
 				case <-time.After(emptyPause):
 				}
@@ -166,22 +163,26 @@ func main() {
 		defer ticker.Stop()
 
 		for {
+			if err := loaderControl.Wait(ctx); err != nil {
+				return
+			}
+
 			batchSizeImpressions, _ := batchRatioManager.BatchSizesInt64(cfg.RedisConfig.BatchSizeOrtb)
 			err := kafka_loader.ProcessBatchImpressions(
-				loaderCtx,
+				ctx,
 				redisClients.Impressions,
 				kafkaWriter.Impressions,
 				batchSizeImpressions,
 				cfg.RedisSetImpressions,
 			)
 			if err != nil {
-				loaderErrCh <- err
-				stopLoaders()
-				return
+				log.Printf("❌ Kafka Loader stream error, stopping batch processing: %v", err)
+				loaderControl.Stop()
+				continue
 			}
 
 			select {
-			case <-loaderCtx.Done():
+			case <-ctx.Done():
 				return
 			case <-ticker.C:
 			}
@@ -195,36 +196,34 @@ func main() {
 		defer ticker.Stop()
 
 		for {
+			if err := loaderControl.Wait(ctx); err != nil {
+				return
+			}
+
 			_, batchSizeClicks := batchRatioManager.BatchSizesInt64(cfg.RedisConfig.BatchSizeOrtb)
 			err := kafka_loader.ProcessBatchClicks(
-				loaderCtx,
+				ctx,
 				redisClients.Clicks,
 				kafkaWriter.Clicks,
 				batchSizeClicks,
 				cfg.RedisSetClicks,
 			)
 			if err != nil {
-				loaderErrCh <- err
-				stopLoaders()
-				return
+				log.Printf("❌ Kafka Loader stream error, stopping batch processing: %v", err)
+				loaderControl.Stop()
+				continue
 			}
 
 			select {
-			case <-loaderCtx.Done():
+			case <-ctx.Done():
 				return
 			case <-ticker.C:
 			}
 		}
 	}()
 
-	select {
-	case <-sigChan:
-		log.Print("🛑 Shutting down Kafka Loader")
-		stopLoaders()
-	case err := <-loaderErrCh:
-		log.Printf("❌ Kafka Loader stream error, stopping all streams: %v", err)
-		stopLoaders()
-	case <-loaderCtx.Done():
-	}
+	<-sigChan
+	log.Print("🛑 Shutting down Kafka Loader")
+	cancel()
 	loaderWG.Wait()
 }

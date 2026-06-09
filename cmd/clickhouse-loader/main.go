@@ -94,8 +94,10 @@ func main() {
 		clicksPercent = float64(cfg.Clickhouse.BatchSizeClicks) / float64(cfg.Clickhouse.BatchSizeOrtb)
 	}
 	batchRatioManager := services.NewBatchRatioManager(impressionsPercent, clicksPercent, cfg.BatchRatioConfig.TickerEnabled)
+	loaderControl := services.NewLoaderControl(false)
+
 	batchRatioManager.StartClickHouseTicker(ctx, connProd, cfg.BatchRatioConfig)
-	batchRatioManager.StartHTTPServer(ctx, cfg.BatchRatioConfig)
+	batchRatioManager.StartHTTPServer(ctx, cfg.BatchRatioConfig, loaderControl)
 
 	kafkaReaders, err := kafka_service.InitKafkaReaders(cfg.Kafka)
 	if err != nil {
@@ -117,13 +119,13 @@ func main() {
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
 
-	log.Printf("🚀 ClickHouse Loader started. Reading from topics: %s, %s, %s", cfg.Kafka.KafkaTopicOrtb, cfg.Kafka.KafkaTopicImpressions, cfg.Kafka.KafkaTopicClicks)
+	log.Printf("🚀 ClickHouse Loader initialized. Batch processing is stopped until POST /loader/start. Topics: %s, %s, %s", cfg.Kafka.KafkaTopicOrtb, cfg.Kafka.KafkaTopicImpressions, cfg.Kafka.KafkaTopicClicks)
 
 	impressionClickInterval := time.Duration(cfg.ImpressionClickFlushIntervalSec) * time.Second
 	if impressionClickInterval <= 0 {
 		impressionClickInterval = time.Minute
 	}
-	loaderErrCh := make(chan error, 3)
+  
 	var loaderWG sync.WaitGroup
 	emptyPause := time.Duration(cfg.EmptyLoopPauseMS) * time.Millisecond
 	if emptyPause <= 0 {
@@ -134,14 +136,12 @@ func main() {
 	go func() {
 		defer loaderWG.Done()
 		for {
-			select {
-			case <-loaderCtx.Done():
+			if err := loaderControl.Wait(ctx); err != nil {
 				return
-			default:
 			}
 
 			inserted, err := clickhouse_loader.ProcessKafkaMessagesOrtb(
-				loaderCtx,
+				ctx,
 				kafkaReaders.Ortb,
 				connProd,
 				cfg.Clickhouse.TableOrtb,
@@ -150,13 +150,13 @@ func main() {
 				cfg.Clickhouse.BatchTimeoutMS,
 			)
 			if err != nil {
-				loaderErrCh <- err
-				stopLoaders()
-				return
+				log.Printf("❌ ClickHouse Loader stream error, stopping batch processing: %v", err)
+				loaderControl.Stop()
+				continue
 			}
 			if inserted == 0 {
 				select {
-				case <-loaderCtx.Done():
+				case <-ctx.Done():
 					return
 				case <-time.After(emptyPause):
 				}
@@ -171,9 +171,13 @@ func main() {
 		defer ticker.Stop()
 
 		for {
+			if err := loaderControl.Wait(ctx); err != nil {
+				return
+			}
+
 			batchSizeImpressions, _ := batchRatioManager.BatchSizes(cfg.Clickhouse.BatchSizeOrtb)
 			err := clickhouse_loader.ProcessKafkaMessagesImpressions(
-				loaderCtx,
+				ctx,
 				kafkaReaders.Impressions,
 				connProd,
 				cfg.Clickhouse.TableImpressions,
@@ -182,13 +186,13 @@ func main() {
 				cfg.Clickhouse.BatchTimeoutMS,
 			)
 			if err != nil {
-				loaderErrCh <- err
-				stopLoaders()
-				return
+				log.Printf("❌ ClickHouse Loader stream error, stopping batch processing: %v", err)
+				loaderControl.Stop()
+				continue
 			}
 
 			select {
-			case <-loaderCtx.Done():
+			case <-ctx.Done():
 				return
 			case <-ticker.C:
 			}
@@ -202,9 +206,13 @@ func main() {
 		defer ticker.Stop()
 
 		for {
+			if err := loaderControl.Wait(ctx); err != nil {
+				return
+			}
+
 			_, batchSizeClicks := batchRatioManager.BatchSizes(cfg.Clickhouse.BatchSizeOrtb)
 			err := clickhouse_loader.ProcessKafkaMessagesClicks(
-				loaderCtx,
+				ctx,
 				kafkaReaders.Clicks,
 				connProd,
 				cfg.Clickhouse.TableClicks,
@@ -213,27 +221,21 @@ func main() {
 				cfg.Clickhouse.BatchTimeoutMS,
 			)
 			if err != nil {
-				loaderErrCh <- err
-				stopLoaders()
-				return
+				log.Printf("❌ ClickHouse Loader stream error, stopping batch processing: %v", err)
+				loaderControl.Stop()
+				continue
 			}
 
 			select {
-			case <-loaderCtx.Done():
+			case <-ctx.Done():
 				return
 			case <-ticker.C:
 			}
 		}
 	}()
 
-	select {
-	case <-sigChan:
-		log.Print("🛑 Shutting down ClickHouse Loader")
-		stopLoaders()
-	case err := <-loaderErrCh:
-		log.Printf("❌ ClickHouse Loader stream error, stopping all streams: %v", err)
-		stopLoaders()
-	case <-loaderCtx.Done():
-	}
+	<-sigChan
+	log.Print("🛑 Shutting down ClickHouse Loader")
+	cancel()
 	loaderWG.Wait()
 }

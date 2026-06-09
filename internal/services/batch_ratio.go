@@ -25,6 +25,67 @@ type BatchRatioManager struct {
 	manualMode         bool
 }
 
+type LoaderControl struct {
+	mu      sync.RWMutex
+	running bool
+	notify  chan struct{}
+}
+
+func NewLoaderControl(running bool) *LoaderControl {
+	control := &LoaderControl{
+		running: running,
+		notify:  make(chan struct{}),
+	}
+	if running {
+		close(control.notify)
+	}
+	return control
+}
+
+func (c *LoaderControl) Start() {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.running {
+		return
+	}
+	c.running = true
+	close(c.notify)
+}
+
+func (c *LoaderControl) Stop() {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if !c.running {
+		return
+	}
+	c.running = false
+	c.notify = make(chan struct{})
+}
+
+func (c *LoaderControl) Running() bool {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.running
+}
+
+func (c *LoaderControl) Wait(ctx context.Context) error {
+	for {
+		c.mu.RLock()
+		running := c.running
+		notify := c.notify
+		c.mu.RUnlock()
+		if running {
+			return nil
+		}
+
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-notify:
+		}
+	}
+}
+
 type BatchRatioState struct {
 	ImpressionsPercent float64 `json:"impressions_percent"`
 	ClicksPercent      float64 `json:"clicks_percent"`
@@ -205,7 +266,7 @@ func FetchBatchRatio(ctx context.Context, ch clickhouse.Conn, cfg config.BatchRa
 	return impressionsPercent, clicksPercent, nil
 }
 
-func (m *BatchRatioManager) StartHTTPServer(ctx context.Context, cfg config.BatchRatioConfig) *http.Server {
+func (m *BatchRatioManager) StartHTTPServer(ctx context.Context, cfg config.BatchRatioConfig, loaderControl *LoaderControl) *http.Server {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/batch-ratio", func(w http.ResponseWriter, r *http.Request) {
 		switch r.Method {
@@ -241,6 +302,26 @@ func (m *BatchRatioManager) StartHTTPServer(ctx context.Context, cfg config.Batc
 		}
 		m.EnableTicker()
 		writeJSON(w, m.State())
+	})
+	mux.HandleFunc("/loader/start", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			w.WriteHeader(http.StatusMethodNotAllowed)
+			return
+		}
+		if loaderControl != nil {
+			loaderControl.Start()
+		}
+		writeJSON(w, map[string]string{"status": "started"})
+	})
+	mux.HandleFunc("/loader/stop", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			w.WriteHeader(http.StatusMethodNotAllowed)
+			return
+		}
+		if loaderControl != nil {
+			loaderControl.Stop()
+		}
+		writeJSON(w, map[string]string{"status": "stopped"})
 	})
 
 	server := &http.Server{Addr: net.JoinHostPort(cfg.HTTPHost, fmt.Sprint(cfg.HTTPPort)), Handler: mux}
