@@ -29,12 +29,16 @@ type LoaderControl struct {
 	mu      sync.RWMutex
 	running bool
 	notify  chan struct{}
+
+	version uint64
+	changed chan struct{}
 }
 
 func NewLoaderControl(running bool) *LoaderControl {
 	control := &LoaderControl{
 		running: running,
 		notify:  make(chan struct{}),
+		changed: make(chan struct{}),
 	}
 	if running {
 		close(control.notify)
@@ -45,21 +49,34 @@ func NewLoaderControl(running bool) *LoaderControl {
 func (c *LoaderControl) Start() {
 	c.mu.Lock()
 	defer c.mu.Unlock()
+
 	if c.running {
 		return
 	}
+
 	c.running = true
+	c.version++
+
 	close(c.notify)
+	close(c.changed)
+	c.changed = make(chan struct{})
 }
 
 func (c *LoaderControl) Stop() {
 	c.mu.Lock()
 	defer c.mu.Unlock()
+
 	if !c.running {
 		return
 	}
+
 	c.running = false
+	c.version++
+
 	c.notify = make(chan struct{})
+
+	close(c.changed)
+	c.changed = make(chan struct{})
 }
 
 func (c *LoaderControl) Running() bool {
@@ -74,6 +91,7 @@ func (c *LoaderControl) Wait(ctx context.Context) error {
 		running := c.running
 		notify := c.notify
 		c.mu.RUnlock()
+
 		if running {
 			return nil
 		}
@@ -82,6 +100,54 @@ func (c *LoaderControl) Wait(ctx context.Context) error {
 		case <-ctx.Done():
 			return ctx.Err()
 		case <-notify:
+		}
+	}
+}
+
+func (c *LoaderControl) state() (bool, uint64, <-chan struct{}) {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+
+	return c.running, c.version, c.changed
+}
+
+func (c *LoaderControl) WaitIntervalAfterStart(ctx context.Context, interval time.Duration) error {
+	for {
+		if err := c.Wait(ctx); err != nil {
+			return err
+		}
+
+		running, version, changed := c.state()
+		if !running {
+			continue
+		}
+
+		timer := time.NewTimer(interval)
+
+		select {
+		case <-ctx.Done():
+			if !timer.Stop() {
+				select {
+				case <-timer.C:
+				default:
+				}
+			}
+			return ctx.Err()
+
+		case <-changed:
+			if !timer.Stop() {
+				select {
+				case <-timer.C:
+				default:
+				}
+			}
+			continue
+
+		case <-timer.C:
+			runningNow, versionNow, _ := c.state()
+			if runningNow && versionNow == version {
+				return nil
+			}
 		}
 	}
 }

@@ -239,7 +239,7 @@ type BatchRatioConfig struct {
 	Table                    string `yaml:"BATCH_RATIO_TABLE" env:"BATCH_RATIO_TABLE"`
 	ImpressionsPercentColumn string `yaml:"BATCH_RATIO_IMPRESSIONS_PERCENT_COLUMN" env:"BATCH_RATIO_IMPRESSIONS_PERCENT_COLUMN" env-default:"impressions_percent"`
 	ClicksPercentColumn      string `yaml:"BATCH_RATIO_CLICKS_PERCENT_COLUMN" env:"BATCH_RATIO_CLICKS_PERCENT_COLUMN" env-default:"clicks_percent"`
-	OrderColumn              string `yaml:"BATCH_RATIO_ORDER_COLUMN" env:"BATCH_RATIO_ORDER_COLUMN" env-default:"updated_at"`
+	OrderColumn              string `yaml:"BATCH_RATIO_ORDER_COLUMN" env:"BATCH_RATIO_ORDER_COLUMN" env-default:"created_at"`
 	TickerEnabled            bool   `yaml:"BATCH_RATIO_TICKER_ENABLED" env:"BATCH_RATIO_TICKER_ENABLED" env-default:"true"`
 	TickerIntervalSec        int    `yaml:"BATCH_RATIO_TICKER_INTERVAL_SEC" env:"BATCH_RATIO_TICKER_INTERVAL_SEC" env-default:"60"`
 	TickerRequestTimeoutMS   int    `yaml:"BATCH_RATIO_TICKER_REQUEST_TIMEOUT_MS" env:"BATCH_RATIO_TICKER_REQUEST_TIMEOUT_MS" env-default:"2000"`
