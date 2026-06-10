@@ -154,5 +154,12 @@ func processClicksShard(
 
 	cleanupProcessedRedisRecordsFromProcessing(ctx, redisClient, processingSetName, uuidsToDelete)
 
+	log.Printf(
+		"✅ Clicks shard %d processed: uuids=%d kafka_messages=%d",
+		shardID,
+		len(uuids),
+		len(kafkaMessages),
+	)
+
 	return nil
 }
