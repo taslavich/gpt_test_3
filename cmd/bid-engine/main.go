@@ -80,7 +80,7 @@ func main() {
 		log.Fatalf("failed to listen: %v", err)
 	}
 	redisWriteErrorMonitor := services.NewRedisWriteErrorMonitor("bid-engine", func(count uint64) {
-		services.StopAllSspAdapterOrtbStreams(ctx, cfg.SspAdapterWorkStatusURLs)
+services.StopSspAdapterOrtbStreams(ctx, cfg.SspAdapterWorkStatusURL)
 	})
 	redisWriteErrorMonitor.Start()
 

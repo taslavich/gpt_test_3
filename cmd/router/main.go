@@ -148,7 +148,7 @@ func main() {
 	}
 
 	redisWriteErrorMonitor := services.NewRedisWriteErrorMonitor("router", func(count uint64) {
-		services.StopAllSspAdapterOrtbStreams(ctx, cfg.SspAdapterWorkStatusURLs)
+services.StopSspAdapterOrtbStreams(ctx, cfg.SspAdapterWorkStatusURL)
 	})
 	redisWriteErrorMonitor.Start()
 
