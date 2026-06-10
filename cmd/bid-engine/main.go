@@ -14,6 +14,7 @@ import (
 	bidEngineGrpc "gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/proto/services/bidEngine"
 	utils "gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/utils_grpc"
 	httpServer "gitlab.com/twinbid-exchange/RTB-exchange/internal/http"
+	services "gitlab.com/twinbid-exchange/RTB-exchange/internal/services"
 	bidEngine "gitlab.com/twinbid-exchange/RTB-exchange/internal/services/bidEngine/service"
 	bidEngineWeb "gitlab.com/twinbid-exchange/RTB-exchange/internal/services/bidEngine/web"
 	redis_service "gitlab.com/twinbid-exchange/RTB-exchange/internal/services/redis"
@@ -78,6 +79,11 @@ func main() {
 	if err != nil {
 		log.Fatalf("failed to listen: %v", err)
 	}
+	redisWriteErrorMonitor := services.NewRedisWriteErrorMonitor("bid-engine", func(count uint64) {
+		services.StopSspAdapterOrtbStreams(ctx, cfg.SspAdapterWorkStatusURL)
+	})
+	redisWriteErrorMonitor.Start()
+
 	s := grpc.NewServer()
 	bidEngineGrpc.RegisterBidEngineServiceServer(
 		s,
@@ -91,6 +97,7 @@ func main() {
 			cfg.SspGeoDspPercentsMainstreamFilePath,
 			&sspGeoDspMapMainstream,
 			cfg.AdmDomain,
+			redisWriteErrorMonitor,
 		),
 	)
 

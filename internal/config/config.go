@@ -118,6 +118,7 @@ type BiddingEngineConfig struct {
 	SspGeoDspPercentsAdultFilePath      string  `yaml:"SSP_GEO_DSP_PERCENTS_ADULT_FILE_PATH" env:"SSP_GEO_DSP_PERCENTS_ADULT_FILE_PATH"`
 	SspGeoDspPercentsMainstreamFilePath string  `yaml:"SSP_GEO_DSP_PERCENTS_MAINSTREAM_FILE_PATH" env:"SSP_GEO_DSP_PERCENTS_MAINSTREAM_FILE_PATH"`
 	AdmDomain                           string  `yaml:"ADM_DOMAIN" env:"ADM_DOMAIN"`
+	SspAdapterWorkStatusURL             string  `yaml:"SSP_ADAPTER_WORK_STATUS_URL" env:"SSP_ADAPTER_WORK_STATUS_URL"`
 	RedisConfig
 }
 
@@ -147,8 +148,9 @@ type RouterConfig struct {
 
 	SspHttpClientTimeouts MapStringToDuration `yaml:"SSP_HTTP_CLIENT_TIMEOUT" env:"SSP_HTTP_CLIENT_TIMEOUT"`
 
-	MaxParallelRequests int  `yaml:"MAX_PARALLEL_REQUESTS" env:"MAX_PARALLEL_REQUESTS" env-default:"64"`
-	Debug               bool `yaml:"DEBUG" env:"DEBUG" env-default:"false"`
+	MaxParallelRequests     int    `yaml:"MAX_PARALLEL_REQUESTS" env:"MAX_PARALLEL_REQUESTS" env-default:"64"`
+	Debug                   bool   `yaml:"DEBUG" env:"DEBUG" env-default:"false"`
+	SspAdapterWorkStatusURL string `yaml:"SSP_ADAPTER_WORK_STATUS_URL" env:"SSP_ADAPTER_WORK_STATUS_URL"`
 
 	RedisConfig
 }
@@ -196,13 +198,14 @@ type SppAdapterConfig struct {
 }
 
 type AdmAdapterConfig struct {
-	HttpServer   HttpServer
-	AdmTimeout   time.Duration `yaml:"ADM_TIMEOUT" env:"ADM_TIMEOUT"`
-	NurlTimeout  time.Duration `yaml:"NURL_TIMEOUT" env:"NURL_TIMEOUT"`
-	FullChain    string        `yaml:"FULLCHAIN_PEM" env:"FULLCHAIN_PEM"`
-	PrivKey      string        `yaml:"PRIVKEY_PEM" env:"PRIVKEY_PEM"`
-	RsaFullChain string        `yaml:"RSA_FULLCHAIN_PEM" env:"RSA_FULLCHAIN_PEM"`
-	RsaPrivKey   string        `yaml:"RSA_PRIVKEY_PEM" env:"RSA_PRIVKEY_PEM"`
+	HttpServer              HttpServer
+	AdmTimeout              time.Duration `yaml:"ADM_TIMEOUT" env:"ADM_TIMEOUT"`
+	NurlTimeout             time.Duration `yaml:"NURL_TIMEOUT" env:"NURL_TIMEOUT"`
+	FullChain               string        `yaml:"FULLCHAIN_PEM" env:"FULLCHAIN_PEM"`
+	PrivKey                 string        `yaml:"PRIVKEY_PEM" env:"PRIVKEY_PEM"`
+	RsaFullChain            string        `yaml:"RSA_FULLCHAIN_PEM" env:"RSA_FULLCHAIN_PEM"`
+	RsaPrivKey              string        `yaml:"RSA_PRIVKEY_PEM" env:"RSA_PRIVKEY_PEM"`
+	SspAdapterWorkStatusURL string        `yaml:"SSP_ADAPTER_WORK_STATUS_URL" env:"SSP_ADAPTER_WORK_STATUS_URL"`
 
 	RedisConfig
 }
@@ -211,7 +214,8 @@ type KafkaLoaderConfig struct {
 	KafkaConfig
 	ClickhouseConfig
 	BatchRatioConfig
-	EmptyLoopPauseMS int `yaml:"EMPTY_LOOP_PAUSE_MS" env:"EMPTY_LOOP_PAUSE_MS" env-default:"200"`
+	EmptyLoopPauseMS         int      `yaml:"EMPTY_LOOP_PAUSE_MS" env:"EMPTY_LOOP_PAUSE_MS" env-default:"200"`
+	SspAdapterWorkStatusURLs []string `yaml:"SSP_ADAPTER_WORK_STATUS_URLS" env:"SSP_ADAPTER_WORK_STATUS_URLS"`
 }
 
 type ClickhouseConfig struct {

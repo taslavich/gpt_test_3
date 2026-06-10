@@ -9,6 +9,7 @@ import (
 	orchestratorProto "gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/proto/services/orchestrator"
 	"gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/proto/types/ortb_V2_5"
 	utils "gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/utils_grpc"
+	services "gitlab.com/twinbid-exchange/RTB-exchange/internal/services"
 
 	"github.com/ggicci/httpin"
 	"github.com/ggicci/httpin/integration"
@@ -51,7 +52,16 @@ const (
 	GetNurlUrl = "/nurl"
 
 	GetWorkStatusUrl = "/work_status"
-	PutWorkStatusUrl = "/work_status"
+
+	PutWorkStatusAllUrl           = "/work_status/all"
+	PutWorkStatusPopAdultUrl      = "/work_status/pop_adl"
+	PutWorkStatusPopMainstreamUrl = "/work_status/pop_mc"
+	PutWorkStatusIppAdultUrl      = "/work_status/ipp_adl"
+	PutWorkStatusIppMainstreamUrl = "/work_status/ipp_mc"
+	PutWorkStatusBanAdultUrl      = "/work_status/ban_adl"
+	PutWorkStatusBanMainstreamUrl = "/work_status/ban_mc"
+	PutWorkStatusNatAdultUrl      = "/work_status/nat_adl"
+	PutWorkStatusNatMainstreamUrl = "/work_status/nat_mc"
 )
 
 type postBidRequest_V2_5 struct {
@@ -71,13 +81,18 @@ type admNurlRequest struct {
 }
 
 type putWorkStatusRequest struct {
-	Work  bool   `in:"query=work" required:"true"`
-	Typic string `in:"query=typic" required:"true"`
+	Work bool `in:"query=work" required:"true"`
 }
 
 type getWorkStatusResponse struct {
-	WorkAdl bool `json:"workAdl"`
-	WorkMc  bool `json:"workMc"`
+	PopAdult      bool `json:"popAdult"`
+	PopMainstream bool `json:"popMainstream"`
+	IppAdult      bool `json:"ippAdult"`
+	IppMainstream bool `json:"ippMainstream"`
+	BanAdult      bool `json:"banAdult"`
+	BanMainstream bool `json:"banMainstream"`
+	NatAdult      bool `json:"natAdult"`
+	NatMainstream bool `json:"natMainstream"`
 }
 
 func InitHttpRoutes(
@@ -96,10 +111,10 @@ func InitHttpRoutes(
 	sspFeedsBanMc map[string]string, // MAINSTREAM + BAN
 	sspFeedsNatAdl map[string]string, // ADULT + NAT
 	sspFeedsNatMc map[string]string, // MAINSTREAM + NAT
-	workAdl,
-	workMc *bool,
+	workStatus *WorkStatus,
 	siteIdsAndDomains *utils.SiteIdsAndDomains,
 	geoToLang geoBadIp.GeoToLang,
+	redisWriteErrorMonitor *services.RedisWriteErrorMonitor,
 ) {
 	var counter uint64 = 0
 	integration.UseGochiURLParam("path", chi.URLParam)
@@ -107,25 +122,65 @@ func InitHttpRoutes(
 	httpRouter.With(
 		httpin.NewInput(postBidRequest_V2_5{}),
 	).Post(PostBid_POP_ADL_V_2_5_URL, func(w http.ResponseWriter, r *http.Request) {
-		postBid_V2_5(ctx, w, r, redisClients, isBadIp, getCountryISO, orchestratorClient, bidRequestTimeout, sspFeedsPopAdl, &counter, ADULT, POP, siteIdsAndDomains, geoToLang)
+		postBid_V2_5(ctx, w, r, redisClients, isBadIp, getCountryISO, orchestratorClient, bidRequestTimeout, sspFeedsPopAdl, &counter, ADULT, POP, siteIdsAndDomains, geoToLang, redisWriteErrorMonitor)
 	})
 
 	httpRouter.With(
 		httpin.NewInput(postBidRequest_V2_5{}),
 	).Post(PostBid_POP_MC_V_2_5_URL, func(w http.ResponseWriter, r *http.Request) {
-		postBid_V2_5(ctx, w, r, redisClients, isBadIp, getCountryISO, orchestratorClient, bidRequestTimeout, sspFeedsPopMc, &counter, MAINSTREAM, POP, siteIdsAndDomains, geoToLang)
+		postBid_V2_5(ctx, w, r, redisClients, isBadIp, getCountryISO, orchestratorClient, bidRequestTimeout, sspFeedsPopMc, &counter, MAINSTREAM, POP, siteIdsAndDomains, geoToLang, redisWriteErrorMonitor)
 	})
 
 	httpRouter.With(
 		httpin.NewInput(putWorkStatusRequest{}),
-	).Put(PutWorkStatusUrl, func(w http.ResponseWriter, r *http.Request) {
-		putWorkStatus(w, r, workAdl, workMc)
+	).Put(PutWorkStatusAllUrl, func(w http.ResponseWriter, r *http.Request) {
+		putAllWorkStatus(w, r, workStatus)
+	})
+	httpRouter.With(
+		httpin.NewInput(putWorkStatusRequest{}),
+	).Put(PutWorkStatusPopAdultUrl, func(w http.ResponseWriter, r *http.Request) {
+		putWorkStatus(w, r, workStatus, PostBid_POP_ADL_V_2_5_URL)
+	})
+	httpRouter.With(
+		httpin.NewInput(putWorkStatusRequest{}),
+	).Put(PutWorkStatusPopMainstreamUrl, func(w http.ResponseWriter, r *http.Request) {
+		putWorkStatus(w, r, workStatus, PostBid_POP_MC_V_2_5_URL)
+	})
+	httpRouter.With(
+		httpin.NewInput(putWorkStatusRequest{}),
+	).Put(PutWorkStatusIppAdultUrl, func(w http.ResponseWriter, r *http.Request) {
+		putWorkStatus(w, r, workStatus, PostBid_IPP_ADL_V_2_5_URL)
+	})
+	httpRouter.With(
+		httpin.NewInput(putWorkStatusRequest{}),
+	).Put(PutWorkStatusIppMainstreamUrl, func(w http.ResponseWriter, r *http.Request) {
+		putWorkStatus(w, r, workStatus, PostBid_IPP_MC_V_2_5_URL)
+	})
+	httpRouter.With(
+		httpin.NewInput(putWorkStatusRequest{}),
+	).Put(PutWorkStatusBanAdultUrl, func(w http.ResponseWriter, r *http.Request) {
+		putWorkStatus(w, r, workStatus, PostBid_BAN_ADL_V_2_5_URL)
+	})
+	httpRouter.With(
+		httpin.NewInput(putWorkStatusRequest{}),
+	).Put(PutWorkStatusBanMainstreamUrl, func(w http.ResponseWriter, r *http.Request) {
+		putWorkStatus(w, r, workStatus, PostBid_BAN_MC_V_2_5_URL)
+	})
+	httpRouter.With(
+		httpin.NewInput(putWorkStatusRequest{}),
+	).Put(PutWorkStatusNatAdultUrl, func(w http.ResponseWriter, r *http.Request) {
+		putWorkStatus(w, r, workStatus, PostBid_NAT_ADL_V_2_5_URL)
+	})
+	httpRouter.With(
+		httpin.NewInput(putWorkStatusRequest{}),
+	).Put(PutWorkStatusNatMainstreamUrl, func(w http.ResponseWriter, r *http.Request) {
+		putWorkStatus(w, r, workStatus, PostBid_NAT_MC_V_2_5_URL)
 	})
 
 	httpRouter.With(
 		httpin.NewInput(getWorkStatusResponse{}),
 	).Get(GetWorkStatusUrl, func(w http.ResponseWriter, r *http.Request) {
-		getWorkStatus(w, workAdl, workMc)
+		getWorkStatus(w, workStatus)
 	})
 
 	//---------------------------------------------------------------
@@ -133,13 +188,13 @@ func InitHttpRoutes(
 	httpRouter.With(
 		httpin.NewInput(postBidRequest_V2_5{}),
 	).Post(PostBid_IPP_ADL_V_2_5_URL, func(w http.ResponseWriter, r *http.Request) {
-		postBid_V2_5(ctx, w, r, redisClients, isBadIp, getCountryISO, orchestratorClient, bidRequestTimeout, sspFeedsIppAdl, &counter, ADULT, IPP, siteIdsAndDomains, geoToLang)
+		postBid_V2_5(ctx, w, r, redisClients, isBadIp, getCountryISO, orchestratorClient, bidRequestTimeout, sspFeedsIppAdl, &counter, ADULT, IPP, siteIdsAndDomains, geoToLang, redisWriteErrorMonitor)
 	})
 
 	httpRouter.With(
 		httpin.NewInput(postBidRequest_V2_5{}),
 	).Post(PostBid_IPP_MC_V_2_5_URL, func(w http.ResponseWriter, r *http.Request) {
-		postBid_V2_5(ctx, w, r, redisClients, isBadIp, getCountryISO, orchestratorClient, bidRequestTimeout, sspFeedsIppMc, &counter, MAINSTREAM, IPP, siteIdsAndDomains, geoToLang)
+		postBid_V2_5(ctx, w, r, redisClients, isBadIp, getCountryISO, orchestratorClient, bidRequestTimeout, sspFeedsIppMc, &counter, MAINSTREAM, IPP, siteIdsAndDomains, geoToLang, redisWriteErrorMonitor)
 	})
 
 	//---------------------------------------------------------------
@@ -147,13 +202,13 @@ func InitHttpRoutes(
 	httpRouter.With(
 		httpin.NewInput(postBidRequest_V2_5{}),
 	).Post(PostBid_BAN_ADL_V_2_5_URL, func(w http.ResponseWriter, r *http.Request) {
-		postBid_V2_5(ctx, w, r, redisClients, isBadIp, getCountryISO, orchestratorClient, bidRequestTimeout, sspFeedsBanAdl, &counter, ADULT, BAN, siteIdsAndDomains, geoToLang)
+		postBid_V2_5(ctx, w, r, redisClients, isBadIp, getCountryISO, orchestratorClient, bidRequestTimeout, sspFeedsBanAdl, &counter, ADULT, BAN, siteIdsAndDomains, geoToLang, redisWriteErrorMonitor)
 	})
 
 	httpRouter.With(
 		httpin.NewInput(postBidRequest_V2_5{}),
 	).Post(PostBid_BAN_MC_V_2_5_URL, func(w http.ResponseWriter, r *http.Request) {
-		postBid_V2_5(ctx, w, r, redisClients, isBadIp, getCountryISO, orchestratorClient, bidRequestTimeout, sspFeedsBanMc, &counter, MAINSTREAM, BAN, siteIdsAndDomains, geoToLang)
+		postBid_V2_5(ctx, w, r, redisClients, isBadIp, getCountryISO, orchestratorClient, bidRequestTimeout, sspFeedsBanMc, &counter, MAINSTREAM, BAN, siteIdsAndDomains, geoToLang, redisWriteErrorMonitor)
 	})
 
 	//---------------------------------------------------------------
@@ -161,13 +216,13 @@ func InitHttpRoutes(
 	httpRouter.With(
 		httpin.NewInput(postBidRequest_V2_5{}),
 	).Post(PostBid_NAT_ADL_V_2_5_URL, func(w http.ResponseWriter, r *http.Request) {
-		postBid_V2_5(ctx, w, r, redisClients, isBadIp, getCountryISO, orchestratorClient, bidRequestTimeout, sspFeedsNatAdl, &counter, ADULT, NAT, siteIdsAndDomains, geoToLang)
+		postBid_V2_5(ctx, w, r, redisClients, isBadIp, getCountryISO, orchestratorClient, bidRequestTimeout, sspFeedsNatAdl, &counter, ADULT, NAT, siteIdsAndDomains, geoToLang, redisWriteErrorMonitor)
 	})
 
 	httpRouter.With(
 		httpin.NewInput(postBidRequest_V2_5{}),
 	).Post(PostBid_NAT_MC_V_2_5_URL, func(w http.ResponseWriter, r *http.Request) {
-		postBid_V2_5(ctx, w, r, redisClients, isBadIp, getCountryISO, orchestratorClient, bidRequestTimeout, sspFeedsBanMc, &counter, MAINSTREAM, NAT, siteIdsAndDomains, geoToLang)
+		postBid_V2_5(ctx, w, r, redisClients, isBadIp, getCountryISO, orchestratorClient, bidRequestTimeout, sspFeedsBanMc, &counter, MAINSTREAM, NAT, siteIdsAndDomains, geoToLang, redisWriteErrorMonitor)
 	})
 }
 
@@ -180,18 +235,19 @@ func InitHttpsRoutes(
 	redisSetClicks string,
 	admTimeout,
 	nurlTimeout time.Duration,
+	redisWriteErrorMonitor *services.RedisWriteErrorMonitor,
 ) {
 	integration.UseGochiURLParam("path", chi.URLParam)
 
 	httpRouter.With(
 		httpin.NewInput(admNurlRequest{}),
 	).Get(GetAdmUrl, func(w http.ResponseWriter, r *http.Request) {
-		getAdm(ctx, w, r, redisClientsClicks, redisSetClicks)
+		getAdm(ctx, w, r, redisClientsClicks, redisSetClicks, redisWriteErrorMonitor)
 	})
 
 	httpRouter.With(
 		httpin.NewInput(admNurlRequest{}),
 	).Get(GetNurlUrl, func(w http.ResponseWriter, r *http.Request) {
-		getNurl(ctx, w, r, redisClientsImp, redisSetImpressions)
+		getNurl(ctx, w, r, redisClientsImp, redisSetImpressions, redisWriteErrorMonitor)
 	})
 }

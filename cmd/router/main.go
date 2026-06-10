@@ -17,6 +17,7 @@ import (
 	utils "gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/utils_grpc"
 	httpServer "gitlab.com/twinbid-exchange/RTB-exchange/internal/http"
 	maxproc "gitlab.com/twinbid-exchange/RTB-exchange/internal/mp"
+	services "gitlab.com/twinbid-exchange/RTB-exchange/internal/services"
 	dspRouterWeb "gitlab.com/twinbid-exchange/RTB-exchange/internal/services/dspRouter/web"
 	redis_service "gitlab.com/twinbid-exchange/RTB-exchange/internal/services/redis"
 
@@ -146,6 +147,11 @@ func main() {
 		log.Fatalf("Failed to InitCidSspDspMap: %v", err)
 	}
 
+	redisWriteErrorMonitor := services.NewRedisWriteErrorMonitor("router", func(count uint64) {
+		services.StopSspAdapterOrtbStreams(ctx, cfg.SspAdapterWorkStatusURL)
+	})
+	redisWriteErrorMonitor.Start()
+
 	s := grpc.NewServer()
 	routerServer := dspRouterWeb.NewServer(
 		ruleManager,
@@ -165,6 +171,7 @@ func main() {
 		changersAdl,
 		changersMc,
 		cfg.SspHttpClientTimeouts,
+		redisWriteErrorMonitor,
 	)
 
 	if err := routerServer.LoadNetset(cfg.AllowedIpDbPath); err != nil {
