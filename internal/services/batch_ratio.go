@@ -29,6 +29,7 @@ type LoaderControl struct {
 	mu      sync.RWMutex
 	running bool
 	notify  chan struct{}
+	onStart []func()
 
 	version uint64
 	changed chan struct{}
@@ -54,12 +55,27 @@ func (c *LoaderControl) Start() {
 		return
 	}
 
+	callbacks := append([]func(){}, c.onStart...)
+	for _, callback := range callbacks {
+		callback()
+	}
+
 	c.running = true
 	c.version++
 
 	close(c.notify)
 	close(c.changed)
 	c.changed = make(chan struct{})
+}
+
+func (c *LoaderControl) AddOnStart(callback func()) {
+	if callback == nil {
+		return
+	}
+
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.onStart = append(c.onStart, callback)
 }
 
 func (c *LoaderControl) Stop() {
