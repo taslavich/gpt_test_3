@@ -17,6 +17,7 @@ import (
 	orchestratorProto "gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/proto/services/orchestrator"
 	"gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/proto/types/ortb_V2_5"
 	utils "gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/utils_grpc"
+	services "gitlab.com/twinbid-exchange/RTB-exchange/internal/services"
 	"gitlab.com/twinbid-exchange/RTB-exchange/internal/ua"
 	"google.golang.org/grpc/status"
 )
@@ -42,6 +43,7 @@ func postBid_V2_5(
 	format string,
 	siteIdsAndDomains *utils.SiteIdsAndDomains,
 	geoToLang geoBadIp.GeoToLang,
+	redisWriteErrorMonitor *services.RedisWriteErrorMonitor,
 ) {
 	var input *postBidRequest_V2_5
 	defer func() {
@@ -150,7 +152,7 @@ func postBid_V2_5(
 	}
 
 	countryISO, cityId, err := getCountryISO(input.Payload.BidRequest.Device.GetIp())
-	if errors.As(err, geoBadIp.BadIpFormatError) {
+	if errors.Is(err, geoBadIp.BadIpFormatError) {
 		err := fmt.Errorf(
 			"Bad format: %w",
 			err,
@@ -158,7 +160,7 @@ func postBid_V2_5(
 		log.Print(err.Error(), r.RemoteAddr)
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
-	} else if errors.As(err, geoBadIp.InnerLookupIpError) {
+	} else if errors.Is(err, geoBadIp.InnerLookupIpError) {
 		err := fmt.Errorf(
 			"There an server error while getCountryISO: %w",
 			err,
@@ -259,6 +261,7 @@ func postBid_V2_5(
 			float64(input.Payload.Imp[i].GetBidfloor()),
 		); err != nil {
 			log.Printf("failed to WriteStats in postBid_V2_5: %v", err)
+			redisWriteErrorMonitor.Record(err)
 		}
 	}
 
@@ -305,12 +308,26 @@ func postBid_V2_5(
 
 func getWorkStatus(
 	w http.ResponseWriter,
-	workAdl,
-	workMc *bool,
+	workStatus *WorkStatus,
 ) {
+	popAdult, _ := workStatus.Get(PostBid_POP_ADL_V_2_5_URL)
+	popMainstream, _ := workStatus.Get(PostBid_POP_MC_V_2_5_URL)
+	ippAdult, _ := workStatus.Get(PostBid_IPP_ADL_V_2_5_URL)
+	ippMainstream, _ := workStatus.Get(PostBid_IPP_MC_V_2_5_URL)
+	banAdult, _ := workStatus.Get(PostBid_BAN_ADL_V_2_5_URL)
+	banMainstream, _ := workStatus.Get(PostBid_BAN_MC_V_2_5_URL)
+	natAdult, _ := workStatus.Get(PostBid_NAT_ADL_V_2_5_URL)
+	natMainstream, _ := workStatus.Get(PostBid_NAT_MC_V_2_5_URL)
+
 	if err := rnr.JSON(w, http.StatusOK, getWorkStatusResponse{
-		WorkAdl: *workAdl,
-		WorkMc:  *workMc,
+		PopAdult:      popAdult,
+		PopMainstream: popMainstream,
+		IppAdult:      ippAdult,
+		IppMainstream: ippMainstream,
+		BanAdult:      banAdult,
+		BanMainstream: banMainstream,
+		NatAdult:      natAdult,
+		NatMainstream: natMainstream,
 	}); err != nil {
 		log.Printf("Cannot make HTTP response back in getWorkStatus: %v\n", err)
 	}
@@ -319,24 +336,30 @@ func getWorkStatus(
 func putWorkStatus(
 	w http.ResponseWriter,
 	r *http.Request,
-	workAdl,
-	workMc *bool,
+	workStatus *WorkStatus,
+	streamURL string,
 ) {
 	input := r.Context().Value(httpin.Input).(*putWorkStatusRequest)
 
-	var work bool
-	switch input.Typic {
-	case ADULT:
-		*workAdl = input.Work
-		work = *workAdl
-	case MAINSTREAM:
-		*workMc = input.Work
-		work = *workMc
-	default:
-		http.Error(w, "Typic is no here", http.StatusBadRequest)
+	if err := workStatus.Set(streamURL, input.Work); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
 	}
 
-	if err := rnr.Text(w, http.StatusOK, fmt.Sprintf("Changed to %v", work)); err != nil {
+	if err := rnr.Text(w, http.StatusOK, fmt.Sprintf("Changed %s to %v", streamURL, input.Work)); err != nil {
 		log.Printf("Cannot make HTTP response back in putWorkStatus: %v\n", err)
+	}
+}
+
+func putAllWorkStatus(
+	w http.ResponseWriter,
+	r *http.Request,
+	workStatus *WorkStatus,
+) {
+	input := r.Context().Value(httpin.Input).(*putWorkStatusRequest)
+	workStatus.SetAll(input.Work)
+
+	if err := rnr.Text(w, http.StatusOK, fmt.Sprintf("Changed all ORTB streams to %v", input.Work)); err != nil {
+		log.Printf("Cannot make HTTP response back in putAllWorkStatus: %v\n", err)
 	}
 }
