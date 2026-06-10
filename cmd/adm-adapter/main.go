@@ -7,6 +7,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"gitlab.com/twinbid-exchange/RTB-exchange/internal/config"
 	httpServer "gitlab.com/twinbid-exchange/RTB-exchange/internal/http"
+	services "gitlab.com/twinbid-exchange/RTB-exchange/internal/services"
 	redis_service "gitlab.com/twinbid-exchange/RTB-exchange/internal/services/redis"
 	sppAdapterWeb "gitlab.com/twinbid-exchange/RTB-exchange/internal/services/sspAdapter/web"
 )
@@ -51,6 +52,11 @@ func main() {
 	}
 	log.Println("✅ Connected to Clicks Redis shards")
 
+	redisWriteErrorMonitor := services.NewRedisWriteErrorMonitor("adm-adapter", func(count uint64) {
+		services.StopAllSspAdapterOrtbStreams(ctx, cfg.SspAdapterWorkStatusURLs)
+	})
+	redisWriteErrorMonitor.Start()
+
 	router := httpServer.InitHttpRouter(chi.NewRouter())
 	sppAdapterWeb.InitHttpsRoutes(
 		ctx,
@@ -61,6 +67,7 @@ func main() {
 		cfg.RedisSetClicks,
 		cfg.AdmTimeout,
 		cfg.NurlTimeout,
+		redisWriteErrorMonitor,
 	)
 	log.Println("HTTP routes initialized")
 

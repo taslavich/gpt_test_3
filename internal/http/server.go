@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -17,25 +18,16 @@ import (
 	sppAdapterWeb "gitlab.com/twinbid-exchange/RTB-exchange/internal/services/sspAdapter/web"
 )
 
-func WorkSspAdapterMiddleware(workAdl, workMc *bool) func(http.Handler) http.Handler {
+func WorkSspAdapterMiddleware(workStatus *sppAdapterWeb.WorkStatus) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			if r.URL.Path == sppAdapterWeb.GetWorkStatusUrl {
+			if strings.HasPrefix(r.URL.Path, sppAdapterWeb.GetWorkStatusUrl) {
 				next.ServeHTTP(w, r)
 				return
 			}
 
-			if r.URL.Path == sppAdapterWeb.PutWorkStatusUrl {
-				next.ServeHTTP(w, r)
-				return
-			}
-
-			if !*workAdl && r.URL.Path == sppAdapterWeb.PostBid_POP_ADL_V_2_5_URL {
-				http.Error(w, "Service Unavailable", http.StatusServiceUnavailable)
-				return
-			}
-
-			if !*workMc && r.URL.Path == sppAdapterWeb.PostBid_POP_MC_V_2_5_URL {
+			work, err := workStatus.Get(r.URL.Path)
+			if err == nil && !work {
 				http.Error(w, "Service Unavailable", http.StatusServiceUnavailable)
 				return
 			}
