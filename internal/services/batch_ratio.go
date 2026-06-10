@@ -254,19 +254,30 @@ func (m *BatchRatioManager) PauseTicker() {
 	m.tickerEnabled = false
 }
 
-func (m *BatchRatioManager) updateFromTicker(impressionsPercent, clicksPercent float64) {
+func (m *BatchRatioManager) updateFromTicker(impressionsPercent, clicksPercent float64) (float64, float64, bool) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+
 	if !m.tickerEnabled || m.manualMode {
-		return
+		return m.impressionsPercent, m.clicksPercent, false
 	}
-	if impressionsPercent == 0 && clicksPercent == 0 {
-		m.impressionsPercent = m.defaultImpressionsPercent
-		m.clicksPercent = m.defaultClicksPercent
-		return
+
+	usedDefault := false
+
+	if impressionsPercent <= 0 {
+		impressionsPercent = m.defaultImpressionsPercent
+		usedDefault = true
 	}
+
+	if clicksPercent <= 0 {
+		clicksPercent = m.defaultClicksPercent
+		usedDefault = true
+	}
+
 	m.impressionsPercent = impressionsPercent
 	m.clicksPercent = clicksPercent
+
+	return impressionsPercent, clicksPercent, usedDefault
 }
 
 func (m *BatchRatioManager) TickerEnabled() bool {
@@ -300,8 +311,23 @@ func (m *BatchRatioManager) StartClickHouseTicker(ctx context.Context, ch clickh
 					continue
 				}
 
-				m.updateFromTicker(impressionsPercent, clicksPercent)
-				log.Printf("✅ batch ratio updated from ClickHouse: impressions=%.4f clicks=%.4f", impressionsPercent, clicksPercent)
+				appliedImpressionsPercent, appliedClicksPercent, usedDefault := m.updateFromTicker(impressionsPercent, clicksPercent)
+
+				if usedDefault {
+					log.Printf(
+						"⚠️ batch ratio from ClickHouse has zero value, using defaults/fallback: clickhouse_impressions=%.6f clickhouse_clicks=%.6f applied_impressions=%.6f applied_clicks=%.6f",
+						impressionsPercent,
+						clicksPercent,
+						appliedImpressionsPercent,
+						appliedClicksPercent,
+					)
+				} else {
+					log.Printf(
+						"✅ batch ratio updated from ClickHouse: impressions=%.6f clicks=%.6f",
+						appliedImpressionsPercent,
+						appliedClicksPercent,
+					)
+				}
 			}
 		}
 	}()
