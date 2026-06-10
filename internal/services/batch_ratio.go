@@ -18,17 +18,20 @@ import (
 )
 
 type BatchRatioManager struct {
-	mu                 sync.RWMutex
-	impressionsPercent float64
-	clicksPercent      float64
-	tickerEnabled      bool
-	manualMode         bool
+	mu                        sync.RWMutex
+	impressionsPercent        float64
+	clicksPercent             float64
+	defaultImpressionsPercent float64
+	defaultClicksPercent      float64
+	tickerEnabled             bool
+	manualMode                bool
 }
 
 type LoaderControl struct {
 	mu      sync.RWMutex
 	running bool
 	notify  chan struct{}
+	onStart []func()
 
 	version uint64
 	changed chan struct{}
@@ -54,12 +57,27 @@ func (c *LoaderControl) Start() {
 		return
 	}
 
+	callbacks := append([]func(){}, c.onStart...)
+	for _, callback := range callbacks {
+		callback()
+	}
+
 	c.running = true
 	c.version++
 
 	close(c.notify)
 	close(c.changed)
 	c.changed = make(chan struct{})
+}
+
+func (c *LoaderControl) AddOnStart(callback func()) {
+	if callback == nil {
+		return
+	}
+
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.onStart = append(c.onStart, callback)
 }
 
 func (c *LoaderControl) Stop() {
@@ -83,6 +101,13 @@ func (c *LoaderControl) Running() bool {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 	return c.running
+}
+
+func (c *LoaderControl) Status() string {
+	if c.Running() {
+		return "started"
+	}
+	return "stopped"
 }
 
 func (c *LoaderControl) Wait(ctx context.Context) error {
@@ -166,9 +191,11 @@ type BatchRatioUpdateRequest struct {
 
 func NewBatchRatioManager(impressionsPercent, clicksPercent float64, tickerEnabled bool) *BatchRatioManager {
 	return &BatchRatioManager{
-		impressionsPercent: impressionsPercent,
-		clicksPercent:      clicksPercent,
-		tickerEnabled:      tickerEnabled,
+		impressionsPercent:        impressionsPercent,
+		clicksPercent:             clicksPercent,
+		defaultImpressionsPercent: impressionsPercent,
+		defaultClicksPercent:      clicksPercent,
+		tickerEnabled:             tickerEnabled,
 	}
 }
 
@@ -231,6 +258,11 @@ func (m *BatchRatioManager) updateFromTicker(impressionsPercent, clicksPercent f
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if !m.tickerEnabled || m.manualMode {
+		return
+	}
+	if impressionsPercent == 0 && clicksPercent == 0 {
+		m.impressionsPercent = m.defaultImpressionsPercent
+		m.clicksPercent = m.defaultClicksPercent
 		return
 	}
 	m.impressionsPercent = impressionsPercent
@@ -388,6 +420,20 @@ func (m *BatchRatioManager) StartHTTPServer(ctx context.Context, cfg config.Batc
 			loaderControl.Stop()
 		}
 		writeJSON(w, map[string]string{"status": "stopped"})
+	})
+	mux.HandleFunc("/loader/status", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			w.WriteHeader(http.StatusMethodNotAllowed)
+			return
+		}
+		if loaderControl == nil {
+			writeJSON(w, map[string]any{"status": "unknown", "running": false})
+			return
+		}
+		writeJSON(w, map[string]any{
+			"status":  loaderControl.Status(),
+			"running": loaderControl.Running(),
+		})
 	})
 
 	server := &http.Server{Addr: net.JoinHostPort(cfg.HTTPHost, fmt.Sprint(cfg.HTTPPort)), Handler: mux}
