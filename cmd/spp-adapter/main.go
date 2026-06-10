@@ -12,14 +12,14 @@ import (
 	"gitlab.com/twinbid-exchange/RTB-exchange/internal/geoBadIp"
 	utils "gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/utils_grpc"
 	httpServer "gitlab.com/twinbid-exchange/RTB-exchange/internal/http"
+	services "gitlab.com/twinbid-exchange/RTB-exchange/internal/services"
 	redis_service "gitlab.com/twinbid-exchange/RTB-exchange/internal/services/redis"
 	sppAdapter "gitlab.com/twinbid-exchange/RTB-exchange/internal/services/sspAdapter/service"
 	sppAdapterWeb "gitlab.com/twinbid-exchange/RTB-exchange/internal/services/sspAdapter/web"
 )
 
 func main() {
-	workAdl := false
-	workMc := false
+	workStatus := sppAdapterWeb.NewWorkStatus(false, false)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -63,12 +63,12 @@ func main() {
 
 	badIp, err := geoBadIp.NewBadIPService(cfg.GeoIpDbPath)
 	if err != nil {
-		log.Fatalf("failed to create bad ip service: %w", err)
+		log.Fatalf("failed to create bad ip service: %v", err)
 	}
 
 	geoIp, err := geoBadIp.NewGeoIPService(cfg.GeoIpDbPath)
 	if err != nil {
-		log.Fatalf("failed to create geo ip service: %w", err)
+		log.Fatalf("failed to create geo ip service: %v", err)
 	}
 
 	adapter := sppAdapter.NewSspAdapter(
@@ -98,8 +98,13 @@ func main() {
 	go s.StartAsync()
 	log.Println("⏰ Scheduler started (every 30 seconds)")
 
+	redisWriteErrorMonitor := services.NewRedisWriteErrorMonitor("SSP adapter ORTB", func(count uint64) {
+		services.StopAllSspAdapterOrtbStreams(ctx, cfg.SspAdapterWorkStatusURLs)
+	})
+	redisWriteErrorMonitor.Start()
+
 	router := chi.NewRouter()
-	router.Use(httpServer.WorkSspAdapterMiddleware(&workAdl, &workMc))
+	router.Use(httpServer.WorkSspAdapterMiddleware(workStatus))
 	router = httpServer.InitHttpRouter(router)
 	sppAdapterWeb.InitHttpRoutes(
 		ctx,
@@ -117,10 +122,10 @@ func main() {
 		cfg.SspBanMcFeeds,
 		cfg.SspNatAdlFeeds,
 		cfg.SspNatMcFeeds,
-		&workAdl,
-		&workMc,
+		workStatus,
 		siteIdsAndDomains,
 		geoToLang,
+		redisWriteErrorMonitor,
 	)
 	log.Println("HTTP routes initialized")
 

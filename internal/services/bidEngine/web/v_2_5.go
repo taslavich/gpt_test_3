@@ -12,6 +12,7 @@ import (
 	pb "gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/proto/services/bidEngine"
 	"gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/proto/types/ortb_V2_5"
 	utils "gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/utils_grpc"
+	services "gitlab.com/twinbid-exchange/RTB-exchange/internal/services"
 	"gitlab.com/twinbid-exchange/RTB-exchange/internal/types"
 	clickhouse_types "gitlab.com/twinbid-exchange/RTB-exchange/internal/types/clickhouse"
 	"google.golang.org/grpc/codes"
@@ -28,6 +29,7 @@ type Server struct {
 	percentMap_adult           *map[string]map[string]map[string]*types.PercentAndBidfloor
 	percentMap_mainstream      *map[string]map[string]map[string]*types.PercentAndBidfloor
 	admDomain                  string
+	redisWriteErrorMonitor     *services.RedisWriteErrorMonitor
 
 	GetWinnerBidInternal_V_2_5 func(
 		ctx context.Context,
@@ -66,6 +68,7 @@ func NewServer(
 	percentMap_mainstream *map[string]map[string]map[string]*types.PercentAndBidfloor,
 
 	admDomain string,
+	redisWriteErrorMonitor *services.RedisWriteErrorMonitor,
 ) *Server {
 	return &Server{
 		ProfitPercent:              ProfitPercent,
@@ -77,6 +80,7 @@ func NewServer(
 		percentMap_adult:           percentMap_adult,
 		percentMap_mainstream:      percentMap_mainstream,
 		admDomain:                  admDomain,
+		redisWriteErrorMonitor:     redisWriteErrorMonitor,
 	}
 }
 
@@ -113,10 +117,12 @@ func (s *Server) GetWinnerBid_V2_5(
 	for _, uuid := range req.ImpIdUuid {
 		if err := utils.WriteWinStats(ctx, s.redisClients, uuid, clickhouseBid[uuid], req.Logged); err != nil {
 			log.Printf("failed to WriteJsonToRedis Bid BID_RESPONSE_WINNER in GetWinnerBidInternal: %v", err)
+			s.redisWriteErrorMonitor.Record(err)
 		}
 
 		if err := utils.AddUUIDToRedisSet(ctx, s.redisClients, s.redisSetOrtb, uuid, req.Logged); err != nil {
 			log.Printf("failed to add ORTB UUID to Redis set in GetWinnerBidInternal: %v", err)
+			s.redisWriteErrorMonitor.Record(err)
 		}
 	}
 
