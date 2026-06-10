@@ -119,6 +119,7 @@ type BiddingEngineConfig struct {
 	SspGeoDspPercentsMainstreamFilePath string   `yaml:"SSP_GEO_DSP_PERCENTS_MAINSTREAM_FILE_PATH" env:"SSP_GEO_DSP_PERCENTS_MAINSTREAM_FILE_PATH"`
 	AdmDomain                           string   `yaml:"ADM_DOMAIN" env:"ADM_DOMAIN"`
 	SspAdapterWorkStatusURLs            []string `yaml:"SSP_ADAPTER_WORK_STATUS_URLS" env:"SSP_ADAPTER_WORK_STATUS_URLS" env-default:"server1.twinbidexchange.com:8050,server2.twinbidexchange.com:8050,server3.twinbidexchange.com:8050,server4.twinbidexchange.com:8050"`
+
 	RedisConfig
 }
 

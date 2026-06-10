@@ -37,7 +37,6 @@ func TestLoaderControlAddOnStartRunsOnlyOnStoppedToRunningTransition(t *testing.
 		t.Fatalf("callbacks after Stop()+Start() = %d, want 2", calls)
 	}
 }
-
 func TestLoaderControlStatusReflectsRunningState(t *testing.T) {
 	control := NewLoaderControl(false)
 	if got := control.Status(); got != "stopped" {
