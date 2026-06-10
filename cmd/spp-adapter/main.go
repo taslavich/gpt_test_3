@@ -99,7 +99,7 @@ func main() {
 	log.Println("⏰ Scheduler started (every 30 seconds)")
 
 	redisWriteErrorMonitor := services.NewRedisWriteErrorMonitor("SSP adapter ORTB", func(count uint64) {
-		workStatus.StopAll()
+services.StopAllSspAdapterOrtbStreams(ctx, cfg.SspAdapterWorkStatusURLs)
 	})
 	redisWriteErrorMonitor.Start()
 

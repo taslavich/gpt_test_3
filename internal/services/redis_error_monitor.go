@@ -61,6 +61,18 @@ func (m *RedisWriteErrorMonitor) Start() {
 	}()
 }
 
+func StopSspAdapterOrtbStreams(ctx context.Context, workStatusURL string) {
+	endpoint := strings.TrimSpace(workStatusURL)
+	if endpoint == "" {
+		log.Printf("⚠️ SSP adapter stop URL is not configured; cannot stop SSP adapter ORTB streams")
+		return
+	}
+
+	if err := stopSspAdapterAllStreams(ctx, endpoint); err != nil {
+		log.Printf("❌ failed to stop SSP adapter ORTB streams at %s: %v", endpoint, err)
+	}
+}
+
 func StopAllSspAdapterOrtbStreams(ctx context.Context, workStatusURLs []string) {
 	if len(workStatusURLs) == 0 {
 		log.Printf("⚠️ SSP adapter stop URLs are not configured; cannot stop SSP adapter ORTB streams")
@@ -68,14 +80,7 @@ func StopAllSspAdapterOrtbStreams(ctx context.Context, workStatusURLs []string) 
 	}
 
 	for _, rawURL := range workStatusURLs {
-		endpoint := strings.TrimSpace(rawURL)
-		if endpoint == "" {
-			continue
-		}
-
-		if err := stopSspAdapterAllStreams(ctx, endpoint); err != nil {
-			log.Printf("❌ failed to stop SSP adapter ORTB streams at %s: %v", endpoint, err)
-		}
+		StopSspAdapterOrtbStreams(ctx, rawURL)
 	}
 }
 

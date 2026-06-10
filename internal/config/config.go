@@ -118,7 +118,7 @@ type BiddingEngineConfig struct {
 	SspGeoDspPercentsAdultFilePath      string   `yaml:"SSP_GEO_DSP_PERCENTS_ADULT_FILE_PATH" env:"SSP_GEO_DSP_PERCENTS_ADULT_FILE_PATH"`
 	SspGeoDspPercentsMainstreamFilePath string   `yaml:"SSP_GEO_DSP_PERCENTS_MAINSTREAM_FILE_PATH" env:"SSP_GEO_DSP_PERCENTS_MAINSTREAM_FILE_PATH"`
 	AdmDomain                           string   `yaml:"ADM_DOMAIN" env:"ADM_DOMAIN"`
-	SspAdapterWorkStatusURLs            []string `yaml:"SSP_ADAPTER_WORK_STATUS_URLS" env:"SSP_ADAPTER_WORK_STATUS_URLS"`
+SspAdapterWorkStatusURLs            []string `yaml:"SSP_ADAPTER_WORK_STATUS_URLS" env:"SSP_ADAPTER_WORK_STATUS_URLS" env-default:"server1.twinbidexchange.com:8050,server2.twinbidexchange.com:8050,server3.twinbidexchange.com:8050,server4.twinbidexchange.com:8050"`
 	RedisConfig
 }
 
@@ -150,7 +150,7 @@ type RouterConfig struct {
 
 	MaxParallelRequests      int      `yaml:"MAX_PARALLEL_REQUESTS" env:"MAX_PARALLEL_REQUESTS" env-default:"64"`
 	Debug                    bool     `yaml:"DEBUG" env:"DEBUG" env-default:"false"`
-	SspAdapterWorkStatusURLs []string `yaml:"SSP_ADAPTER_WORK_STATUS_URLS" env:"SSP_ADAPTER_WORK_STATUS_URLS"`
+SspAdapterWorkStatusURLs []string `yaml:"SSP_ADAPTER_WORK_STATUS_URLS" env:"SSP_ADAPTER_WORK_STATUS_URLS" env-default:"server1.twinbidexchange.com:8050,server2.twinbidexchange.com:8050,server3.twinbidexchange.com:8050,server4.twinbidexchange.com:8050"`
 
 	RedisConfig
 }
@@ -189,10 +189,11 @@ type SppAdapterConfig struct {
 	SspIppAdlFeeds MapStringToString `yaml:"SSP_IPP_ADL_FEEDS" env:"SSP_IPP_ADL_FEEDS"`
 	SspIppMcFeeds  MapStringToString `yaml:"SSP_IPP_MC_FEEDS" env:"SSP_IPP_MC_FEEDS"`
 
-	SiteIdDomainPath   string `yaml:"SITE_ID_DOMAIN_PATH" env:"SITE_ID_DOMAIN_PATH"`
-	Domains1LevelPath  string `yaml:"DOMAINS_1_LEVEL_PATH" env:"DOMAINS_1_LEVEL_PATH"`
-	Domains23LevelPath string `yaml:"DOMAINS_23_LEVEL_PATH" env:"DOMAINS_23_LEVEL_PATH"`
-	GeoToLangPath      string `yaml:"GEO_TO_LANG_PATH" env:"GEO_TO_LANG_PATH"`
+	SiteIdDomainPath         string   `yaml:"SITE_ID_DOMAIN_PATH" env:"SITE_ID_DOMAIN_PATH"`
+	Domains1LevelPath        string   `yaml:"DOMAINS_1_LEVEL_PATH" env:"DOMAINS_1_LEVEL_PATH"`
+	Domains23LevelPath       string   `yaml:"DOMAINS_23_LEVEL_PATH" env:"DOMAINS_23_LEVEL_PATH"`
+	GeoToLangPath            string   `yaml:"GEO_TO_LANG_PATH" env:"GEO_TO_LANG_PATH"`
+	SspAdapterWorkStatusURLs []string `yaml:"SSP_ADAPTER_WORK_STATUS_URLS" env:"SSP_ADAPTER_WORK_STATUS_URLS" env-default:"server1.twinbidexchange.com:8050,server2.twinbidexchange.com:8050,server3.twinbidexchange.com:8050,server4.twinbidexchange.com:8050"`
 
 	RedisConfig
 }
@@ -205,7 +206,7 @@ type AdmAdapterConfig struct {
 	PrivKey                  string        `yaml:"PRIVKEY_PEM" env:"PRIVKEY_PEM"`
 	RsaFullChain             string        `yaml:"RSA_FULLCHAIN_PEM" env:"RSA_FULLCHAIN_PEM"`
 	RsaPrivKey               string        `yaml:"RSA_PRIVKEY_PEM" env:"RSA_PRIVKEY_PEM"`
-	SspAdapterWorkStatusURLs []string      `yaml:"SSP_ADAPTER_WORK_STATUS_URLS" env:"SSP_ADAPTER_WORK_STATUS_URLS"`
+	SspAdapterWorkStatusURLs []string      `yaml:"SSP_ADAPTER_WORK_STATUS_URLS" env:"SSP_ADAPTER_WORK_STATUS_URLS" env-default:"server1.twinbidexchange.com:8050,server2.twinbidexchange.com:8050,server3.twinbidexchange.com:8050,server4.twinbidexchange.com:8050"`
 
 	RedisConfig
 }
@@ -215,7 +216,7 @@ type KafkaLoaderConfig struct {
 	ClickhouseConfig
 	BatchRatioConfig
 	EmptyLoopPauseMS         int      `yaml:"EMPTY_LOOP_PAUSE_MS" env:"EMPTY_LOOP_PAUSE_MS" env-default:"200"`
-	SspAdapterWorkStatusURLs []string `yaml:"SSP_ADAPTER_WORK_STATUS_URLS" env:"SSP_ADAPTER_WORK_STATUS_URLS"`
+	SspAdapterWorkStatusURLs []string `yaml:"SSP_ADAPTER_WORK_STATUS_URLS" env:"SSP_ADAPTER_WORK_STATUS_URLS" env-default:"server1.twinbidexchange.com:8050,server2.twinbidexchange.com:8050,server3.twinbidexchange.com:8050,server4.twinbidexchange.com:8050"`
 }
 
 type ClickhouseConfig struct {
