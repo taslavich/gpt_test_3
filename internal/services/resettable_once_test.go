@@ -37,6 +37,7 @@ func TestLoaderControlAddOnStartRunsOnlyOnStoppedToRunningTransition(t *testing.
 		t.Fatalf("callbacks after Stop()+Start() = %d, want 2", calls)
 	}
 }
+
 func TestLoaderControlStatusReflectsRunningState(t *testing.T) {
 	control := NewLoaderControl(false)
 	if got := control.Status(); got != "stopped" {
@@ -51,5 +52,21 @@ func TestLoaderControlStatusReflectsRunningState(t *testing.T) {
 	control.Stop()
 	if got := control.Status(); got != "stopped" {
 		t.Fatalf("Status() after Stop() = %q, want stopped", got)
+	}
+}
+
+func TestBatchRatioManagerUsesDefaultsWhenTickerReturnsZeros(t *testing.T) {
+	manager := NewBatchRatioManager(0.25, 0.15, true)
+
+	manager.updateFromTicker(0.4, 0.3)
+	state := manager.State()
+	if state.ImpressionsPercent != 0.4 || state.ClicksPercent != 0.3 {
+		t.Fatalf("State() after non-zero ticker update = (%v, %v), want (0.4, 0.3)", state.ImpressionsPercent, state.ClicksPercent)
+	}
+
+	manager.updateFromTicker(0, 0)
+	state = manager.State()
+	if state.ImpressionsPercent != 0.25 || state.ClicksPercent != 0.15 {
+		t.Fatalf("State() after zero ticker update = (%v, %v), want defaults (0.25, 0.15)", state.ImpressionsPercent, state.ClicksPercent)
 	}
 }

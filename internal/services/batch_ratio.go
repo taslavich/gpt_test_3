@@ -18,11 +18,13 @@ import (
 )
 
 type BatchRatioManager struct {
-	mu                 sync.RWMutex
-	impressionsPercent float64
-	clicksPercent      float64
-	tickerEnabled      bool
-	manualMode         bool
+	mu                        sync.RWMutex
+	impressionsPercent        float64
+	clicksPercent             float64
+	defaultImpressionsPercent float64
+	defaultClicksPercent      float64
+	tickerEnabled             bool
+	manualMode                bool
 }
 
 type LoaderControl struct {
@@ -189,9 +191,11 @@ type BatchRatioUpdateRequest struct {
 
 func NewBatchRatioManager(impressionsPercent, clicksPercent float64, tickerEnabled bool) *BatchRatioManager {
 	return &BatchRatioManager{
-		impressionsPercent: impressionsPercent,
-		clicksPercent:      clicksPercent,
-		tickerEnabled:      tickerEnabled,
+		impressionsPercent:        impressionsPercent,
+		clicksPercent:             clicksPercent,
+		defaultImpressionsPercent: impressionsPercent,
+		defaultClicksPercent:      clicksPercent,
+		tickerEnabled:             tickerEnabled,
 	}
 }
 
@@ -254,6 +258,11 @@ func (m *BatchRatioManager) updateFromTicker(impressionsPercent, clicksPercent f
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if !m.tickerEnabled || m.manualMode {
+		return
+	}
+	if impressionsPercent == 0 && clicksPercent == 0 {
+		m.impressionsPercent = m.defaultImpressionsPercent
+		m.clicksPercent = m.defaultClicksPercent
 		return
 	}
 	m.impressionsPercent = impressionsPercent
