@@ -101,6 +101,13 @@ func (c *LoaderControl) Running() bool {
 	return c.running
 }
 
+func (c *LoaderControl) Status() string {
+	if c.Running() {
+		return "started"
+	}
+	return "stopped"
+}
+
 func (c *LoaderControl) Wait(ctx context.Context) error {
 	for {
 		c.mu.RLock()
@@ -404,6 +411,20 @@ func (m *BatchRatioManager) StartHTTPServer(ctx context.Context, cfg config.Batc
 			loaderControl.Stop()
 		}
 		writeJSON(w, map[string]string{"status": "stopped"})
+	})
+	mux.HandleFunc("/loader/status", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			w.WriteHeader(http.StatusMethodNotAllowed)
+			return
+		}
+		if loaderControl == nil {
+			writeJSON(w, map[string]any{"status": "unknown", "running": false})
+			return
+		}
+		writeJSON(w, map[string]any{
+			"status":  loaderControl.Status(),
+			"running": loaderControl.Running(),
+		})
 	})
 
 	server := &http.Server{Addr: net.JoinHostPort(cfg.HTTPHost, fmt.Sprint(cfg.HTTPPort)), Handler: mux}
