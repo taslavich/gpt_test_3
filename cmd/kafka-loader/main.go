@@ -106,6 +106,8 @@ func main() {
 	}
 	batchRatioManager := services.NewBatchRatioManager(impressionsPercent, clicksPercent, cfg.BatchRatioConfig.TickerEnabled)
 	loaderControl := services.NewLoaderControl(false)
+	stopSspOnce := services.NewResettableOnce()
+	loaderControl.AddOnStart(stopSspOnce.Reset)
 
 	batchRatioManager.StartClickHouseTicker(ctx, connProd, cfg.BatchRatioConfig)
 	batchRatioManager.StartHTTPServer(ctx, cfg.BatchRatioConfig, loaderControl)
@@ -119,6 +121,13 @@ func main() {
 	}
 
 	var loaderWG sync.WaitGroup
+	handleStreamError := func(err error) {
+		log.Printf("❌ Kafka Loader stream error, stopping batch processing and SSP adapter ORTB streams: %v", err)
+		loaderControl.Stop()
+		stopSspOnce.Do(func() {
+			services.StopAllSspAdapterOrtbStreams(ctx, cfg.SspAdapterWorkStatusURLs)
+		})
+	}
 	emptyPause := time.Duration(cfg.EmptyLoopPauseMS) * time.Millisecond
 	if emptyPause <= 0 {
 		emptyPause = 200 * time.Millisecond
@@ -147,8 +156,7 @@ func main() {
 				cfg.RedisSetOrtb,
 			)
 			if err != nil {
-				log.Printf("❌ Kafka Loader stream error, stopping batch processing: %v", err)
-				loaderControl.Stop()
+				handleStreamError(err)
 				continue
 			}
 			if processed == 0 {
@@ -179,8 +187,7 @@ func main() {
 				cfg.RedisSetImpressions,
 			)
 			if err != nil {
-				log.Printf("❌ Kafka Loader stream error, stopping batch processing: %v", err)
-				loaderControl.Stop()
+				handleStreamError(err)
 				continue
 			}
 		}
@@ -204,8 +211,7 @@ func main() {
 				cfg.RedisSetClicks,
 			)
 			if err != nil {
-				log.Printf("❌ Kafka Loader stream error, stopping batch processing: %v", err)
-				loaderControl.Stop()
+				handleStreamError(err)
 				continue
 			}
 		}

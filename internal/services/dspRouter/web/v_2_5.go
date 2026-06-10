@@ -23,6 +23,7 @@ import (
 	dspRouterGrpc "gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/proto/services/dspRouter"
 	"gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/proto/types/ortb_V2_5"
 	utils "gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/utils_grpc"
+	services "gitlab.com/twinbid-exchange/RTB-exchange/internal/services"
 	sppAdapterWeb "gitlab.com/twinbid-exchange/RTB-exchange/internal/services/sspAdapter/web"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -37,7 +38,8 @@ type Server struct {
 	dspEndpoints_adult_v_2_5      config.MapStringToString
 	dspEndpoints_mainstream_v_2_5 config.MapStringToString
 
-	redisClients []*redis.Client
+	redisClients           []*redis.Client
+	redisWriteErrorMonitor *services.RedisWriteErrorMonitor
 
 	clients map[string]*http.Client
 
@@ -82,6 +84,7 @@ func NewServer(
 	filterBoxChangerAdl *filter.ChangersBoxChanger,
 	filterBoxChangerMc *filter.ChangersBoxChanger,
 	configTimeouts config.MapStringToDuration,
+	redisWriteErrorMonitor *services.RedisWriteErrorMonitor,
 ) *Server {
 	rang := cidranger.NewPCTrieRanger()
 
@@ -92,6 +95,7 @@ func NewServer(
 		dspEndpoints_adult_v_2_5:      dspEndpoints_v_2_5,
 		dspEndpoints_mainstream_v_2_5: dspEndpoints_mainstream_v_2_5,
 		redisClients:                  redisClients,
+		redisWriteErrorMonitor:        redisWriteErrorMonitor,
 		clients:                       clients,
 		timeout:                       timeout,
 		bufferPool: sync.Pool{
@@ -397,7 +401,10 @@ func (s *Server) GetBids_V2_5(
 	}
 
 	for _, uuid := range req.ImpIdUuid {
-		writeBidResponsesToRedis(s.redisClients, uuid, clickResponses, req.Logged)
+		if err := writeBidResponsesToRedis(s.redisClients, uuid, clickResponses, req.Logged); err != nil {
+			log.Printf("failed to write bid responses to Redis: %v", err)
+			s.redisWriteErrorMonitor.Record(err)
+		}
 	}
 
 	responses := make(map[string]*ortb_V2_5.BidResponse)

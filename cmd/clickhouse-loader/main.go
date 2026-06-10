@@ -124,6 +124,10 @@ func main() {
 	}
 
 	var loaderWG sync.WaitGroup
+	handleStreamError := func(err error) {
+		log.Printf("❌ ClickHouse Loader stream error, stopping batch processing: %v", err)
+		loaderControl.Stop()
+	}
 	emptyPause := time.Duration(cfg.EmptyLoopPauseMS) * time.Millisecond
 	if emptyPause <= 0 {
 		emptyPause = 200 * time.Millisecond
@@ -147,8 +151,7 @@ func main() {
 				cfg.Clickhouse.BatchTimeoutMS,
 			)
 			if err != nil {
-				log.Printf("❌ ClickHouse Loader stream error, stopping batch processing: %v", err)
-				loaderControl.Stop()
+				handleStreamError(err)
 				continue
 			}
 			if inserted == 0 {
@@ -181,8 +184,7 @@ func main() {
 				cfg.Clickhouse.BatchTimeoutMS,
 			)
 			if err != nil {
-				log.Printf("❌ ClickHouse Loader stream error, stopping batch processing: %v", err)
-				loaderControl.Stop()
+				handleStreamError(err)
 				continue
 			}
 		}
@@ -208,8 +210,7 @@ func main() {
 				cfg.Clickhouse.BatchTimeoutMS,
 			)
 			if err != nil {
-				log.Printf("❌ ClickHouse Loader stream error, stopping batch processing: %v", err)
-				loaderControl.Stop()
+				handleStreamError(err)
 				continue
 			}
 		}
