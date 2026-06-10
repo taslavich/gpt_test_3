@@ -53,7 +53,7 @@ func main() {
 	log.Println("✅ Connected to Clicks Redis shards")
 
 	redisWriteErrorMonitor := services.NewRedisWriteErrorMonitor("adm-adapter", func(count uint64) {
-		services.StopSspAdapterOrtbStreams(ctx, cfg.SspAdapterWorkStatusURL)
+services.StopSspAdapterOrtbStreams(ctx, cfg.SspAdapterWorkStatusURL)
 	})
 	redisWriteErrorMonitor.Start()
 
