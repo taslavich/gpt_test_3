@@ -31,7 +31,7 @@ func getAdm(
 		return
 	}
 
-	if err := utils.WriteStringToRedis(ctx, redisClients, input.GlobalId, constants.EVENT_TIME_CLICKS_COLUMN, time.Now().UTC().Format("2006-01-02 15:04:05.000"), true); err != nil {
+	if err := utils.WriteStringToRedis(ctx, redisClients, input.GlobalId, constants.EVENT_TIME_CLICKS_COLUMN, time.Now().UTC().Format("2006-01-02 15:04:05.000"), false); err != nil {
 		log.Printf("failed to WriteStringToRedis EVENT_TIME_CLICKS_COLUMN in getAdm: %v", err)
 		redisWriteErrorMonitor.Record(err)
 	} else if err := utils.AddUUIDToRedisSet(ctx, redisClients, redisSetClicks, input.GlobalId, true); err != nil {
@@ -59,7 +59,7 @@ func getNurl(
 		return
 	}
 
-	if err := utils.WriteStringToRedis(ctx, redisClients, input.GlobalId, constants.EVENT_TIME_IMPRESSIONS_COLUMN, time.Now().UTC().Format("2006-01-02 15:04:05.000"), true); err != nil {
+	if err := utils.WriteStringToRedis(ctx, redisClients, input.GlobalId, constants.EVENT_TIME_IMPRESSIONS_COLUMN, time.Now().UTC().Format("2006-01-02 15:04:05.000"), false); err != nil {
 		log.Printf("failed to WriteStringToRedis EVENT_TIME_IMPRESSIONS_COLUMN in getAdm: %v", err)
 		redisWriteErrorMonitor.Record(err)
 	} else if err := utils.AddUUIDToRedisSet(ctx, redisClients, redisSetImpressions, input.GlobalId, true); err != nil {
