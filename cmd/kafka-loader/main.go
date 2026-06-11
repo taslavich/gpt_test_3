@@ -120,6 +120,11 @@ func main() {
 		impressionClickInterval = time.Minute
 	}
 
+	impressionClickIntervalSec := int64(impressionClickInterval / time.Second)
+	if impressionClickIntervalSec <= 0 {
+		impressionClickIntervalSec = 1
+	}
+
 	var loaderWG sync.WaitGroup
 	handleStreamError := func(err error) {
 		log.Printf("❌ Kafka Loader stream error, stopping batch processing and SSP adapter ORTB streams: %v", err)
@@ -178,7 +183,9 @@ func main() {
 				return
 			}
 
-			batchSizeImpressions, _ := batchRatioManager.BatchSizesInt64(cfg.RedisConfig.BatchSizeOrtb)
+			batchSizeImpressions, _ := batchRatioManager.BatchSizesInt64(
+				cfg.RedisConfig.BatchSizeOrtb * impressionClickIntervalSec,
+			)
 			err := kafka_loader.ProcessBatchImpressions(
 				ctx,
 				redisClients.Impressions,
@@ -202,7 +209,9 @@ func main() {
 				return
 			}
 
-			_, batchSizeClicks := batchRatioManager.BatchSizesInt64(cfg.RedisConfig.BatchSizeOrtb)
+			_, batchSizeClicks := batchRatioManager.BatchSizesInt64(
+				cfg.RedisConfig.BatchSizeOrtb * impressionClickIntervalSec,
+			)
 			err := kafka_loader.ProcessBatchClicks(
 				ctx,
 				redisClients.Clicks,

@@ -123,6 +123,11 @@ func main() {
 		impressionClickInterval = time.Minute
 	}
 
+	impressionClickIntervalSec := int(impressionClickInterval / time.Second)
+	if impressionClickIntervalSec <= 0 {
+		impressionClickIntervalSec = 1
+	}
+
 	var loaderWG sync.WaitGroup
 	handleStreamError := func(err error) {
 		log.Printf("❌ ClickHouse Loader stream error, stopping batch processing: %v", err)
@@ -173,7 +178,9 @@ func main() {
 				return
 			}
 
-			batchSizeImpressions, _ := batchRatioManager.BatchSizes(cfg.Clickhouse.BatchSizeOrtb)
+			batchSizeImpressions, _ := batchRatioManager.BatchSizes(
+				cfg.Clickhouse.BatchSizeOrtb * impressionClickIntervalSec,
+			)
 			err := clickhouse_loader.ProcessKafkaMessagesImpressions(
 				ctx,
 				kafkaReaders.Impressions,
@@ -199,7 +206,9 @@ func main() {
 				return
 			}
 
-			_, batchSizeClicks := batchRatioManager.BatchSizes(cfg.Clickhouse.BatchSizeOrtb)
+			_, batchSizeClicks := batchRatioManager.BatchSizes(
+				cfg.Clickhouse.BatchSizeOrtb * impressionClickIntervalSec,
+			)
 			err := clickhouse_loader.ProcessKafkaMessagesClicks(
 				ctx,
 				kafkaReaders.Clicks,
