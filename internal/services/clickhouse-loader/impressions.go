@@ -82,6 +82,11 @@ func ProcessKafkaMessagesImpressions(
 	if err := reader.CommitMessages(ctx, commitMessages...); err != nil {
 		return fmt.Errorf("commit impression offsets after successful insert failed: %w", err)
 	}
+	log.Printf(
+		"IMPRESSIONS batch: inserted=%d offsets=%d",
+		insertCount,
+		len(commitMessages),
+	)
 
 	impressionsRecordsBuffer = impressionsRecordsBuffer[insertCount:]
 	impressionsMessagesBuffer = impressionsMessagesBuffer[insertCount:]

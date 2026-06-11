@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log"
 	"time"
 
 	"github.com/ClickHouse/clickhouse-go/v2"
@@ -81,6 +82,11 @@ func ProcessKafkaMessagesClicks(
 	if err := reader.CommitMessages(ctx, commitMessages...); err != nil {
 		return fmt.Errorf("commit click offsets after successful insert failed: %w", err)
 	}
+	log.Printf(
+		"CLICKS batch: inserted=%d offsets=%d",
+		insertCount,
+		len(commitMessages),
+	)
 
 	clicksRecordsBuffer = clicksRecordsBuffer[insertCount:]
 	clicksMessagesBuffer = clicksMessagesBuffer[insertCount:]
