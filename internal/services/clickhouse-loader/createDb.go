@@ -525,7 +525,7 @@ REFRESH EVERY 1 MINUTE
 APPEND TO {db}.ortb_minute_metrics
 AS
 WITH
-    toStartOfMinute(now('UTC')) AS current_minute,
+    toStartOfMinute(now('UTC')-  INTERVAL 1 MINUTE) AS current_minute,
 
     -- последняя полностью закрытая минута
     current_minute - INTERVAL 1 MINUTE AS metric_minute,
