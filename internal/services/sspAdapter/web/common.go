@@ -18,6 +18,7 @@ func getAdm(
 	w http.ResponseWriter,
 	r *http.Request,
 	redisClients []*redis.Client,
+	redisAdmClient *redis.Client,
 	redisSetClicks string,
 	redisWriteErrorMonitor *services.RedisWriteErrorMonitor,
 ) {
@@ -32,6 +33,18 @@ func getAdm(
 	decodedURL, err := url.QueryUnescape(input.DspURL)
 	if err != nil {
 		log.Printf("in getAdm Failed to decode original URL: %v", err)
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+
+	exists, err := utils.UUIDKeyExistsInRedis(ctx, redisAdmClient, input.GlobalId)
+	if err != nil {
+		log.Printf("failed to check ADM UUID key in getAdm: %v", err)
+		redisWriteErrorMonitor.Record(err)
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+	if !exists {
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
@@ -52,6 +65,7 @@ func getNurl(
 	w http.ResponseWriter,
 	r *http.Request,
 	redisClients []*redis.Client,
+	redisNurlClient *redis.Client,
 	redisSetImpressions string,
 	redisWriteErrorMonitor *services.RedisWriteErrorMonitor,
 ) {
@@ -66,6 +80,18 @@ func getNurl(
 	decodedURL, err := url.QueryUnescape(input.DspURL)
 	if err != nil {
 		log.Printf("in getNurl Failed to decode original URL: %v", err)
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+
+	exists, err := utils.UUIDKeyExistsInRedis(ctx, redisNurlClient, input.GlobalId)
+	if err != nil {
+		log.Printf("failed to check NURL UUID key in getNurl: %v", err)
+		redisWriteErrorMonitor.Record(err)
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+	if !exists {
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}

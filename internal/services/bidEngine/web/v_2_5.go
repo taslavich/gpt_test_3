@@ -22,6 +22,9 @@ import (
 type Server struct {
 	ProfitPercent              float32
 	redisClients               []*redis.Client
+	redisAdmClient             *redis.Client
+	redisNurlClient            *redis.Client
+	redisUUIDKeyTTL            time.Duration
 	redisSetOrtb               string
 	timeout                    time.Duration
 	percentFilename_adult      string
@@ -41,7 +44,7 @@ type Server struct {
 		logged bool,
 		typic string,
 		admDomain string,
-	) (*ortb_V2_5.BidResponse, clickhouse_types.UuidImpBidResponse)
+	) (*ortb_V2_5.BidResponse, clickhouse_types.UuidImpBidResponse, []string, []string)
 
 	pb.BidEngineServiceServer
 }
@@ -49,6 +52,9 @@ type Server struct {
 func NewServer(
 	ProfitPercent float32,
 	redisClients []*redis.Client,
+	redisAdmClient *redis.Client,
+	redisNurlClient *redis.Client,
+	redisUUIDKeyTTL time.Duration,
 	redisSetOrtb string,
 	GetWinnerBidInternal_V_2_5 func(
 		ctx context.Context,
@@ -60,7 +66,7 @@ func NewServer(
 		logged bool,
 		typic string,
 		admDomain string,
-	) (*ortb_V2_5.BidResponse, clickhouse_types.UuidImpBidResponse),
+	) (*ortb_V2_5.BidResponse, clickhouse_types.UuidImpBidResponse, []string, []string),
 	percentFilename_adult string,
 	percentMap_adult *map[string]map[string]map[string]*types.PercentAndBidfloor,
 
@@ -73,6 +79,9 @@ func NewServer(
 	return &Server{
 		ProfitPercent:              ProfitPercent,
 		redisClients:               redisClients,
+		redisAdmClient:             redisAdmClient,
+		redisNurlClient:            redisNurlClient,
+		redisUUIDKeyTTL:            redisUUIDKeyTTL,
 		redisSetOrtb:               redisSetOrtb,
 		GetWinnerBidInternal_V_2_5: GetWinnerBidInternal_V_2_5,
 		percentFilename_adult:      percentFilename_adult,
@@ -102,7 +111,7 @@ func (s *Server) GetWinnerBid_V2_5(
 			funcErr = status.Error(grpcCode, err.Error())
 		}
 	}()
-	bidResponse, clickhouseBid := s.GetWinnerBidInternal_V_2_5(
+	bidResponse, clickhouseBid, nurlUUIDs, admUUIDs := s.GetWinnerBidInternal_V_2_5(
 		ctx,
 		req,
 		s.ProfitPercent,
@@ -113,6 +122,20 @@ func (s *Server) GetWinnerBid_V2_5(
 		req.Typic,
 		s.admDomain,
 	)
+
+	for _, uuid := range admUUIDs {
+		if err := utils.WriteUUIDKeyToRedis(ctx, s.redisAdmClient, uuid, s.redisUUIDKeyTTL); err != nil {
+			log.Printf("failed to write ADM UUID key in GetWinnerBidInternal: %v", err)
+			s.redisWriteErrorMonitor.Record(err)
+		}
+	}
+
+	for _, uuid := range nurlUUIDs {
+		if err := utils.WriteUUIDKeyToRedis(ctx, s.redisNurlClient, uuid, s.redisUUIDKeyTTL); err != nil {
+			log.Printf("failed to write NURL UUID key in GetWinnerBidInternal: %v", err)
+			s.redisWriteErrorMonitor.Record(err)
+		}
+	}
 
 	for _, uuid := range req.ImpIdUuid {
 		if err := utils.WriteWinStats(ctx, s.redisClients, uuid, clickhouseBid[uuid], req.Logged); err != nil {

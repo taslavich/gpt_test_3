@@ -145,6 +145,25 @@ func NewRedisShardedClients(
 	}, nil
 }
 
+func NewRedisClient(
+	addr string,
+	password string,
+	db int,
+	poolSize int,
+	minIdleConns int,
+) (*redis.Client, error) {
+	if addr == "" {
+		return nil, fmt.Errorf("redis address is empty")
+	}
+
+	clients, err := newRedisClientsForDB([]string{addr}, password, db, false, poolSize, minIdleConns)
+	if err != nil {
+		return nil, err
+	}
+
+	return clients[0], nil
+}
+
 func newRedisClientsForDB(
 	addrs []string,
 	password string,

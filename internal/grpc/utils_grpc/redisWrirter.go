@@ -132,6 +132,45 @@ func AddUUIDToRedisSet(ctx context.Context, redisClients []*redis.Client, setNam
 	return nil
 }
 
+// WriteUUIDKeyToRedis writes a UUID into a Redis hash with TTL.
+func WriteUUIDKeyToRedis(ctx context.Context, redisClient *redis.Client, uuid string, ttl time.Duration) error {
+	if redisClient == nil {
+		return fmt.Errorf("redis client is nil")
+	}
+	if uuid == "" {
+		return fmt.Errorf("uuid cannot be empty")
+	}
+	if ttl <= 0 {
+		return fmt.Errorf("redis uuid key ttl must be positive")
+	}
+
+	pipe := redisClient.Pipeline()
+	pipe.HSet(ctx, uuid, "uuid", uuid)
+	pipe.Expire(ctx, uuid, ttl)
+	if _, err := pipe.Exec(ctx); err != nil {
+		return fmt.Errorf("failed to write uuid hash to Redis (uuid=%s): %w", uuid, err)
+	}
+
+	return nil
+}
+
+// UUIDKeyExistsInRedis checks key existence using a single EXISTS command.
+func UUIDKeyExistsInRedis(ctx context.Context, redisClient *redis.Client, uuid string) (bool, error) {
+	if redisClient == nil {
+		return false, fmt.Errorf("redis client is nil")
+	}
+	if uuid == "" {
+		return false, fmt.Errorf("uuid cannot be empty")
+	}
+
+	exists, err := redisClient.Exists(ctx, uuid).Result()
+	if err != nil {
+		return false, fmt.Errorf("failed to check uuid key in Redis (uuid=%s): %w", uuid, err)
+	}
+
+	return exists > 0, nil
+}
+
 // WriteWinStats записывает статистику выигрыша в Redis (несколько полей одним HSET)
 func WriteWinStats(
 	ctx context.Context,
