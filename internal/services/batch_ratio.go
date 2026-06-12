@@ -264,12 +264,12 @@ func (m *BatchRatioManager) updateFromTicker(impressionsPercent, clicksPercent f
 
 	usedDefault := false
 
-	if impressionsPercent <= 0 {
+	if impressionsPercent < m.defaultImpressionsPercent {
 		impressionsPercent = m.defaultImpressionsPercent
 		usedDefault = true
 	}
 
-	if clicksPercent <= 0 {
+	if clicksPercent < m.defaultClicksPercent {
 		clicksPercent = m.defaultClicksPercent
 		usedDefault = true
 	}
