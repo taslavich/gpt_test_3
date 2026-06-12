@@ -305,6 +305,7 @@ type ImpressionEvent struct {
 	state                  protoimpl.MessageState `protogen:"open.v1"`
 	Uuid                   string                 `protobuf:"bytes,1,opt,name=uuid,proto3" json:"uuid,omitempty"`
 	EventTimeImpressionsMs int64                  `protobuf:"varint,2,opt,name=event_time_impressions_ms,json=eventTimeImpressionsMs,proto3" json:"event_time_impressions_ms,omitempty"`
+	Format                 string                 `protobuf:"bytes,3,opt,name=format,proto3" json:"format,omitempty"`
 	unknownFields          protoimpl.UnknownFields
 	sizeCache              protoimpl.SizeCache
 }
@@ -353,10 +354,18 @@ func (x *ImpressionEvent) GetEventTimeImpressionsMs() int64 {
 	return 0
 }
 
+func (x *ImpressionEvent) GetFormat() string {
+	if x != nil {
+		return x.Format
+	}
+	return ""
+}
+
 type ClickEvent struct {
 	state             protoimpl.MessageState `protogen:"open.v1"`
 	Uuid              string                 `protobuf:"bytes,1,opt,name=uuid,proto3" json:"uuid,omitempty"`
 	EventTimeClicksMs int64                  `protobuf:"varint,2,opt,name=event_time_clicks_ms,json=eventTimeClicksMs,proto3" json:"event_time_clicks_ms,omitempty"`
+	Format            string                 `protobuf:"bytes,3,opt,name=format,proto3" json:"format,omitempty"`
 	unknownFields     protoimpl.UnknownFields
 	sizeCache         protoimpl.SizeCache
 }
@@ -405,6 +414,13 @@ func (x *ClickEvent) GetEventTimeClicksMs() int64 {
 	return 0
 }
 
+func (x *ClickEvent) GetFormat() string {
+	if x != nil {
+		return x.Format
+	}
+	return ""
+}
+
 var File_buffer_buffer_proto protoreflect.FileDescriptor
 
 const file_buffer_buffer_proto_rawDesc = "" +
@@ -448,14 +464,16 @@ const file_buffer_buffer_proto_rawDesc = "" +
 	"\vwin_user_id\x18\x19 \x01(\tR\twinUserId\x1a?\n" +
 	"\x11BidResponsesEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\x05R\x05value:\x028\x01\"`\n" +
+	"\x05value\x18\x02 \x01(\x05R\x05value:\x028\x01\"x\n" +
 	"\x0fImpressionEvent\x12\x12\n" +
 	"\x04uuid\x18\x01 \x01(\tR\x04uuid\x129\n" +
-	"\x19event_time_impressions_ms\x18\x02 \x01(\x03R\x16eventTimeImpressionsMs\"Q\n" +
+	"\x19event_time_impressions_ms\x18\x02 \x01(\x03R\x16eventTimeImpressionsMs\x12\x16\n" +
+	"\x06format\x18\x03 \x01(\tR\x06format\"i\n" +
 	"\n" +
 	"ClickEvent\x12\x12\n" +
 	"\x04uuid\x18\x01 \x01(\tR\x04uuid\x12/\n" +
-	"\x14event_time_clicks_ms\x18\x02 \x01(\x03R\x11eventTimeClicksMsBNZLgitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/proto/buffer;eventspbb\x06proto3"
+	"\x14event_time_clicks_ms\x18\x02 \x01(\x03R\x11eventTimeClicksMs\x12\x16\n" +
+	"\x06format\x18\x03 \x01(\tR\x06formatBNZLgitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/proto/buffer;eventspbb\x06proto3"
 
 var (
 	file_buffer_buffer_proto_rawDescOnce sync.Once

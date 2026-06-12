@@ -92,7 +92,7 @@ func processClicksShard(
 	cmds := make([]*redis.SliceCmd, 0, len(uuids))
 
 	for _, uuid := range uuids {
-		cmds = append(cmds, readPipe.HMGet(ctx, uuid, constants.EVENT_TIME_CLICKS_COLUMN))
+		cmds = append(cmds, readPipe.HMGet(ctx, uuid, constants.EVENT_TIME_CLICKS_COLUMN, constants.FORMAT_COLUMN))
 	}
 
 	if _, err := readPipe.Exec(ctx); err != nil {
@@ -111,10 +111,12 @@ func processClicksShard(
 
 		key := uuids[i]
 		eventTime := valueAsString(values, 0)
+		format := valueAsString(values, 1)
 
 		rawRecord := types.Clicks{
 			UUID:              key,
 			EVENT_TIME_CLICKS: eventTime,
+			FORMAT:            format,
 		}
 
 		if !types.HasDataClicks(rawRecord) {
@@ -124,6 +126,7 @@ func processClicksShard(
 		record := &eventspb.ClickEvent{
 			Uuid:              rawRecord.UUID,
 			EventTimeClicksMs: parseUnixMsSafe(rawRecord.EVENT_TIME_CLICKS),
+			Format:            rawRecord.FORMAT,
 		}
 
 		protoData, err := proto.Marshal(record)

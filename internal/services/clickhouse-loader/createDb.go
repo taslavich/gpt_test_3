@@ -81,6 +81,8 @@ CREATE TABLE IF NOT EXISTS {db}.impressions_in
     event_time_impressions DateTime64(3, 'UTC') DEFAULT now64(3),
     created_at             DateTime64(3, 'UTC') DEFAULT now64(3),
 
+    format                 LowCardinality(String) DEFAULT '',
+
     uuid UUID
 )
 ENGINE = MergeTree
@@ -92,6 +94,8 @@ CREATE TABLE IF NOT EXISTS {db}.clicks_in
 (
     event_time_clicks DateTime64(3, 'UTC') DEFAULT now64(3),
     created_at        DateTime64(3, 'UTC') DEFAULT now64(3),
+
+    format            LowCardinality(String) DEFAULT '',
 
     uuid UUID
 )

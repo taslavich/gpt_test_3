@@ -92,7 +92,7 @@ func processImpressionsShard(
 	cmds := make([]*redis.SliceCmd, 0, len(uuids))
 
 	for _, uuid := range uuids {
-		cmds = append(cmds, readPipe.HMGet(ctx, uuid, constants.EVENT_TIME_IMPRESSIONS_COLUMN))
+		cmds = append(cmds, readPipe.HMGet(ctx, uuid, constants.EVENT_TIME_IMPRESSIONS_COLUMN, constants.FORMAT_COLUMN))
 	}
 
 	if _, err := readPipe.Exec(ctx); err != nil {
@@ -111,10 +111,12 @@ func processImpressionsShard(
 
 		key := uuids[i]
 		eventTime := valueAsString(values, 0)
+		format := valueAsString(values, 1)
 
 		rawRecord := types.Impressions{
 			UUID:                   key,
 			EVENT_TIME_IMPRESSIONS: eventTime,
+			FORMAT:                 format,
 		}
 
 		if !types.HasDataImpressions(rawRecord) {
@@ -124,6 +126,7 @@ func processImpressionsShard(
 		record := &eventspb.ImpressionEvent{
 			Uuid:                   rawRecord.UUID,
 			EventTimeImpressionsMs: parseUnixMsSafe(rawRecord.EVENT_TIME_IMPRESSIONS),
+			Format:                 rawRecord.FORMAT,
 		}
 
 		protoData, err := proto.Marshal(record)

@@ -106,7 +106,8 @@ func insertBatchClicks(
 	query := fmt.Sprintf(`
 		INSERT INTO %s (
 			uuid,
-			event_time_clicks
+			event_time_clicks,
+			format
 		)
 	`, table)
 
@@ -124,7 +125,7 @@ func insertBatchClicks(
 
 		ts := time.UnixMilli(r.EventTimeClicksMs).UTC()
 
-		if err := batch.Append(u, ts); err != nil {
+		if err := batch.Append(u, ts, r.Format); err != nil {
 			return fmt.Errorf("batch.Append: %w", err)
 		}
 	}
