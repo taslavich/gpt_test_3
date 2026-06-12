@@ -170,13 +170,13 @@ func (s *Server) GetBids_V2_5(
 	var filters *filter.FiltersBox
 	var filtersCid *filter.FilterCidBoxType
 	var filterBoxChanger *filter.ChangersBoxChanger
-	if req.Typic == sppAdapterWeb.ADULT && req.Format == sppAdapterWeb.POP {
+	if req.Typic == sppAdapterWeb.ADULT && req.Format == constants.POP {
 		dspList = s.dspEndpoints_adult_v_2_5
 		linkMap = *s.linkMap_adult
 		filters = s.filtersAdl
 		filtersCid = s.filtersCidAdl
 		filterBoxChanger = s.filterBoxChangerAdl
-	} else if req.Typic == sppAdapterWeb.MAINSTREAM && req.Format == sppAdapterWeb.POP {
+	} else if req.Typic == sppAdapterWeb.MAINSTREAM && req.Format == constants.POP {
 		dspList = s.dspEndpoints_mainstream_v_2_5
 		linkMap = *s.linkMap_mainstream
 		filters = s.filtersMc
