@@ -31,11 +31,13 @@ type Ortb struct {
 type Clicks struct {
 	UUID              string `json:"UUID"`
 	EVENT_TIME_CLICKS string `json:"EVENT_TIME_CLICKS"`
+	FORMAT            string `json:"FORMAT"`
 }
 
 type Impressions struct {
 	UUID                   string `json:"UUID"`
 	EVENT_TIME_IMPRESSIONS string `json:"EVENT_TIME_IMPRESSIONS"`
+	FORMAT                 string `json:"FORMAT"`
 }
 
 type PercentAndBidfloor struct {
@@ -73,10 +75,12 @@ func HasDataOrtb(record Ortb) bool {
 
 func HasDataClicks(record Clicks) bool {
 	return record.UUID != "" ||
-		record.EVENT_TIME_CLICKS != ""
+		record.EVENT_TIME_CLICKS != "" ||
+		record.FORMAT != ""
 }
 
 func HasDataImpressions(record Impressions) bool {
 	return record.UUID != "" ||
-		record.EVENT_TIME_IMPRESSIONS != ""
+		record.EVENT_TIME_IMPRESSIONS != "" ||
+		record.FORMAT != ""
 }

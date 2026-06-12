@@ -106,7 +106,8 @@ func insertBatchImpressions(
 	query := fmt.Sprintf(`
 		INSERT INTO %s (
 			uuid,
-			event_time_impressions
+			event_time_impressions,
+			format
 		)
 	`, table)
 
@@ -124,7 +125,7 @@ func insertBatchImpressions(
 
 		ts := time.UnixMilli(r.EventTimeImpressionsMs).UTC()
 
-		if err := batch.Append(u, ts); err != nil {
+		if err := batch.Append(u, ts, r.Format); err != nil {
 			return fmt.Errorf("batch.Append: %w", err)
 		}
 	}

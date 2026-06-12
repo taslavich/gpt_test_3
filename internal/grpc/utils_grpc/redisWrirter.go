@@ -227,3 +227,69 @@ func WriteStatsOrtb(
 
 	return nil
 }
+
+// WriteClickStats записывает статистику клика в Redis одним HSET.
+func WriteClickStats(
+	ctx context.Context,
+	redisClients []*redis.Client,
+	globalId string,
+	format string,
+	logged bool,
+) error {
+	if !logged {
+		return nil
+	}
+
+	client, idx, err := redis_service.SelectShard(redisClients, globalId)
+	if err != nil {
+		return fmt.Errorf("failed to select shard for uuid %s: %w", globalId, err)
+	}
+
+	fields := map[string]interface{}{
+		constants.EVENT_TIME_CLICKS_COLUMN: time.Now().UTC().Format("2006-01-02 15:04:05.000"),
+		constants.FORMAT_COLUMN:            format,
+	}
+
+	pipe := client.Pipeline()
+	pipe.HSet(ctx, globalId, fields)
+	pipe.Expire(ctx, globalId, RedisKeyTTL)
+
+	if _, err := pipe.Exec(ctx); err != nil {
+		return fmt.Errorf("failed to write click stats to Redis (uuid=%s, shard=%d): %w", globalId, idx, err)
+	}
+
+	return nil
+}
+
+// WriteImpressionStats записывает статистику показа в Redis одним HSET.
+func WriteImpressionStats(
+	ctx context.Context,
+	redisClients []*redis.Client,
+	globalId string,
+	format string,
+	logged bool,
+) error {
+	if !logged {
+		return nil
+	}
+
+	client, idx, err := redis_service.SelectShard(redisClients, globalId)
+	if err != nil {
+		return fmt.Errorf("failed to select shard for uuid %s: %w", globalId, err)
+	}
+
+	fields := map[string]interface{}{
+		constants.EVENT_TIME_IMPRESSIONS_COLUMN: time.Now().UTC().Format("2006-01-02 15:04:05.000"),
+		constants.FORMAT_COLUMN:                 format,
+	}
+
+	pipe := client.Pipeline()
+	pipe.HSet(ctx, globalId, fields)
+	pipe.Expire(ctx, globalId, RedisKeyTTL)
+
+	if _, err := pipe.Exec(ctx); err != nil {
+		return fmt.Errorf("failed to write impression stats to Redis (uuid=%s, shard=%d): %w", globalId, idx, err)
+	}
+
+	return nil
+}

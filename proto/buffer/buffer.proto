@@ -47,9 +47,11 @@ message OrtbEvent {
 message ImpressionEvent {
   string uuid = 1;
   int64 event_time_impressions_ms = 2;
+  string format = 3;
 }
 
 message ClickEvent {
   string uuid = 1;
   int64 event_time_clicks_ms = 2;
+  string format = 3;
 }

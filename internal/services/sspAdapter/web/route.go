@@ -72,6 +72,7 @@ type postBidResponse_V2_5 struct {
 type admNurlRequest struct {
 	GlobalId string `in:"query=id" required:"true"`
 	DspURL   string `in:"query=url" required:"true"`
+	Format   string `in:"query=f" required:"true"`
 }
 
 type putWorkStatusRequest struct {
