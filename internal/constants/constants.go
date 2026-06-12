@@ -46,6 +46,7 @@ const (
 )
 
 const (
+	IPP string = "IPP"
 	POP string = "POP"
 	BAN string = "BAN"
 	NAT string = "NAT"
@@ -55,3 +56,17 @@ const (
 	BOOLEAN_FALSE = false
 	BOOLEAN_TRUE  = true
 )
+
+var FormatToCodes = map[string]string{
+	POP: "0",
+	BAN: "1",
+	NAT: "2",
+	IPP: "3",
+}
+
+var CodeToFormat = map[string]string{
+	"0": POP,
+	"1": BAN,
+	"2": NAT,
+	"3": IPP,
+}

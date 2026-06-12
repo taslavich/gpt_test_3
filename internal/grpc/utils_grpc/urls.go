@@ -3,6 +3,8 @@ package utils
 import (
 	"fmt"
 	"net/url"
+
+	"gitlab.com/twinbid-exchange/RTB-exchange/internal/constants"
 )
 
 const (
@@ -10,8 +12,8 @@ const (
 	ADM  = "adm"
 )
 
-func WrapURL(hostname, originalURL, globalId, admOrnurlOrBurl string) string {
+func WrapURL(hostname, originalURL, globalId, admOrnurlOrBurl, format string) string {
 	encodeUrl := url.QueryEscape(originalURL)
-	return fmt.Sprintf("https://%s/%s?id=%s&url=%s",
-		hostname, admOrnurlOrBurl, globalId, encodeUrl)
+	return fmt.Sprintf("https://%s/%s?id=%s&url=%s&f=%s",
+		hostname, admOrnurlOrBurl, globalId, encodeUrl, constants.FormatToCodes[format])
 }

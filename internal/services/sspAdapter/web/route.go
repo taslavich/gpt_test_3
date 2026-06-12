@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"time"
 
+	"gitlab.com/twinbid-exchange/RTB-exchange/internal/constants"
 	"gitlab.com/twinbid-exchange/RTB-exchange/internal/geoBadIp"
 	orchestratorProto "gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/proto/services/orchestrator"
 	"gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/proto/types/ortb_V2_5"
@@ -21,13 +22,6 @@ import (
 const (
 	ADULT      = "ADULT"
 	MAINSTREAM = "MAINSTREAM"
-)
-
-const (
-	IPP string = "IPP"
-	POP string = "POP"
-	BAN string = "BAN"
-	NAT string = "NAT"
 )
 
 var rnr = render.New(render.Options{
@@ -122,13 +116,13 @@ func InitHttpRoutes(
 	httpRouter.With(
 		httpin.NewInput(postBidRequest_V2_5{}),
 	).Post(PostBid_POP_ADL_V_2_5_URL, func(w http.ResponseWriter, r *http.Request) {
-		postBid_V2_5(ctx, w, r, redisClients, isBadIp, getCountryISO, orchestratorClient, bidRequestTimeout, sspFeedsPopAdl, &counter, ADULT, POP, siteIdsAndDomains, geoToLang, redisWriteErrorMonitor)
+		postBid_V2_5(ctx, w, r, redisClients, isBadIp, getCountryISO, orchestratorClient, bidRequestTimeout, sspFeedsPopAdl, &counter, ADULT, constants.POP, siteIdsAndDomains, geoToLang, redisWriteErrorMonitor)
 	})
 
 	httpRouter.With(
 		httpin.NewInput(postBidRequest_V2_5{}),
 	).Post(PostBid_POP_MC_V_2_5_URL, func(w http.ResponseWriter, r *http.Request) {
-		postBid_V2_5(ctx, w, r, redisClients, isBadIp, getCountryISO, orchestratorClient, bidRequestTimeout, sspFeedsPopMc, &counter, MAINSTREAM, POP, siteIdsAndDomains, geoToLang, redisWriteErrorMonitor)
+		postBid_V2_5(ctx, w, r, redisClients, isBadIp, getCountryISO, orchestratorClient, bidRequestTimeout, sspFeedsPopMc, &counter, MAINSTREAM, constants.POP, siteIdsAndDomains, geoToLang, redisWriteErrorMonitor)
 	})
 
 	httpRouter.With(
@@ -188,13 +182,13 @@ func InitHttpRoutes(
 	httpRouter.With(
 		httpin.NewInput(postBidRequest_V2_5{}),
 	).Post(PostBid_IPP_ADL_V_2_5_URL, func(w http.ResponseWriter, r *http.Request) {
-		postBid_V2_5(ctx, w, r, redisClients, isBadIp, getCountryISO, orchestratorClient, bidRequestTimeout, sspFeedsIppAdl, &counter, ADULT, IPP, siteIdsAndDomains, geoToLang, redisWriteErrorMonitor)
+		postBid_V2_5(ctx, w, r, redisClients, isBadIp, getCountryISO, orchestratorClient, bidRequestTimeout, sspFeedsIppAdl, &counter, ADULT, constants.IPP, siteIdsAndDomains, geoToLang, redisWriteErrorMonitor)
 	})
 
 	httpRouter.With(
 		httpin.NewInput(postBidRequest_V2_5{}),
 	).Post(PostBid_IPP_MC_V_2_5_URL, func(w http.ResponseWriter, r *http.Request) {
-		postBid_V2_5(ctx, w, r, redisClients, isBadIp, getCountryISO, orchestratorClient, bidRequestTimeout, sspFeedsIppMc, &counter, MAINSTREAM, IPP, siteIdsAndDomains, geoToLang, redisWriteErrorMonitor)
+		postBid_V2_5(ctx, w, r, redisClients, isBadIp, getCountryISO, orchestratorClient, bidRequestTimeout, sspFeedsIppMc, &counter, MAINSTREAM, constants.IPP, siteIdsAndDomains, geoToLang, redisWriteErrorMonitor)
 	})
 
 	//---------------------------------------------------------------
@@ -202,13 +196,13 @@ func InitHttpRoutes(
 	httpRouter.With(
 		httpin.NewInput(postBidRequest_V2_5{}),
 	).Post(PostBid_BAN_ADL_V_2_5_URL, func(w http.ResponseWriter, r *http.Request) {
-		postBid_V2_5(ctx, w, r, redisClients, isBadIp, getCountryISO, orchestratorClient, bidRequestTimeout, sspFeedsBanAdl, &counter, ADULT, BAN, siteIdsAndDomains, geoToLang, redisWriteErrorMonitor)
+		postBid_V2_5(ctx, w, r, redisClients, isBadIp, getCountryISO, orchestratorClient, bidRequestTimeout, sspFeedsBanAdl, &counter, ADULT, constants.BAN, siteIdsAndDomains, geoToLang, redisWriteErrorMonitor)
 	})
 
 	httpRouter.With(
 		httpin.NewInput(postBidRequest_V2_5{}),
 	).Post(PostBid_BAN_MC_V_2_5_URL, func(w http.ResponseWriter, r *http.Request) {
-		postBid_V2_5(ctx, w, r, redisClients, isBadIp, getCountryISO, orchestratorClient, bidRequestTimeout, sspFeedsBanMc, &counter, MAINSTREAM, BAN, siteIdsAndDomains, geoToLang, redisWriteErrorMonitor)
+		postBid_V2_5(ctx, w, r, redisClients, isBadIp, getCountryISO, orchestratorClient, bidRequestTimeout, sspFeedsBanMc, &counter, MAINSTREAM, constants.BAN, siteIdsAndDomains, geoToLang, redisWriteErrorMonitor)
 	})
 
 	//---------------------------------------------------------------
@@ -216,13 +210,13 @@ func InitHttpRoutes(
 	httpRouter.With(
 		httpin.NewInput(postBidRequest_V2_5{}),
 	).Post(PostBid_NAT_ADL_V_2_5_URL, func(w http.ResponseWriter, r *http.Request) {
-		postBid_V2_5(ctx, w, r, redisClients, isBadIp, getCountryISO, orchestratorClient, bidRequestTimeout, sspFeedsNatAdl, &counter, ADULT, NAT, siteIdsAndDomains, geoToLang, redisWriteErrorMonitor)
+		postBid_V2_5(ctx, w, r, redisClients, isBadIp, getCountryISO, orchestratorClient, bidRequestTimeout, sspFeedsNatAdl, &counter, ADULT, constants.NAT, siteIdsAndDomains, geoToLang, redisWriteErrorMonitor)
 	})
 
 	httpRouter.With(
 		httpin.NewInput(postBidRequest_V2_5{}),
 	).Post(PostBid_NAT_MC_V_2_5_URL, func(w http.ResponseWriter, r *http.Request) {
-		postBid_V2_5(ctx, w, r, redisClients, isBadIp, getCountryISO, orchestratorClient, bidRequestTimeout, sspFeedsBanMc, &counter, MAINSTREAM, NAT, siteIdsAndDomains, geoToLang, redisWriteErrorMonitor)
+		postBid_V2_5(ctx, w, r, redisClients, isBadIp, getCountryISO, orchestratorClient, bidRequestTimeout, sspFeedsNatMc, &counter, MAINSTREAM, constants.NAT, siteIdsAndDomains, geoToLang, redisWriteErrorMonitor)
 	})
 }
 
