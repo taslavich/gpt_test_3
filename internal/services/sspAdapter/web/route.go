@@ -226,6 +226,8 @@ func InitHttpsRoutes(
 	httpRouter *chi.Mux,
 	redisClientsImp []*redis.Client,
 	redisClientsClicks []*redis.Client,
+	redisAdmClient *redis.Client,
+	redisNurlClient *redis.Client,
 	redisSetImpressions string,
 	redisSetClicks string,
 	admTimeout,
@@ -237,12 +239,12 @@ func InitHttpsRoutes(
 	httpRouter.With(
 		httpin.NewInput(admNurlRequest{}),
 	).Get(GetAdmUrl, func(w http.ResponseWriter, r *http.Request) {
-		getAdm(ctx, w, r, redisClientsClicks, redisSetClicks, redisWriteErrorMonitor)
+		getAdm(ctx, w, r, redisClientsClicks, redisAdmClient, redisSetClicks, redisWriteErrorMonitor)
 	})
 
 	httpRouter.With(
 		httpin.NewInput(admNurlRequest{}),
 	).Get(GetNurlUrl, func(w http.ResponseWriter, r *http.Request) {
-		getNurl(ctx, w, r, redisClientsImp, redisSetImpressions, redisWriteErrorMonitor)
+		getNurl(ctx, w, r, redisClientsImp, redisNurlClient, redisSetImpressions, redisWriteErrorMonitor)
 	})
 }

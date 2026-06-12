@@ -25,7 +25,7 @@ func GetWinnerBidInternal_V_2_5(
 	logged bool,
 	typic string,
 	admDomain string,
-) (*ortb_V2_5.BidResponse, clickhouse_types.UuidImpBidResponse) {
+) (*ortb_V2_5.BidResponse, clickhouse_types.UuidImpBidResponse, []string, []string) {
 	if len(req.BidResponses) == 0 {
 		return &ortb_V2_5.BidResponse{
 			Id: req.BidRequest.Id,
@@ -34,7 +34,7 @@ func GetWinnerBidInternal_V_2_5(
 					Bid: []*ortb_V2_5.Bid{},
 				},
 			},
-		}, clickhouse_types.GetEmpty(ImpIdUuid)
+		}, clickhouse_types.GetEmpty(ImpIdUuid), nil, nil
 	}
 
 	type bidWithDomain struct {
@@ -90,7 +90,7 @@ func GetWinnerBidInternal_V_2_5(
 					Bid: []*ortb_V2_5.Bid{},
 				},
 			},
-		}, clickhouse_types.GetEmpty(ImpIdUuid)
+		}, clickhouse_types.GetEmpty(ImpIdUuid), nil, nil
 	}
 
 	seatBid := []*ortb_V2_5.SeatBid{
@@ -99,6 +99,8 @@ func GetWinnerBidInternal_V_2_5(
 		},
 	}
 	clickhouseSeatBid := clickhouse_types.GetEmpty(ImpIdUuid)
+	nurlUUIDs := make([]string, 0, len(ImpIdUuid))
+	admUUIDs := make([]string, 0, len(ImpIdUuid))
 
 	for impID, bids := range impBids {
 		if len(bids) == 0 {
@@ -199,8 +201,13 @@ func GetWinnerBidInternal_V_2_5(
 
 		////
 
+		uuid := ImpIdUuid[impID]
 		seatBid[0].Bid = append(seatBid[0].Bid, finalBid)
-		clickhouseSeatBid[ImpIdUuid[impID]] = clickhouseBid
+		clickhouseSeatBid[uuid] = clickhouseBid
+		nurlUUIDs = append(nurlUUIDs, uuid)
+		if logged {
+			admUUIDs = append(admUUIDs, uuid)
+		}
 	}
 
 	bidResponse := &ortb_V2_5.BidResponse{
@@ -208,7 +215,7 @@ func GetWinnerBidInternal_V_2_5(
 		Seatbid: seatBid,
 	}
 
-	return bidResponse, clickhouseSeatBid
+	return bidResponse, clickhouseSeatBid, nurlUUIDs, admUUIDs
 }
 
 func applyPriceConstraintsAndPercent(dspPrice, bidFloor, profitPercent float32, needed bool) (

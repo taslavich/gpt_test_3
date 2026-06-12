@@ -58,6 +58,38 @@ func main() {
 	}
 	log.Println("✅ Connected to Redis shards")
 
+	redisAdmClient, err := redis_service.NewRedisClient(
+		cfg.RedisUUIDAddr,
+		cfg.RedisPassword,
+		cfg.RedisDBAdm,
+		cfg.RedisPoolSize,
+		cfg.RedisMinIdleConns,
+	)
+	if err != nil {
+		log.Fatalf("Cannot init ADM Redis client: %v", err)
+	}
+	defer redisAdmClient.Close()
+
+	redisNurlClient, err := redis_service.NewRedisClient(
+		cfg.RedisUUIDAddr,
+		cfg.RedisPassword,
+		cfg.RedisDBNurl,
+		cfg.RedisPoolSize,
+		cfg.RedisMinIdleConns,
+	)
+	if err != nil {
+		log.Fatalf("Cannot init NURL Redis client: %v", err)
+	}
+	defer redisNurlClient.Close()
+
+	if err := redisAdmClient.Ping(ctx).Err(); err != nil {
+		log.Fatalf("Failed to connect to ADM Redis: %v", err)
+	}
+	if err := redisNurlClient.Ping(ctx).Err(); err != nil {
+		log.Fatalf("Failed to connect to NURL Redis: %v", err)
+	}
+	log.Println("✅ Connected to ADM/NURL Redis")
+
 	sspGeoDspMapAdult, err := utils.InitSspGeoDspMap[*types.PercentAndBidfloor](cfg.SspGeoDspPercentsAdultFilePath)
 	if err != nil {
 		log.Fatalf("Failed to InitSspGeoPercentsLogic: %v", err)
@@ -90,6 +122,9 @@ func main() {
 		bidEngineWeb.NewServer(
 			cfg.ProfitPercent,
 			redisClients.Ortb,
+			redisAdmClient,
+			redisNurlClient,
+			cfg.RedisUUIDKeyTTL,
 			cfg.RedisSetOrtb,
 			bidEngine.GetWinnerBidInternal_V_2_5,
 			cfg.SspGeoDspPercentsAdultFilePath,
