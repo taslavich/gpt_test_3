@@ -1,8 +1,8 @@
 module gitlab.com/twinbid-exchange/RTB-exchange
 
-go 1.24.0
+go 1.25
 
-toolchain go1.24.6
+toolchain go1.25.11
 
 require (
 	github.com/ggicci/httpin v0.17.0
