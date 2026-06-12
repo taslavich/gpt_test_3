@@ -107,7 +107,7 @@ func insertBatchClicks(
 		INSERT INTO %s (
 			uuid,
 			event_time_clicks,
-			format
+			ad_format
 		)
 	`, table)
 

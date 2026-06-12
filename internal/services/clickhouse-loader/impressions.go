@@ -107,7 +107,7 @@ func insertBatchImpressions(
 		INSERT INTO %s (
 			uuid,
 			event_time_impressions,
-			format
+			ad_format
 		)
 	`, table)
 
