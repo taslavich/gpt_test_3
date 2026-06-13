@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"sort"
+	"strings"
 
 	bidEngineGrpc "gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/proto/services/bidEngine"
 	"gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/proto/types/ortb_V2_5"
@@ -26,6 +27,12 @@ func GetWinnerBidInternal_V_2_5(
 	typic string,
 	admDomain string,
 ) (*ortb_V2_5.BidResponse, clickhouse_types.UuidImpBidResponse, []string, []string) {
+	for l := range req.ImpIdUuid {
+		if strings.TrimSpace(req.ImpIdUuid[l]) == "" {
+			log.Printf("Empty uuid jjj")
+		}
+	}
+
 	if len(req.BidResponses) == 0 {
 		return &ortb_V2_5.BidResponse{
 			Id: req.BidRequest.Id,
