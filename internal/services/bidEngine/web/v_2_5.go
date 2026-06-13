@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"runtime/debug"
+	"strings"
 	"time"
 
 	"github.com/redis/go-redis/v9"
@@ -111,6 +112,13 @@ func (s *Server) GetWinnerBid_V2_5(
 			funcErr = status.Error(grpcCode, err.Error())
 		}
 	}()
+
+	for l := range req.ImpIdUuid {
+		if strings.TrimSpace(req.ImpIdUuid[l]) == "" {
+			log.Printf("Empty uuid jjj")
+		}
+	}
+
 	bidResponse, clickhouseBid, nurlUUIDs, admUUIDs := s.GetWinnerBidInternal_V_2_5(
 		ctx,
 		req,
