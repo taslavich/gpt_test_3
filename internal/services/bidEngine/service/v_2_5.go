@@ -163,10 +163,11 @@ func GetWinnerBidInternal_V_2_5(
 		globalUUID, ok := ImpIdUuid[impID]
 		if !ok || globalUUID == "" {
 			log.Printf(
-				"unknown impid: impid=%q bid_id=%q known_imp_ids=%v",
+				"unknown impid: impid=%q bid_id=%q known_imp_ids=%v, domain=%q",
 				impID,
 				winner.bid.GetId(),
 				ImpIdUuid,
+				winner.domain,
 			)
 		}
 
