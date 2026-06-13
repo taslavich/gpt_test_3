@@ -160,6 +160,16 @@ func GetWinnerBidInternal_V_2_5(
 
 		var finalBid *ortb_V2_5.Bid
 
+		globalUUID, ok := ImpIdUuid[impID]
+		if !ok || globalUUID == "" {
+			log.Printf(
+				"unknown impid: impid=%q bid_id=%q known_imp_ids=%v",
+				impID,
+				winner.bid.GetId(),
+				ImpIdUuid,
+			)
+		}
+
 		wrappedNurl := utils.WrapURL(admDomain, winner.bid.GetNurl(), ImpIdUuid[impID], utils.NURL, req.Format)
 
 		if logged {
