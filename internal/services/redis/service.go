@@ -39,7 +39,7 @@ func SelectShard(clients []*redis.Client, uuid string) (*redis.Client, int, erro
 	}
 
 	if uuid == "" {
-		return nil, 0, fmt.Errorf("uuid cannot be empty")
+		//return nil, 0, fmt.Errorf("uuid cannot be empty")
 	}
 
 	idx := ShardIndex(uuid, len(clients))
