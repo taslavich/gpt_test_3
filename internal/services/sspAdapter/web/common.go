@@ -39,12 +39,13 @@ func getAdm(
 
 	exists, err := utils.UUIDKeyExistsInRedis(ctx, redisAdmClient, input.GlobalId)
 	if err != nil {
-		log.Printf("failed to check ADM UUID key in getAdm: %v", err)
+		log.Printf("failed to check ADM UUID key %s in getAdm: %v", input.GlobalId, err)
 		redisWriteErrorMonitor.Record(err)
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
 	if !exists {
+		log.Printf("ADM UUID key %s does not exist in getAdm", input.GlobalId)
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
@@ -86,12 +87,13 @@ func getNurl(
 
 	exists, err := utils.UUIDKeyExistsInRedis(ctx, redisNurlClient, input.GlobalId)
 	if err != nil {
-		log.Printf("failed to check NURL UUID key in getNurl: %v", err)
+		log.Printf("failed to check NURL UUID key %s in getNurl: %v", input.GlobalId, err)
 		redisWriteErrorMonitor.Record(err)
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
 	if !exists {
+		log.Printf("NURL UUID key %s does not exist in getNurl", input.GlobalId)
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
