@@ -44,6 +44,7 @@ func postBid_V2_5(
 	siteIdsAndDomains *utils.SiteIdsAndDomains,
 	geoToLang geoBadIp.GeoToLang,
 	redisWriteErrorMonitor *services.RedisWriteErrorMonitor,
+	sspAdapterWorkStatusURL string,
 ) {
 	var input *postBidRequest_V2_5
 	defer func() {
@@ -261,7 +262,7 @@ func postBid_V2_5(
 			float64(input.Payload.Imp[i].GetBidfloor()),
 		); err != nil {
 			log.Printf("failed to WriteStats in postBid_V2_5: %v", err)
-			redisWriteErrorMonitor.Record(err)
+			redisWriteErrorMonitor.RecordForURL(err, sspAdapterWorkStatusURL)
 		}
 	}
 
@@ -277,6 +278,7 @@ func postBid_V2_5(
 			Typic:      typic,
 			Format:     format,
 			ImpIdUuid:  impIdUuid,
+			SspUrl:     sspAdapterWorkStatusURL,
 		},
 	)
 	if err != nil {

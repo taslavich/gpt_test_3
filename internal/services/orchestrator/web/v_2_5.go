@@ -68,6 +68,7 @@ func (s *Server) GetWinnerBid_V2_5(
 			Typic:      req.Typic,
 			Format:     req.Format,
 			ImpIdUuid:  req.ImpIdUuid,
+			SspUrl:     req.SspUrl,
 		},
 	)
 	if err != nil {
@@ -97,6 +98,7 @@ func (s *Server) GetWinnerBid_V2_5(
 			Typic:        req.Typic,
 			Format:       req.Format,
 			ImpIdUuid:    req.ImpIdUuid,
+			SspUrl:       req.SspUrl,
 		},
 	)
 	if err != nil {

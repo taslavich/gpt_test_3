@@ -119,6 +119,8 @@ type BiddingEngineConfig struct {
 	SspGeoDspPercentsMainstreamFilePath string   `yaml:"SSP_GEO_DSP_PERCENTS_MAINSTREAM_FILE_PATH" env:"SSP_GEO_DSP_PERCENTS_MAINSTREAM_FILE_PATH"`
 	AdmDomain                           string   `yaml:"ADM_DOMAIN" env:"ADM_DOMAIN"`
 	SspAdapterWorkStatusURLs            []string `yaml:"SSP_ADAPTER_WORK_STATUS_URLS" env:"SSP_ADAPTER_WORK_STATUS_URLS" env-default:"server1.twinbidexchange.com:8050,server2.twinbidexchange.com:8050,server3.twinbidexchange.com:8050,server4.twinbidexchange.com:8050"`
+	BotBaseURL                          string   `yaml:"BOT_BASE_URL" env:"BOT_BASE_URL"`
+	BotInternalSecret                   string   `yaml:"BOT_INTERNAL_SECRET" env:"BOT_INTERNAL_SECRET"`
 
 	RedisConfig
 }
@@ -152,6 +154,8 @@ type RouterConfig struct {
 	MaxParallelRequests      int      `yaml:"MAX_PARALLEL_REQUESTS" env:"MAX_PARALLEL_REQUESTS" env-default:"64"`
 	Debug                    bool     `yaml:"DEBUG" env:"DEBUG" env-default:"false"`
 	SspAdapterWorkStatusURLs []string `yaml:"SSP_ADAPTER_WORK_STATUS_URLS" env:"SSP_ADAPTER_WORK_STATUS_URLS" env-default:"server1.twinbidexchange.com:8050,server2.twinbidexchange.com:8050,server3.twinbidexchange.com:8050,server4.twinbidexchange.com:8050"`
+	BotBaseURL               string   `yaml:"BOT_BASE_URL" env:"BOT_BASE_URL"`
+	BotInternalSecret        string   `yaml:"BOT_INTERNAL_SECRET" env:"BOT_INTERNAL_SECRET"`
 
 	RedisConfig
 }
@@ -195,6 +199,9 @@ type SppAdapterConfig struct {
 	Domains23LevelPath       string   `yaml:"DOMAINS_23_LEVEL_PATH" env:"DOMAINS_23_LEVEL_PATH"`
 	GeoToLangPath            string   `yaml:"GEO_TO_LANG_PATH" env:"GEO_TO_LANG_PATH"`
 	SspAdapterWorkStatusURLs []string `yaml:"SSP_ADAPTER_WORK_STATUS_URLS" env:"SSP_ADAPTER_WORK_STATUS_URLS" env-default:"server1.twinbidexchange.com:8050,server2.twinbidexchange.com:8050,server3.twinbidexchange.com:8050,server4.twinbidexchange.com:8050"`
+	SspAdapterWorkStatusURL  string   `yaml:"SSP_ADAPTER_WORK_STATUS_URL" env:"SSP_ADAPTER_WORK_STATUS_URL"`
+	BotBaseURL               string   `yaml:"BOT_BASE_URL" env:"BOT_BASE_URL"`
+	BotInternalSecret        string   `yaml:"BOT_INTERNAL_SECRET" env:"BOT_INTERNAL_SECRET"`
 
 	RedisConfig
 }
@@ -208,6 +215,9 @@ type AdmAdapterConfig struct {
 	RsaFullChain             string        `yaml:"RSA_FULLCHAIN_PEM" env:"RSA_FULLCHAIN_PEM"`
 	RsaPrivKey               string        `yaml:"RSA_PRIVKEY_PEM" env:"RSA_PRIVKEY_PEM"`
 	SspAdapterWorkStatusURLs []string      `yaml:"SSP_ADAPTER_WORK_STATUS_URLS" env:"SSP_ADAPTER_WORK_STATUS_URLS" env-default:"server1.twinbidexchange.com:8050,server2.twinbidexchange.com:8050,server3.twinbidexchange.com:8050,server4.twinbidexchange.com:8050"`
+	SspAdapterWorkStatusURL  string        `yaml:"SSP_ADAPTER_WORK_STATUS_URL" env:"SSP_ADAPTER_WORK_STATUS_URL"`
+	BotBaseURL               string        `yaml:"BOT_BASE_URL" env:"BOT_BASE_URL"`
+	BotInternalSecret        string        `yaml:"BOT_INTERNAL_SECRET" env:"BOT_INTERNAL_SECRET"`
 
 	RedisConfig
 }
@@ -218,6 +228,8 @@ type KafkaLoaderConfig struct {
 	BatchRatioConfig
 	EmptyLoopPauseMS         int      `yaml:"EMPTY_LOOP_PAUSE_MS" env:"EMPTY_LOOP_PAUSE_MS" env-default:"200"`
 	SspAdapterWorkStatusURLs []string `yaml:"SSP_ADAPTER_WORK_STATUS_URLS" env:"SSP_ADAPTER_WORK_STATUS_URLS" env-default:"server1.twinbidexchange.com:8050,server2.twinbidexchange.com:8050,server3.twinbidexchange.com:8050,server4.twinbidexchange.com:8050"`
+	BotBaseURL               string   `yaml:"BOT_BASE_URL" env:"BOT_BASE_URL"`
+	BotInternalSecret        string   `yaml:"BOT_INTERNAL_SECRET" env:"BOT_INTERNAL_SECRET"`
 }
 
 type ClickhouseConfig struct {
@@ -271,8 +283,10 @@ type ClickhouseLoaderConfig struct {
 	TimeoutSec     int `yaml:"TIMEOUT_SEC" env:"TIMEOUT_SEC"`
 	BatchTimeoutMS int `yaml:"CLICKHOUSE_BATCH_TIMEOUT_MS" env:"CLICKHOUSE_BATCH_TIMEOUT_MS" env-default:"800"`
 
-	ImpressionClickFlushIntervalSec int `yaml:"IMPRESSION_CLICK_FLUSH_INTERVAL_SEC" env:"IMPRESSION_CLICK_FLUSH_INTERVAL_SEC" env-default:"30"`
-	EmptyLoopPauseMS                int `yaml:"EMPTY_LOOP_PAUSE_MS" env:"EMPTY_LOOP_PAUSE_MS" env-default:"200"`
+	ImpressionClickFlushIntervalSec int    `yaml:"IMPRESSION_CLICK_FLUSH_INTERVAL_SEC" env:"IMPRESSION_CLICK_FLUSH_INTERVAL_SEC" env-default:"30"`
+	EmptyLoopPauseMS                int    `yaml:"EMPTY_LOOP_PAUSE_MS" env:"EMPTY_LOOP_PAUSE_MS" env-default:"200"`
+	BotBaseURL                      string `yaml:"BOT_BASE_URL" env:"BOT_BASE_URL"`
+	BotInternalSecret               string `yaml:"BOT_INTERNAL_SECRET" env:"BOT_INTERNAL_SECRET"`
 }
 
 type MockDspConfig struct {

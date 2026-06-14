@@ -147,9 +147,10 @@ func main() {
 		log.Fatalf("Failed to InitCidSspDspMap: %v", err)
 	}
 
-	redisWriteErrorMonitor := services.NewRedisWriteErrorMonitor("router", func(count uint64) {
-		services.StopAllSspAdapterOrtbStreams(ctx, cfg.SspAdapterWorkStatusURLs)
-	})
+	botNotifier := utils.NewBotMessage(cfg.BotBaseURL, cfg.BotInternalSecret)
+	redisWriteErrorMonitor := services.NewRedisWriteErrorMonitor("router", func(count uint64, workStatusURL string) {
+		services.StopSspAdapterOrtbStreams(ctx, workStatusURL)
+	}, botNotifier, ctx)
 	redisWriteErrorMonitor.Start()
 
 	s := grpc.NewServer()

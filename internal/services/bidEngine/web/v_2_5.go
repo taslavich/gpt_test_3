@@ -127,26 +127,26 @@ func (s *Server) GetWinnerBid_V2_5(
 	for _, uuid := range admUUIDs {
 		if err := utils.WriteUUIDKeyToRedis(ctx, s.redisAdmClient, uuid, s.redisUUIDKeyTTL); err != nil {
 			log.Printf("failed to write ADM UUID key in GetWinnerBidInternal: %v", err)
-			s.redisWriteErrorMonitor.Record(err)
+			s.redisWriteErrorMonitor.RecordForURL(err, req.SspUrl)
 		}
 	}
 
 	for _, uuid := range nurlUUIDs {
 		if err := utils.WriteUUIDKeyToRedis(ctx, s.redisNurlClient, uuid, s.redisUUIDKeyTTL); err != nil {
 			log.Printf("failed to write NURL UUID key in GetWinnerBidInternal: %v", err)
-			s.redisWriteErrorMonitor.Record(err)
+			s.redisWriteErrorMonitor.RecordForURL(err, req.SspUrl)
 		}
 	}
 
 	for _, uuid := range req.ImpIdUuid {
 		if err := utils.WriteWinStats(ctx, s.redisClients, uuid, clickhouseBid[uuid], req.Logged); err != nil {
 			log.Printf("failed to WriteJsonToRedis Bid BID_RESPONSE_WINNER in GetWinnerBidInternal: %v", err)
-			s.redisWriteErrorMonitor.Record(err)
+			s.redisWriteErrorMonitor.RecordForURL(err, req.SspUrl)
 		}
 
 		if err := utils.AddUUIDToRedisSet(ctx, s.redisClients, s.redisSetOrtb, uuid, req.Logged); err != nil {
 			log.Printf("failed to add ORTB UUID to Redis set in GetWinnerBidInternal: %v", err)
-			s.redisWriteErrorMonitor.Record(err)
+			s.redisWriteErrorMonitor.RecordForURL(err, req.SspUrl)
 		}
 	}
 

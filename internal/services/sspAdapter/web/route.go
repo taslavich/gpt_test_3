@@ -110,6 +110,7 @@ func InitHttpRoutes(
 	siteIdsAndDomains *utils.SiteIdsAndDomains,
 	geoToLang geoBadIp.GeoToLang,
 	redisWriteErrorMonitor *services.RedisWriteErrorMonitor,
+	sspAdapterWorkStatusURL string,
 ) {
 	var counter uint64 = 0
 	integration.UseGochiURLParam("path", chi.URLParam)
@@ -117,13 +118,13 @@ func InitHttpRoutes(
 	httpRouter.With(
 		httpin.NewInput(postBidRequest_V2_5{}),
 	).Post(PostBid_POP_ADL_V_2_5_URL, func(w http.ResponseWriter, r *http.Request) {
-		postBid_V2_5(ctx, w, r, redisClients, isBadIp, getCountryISO, orchestratorClient, bidRequestTimeout, sspFeedsPopAdl, &counter, ADULT, constants.POP, siteIdsAndDomains, geoToLang, redisWriteErrorMonitor)
+		postBid_V2_5(ctx, w, r, redisClients, isBadIp, getCountryISO, orchestratorClient, bidRequestTimeout, sspFeedsPopAdl, &counter, ADULT, constants.POP, siteIdsAndDomains, geoToLang, redisWriteErrorMonitor, sspAdapterWorkStatusURL)
 	})
 
 	httpRouter.With(
 		httpin.NewInput(postBidRequest_V2_5{}),
 	).Post(PostBid_POP_MC_V_2_5_URL, func(w http.ResponseWriter, r *http.Request) {
-		postBid_V2_5(ctx, w, r, redisClients, isBadIp, getCountryISO, orchestratorClient, bidRequestTimeout, sspFeedsPopMc, &counter, MAINSTREAM, constants.POP, siteIdsAndDomains, geoToLang, redisWriteErrorMonitor)
+		postBid_V2_5(ctx, w, r, redisClients, isBadIp, getCountryISO, orchestratorClient, bidRequestTimeout, sspFeedsPopMc, &counter, MAINSTREAM, constants.POP, siteIdsAndDomains, geoToLang, redisWriteErrorMonitor, sspAdapterWorkStatusURL)
 	})
 
 	httpRouter.With(
@@ -183,13 +184,13 @@ func InitHttpRoutes(
 	httpRouter.With(
 		httpin.NewInput(postBidRequest_V2_5{}),
 	).Post(PostBid_IPP_ADL_V_2_5_URL, func(w http.ResponseWriter, r *http.Request) {
-		postBid_V2_5(ctx, w, r, redisClients, isBadIp, getCountryISO, orchestratorClient, bidRequestTimeout, sspFeedsIppAdl, &counter, ADULT, constants.IPP, siteIdsAndDomains, geoToLang, redisWriteErrorMonitor)
+		postBid_V2_5(ctx, w, r, redisClients, isBadIp, getCountryISO, orchestratorClient, bidRequestTimeout, sspFeedsIppAdl, &counter, ADULT, constants.IPP, siteIdsAndDomains, geoToLang, redisWriteErrorMonitor, sspAdapterWorkStatusURL)
 	})
 
 	httpRouter.With(
 		httpin.NewInput(postBidRequest_V2_5{}),
 	).Post(PostBid_IPP_MC_V_2_5_URL, func(w http.ResponseWriter, r *http.Request) {
-		postBid_V2_5(ctx, w, r, redisClients, isBadIp, getCountryISO, orchestratorClient, bidRequestTimeout, sspFeedsIppMc, &counter, MAINSTREAM, constants.IPP, siteIdsAndDomains, geoToLang, redisWriteErrorMonitor)
+		postBid_V2_5(ctx, w, r, redisClients, isBadIp, getCountryISO, orchestratorClient, bidRequestTimeout, sspFeedsIppMc, &counter, MAINSTREAM, constants.IPP, siteIdsAndDomains, geoToLang, redisWriteErrorMonitor, sspAdapterWorkStatusURL)
 	})
 
 	//---------------------------------------------------------------
@@ -197,13 +198,13 @@ func InitHttpRoutes(
 	httpRouter.With(
 		httpin.NewInput(postBidRequest_V2_5{}),
 	).Post(PostBid_BAN_ADL_V_2_5_URL, func(w http.ResponseWriter, r *http.Request) {
-		postBid_V2_5(ctx, w, r, redisClients, isBadIp, getCountryISO, orchestratorClient, bidRequestTimeout, sspFeedsBanAdl, &counter, ADULT, constants.BAN, siteIdsAndDomains, geoToLang, redisWriteErrorMonitor)
+		postBid_V2_5(ctx, w, r, redisClients, isBadIp, getCountryISO, orchestratorClient, bidRequestTimeout, sspFeedsBanAdl, &counter, ADULT, constants.BAN, siteIdsAndDomains, geoToLang, redisWriteErrorMonitor, sspAdapterWorkStatusURL)
 	})
 
 	httpRouter.With(
 		httpin.NewInput(postBidRequest_V2_5{}),
 	).Post(PostBid_BAN_MC_V_2_5_URL, func(w http.ResponseWriter, r *http.Request) {
-		postBid_V2_5(ctx, w, r, redisClients, isBadIp, getCountryISO, orchestratorClient, bidRequestTimeout, sspFeedsBanMc, &counter, MAINSTREAM, constants.BAN, siteIdsAndDomains, geoToLang, redisWriteErrorMonitor)
+		postBid_V2_5(ctx, w, r, redisClients, isBadIp, getCountryISO, orchestratorClient, bidRequestTimeout, sspFeedsBanMc, &counter, MAINSTREAM, constants.BAN, siteIdsAndDomains, geoToLang, redisWriteErrorMonitor, sspAdapterWorkStatusURL)
 	})
 
 	//---------------------------------------------------------------
@@ -211,13 +212,13 @@ func InitHttpRoutes(
 	httpRouter.With(
 		httpin.NewInput(postBidRequest_V2_5{}),
 	).Post(PostBid_NAT_ADL_V_2_5_URL, func(w http.ResponseWriter, r *http.Request) {
-		postBid_V2_5(ctx, w, r, redisClients, isBadIp, getCountryISO, orchestratorClient, bidRequestTimeout, sspFeedsNatAdl, &counter, ADULT, constants.NAT, siteIdsAndDomains, geoToLang, redisWriteErrorMonitor)
+		postBid_V2_5(ctx, w, r, redisClients, isBadIp, getCountryISO, orchestratorClient, bidRequestTimeout, sspFeedsNatAdl, &counter, ADULT, constants.NAT, siteIdsAndDomains, geoToLang, redisWriteErrorMonitor, sspAdapterWorkStatusURL)
 	})
 
 	httpRouter.With(
 		httpin.NewInput(postBidRequest_V2_5{}),
 	).Post(PostBid_NAT_MC_V_2_5_URL, func(w http.ResponseWriter, r *http.Request) {
-		postBid_V2_5(ctx, w, r, redisClients, isBadIp, getCountryISO, orchestratorClient, bidRequestTimeout, sspFeedsNatMc, &counter, MAINSTREAM, constants.NAT, siteIdsAndDomains, geoToLang, redisWriteErrorMonitor)
+		postBid_V2_5(ctx, w, r, redisClients, isBadIp, getCountryISO, orchestratorClient, bidRequestTimeout, sspFeedsNatMc, &counter, MAINSTREAM, constants.NAT, siteIdsAndDomains, geoToLang, redisWriteErrorMonitor, sspAdapterWorkStatusURL)
 	})
 }
 
@@ -233,18 +234,19 @@ func InitHttpsRoutes(
 	admTimeout,
 	nurlTimeout time.Duration,
 	redisWriteErrorMonitor *services.RedisWriteErrorMonitor,
+	sspAdapterWorkStatusURL string,
 ) {
 	integration.UseGochiURLParam("path", chi.URLParam)
 
 	httpRouter.With(
 		httpin.NewInput(admNurlRequest{}),
 	).Get(GetAdmUrl, func(w http.ResponseWriter, r *http.Request) {
-		getAdm(ctx, w, r, redisClientsClicks, redisAdmClient, redisSetClicks, redisWriteErrorMonitor)
+		getAdm(ctx, w, r, redisClientsClicks, redisAdmClient, redisSetClicks, redisWriteErrorMonitor, sspAdapterWorkStatusURL)
 	})
 
 	httpRouter.With(
 		httpin.NewInput(admNurlRequest{}),
 	).Get(GetNurlUrl, func(w http.ResponseWriter, r *http.Request) {
-		getNurl(ctx, w, r, redisClientsImp, redisNurlClient, redisSetImpressions, redisWriteErrorMonitor)
+		getNurl(ctx, w, r, redisClientsImp, redisNurlClient, redisSetImpressions, redisWriteErrorMonitor, sspAdapterWorkStatusURL)
 	})
 }

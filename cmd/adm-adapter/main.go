@@ -6,6 +6,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"gitlab.com/twinbid-exchange/RTB-exchange/internal/config"
+	utils "gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/utils_grpc"
 	httpServer "gitlab.com/twinbid-exchange/RTB-exchange/internal/http"
 	services "gitlab.com/twinbid-exchange/RTB-exchange/internal/services"
 	redis_service "gitlab.com/twinbid-exchange/RTB-exchange/internal/services/redis"
@@ -84,9 +85,9 @@ func main() {
 	}
 	log.Println("✅ Connected to ADM/NURL Redis")
 
-	redisWriteErrorMonitor := services.NewRedisWriteErrorMonitor("adm-adapter", func(count uint64) {
-		services.StopAllSspAdapterOrtbStreams(ctx, cfg.SspAdapterWorkStatusURLs)
-	})
+	redisWriteErrorMonitor := services.NewRedisWriteErrorMonitor("adm-adapter", func(count uint64, workStatusURL string) {
+		services.StopSspAdapterOrtbStreams(ctx, cfg.SspAdapterWorkStatusURL)
+	}, utils.NewBotMessage(cfg.BotBaseURL, cfg.BotInternalSecret), ctx)
 	redisWriteErrorMonitor.Start()
 
 	router := httpServer.InitHttpRouter(chi.NewRouter())
@@ -102,6 +103,7 @@ func main() {
 		cfg.AdmTimeout,
 		cfg.NurlTimeout,
 		redisWriteErrorMonitor,
+		cfg.SspAdapterWorkStatusURL,
 	)
 	log.Println("HTTP routes initialized")
 
