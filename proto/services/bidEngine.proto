@@ -16,6 +16,7 @@ message BidEngineRequest_V2_5 {
   bool logged = 5;
   string typic = 6;
   string format = 7;
+  string sspUrl = 8;
 }
 
 message BidEngineResponse_V2_5 {

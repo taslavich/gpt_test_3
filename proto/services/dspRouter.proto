@@ -15,6 +15,7 @@ message DspRouterRequest_V2_5 {
   bool logged = 4;
   string typic = 5;
   string format = 6;
+  string sspUrl = 7;
 }
 
 message DspRouterResponse_V2_5 {

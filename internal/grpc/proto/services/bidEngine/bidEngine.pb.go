@@ -31,6 +31,7 @@ type BidEngineRequest_V2_5 struct {
 	Logged        bool                              `protobuf:"varint,5,opt,name=logged,proto3" json:"logged,omitempty"`
 	Typic         string                            `protobuf:"bytes,6,opt,name=typic,proto3" json:"typic,omitempty"`
 	Format        string                            `protobuf:"bytes,7,opt,name=format,proto3" json:"format,omitempty"`
+	SspUrl        string                            `protobuf:"bytes,8,opt,name=sspUrl,proto3" json:"sspUrl,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -114,6 +115,13 @@ func (x *BidEngineRequest_V2_5) GetFormat() string {
 	return ""
 }
 
+func (x *BidEngineRequest_V2_5) GetSspUrl() string {
+	if x != nil {
+		return x.SspUrl
+	}
+	return ""
+}
+
 type BidEngineResponse_V2_5 struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	BidResponse   *ortb_V2_5.BidResponse `protobuf:"bytes,1,opt,name=bidResponse,proto3" json:"bidResponse,omitempty"`
@@ -170,7 +178,7 @@ var File_services_bidEngine_proto protoreflect.FileDescriptor
 
 const file_services_bidEngine_proto_rawDesc = "" +
 	"\n" +
-	"\x18services/bidEngine.proto\x12\tbidEngine\x1a\x1atypes/ortb_V2_5/ortb.proto\"\xf1\x03\n" +
+	"\x18services/bidEngine.proto\x12\tbidEngine\x1a\x1atypes/ortb_V2_5/ortb.proto\"\x89\x04\n" +
 	"\x15BidEngineRequest_V2_5\x125\n" +
 	"\n" +
 	"bidRequest\x18\x01 \x01(\v2\x15.ortb_V2_5.BidRequestR\n" +
@@ -181,7 +189,8 @@ const file_services_bidEngine_proto_rawDesc = "" +
 	"ssp_domain\x18\x04 \x01(\tR\tsspDomain\x12\x16\n" +
 	"\x06logged\x18\x05 \x01(\bR\x06logged\x12\x14\n" +
 	"\x05typic\x18\x06 \x01(\tR\x05typic\x12\x16\n" +
-	"\x06format\x18\a \x01(\tR\x06format\x1aW\n" +
+	"\x06format\x18\a \x01(\tR\x06format\x12\x16\n" +
+	"\x06sspUrl\x18\b \x01(\tR\x06sspUrl\x1aW\n" +
 	"\x11BidResponsesEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12,\n" +
 	"\x05value\x18\x02 \x01(\v2\x16.ortb_V2_5.BidResponseR\x05value:\x028\x01\x1a<\n" +

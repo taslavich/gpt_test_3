@@ -30,6 +30,7 @@ type DspRouterRequest_V2_5 struct {
 	Logged        bool                   `protobuf:"varint,4,opt,name=logged,proto3" json:"logged,omitempty"`
 	Typic         string                 `protobuf:"bytes,5,opt,name=typic,proto3" json:"typic,omitempty"`
 	Format        string                 `protobuf:"bytes,6,opt,name=format,proto3" json:"format,omitempty"`
+	SspUrl        string                 `protobuf:"bytes,7,opt,name=sspUrl,proto3" json:"sspUrl,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -106,6 +107,13 @@ func (x *DspRouterRequest_V2_5) GetFormat() string {
 	return ""
 }
 
+func (x *DspRouterRequest_V2_5) GetSspUrl() string {
+	if x != nil {
+		return x.SspUrl
+	}
+	return ""
+}
+
 type DspRouterResponse_V2_5 struct {
 	state         protoimpl.MessageState            `protogen:"open.v1"`
 	BidRequest    *ortb_V2_5.BidRequest             `protobuf:"bytes,1,opt,name=bidRequest,proto3" json:"bidRequest,omitempty"`
@@ -170,7 +178,7 @@ var File_services_dspRouter_proto protoreflect.FileDescriptor
 
 const file_services_dspRouter_proto_rawDesc = "" +
 	"\n" +
-	"\x18services/dspRouter.proto\x12\tdspRouter\x1a\x1atypes/ortb_V2_5/ortb.proto\"\xc0\x02\n" +
+	"\x18services/dspRouter.proto\x12\tdspRouter\x1a\x1atypes/ortb_V2_5/ortb.proto\"\xd8\x02\n" +
 	"\x15DspRouterRequest_V2_5\x125\n" +
 	"\n" +
 	"bidRequest\x18\x01 \x01(\v2\x15.ortb_V2_5.BidRequestR\n" +
@@ -180,7 +188,8 @@ const file_services_dspRouter_proto_rawDesc = "" +
 	"ssp_domain\x18\x03 \x01(\tR\tsspDomain\x12\x16\n" +
 	"\x06logged\x18\x04 \x01(\bR\x06logged\x12\x14\n" +
 	"\x05typic\x18\x05 \x01(\tR\x05typic\x12\x16\n" +
-	"\x06format\x18\x06 \x01(\tR\x06format\x1a<\n" +
+	"\x06format\x18\x06 \x01(\tR\x06format\x12\x16\n" +
+	"\x06sspUrl\x18\a \x01(\tR\x06sspUrl\x1a<\n" +
 	"\x0eImpIdUuidEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\xa0\x02\n" +

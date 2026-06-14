@@ -22,3 +22,4 @@ func WrapError(prefix string, wrapError error) error {
 		st.Err(),
 	)
 }
+

@@ -210,9 +210,3 @@ func optimizeGoRuntimeSafe(serviceType string) {
 		runtime.GOMAXPROCS(0),
 		debug.SetGCPercent(-1))
 }
-
-// УДАЛИТЕ ВСЕ СЛЕДУЮЩИЕ ФУНКЦИИ ИЛИ ЗАКОММЕНТИРУЙТЕ ИХ ВЫЗОВ:
-// setSystemLimits()
-// optimizeNetworkSettings()
-// safeSysctlWrite()
-// sysctlWrite()
