@@ -254,7 +254,7 @@ func (m *BatchRatioManager) PauseTicker() {
 	m.tickerEnabled = false
 }
 
-func (m *BatchRatioManager) updateFromTicker(impressionsPercent, clicksPercent float64) (float64, float64, bool) {
+func (m *BatchRatioManager) adjustFromTickerDiffs(impressionsDiffSec, clicksDiffSec int64, cfg config.BatchRatioConfig) (float64, float64, bool) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
@@ -262,22 +262,24 @@ func (m *BatchRatioManager) updateFromTicker(impressionsPercent, clicksPercent f
 		return m.impressionsPercent, m.clicksPercent, false
 	}
 
-	usedDefault := false
-
-	if impressionsPercent < m.defaultImpressionsPercent {
-		impressionsPercent = m.defaultImpressionsPercent
-		usedDefault = true
+	factor := cfg.AdjustFactor
+	if factor <= 0 {
+		factor = 2
 	}
 
-	if clicksPercent < m.defaultClicksPercent {
-		clicksPercent = m.defaultClicksPercent
-		usedDefault = true
+	if impressionsDiffSec > int64(cfg.ImpressionsDiffRightSec) {
+		m.impressionsPercent *= factor
+	} else if impressionsDiffSec < int64(cfg.ImpressionsDiffLeftSec) {
+		m.impressionsPercent /= factor
 	}
 
-	m.impressionsPercent = impressionsPercent
-	m.clicksPercent = clicksPercent
+	if clicksDiffSec > int64(cfg.ClicksDiffRightSec) {
+		m.clicksPercent *= factor
+	} else if clicksDiffSec < int64(cfg.ClicksDiffLeftSec) {
+		m.clicksPercent /= factor
+	}
 
-	return impressionsPercent, clicksPercent, usedDefault
+	return m.impressionsPercent, m.clicksPercent, true
 }
 
 func (m *BatchRatioManager) TickerEnabled() bool {
@@ -305,35 +307,35 @@ func (m *BatchRatioManager) StartClickHouseTicker(ctx context.Context, ch clickh
 					continue
 				}
 
-				impressionsPercent, clicksPercent, err := FetchBatchRatioWithRetries(ctx, ch, cfg)
+				impressionsDiffSec, clicksDiffSec, err := FetchBatchRatioDiffsWithRetries(ctx, ch, cfg)
 				if err != nil {
 					log.Printf("⚠️ failed to fetch batch ratio from ClickHouse after retries, keeping previous value: %v", err)
 					continue
 				}
 
-				appliedImpressionsPercent, appliedClicksPercent, usedDefault := m.updateFromTicker(impressionsPercent, clicksPercent)
-
-				if usedDefault {
-					log.Printf(
-						"⚠️ batch ratio from ClickHouse has zero value, using defaults/fallback: clickhouse_impressions=%.6f clickhouse_clicks=%.6f applied_impressions=%.6f applied_clicks=%.6f",
-						impressionsPercent,
-						clicksPercent,
-						appliedImpressionsPercent,
-						appliedClicksPercent,
-					)
-				} else {
-					log.Printf(
-						"✅ batch ratio updated from ClickHouse: impressions=%.6f clicks=%.6f",
-						appliedImpressionsPercent,
-						appliedClicksPercent,
-					)
+				appliedImpressionsPercent, appliedClicksPercent, adjusted := m.adjustFromTickerDiffs(impressionsDiffSec, clicksDiffSec, cfg)
+				if !adjusted {
+					continue
 				}
+
+				log.Printf(
+					"✅ batch ratio adjusted from ClickHouse diffs: impressions_diff_sec=%d clicks_diff_sec=%d impressions_left_sec=%d impressions_right_sec=%d clicks_left_sec=%d clicks_right_sec=%d factor=%.6f applied_impressions=%.6f applied_clicks=%.6f",
+					impressionsDiffSec,
+					clicksDiffSec,
+					cfg.ImpressionsDiffLeftSec,
+					cfg.ImpressionsDiffRightSec,
+					cfg.ClicksDiffLeftSec,
+					cfg.ClicksDiffRightSec,
+					cfg.AdjustFactor,
+					appliedImpressionsPercent,
+					appliedClicksPercent,
+				)
 			}
 		}
 	}()
 }
 
-func FetchBatchRatioWithRetries(ctx context.Context, ch clickhouse.Conn, cfg config.BatchRatioConfig) (float64, float64, error) {
+func FetchBatchRatioDiffsWithRetries(ctx context.Context, ch clickhouse.Conn, cfg config.BatchRatioConfig) (int64, int64, error) {
 	attempts := cfg.TickerRetryAttempts
 	if attempts <= 0 {
 		attempts = 3
@@ -353,41 +355,69 @@ func FetchBatchRatioWithRetries(ctx context.Context, ch clickhouse.Conn, cfg con
 		}
 
 		requestCtx, cancel := context.WithTimeout(ctx, requestTimeout)
-		impressionsPercent, clicksPercent, err := FetchBatchRatio(requestCtx, ch, cfg)
+		impressionsDiffSec, clicksDiffSec, err := FetchBatchRatioDiffs(requestCtx, ch, cfg)
 		cancel()
 		if err == nil {
-			return impressionsPercent, clicksPercent, nil
+			return impressionsDiffSec, clicksDiffSec, nil
 		}
 
 		lastErr = err
-		log.Printf("⚠️ failed to fetch batch ratio from ClickHouse attempt %d/%d: %v", attempt, attempts, err)
+		log.Printf("⚠️ failed to fetch batch ratio diffs from ClickHouse attempt %d/%d: %v", attempt, attempts, err)
 	}
 
 	return 0, 0, lastErr
 }
 
-func FetchBatchRatio(ctx context.Context, ch clickhouse.Conn, cfg config.BatchRatioConfig) (float64, float64, error) {
-	if strings.TrimSpace(cfg.Table) == "" {
-		return 0, 0, fmt.Errorf("BATCH_RATIO_TABLE is empty")
-	}
+func FetchBatchRatioDiffs(ctx context.Context, ch clickhouse.Conn, cfg config.BatchRatioConfig) (int64, int64, error) {
+	query := fmt.Sprintf(`
+WITH
+    (
+        SELECT toDateTime(quantileExact(0.10)(toUnixTimestamp(event_time_impressions)), 'UTC')
+        FROM %s
+        WHERE created_at = (
+            SELECT max(created_at)
+            FROM %s
+        )
+        AND ad_format = 'POP'
+    ) AS imp_p10_time,
 
-	query := fmt.Sprintf(
-		"SELECT %s, %s FROM %s ORDER BY %s DESC LIMIT 1",
-		quoteIdentifier(cfg.ImpressionsPercentColumn),
-		quoteIdentifier(cfg.ClicksPercentColumn),
-		quoteTable(cfg.Table),
-		quoteIdentifier(cfg.OrderColumn),
+    (
+        SELECT toDateTime(quantileExact(0.10)(toUnixTimestamp(event_time_clicks)), 'UTC')
+        FROM %s
+        WHERE created_at = (
+            SELECT max(created_at)
+            FROM %s
+        )
+        AND ad_format = 'POP'
+    ) AS click_p10_time,
+
+    (
+        SELECT min(event_time)
+        FROM %s
+        WHERE created_at = (
+            SELECT max(created_at)
+            FROM %s
+        )
+        AND format = 'POP'
+    ) AS ortb_time
+
+SELECT
+    dateDiff('second', click_p10_time, ortb_time) AS diff_ortb_click_p10_sec,
+    dateDiff('second', imp_p10_time, ortb_time) AS diff_ortb_imp_p10_sec`,
+		quoteTable(cfg.TableImpressions),
+		quoteTable(cfg.TableImpressions),
+		quoteTable(cfg.TableClicks),
+		quoteTable(cfg.TableClicks),
+		quoteTable(cfg.TableOrtb),
+		quoteTable(cfg.TableOrtb),
 	)
 
-	var impressionsPercent float64
-	var clicksPercent float64
-	if err := ch.QueryRow(ctx, query).Scan(&impressionsPercent, &clicksPercent); err != nil {
+	var clicksDiffSec int64
+	var impressionsDiffSec int64
+	if err := ch.QueryRow(ctx, query).Scan(&clicksDiffSec, &impressionsDiffSec); err != nil {
 		return 0, 0, err
 	}
-	if impressionsPercent < 0 || clicksPercent < 0 {
-		return 0, 0, fmt.Errorf("batch ratio percents cannot be negative")
-	}
-	return impressionsPercent, clicksPercent, nil
+	return impressionsDiffSec, clicksDiffSec, nil
 }
 
 func (m *BatchRatioManager) StartHTTPServer(ctx context.Context, cfg config.BatchRatioConfig, loaderControl *LoaderControl) *http.Server {
