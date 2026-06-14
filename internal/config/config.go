@@ -114,13 +114,12 @@ func (l *ListString) SetValue(value string) error {
 type BiddingEngineConfig struct {
 	HttpServer                          HttpServer
 	GrpcServer                          GrpcServer
-	ProfitPercent                       float32  `yaml:"PROFIT_PERCENT" env:"PROFIT_PERCENT" env-default:"0.2"`
-	SspGeoDspPercentsAdultFilePath      string   `yaml:"SSP_GEO_DSP_PERCENTS_ADULT_FILE_PATH" env:"SSP_GEO_DSP_PERCENTS_ADULT_FILE_PATH"`
-	SspGeoDspPercentsMainstreamFilePath string   `yaml:"SSP_GEO_DSP_PERCENTS_MAINSTREAM_FILE_PATH" env:"SSP_GEO_DSP_PERCENTS_MAINSTREAM_FILE_PATH"`
-	AdmDomain                           string   `yaml:"ADM_DOMAIN" env:"ADM_DOMAIN"`
-	SspAdapterWorkStatusURLs            []string `yaml:"SSP_ADAPTER_WORK_STATUS_URLS" env:"SSP_ADAPTER_WORK_STATUS_URLS" env-default:"server1.twinbidexchange.com:8050,server2.twinbidexchange.com:8050,server3.twinbidexchange.com:8050,server4.twinbidexchange.com:8050"`
-	BotBaseURL                          string   `yaml:"BOT_BASE_URL" env:"BOT_BASE_URL"`
-	BotInternalSecret                   string   `yaml:"BOT_INTERNAL_SECRET" env:"BOT_INTERNAL_SECRET"`
+	ProfitPercent                       float32 `yaml:"PROFIT_PERCENT" env:"PROFIT_PERCENT" env-default:"0.2"`
+	SspGeoDspPercentsAdultFilePath      string  `yaml:"SSP_GEO_DSP_PERCENTS_ADULT_FILE_PATH" env:"SSP_GEO_DSP_PERCENTS_ADULT_FILE_PATH"`
+	SspGeoDspPercentsMainstreamFilePath string  `yaml:"SSP_GEO_DSP_PERCENTS_MAINSTREAM_FILE_PATH" env:"SSP_GEO_DSP_PERCENTS_MAINSTREAM_FILE_PATH"`
+	AdmDomain                           string  `yaml:"ADM_DOMAIN" env:"ADM_DOMAIN"`
+	BotBaseURL                          string  `yaml:"BOT_BASE_URL" env:"BOT_BASE_URL"`
+	BotInternalSecret                   string  `yaml:"BOT_INTERNAL_SECRET" env:"BOT_INTERNAL_SECRET"`
 
 	RedisConfig
 }
@@ -151,11 +150,10 @@ type RouterConfig struct {
 
 	SspHttpClientTimeouts MapStringToDuration `yaml:"SSP_HTTP_CLIENT_TIMEOUT" env:"SSP_HTTP_CLIENT_TIMEOUT"`
 
-	MaxParallelRequests      int      `yaml:"MAX_PARALLEL_REQUESTS" env:"MAX_PARALLEL_REQUESTS" env-default:"64"`
-	Debug                    bool     `yaml:"DEBUG" env:"DEBUG" env-default:"false"`
-	SspAdapterWorkStatusURLs []string `yaml:"SSP_ADAPTER_WORK_STATUS_URLS" env:"SSP_ADAPTER_WORK_STATUS_URLS" env-default:"server1.twinbidexchange.com:8050,server2.twinbidexchange.com:8050,server3.twinbidexchange.com:8050,server4.twinbidexchange.com:8050"`
-	BotBaseURL               string   `yaml:"BOT_BASE_URL" env:"BOT_BASE_URL"`
-	BotInternalSecret        string   `yaml:"BOT_INTERNAL_SECRET" env:"BOT_INTERNAL_SECRET"`
+	MaxParallelRequests int    `yaml:"MAX_PARALLEL_REQUESTS" env:"MAX_PARALLEL_REQUESTS" env-default:"64"`
+	Debug               bool   `yaml:"DEBUG" env:"DEBUG" env-default:"false"`
+	BotBaseURL          string `yaml:"BOT_BASE_URL" env:"BOT_BASE_URL"`
+	BotInternalSecret   string `yaml:"BOT_INTERNAL_SECRET" env:"BOT_INTERNAL_SECRET"`
 
 	RedisConfig
 }
@@ -194,30 +192,28 @@ type SppAdapterConfig struct {
 	SspIppAdlFeeds MapStringToString `yaml:"SSP_IPP_ADL_FEEDS" env:"SSP_IPP_ADL_FEEDS"`
 	SspIppMcFeeds  MapStringToString `yaml:"SSP_IPP_MC_FEEDS" env:"SSP_IPP_MC_FEEDS"`
 
-	SiteIdDomainPath         string   `yaml:"SITE_ID_DOMAIN_PATH" env:"SITE_ID_DOMAIN_PATH"`
-	Domains1LevelPath        string   `yaml:"DOMAINS_1_LEVEL_PATH" env:"DOMAINS_1_LEVEL_PATH"`
-	Domains23LevelPath       string   `yaml:"DOMAINS_23_LEVEL_PATH" env:"DOMAINS_23_LEVEL_PATH"`
-	GeoToLangPath            string   `yaml:"GEO_TO_LANG_PATH" env:"GEO_TO_LANG_PATH"`
-	SspAdapterWorkStatusURLs []string `yaml:"SSP_ADAPTER_WORK_STATUS_URLS" env:"SSP_ADAPTER_WORK_STATUS_URLS" env-default:"server1.twinbidexchange.com:8050,server2.twinbidexchange.com:8050,server3.twinbidexchange.com:8050,server4.twinbidexchange.com:8050"`
-	SspAdapterWorkStatusURL  string   `yaml:"SSP_ADAPTER_WORK_STATUS_URL" env:"SSP_ADAPTER_WORK_STATUS_URL"`
-	BotBaseURL               string   `yaml:"BOT_BASE_URL" env:"BOT_BASE_URL"`
-	BotInternalSecret        string   `yaml:"BOT_INTERNAL_SECRET" env:"BOT_INTERNAL_SECRET"`
+	SiteIdDomainPath        string `yaml:"SITE_ID_DOMAIN_PATH" env:"SITE_ID_DOMAIN_PATH"`
+	Domains1LevelPath       string `yaml:"DOMAINS_1_LEVEL_PATH" env:"DOMAINS_1_LEVEL_PATH"`
+	Domains23LevelPath      string `yaml:"DOMAINS_23_LEVEL_PATH" env:"DOMAINS_23_LEVEL_PATH"`
+	GeoToLangPath           string `yaml:"GEO_TO_LANG_PATH" env:"GEO_TO_LANG_PATH"`
+	SspAdapterWorkStatusURL string `yaml:"SSP_ADAPTER_WORK_STATUS_URL" env:"SSP_ADAPTER_WORK_STATUS_URL"`
+	BotBaseURL              string `yaml:"BOT_BASE_URL" env:"BOT_BASE_URL"`
+	BotInternalSecret       string `yaml:"BOT_INTERNAL_SECRET" env:"BOT_INTERNAL_SECRET"`
 
 	RedisConfig
 }
 
 type AdmAdapterConfig struct {
-	HttpServer               HttpServer
-	AdmTimeout               time.Duration `yaml:"ADM_TIMEOUT" env:"ADM_TIMEOUT"`
-	NurlTimeout              time.Duration `yaml:"NURL_TIMEOUT" env:"NURL_TIMEOUT"`
-	FullChain                string        `yaml:"FULLCHAIN_PEM" env:"FULLCHAIN_PEM"`
-	PrivKey                  string        `yaml:"PRIVKEY_PEM" env:"PRIVKEY_PEM"`
-	RsaFullChain             string        `yaml:"RSA_FULLCHAIN_PEM" env:"RSA_FULLCHAIN_PEM"`
-	RsaPrivKey               string        `yaml:"RSA_PRIVKEY_PEM" env:"RSA_PRIVKEY_PEM"`
-	SspAdapterWorkStatusURLs []string      `yaml:"SSP_ADAPTER_WORK_STATUS_URLS" env:"SSP_ADAPTER_WORK_STATUS_URLS" env-default:"server1.twinbidexchange.com:8050,server2.twinbidexchange.com:8050,server3.twinbidexchange.com:8050,server4.twinbidexchange.com:8050"`
-	SspAdapterWorkStatusURL  string        `yaml:"SSP_ADAPTER_WORK_STATUS_URL" env:"SSP_ADAPTER_WORK_STATUS_URL"`
-	BotBaseURL               string        `yaml:"BOT_BASE_URL" env:"BOT_BASE_URL"`
-	BotInternalSecret        string        `yaml:"BOT_INTERNAL_SECRET" env:"BOT_INTERNAL_SECRET"`
+	HttpServer              HttpServer
+	AdmTimeout              time.Duration `yaml:"ADM_TIMEOUT" env:"ADM_TIMEOUT"`
+	NurlTimeout             time.Duration `yaml:"NURL_TIMEOUT" env:"NURL_TIMEOUT"`
+	FullChain               string        `yaml:"FULLCHAIN_PEM" env:"FULLCHAIN_PEM"`
+	PrivKey                 string        `yaml:"PRIVKEY_PEM" env:"PRIVKEY_PEM"`
+	RsaFullChain            string        `yaml:"RSA_FULLCHAIN_PEM" env:"RSA_FULLCHAIN_PEM"`
+	RsaPrivKey              string        `yaml:"RSA_PRIVKEY_PEM" env:"RSA_PRIVKEY_PEM"`
+	SspAdapterWorkStatusURL string        `yaml:"SSP_ADAPTER_WORK_STATUS_URL" env:"SSP_ADAPTER_WORK_STATUS_URL"`
+	BotBaseURL              string        `yaml:"BOT_BASE_URL" env:"BOT_BASE_URL"`
+	BotInternalSecret       string        `yaml:"BOT_INTERNAL_SECRET" env:"BOT_INTERNAL_SECRET"`
 
 	RedisConfig
 }
