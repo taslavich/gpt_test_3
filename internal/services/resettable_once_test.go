@@ -1,6 +1,10 @@
 package services
 
-import "testing"
+import (
+	"testing"
+
+	"gitlab.com/twinbid-exchange/RTB-exchange/internal/config"
+)
 
 func TestResettableOnceAllowsDoAfterReset(t *testing.T) {
 	once := NewResettableOnce()
@@ -55,18 +59,29 @@ func TestLoaderControlStatusReflectsRunningState(t *testing.T) {
 	}
 }
 
-func TestBatchRatioManagerUsesDefaultsWhenTickerReturnsZeros(t *testing.T) {
+func TestBatchRatioManagerAdjustsPercentsFromDiffLimits(t *testing.T) {
 	manager := NewBatchRatioManager(0.25, 0.15, true)
-
-	manager.updateFromTicker(0.4, 0.3)
-	state := manager.State()
-	if state.ImpressionsPercent != 0.4 || state.ClicksPercent != 0.3 {
-		t.Fatalf("State() after non-zero ticker update = (%v, %v), want (0.4, 0.3)", state.ImpressionsPercent, state.ClicksPercent)
+	cfg := config.BatchRatioConfig{
+		ImpressionsDiffLeftSec:  -300,
+		ImpressionsDiffRightSec: 300,
+		ClicksDiffLeftSec:       -300,
+		ClicksDiffRightSec:      300,
+		AdjustFactor:            4,
 	}
 
-	manager.updateFromTicker(0, 0)
-	state = manager.State()
-	if state.ImpressionsPercent != 0.25 || state.ClicksPercent != 0.15 {
-		t.Fatalf("State() after zero ticker update = (%v, %v), want defaults (0.25, 0.15)", state.ImpressionsPercent, state.ClicksPercent)
+	impressionsPercent, clicksPercent, adjusted := manager.adjustFromTickerDiffs(301, -301, cfg)
+	if !adjusted {
+		t.Fatalf("adjustFromTickerDiffs() adjusted = false, want true")
+	}
+	if impressionsPercent != 1 || clicksPercent != 0.0375 {
+		t.Fatalf("adjustFromTickerDiffs() = (%v, %v), want (1, 0.0375)", impressionsPercent, clicksPercent)
+	}
+
+	impressionsPercent, clicksPercent, adjusted = manager.adjustFromTickerDiffs(300, 300, cfg)
+	if !adjusted {
+		t.Fatalf("adjustFromTickerDiffs() adjusted = false, want true")
+	}
+	if impressionsPercent != 1 || clicksPercent != 0.0375 {
+		t.Fatalf("adjustFromTickerDiffs() on equal limits = (%v, %v), want unchanged (1, 0.0375)", impressionsPercent, clicksPercent)
 	}
 }

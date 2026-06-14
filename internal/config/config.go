@@ -242,16 +242,20 @@ type ClickhouseConfig struct {
 }
 
 type BatchRatioConfig struct {
-	Table                    string `yaml:"BATCH_RATIO_TABLE" env:"BATCH_RATIO_TABLE"`
-	ImpressionsPercentColumn string `yaml:"BATCH_RATIO_IMPRESSIONS_PERCENT_COLUMN" env:"BATCH_RATIO_IMPRESSIONS_PERCENT_COLUMN" env-default:"impressions_percent"`
-	ClicksPercentColumn      string `yaml:"BATCH_RATIO_CLICKS_PERCENT_COLUMN" env:"BATCH_RATIO_CLICKS_PERCENT_COLUMN" env-default:"clicks_percent"`
-	OrderColumn              string `yaml:"BATCH_RATIO_ORDER_COLUMN" env:"BATCH_RATIO_ORDER_COLUMN" env-default:"created_at"`
-	TickerEnabled            bool   `yaml:"BATCH_RATIO_TICKER_ENABLED" env:"BATCH_RATIO_TICKER_ENABLED" env-default:"true"`
-	TickerIntervalSec        int    `yaml:"BATCH_RATIO_TICKER_INTERVAL_SEC" env:"BATCH_RATIO_TICKER_INTERVAL_SEC" env-default:"60"`
-	TickerRequestTimeoutMS   int    `yaml:"BATCH_RATIO_TICKER_REQUEST_TIMEOUT_MS" env:"BATCH_RATIO_TICKER_REQUEST_TIMEOUT_MS" env-default:"2000"`
-	TickerRetryAttempts      int    `yaml:"BATCH_RATIO_TICKER_RETRY_ATTEMPTS" env:"BATCH_RATIO_TICKER_RETRY_ATTEMPTS" env-default:"3"`
-	HTTPHost                 string `yaml:"BATCH_RATIO_HTTP_HOST" env:"BATCH_RATIO_HTTP_HOST" env-default:"0.0.0.0"`
-	HTTPPort                 uint16 `yaml:"BATCH_RATIO_HTTP_PORT" env:"BATCH_RATIO_HTTP_PORT" env-default:"8090"`
+	TableOrtb               string  `yaml:"BATCH_RATIO_TABLE_ORTB" env:"BATCH_RATIO_TABLE_ORTB" env-default:"ortb"`
+	TableImpressions        string  `yaml:"BATCH_RATIO_TABLE_IMPRESSIONS" env:"BATCH_RATIO_TABLE_IMPRESSIONS" env-default:"impressions_in"`
+	TableClicks             string  `yaml:"BATCH_RATIO_TABLE_CLICKS" env:"BATCH_RATIO_TABLE_CLICKS" env-default:"clicks_in"`
+	TickerEnabled           bool    `yaml:"BATCH_RATIO_TICKER_ENABLED" env:"BATCH_RATIO_TICKER_ENABLED" env-default:"true"`
+	TickerIntervalSec       int     `yaml:"BATCH_RATIO_TICKER_INTERVAL_SEC" env:"BATCH_RATIO_TICKER_INTERVAL_SEC" env-default:"30"`
+	TickerRequestTimeoutMS  int     `yaml:"BATCH_RATIO_TICKER_REQUEST_TIMEOUT_MS" env:"BATCH_RATIO_TICKER_REQUEST_TIMEOUT_MS" env-default:"2000"`
+	TickerRetryAttempts     int     `yaml:"BATCH_RATIO_TICKER_RETRY_ATTEMPTS" env:"BATCH_RATIO_TICKER_RETRY_ATTEMPTS" env-default:"3"`
+	ImpressionsDiffLeftSec  int     `yaml:"BATCH_RATIO_IMPRESSIONS_DIFF_LEFT_SEC" env:"BATCH_RATIO_IMPRESSIONS_DIFF_LEFT_SEC" env-default:"-300"`
+	ImpressionsDiffRightSec int     `yaml:"BATCH_RATIO_IMPRESSIONS_DIFF_RIGHT_SEC" env:"BATCH_RATIO_IMPRESSIONS_DIFF_RIGHT_SEC" env-default:"300"`
+	ClicksDiffLeftSec       int     `yaml:"BATCH_RATIO_CLICKS_DIFF_LEFT_SEC" env:"BATCH_RATIO_CLICKS_DIFF_LEFT_SEC" env-default:"-300"`
+	ClicksDiffRightSec      int     `yaml:"BATCH_RATIO_CLICKS_DIFF_RIGHT_SEC" env:"BATCH_RATIO_CLICKS_DIFF_RIGHT_SEC" env-default:"300"`
+	AdjustFactor            float64 `yaml:"BATCH_RATIO_ADJUST_FACTOR" env:"BATCH_RATIO_ADJUST_FACTOR" env-default:"2"`
+	HTTPHost                string  `yaml:"BATCH_RATIO_HTTP_HOST" env:"BATCH_RATIO_HTTP_HOST" env-default:"0.0.0.0"`
+	HTTPPort                uint16  `yaml:"BATCH_RATIO_HTTP_PORT" env:"BATCH_RATIO_HTTP_PORT" env-default:"8090"`
 }
 
 type PercenterConfig struct {
@@ -267,7 +271,7 @@ type ClickhouseLoaderConfig struct {
 	TimeoutSec     int `yaml:"TIMEOUT_SEC" env:"TIMEOUT_SEC"`
 	BatchTimeoutMS int `yaml:"CLICKHOUSE_BATCH_TIMEOUT_MS" env:"CLICKHOUSE_BATCH_TIMEOUT_MS" env-default:"800"`
 
-	ImpressionClickFlushIntervalSec int `yaml:"IMPRESSION_CLICK_FLUSH_INTERVAL_SEC" env:"IMPRESSION_CLICK_FLUSH_INTERVAL_SEC" env-default:"60"`
+	ImpressionClickFlushIntervalSec int `yaml:"IMPRESSION_CLICK_FLUSH_INTERVAL_SEC" env:"IMPRESSION_CLICK_FLUSH_INTERVAL_SEC" env-default:"30"`
 	EmptyLoopPauseMS                int `yaml:"EMPTY_LOOP_PAUSE_MS" env:"EMPTY_LOOP_PAUSE_MS" env-default:"200"`
 }
 
@@ -316,7 +320,7 @@ type KafkaConfig struct {
 	KafkaBrokers     []string `yaml:"KAFKA_BROKERS" env:"KAFKA_BROKERS"`
 	FlushIntervalSec int      `yaml:"FLUSH_INTERVAL_SEC" env:"FLUSH_INTERVAL_SEC"`
 
-	ImpressionClickFlushIntervalSec int `yaml:"IMPRESSION_CLICK_FLUSH_INTERVAL_SEC" env:"IMPRESSION_CLICK_FLUSH_INTERVAL_SEC" env-default:"60"`
+	ImpressionClickFlushIntervalSec int `yaml:"IMPRESSION_CLICK_FLUSH_INTERVAL_SEC" env:"IMPRESSION_CLICK_FLUSH_INTERVAL_SEC" env-default:"30"`
 
 	// Kafka topics
 	KafkaTopicOrtb        string `yaml:"KAFKA_TOPIC_ORTB" env:"KAFKA_TOPIC_ORTB" env-default:"ortb"`
