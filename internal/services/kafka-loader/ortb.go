@@ -243,7 +243,13 @@ func processOrtbShard(
 	if len(kafkaMessages) > 0 {
 		if err := kafkaWriter.WriteMessages(ctx, kafkaMessages...); err != nil {
 			restoreUUIDsFromProcessingToReady(ctx, redisClient, setName, processingSetName, uuids)
-			return 0, fmt.Errorf("shard %d: failed to write ORTB messages to Kafka: %w", shardID, err)
+
+			return 0, fmt.Errorf(
+				"shard %d: failed to write ORTB messages to Kafka: messages=%d err=%s",
+				shardID,
+				len(kafkaMessages),
+				compactKafkaWriteError(err),
+			)
 		}
 	}
 
@@ -482,4 +488,19 @@ func parseBidResponsesFromRedis(values []interface{}, index int) (map[string]int
 	}
 
 	return br.Items, nil
+}
+
+func compactKafkaWriteError(err error) string {
+	if err == nil {
+		return ""
+	}
+
+	msg := err.Error()
+
+	const maxLen = 500
+	if len(msg) <= maxLen {
+		return msg
+	}
+
+	return msg[:maxLen] + "... [truncated]"
 }

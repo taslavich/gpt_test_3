@@ -151,9 +151,14 @@ func processImpressionsShard(
 	if len(kafkaMessages) > 0 {
 		if err := kafkaWriter.WriteMessages(ctx, kafkaMessages...); err != nil {
 			restoreUUIDsFromProcessingToReady(ctx, redisClient, setName, processingSetName, uuids)
-			return fmt.Errorf("shard %d: failed to write impressions messages to Kafka: %w", shardID, err)
-		}
 
+			return fmt.Errorf(
+				"shard %d: failed to write impressions messages to Kafka: messages=%d err=%s",
+				shardID,
+				len(kafkaMessages),
+				compactKafkaWriteError(err),
+			)
+		}
 	}
 
 	cleanupProcessedRedisRecordsFromProcessing(ctx, redisClient, processingSetName, uuidsToDelete)
