@@ -98,9 +98,10 @@ func main() {
 	go s.StartAsync()
 	log.Println("⏰ Scheduler started (every 30 seconds)")
 
-	redisWriteErrorMonitor := services.NewRedisWriteErrorMonitor("SSP adapter ORTB", func(count uint64) {
-		services.StopAllSspAdapterOrtbStreams(ctx, cfg.SspAdapterWorkStatusURLs)
-	})
+	botNotifier := utils.NewBotMessage(cfg.BotBaseURL, cfg.BotInternalSecret)
+	redisWriteErrorMonitor := services.NewRedisWriteErrorMonitor("SSP adapter ORTB", func(count uint64, workStatusURL string) {
+		services.StopSspAdapterOrtbStreams(ctx, workStatusURL)
+	}, botNotifier, ctx)
 	redisWriteErrorMonitor.Start()
 
 	router := chi.NewRouter()
@@ -126,6 +127,7 @@ func main() {
 		siteIdsAndDomains,
 		geoToLang,
 		redisWriteErrorMonitor,
+		cfg.SspAdapterWorkStatusURL,
 	)
 	log.Println("HTTP routes initialized")
 

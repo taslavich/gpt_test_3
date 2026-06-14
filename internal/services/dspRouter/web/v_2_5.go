@@ -403,7 +403,7 @@ func (s *Server) GetBids_V2_5(
 	for _, uuid := range req.ImpIdUuid {
 		if err := writeBidResponsesToRedis(s.redisClients, uuid, clickResponses, req.Logged); err != nil {
 			log.Printf("failed to write bid responses to Redis: %v", err)
-			s.redisWriteErrorMonitor.Record(err)
+			s.redisWriteErrorMonitor.RecordForURL(err, req.SspUrl)
 		}
 	}
 
