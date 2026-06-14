@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"crypto/tls"
+	"fmt"
 	"log"
 	"net"
 	"os"
@@ -14,6 +15,7 @@ import (
 	"github.com/ClickHouse/clickhouse-go/v2"
 
 	"gitlab.com/twinbid-exchange/RTB-exchange/internal/config"
+	utils "gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/utils_grpc"
 	services "gitlab.com/twinbid-exchange/RTB-exchange/internal/services"
 	kafka_service "gitlab.com/twinbid-exchange/RTB-exchange/internal/services/kafka"
 	kafka_loader "gitlab.com/twinbid-exchange/RTB-exchange/internal/services/kafka-loader"
@@ -126,8 +128,13 @@ func main() {
 	}
 
 	var loaderWG sync.WaitGroup
+	botNotifier := utils.NewBotMessage(cfg.BotBaseURL, cfg.BotInternalSecret)
 	handleStreamError := func(err error) {
-		log.Printf("❌ Kafka Loader stream error, stopping batch processing and SSP adapter ORTB streams: %v", err)
+		message := fmt.Sprintf("❌ service=Kafka Loader stream error, stopping batch processing and SSP adapter ORTB streams: %v", err)
+		log.Print(message)
+		if err := botNotifier.SendTextMessageToBot(ctx, message); err != nil {
+			log.Printf("❌ failed to send bot notification: %v", err)
+		}
 		loaderControl.Stop()
 		stopSspOnce.Do(func() {
 			services.StopAllSspAdapterOrtbStreams(ctx, cfg.SspAdapterWorkStatusURLs)

@@ -9,6 +9,8 @@ import (
 	"strings"
 	"sync/atomic"
 	"time"
+
+	utils "gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/utils_grpc"
 )
 
 const (
@@ -21,16 +23,29 @@ const (
 type RedisWriteErrorMonitor struct {
 	name     string
 	errors   atomic.Uint64
-	stopFunc func(uint64)
+	lastURL  atomic.Value
+	stopFunc func(uint64, string)
+	notifier *utils.BotMessage
+	ctx      context.Context
 }
 
-func NewRedisWriteErrorMonitor(name string, stopFunc func(uint64)) *RedisWriteErrorMonitor {
-	return &RedisWriteErrorMonitor{name: name, stopFunc: stopFunc}
+func NewRedisWriteErrorMonitor(name string, stopFunc func(uint64, string), notifier *utils.BotMessage, ctx context.Context) *RedisWriteErrorMonitor {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	return &RedisWriteErrorMonitor{name: name, stopFunc: stopFunc, notifier: notifier, ctx: ctx}
 }
 
 func (m *RedisWriteErrorMonitor) Record(err error) {
+	m.RecordForURL(err, "")
+}
+
+func (m *RedisWriteErrorMonitor) RecordForURL(err error, workStatusURL string) {
 	if err == nil || m == nil {
 		return
+	}
+	if strings.TrimSpace(workStatusURL) != "" {
+		m.lastURL.Store(workStatusURL)
 	}
 	m.errors.Add(1)
 }
@@ -47,15 +62,25 @@ func (m *RedisWriteErrorMonitor) Start() {
 		for range ticker.C {
 			count := m.errors.Swap(0)
 			if count >= RedisWriteErrorStopThresholdPerSec {
-				log.Printf("❌ %s Redis write errors reached %d requests/sec, stopping all SSP adapter ORTB streams", m.name, count)
+				workStatusURL, _ := m.lastURL.Load().(string)
+				message := fmt.Sprintf("❌ service=%s Redis write errors reached %d requests/sec, stopping SSP adapter ORTB streams; ssp_adapter_url=%s", m.name, count, workStatusURL)
+				log.Print(message)
+				if err := m.notifier.SendTextMessageToBot(m.ctx, message); err != nil {
+					log.Printf("❌ failed to send bot notification: %v", err)
+				}
 				if m.stopFunc != nil {
-					m.stopFunc(count)
+					m.stopFunc(count, workStatusURL)
 				}
 				continue
 			}
 
 			if count >= RedisWriteErrorLogThresholdPerSec {
-				log.Printf("❌ %s Redis write errors reached %d requests/sec", m.name, count)
+				workStatusURL, _ := m.lastURL.Load().(string)
+				message := fmt.Sprintf("❌ service=%s Redis write errors reached %d requests/sec; ssp_adapter_url=%s", m.name, count, workStatusURL)
+				log.Print(message)
+				if err := m.notifier.SendTextMessageToBot(m.ctx, message); err != nil {
+					log.Printf("❌ failed to send bot notification: %v", err)
+				}
 			}
 		}
 	}()

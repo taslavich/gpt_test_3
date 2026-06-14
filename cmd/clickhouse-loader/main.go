@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"crypto/tls"
+	"fmt"
 	"log"
 	"net"
 	"os"
@@ -13,6 +14,7 @@ import (
 
 	"github.com/ClickHouse/clickhouse-go/v2"
 	"gitlab.com/twinbid-exchange/RTB-exchange/internal/config"
+	utils "gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/utils_grpc"
 	services "gitlab.com/twinbid-exchange/RTB-exchange/internal/services"
 	clickhouse_loader "gitlab.com/twinbid-exchange/RTB-exchange/internal/services/clickhouse-loader"
 	kafka_service "gitlab.com/twinbid-exchange/RTB-exchange/internal/services/kafka"
@@ -129,8 +131,13 @@ func main() {
 	}
 
 	var loaderWG sync.WaitGroup
+	botNotifier := utils.NewBotMessage(cfg.BotBaseURL, cfg.BotInternalSecret)
 	handleStreamError := func(err error) {
-		log.Printf("❌ ClickHouse Loader stream error, stopping batch processing: %v", err)
+		message := fmt.Sprintf("❌ service=ClickHouse Loader stream error, stopping batch processing: %v", err)
+		log.Print(message)
+		if err := botNotifier.SendTextMessageToBot(ctx, message); err != nil {
+			log.Printf("❌ failed to send bot notification: %v", err)
+		}
 		loaderControl.Stop()
 	}
 	emptyPause := time.Duration(cfg.EmptyLoopPauseMS) * time.Millisecond
