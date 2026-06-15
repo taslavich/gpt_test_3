@@ -14,7 +14,7 @@ import (
 )
 
 const (
-	RedisWriteErrorLogThresholdPerSec  = uint64(100)
+	RedisWriteErrorLogThresholdPerSec  = uint64(50)
 	RedisWriteErrorStopThresholdPerSec = uint64(800)
 
 	sspAdapterWorkStatusAllPath = "/work_status/all"
@@ -63,7 +63,7 @@ func (m *RedisWriteErrorMonitor) Start() {
 			count := m.errors.Swap(0)
 			if count >= RedisWriteErrorStopThresholdPerSec {
 				workStatusURL, _ := m.lastURL.Load().(string)
-				message := fmt.Sprintf("❌ service=%s Redis write errors reached %d requests/sec, stopping SSP adapter ORTB streams; ssp_adapter_url=%s", m.name, count, workStatusURL)
+				message := fmt.Sprintf("ОСТАНОВКА service=%s Redis write errors reached %d requests/sec, stopping SSP adapter ORTB streams; ssp_adapter_url=%s", m.name, count, workStatusURL)
 				log.Print(message)
 				if err := m.notifier.SendTextMessageToBot(m.ctx, message); err != nil {
 					log.Printf("❌ failed to send bot notification: %v", err)
@@ -76,7 +76,7 @@ func (m *RedisWriteErrorMonitor) Start() {
 
 			if count >= RedisWriteErrorLogThresholdPerSec {
 				workStatusURL, _ := m.lastURL.Load().(string)
-				message := fmt.Sprintf("❌ service=%s Redis write errors reached %d requests/sec; ssp_adapter_url=%s", m.name, count, workStatusURL)
+				message := fmt.Sprintf("ПРЕДУПРЕЖДЕНИЕ service=%s Redis write errors reached %d requests/sec; ssp_adapter_url=%s", m.name, count, workStatusURL)
 				log.Print(message)
 				if err := m.notifier.SendTextMessageToBot(m.ctx, message); err != nil {
 					log.Printf("❌ failed to send bot notification: %v", err)
