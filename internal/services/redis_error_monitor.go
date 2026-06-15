@@ -14,7 +14,7 @@ import (
 )
 
 const (
-	RedisWriteErrorLogThresholdPerSec  = uint64(50)
+	RedisWriteErrorLogThresholdPerSec  = uint64(200)
 	RedisWriteErrorStopThresholdPerSec = uint64(800)
 
 	sspAdapterWorkStatusAllPath = "/work_status/all"
