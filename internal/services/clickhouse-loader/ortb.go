@@ -186,31 +186,21 @@ func insertBatchOrtb(
 
 		ts := time.UnixMilli(r.EventTimeMs).UTC()
 
-		var ip any
+		var ip *net.IP
 		if r.Ip != "" {
 			parsedIP := net.ParseIP(r.Ip)
-			if parsedIP != nil {
-				ip4 := parsedIP.To4()
-				if ip4 != nil {
-					ip = ip4
-				} else {
-					stats.badIPCount++
-				}
+			if parsedIP != nil && parsedIP.To4() != nil {
+				ip = &parsedIP
 			} else {
 				stats.badIPCount++
 			}
 		}
 
-		var ipv6 any
+		var ipv6 *net.IP
 		if r.Ipv6 != "" {
 			parsedIP := net.ParseIP(r.Ipv6)
-			if parsedIP != nil && parsedIP.To4() == nil {
-				ip16 := parsedIP.To16()
-				if ip16 != nil {
-					ipv6 = ip16
-				} else {
-					stats.badIPCount++
-				}
+			if parsedIP != nil && parsedIP.To16() != nil {
+				ipv6 = &parsedIP
 			} else {
 				stats.badIPCount++
 			}
