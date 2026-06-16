@@ -191,7 +191,6 @@ func insertBatchOrtb(
 			parsedIP := net.ParseIP(r.Ip)
 			if parsedIP != nil && parsedIP.To4() != nil {
 				ip = &parsedIP
-				log.Println(ip)
 			} else {
 				stats.badIPCount++
 			}
