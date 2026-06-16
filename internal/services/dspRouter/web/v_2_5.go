@@ -143,6 +143,10 @@ func (s *Server) GetBids_V2_5(
 	newTmax := int32(float64(timeout.Milliseconds()) * 0.85)
 	req.BidRequest.Tmax = &newTmax
 
+	if req.BidRequest.Device.Ip == nil && req.BidRequest.Device.Ipv6 != nil {
+		req.BidRequest.Device.Ip = req.BidRequest.Device.Ipv6
+	}
+
 	jsonData, err := jsoniter.Marshal(req.BidRequest)
 	if err != nil {
 		newErr := fmt.Errorf("Can not marshal in GetBids_V_2_5 because got uknown error: %v", err)

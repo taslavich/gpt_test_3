@@ -98,8 +98,6 @@ func postBid_V2_5(
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 
-	} else if device.Ip == nil && device.Ipv6 != nil {
-		input.Payload.BidRequest.Device.Ip = device.Ipv6
 	}
 
 	if device.Ua == nil {
