@@ -12,8 +12,6 @@ REDIS_SERVICES=(
 )
 
 DATA_PIPELINE_SERVICES=(
-    "${REDIS_SERVICES[@]}"
-    "rtb-kafka"
     "rtb-kafka-loader"
     "rtb-clickhouse-loader"
 )
@@ -55,57 +53,6 @@ show_status() {
     done
 }
 
-wait_for_redis() {
-    echo "⏳ Waiting for Redis shards..."
-
-    for i in 0 1 2 3 4; do
-        plain_port=$((7000 + i))
-        tls_port=$((8000 + i))
-
-        echo -n "Redis shard ${i} plain port ${plain_port}: "
-
-        while ! redis-cli \
-            -a redis121 \
-            -p "${plain_port}" \
-            ping >/dev/null 2>&1; do
-            sleep 2
-            echo -n "."
-        done
-
-        echo " ✅ ready"
-
-        echo -n "Redis shard ${i} TLS port ${tls_port}: "
-
-        while ! redis-cli --tls \
-            --cacert /etc/letsencrypt/live/buffer.twinbidexchange.com/redis/ca-bundle.pem \
-            -a redis121 \
-            -p "${tls_port}" \
-            ping >/dev/null 2>&1; do
-            sleep 2
-            echo -n "."
-        done
-
-        echo " ✅ ready"
-    done
-
-    echo "✅ All Redis plain and TLS shards ready"
-}
-
-wait_for_kafka() {
-    echo "⏳ Waiting for Kafka..."
-    local t=0
-    while ! /opt/kafka/bin/kafka-topics.sh --bootstrap-server localhost:9092 --list >/dev/null 2>&1; do
-        sleep 5
-        t=$((t+5))
-        echo -n "."
-        if [ $t -gt 180 ]; then
-            echo " ⚠️ Kafka timeout"
-            break
-        fi
-    done
-    echo " ✅ Kafka ready"
-}
-
 wait_for_loaders() {
     echo "⏳ Waiting for loaders to initialize..."
     sleep 5
@@ -128,8 +75,6 @@ case "$1" in
     startD|start-data-pipeline)
         echo "🚀 Starting Data Pipeline (Redis shards, Kafka, Kafka-loader, ClickHouse-loader)..."
         start_services "${DATA_PIPELINE_SERVICES[@]}"
-        wait_for_redis
-        wait_for_kafka
         wait_for_loaders
         echo "✅ Data pipeline fully started"
         ;;
@@ -138,8 +83,6 @@ case "$1" in
         echo "🛑 Stopping Data Pipeline..."
         stop_services "rtb-clickhouse-loader"
         stop_services "rtb-kafka-loader"
-        stop_services "rtb-kafka"
-        stop_services "${REDIS_SERVICES[@]}"
         echo "✅ Data pipeline stopped"
         ;;
 
