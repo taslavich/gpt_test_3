@@ -142,6 +142,7 @@ func WriteStatsOrtb(
 	lang string,
 	countryISO string,
 	cityId uint32,
+	code int32,
 	uaFields ua.UAFields,
 	siteId string,
 	siteDomain string,
@@ -174,6 +175,7 @@ func WriteStatsOrtb(
 		constants.BID_FLOOR_COLUMN:       bidFloor,
 		constants.GEO_COLUMN:             countryISO,
 		constants.CITY_ID_COLUMN:         cityId,
+		constants.CODE_COLUMN:            code,
 	}
 
 	pipe := client.Pipeline()

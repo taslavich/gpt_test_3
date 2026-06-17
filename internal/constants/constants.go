@@ -12,6 +12,7 @@ const (
 	SPP_DOMAIN_COLUMN      = "SPP_DOMAIN"
 	GEO_COLUMN             = "GEO"
 	CITY_ID_COLUMN         = "CITY_ID"
+	CODE_COLUMN            = "CODE"
 	BID_RESPONSES_COLUMN   = "BID_RESPONSES"
 	IP_COLUMN              = "IP"
 	IPV6_COLUMN            = "IPV6"
