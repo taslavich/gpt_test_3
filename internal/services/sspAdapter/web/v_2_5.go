@@ -102,7 +102,7 @@ func postBid_V2_5(
 
 	}
 
-	/*if device.Ip != nil && ipLimitStore.ContainsIPv4(device.GetIp()) {
+	if device.Ip != nil && ipLimitStore.ContainsIPv4(device.GetIp()) {
 		err := fmt.Errorf("Ip is limited: %s", device.GetIp())
 		log.Printf("error: %s, feed: %s", err.Error(), ssp_domain)
 
@@ -178,7 +178,7 @@ func postBid_V2_5(
 
 		http.Error(w, err.Error(), http.StatusForbidden)
 		return
-	}*/
+	}
 
 	if device.Ua == nil {
 		err := fmt.Errorf(
@@ -211,7 +211,11 @@ func postBid_V2_5(
 
 	//////////////////////////////////////////////////////
 
-	bad, err := isBadIp(input.Payload.BidRequest.Device.GetIp())
+	testIp := device.GetIp()
+	if device.Ip == nil {
+		testIp = device.GetIpv6()
+	}
+	bad, err := isBadIp(testIp)
 	if err != nil && bad == false {
 		err := fmt.Errorf(
 			"There an server error while isBadIp: %w",
@@ -230,7 +234,7 @@ func postBid_V2_5(
 		return
 	}
 
-	countryISO, cityId, err := getCountryISO(input.Payload.BidRequest.Device.GetIp())
+	countryISO, cityId, err := getCountryISO(testIp)
 	if errors.Is(err, geoBadIp.BadIpFormatError) {
 		err := fmt.Errorf(
 			"Bad format: %w",
