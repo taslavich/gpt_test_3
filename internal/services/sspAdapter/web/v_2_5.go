@@ -102,7 +102,7 @@ func postBid_V2_5(
 
 	}
 
-	if device.Ip != nil && ipLimitStore.ContainsIPv4(device.GetIp()) {
+	/*if device.Ip != nil && ipLimitStore.ContainsIPv4(device.GetIp()) {
 		err := fmt.Errorf("Ip is limited: %s", device.GetIp())
 		log.Printf("error: %s, feed: %s", err.Error(), ssp_domain)
 
@@ -178,7 +178,7 @@ func postBid_V2_5(
 
 		http.Error(w, err.Error(), http.StatusForbidden)
 		return
-	}
+	}*/
 
 	if device.Ua == nil {
 		err := fmt.Errorf(
