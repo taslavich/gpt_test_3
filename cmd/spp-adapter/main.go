@@ -2,10 +2,13 @@ package main
 
 import (
 	"context"
+	"crypto/tls"
 	"log"
+	"net"
 	"os"
 	"time"
 
+	"github.com/ClickHouse/clickhouse-go/v2"
 	"github.com/go-chi/chi/v5"
 	"github.com/go-co-op/gocron"
 	"gitlab.com/twinbid-exchange/RTB-exchange/internal/config"
@@ -88,6 +91,39 @@ func main() {
 		log.Fatalf("failed to NewGeoToLang: %v", err)
 	}
 
+	addr := net.JoinHostPort(cfg.ClickhouseConfig.Host, cfg.ClickhouseConfig.Port)
+	clickhouseConn, err := clickhouse.Open(&clickhouse.Options{
+		Addr:     []string{addr},
+		Protocol: clickhouse.Native,
+		TLS:      &tls.Config{},
+		Auth: clickhouse.Auth{
+			Username: cfg.ClickhouseConfig.Username,
+			Password: cfg.ClickhouseConfig.Password,
+			Database: cfg.ClickhouseConfig.Database,
+		},
+	})
+	if err != nil {
+		log.Fatalf("❌ ClickHouse Open connection failed: %v", err)
+	}
+	defer clickhouseConn.Close()
+
+	if err := clickhouseConn.Ping(ctx); err != nil {
+		log.Fatalf("❌ ClickHouse ping failed: %v", err)
+	}
+	log.Println("✅ Connected to ClickHouse for IP limits")
+
+	ipLimitStore := sppAdapterWeb.NewIPLimitStore()
+	if err := ipLimitStore.StartClickHouseLoaders(ctx, clickhouseConn, sppAdapterWeb.IPLimitConfig{
+		FullReloadInterval: time.Duration(cfg.IPLimitFullReloadMinutes) * time.Minute,
+		BatchLoadInterval:  time.Duration(cfg.IPLimitLatestBatchIntervalSec) * time.Second,
+		Tables: sppAdapterWeb.IPLimitTables{
+			IPv4: cfg.IPLimitIPv4Table,
+			IPv6: cfg.IPLimitIPv6Table,
+		},
+	}); err != nil {
+		log.Fatalf("failed to start IP limit ClickHouse loaders: %v", err)
+	}
+
 	s := gocron.NewScheduler(time.UTC)
 	s.Every(30).Seconds().Do(func() {
 		if err := siteIdsAndDomains.WriteSiteIdDomainToTheFile(); err != nil {
@@ -128,6 +164,7 @@ func main() {
 		geoToLang,
 		redisWriteErrorMonitor,
 		cfg.SspAdapterWorkStatusURL,
+		ipLimitStore,
 	)
 	log.Println("HTTP routes initialized")
 

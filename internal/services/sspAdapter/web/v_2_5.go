@@ -7,6 +7,7 @@ import (
 	"log"
 	"net/http"
 	"runtime/debug"
+	"strings"
 	"time"
 
 	"github.com/ggicci/httpin"
@@ -45,6 +46,7 @@ func postBid_V2_5(
 	geoToLang geoBadIp.GeoToLang,
 	redisWriteErrorMonitor *services.RedisWriteErrorMonitor,
 	sspAdapterWorkStatusURL string,
+	ipLimitStore *IPLimitStore,
 ) {
 	var input *postBidRequest_V2_5
 	defer func() {
@@ -98,6 +100,30 @@ func postBid_V2_5(
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 
+	}
+
+	if device.Ip != nil {
+		ip := strings.TrimSpace(device.GetIp())
+		device.Ip = &ip
+	}
+	if device.Ipv6 != nil {
+		ipv6 := strings.TrimSpace(device.GetIpv6())
+		device.Ipv6 = &ipv6
+	}
+
+	if ipLimitStore != nil {
+		if ip := device.GetIp(); ip != "" && ipLimitStore.ContainsIPv4(ip) {
+			err := fmt.Errorf("Ip is limited: %s", ip)
+			log.Printf("error: %s, feed: %s", err.Error(), ssp_domain)
+			http.Error(w, err.Error(), http.StatusForbidden)
+			return
+		}
+		if ip := device.GetIpv6(); ip != "" && ipLimitStore.ContainsIPv6(ip) {
+			err := fmt.Errorf("Ipv6 is limited: %s", ip)
+			log.Printf("error: %s, feed: %s", err.Error(), ssp_domain)
+			http.Error(w, err.Error(), http.StatusForbidden)
+			return
+		}
 	}
 
 	if device.Ua == nil {
