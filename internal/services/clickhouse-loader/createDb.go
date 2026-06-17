@@ -73,6 +73,86 @@ SETTINGS index_granularity = 8192;
 
 
 -- ============================================================
+-- IP LIMIT IPV4
+-- ============================================================
+
+CREATE TABLE IF NOT EXISTS {db}.ip_limit_ipv4
+(
+    ip         String,
+    created_at DateTime64(3, 'UTC')
+)
+ENGINE = MergeTree
+ORDER BY (ip, created_at)
+TTL created_at + INTERVAL 12 HOUR DELETE
+SETTINGS index_granularity = 8192;
+
+
+CREATE MATERIALIZED VIEW IF NOT EXISTS {db}.mv_ip_limit_ipv4
+REFRESH EVERY 1 MINUTE
+APPEND TO {db}.ip_limit_ipv4
+AS
+WITH now64(3, 'UTC') AS batch_created_at
+SELECT
+    ip,
+    batch_created_at AS created_at
+FROM
+(
+    SELECT
+        IPv4NumToString(ip) AS ip,
+        count() AS cnt
+    FROM {db}.ortb
+    WHERE ip IS NOT NULL
+    GROUP BY ip
+    HAVING cnt > 200
+)
+WHERE ip NOT IN
+(
+    SELECT ip
+    FROM {db}.ip_limit_ipv4
+);
+
+
+-- ============================================================
+-- IP LIMIT IPV6
+-- ============================================================
+
+CREATE TABLE IF NOT EXISTS {db}.ip_limit_ipv6
+(
+    ip         String,
+    created_at DateTime64(3, 'UTC')
+)
+ENGINE = MergeTree
+ORDER BY (ip, created_at)
+TTL created_at + INTERVAL 12 HOUR DELETE
+SETTINGS index_granularity = 8192;
+
+
+CREATE MATERIALIZED VIEW IF NOT EXISTS {db}.mv_ip_limit_ipv6
+REFRESH EVERY 1 MINUTE
+APPEND TO {db}.ip_limit_ipv6
+AS
+WITH now64(3, 'UTC') AS batch_created_at
+SELECT
+    ip,
+    batch_created_at AS created_at
+FROM
+(
+    SELECT
+        IPv6NumToString(ipv6) AS ip,
+        count() AS cnt
+    FROM {db}.ortb
+    WHERE ipv6 IS NOT NULL
+    GROUP BY ip
+    HAVING cnt > 200
+)
+WHERE ip NOT IN
+(
+    SELECT ip
+    FROM {db}.ip_limit_ipv6
+);
+
+
+-- ============================================================
 -- INPUT TABLES
 -- ============================================================
 
