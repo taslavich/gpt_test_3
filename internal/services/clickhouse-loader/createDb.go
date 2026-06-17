@@ -53,7 +53,6 @@ CREATE TABLE IF NOT EXISTS {db}.ortb
 
     geo               Nullable(String),
     city_id           Nullable(Int32),
-
     bid_responses_raw String DEFAULT '',
 
     win_dsp_domain    Nullable(String),
@@ -196,6 +195,7 @@ CREATE TABLE IF NOT EXISTS {db}.fact_impressions
     event_hour             DateTime('UTC'),
 
     uuid                   UUID,
+    code                   UInt16 DEFAULT 0,
 
     format                 LowCardinality(String),
     typic                  LowCardinality(String),
@@ -252,6 +252,7 @@ CREATE TABLE IF NOT EXISTS {db}.fact_clicks
     event_hour        DateTime('UTC'),
 
     uuid              UUID,
+    code              UInt16 DEFAULT 0,
 
     format            LowCardinality(String),
     typic             LowCardinality(String),
@@ -275,7 +276,6 @@ CREATE TABLE IF NOT EXISTS {db}.fact_clicks
 
     geo               LowCardinality(String),
     city_id           Nullable(Int32),
-
     bid_responses_raw String DEFAULT '',
 
     win_dsp_domain    LowCardinality(String),
@@ -390,6 +390,7 @@ SELECT
     toStartOfHour(toDateTime(o.event_time, 'UTC')) AS event_hour,
 
     o.uuid AS uuid,
+    o.code AS code,
 
     o.format AS format,
     o.typic AS typic,
@@ -452,6 +453,7 @@ SELECT
     toStartOfHour(toDateTime(o.event_time, 'UTC')) AS event_hour,
 
     o.uuid AS uuid,
+    o.code AS code,
 
     o.format AS format,
     o.typic AS typic,

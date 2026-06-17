@@ -25,6 +25,7 @@ var ortbHMGetFields = []string{
 	constants.SPP_DOMAIN_COLUMN,
 	constants.GEO_COLUMN,
 	constants.CITY_ID_COLUMN,
+	constants.CODE_COLUMN,
 	constants.BID_RESPONSES_COLUMN,
 	constants.IP_COLUMN,
 	constants.IPV6_COLUMN,
@@ -163,33 +164,34 @@ func processOrtbShard(
 			SPP_DOMAIN:      valueAsString(values, 3),
 			GEO:             valueAsString(values, 4),
 			CITY_ID:         valueAsString(values, 5),
-			BID_RESPONSES:   valueAsString(values, 6),
-			IP:              valueAsString(values, 7),
-			IPV6:            valueAsString(values, 8),
-			LANG:            valueAsString(values, 9),
-			BROWSER:         valueAsString(values, 10),
-			BROWSER_VERSION: valueAsString(values, 11),
-			OS:              valueAsString(values, 12),
-			OS_VERSION:      valueAsString(values, 13),
-			DEVICE:          valueAsString(values, 14),
-			SITE_ID:         valueAsString(values, 15),
-			SITE_DOMAIN:     valueAsString(values, 16),
-			BID_FLOOR:       valueAsString(values, 17),
-			WIN_DSP_DOMAIN:  valueAsString(values, 18),
-			WIN_PRICE:       valueAsString(values, 19),
-			WIN_DSP_PRICE:   valueAsString(values, 20),
-			WIN_CID:         valueAsString(values, 21),
-			WIN_CRID:        valueAsString(values, 22),
-			WIN_USER_ID:     valueAsString(values, 23),
+			CODE:            valueAsString(values, 6),
+			BID_RESPONSES:   valueAsString(values, 7),
+			IP:              valueAsString(values, 8),
+			IPV6:            valueAsString(values, 9),
+			LANG:            valueAsString(values, 10),
+			BROWSER:         valueAsString(values, 11),
+			BROWSER_VERSION: valueAsString(values, 12),
+			OS:              valueAsString(values, 13),
+			OS_VERSION:      valueAsString(values, 14),
+			DEVICE:          valueAsString(values, 15),
+			SITE_ID:         valueAsString(values, 16),
+			SITE_DOMAIN:     valueAsString(values, 17),
+			BID_FLOOR:       valueAsString(values, 18),
+			WIN_DSP_DOMAIN:  valueAsString(values, 19),
+			WIN_PRICE:       valueAsString(values, 20),
+			WIN_DSP_PRICE:   valueAsString(values, 21),
+			WIN_CID:         valueAsString(values, 22),
+			WIN_CRID:        valueAsString(values, 23),
+			WIN_USER_ID:     valueAsString(values, 24),
 		}
 
 		if !types.HasDataOrtb(rawRecord) {
 			continue
 		}
 
-		bidResponses, err := parseBidResponsesFromRedis(values, 6)
+		bidResponses, err := parseBidResponsesFromRedis(values, 7)
 		if err != nil {
-			log.Printf("Ошибка парсинга bidResponses из Redis (index 6): %v", err)
+			log.Printf("Ошибка парсинга bidResponses из Redis (index 7): %v", err)
 			bidResponses = make(map[string]int32)
 		}
 
@@ -201,6 +203,7 @@ func processOrtbShard(
 			SppDomain:      rawRecord.SPP_DOMAIN,
 			Geo:            rawRecord.GEO,
 			CityId:         parseUint32Safe(rawRecord.CITY_ID),
+			Code:           parseUint32Safe(rawRecord.CODE),
 			BidResponses:   bidResponses,
 			Ip:             rawRecord.IP,
 			Ipv6:           rawRecord.IPV6,

@@ -92,6 +92,7 @@ type OrtbEvent struct {
 	WinCid         string                 `protobuf:"bytes,23,opt,name=win_cid,json=winCid,proto3" json:"win_cid,omitempty"`
 	WinCrid        string                 `protobuf:"bytes,24,opt,name=win_crid,json=winCrid,proto3" json:"win_crid,omitempty"`
 	WinUserId      string                 `protobuf:"bytes,25,opt,name=win_user_id,json=winUserId,proto3" json:"win_user_id,omitempty"`
+	Code           uint32                 `protobuf:"varint,26,opt,name=code,proto3" json:"code,omitempty"`
 	unknownFields  protoimpl.UnknownFields
 	sizeCache      protoimpl.SizeCache
 }
@@ -301,6 +302,13 @@ func (x *OrtbEvent) GetWinUserId() string {
 	return ""
 }
 
+func (x *OrtbEvent) GetCode() uint32 {
+	if x != nil {
+		return x.Code
+	}
+	return 0
+}
+
 type ImpressionEvent struct {
 	state                  protoimpl.MessageState `protogen:"open.v1"`
 	Uuid                   string                 `protobuf:"bytes,1,opt,name=uuid,proto3" json:"uuid,omitempty"`
@@ -431,7 +439,7 @@ const file_buffer_buffer_proto_rawDesc = "" +
 	"\n" +
 	"ItemsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\x05R\x05value:\x028\x01\"\x9a\x06\n" +
+	"\x05value\x18\x02 \x01(\x05R\x05value:\x028\x01\"\xae\x06\n" +
 	"\tOrtbEvent\x12\x12\n" +
 	"\x04uuid\x18\x01 \x01(\tR\x04uuid\x12\"\n" +
 	"\revent_time_ms\x18\x02 \x01(\x03R\veventTimeMs\x12\x14\n" +
@@ -461,7 +469,8 @@ const file_buffer_buffer_proto_rawDesc = "" +
 	"\rwin_dsp_price\x18\x16 \x01(\x01R\vwinDspPrice\x12\x17\n" +
 	"\awin_cid\x18\x17 \x01(\tR\x06winCid\x12\x19\n" +
 	"\bwin_crid\x18\x18 \x01(\tR\awinCrid\x12\x1e\n" +
-	"\vwin_user_id\x18\x19 \x01(\tR\twinUserId\x1a?\n" +
+	"\vwin_user_id\x18\x19 \x01(\tR\twinUserId\x12\x12\n" +
+	"\x04code\x18\x1a \x01(\rR\x04code\x1a?\n" +
 	"\x11BidResponsesEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\x05R\x05value:\x028\x01\"x\n" +

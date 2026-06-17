@@ -269,6 +269,7 @@ func postBid_V2_5(
 			lang,
 			countryISO,
 			cityId,
+			input.Payload.BidRequest.GetTmax(),
 			uaFileds,
 			siteId,
 			siteDomain,
