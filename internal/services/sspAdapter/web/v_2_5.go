@@ -7,7 +7,6 @@ import (
 	"log"
 	"net/http"
 	"runtime/debug"
-	"strings"
 	"time"
 
 	"github.com/ggicci/httpin"
@@ -102,28 +101,18 @@ func postBid_V2_5(
 
 	}
 
-	if device.Ip != nil {
-		ip := strings.TrimSpace(device.GetIp())
-		device.Ip = &ip
-	}
-	if device.Ipv6 != nil {
-		ipv6 := strings.TrimSpace(device.GetIpv6())
-		device.Ipv6 = &ipv6
+	if device.Ip != nil && ipLimitStore.ContainsIPv4(device.GetIp()) {
+		err := fmt.Errorf("Ip is limited: %s", device.GetIp())
+		log.Printf("error: %s, feed: %s", err.Error(), ssp_domain)
+		http.Error(w, err.Error(), http.StatusForbidden)
+		return
 	}
 
-	if ipLimitStore != nil {
-		if ip := device.GetIp(); ip != "" && ipLimitStore.ContainsIPv4(ip) {
-			err := fmt.Errorf("Ip is limited: %s", ip)
-			log.Printf("error: %s, feed: %s", err.Error(), ssp_domain)
-			http.Error(w, err.Error(), http.StatusForbidden)
-			return
-		}
-		if ip := device.GetIpv6(); ip != "" && ipLimitStore.ContainsIPv6(ip) {
-			err := fmt.Errorf("Ipv6 is limited: %s", ip)
-			log.Printf("error: %s, feed: %s", err.Error(), ssp_domain)
-			http.Error(w, err.Error(), http.StatusForbidden)
-			return
-		}
+	if device.Ipv6 != nil && ipLimitStore.ContainsIPv6(device.GetIpv6()) {
+		err := fmt.Errorf("Ipv6 is limited: %s", device.GetIpv6())
+		log.Printf("error: %s, feed: %s", err.Error(), ssp_domain)
+		http.Error(w, err.Error(), http.StatusForbidden)
+		return
 	}
 
 	if device.Ua == nil {
