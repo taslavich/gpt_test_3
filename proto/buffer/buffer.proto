@@ -42,6 +42,8 @@ message OrtbEvent {
   string win_cid = 23;
   string win_crid = 24;
   string win_user_id = 25;
+
+  uint32 code = 26;
 }
 
 message ImpressionEvent {

@@ -144,6 +144,7 @@ func insertBatchOrtb(
 		INSERT INTO %s (
 			uuid,
 			event_time,
+			code,
 			format,
 			typic,
 			spp_domain,
@@ -207,11 +208,13 @@ func insertBatchOrtb(
 		}
 
 		cityID := int32(r.CityId)
+		code := uint16(r.Code)
 		bidResponsesRaw := encodeBidResponsesRaw(r.BidResponses)
 
 		if err := batch.Append(
 			u,
 			ts,
+			code,
 			r.Format,
 			r.Typic,
 			&r.SppDomain,

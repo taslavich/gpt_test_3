@@ -8,6 +8,7 @@ type Ortb struct {
 	SPP_DOMAIN      string `json:"SPP_DOMAIN"`
 	GEO             string `json:"GEO"`
 	CITY_ID         string `json:"CITY_ID"`
+	CODE            string `json:"CODE"`
 	BID_RESPONSES   string `json:"BID_RESPONSES"`
 	IP              string `json:"IP"`
 	IPV6            string `json:"IPV6"`
@@ -53,6 +54,7 @@ func HasDataOrtb(record Ortb) bool {
 		record.SPP_DOMAIN != "" ||
 		record.GEO != "" ||
 		record.CITY_ID != "" ||
+		record.CODE != "" ||
 		record.BID_RESPONSES != "" ||
 		record.IP != "" ||
 		record.IPV6 != "" ||
