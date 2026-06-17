@@ -33,6 +33,7 @@ func postBid_V2_5(
 	w http.ResponseWriter,
 	r *http.Request,
 	redisClients []*redis.Client,
+	redisSetOrtb string,
 	isBadIp func(ipStr string) (bool, error),
 	getCountryISO func(ipStr string) (string, uint32, error),
 	orchestratorClient orchestratorProto.OrchestratorServiceClient,
@@ -104,6 +105,38 @@ func postBid_V2_5(
 	if device.Ip != nil && ipLimitStore.ContainsIPv4(device.GetIp()) {
 		err := fmt.Errorf("Ip is limited: %s", device.GetIp())
 		log.Printf("error: %s, feed: %s", err.Error(), ssp_domain)
+
+		logged := shouldPass(counter)
+
+		globalId := uuid.New().String()
+		if err := utils.WriteStatsOrtb(
+			ctx,
+			redisClients,
+			globalId,
+			logged,
+			format,
+			typic,
+			ssp_domain,
+			device.GetIp(),
+			device.GetIpv6(),
+			"",
+			"",
+			0,
+			701,
+			ua.UAFields{},
+			"",
+			"",
+			0,
+		); err != nil {
+			log.Printf("failed to WriteStats in postBid_V2_5: %v", err)
+			redisWriteErrorMonitor.RecordForURL(err, sspAdapterWorkStatusURL)
+		}
+
+		if err := utils.AddUUIDToRedisSet(ctx, redisClients, redisSetOrtb, globalId, logged); err != nil {
+			log.Printf("failed to add ORTB UUID to Redis set in postBid_V2_5: %v", err)
+			redisWriteErrorMonitor.RecordForURL(err, sspAdapterWorkStatusURL)
+		}
+
 		http.Error(w, err.Error(), http.StatusForbidden)
 		return
 	}
@@ -111,6 +144,38 @@ func postBid_V2_5(
 	if device.Ipv6 != nil && ipLimitStore.ContainsIPv6(device.GetIpv6()) {
 		err := fmt.Errorf("Ipv6 is limited: %s", device.GetIpv6())
 		log.Printf("error: %s, feed: %s", err.Error(), ssp_domain)
+
+		logged := shouldPass(counter)
+
+		globalId := uuid.New().String()
+		if err := utils.WriteStatsOrtb(
+			ctx,
+			redisClients,
+			globalId,
+			logged,
+			format,
+			typic,
+			ssp_domain,
+			device.GetIp(),
+			device.GetIpv6(),
+			"",
+			"",
+			0,
+			701,
+			ua.UAFields{},
+			"",
+			"",
+			0,
+		); err != nil {
+			log.Printf("failed to WriteStats in postBid_V2_5: %v", err)
+			redisWriteErrorMonitor.RecordForURL(err, sspAdapterWorkStatusURL)
+		}
+
+		if err := utils.AddUUIDToRedisSet(ctx, redisClients, redisSetOrtb, globalId, logged); err != nil {
+			log.Printf("failed to add ORTB UUID to Redis set in postBid_V2_5: %v", err)
+			redisWriteErrorMonitor.RecordForURL(err, sspAdapterWorkStatusURL)
+		}
+
 		http.Error(w, err.Error(), http.StatusForbidden)
 		return
 	}
@@ -252,32 +317,12 @@ func postBid_V2_5(
 	uaFileds := ua.ParseUA(input.Payload.Device.GetUa())
 
 	impIdUuid := make(map[string]string, len(input.Payload.Imp))
+	uuidBidFloor := make(map[string]float32, len(input.Payload.Imp))
 
 	for i := range input.Payload.Imp {
 		globalId := uuid.New().String()
 		impIdUuid[input.Payload.Imp[i].GetId()] = globalId
-		if err := utils.WriteStatsOrtb(
-			ctx,
-			redisClients,
-			globalId,
-			logged,
-			format,
-			typic,
-			ssp_domain,
-			device.GetIp(),
-			device.GetIpv6(),
-			lang,
-			countryISO,
-			cityId,
-			input.Payload.BidRequest.GetTmax(),
-			uaFileds,
-			siteId,
-			siteDomain,
-			float64(input.Payload.Imp[i].GetBidfloor()),
-		); err != nil {
-			log.Printf("failed to WriteStats in postBid_V2_5: %v", err)
-			redisWriteErrorMonitor.RecordForURL(err, sspAdapterWorkStatusURL)
-		}
+		uuidBidFloor[globalId] = input.Payload.Imp[i].GetBidfloor()
 	}
 
 	reqCtx, cancel := context.WithTimeout(ctx, timeout)
@@ -311,14 +356,75 @@ func postBid_V2_5(
 	}
 	statusCode := http.StatusOK
 	if len(res.BidResponse.Seatbid[0].Bid) == 0 {
+
+		for _, uuid := range impIdUuid {
+			if err := utils.WriteStatsOrtb(
+				ctx,
+				redisClients,
+				uuid,
+				logged,
+				format,
+				typic,
+				ssp_domain,
+				device.GetIp(),
+				device.GetIpv6(),
+				lang,
+				countryISO,
+				cityId,
+				204,
+				uaFileds,
+				siteId,
+				siteDomain,
+				float64(uuidBidFloor[uuid]),
+			); err != nil {
+				log.Printf("failed to WriteStats in postBid_V2_5: %v", err)
+				redisWriteErrorMonitor.RecordForURL(err, sspAdapterWorkStatusURL)
+			}
+
+			if err := utils.AddUUIDToRedisSet(ctx, redisClients, redisSetOrtb, uuid, logged); err != nil {
+				log.Printf("failed to add ORTB UUID to Redis set in postBid_V2_5: %v", err)
+				redisWriteErrorMonitor.RecordForURL(err, sspAdapterWorkStatusURL)
+			}
+		}
+
 		w.WriteHeader(http.StatusNoContent) // ← ПРАВИЛЬНО
 		return
-	}
+	} else {
+		for _, uuid := range impIdUuid {
+			if err := utils.WriteStatsOrtb(
+				ctx,
+				redisClients,
+				uuid,
+				logged,
+				format,
+				typic,
+				ssp_domain,
+				device.GetIp(),
+				device.GetIpv6(),
+				lang,
+				countryISO,
+				cityId,
+				int32(statusCode),
+				uaFileds,
+				siteId,
+				siteDomain,
+				float64(uuidBidFloor[uuid]),
+			); err != nil {
+				log.Printf("failed to WriteStats in postBid_V2_5: %v", err)
+				redisWriteErrorMonitor.RecordForURL(err, sspAdapterWorkStatusURL)
+			}
 
-	if err = rnr.JSON(w, statusCode, postBidResponse_V2_5{
-		BidResponse: res.BidResponse,
-	}); err != nil {
-		log.Printf("Cannot make HTTP response back: %v\n", err)
+			if err := utils.AddUUIDToRedisSet(ctx, redisClients, redisSetOrtb, uuid, logged); err != nil {
+				log.Printf("failed to add ORTB UUID to Redis set in postBid_V2_5: %v", err)
+				redisWriteErrorMonitor.RecordForURL(err, sspAdapterWorkStatusURL)
+			}
+		}
+
+		if err = rnr.JSON(w, statusCode, postBidResponse_V2_5{
+			BidResponse: res.BidResponse,
+		}); err != nil {
+			log.Printf("Cannot make HTTP response back: %v\n", err)
+		}
 	}
 }
 

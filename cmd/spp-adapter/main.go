@@ -147,6 +147,7 @@ func main() {
 		ctx,
 		router,
 		redisClients.Ortb,
+		cfg.RedisSetOrtb,
 		badIp.IsBad,
 		geoIp.GetCountryAndCityIdISO,
 		client,
