@@ -190,6 +190,45 @@ func postBid_V2_5(
 
 	}
 
+	if len(device.GetUa()) < 20 {
+		err := fmt.Errorf("User-Agent is too short: %s", device.GetUa())
+		log.Printf("error: %s, feed: %s", err.Error(), ssp_domain)
+
+		logged := shouldPass(counter)
+
+		globalId := uuid.New().String()
+		if err := utils.WriteStatsOrtb(
+			ctx,
+			redisClients,
+			globalId,
+			logged,
+			format,
+			typic,
+			ssp_domain,
+			device.GetIp(),
+			device.GetIpv6(),
+			"",
+			"",
+			0,
+			701,
+			ua.UAFields{},
+			"",
+			"",
+			0,
+		); err != nil {
+			log.Printf("failed to WriteStats in postBid_V2_5: %v", err)
+			redisWriteErrorMonitor.RecordForURL(err, sspAdapterWorkStatusURL)
+		}
+
+		if err := utils.AddUUIDToRedisSet(ctx, redisClients, redisSetOrtb, globalId, logged); err != nil {
+			log.Printf("failed to add ORTB UUID to Redis set in postBid_V2_5: %v", err)
+			redisWriteErrorMonitor.RecordForURL(err, sspAdapterWorkStatusURL)
+		}
+
+		http.Error(w, err.Error(), http.StatusForbidden)
+		return
+	}
+
 	if input.Payload.Site == nil {
 		err := fmt.Errorf(
 			"There is no site object",
