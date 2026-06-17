@@ -169,7 +169,8 @@ type OrchestratorConfig struct {
 }
 
 type SppAdapterConfig struct {
-	HttpServer          HttpServer
+	HttpServer HttpServer
+	ClickhouseConfig
 	UriOfOrchestrator   string        `yaml:"URI_OF_ORCHESTRATOR" env:"URI_OF_ORCHESTRATOR"`
 	AdmTimeout          time.Duration `yaml:"ADM_TIMEOUT" env:"ADM_TIMEOUT"`
 	NurlTimeout         time.Duration `yaml:"NURL_TIMEOUT" env:"NURL_TIMEOUT"`
@@ -192,13 +193,17 @@ type SppAdapterConfig struct {
 	SspIppAdlFeeds MapStringToString `yaml:"SSP_IPP_ADL_FEEDS" env:"SSP_IPP_ADL_FEEDS"`
 	SspIppMcFeeds  MapStringToString `yaml:"SSP_IPP_MC_FEEDS" env:"SSP_IPP_MC_FEEDS"`
 
-	SiteIdDomainPath        string `yaml:"SITE_ID_DOMAIN_PATH" env:"SITE_ID_DOMAIN_PATH"`
-	Domains1LevelPath       string `yaml:"DOMAINS_1_LEVEL_PATH" env:"DOMAINS_1_LEVEL_PATH"`
-	Domains23LevelPath      string `yaml:"DOMAINS_23_LEVEL_PATH" env:"DOMAINS_23_LEVEL_PATH"`
-	GeoToLangPath           string `yaml:"GEO_TO_LANG_PATH" env:"GEO_TO_LANG_PATH"`
-	SspAdapterWorkStatusURL string `yaml:"SSP_ADAPTER_WORK_STATUS_URL" env:"SSP_ADAPTER_WORK_STATUS_URL"`
-	BotBaseURL              string `yaml:"BOT_BASE_URL" env:"BOT_BASE_URL"`
-	BotInternalSecret       string `yaml:"BOT_INTERNAL_SECRET" env:"BOT_INTERNAL_SECRET"`
+	SiteIdDomainPath              string `yaml:"SITE_ID_DOMAIN_PATH" env:"SITE_ID_DOMAIN_PATH"`
+	Domains1LevelPath             string `yaml:"DOMAINS_1_LEVEL_PATH" env:"DOMAINS_1_LEVEL_PATH"`
+	Domains23LevelPath            string `yaml:"DOMAINS_23_LEVEL_PATH" env:"DOMAINS_23_LEVEL_PATH"`
+	GeoToLangPath                 string `yaml:"GEO_TO_LANG_PATH" env:"GEO_TO_LANG_PATH"`
+	SspAdapterWorkStatusURL       string `yaml:"SSP_ADAPTER_WORK_STATUS_URL" env:"SSP_ADAPTER_WORK_STATUS_URL"`
+	IPLimitFullReloadMinutes      int    `yaml:"IP_LIMIT_FULL_RELOAD_MINUTES" env:"IP_LIMIT_FULL_RELOAD_MINUTES" env-default:"60"`
+	IPLimitLatestBatchIntervalSec int    `yaml:"IP_LIMIT_LATEST_BATCH_INTERVAL_SEC" env:"IP_LIMIT_LATEST_BATCH_INTERVAL_SEC" env-default:"60"`
+	IPLimitIPv4Table              string `yaml:"IP_LIMIT_IPV4_TABLE" env:"IP_LIMIT_IPV4_TABLE" env-default:"ip_limit_ipv4"`
+	IPLimitIPv6Table              string `yaml:"IP_LIMIT_IPV6_TABLE" env:"IP_LIMIT_IPV6_TABLE" env-default:"ip_limit_ipv6"`
+	BotBaseURL                    string `yaml:"BOT_BASE_URL" env:"BOT_BASE_URL"`
+	BotInternalSecret             string `yaml:"BOT_INTERNAL_SECRET" env:"BOT_INTERNAL_SECRET"`
 
 	RedisConfig
 }
