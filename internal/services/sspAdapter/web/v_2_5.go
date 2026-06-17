@@ -210,7 +210,7 @@ func postBid_V2_5(
 			"",
 			"",
 			0,
-			701,
+			702,
 			ua.UAFields{},
 			"",
 			"",
