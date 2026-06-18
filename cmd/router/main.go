@@ -150,8 +150,8 @@ func main() {
 	botNotifier := utils.NewBotMessage(cfg.BotBaseURL, cfg.BotInternalSecret)
 	redisWriteErrorMonitor := services.NewRedisWriteErrorMonitorWithSettings(
 		"router",
-		cfg.RedisWriteErrorLogThresholdPerTick,
-		cfg.RedisWriteErrorStopThresholdPerTick,
+		cfg.RedisWriteErrorLogThresholdPerSec,
+		cfg.RedisWriteErrorStopThresholdPerSec,
 		cfg.RedisWriteErrorMonitorTickerInterval,
 		func(count uint64, workStatusURL string) {
 			services.StopSspAdapterOrtbStreams(ctx, workStatusURL)

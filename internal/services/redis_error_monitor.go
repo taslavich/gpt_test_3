@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"math"
 	"net/http"
 	"net/url"
 	"strings"
@@ -27,19 +28,23 @@ type RedisWriteErrorMonitor struct {
 	tickerInterval       time.Duration
 }
 
-func NewRedisWriteErrorMonitorWithSettings(name string, logThresholdPerTick uint64, stopThresholdPerTick uint64, tickerInterval time.Duration, stopFunc func(uint64, string), notifier *utils.BotMessage, ctx context.Context) *RedisWriteErrorMonitor {
+func NewRedisWriteErrorMonitorWithSettings(name string, logThresholdPerSec uint64, stopThresholdPerSec uint64, tickerInterval time.Duration, stopFunc func(uint64, string), notifier *utils.BotMessage, ctx context.Context) *RedisWriteErrorMonitor {
 	if ctx == nil {
 		ctx = context.Background()
 	}
 	return &RedisWriteErrorMonitor{
 		name:                 name,
-		logThresholdPerTick:  logThresholdPerTick,
-		stopThresholdPerTick: stopThresholdPerTick,
+		logThresholdPerTick:  redisWriteErrorsPerTick(logThresholdPerSec, tickerInterval),
+		stopThresholdPerTick: redisWriteErrorsPerTick(stopThresholdPerSec, tickerInterval),
 		tickerInterval:       tickerInterval,
 		stopFunc:             stopFunc,
 		notifier:             notifier,
 		ctx:                  ctx,
 	}
+}
+
+func redisWriteErrorsPerTick(thresholdPerSec uint64, tickerInterval time.Duration) uint64 {
+	return uint64(math.Ceil(float64(thresholdPerSec) * tickerInterval.Seconds()))
 }
 
 func (m *RedisWriteErrorMonitor) Record(err error) {

@@ -87,8 +87,8 @@ func main() {
 
 	redisWriteErrorMonitor := services.NewRedisWriteErrorMonitorWithSettings(
 		"adm-adapter",
-		cfg.RedisWriteErrorLogThresholdPerTick,
-		cfg.RedisWriteErrorStopThresholdPerTick,
+		cfg.RedisWriteErrorLogThresholdPerSec,
+		cfg.RedisWriteErrorStopThresholdPerSec,
 		cfg.RedisWriteErrorMonitorTickerInterval,
 		func(count uint64, workStatusURL string) {
 			services.StopSspAdapterOrtbStreams(ctx, cfg.SspAdapterWorkStatusURL)

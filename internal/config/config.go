@@ -112,8 +112,8 @@ func (l *ListString) SetValue(value string) error {
 }
 
 type RedisWriteErrorMonitorConfig struct {
-	RedisWriteErrorLogThresholdPerTick   uint64        `yaml:"REDIS_WRITE_ERROR_LOG_THRESHOLD_PER_TICK" env:"REDIS_WRITE_ERROR_LOG_THRESHOLD_PER_TICK"`
-	RedisWriteErrorStopThresholdPerTick  uint64        `yaml:"REDIS_WRITE_ERROR_STOP_THRESHOLD_PER_TICK" env:"REDIS_WRITE_ERROR_STOP_THRESHOLD_PER_TICK"`
+	RedisWriteErrorLogThresholdPerSec    uint64        `yaml:"REDIS_WRITE_ERROR_LOG_THRESHOLD_PER_SEC" env:"REDIS_WRITE_ERROR_LOG_THRESHOLD_PER_SEC"`
+	RedisWriteErrorStopThresholdPerSec   uint64        `yaml:"REDIS_WRITE_ERROR_STOP_THRESHOLD_PER_SEC" env:"REDIS_WRITE_ERROR_STOP_THRESHOLD_PER_SEC"`
 	RedisWriteErrorMonitorTickerInterval time.Duration `yaml:"REDIS_WRITE_ERROR_MONITOR_TICKER_INTERVAL" env:"REDIS_WRITE_ERROR_MONITOR_TICKER_INTERVAL"`
 }
 
