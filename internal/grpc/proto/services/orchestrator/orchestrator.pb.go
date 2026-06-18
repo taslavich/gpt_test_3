@@ -118,6 +118,7 @@ type OrchestratorResponse_V2_5 struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	BidResponse   *ortb_V2_5.BidResponse `protobuf:"bytes,1,opt,name=bidResponse,proto3" json:"bidResponse,omitempty"`
 	GlobalId      string                 `protobuf:"bytes,2,opt,name=globalId,proto3" json:"globalId,omitempty"`
+	Code          int32                  `protobuf:"varint,3,opt,name=code,proto3" json:"code,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -166,6 +167,13 @@ func (x *OrchestratorResponse_V2_5) GetGlobalId() string {
 	return ""
 }
 
+func (x *OrchestratorResponse_V2_5) GetCode() int32 {
+	if x != nil {
+		return x.Code
+	}
+	return 0
+}
+
 var File_services_orchestrator_proto protoreflect.FileDescriptor
 
 const file_services_orchestrator_proto_rawDesc = "" +
@@ -184,10 +192,11 @@ const file_services_orchestrator_proto_rawDesc = "" +
 	"\x06sspUrl\x18\a \x01(\tR\x06sspUrl\x1a<\n" +
 	"\x0eImpIdUuidEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"q\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\x85\x01\n" +
 	"\x19OrchestratorResponse_V2_5\x128\n" +
 	"\vbidResponse\x18\x01 \x01(\v2\x16.ortb_V2_5.BidResponseR\vbidResponse\x12\x1a\n" +
-	"\bglobalId\x18\x02 \x01(\tR\bglobalId2}\n" +
+	"\bglobalId\x18\x02 \x01(\tR\bglobalId\x12\x12\n" +
+	"\x04code\x18\x03 \x01(\x05R\x04code2}\n" +
 	"\x13OrchestratorService\x12f\n" +
 	"\x11getWinnerBid_V2_5\x12&.orchestrator.OrchestratorRequest_V2_5\x1a'.orchestrator.OrchestratorResponse_V2_5\"\x00BeZcgitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/proto/services/orchestrator;orchestratorGrpcb\x06proto3"
 

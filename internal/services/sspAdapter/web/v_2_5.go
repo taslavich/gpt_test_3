@@ -397,9 +397,46 @@ func postBid_V2_5(
 		log.Print(err.Error())
 		return
 	}
-	statusCode := http.StatusOK
-	if len(res.BidResponse.Seatbid[0].Bid) == 0 {
 
+	if res.Code == 703 {
+		err := fmt.Errorf("Site id blocked all: %s", device.GetUa())
+		log.Printf("error: %s, feed: %s", err.Error(), ssp_domain)
+
+		for _, uuid := range impIdUuid {
+			if err := utils.WriteStatsOrtb(
+				ctx,
+				redisClients,
+				uuid,
+				logged,
+				format,
+				typic,
+				ssp_domain,
+				device.GetIp(),
+				device.GetIpv6(),
+				lang,
+				countryISO,
+				cityId,
+				703,
+				uaFileds,
+				siteId,
+				siteDomain,
+				float64(uuidBidFloor[uuid]),
+			); err != nil {
+				log.Printf("failed to WriteStats in postBid_V2_5: %v", err)
+				redisWriteErrorMonitor.RecordForURL(err, sspAdapterWorkStatusURL)
+			}
+
+			if err := utils.AddUUIDToRedisSet(ctx, redisClients, redisSetOrtb, uuid, logged); err != nil {
+				log.Printf("failed to add ORTB UUID to Redis set in postBid_V2_5: %v", err)
+				redisWriteErrorMonitor.RecordForURL(err, sspAdapterWorkStatusURL)
+			}
+		}
+
+		w.WriteHeader(http.StatusForbidden)
+		return
+	}
+
+	if res.Code == http.StatusNoContent {
 		for _, uuid := range impIdUuid {
 			if err := utils.WriteStatsOrtb(
 				ctx,
@@ -447,7 +484,7 @@ func postBid_V2_5(
 				lang,
 				countryISO,
 				cityId,
-				int32(statusCode),
+				int32(http.StatusOK),
 				uaFileds,
 				siteId,
 				siteDomain,
@@ -463,7 +500,7 @@ func postBid_V2_5(
 			}
 		}
 
-		if err = rnr.JSON(w, statusCode, postBidResponse_V2_5{
+		if err = rnr.JSON(w, http.StatusOK, postBidResponse_V2_5{
 			BidResponse: res.BidResponse,
 		}); err != nil {
 			log.Printf("Cannot make HTTP response back: %v\n", err)

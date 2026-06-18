@@ -78,7 +78,7 @@ func NewFiltersBox(filename string) (*FiltersBox, error) {
 	}, nil
 }
 
-func (f *FiltersBox) Allowed(bidRequest *ortb_V2_5.BidRequest, domain string) bool {
+func (f *FiltersBox) Allowed(bidRequest *ortb_V2_5.BidRequest, domain string, common bool) bool {
 	if bidRequest == nil {
 		return false
 	}
@@ -87,17 +87,19 @@ func (f *FiltersBox) Allowed(bidRequest *ortb_V2_5.BidRequest, domain string) bo
 		return true
 	}
 
-	filters, ok := f.Allowers[domain]
-	if ok {
-		if !filters.SiteId.Allowed(bidRequest) {
-			return false
+	if common {
+		filtersALL, ok := f.Allowers["ALL"]
+		if ok {
+			if !filtersALL.SiteId.Allowed(bidRequest) {
+				return false
+			}
 		}
-	}
-
-	filtersALL, ok := f.Allowers["ALL"]
-	if ok {
-		if !filtersALL.SiteId.Allowed(bidRequest) {
-			return false
+	} else {
+		filters, ok := f.Allowers[domain]
+		if ok {
+			if !filters.SiteId.Allowed(bidRequest) {
+				return false
+			}
 		}
 	}
 

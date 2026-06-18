@@ -21,4 +21,5 @@ message OrchestratorRequest_V2_5 {
 message OrchestratorResponse_V2_5 {
   ortb_V2_5.BidResponse bidResponse = 1;
   string globalId = 2;
+  int32 code = 3;
 }

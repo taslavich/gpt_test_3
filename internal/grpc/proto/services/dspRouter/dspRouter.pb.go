@@ -119,6 +119,7 @@ type DspRouterResponse_V2_5 struct {
 	BidRequest    *ortb_V2_5.BidRequest             `protobuf:"bytes,1,opt,name=bidRequest,proto3" json:"bidRequest,omitempty"`
 	BidResponses  map[string]*ortb_V2_5.BidResponse `protobuf:"bytes,2,rep,name=bidResponses,proto3" json:"bidResponses,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
 	SspDomain     string                            `protobuf:"bytes,3,opt,name=ssp_domain,json=sspDomain,proto3" json:"ssp_domain,omitempty"`
+	Code          int32                             `protobuf:"varint,4,opt,name=code,proto3" json:"code,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -174,6 +175,13 @@ func (x *DspRouterResponse_V2_5) GetSspDomain() string {
 	return ""
 }
 
+func (x *DspRouterResponse_V2_5) GetCode() int32 {
+	if x != nil {
+		return x.Code
+	}
+	return 0
+}
+
 var File_services_dspRouter_proto protoreflect.FileDescriptor
 
 const file_services_dspRouter_proto_rawDesc = "" +
@@ -192,14 +200,15 @@ const file_services_dspRouter_proto_rawDesc = "" +
 	"\x06sspUrl\x18\a \x01(\tR\x06sspUrl\x1a<\n" +
 	"\x0eImpIdUuidEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\xa0\x02\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\xb4\x02\n" +
 	"\x16DspRouterResponse_V2_5\x125\n" +
 	"\n" +
 	"bidRequest\x18\x01 \x01(\v2\x15.ortb_V2_5.BidRequestR\n" +
 	"bidRequest\x12W\n" +
 	"\fbidResponses\x18\x02 \x03(\v23.dspRouter.DspRouterResponse_V2_5.BidResponsesEntryR\fbidResponses\x12\x1d\n" +
 	"\n" +
-	"ssp_domain\x18\x03 \x01(\tR\tsspDomain\x1aW\n" +
+	"ssp_domain\x18\x03 \x01(\tR\tsspDomain\x12\x12\n" +
+	"\x04code\x18\x04 \x01(\x05R\x04code\x1aW\n" +
 	"\x11BidResponsesEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12,\n" +
 	"\x05value\x18\x02 \x01(\v2\x16.ortb_V2_5.BidResponseR\x05value:\x028\x012g\n" +

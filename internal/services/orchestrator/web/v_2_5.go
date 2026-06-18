@@ -85,6 +85,13 @@ func (s *Server) GetWinnerBid_V2_5(
 		return nil, status.Errorf(grpcCode, newErr.Error())
 	}
 
+	if bids.Code == 703 {
+		return &orchestratorGrpc.OrchestratorResponse_V2_5{
+			BidResponse: nil,
+			Code:        bids.Code,
+		}, nil
+	}
+
 	getWinnerBidReqCtx, cancel := context.WithTimeout(ctx, s.getWinnerBidTimeout)
 	defer cancel()
 
@@ -117,5 +124,6 @@ func (s *Server) GetWinnerBid_V2_5(
 
 	return &orchestratorGrpc.OrchestratorResponse_V2_5{
 		BidResponse: winner.BidResponse,
+		Code: winner.Code,
 	}, nil
 }

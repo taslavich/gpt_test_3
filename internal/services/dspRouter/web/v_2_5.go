@@ -203,6 +203,14 @@ func (s *Server) GetBids_V2_5(
 		filterBoxChanger = nil
 	}
 
+	if !filters.Allowed(req.BidRequest, "", true) {
+		return &dspRouterGrpc.DspRouterResponse_V2_5{
+			BidRequest:   req.BidRequest,
+			BidResponses: map[string]*ortb_V2_5.BidResponse{},
+			Code:         703,
+		}, nil
+	}
+
 	globalUuid := func() string {
 		for _, uuid := range req.ImpIdUuid {
 			return uuid
@@ -241,7 +249,7 @@ func (s *Server) GetBids_V2_5(
 			continue
 		}
 
-		if !filters.Allowed(req.BidRequest, domain) {
+		if !filters.Allowed(req.BidRequest, domain, false) {
 			//log.Println("Gor DSP filter")
 			codesCh <- &dspDomainCode{
 				domain: domain,

@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"net/http"
 	"runtime/debug"
 	"time"
 
@@ -150,7 +151,15 @@ func (s *Server) GetWinnerBid_V2_5(
 		}
 	}
 
+	if len(bidResponse.Seatbid[0].Bid) == 0 {
+		return &bidEngineGrpc.BidEngineResponse_V2_5{
+			BidResponse: nil,
+			Code:        http.StatusNoContent,
+		}, nil
+	}
+
 	return &bidEngineGrpc.BidEngineResponse_V2_5{
 		BidResponse: bidResponse,
+		Code:        http.StatusOK,
 	}, nil
 }
