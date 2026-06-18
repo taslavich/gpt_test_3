@@ -432,7 +432,7 @@ func postBid_V2_5(
 			}
 		}
 
-		w.WriteHeader(http.StatusForbidden)
+		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
 
