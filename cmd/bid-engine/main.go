@@ -111,9 +111,17 @@ func main() {
 	if err != nil {
 		log.Fatalf("failed to listen: %v", err)
 	}
-	redisWriteErrorMonitor := services.NewRedisWriteErrorMonitor("bid-engine", func(count uint64, workStatusURL string) {
-		services.StopSspAdapterOrtbStreams(ctx, workStatusURL)
-	}, utils.NewBotMessage(cfg.BotBaseURL, cfg.BotInternalSecret), ctx)
+	redisWriteErrorMonitor := services.NewRedisWriteErrorMonitorWithSettings(
+		"bid-engine",
+		cfg.RedisWriteErrorLogThresholdPerSec,
+		cfg.RedisWriteErrorStopThresholdPerSec,
+		cfg.RedisWriteErrorMonitorTickerInterval,
+		func(count uint64, workStatusURL string) {
+			services.StopSspAdapterOrtbStreams(ctx, workStatusURL)
+		},
+		utils.NewBotMessage(cfg.BotBaseURL, cfg.BotInternalSecret),
+		ctx,
+	)
 	redisWriteErrorMonitor.Start()
 
 	s := grpc.NewServer()

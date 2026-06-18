@@ -135,9 +135,17 @@ func main() {
 	log.Println("⏰ Scheduler started (every 30 seconds)")
 
 	botNotifier := utils.NewBotMessage(cfg.BotBaseURL, cfg.BotInternalSecret)
-	redisWriteErrorMonitor := services.NewRedisWriteErrorMonitor("SSP adapter ORTB", func(count uint64, workStatusURL string) {
-		services.StopSspAdapterOrtbStreams(ctx, workStatusURL)
-	}, botNotifier, ctx)
+	redisWriteErrorMonitor := services.NewRedisWriteErrorMonitorWithSettings(
+		"SSP adapter ORTB",
+		cfg.RedisWriteErrorLogThresholdPerSec,
+		cfg.RedisWriteErrorStopThresholdPerSec,
+		cfg.RedisWriteErrorMonitorTickerInterval,
+		func(count uint64, workStatusURL string) {
+			services.StopSspAdapterOrtbStreams(ctx, workStatusURL)
+		},
+		botNotifier,
+		ctx,
+	)
 	redisWriteErrorMonitor.Start()
 
 	router := chi.NewRouter()

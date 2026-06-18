@@ -111,6 +111,12 @@ func (l *ListString) SetValue(value string) error {
 	return nil
 }
 
+type RedisWriteErrorMonitorConfig struct {
+	RedisWriteErrorLogThresholdPerSec    uint64        `yaml:"REDIS_WRITE_ERROR_LOG_THRESHOLD_PER_SEC" env:"REDIS_WRITE_ERROR_LOG_THRESHOLD_PER_SEC"`
+	RedisWriteErrorStopThresholdPerSec   uint64        `yaml:"REDIS_WRITE_ERROR_STOP_THRESHOLD_PER_SEC" env:"REDIS_WRITE_ERROR_STOP_THRESHOLD_PER_SEC"`
+	RedisWriteErrorMonitorTickerInterval time.Duration `yaml:"REDIS_WRITE_ERROR_MONITOR_TICKER_INTERVAL" env:"REDIS_WRITE_ERROR_MONITOR_TICKER_INTERVAL"`
+}
+
 type BiddingEngineConfig struct {
 	HttpServer                          HttpServer
 	GrpcServer                          GrpcServer
@@ -120,6 +126,7 @@ type BiddingEngineConfig struct {
 	AdmDomain                           string  `yaml:"ADM_DOMAIN" env:"ADM_DOMAIN"`
 	BotBaseURL                          string  `yaml:"BOT_BASE_URL" env:"BOT_BASE_URL"`
 	BotInternalSecret                   string  `yaml:"BOT_INTERNAL_SECRET" env:"BOT_INTERNAL_SECRET"`
+	RedisWriteErrorMonitorConfig
 
 	RedisConfig
 }
@@ -154,6 +161,7 @@ type RouterConfig struct {
 	Debug               bool   `yaml:"DEBUG" env:"DEBUG" env-default:"false"`
 	BotBaseURL          string `yaml:"BOT_BASE_URL" env:"BOT_BASE_URL"`
 	BotInternalSecret   string `yaml:"BOT_INTERNAL_SECRET" env:"BOT_INTERNAL_SECRET"`
+	RedisWriteErrorMonitorConfig
 
 	RedisConfig
 }
@@ -204,6 +212,7 @@ type SppAdapterConfig struct {
 	IPLimitIPv6Table              string `yaml:"IP_LIMIT_IPV6_TABLE" env:"IP_LIMIT_IPV6_TABLE" env-default:"ip_limit_ipv6"`
 	BotBaseURL                    string `yaml:"BOT_BASE_URL" env:"BOT_BASE_URL"`
 	BotInternalSecret             string `yaml:"BOT_INTERNAL_SECRET" env:"BOT_INTERNAL_SECRET"`
+	RedisWriteErrorMonitorConfig
 
 	RedisConfig
 }
@@ -217,8 +226,9 @@ type AdmAdapterConfig struct {
 	RsaFullChain            string        `yaml:"RSA_FULLCHAIN_PEM" env:"RSA_FULLCHAIN_PEM"`
 	RsaPrivKey              string        `yaml:"RSA_PRIVKEY_PEM" env:"RSA_PRIVKEY_PEM"`
 	SspAdapterWorkStatusURL string        `yaml:"SSP_ADAPTER_WORK_STATUS_URL" env:"SSP_ADAPTER_WORK_STATUS_URL"`
-	BotBaseURL              string        `yaml:"BOT_BASE_URL" env:"BOT_BASE_URL"`
-	BotInternalSecret       string        `yaml:"BOT_INTERNAL_SECRET" env:"BOT_INTERNAL_SECRET"`
+	RedisWriteErrorMonitorConfig
+	BotBaseURL        string `yaml:"BOT_BASE_URL" env:"BOT_BASE_URL"`
+	BotInternalSecret string `yaml:"BOT_INTERNAL_SECRET" env:"BOT_INTERNAL_SECRET"`
 
 	RedisConfig
 }
