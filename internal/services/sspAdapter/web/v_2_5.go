@@ -399,7 +399,7 @@ func postBid_V2_5(
 	}
 
 	if res.Code == 703 {
-		err := fmt.Errorf("Site id blocked all: %s", device.GetUa())
+		err := fmt.Errorf("Site id blocked all")
 		log.Printf("error: %s, feed: %s", err.Error(), ssp_domain)
 
 		for _, uuid := range impIdUuid {
@@ -432,7 +432,7 @@ func postBid_V2_5(
 			}
 		}
 
-		w.WriteHeader(http.StatusBadRequest)
+		w.WriteHeader(http.StatusForbidden)
 		return
 	}
 
