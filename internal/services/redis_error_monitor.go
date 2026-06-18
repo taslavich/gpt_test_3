@@ -13,27 +13,33 @@ import (
 	utils "gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/utils_grpc"
 )
 
-const (
-	RedisWriteErrorLogThresholdPerSec  = uint64(200)
-	RedisWriteErrorStopThresholdPerSec = uint64(800)
-
-	sspAdapterWorkStatusAllPath = "/work_status/all"
-)
+const sspAdapterWorkStatusAllPath = "/work_status/all"
 
 type RedisWriteErrorMonitor struct {
-	name     string
-	errors   atomic.Uint64
-	lastURL  atomic.Value
-	stopFunc func(uint64, string)
-	notifier *utils.BotMessage
-	ctx      context.Context
+	name                 string
+	errors               atomic.Uint64
+	lastURL              atomic.Value
+	stopFunc             func(uint64, string)
+	notifier             *utils.BotMessage
+	ctx                  context.Context
+	logThresholdPerTick  uint64
+	stopThresholdPerTick uint64
+	tickerInterval       time.Duration
 }
 
-func NewRedisWriteErrorMonitor(name string, stopFunc func(uint64, string), notifier *utils.BotMessage, ctx context.Context) *RedisWriteErrorMonitor {
+func NewRedisWriteErrorMonitorWithSettings(name string, logThresholdPerTick uint64, stopThresholdPerTick uint64, tickerInterval time.Duration, stopFunc func(uint64, string), notifier *utils.BotMessage, ctx context.Context) *RedisWriteErrorMonitor {
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	return &RedisWriteErrorMonitor{name: name, stopFunc: stopFunc, notifier: notifier, ctx: ctx}
+	return &RedisWriteErrorMonitor{
+		name:                 name,
+		logThresholdPerTick:  logThresholdPerTick,
+		stopThresholdPerTick: stopThresholdPerTick,
+		tickerInterval:       tickerInterval,
+		stopFunc:             stopFunc,
+		notifier:             notifier,
+		ctx:                  ctx,
+	}
 }
 
 func (m *RedisWriteErrorMonitor) Record(err error) {
@@ -56,14 +62,14 @@ func (m *RedisWriteErrorMonitor) Start() {
 	}
 
 	go func() {
-		ticker := time.NewTicker(time.Second)
+		ticker := time.NewTicker(m.tickerInterval)
 		defer ticker.Stop()
 
 		for range ticker.C {
 			count := m.errors.Swap(0)
-			if count >= RedisWriteErrorStopThresholdPerSec {
+			if count >= m.stopThresholdPerTick {
 				workStatusURL, _ := m.lastURL.Load().(string)
-				message := fmt.Sprintf("ОСТАНОВКА service=%s Redis write errors reached %d requests/sec, stopping SSP adapter ORTB streams; ssp_adapter_url=%s", m.name, count, workStatusURL)
+				message := fmt.Sprintf("ОСТАНОВКА service=%s Redis write errors reached %d requests per monitor tick, stopping SSP adapter ORTB streams; ticker_interval=%s; ssp_adapter_url=%s", m.name, count, m.tickerInterval, workStatusURL)
 				log.Print(message)
 				if err := m.notifier.SendTextMessageToBot(m.ctx, message); err != nil {
 					log.Printf("❌ failed to send bot notification: %v", err)
@@ -74,9 +80,9 @@ func (m *RedisWriteErrorMonitor) Start() {
 				continue
 			}
 
-			if count >= RedisWriteErrorLogThresholdPerSec {
+			if count >= m.logThresholdPerTick {
 				workStatusURL, _ := m.lastURL.Load().(string)
-				message := fmt.Sprintf("ПРЕДУПРЕЖДЕНИЕ service=%s Redis write errors reached %d requests/sec; ssp_adapter_url=%s", m.name, count, workStatusURL)
+				message := fmt.Sprintf("ПРЕДУПРЕЖДЕНИЕ service=%s Redis write errors reached %d requests per monitor tick; ticker_interval=%s; ssp_adapter_url=%s", m.name, count, m.tickerInterval, workStatusURL)
 				log.Print(message)
 				if err := m.notifier.SendTextMessageToBot(m.ctx, message); err != nil {
 					log.Printf("❌ failed to send bot notification: %v", err)
