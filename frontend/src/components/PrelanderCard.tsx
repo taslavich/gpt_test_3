@@ -1,0 +1,2 @@
+import type { Prelander } from '../types/prelander';
+export function PrelanderCard({ item }: { item: Prelander }) { return <div className="card"><div className="meta"><b>{item.style}</b><span>{item.vertical} · {item.geo} · {item.language}</span></div><p>{new Date(item.created_at).toLocaleString()}</p><div className="actions"><button onClick={()=>window.open(item.preview_url,'_blank')}>Open preview</button><button onClick={()=>navigator.clipboard.writeText(item.preview_url)}>Copy URL</button></div></div> }
