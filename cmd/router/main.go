@@ -148,9 +148,17 @@ func main() {
 	}
 
 	botNotifier := utils.NewBotMessage(cfg.BotBaseURL, cfg.BotInternalSecret)
-	redisWriteErrorMonitor := services.NewRedisWriteErrorMonitor("router", func(count uint64, workStatusURL string) {
-		services.StopSspAdapterOrtbStreams(ctx, workStatusURL)
-	}, botNotifier, ctx)
+	redisWriteErrorMonitor := services.NewRedisWriteErrorMonitorWithSettings(
+		"router",
+		cfg.RedisWriteErrorLogThresholdPerTick,
+		cfg.RedisWriteErrorStopThresholdPerTick,
+		cfg.RedisWriteErrorMonitorTickerInterval,
+		func(count uint64, workStatusURL string) {
+			services.StopSspAdapterOrtbStreams(ctx, workStatusURL)
+		},
+		botNotifier,
+		ctx,
+	)
 	redisWriteErrorMonitor.Start()
 
 	s := grpc.NewServer()

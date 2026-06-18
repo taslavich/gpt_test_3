@@ -85,9 +85,17 @@ func main() {
 	}
 	log.Println("✅ Connected to ADM/NURL Redis")
 
-	redisWriteErrorMonitor := services.NewRedisWriteErrorMonitor("adm-adapter", func(count uint64, workStatusURL string) {
-		services.StopSspAdapterOrtbStreams(ctx, cfg.SspAdapterWorkStatusURL)
-	}, utils.NewBotMessage(cfg.BotBaseURL, cfg.BotInternalSecret), ctx)
+	redisWriteErrorMonitor := services.NewRedisWriteErrorMonitorWithSettings(
+		"adm-adapter",
+		cfg.RedisWriteErrorLogThresholdPerTick,
+		cfg.RedisWriteErrorStopThresholdPerTick,
+		cfg.RedisWriteErrorMonitorTickerInterval,
+		func(count uint64, workStatusURL string) {
+			services.StopSspAdapterOrtbStreams(ctx, cfg.SspAdapterWorkStatusURL)
+		},
+		utils.NewBotMessage(cfg.BotBaseURL, cfg.BotInternalSecret),
+		ctx,
+	)
 	redisWriteErrorMonitor.Start()
 
 	router := httpServer.InitHttpRouter(chi.NewRouter())
