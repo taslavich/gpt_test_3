@@ -431,7 +431,7 @@ ANY INNER JOIN {db}.ortb AS o
 WHERE a.uuid NOT IN (
     SELECT uuid
     FROM {db}.fact_impressions
-    WHERE created_at >= now() - INTERVAL 6 MINUTE
+    WHERE created_at >= now() - INTERVAL 65 MINUTE
 )
 AND a.created_at >= now() - INTERVAL 60 MINUTE;
 
@@ -494,7 +494,7 @@ ANY INNER JOIN {db}.ortb AS o
 WHERE a.uuid NOT IN (
     SELECT uuid
     FROM {db}.fact_clicks
-    WHERE created_at >= now() - INTERVAL 6 MINUTE
+    WHERE created_at >= now() - INTERVAL 65 MINUTE
 )
 AND a.created_at >= now() - INTERVAL 60 MINUTE;
 -- ============================================================
