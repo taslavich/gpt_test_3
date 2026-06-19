@@ -102,7 +102,7 @@ FROM
     FROM {db}.ortb
     WHERE ip IS NOT NULL
     GROUP BY ip
-    HAVING cnt > 200
+    HAVING cnt > 300
 )
 WHERE ip NOT IN
 (
@@ -142,7 +142,7 @@ FROM
     FROM {db}.ortb
     WHERE ipv6 IS NOT NULL
     GROUP BY ip
-    HAVING cnt > 200
+    HAVING cnt > 300
 )
 WHERE ip NOT IN
 (
