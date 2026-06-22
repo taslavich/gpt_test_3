@@ -483,18 +483,13 @@ func compactKafkaWriteError(err error) string {
 }
 
 func HasDataClicks(record types.Clicks) bool {
-	return record.UUID != "" &&
-		record.EVENT_TIME_CLICKS != "" &&
-		record.FORMAT != ""
+	return record.UUID != ""
 }
 
 func HasDataImpressions(record types.Impressions) bool {
-	return record.UUID != "" &&
-		record.EVENT_TIME_IMPRESSIONS != "" &&
-		record.FORMAT != ""
+	return record.UUID != ""
 }
 
 func HasDataOrtb(record types.Ortb) bool {
-	return record.UUID != "" &&
-		record.EVENT_TIME != ""
+	return record.UUID != ""
 }

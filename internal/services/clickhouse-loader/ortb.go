@@ -107,7 +107,12 @@ func insertBatchOrtb(
 			u = uuid.Nil
 		}
 
-		ts := time.UnixMilli(r.EventTimeMs).UTC()
+		ts := func() time.Time {
+			if r.EventTimeMs != 0 {
+				return time.UnixMilli(r.EventTimeMs).UTC()
+			}
+			return time.Now().UTC()
+		}
 
 		var ip *net.IP
 		if r.Ip != "" {
@@ -193,5 +198,5 @@ func hasDataOrtbProtoCH(record *eventspb.OrtbEvent) bool {
 		return false
 	}
 
-	return record.Uuid != "" && record.EventTimeMs != 0
+	return record.Uuid != ""
 }

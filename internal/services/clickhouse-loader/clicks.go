@@ -55,7 +55,7 @@ func hasDataClickProtoCH(record *eventspb.ClickEvent) bool {
 		return false
 	}
 
-	return record.Uuid != "" && record.EventTimeClicksMs != 0
+	return record.Uuid != ""
 }
 
 func insertBatchClicks(

@@ -55,7 +55,7 @@ func hasDataImpressionProtoCH(record *eventspb.ImpressionEvent) bool {
 		return false
 	}
 
-	return record.Uuid != "" && record.EventTimeImpressionsMs != 0
+	return record.Uuid != ""
 }
 
 func insertBatchImpressions(
