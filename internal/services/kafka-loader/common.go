@@ -160,7 +160,14 @@ func processRedisKafkaShard(
 	}
 
 	if len(kafkaMessages) == 0 {
-		restoreUUIDsFromProcessingToReady(ctx, redisClient, setName, processingSetName, uuids)
+		cleanupProcessedRedisRecordsFromProcessing(ctx, redisClient, processingSetName, uuidsToDelete)
+		log.Printf(
+			"✅ %s shard %d processed: uuids=%d kafka_messages=0 empty=%d",
+			cfg.SuccessLogName,
+			shardID,
+			len(uuids),
+			emptyCount,
+		)
 		return 0, nil
 	}
 
@@ -432,14 +439,19 @@ func compactKafkaWriteError(err error) string {
 	return msg[:maxLen] + "... [truncated]"
 }
 
-func HasDataOrtb(record types.Ortb) bool {
-	return record.UUID != ""
-}
-
 func HasDataClicks(record types.Clicks) bool {
-	return record.UUID != ""
+	return record.UUID != "" &&
+		record.EVENT_TIME_CLICKS != "" &&
+		record.FORMAT != ""
 }
 
 func HasDataImpressions(record types.Impressions) bool {
-	return record.UUID != ""
+	return record.UUID != "" &&
+		record.EVENT_TIME_IMPRESSIONS != "" &&
+		record.FORMAT != ""
+}
+
+func HasDataOrtb(record types.Ortb) bool {
+	return record.UUID != "" &&
+		record.EVENT_TIME != ""
 }

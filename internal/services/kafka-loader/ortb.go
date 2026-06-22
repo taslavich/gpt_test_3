@@ -103,7 +103,6 @@ func buildOrtbKafkaMessage(
 	}
 
 	if !HasDataOrtb(rawRecord) {
-		log.Printf("⚠️ shard %d: ORTB record has no uuid", shardID)
 		return kafka.Message{}, false, nil
 	}
 

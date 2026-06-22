@@ -3,7 +3,6 @@ package kafka_loader
 import (
 	"context"
 	"fmt"
-	"log"
 
 	"github.com/redis/go-redis/v9"
 	"github.com/segmentio/kafka-go"
@@ -59,7 +58,6 @@ func buildImpressionKafkaMessage(
 	}
 
 	if !HasDataImpressions(rawRecord) {
-		log.Printf("⚠️ shard %d: IMPRESSIONS record has no uuid", shardID)
 		return kafka.Message{}, false, nil
 	}
 

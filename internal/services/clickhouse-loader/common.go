@@ -92,7 +92,6 @@ func processKafkaMessagesBatch[T any](
 		if !cfg.HasData(&record) {
 			emptyCount++
 			rememberCommitMessage(commitMap, msg)
-			log.Printf("%s record has no uuid", cfg.LogName)
 			continue
 		}
 
