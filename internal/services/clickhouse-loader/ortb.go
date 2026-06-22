@@ -107,11 +107,9 @@ func insertBatchOrtb(
 			u = uuid.Nil
 		}
 
-		ts := func() time.Time {
-			if r.EventTimeMs != 0 {
-				return time.UnixMilli(r.EventTimeMs).UTC()
-			}
-			return time.Now().UTC()
+		ts := time.Now().UTC()
+		if r.EventTimeMs != 0 {
+			ts = time.UnixMilli(r.EventTimeMs).UTC()
 		}
 
 		var ip *net.IP
