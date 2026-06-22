@@ -22,4 +22,6 @@ message OrchestratorResponse_V2_5 {
   ortb_V2_5.BidResponse bidResponse = 1;
   string globalId = 2;
   int32 code = 3;
+  repeated string failedImpIds = 4;
+  map<string, string> impIdUuidClone = 5;
 }

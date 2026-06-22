@@ -139,16 +139,34 @@ func (s *Server) GetWinnerBid_V2_5(
 		}
 	}
 
-	for _, uuid := range req.ImpIdUuid {
+	impIdUuidClone := make(map[string]string, len(req.ImpIdUuid))
+	for impID, uuid := range req.ImpIdUuid {
+		impIdUuidClone[impID] = uuid
+	}
+
+	failedImpIds := make([]string, 0)
+	for impID, uuid := range req.ImpIdUuid {
 		if err := utils.WriteWinStats(ctx, s.redisClients, uuid, clickhouseBid[uuid], req.Logged); err != nil {
 			log.Printf("failed to WriteJsonToRedis Bid BID_RESPONSE_WINNER in GetWinnerBidInternal: %v", err)
 			s.redisWriteErrorMonitor.RecordForURL(err, req.SspUrl)
+			failedImpIds = append(failedImpIds, impID)
+			delete(impIdUuidClone, impID)
+			continue
 		}
 
 		if err := utils.AddUUIDToRedisSet(ctx, s.redisClients, s.redisSetOrtb, uuid, req.Logged); err != nil {
 			log.Printf("failed to add ORTB UUID to Redis set in GetWinnerBidInternal: %v", err)
 			s.redisWriteErrorMonitor.RecordForURL(err, req.SspUrl)
+			failedImpIds = append(failedImpIds, impID)
+			delete(impIdUuidClone, impID)
 		}
+	}
+
+	if len(impIdUuidClone) == 0 {
+		return &bidEngineGrpc.BidEngineResponse_V2_5{
+			BidResponse: nil,
+			Code:        http.StatusNoContent,
+		}, nil
 	}
 
 	if len(bidResponse.Seatbid[0].Bid) == 0 {
@@ -159,7 +177,9 @@ func (s *Server) GetWinnerBid_V2_5(
 	}
 
 	return &bidEngineGrpc.BidEngineResponse_V2_5{
-		BidResponse: bidResponse,
-		Code:        http.StatusOK,
+		BidResponse:    bidResponse,
+		Code:           http.StatusOK,
+		FailedImpIds:   failedImpIds,
+		ImpIdUuidClone: impIdUuidClone,
 	}, nil
 }
