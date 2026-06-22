@@ -41,7 +41,11 @@ func main() {
 	if err != nil {
 		log.Fatalf("Cannot init redis shards: %v", err)
 	}
-	defer redisClients.Close()
+	defer func() {
+		if err := redisClients.Close(); err != nil {
+			log.Printf("⚠️ failed to close Redis clients: %v", err)
+		}
+	}()
 
 	if err := redis_service.PingClients(ctx, "Imp", redisClients.Impressions); err != nil {
 		log.Fatalf("Failed to connect to Imp Redis shards: %v", err)
@@ -63,7 +67,11 @@ func main() {
 	if err != nil {
 		log.Fatalf("Cannot init ADM Redis client: %v", err)
 	}
-	defer redisAdmClient.Close()
+	defer func() {
+		if err := redisAdmClient.Close(); err != nil {
+			log.Printf("⚠️ failed to close ADM Redis client: %v", err)
+		}
+	}()
 
 	redisNurlClient, err := redis_service.NewRedisClient(
 		cfg.RedisUUIDAddr,
@@ -75,7 +83,11 @@ func main() {
 	if err != nil {
 		log.Fatalf("Cannot init NURL Redis client: %v", err)
 	}
-	defer redisNurlClient.Close()
+	defer func() {
+		if err := redisNurlClient.Close(); err != nil {
+			log.Printf("⚠️ failed to close NURL Redis client: %v", err)
+		}
+	}()
 
 	if err := redisAdmClient.Ping(ctx).Err(); err != nil {
 		log.Fatalf("Failed to connect to ADM Redis: %v", err)

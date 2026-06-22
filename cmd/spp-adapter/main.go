@@ -51,7 +51,11 @@ func main() {
 	if err != nil {
 		log.Fatalf("Cannot init redis shards: %v", err)
 	}
-	defer redisClients.Close()
+	defer func() {
+		if err := redisClients.Close(); err != nil {
+			log.Printf("⚠️ failed to close Redis clients: %v", err)
+		}
+	}()
 
 	if err := redis_service.PingClients(ctx, "spp-adapter", redisClients.Ortb); err != nil {
 		log.Fatalf("Failed to connect to Redis shards: %v", err)
@@ -105,7 +109,11 @@ func main() {
 	if err != nil {
 		log.Fatalf("❌ ClickHouse Open connection failed: %v", err)
 	}
-	defer clickhouseConn.Close()
+	defer func() {
+		if err := clickhouseConn.Close(); err != nil {
+			log.Printf("⚠️ failed to close ClickHouse connection: %v", err)
+		}
+	}()
 
 	if err := clickhouseConn.Ping(ctx); err != nil {
 		log.Fatalf("❌ ClickHouse ping failed: %v", err)

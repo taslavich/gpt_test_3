@@ -50,7 +50,11 @@ func main() {
 	if err != nil {
 		log.Fatalf("Cannot init redis shards: %v", err)
 	}
-	defer redisClients.Close()
+	defer func() {
+		if err := redisClients.Close(); err != nil {
+			log.Printf("⚠️ failed to close Redis clients: %v", err)
+		}
+	}()
 
 	if err := redis_service.PingClients(ctx, "ORTB", redisClients.Ortb); err != nil {
 		log.Fatalf("Failed to connect to ORTB redis shards: %v", err)
@@ -71,9 +75,24 @@ func main() {
 	if err != nil {
 		log.Fatalf("Cannot init kafka: %v", err)
 	}
-	defer kafkaWriter.Clicks.Close()
-	defer kafkaWriter.Impressions.Close()
-	defer kafkaWriter.Ortb.Close()
+
+	defer func() {
+		if err := kafkaWriter.Clicks.Close(); err != nil {
+			log.Printf("⚠️ failed to close Clicks Kafka writer: %v", err)
+		}
+	}()
+
+	defer func() {
+		if err := kafkaWriter.Impressions.Close(); err != nil {
+			log.Printf("⚠️ failed to close Impressions Kafka writer: %v", err)
+		}
+	}()
+
+	defer func() {
+		if err := kafkaWriter.Ortb.Close(); err != nil {
+			log.Printf("⚠️ failed to close ORTB Kafka writer: %v", err)
+		}
+	}()
 
 	log.Println("✅ Kafka writer initialized")
 
@@ -91,7 +110,11 @@ func main() {
 	if err != nil {
 		log.Fatalf("❌ ClickHouse Open connection failed: %v", err)
 	}
-	defer connProd.Close()
+	defer func() {
+		if err := connProd.Close(); err != nil {
+			log.Printf("⚠️ failed to close ClickHouse batch-ratio connection: %v", err)
+		}
+	}()
 
 	if err := connProd.Ping(ctx); err != nil {
 		log.Fatalf("❌ ClickHouse ping failed: %v", err)
@@ -234,7 +257,22 @@ func main() {
 	}()
 
 	<-sigChan
-	log.Print("🛑 Shutting down Kafka Loader")
+	log.Print("🛑 Graceful shutdown requested")
+
+	loaderControl.Stop()
+
+	done := make(chan struct{})
+	go func() {
+		loaderWG.Wait()
+		close(done)
+	}()
+
+	select {
+	case <-done:
+		log.Print("✅ Current batches finished")
+	case <-time.After(5 * time.Second):
+		log.Print("⚠️ Graceful shutdown timeout, forcing cancel")
+	}
+
 	cancel()
-	loaderWG.Wait()
 }

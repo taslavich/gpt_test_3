@@ -218,7 +218,9 @@ func InitKafkaReaders(cfg config.KafkaConfig) (*KafkaReaders, error) {
 		cfg.KafkaGroupIDImpressions,
 	)
 	if err != nil {
-		_ = ortbReader.Close()
+		if closeErr := ortbReader.Close(); closeErr != nil {
+			log.Printf("⚠️ failed to close ORTB Kafka reader after init error: %v", closeErr)
+		}
 		return nil, err
 	}
 
@@ -228,8 +230,12 @@ func InitKafkaReaders(cfg config.KafkaConfig) (*KafkaReaders, error) {
 		cfg.KafkaGroupIDClicks,
 	)
 	if err != nil {
-		_ = ortbReader.Close()
-		_ = impressionsReader.Close()
+		if closeErr := impressionsReader.Close(); closeErr != nil {
+			log.Printf("⚠️ failed to close Impressions Kafka reader after init error: %v", closeErr)
+		}
+		if closeErr := ortbReader.Close(); closeErr != nil {
+			log.Printf("⚠️ failed to close ORTB Kafka reader after init error: %v", closeErr)
+		}
 		return nil, err
 	}
 
@@ -321,14 +327,21 @@ func CreateKafkaWriters(cfg config.KafkaConfig) (*KafkaWriters, error) {
 
 	impressionsWriter, err := CreateKafkaWriter(cfg.KafkaBrokers, cfg.KafkaTopicImpressions)
 	if err != nil {
-		_ = ortbWriter.Close()
+		if closeErr := ortbWriter.Close(); closeErr != nil {
+			log.Printf("⚠️ failed to close ORTB Kafka writer after init error: %v", closeErr)
+		}
+
 		return nil, err
 	}
 
 	clicksWriter, err := CreateKafkaWriter(cfg.KafkaBrokers, cfg.KafkaTopicClicks)
 	if err != nil {
-		_ = ortbWriter.Close()
-		_ = impressionsWriter.Close()
+		if closeErr := ortbWriter.Close(); closeErr != nil {
+			log.Printf("⚠️ failed to close ORTB Kafka writer after init error: %v", closeErr)
+		}
+		if closeErr := impressionsWriter.Close(); closeErr != nil {
+			log.Printf("⚠️ failed to close Impressions Kafka writer after init error: %v", closeErr)
+		}
 		return nil, err
 	}
 

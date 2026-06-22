@@ -47,7 +47,11 @@ func main() {
 	if err != nil {
 		log.Fatalf("❌ ClickHouse Open connection failed: %v", err)
 	}
-	defer conn.Close()
+	defer func() {
+		if err := conn.Close(); err != nil {
+			log.Printf("⚠️ failed to close Default ClickHouse connection: %v", err)
+		}
+	}()
 
 	if err := conn.Ping(ctx); err != nil {
 		log.Fatalf("❌ ClickHouse ping failed: %v", err)
@@ -80,7 +84,12 @@ func main() {
 	if err != nil {
 		log.Fatalf("❌ Prod ClickHouse Open connection failed: %v", err)
 	}
-	defer connProd.Close()
+
+	defer func() {
+		if err := connProd.Close(); err != nil {
+			log.Printf("⚠️ failed to close ClickHouse batch-ratio connection: %v", err)
+		}
+	}()
 
 	if err := connProd.Ping(ctx); err != nil {
 		log.Fatalf("❌ Prod ClickHouse ping failed: %v", err)
@@ -105,9 +114,23 @@ func main() {
 	if err != nil {
 		log.Fatalf("Cannot init kafka: %v", err)
 	}
-	defer kafkaReaders.Ortb.Close()
-	defer kafkaReaders.Impressions.Close()
-	defer kafkaReaders.Clicks.Close()
+	defer func() {
+		if err := kafkaReaders.Clicks.Close(); err != nil {
+			log.Printf("⚠️ failed to close Clicks Kafka reader: %v", err)
+		}
+	}()
+
+	defer func() {
+		if err := kafkaReaders.Impressions.Close(); err != nil {
+			log.Printf("⚠️ failed to close Impressions Kafka reader: %v", err)
+		}
+	}()
+
+	defer func() {
+		if err := kafkaReaders.Ortb.Close(); err != nil {
+			log.Printf("⚠️ failed to close ORTB Kafka reader: %v", err)
+		}
+	}()
 	log.Println("✅ Kafka readers initialized")
 
 	log.Println("GROUP_ID", cfg)
@@ -233,7 +256,22 @@ func main() {
 	}()
 
 	<-sigChan
-	log.Print("🛑 Shutting down ClickHouse Loader")
+	log.Print("🛑 Graceful shutdown requested")
+
+	loaderControl.Stop()
+
+	done := make(chan struct{})
+	go func() {
+		loaderWG.Wait()
+		close(done)
+	}()
+
+	select {
+	case <-done:
+		log.Print("✅ Current batches finished")
+	case <-time.After(5 * time.Second):
+		log.Print("⚠️ Graceful shutdown timeout, forcing cancel")
+	}
+
 	cancel()
-	loaderWG.Wait()
 }

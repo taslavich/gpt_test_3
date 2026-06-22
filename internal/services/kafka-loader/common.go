@@ -129,6 +129,11 @@ func processRedisKafkaShard(
 	}
 
 	if _, err := readPipe.Exec(ctx); err != nil {
+		newCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		if restoreErr := restoreUUIDsFromProcessingToReady(newCtx, redisClient, setName, processingSetName, uuids); restoreErr != nil {
+			return 0, fmt.Errorf("shard %d: failed to write %s messages to Kafka: err=%s", shardID, cfg.WriteMessagesName, compactKafkaWriteError(err))
+		}
+		defer cancel()
 		return 0, fmt.Errorf("shard %d: failed to HMGET %s from Redis: %w", shardID, cfg.HMGetDataName, err)
 	}
 
@@ -139,6 +144,11 @@ func processRedisKafkaShard(
 	for i, cmd := range cmds {
 		values, err := cmd.Result()
 		if err != nil {
+			newCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			if restoreErr := restoreUUIDsFromProcessingToReady(newCtx, redisClient, setName, processingSetName, uuids); restoreErr != nil {
+				return 0, fmt.Errorf("shard %d: failed to write %s messages to Kafka: messages=%d err=%s", shardID, cfg.WriteMessagesName, len(kafkaMessages), compactKafkaWriteError(err))
+			}
+			defer cancel()
 			return 0, fmt.Errorf("⚠️ shard %d: failed to get %s for UUID %s: %v", shardID, cfg.GetDataName, uuids[i], err)
 		}
 
@@ -146,6 +156,11 @@ func processRedisKafkaShard(
 
 		message, shouldSend, err := cfg.BuildMessage(shardID, key, values)
 		if err != nil {
+			newCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			if restoreErr := restoreUUIDsFromProcessingToReady(newCtx, redisClient, setName, processingSetName, uuids); restoreErr != nil {
+				return 0, fmt.Errorf("shard %d: failed to write %s messages to Kafka: messages=%d err=%s", shardID, cfg.WriteMessagesName, len(kafkaMessages), compactKafkaWriteError(err))
+			}
+			defer cancel()
 			return 0, err
 		}
 
@@ -176,9 +191,11 @@ func processRedisKafkaShard(
 
 	if len(kafkaMessages) > 0 {
 		if err := kafkaWriter.WriteMessages(ctx, kafkaMessages...); err != nil {
-			if restoreErr := restoreUUIDsFromProcessingToReady(ctx, redisClient, setName, processingSetName, uuids); restoreErr != nil {
+			newCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			if restoreErr := restoreUUIDsFromProcessingToReady(newCtx, redisClient, setName, processingSetName, uuids); restoreErr != nil {
 				return 0, fmt.Errorf("shard %d: failed to write %s messages to Kafka: messages=%d err=%s", shardID, cfg.WriteMessagesName, len(kafkaMessages), compactKafkaWriteError(err))
 			}
+			defer cancel()
 
 			return 0, fmt.Errorf(
 				"shard %d: failed to write %s messages to Kafka: messages=%d err=%s",
@@ -276,12 +293,17 @@ func popUUIDsToProcessing(
 
 	if err := redisClient.SAdd(ctx, processingSetName, stringSliceToAny(uuids)...).Err(); err != nil {
 		// Возвращаем обратно в ready, потому что не смогли положить в processing.
-		_ = redisClient.SAdd(ctx, readySetName, stringSliceToAny(uuids)...).Err()
+		if restoreErr := redisClient.SAdd(ctx, readySetName, stringSliceToAny(uuids)...).Err(); restoreErr != nil {
+			return nil, fmt.Errorf("failed to restore UUIDs to ready set %q: %w", readySetName, restoreErr)
+		}
+
 		return nil, fmt.Errorf("failed to SADD to processing set %q: %w", processingSetName, err)
 	}
 
 	// Защита от вечного зависания processing-set.
-	_ = redisClient.Expire(ctx, processingSetName, 10*time.Minute).Err()
+	if err := redisClient.Expire(ctx, processingSetName, 10*time.Minute).Err(); err != nil {
+		return nil, fmt.Errorf("failed to set expiration for processing set %q: %w", processingSetName, err)
+	}
 
 	return uuids, nil
 }
@@ -368,11 +390,13 @@ func valueAsBytes(values []interface{}, index int) []byte {
 
 func parseUint32Safe(s string) uint32 {
 	if s == "" {
+		log.Printf("parseUint32Safe: empty string, returning 0")
 		return 0
 	}
 
 	v, err := strconv.ParseUint(s, 10, 32)
 	if err != nil {
+		log.Printf("parseUint32Safe: failed to parse %q as uint32: %v, returning 0", s, err)
 		return 0
 	}
 
@@ -381,11 +405,13 @@ func parseUint32Safe(s string) uint32 {
 
 func parseFloat64Safe(s string) float64 {
 	if s == "" {
+		log.Printf("parseFloat64Safe: empty string, returning 0")
 		return 0
 	}
 
 	v, err := strconv.ParseFloat(s, 64)
 	if err != nil {
+		log.Printf("parseFloat64Safe: failed to parse %q as float64: %v, returning 0", s, err)
 		return 0
 	}
 
@@ -394,6 +420,7 @@ func parseFloat64Safe(s string) float64 {
 
 func parseUnixMsSafe(s string) int64 {
 	if s == "" {
+		log.Printf("parseUnixMsSafe: empty string, returning 0")
 		return 0
 	}
 

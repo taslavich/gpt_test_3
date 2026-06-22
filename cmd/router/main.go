@@ -66,7 +66,11 @@ func main() {
 	if err != nil {
 		log.Fatalf("Cannot init redis shards: %v", err)
 	}
-	defer redisClients.Close()
+	defer func() {
+		if err := redisClients.Close(); err != nil {
+			log.Printf("⚠️ failed to close Redis clients: %v", err)
+		}
+	}()
 
 	if err := redis_service.PingClients(ctx, "router", redisClients.Ortb); err != nil {
 		log.Fatalf("Failed to connect to Redis shards: %v", err)

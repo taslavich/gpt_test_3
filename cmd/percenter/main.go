@@ -38,7 +38,11 @@ func main() {
 			Database: cfg.Clickhouse.Database,
 		},
 	})
-	defer conn.Close()
+	defer func() {
+	if err := conn.Close(); err != nil {
+		log.Printf("⚠️ failed to close Default ClickHouse connection: %v", err)
+	}
+}()
 
 	if err := conn.PingContext(ctx); err != nil {
 		log.Fatalf("❌ ClickHouse ping failed: %v", err)

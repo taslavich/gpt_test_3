@@ -3,6 +3,7 @@ package clickhouse_loader
 import (
 	"context"
 	"fmt"
+	"log"
 	"net"
 	"time"
 
@@ -174,11 +175,13 @@ func insertBatchOrtb(
 
 func encodeBidResponsesRaw(items map[string]int32) string {
 	if len(items) == 0 {
+		log.Printf("encodeBidResponsesRaw: empty items map, returning empty string")
 		return ""
 	}
 
 	payload, err := proto.Marshal(&eventspb.BidResponses{Items: items})
 	if err != nil {
+		log.Printf("encodeBidResponsesRaw: failed to marshal BidResponses protobuf: %v", err)
 		return ""
 	}
 
