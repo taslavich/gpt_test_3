@@ -12,7 +12,7 @@ import (
 
 const (
 	DefaultTopicPartitions = 48
-	DefaultRetentionHours  = 6
+	DefaultRetentionHours  = 48
 )
 
 type KafkaReaders struct {
@@ -114,7 +114,7 @@ func ensureTopicExists(brokers []string, topic string, numPartitions int) error 
 		},
 		{
 			ConfigName:  "retention.bytes",
-			ConfigValue: fmt.Sprintf("%d", 2*1024*1024*1024), // 2 GB
+			ConfigValue: "-1",
 		},
 		{
 			ConfigName:  "cleanup.policy",

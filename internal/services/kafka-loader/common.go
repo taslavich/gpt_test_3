@@ -160,7 +160,10 @@ func processRedisKafkaShard(
 	}
 
 	if len(kafkaMessages) == 0 {
-		cleanupProcessedRedisRecordsFromProcessing(ctx, redisClient, processingSetName, uuidsToDelete)
+		if err := cleanupProcessedRedisRecordsFromProcessing(ctx, redisClient, processingSetName, uuidsToDelete); err != nil {
+			return 0, err
+		}
+
 		log.Printf(
 			"✅ %s shard %d processed: uuids=%d kafka_messages=0 empty=%d",
 			cfg.SuccessLogName,
@@ -173,7 +176,9 @@ func processRedisKafkaShard(
 
 	if len(kafkaMessages) > 0 {
 		if err := kafkaWriter.WriteMessages(ctx, kafkaMessages...); err != nil {
-			restoreUUIDsFromProcessingToReady(ctx, redisClient, setName, processingSetName, uuids)
+			if restoreErr := restoreUUIDsFromProcessingToReady(ctx, redisClient, setName, processingSetName, uuids); restoreErr != nil {
+				return 0, fmt.Errorf("shard %d: failed to write %s messages to Kafka: messages=%d err=%s", shardID, cfg.WriteMessagesName, len(kafkaMessages), compactKafkaWriteError(err))
+			}
 
 			return 0, fmt.Errorf(
 				"shard %d: failed to write %s messages to Kafka: messages=%d err=%s",
@@ -185,7 +190,9 @@ func processRedisKafkaShard(
 		}
 	}
 
-	cleanupProcessedRedisRecordsFromProcessing(ctx, redisClient, processingSetName, uuidsToDelete)
+	if err := cleanupProcessedRedisRecordsFromProcessing(ctx, redisClient, processingSetName, uuidsToDelete); err != nil {
+		return 0, err
+	}
 
 	log.Printf(
 		"✅ %s shard %d processed: uuids=%d kafka_messages=%d empty=%d",
@@ -284,9 +291,9 @@ func cleanupProcessedRedisRecordsFromProcessing(
 	redisClient *redis.Client,
 	processingSetName string,
 	uuids []string,
-) {
+) error {
 	if len(uuids) == 0 {
-		return
+		return nil
 	}
 
 	for start := 0; start < len(uuids); start += redisCleanupChunkSize {
@@ -298,13 +305,15 @@ func cleanupProcessedRedisRecordsFromProcessing(
 		chunk := uuids[start:end]
 
 		if err := redisClient.SRem(ctx, processingSetName, stringSliceToAny(chunk)...).Err(); err != nil {
-			log.Printf("⚠️ failed to SREM UUIDs from processing set %q: %v", processingSetName, err)
+			return fmt.Errorf("⚠️ failed to SREM UUIDs from processing set %q: %v", processingSetName, err)
 		}
 
 		if err := redisClient.Unlink(ctx, chunk...).Err(); err != nil {
-			log.Printf("⚠️ failed to UNLINK processed Redis records: %v", err)
+			return fmt.Errorf("⚠️ failed to UNLINK processed Redis records: %v", err)
 		}
 	}
+
+	return nil
 }
 
 func restoreUUIDsFromProcessingToReady(
@@ -313,9 +322,9 @@ func restoreUUIDsFromProcessingToReady(
 	readySetName string,
 	processingSetName string,
 	uuids []string,
-) {
+) error {
 	if len(uuids) == 0 {
-		return
+		return nil
 	}
 
 	for start := 0; start < len(uuids); start += redisCleanupChunkSize {
@@ -327,13 +336,15 @@ func restoreUUIDsFromProcessingToReady(
 		chunk := uuids[start:end]
 
 		if err := redisClient.SAdd(ctx, readySetName, stringSliceToAny(chunk)...).Err(); err != nil {
-			log.Printf("⚠️ failed to restore UUIDs to ready set %q: %v", readySetName, err)
+			return fmt.Errorf("⚠️ failed to restore UUIDs to ready set %q: %v", readySetName, err)
 		}
 
 		if err := redisClient.SRem(ctx, processingSetName, stringSliceToAny(chunk)...).Err(); err != nil {
-			log.Printf("⚠️ failed to remove restored UUIDs from processing set %q: %v", processingSetName, err)
+			return fmt.Errorf("⚠️ failed to remove restored UUIDs from processing set %q: %v", processingSetName, err)
 		}
 	}
+
+	return nil
 }
 
 func valueAsBytes(values []interface{}, index int) []byte {
@@ -403,7 +414,9 @@ func parseUnixMsSafe(s string) int64 {
 		}
 	}
 
-	return 0
+	log.Printf("Cannot parseUnixMsSafe: unrecognized time format: %q", s)
+
+	return time.Now().UnixMilli()
 }
 
 func parseBidResponsesFromRedis(values []interface{}, index int) (map[string]int32, error) {
