@@ -53,7 +53,7 @@ func (s *Server) GetWinnerBid_V2_5(
 			grpcCode := codes.Internal
 
 			resp = nil
-			funcErr = status.Errorf(grpcCode, err.Error())
+			funcErr = status.Error(grpcCode, err.Error())
 		}
 	}()
 	getBidsReqCtx, cancel := context.WithTimeout(ctx, s.getBidsTimeout)
@@ -82,7 +82,7 @@ func (s *Server) GetWinnerBid_V2_5(
 			newErr = fmt.Errorf("Can not get bids from router in  GetWinnerBid because got error: %w", st.Err())
 		}
 
-		return nil, status.Errorf(grpcCode, newErr.Error())
+		return nil, status.Error(grpcCode, newErr.Error())
 	}
 
 	if bids.Code == 703 {
@@ -119,11 +119,13 @@ func (s *Server) GetWinnerBid_V2_5(
 			newErr = fmt.Errorf("Can not GetWinnerBid_V2_5 from bidEngine in GetWinnerBid because got error: %w", st.Err())
 		}
 
-		return nil, status.Errorf(grpcCode, newErr.Error())
+		return nil, status.Error(grpcCode, newErr.Error())
 	}
 
 	return &orchestratorGrpc.OrchestratorResponse_V2_5{
-		BidResponse: winner.BidResponse,
-		Code: winner.Code,
+		BidResponse:    winner.BidResponse,
+		Code:           winner.Code,
+		FailedImpIds:   winner.FailedImpIds,
+		ImpIdUuidClone: winner.ImpIdUuidClone,
 	}, nil
 }

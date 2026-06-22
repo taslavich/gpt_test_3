@@ -54,9 +54,14 @@ func getAdm(
 	if err := utils.WriteClickStats(ctx, redisClients, input.GlobalId, format, true); err != nil {
 		log.Printf("failed to WriteClickStats in getAdm: %v", err)
 		redisWriteErrorMonitor.RecordForURL(err, sspAdapterWorkStatusURL)
-	} else if err := utils.AddUUIDToRedisSet(ctx, redisClients, redisSetClicks, input.GlobalId, true); err != nil {
+		w.WriteHeader(http.StatusServiceUnavailable)
+		return
+	}
+	if err := utils.AddUUIDToRedisSet(ctx, redisClients, redisSetClicks, input.GlobalId, true); err != nil {
 		log.Printf("failed to add click UUID to Redis set in getAdm: %v", err)
 		redisWriteErrorMonitor.RecordForURL(err, sspAdapterWorkStatusURL)
+		w.WriteHeader(http.StatusServiceUnavailable)
+		return
 	}
 
 	http.Redirect(w, r, decodedURL, http.StatusFound)
@@ -103,9 +108,14 @@ func getNurl(
 	if err := utils.WriteImpressionStats(ctx, redisClients, input.GlobalId, format, true); err != nil {
 		log.Printf("failed to WriteImpressionStats in getNurl: %v", err)
 		redisWriteErrorMonitor.RecordForURL(err, sspAdapterWorkStatusURL)
-	} else if err := utils.AddUUIDToRedisSet(ctx, redisClients, redisSetImpressions, input.GlobalId, true); err != nil {
+		w.WriteHeader(http.StatusServiceUnavailable)
+		return
+	}
+	if err := utils.AddUUIDToRedisSet(ctx, redisClients, redisSetImpressions, input.GlobalId, true); err != nil {
 		log.Printf("failed to add impression UUID to Redis set in getNurl: %v", err)
 		redisWriteErrorMonitor.RecordForURL(err, sspAdapterWorkStatusURL)
+		w.WriteHeader(http.StatusServiceUnavailable)
+		return
 	}
 
 	http.Redirect(w, r, decodedURL, http.StatusFound)
