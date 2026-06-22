@@ -130,10 +130,11 @@ func processRedisKafkaShard(
 
 	if _, err := readPipe.Exec(ctx); err != nil {
 		newCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
 		if restoreErr := restoreUUIDsFromProcessingToReady(newCtx, redisClient, setName, processingSetName, uuids); restoreErr != nil {
 			return 0, fmt.Errorf("shard %d: failed to write %s messages to Kafka: err=%s", shardID, cfg.WriteMessagesName, compactKafkaWriteError(err))
 		}
-		defer cancel()
+
 		return 0, fmt.Errorf("shard %d: failed to HMGET %s from Redis: %w", shardID, cfg.HMGetDataName, err)
 	}
 
@@ -145,10 +146,11 @@ func processRedisKafkaShard(
 		values, err := cmd.Result()
 		if err != nil {
 			newCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
 			if restoreErr := restoreUUIDsFromProcessingToReady(newCtx, redisClient, setName, processingSetName, uuids); restoreErr != nil {
 				return 0, fmt.Errorf("shard %d: failed to write %s messages to Kafka: messages=%d err=%s", shardID, cfg.WriteMessagesName, len(kafkaMessages), compactKafkaWriteError(err))
 			}
-			defer cancel()
+
 			return 0, fmt.Errorf("⚠️ shard %d: failed to get %s for UUID %s: %v", shardID, cfg.GetDataName, uuids[i], err)
 		}
 
@@ -157,10 +159,11 @@ func processRedisKafkaShard(
 		message, shouldSend, err := cfg.BuildMessage(shardID, key, values)
 		if err != nil {
 			newCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
 			if restoreErr := restoreUUIDsFromProcessingToReady(newCtx, redisClient, setName, processingSetName, uuids); restoreErr != nil {
 				return 0, fmt.Errorf("shard %d: failed to write %s messages to Kafka: messages=%d err=%s", shardID, cfg.WriteMessagesName, len(kafkaMessages), compactKafkaWriteError(err))
 			}
-			defer cancel()
+
 			return 0, err
 		}
 
@@ -192,10 +195,10 @@ func processRedisKafkaShard(
 	if len(kafkaMessages) > 0 {
 		if err := kafkaWriter.WriteMessages(ctx, kafkaMessages...); err != nil {
 			newCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
 			if restoreErr := restoreUUIDsFromProcessingToReady(newCtx, redisClient, setName, processingSetName, uuids); restoreErr != nil {
 				return 0, fmt.Errorf("shard %d: failed to write %s messages to Kafka: messages=%d err=%s", shardID, cfg.WriteMessagesName, len(kafkaMessages), compactKafkaWriteError(err))
 			}
-			defer cancel()
 
 			return 0, fmt.Errorf(
 				"shard %d: failed to write %s messages to Kafka: messages=%d err=%s",
