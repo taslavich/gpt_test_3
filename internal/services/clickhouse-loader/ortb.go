@@ -178,7 +178,7 @@ func insertBatchOrtb(
 
 func encodeBidResponsesRaw(items map[string]int32) string {
 	if len(items) == 0 {
-		log.Printf("encodeBidResponsesRaw: empty items map, returning empty string")
+		//log.Printf("encodeBidResponsesRaw: empty items map, returning empty string")
 		return ""
 	}
 
