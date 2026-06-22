@@ -2,9 +2,7 @@ package clickhouse_loader
 
 import (
 	"context"
-	"errors"
 	"fmt"
-	"log"
 	"net"
 	"time"
 
@@ -15,12 +13,6 @@ import (
 	"google.golang.org/protobuf/proto"
 )
 
-type ortbInsertStats struct {
-	badUUIDCount int
-	badIPCount   int
-	appendErrors int
-}
-
 func ProcessKafkaMessagesOrtb(
 	ctx context.Context,
 	reader *kafka.Reader,
@@ -30,103 +22,31 @@ func ProcessKafkaMessagesOrtb(
 	timeoutSec int,
 	timeoutMs int,
 ) (int, error) {
-	if batchSize <= 0 {
-		return 0, nil
-	}
-
-	start := time.Now()
-	readCtx, cancel := context.WithTimeout(ctx, batchTimeout(timeoutSec, timeoutMs))
-	defer cancel()
-
-	records := make([]eventspb.OrtbEvent, 0, batchSize)
-	commitMap := make(map[int]kafka.Message, 64)
-
-	var (
-		readCount     int
-		badProtoCount int
-		emptyCount    int
-		commitOnlyCnt int
+	return processKafkaMessagesBatch(
+		ctx,
+		reader,
+		ch,
+		table,
+		batchSize,
+		timeoutSec,
+		timeoutMs,
+		clickhouseBatchConfig[eventspb.OrtbEvent]{
+			LogName:    "ORTB",
+			CommitName: "ORTB",
+			Unmarshal:  unmarshalOrtbEvent,
+			HasData:    hasDataOrtbProtoCH,
+			Insert:     insertBatchOrtb,
+		},
 	)
+}
 
-	for len(records) < batchSize {
-		msg, err := reader.FetchMessage(readCtx)
-		if err != nil {
-			if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) {
-				break
-			}
-			return 0, err
-		}
-
-		readCount++
-
-		var record eventspb.OrtbEvent
-		if err := proto.Unmarshal(msg.Value, &record); err != nil {
-			badProtoCount++
-			commitOnlyCnt++
-			rememberCommitMessage(commitMap, msg)
-			continue
-		}
-
-		if !hasDataOrtbProtoCH(&record) {
-			emptyCount++
-			commitOnlyCnt++
-			rememberCommitMessage(commitMap, msg)
-			continue
-		}
-
-		records = append(records, record)
-		rememberCommitMessage(commitMap, msg)
+func unmarshalOrtbEvent(value []byte) (eventspb.OrtbEvent, error) {
+	var record eventspb.OrtbEvent
+	if err := proto.Unmarshal(value, &record); err != nil {
+		return eventspb.OrtbEvent{}, err
 	}
 
-	if len(records) > 0 {
-		stats, err := insertBatchOrtb(ctx, ch, table, records)
-		if err != nil {
-			return 0, err
-		}
-
-		commitMessages := compactCommitMessages(commitMap)
-		if err := reader.CommitMessages(ctx, commitMessages...); err != nil {
-			return 0, fmt.Errorf("commit ORTB offsets after successful insert failed: %w", err)
-		}
-
-		log.Printf("COMMITED ORTB records=%d offsets=%d", len(records), len(commitMessages))
-
-		log.Printf(
-			"ORTB batch: read=%d inserted=%d offsets=%d bad_proto=%d empty=%d commit_only=%d bad_uuid=%d bad_ip=%d append_errors=%d duration=%s",
-			readCount,
-			len(records),
-			len(commitMessages),
-			badProtoCount,
-			emptyCount,
-			commitOnlyCnt,
-			stats.badUUIDCount,
-			stats.badIPCount,
-			stats.appendErrors,
-			time.Since(start),
-		)
-		return len(records), nil
-	}
-
-	commitMessages := compactCommitMessages(commitMap)
-	if len(commitMessages) > 0 {
-		if err := reader.CommitMessages(ctx, commitMessages...); err != nil {
-			log.Printf("⚠️ Failed to commit skipped ORTB offsets: %v", err)
-		}
-	}
-
-	if readCount > 0 {
-		log.Printf(
-			"ORTB batch: read=%d inserted=0 offsets=%d bad_proto=%d empty=%d commit_only=%d duration=%s",
-			readCount,
-			len(commitMessages),
-			badProtoCount,
-			emptyCount,
-			commitOnlyCnt,
-			time.Since(start),
-		)
-	}
-
-	return 0, nil
+	return record, nil
 }
 
 func insertBatchOrtb(
@@ -134,8 +54,9 @@ func insertBatchOrtb(
 	ch clickhouse.Conn,
 	table string,
 	records []eventspb.OrtbEvent,
-) (ortbInsertStats, error) {
-	var stats ortbInsertStats
+) (clickhouseInsertStats, error) {
+	var stats clickhouseInsertStats
+
 	if len(records) == 0 {
 		return stats, nil
 	}
@@ -181,7 +102,7 @@ func insertBatchOrtb(
 
 		u, err := uuid.Parse(r.Uuid)
 		if err != nil {
-			stats.badUUIDCount++
+			stats.BadUUIDCount++
 			u = uuid.Nil
 		}
 
@@ -193,7 +114,7 @@ func insertBatchOrtb(
 			if parsedIP != nil && parsedIP.To4() != nil {
 				ip = &parsedIP
 			} else {
-				stats.badIPCount++
+				stats.BadIPCount++
 			}
 		}
 
@@ -203,7 +124,7 @@ func insertBatchOrtb(
 			if parsedIP != nil && parsedIP.To16() != nil {
 				ipv6 = &parsedIP
 			} else {
-				stats.badIPCount++
+				stats.BadIPCount++
 			}
 		}
 
@@ -239,9 +160,8 @@ func insertBatchOrtb(
 			r.WinCrid,
 			r.WinUserId,
 		); err != nil {
-			stats.appendErrors++
-			log.Printf("Record %d: batch.Append error: %v, skipping record", i, err)
-			continue
+			stats.AppendErrors++
+			return stats, fmt.Errorf("Record %d: batch.Append: %w", i, err)
 		}
 	}
 
@@ -271,26 +191,4 @@ func hasDataOrtbProtoCH(record *eventspb.OrtbEvent) bool {
 	}
 
 	return record.Uuid != "" && record.EventTimeMs != 0
-}
-
-func parseTimestampUTC(s string) time.Time {
-	fallback := time.Unix(0, 0).UTC()
-
-	if s == "" {
-		return fallback
-	}
-
-	layouts := []string{
-		"2006-01-02 15:04:05.000",
-		"2006-01-02 15:04:05",
-		time.RFC3339Nano,
-	}
-
-	for _, layout := range layouts {
-		if t, err := time.ParseInLocation(layout, s, time.UTC); err == nil {
-			return t
-		}
-	}
-
-	return fallback
 }

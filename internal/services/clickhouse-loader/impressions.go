@@ -2,9 +2,7 @@ package clickhouse_loader
 
 import (
 	"context"
-	"errors"
 	"fmt"
-	"log"
 	"time"
 
 	"github.com/ClickHouse/clickhouse-go/v2"
@@ -12,11 +10,6 @@ import (
 	"github.com/segmentio/kafka-go"
 	eventspb "gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/proto/buffer"
 	"google.golang.org/protobuf/proto"
-)
-
-var (
-	impressionsMessagesBuffer []kafka.Message
-	impressionsRecordsBuffer  []eventspb.ImpressionEvent
 )
 
 func ProcessKafkaMessagesImpressions(
@@ -28,69 +21,41 @@ func ProcessKafkaMessagesImpressions(
 	timeoutSec int,
 	timeoutMs int,
 ) error {
-	if batchSize <= 0 {
-		return nil
-	}
-
-	readCtx, cancel := context.WithTimeout(ctx, batchTimeout(timeoutSec, timeoutMs))
-	defer cancel()
-
-	commitOnlyMap := make(map[int]kafka.Message, 64)
-
-	for len(impressionsRecordsBuffer) < batchSize {
-		msg, err := reader.FetchMessage(readCtx)
-		if err != nil {
-			if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) {
-				break
-			}
-			return err
-		}
-
-		var record eventspb.ImpressionEvent
-		if err := proto.Unmarshal(msg.Value, &record); err != nil {
-			rememberCommitMessage(commitOnlyMap, msg)
-			continue
-		}
-
-		if record.Uuid == "" || record.EventTimeImpressionsMs == 0 {
-			rememberCommitMessage(commitOnlyMap, msg)
-			continue
-		}
-
-		impressionsRecordsBuffer = append(impressionsRecordsBuffer, record)
-		impressionsMessagesBuffer = append(impressionsMessagesBuffer, msg)
-	}
-
-	if len(impressionsRecordsBuffer) == 0 {
-		commitSkipped(ctx, reader, commitOnlyMap, "impression skipped")
-		return nil
-	}
-
-	insertCount := len(impressionsRecordsBuffer)
-	if insertCount > batchSize {
-		insertCount = batchSize
-	}
-
-	records := impressionsRecordsBuffer[:insertCount]
-	messages := impressionsMessagesBuffer[:insertCount]
-
-	if err := insertBatchImpressions(ctx, ch, table, records); err != nil {
-		return err
-	}
-
-	commitMessages := compactCommitMessagesFromSlice(messages)
-	if err := reader.CommitMessages(ctx, commitMessages...); err != nil {
-		return fmt.Errorf("commit impression offsets after successful insert failed: %w", err)
-	}
-	log.Printf(
-		"IMPRESSIONS batch: inserted=%d offsets=%d",
-		insertCount,
-		len(commitMessages),
+	_, err := processKafkaMessagesBatch(
+		ctx,
+		reader,
+		ch,
+		table,
+		batchSize,
+		timeoutSec,
+		timeoutMs,
+		clickhouseBatchConfig[eventspb.ImpressionEvent]{
+			LogName:    "IMPRESSIONS",
+			CommitName: "impression",
+			Unmarshal:  unmarshalImpressionEvent,
+			HasData:    hasDataImpressionProtoCH,
+			Insert:     insertBatchImpressions,
+		},
 	)
 
-	impressionsRecordsBuffer = impressionsRecordsBuffer[insertCount:]
-	impressionsMessagesBuffer = impressionsMessagesBuffer[insertCount:]
-	return nil
+	return err
+}
+
+func unmarshalImpressionEvent(value []byte) (eventspb.ImpressionEvent, error) {
+	var record eventspb.ImpressionEvent
+	if err := proto.Unmarshal(value, &record); err != nil {
+		return eventspb.ImpressionEvent{}, err
+	}
+
+	return record, nil
+}
+
+func hasDataImpressionProtoCH(record *eventspb.ImpressionEvent) bool {
+	if record == nil {
+		return false
+	}
+
+	return record.Uuid != "" && record.EventTimeImpressionsMs != 0
 }
 
 func insertBatchImpressions(
@@ -98,9 +63,11 @@ func insertBatchImpressions(
 	ch clickhouse.Conn,
 	table string,
 	records []eventspb.ImpressionEvent,
-) error {
+) (clickhouseInsertStats, error) {
+	var stats clickhouseInsertStats
+
 	if len(records) == 0 {
-		return nil
+		return stats, nil
 	}
 
 	query := fmt.Sprintf(`
@@ -113,36 +80,29 @@ func insertBatchImpressions(
 
 	batch, err := ch.PrepareBatch(ctx, query)
 	if err != nil {
-		return fmt.Errorf("PrepareBatch: %w", err)
+		return stats, fmt.Errorf("PrepareBatch: %w", err)
 	}
 
 	for i := range records {
 		r := &records[i]
+
 		u, err := uuid.Parse(r.Uuid)
 		if err != nil {
+			stats.BadUUIDCount++
 			u = uuid.Nil
 		}
 
 		ts := time.UnixMilli(r.EventTimeImpressionsMs).UTC()
 
 		if err := batch.Append(u, ts, r.Format); err != nil {
-			return fmt.Errorf("batch.Append: %w", err)
+			stats.AppendErrors++
+			return stats, fmt.Errorf("Record %d: batch.Append: %w", i, err)
 		}
 	}
 
 	if err := batch.Send(); err != nil {
-		return fmt.Errorf("batch.Send: %w", err)
+		return stats, fmt.Errorf("batch.Send: %w", err)
 	}
 
-	return nil
-}
-
-func commitSkipped(ctx context.Context, reader *kafka.Reader, commitMap map[int]kafka.Message, logPrefix string) {
-	commitMessages := compactCommitMessages(commitMap)
-	if len(commitMessages) == 0 {
-		return
-	}
-	if err := reader.CommitMessages(ctx, commitMessages...); err != nil {
-		log.Printf("⚠️ Failed to commit %s offsets: %v", logPrefix, err)
-	}
+	return stats, nil
 }

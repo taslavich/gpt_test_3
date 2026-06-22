@@ -4,9 +4,6 @@ import (
 	"context"
 	"fmt"
 	"log"
-	"strconv"
-	"sync"
-	"time"
 
 	"github.com/redis/go-redis/v9"
 	"github.com/segmentio/kafka-go"
@@ -15,8 +12,6 @@ import (
 	"gitlab.com/twinbid-exchange/RTB-exchange/internal/types"
 	"google.golang.org/protobuf/proto"
 )
-
-const redisCleanupChunkSize = 5000
 
 var ortbHMGetFields = []string{
 	constants.EVENT_TIME_COLUMN,
@@ -53,457 +48,107 @@ func ProcessBatchOrtb(
 	batchSize int64,
 	setName string,
 ) (int, error) {
-	if batchSize <= 0 {
-		return 0, nil
-	}
-
-	if setName == "" {
-		return 0, fmt.Errorf("redis set name is empty")
-	}
-
-	if len(redisClients) == 0 {
-		return 0, fmt.Errorf("redis clients list is empty")
-	}
-
-	start := time.Now()
-	defer func() {
-		log.Printf("⏱️ ORTB batch took %s", time.Since(start))
-	}()
-
-	perShardLimit := kafkaLoaderSplitLimit(batchSize, len(redisClients))
-
-	var wg sync.WaitGroup
-	errCh := make(chan error, len(redisClients))
-	var mu sync.Mutex
-	totalProcessed := 0
-
-	for shardID, redisClient := range redisClients {
-		wg.Add(1)
-
-		go func(shardID int, redisClient *redis.Client) {
-			defer wg.Done()
-
-			processed, err := processOrtbShard(
-				ctx,
-				shardID,
-				redisClient,
-				kafkaWriter,
-				perShardLimit,
-				setName,
-			)
-			if err != nil {
-				errCh <- err
-				return
-			}
-
-			mu.Lock()
-			totalProcessed += processed
-			mu.Unlock()
-		}(shardID, redisClient)
-	}
-
-	wg.Wait()
-	close(errCh)
-
-	for err := range errCh {
-		if err != nil {
-			return totalProcessed, err
-		}
-	}
-
-	return totalProcessed, nil
-}
-
-func processOrtbShard(
-	ctx context.Context,
-	shardID int,
-	redisClient *redis.Client,
-	kafkaWriter *kafka.Writer,
-	batchSize int64,
-	setName string,
-) (int, error) {
-	processingSetName := fmt.Sprintf("%s:processing:%d", setName, shardID)
-
-	uuids, err := popUUIDsToProcessing(ctx, redisClient, setName, processingSetName, batchSize)
-	if err != nil {
-		return 0, fmt.Errorf("shard %d: failed to pop UUIDs to processing: %w", shardID, err)
-	}
-
-	if len(uuids) == 0 {
-		return 0, nil
-	}
-
-	readPipe := redisClient.Pipeline()
-	cmds := make([]*redis.SliceCmd, 0, len(uuids))
-
-	for _, uuid := range uuids {
-		cmds = append(cmds, readPipe.HMGet(ctx, uuid, ortbHMGetFields...))
-	}
-
-	if _, err := readPipe.Exec(ctx); err != nil {
-		return 0, fmt.Errorf("shard %d: failed to HMGET data from Redis: %w", shardID, err)
-	}
-
-	kafkaMessages := make([]kafka.Message, 0, len(uuids))
-	uuidsToDelete := make([]string, 0, len(uuids))
-
-	for i, cmd := range cmds {
-		values, err := cmd.Result()
-		if err != nil {
-			log.Printf("⚠️ shard %d: failed to get data for UUID %s: %v", shardID, uuids[i], err)
-			continue
-		}
-
-		key := uuids[i]
-
-		rawRecord := types.Ortb{
-			UUID:            key,
-			EVENT_TIME:      valueAsString(values, 0),
-			TYPIC:           valueAsString(values, 1),
-			FORMAT:          valueAsString(values, 2),
-			SPP_DOMAIN:      valueAsString(values, 3),
-			GEO:             valueAsString(values, 4),
-			CITY_ID:         valueAsString(values, 5),
-			CODE:            valueAsString(values, 6),
-			BID_RESPONSES:   valueAsString(values, 7),
-			IP:              valueAsString(values, 8),
-			IPV6:            valueAsString(values, 9),
-			LANG:            valueAsString(values, 10),
-			BROWSER:         valueAsString(values, 11),
-			BROWSER_VERSION: valueAsString(values, 12),
-			OS:              valueAsString(values, 13),
-			OS_VERSION:      valueAsString(values, 14),
-			DEVICE:          valueAsString(values, 15),
-			SITE_ID:         valueAsString(values, 16),
-			SITE_DOMAIN:     valueAsString(values, 17),
-			BID_FLOOR:       valueAsString(values, 18),
-			WIN_DSP_DOMAIN:  valueAsString(values, 19),
-			WIN_PRICE:       valueAsString(values, 20),
-			WIN_DSP_PRICE:   valueAsString(values, 21),
-			WIN_CID:         valueAsString(values, 22),
-			WIN_CRID:        valueAsString(values, 23),
-			WIN_USER_ID:     valueAsString(values, 24),
-		}
-
-		if !types.HasDataOrtb(rawRecord) {
-			continue
-		}
-
-		bidResponses, err := parseBidResponsesFromRedis(values, 7)
-		if err != nil {
-			log.Printf("Ошибка парсинга bidResponses из Redis (index 7): %v", err)
-			bidResponses = make(map[string]int32)
-		}
-
-		event := &eventspb.OrtbEvent{
-			Uuid:           rawRecord.UUID,
-			EventTimeMs:    parseUnixMsSafe(rawRecord.EVENT_TIME),
-			Typic:          rawRecord.TYPIC,
-			Format:         rawRecord.FORMAT,
-			SppDomain:      rawRecord.SPP_DOMAIN,
-			Geo:            rawRecord.GEO,
-			CityId:         parseUint32Safe(rawRecord.CITY_ID),
-			Code:           parseUint32Safe(rawRecord.CODE),
-			BidResponses:   bidResponses,
-			Ip:             rawRecord.IP,
-			Ipv6:           rawRecord.IPV6,
-			Lang:           rawRecord.LANG,
-			Browser:        rawRecord.BROWSER,
-			BrowserVersion: rawRecord.BROWSER_VERSION,
-			Os:             rawRecord.OS,
-			OsVersion:      rawRecord.OS_VERSION,
-			Device:         rawRecord.DEVICE,
-			SiteId:         rawRecord.SITE_ID,
-			SiteDomain:     rawRecord.SITE_DOMAIN,
-			BidFloor:       parseFloat64Safe(rawRecord.BID_FLOOR),
-			WinDspDomain:   rawRecord.WIN_DSP_DOMAIN,
-			WinPrice:       parseFloat64Safe(rawRecord.WIN_PRICE),
-			WinDspPrice:    parseFloat64Safe(rawRecord.WIN_DSP_PRICE),
-			WinCid:         rawRecord.WIN_CID,
-			WinCrid:        rawRecord.WIN_CRID,
-			WinUserId:      rawRecord.WIN_USER_ID,
-		}
-
-		protoData, err := proto.Marshal(event)
-		if err != nil {
-			log.Printf("❌ shard %d: failed to marshal ORTB protobuf for UUID %s: %v", shardID, key, err)
-			continue
-		}
-
-		kafkaMessages = append(kafkaMessages, kafka.Message{
-			Key:   []byte(key),
-			Value: protoData,
-		})
-
-		uuidsToDelete = append(uuidsToDelete, key)
-	}
-
-	if len(kafkaMessages) == 0 {
-		restoreUUIDsFromProcessingToReady(ctx, redisClient, setName, processingSetName, uuids)
-		return 0, nil
-	}
-
-	if len(kafkaMessages) > 0 {
-		if err := kafkaWriter.WriteMessages(ctx, kafkaMessages...); err != nil {
-			restoreUUIDsFromProcessingToReady(ctx, redisClient, setName, processingSetName, uuids)
-
-			return 0, fmt.Errorf(
-				"shard %d: failed to write ORTB messages to Kafka: messages=%d err=%s",
-				shardID,
-				len(kafkaMessages),
-				compactKafkaWriteError(err),
-			)
-		}
-	}
-
-	cleanupProcessedRedisRecordsFromProcessing(ctx, redisClient, processingSetName, uuidsToDelete)
-
-	log.Printf(
-		"✅ ORTB shard %d processed: uuids=%d kafka_messages=%d",
-		shardID,
-		len(uuids),
-		len(kafkaMessages),
+	return processRedisKafkaBatch(
+		ctx,
+		redisClients,
+		kafkaWriter,
+		batchSize,
+		setName,
+		redisKafkaBatchConfig{
+			Name:                 "ORTB",
+			BatchDurationLogName: "ORTB",
+			PopUUIDsName:         "UUIDs",
+			HMGetDataName:        "data",
+			GetDataName:          "data",
+			WriteMessagesName:    "ORTB",
+			SuccessLogName:       "ORTB",
+			HMGetFields:          ortbHMGetFields,
+			BuildMessage:         buildOrtbKafkaMessage,
+		},
 	)
-
-	return len(kafkaMessages), nil
 }
 
-func kafkaLoaderSplitLimit(total int64, shardCount int) int64 {
-	if total <= 0 {
-		return 0
+func buildOrtbKafkaMessage(
+	shardID int,
+	uuid string,
+	values []interface{},
+) (kafka.Message, bool, error) {
+	rawRecord := types.Ortb{
+		UUID:            uuid,
+		EVENT_TIME:      valueAsString(values, 0),
+		TYPIC:           valueAsString(values, 1),
+		FORMAT:          valueAsString(values, 2),
+		SPP_DOMAIN:      valueAsString(values, 3),
+		GEO:             valueAsString(values, 4),
+		CITY_ID:         valueAsString(values, 5),
+		CODE:            valueAsString(values, 6),
+		BID_RESPONSES:   valueAsString(values, 7),
+		IP:              valueAsString(values, 8),
+		IPV6:            valueAsString(values, 9),
+		LANG:            valueAsString(values, 10),
+		BROWSER:         valueAsString(values, 11),
+		BROWSER_VERSION: valueAsString(values, 12),
+		OS:              valueAsString(values, 13),
+		OS_VERSION:      valueAsString(values, 14),
+		DEVICE:          valueAsString(values, 15),
+		SITE_ID:         valueAsString(values, 16),
+		SITE_DOMAIN:     valueAsString(values, 17),
+		BID_FLOOR:       valueAsString(values, 18),
+		WIN_DSP_DOMAIN:  valueAsString(values, 19),
+		WIN_PRICE:       valueAsString(values, 20),
+		WIN_DSP_PRICE:   valueAsString(values, 21),
+		WIN_CID:         valueAsString(values, 22),
+		WIN_CRID:        valueAsString(values, 23),
+		WIN_USER_ID:     valueAsString(values, 24),
 	}
 
-	if shardCount <= 0 {
-		return total
+	if !HasDataOrtb(rawRecord) {
+		log.Printf("⚠️ shard %d: ORTB record has no uuid", shardID)
+		return kafka.Message{}, false, nil
 	}
 
-	limit := total / int64(shardCount)
-	if total%int64(shardCount) != 0 {
-		limit++
-	}
-
-	if limit <= 0 {
-		return 1
-	}
-
-	return limit
-}
-
-func valueAsString(values []interface{}, index int) string {
-	if index < 0 || index >= len(values) {
-		return ""
-	}
-
-	if values[index] == nil {
-		return ""
-	}
-
-	switch v := values[index].(type) {
-	case string:
-		return v
-	case []byte:
-		return string(v)
-	default:
-		return fmt.Sprint(v)
-	}
-}
-
-func stringSliceToAny(slice []string) []interface{} {
-	result := make([]interface{}, len(slice))
-	for i, v := range slice {
-		result[i] = v
-	}
-	return result
-}
-
-func popUUIDsToProcessing(
-	ctx context.Context,
-	redisClient *redis.Client,
-	readySetName string,
-	processingSetName string,
-	batchSize int64,
-) ([]string, error) {
-	if batchSize <= 0 {
-		return nil, nil
-	}
-
-	uuids, err := redisClient.SPopN(ctx, readySetName, batchSize).Result()
+	bidResponses, err := parseBidResponsesFromRedis(values, 7)
 	if err != nil {
-		return nil, fmt.Errorf("failed to SPOP from ready set %q: %w", readySetName, err)
+		log.Printf("Ошибка парсинга bidResponses из Redis (index 7): %v", err)
+		bidResponses = make(map[string]int32)
 	}
 
-	if len(uuids) == 0 {
-		return nil, nil
+	event := &eventspb.OrtbEvent{
+		Uuid:           rawRecord.UUID,
+		EventTimeMs:    parseUnixMsSafe(rawRecord.EVENT_TIME),
+		Typic:          rawRecord.TYPIC,
+		Format:         rawRecord.FORMAT,
+		SppDomain:      rawRecord.SPP_DOMAIN,
+		Geo:            rawRecord.GEO,
+		CityId:         parseUint32Safe(rawRecord.CITY_ID),
+		Code:           parseUint32Safe(rawRecord.CODE),
+		BidResponses:   bidResponses,
+		Ip:             rawRecord.IP,
+		Ipv6:           rawRecord.IPV6,
+		Lang:           rawRecord.LANG,
+		Browser:        rawRecord.BROWSER,
+		BrowserVersion: rawRecord.BROWSER_VERSION,
+		Os:             rawRecord.OS,
+		OsVersion:      rawRecord.OS_VERSION,
+		Device:         rawRecord.DEVICE,
+		SiteId:         rawRecord.SITE_ID,
+		SiteDomain:     rawRecord.SITE_DOMAIN,
+		BidFloor:       parseFloat64Safe(rawRecord.BID_FLOOR),
+		WinDspDomain:   rawRecord.WIN_DSP_DOMAIN,
+		WinPrice:       parseFloat64Safe(rawRecord.WIN_PRICE),
+		WinDspPrice:    parseFloat64Safe(rawRecord.WIN_DSP_PRICE),
+		WinCid:         rawRecord.WIN_CID,
+		WinCrid:        rawRecord.WIN_CRID,
+		WinUserId:      rawRecord.WIN_USER_ID,
 	}
 
-	if err := redisClient.SAdd(ctx, processingSetName, stringSliceToAny(uuids)...).Err(); err != nil {
-		// Возвращаем обратно в ready, потому что не смогли положить в processing.
-		_ = redisClient.SAdd(ctx, readySetName, stringSliceToAny(uuids)...).Err()
-		return nil, fmt.Errorf("failed to SADD to processing set %q: %w", processingSetName, err)
-	}
-
-	// Защита от вечного зависания processing-set.
-	_ = redisClient.Expire(ctx, processingSetName, 10*time.Minute).Err()
-
-	return uuids, nil
-}
-
-func cleanupProcessedRedisRecordsFromProcessing(
-	ctx context.Context,
-	redisClient *redis.Client,
-	processingSetName string,
-	uuids []string,
-) {
-	if len(uuids) == 0 {
-		return
-	}
-
-	for start := 0; start < len(uuids); start += redisCleanupChunkSize {
-		end := start + redisCleanupChunkSize
-		if end > len(uuids) {
-			end = len(uuids)
-		}
-
-		chunk := uuids[start:end]
-
-		if err := redisClient.SRem(ctx, processingSetName, stringSliceToAny(chunk)...).Err(); err != nil {
-			log.Printf("⚠️ failed to SREM UUIDs from processing set %q: %v", processingSetName, err)
-		}
-
-		if err := redisClient.Unlink(ctx, chunk...).Err(); err != nil {
-			log.Printf("⚠️ failed to UNLINK processed Redis records: %v", err)
-		}
-	}
-}
-
-func restoreUUIDsFromProcessingToReady(
-	ctx context.Context,
-	redisClient *redis.Client,
-	readySetName string,
-	processingSetName string,
-	uuids []string,
-) {
-	if len(uuids) == 0 {
-		return
-	}
-
-	for start := 0; start < len(uuids); start += redisCleanupChunkSize {
-		end := start + redisCleanupChunkSize
-		if end > len(uuids) {
-			end = len(uuids)
-		}
-
-		chunk := uuids[start:end]
-
-		if err := redisClient.SAdd(ctx, readySetName, stringSliceToAny(chunk)...).Err(); err != nil {
-			log.Printf("⚠️ failed to restore UUIDs to ready set %q: %v", readySetName, err)
-		}
-
-		if err := redisClient.SRem(ctx, processingSetName, stringSliceToAny(chunk)...).Err(); err != nil {
-			log.Printf("⚠️ failed to remove restored UUIDs from processing set %q: %v", processingSetName, err)
-		}
-	}
-}
-
-func valueAsBytes(values []interface{}, index int) []byte {
-	if index < 0 || index >= len(values) {
-		return nil
-	}
-
-	if values[index] == nil {
-		return nil
-	}
-
-	switch v := values[index].(type) {
-	case []byte:
-		return v
-	case string:
-		return []byte(v)
-	default:
-		return []byte(fmt.Sprint(v))
-	}
-}
-
-func parseUint32Safe(s string) uint32 {
-	if s == "" {
-		return 0
-	}
-
-	v, err := strconv.ParseUint(s, 10, 32)
+	protoData, err := proto.Marshal(event)
 	if err != nil {
-		return 0
+		return kafka.Message{}, false, fmt.Errorf("❌ shard %d: failed to marshal ORTB protobuf for UUID %s: %v", shardID, uuid, err)
 	}
 
-	return uint32(v)
-}
-
-func parseFloat64Safe(s string) float64 {
-	if s == "" {
-		return 0
-	}
-
-	v, err := strconv.ParseFloat(s, 64)
-	if err != nil {
-		return 0
-	}
-
-	return v
-}
-
-func parseUnixMsSafe(s string) int64 {
-	if s == "" {
-		return 0
-	}
-
-	// Если в Redis уже лежит unix ms строкой.
-	if v, err := strconv.ParseInt(s, 10, 64); err == nil {
-		return v
-	}
-
-	layouts := []string{
-		"2006-01-02 15:04:05.000",
-		"2006-01-02 15:04:05",
-		time.RFC3339Nano,
-	}
-
-	for _, layout := range layouts {
-		if t, err := time.ParseInLocation(layout, s, time.UTC); err == nil {
-			return t.UnixMilli()
-		}
-	}
-
-	return 0
-}
-
-func parseBidResponsesFromRedis(values []interface{}, index int) (map[string]int32, error) {
-	raw := valueAsBytes(values, index)
-	if len(raw) == 0 {
-		return make(map[string]int32), nil
-	}
-
-	br := &eventspb.BidResponses{}
-	if err := proto.Unmarshal(raw, br); err != nil {
-		return nil, fmt.Errorf("unmarshal BidResponses: %w", err)
-	}
-
-	if br.Items == nil {
-		return make(map[string]int32), nil
-	}
-
-	return br.Items, nil
-}
-
-func compactKafkaWriteError(err error) string {
-	if err == nil {
-		return ""
-	}
-
-	msg := err.Error()
-
-	const maxLen = 500
-	if len(msg) <= maxLen {
-		return msg
-	}
-
-	return msg[:maxLen] + "... [truncated]"
+	return kafka.Message{
+		Key:   []byte(uuid),
+		Value: protoData,
+	}, true, nil
 }
