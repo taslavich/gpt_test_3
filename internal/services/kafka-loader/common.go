@@ -408,7 +408,7 @@ func parseUint32Safe(s string) uint32 {
 
 func parseFloat64Safe(s string) float64 {
 	if s == "" {
-		log.Printf("parseFloat64Safe: empty string, returning 0")
+		//log.Printf("parseFloat64Safe: empty string, returning 0")
 		return 0
 	}
 
