@@ -153,13 +153,6 @@ func (s *Server) GetWinnerBid_V2_5(
 			delete(impIdUuidClone, impID)
 			continue
 		}
-
-		if err := utils.AddUUIDToRedisSet(ctx, s.redisClients, s.redisSetOrtb, uuid, req.Logged); err != nil {
-			log.Printf("failed to add ORTB UUID to Redis set in GetWinnerBidInternal: %v", err)
-			s.redisWriteErrorMonitor.RecordForURL(err, req.SspUrl)
-			failedImpIds = append(failedImpIds, impID)
-			delete(impIdUuidClone, impID)
-		}
 	}
 
 	if len(impIdUuidClone) == 0 {
