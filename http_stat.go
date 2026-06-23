@@ -33,7 +33,7 @@ func handleStats(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	cmdStr := fmt.Sprintf(`tail -%d /var/log/nginx/edge8086.log | awk '
+	cmdStr := fmt.Sprintf(`tail -%d /var/log/haproxy/edge8086.log | awk '
 function format_k(num) {
     if (num >= 1000) {
         if (num %% 1000 == 0) return sprintf("%%dk", num/1000)
@@ -41,39 +41,66 @@ function format_k(num) {
     }
     return sprintf("%%d", num)
 }
-{
-    split($1, dt, "T")
-    split(dt[2], tm, "+")
-    time = tm[1]
-    a[time]++
-    
+
+function get_value(prefix,    i, val) {
     for (i = 1; i <= NF; i++) {
-        if ($i == "in" && $(i-1) ~ /^[0-9]+$/) {
-            code = $(i-1)
-            if (code == 200) b[time]++
-            if (code == 499) c[time]++
-            if (code == 400) d[time]++
-            if (code == 403) e[time]++
-            if (code == 204) f[time]++
-            break
+        if (index($i, prefix) == 1) {
+            val = $i
+            sub(prefix, "", val)
+            return val
         }
     }
+    return ""
 }
+
+{
+    # HAProxy-время лежит в $4:
+    # 24/Jun/2026:00:29:35.539
+    split($4, p, ":")
+    if (length(p) >= 4) {
+        sec = p[4]
+        sub(/\..*/, "", sec)
+        time = p[2] ":" p[3] ":" sec
+    } else {
+        # fallback на rsyslog timestamp
+        split($1, dt, "T")
+        split(dt[2], tm, "+")
+        split(tm[1], t2, ".")
+        time = t2[1]
+    }
+
+    code = get_value("status=")
+    if (code == "") next
+
+    # HAProxy status=0 считаем аналогом nginx 499
+    if (code == 0) code = 499
+
+    a[time]++
+
+    if (code == 200) b[time]++
+    if (code == 204) f[time]++
+    if (code == 499) c[time]++
+    if (code == 400) d[time]++
+    if (code == 403) e[time]++
+    if (code == 429) g[time]++
+}
+
 END {
-    printf "%%-8s| %%4s | %%4s | %%4s | %%4s | %%4s | %%4s\n", \
+    printf "%%-8s| %%4s | %%4s | %%4s | %%4s | %%4s | %%4s | %%4s\n", \
            strftime("%%H:%%M:%%S"), \
-           "ALL", "200", "204", "499", "400", "403"
-    
+           "ALL", "200", "204", "499", "400", "403", "429"
+
     for (i in a) {
         if (a[i] >= 10) {
             rps_formatted = format_k(a[i])
-            printf "%%-8s| %%5s| %%4.1f%%%%| %%4.1f%%%%| %%4.1f%%%%| %%4.1f%%%%| %%4.1f%%%%\n",
+            printf "%%-8s| %%5s| %%4.1f%%%%| %%4.1f%%%%| %%4.1f%%%%| %%4.1f%%%%| %%4.1f%%%%| %%4.1f%%%%\n",
                    i, rps_formatted,
                    (b[i] + 0) / a[i] * 100,
                    (f[i] + 0) / a[i] * 100,
                    (c[i] + 0) / a[i] * 100,
                    (d[i] + 0) / a[i] * 100,
-                   (e[i] + 0) / a[i] * 100
+                   (e[i] + 0) / a[i] * 100,
+                   (g[i] + 0) / a[i] * 100
         }
     }
 }' | sort`, *input.Limit)
