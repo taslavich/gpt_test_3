@@ -449,10 +449,10 @@ func parseUnixMsSafe(s string) int64 {
 	return time.Now().UnixMilli()
 }
 
-func parseBidResponsesFromRedis(values []interface{}, index int) (map[string]int32, error) {
+func parseBidResponsesFromRedis(values []interface{}, index int) (map[string]string, error) {
 	raw := valueAsBytes(values, index)
 	if len(raw) == 0 {
-		return make(map[string]int32), nil
+		return make(map[string]string), nil
 	}
 
 	br := &eventspb.BidResponses{}
@@ -461,7 +461,7 @@ func parseBidResponsesFromRedis(values []interface{}, index int) (map[string]int
 	}
 
 	if br.Items == nil {
-		return make(map[string]int32), nil
+		return make(map[string]string), nil
 	}
 
 	return br.Items, nil

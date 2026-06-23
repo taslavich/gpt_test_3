@@ -109,7 +109,7 @@ func buildOrtbKafkaMessage(
 	bidResponses, err := parseBidResponsesFromRedis(values, 7)
 	if err != nil {
 		log.Printf("Ошибка парсинга bidResponses из Redis (index 7): %v", err)
-		bidResponses = make(map[string]int32)
+		bidResponses = make(map[string]string)
 	}
 
 	event := &eventspb.OrtbEvent{

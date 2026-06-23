@@ -123,7 +123,7 @@ type dspDomainResp struct {
 
 type dspDomainCode struct {
 	domain string
-	code   int32
+	code   string
 }
 
 func (s *Server) GetBids_V2_5(
@@ -226,7 +226,7 @@ func (s *Server) GetBids_V2_5(
 		if !utils.GetValueFomSspGeoDspMap(req.SspDomain, req.BidRequest.Device.Geo.GetCountry(), domain, linkMap, false) {
 			codesCh <- &dspDomainCode{
 				domain: domain,
-				code:   -2,
+				code:   "-2",
 			}
 			continue
 		}
@@ -235,7 +235,7 @@ func (s *Server) GetBids_V2_5(
 			//log.Println("Gor DSP filter")
 			codesCh <- &dspDomainCode{
 				domain: domain,
-				code:   -3,
+				code:   "-3",
 			}
 			continue
 		}
@@ -244,7 +244,7 @@ func (s *Server) GetBids_V2_5(
 			//log.Println("Gor DSP filter")
 			codesCh <- &dspDomainCode{
 				domain: domain,
-				code:   -1,
+				code:   "-1",
 			}
 			continue
 		}
@@ -253,7 +253,7 @@ func (s *Server) GetBids_V2_5(
 			//log.Println("Gor DSP filter")
 			codesCh <- &dspDomainCode{
 				domain: domain,
-				code:   -5,
+				code:   "-5",
 			}
 			//log.Printf("STOP SITE ID: %d, domain: %s, ssp domain: %s", req.BidRequest.Site.GetId(), domain)
 			continue
@@ -349,7 +349,7 @@ func (s *Server) GetBids_V2_5(
 				if !filter.GetValueFomCidMap(dspResp, req.SspDomain, domain, *filtersCid) {
 					codesCh <- &dspDomainCode{
 						domain: domain,
-						code:   -77,
+						code:   "-77",
 					}
 					return
 				}
@@ -357,7 +357,7 @@ func (s *Server) GetBids_V2_5(
 
 			codesCh <- &dspDomainCode{
 				domain: domain,
-				code:   code,
+				code:   fmt.Sprintf("%d", code),
 			}
 
 			if !s.processor.ProcessResponseForSPPV25(DeletePrefix(req.SspDomain), dspResp).Allowed {
@@ -407,7 +407,7 @@ func (s *Server) GetBids_V2_5(
 		close(responsesCh)
 	}()
 
-	clickResponses := make(map[string]int32)
+	clickResponses := make(map[string]string)
 	for c := range codesCh {
 		clickResponses[c.domain] = c.code
 	}
@@ -481,7 +481,7 @@ func (s *Server) getBidsFromDSPbyHTTP_V_2_5(ctx context.Context, uuid string, js
 func writeBidResponsesToRedis(
 	redisClients []*redis.Client,
 	uuid string,
-	data map[string]int32,
+	data map[string]string,
 	logged bool,
 ) error {
 	if !logged {

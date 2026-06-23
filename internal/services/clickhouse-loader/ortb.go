@@ -176,7 +176,7 @@ func insertBatchOrtb(
 	return stats, nil
 }
 
-func encodeBidResponsesRaw(items map[string]int32) string {
+func encodeBidResponsesRaw(items map[string]string) string {
 	if len(items) == 0 {
 		//log.Printf("encodeBidResponsesRaw: empty items map, returning empty string")
 		return ""

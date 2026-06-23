@@ -7,12 +7,11 @@
 package eventspb
 
 import (
+	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
+	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
 	reflect "reflect"
 	sync "sync"
 	unsafe "unsafe"
-
-	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
-	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
 )
 
 const (
@@ -24,7 +23,7 @@ const (
 
 type BidResponses struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	Items         map[string]int32       `protobuf:"bytes,1,rep,name=items,proto3" json:"items,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"varint,2,opt,name=value"`
+	Items         map[string]string      `protobuf:"bytes,1,rep,name=items,proto3" json:"items,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -59,7 +58,7 @@ func (*BidResponses) Descriptor() ([]byte, []int) {
 	return file_buffer_buffer_proto_rawDescGZIP(), []int{0}
 }
 
-func (x *BidResponses) GetItems() map[string]int32 {
+func (x *BidResponses) GetItems() map[string]string {
 	if x != nil {
 		return x.Items
 	}
@@ -75,7 +74,7 @@ type OrtbEvent struct {
 	SppDomain      string                 `protobuf:"bytes,5,opt,name=spp_domain,json=sppDomain,proto3" json:"spp_domain,omitempty"`
 	Geo            string                 `protobuf:"bytes,6,opt,name=geo,proto3" json:"geo,omitempty"`
 	CityId         uint32                 `protobuf:"varint,7,opt,name=city_id,json=cityId,proto3" json:"city_id,omitempty"`
-	BidResponses   map[string]int32       `protobuf:"bytes,8,rep,name=bid_responses,json=bidResponses,proto3" json:"bid_responses,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"varint,2,opt,name=value"`
+	BidResponses   map[string]string      `protobuf:"bytes,8,rep,name=bid_responses,json=bidResponses,proto3" json:"bid_responses,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
 	Ip             string                 `protobuf:"bytes,9,opt,name=ip,proto3" json:"ip,omitempty"`
 	Ipv6           string                 `protobuf:"bytes,10,opt,name=ipv6,proto3" json:"ipv6,omitempty"`
 	Lang           string                 `protobuf:"bytes,11,opt,name=lang,proto3" json:"lang,omitempty"`
@@ -177,7 +176,7 @@ func (x *OrtbEvent) GetCityId() uint32 {
 	return 0
 }
 
-func (x *OrtbEvent) GetBidResponses() map[string]int32 {
+func (x *OrtbEvent) GetBidResponses() map[string]string {
 	if x != nil {
 		return x.BidResponses
 	}
@@ -440,7 +439,7 @@ const file_buffer_buffer_proto_rawDesc = "" +
 	"\n" +
 	"ItemsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\x05R\x05value:\x028\x01\"\xae\x06\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\xae\x06\n" +
 	"\tOrtbEvent\x12\x12\n" +
 	"\x04uuid\x18\x01 \x01(\tR\x04uuid\x12\"\n" +
 	"\revent_time_ms\x18\x02 \x01(\x03R\veventTimeMs\x12\x14\n" +
@@ -474,7 +473,7 @@ const file_buffer_buffer_proto_rawDesc = "" +
 	"\x04code\x18\x1a \x01(\rR\x04code\x1a?\n" +
 	"\x11BidResponsesEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\x05R\x05value:\x028\x01\"x\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"x\n" +
 	"\x0fImpressionEvent\x12\x12\n" +
 	"\x04uuid\x18\x01 \x01(\tR\x04uuid\x129\n" +
 	"\x19event_time_impressions_ms\x18\x02 \x01(\x03R\x16eventTimeImpressionsMs\x12\x16\n" +

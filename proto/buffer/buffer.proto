@@ -5,7 +5,7 @@ package events;
 option go_package = "gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/proto/buffer;eventspb";
 
 message BidResponses {
-  map<string, int32> items = 1;
+  map<string, string> items = 1;
 }
 
 message OrtbEvent {
@@ -19,7 +19,7 @@ message OrtbEvent {
 
   uint32 city_id = 7;
 
-  map<string, int32> bid_responses = 8;
+  map<string, string> bid_responses = 8;
 
   string ip = 9;
   string ipv6 = 10;
