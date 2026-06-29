@@ -38,7 +38,7 @@ func getAdm(
 		return
 	}
 
-	/*exists, err := utils.UUIDKeyExistsInRedis(ctx, redisAdmClient, input.GlobalId)
+	exists, err := utils.UUIDKeyExistsInRedis(ctx, redisAdmClient, input.GlobalId)
 	if err != nil {
 		log.Printf("failed to check ADM UUID key %s in url %s in getAdm: %v", input.GlobalId, r.URL.String(), err)
 		redisWriteErrorMonitor.RecordForURL(err, sspAdapterWorkStatusURL)
@@ -49,7 +49,7 @@ func getAdm(
 		log.Printf("ADM UUID key %s does not exist in url %s in getAdm", input.GlobalId, r.URL.String())
 		w.WriteHeader(http.StatusBadRequest)
 		return
-	}*/
+	}
 
 	if err := utils.WriteClickStats(ctx, redisClients, input.GlobalId, format, true); err != nil {
 		log.Printf("failed to WriteClickStats in getAdm: %v", err)
