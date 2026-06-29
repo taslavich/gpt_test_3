@@ -64,6 +64,8 @@ func getAdm(
 		return
 	}
 
+	log.Println("CLICKS DONE")
+
 	http.Redirect(w, r, decodedURL, http.StatusFound)
 }
 
