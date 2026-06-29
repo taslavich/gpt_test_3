@@ -24,12 +24,12 @@ func getAdm(
 	sspAdapterWorkStatusURL string,
 ) {
 	input := r.Context().Value(httpin.Input).(*admNurlRequest)
-	/*format, ok := constants.CodeToFormat[input.Format]
+	format, ok := constants.CodeToFormat[input.Format]
 	if !ok {
 		log.Printf("in getAdm invalid format code: %q", input.Format)
 		w.WriteHeader(http.StatusBadRequest)
 		return
-	}*/
+	}
 
 	decodedURL, err := url.QueryUnescape(input.DspURL)
 	if err != nil {
