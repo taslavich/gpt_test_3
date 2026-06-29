@@ -64,8 +64,6 @@ func getAdm(
 		return
 	}
 
-	log.Println("CLICKS DONE")
-
 	http.Redirect(w, r, decodedURL, http.StatusFound)
 }
 
@@ -119,8 +117,6 @@ func getNurl(
 		w.WriteHeader(http.StatusServiceUnavailable)
 		return
 	}
-
-	log.Println("IMPRESSIONS DONE")
 
 	http.Redirect(w, r, decodedURL, http.StatusFound)
 }
