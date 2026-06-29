@@ -118,5 +118,7 @@ func getNurl(
 		return
 	}
 
+	log.Println("IMPRESSIONS DONE")
+
 	http.Redirect(w, r, decodedURL, http.StatusFound)
 }
