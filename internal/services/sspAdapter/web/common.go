@@ -2,6 +2,7 @@ package sppAdapterWeb
 
 import (
 	"context"
+	"io"
 	"log"
 	"net/http"
 	"net/url"
@@ -76,6 +77,7 @@ func getNurl(
 	redisSetImpressions string,
 	redisWriteErrorMonitor *services.RedisWriteErrorMonitor,
 	sspAdapterWorkStatusURL string,
+	nurlClient *http.Client,
 ) {
 	input := r.Context().Value(httpin.Input).(*admNurlRequest)
 	format, ok := constants.CodeToFormat[input.Format]
@@ -118,5 +120,20 @@ func getNurl(
 		return
 	}
 
-	http.Redirect(w, r, decodedURL, http.StatusFound)
+	resp, err := nurlClient.Get(decodedURL)
+	if err != nil {
+		log.Printf("failed to call nurl target: %v", err)
+		w.WriteHeader(http.StatusBadGateway)
+		return
+	}
+	defer resp.Body.Close()
+
+	_, err = io.Copy(io.Discard, io.LimitReader(resp.Body, 4096))
+	if err != nil {
+		log.Printf("failed to read nurl target response: %v", err)
+		w.WriteHeader(http.StatusBadGateway)
+		return
+	}
+
+	w.WriteHeader(http.StatusNoContent)
 }
