@@ -240,15 +240,28 @@ func InitHttpsRoutes(
 ) {
 	integration.UseGochiURLParam("path", chi.URLParam)
 
-	var nurlClient = &http.Client{
-		Timeout: 3 * time.Second,
-	}
-
 	httpRouter.With(
 		httpin.NewInput(admNurlRequest{}),
 	).Get(GetAdmUrl, func(w http.ResponseWriter, r *http.Request) {
 		getAdm(ctx, w, r, redisClientsClicks, redisAdmClient, redisSetClicks, redisWriteErrorMonitor, sspAdapterWorkStatusURL)
 	})
+}
+
+func InitNurlRoutes(
+	ctx context.Context,
+	httpRouter *chi.Mux,
+	redisClientsImp []*redis.Client,
+	redisNurlClient *redis.Client,
+	redisSetImpressions string,
+	nurlTimeout time.Duration,
+	redisWriteErrorMonitor *services.RedisWriteErrorMonitor,
+	sspAdapterWorkStatusURL string,
+) {
+	integration.UseGochiURLParam("path", chi.URLParam)
+
+	var nurlClient = &http.Client{
+		Timeout: 3 * time.Second,
+	}
 
 	httpRouter.With(
 		httpin.NewInput(admNurlRequest{}),
@@ -256,5 +269,3 @@ func InitHttpsRoutes(
 		getNurl(ctx, w, r, redisClientsImp, redisNurlClient, redisSetImpressions, redisWriteErrorMonitor, sspAdapterWorkStatusURL, nurlClient)
 	})
 }
-
-

@@ -110,10 +110,10 @@ func main() {
 	)
 	redisWriteErrorMonitor.Start()
 
-	router := httpServer.InitHttpRouter(chi.NewRouter())
+	admRouter := httpServer.InitHttpRouter(chi.NewRouter())
 	sppAdapterWeb.InitHttpsRoutes(
 		ctx,
-		router,
+		admRouter,
 		redisClients.Impressions,
 		redisClients.Clicks,
 		redisAdmClient,
@@ -125,7 +125,21 @@ func main() {
 		redisWriteErrorMonitor,
 		cfg.SspAdapterWorkStatusURL,
 	)
-	log.Println("HTTP routes initialized")
+	log.Println("ADM HTTPS routes initialized")
 
-	httpServer.RunHttpsServerOptimized(ctx, router, cfg.HttpServer.Host, cfg.HttpServer.Port, cfg.FullChain, cfg.PrivKey, cfg.RsaFullChain, cfg.RsaPrivKey)
+	nurlRouter := httpServer.InitHttpRouter(chi.NewRouter())
+	sppAdapterWeb.InitNurlRoutes(
+		ctx,
+		nurlRouter,
+		redisClients.Impressions,
+		redisNurlClient,
+		cfg.RedisSetImpressions,
+		cfg.NurlTimeout,
+		redisWriteErrorMonitor,
+		cfg.SspAdapterWorkStatusURL,
+	)
+	log.Println("NURL HTTP routes initialized")
+
+	go httpServer.RunHttpServer(ctx, nurlRouter, cfg.HttpServer.Host, 80)
+	httpServer.RunHttpsServerOptimized(ctx, admRouter, cfg.HttpServer.Host, cfg.HttpServer.Port, cfg.FullChain, cfg.PrivKey, cfg.RsaFullChain, cfg.RsaPrivKey)
 }
