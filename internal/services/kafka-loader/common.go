@@ -487,7 +487,17 @@ func HasDataClicks(record types.Clicks) bool {
 }
 
 func HasDataImpressions(record types.Impressions) bool {
-	return record.IMPRESSIONS_UUID != "" && record.ORTB_UUID != ""
+	if record.IMPRESSIONS_UUID == "" {
+		log.Println("HasDataImpressions: impression UUID is empty")
+		return false
+	}
+
+	if record.ORTB_UUID == "" {
+		log.Println("HasDataImpressions: ORTB UUID is empty")
+		return false
+	}
+
+	return true
 }
 
 func HasDataOrtb(record types.Ortb) bool {
