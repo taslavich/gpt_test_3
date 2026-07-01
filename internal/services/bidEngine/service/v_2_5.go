@@ -29,13 +29,7 @@ func GetWinnerBidInternal_V_2_5(
 ) (*ortb_V2_5.BidResponse, clickhouse_types.UuidImpBidResponse, []string, []string) {
 	for l := range req.ImpIdUuid {
 		if strings.TrimSpace(req.ImpIdUuid[l]) == "" {
-			log.Printf("Empty uuid jjj 1")
-		}
-	}
-
-	for key := range ImpIdUuid {
-		if strings.TrimSpace(ImpIdUuid[key]) == "" {
-			log.Printf("Empty clone uuid jjj")
+			log.Printf("Empty uuid jjj")
 		}
 	}
 
@@ -166,7 +160,7 @@ func GetWinnerBidInternal_V_2_5(
 
 		var finalBid *ortb_V2_5.Bid
 
-		wrappedNurl := utils.WrapNurlURL(admDomain, winner.bid.GetNurl(), ImpIdUuid[impID], winner.domain)
+		wrappedNurl := utils.WrapNurlURL(admDomain, winner.bid.GetNurl(), ImpIdUuid[impID], req.SspDomain)
 		wrappedBurl := utils.WrapBurlURL(admDomain, ImpIdUuid[impID], req.Format)
 
 		if logged {

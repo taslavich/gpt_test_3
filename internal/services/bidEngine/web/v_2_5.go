@@ -6,7 +6,6 @@ import (
 	"log"
 	"net/http"
 	"runtime/debug"
-	"strings"
 	"time"
 
 	"github.com/redis/go-redis/v9"
@@ -102,12 +101,6 @@ func (s *Server) GetWinnerBid_V2_5(
 	resp *bidEngineGrpc.BidEngineResponse_V2_5,
 	funcErr error,
 ) {
-	for key := range req.ImpIdUuid {
-		if strings.TrimSpace(req.ImpIdUuid[key]) == "" {
-			log.Printf("Empty uuid jjj")
-		}
-	}
-
 	defer func() {
 		if r := recover(); r != nil {
 			err := fmt.Errorf("Recovered from panic in GetWinnerBid_V2_5: %v, %s", r, string(debug.Stack()))
