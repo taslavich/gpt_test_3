@@ -25,7 +25,7 @@ func WrapURL(hostname, originalURL, globalId, format string) string {
 
 func WrapNurlURL(hostname, originalURL, globalId, ssp_domain string) string {
 	if globalId == "" {
-		log.Println("Empty globalId in WrapNurlURL")
+		log.Printf("Empty globalId in WrapNurlURL, SSP_DOMAIN: %s", ssp_domain)
 	}
 	encodeUrl := url.QueryEscape(originalURL)
 	return fmt.Sprintf("http://%s:80/nurl?id=%s&url=%s&s=%s",
