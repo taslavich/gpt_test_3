@@ -73,29 +73,29 @@ func main() {
 		}
 	}()
 
-	redisNurlClient, err := redis_service.NewRedisClient(
+	redisBurlClient, err := redis_service.NewRedisClient(
 		cfg.RedisUUIDAddr,
 		cfg.RedisPassword,
-		cfg.RedisDBNurl,
+		cfg.RedisDBBurl,
 		cfg.RedisPoolSize,
 		cfg.RedisMinIdleConns,
 	)
 	if err != nil {
-		log.Fatalf("Cannot init NURL Redis client: %v", err)
+		log.Fatalf("Cannot init BURL Redis client: %v", err)
 	}
 	defer func() {
-		if err := redisNurlClient.Close(); err != nil {
-			log.Printf("⚠️ failed to close NURL Redis client: %v", err)
+		if err := redisBurlClient.Close(); err != nil {
+			log.Printf("⚠️ failed to close BURL Redis client: %v", err)
 		}
 	}()
 
 	if err := redisAdmClient.Ping(ctx).Err(); err != nil {
 		log.Fatalf("Failed to connect to ADM Redis: %v", err)
 	}
-	if err := redisNurlClient.Ping(ctx).Err(); err != nil {
-		log.Fatalf("Failed to connect to NURL Redis: %v", err)
+	if err := redisBurlClient.Ping(ctx).Err(); err != nil {
+		log.Fatalf("Failed to connect to BURL Redis: %v", err)
 	}
-	log.Println("✅ Connected to ADM/NURL Redis")
+	log.Println("✅ Connected to ADM/BURL Redis")
 
 	redisWriteErrorMonitor := services.NewRedisWriteErrorMonitorWithSettings(
 		"adm-adapter",
@@ -114,32 +114,28 @@ func main() {
 	sppAdapterWeb.InitHttpsRoutes(
 		ctx,
 		admRouter,
-		redisClients.Impressions,
 		redisClients.Clicks,
 		redisAdmClient,
-		redisNurlClient,
-		cfg.RedisSetImpressions,
 		cfg.RedisSetClicks,
 		cfg.AdmTimeout,
-		cfg.NurlTimeout,
 		redisWriteErrorMonitor,
 		cfg.SspAdapterWorkStatusURL,
 	)
 	log.Println("ADM HTTPS routes initialized")
 
-	nurlRouter := httpServer.InitHttpRouter(chi.NewRouter())
-	sppAdapterWeb.InitNurlRoutes(
+	nurlBurlRouter := httpServer.InitHttpRouter(chi.NewRouter())
+	sppAdapterWeb.InitNurlBurlRoutes(
 		ctx,
-		nurlRouter,
+		nurlBurlRouter,
 		redisClients.Impressions,
-		redisNurlClient,
+		redisBurlClient,
 		cfg.RedisSetImpressions,
-		cfg.NurlTimeout,
+		cfg.BurlTimeout,
 		redisWriteErrorMonitor,
 		cfg.SspAdapterWorkStatusURL,
 	)
-	log.Println("NURL HTTP routes initialized")
+	log.Println("NURL/BURL HTTP routes initialized")
 
-	go httpServer.RunHttpServer(ctx, nurlRouter, cfg.HttpServer.Host, 80)
+	go httpServer.RunHttpServer(ctx, nurlBurlRouter, cfg.HttpServer.Host, 80)
 	httpServer.RunHttpsServerOptimized(ctx, admRouter, cfg.HttpServer.Host, cfg.HttpServer.Port, cfg.FullChain, cfg.PrivKey, cfg.RsaFullChain, cfg.RsaPrivKey)
 }

@@ -78,29 +78,29 @@ func main() {
 		}
 	}()
 
-	redisNurlClient, err := redis_service.NewRedisClient(
+	redisBurlClient, err := redis_service.NewRedisClient(
 		cfg.RedisUUIDAddr,
 		cfg.RedisPassword,
-		cfg.RedisDBNurl,
+		cfg.RedisDBBurl,
 		cfg.RedisPoolSize,
 		cfg.RedisMinIdleConns,
 	)
 	if err != nil {
-		log.Fatalf("Cannot init NURL Redis client: %v", err)
+		log.Fatalf("Cannot init BURL Redis client: %v", err)
 	}
 	defer func() {
-		if err := redisNurlClient.Close(); err != nil {
-			log.Printf("⚠️ failed to close NURL Redis client: %v", err)
+		if err := redisBurlClient.Close(); err != nil {
+			log.Printf("⚠️ failed to close BURL Redis client: %v", err)
 		}
 	}()
 
 	if err := redisAdmClient.Ping(ctx).Err(); err != nil {
 		log.Fatalf("Failed to connect to ADM Redis: %v", err)
 	}
-	if err := redisNurlClient.Ping(ctx).Err(); err != nil {
-		log.Fatalf("Failed to connect to NURL Redis: %v", err)
+	if err := redisBurlClient.Ping(ctx).Err(); err != nil {
+		log.Fatalf("Failed to connect to BURL Redis: %v", err)
 	}
-	log.Println("✅ Connected to ADM/NURL Redis")
+	log.Println("✅ Connected to ADM/BURL Redis")
 
 	sspGeoDspMapAdult, err := utils.InitSspGeoDspMap[*types.PercentAndBidfloor](cfg.SspGeoDspPercentsAdultFilePath)
 	if err != nil {
@@ -143,7 +143,7 @@ func main() {
 			cfg.ProfitPercent,
 			redisClients.Ortb,
 			redisAdmClient,
-			redisNurlClient,
+			redisBurlClient,
 			cfg.RedisUUIDKeyTTL,
 			cfg.RedisSetOrtb,
 			bidEngine.GetWinnerBidInternal_V_2_5,

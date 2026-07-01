@@ -44,6 +44,7 @@ const (
 
 	GetAdmUrl  = "/adm"
 	GetNurlUrl = "/nurl"
+	GetBurlUrl = "/burl"
 
 	GetWorkStatusUrl = "/work_status"
 
@@ -69,7 +70,7 @@ type postBidResponse_V2_5 struct {
 	*ortb_V2_5.BidResponse
 }
 
-type admNurlRequest struct {
+type admNurlBurlRequest struct {
 	GlobalId string `in:"query=id" required:"true"`
 	DspURL   string `in:"query=url" required:"true"`
 	Format   string `in:"query=f" required:"true"`
@@ -227,27 +228,23 @@ func InitHttpRoutes(
 func InitHttpsRoutes(
 	ctx context.Context,
 	httpRouter *chi.Mux,
-	redisClientsImp []*redis.Client,
 	redisClientsClicks []*redis.Client,
 	redisAdmClient *redis.Client,
-	redisNurlClient *redis.Client,
-	redisSetImpressions string,
 	redisSetClicks string,
-	admTimeout,
-	nurlTimeout time.Duration,
+	admTimeout time.Duration,
 	redisWriteErrorMonitor *services.RedisWriteErrorMonitor,
 	sspAdapterWorkStatusURL string,
 ) {
 	integration.UseGochiURLParam("path", chi.URLParam)
 
 	httpRouter.With(
-		httpin.NewInput(admNurlRequest{}),
+		httpin.NewInput(admNurlBurlRequest{}),
 	).Get(GetAdmUrl, func(w http.ResponseWriter, r *http.Request) {
 		getAdm(ctx, w, r, redisClientsClicks, redisAdmClient, redisSetClicks, redisWriteErrorMonitor, sspAdapterWorkStatusURL)
 	})
 }
 
-func InitNurlRoutes(
+func InitNurlBurlRoutes(
 	ctx context.Context,
 	httpRouter *chi.Mux,
 	redisClientsImp []*redis.Client,
@@ -263,9 +260,19 @@ func InitNurlRoutes(
 		Timeout: 3 * time.Second,
 	}
 
+	var burlClient = &http.Client{
+		Timeout: 3 * time.Second,
+	}
+
 	httpRouter.With(
-		httpin.NewInput(admNurlRequest{}),
+		httpin.NewInput(admNurlBurlRequest{}),
 	).Get(GetNurlUrl, func(w http.ResponseWriter, r *http.Request) {
-		getNurl(ctx, w, r, redisClientsImp, redisNurlClient, redisSetImpressions, redisWriteErrorMonitor, sspAdapterWorkStatusURL, nurlClient)
+		getNurl(w, r, nurlClient)
+	})
+
+	httpRouter.With(
+		httpin.NewInput(admNurlBurlRequest{}),
+	).Get(GetBurlUrl, func(w http.ResponseWriter, r *http.Request) {
+		getBurl(ctx, w, r, redisClientsImp, redisNurlClient, redisSetImpressions, redisWriteErrorMonitor, sspAdapterWorkStatusURL, burlClient)
 	})
 }

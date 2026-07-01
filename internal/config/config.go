@@ -181,7 +181,6 @@ type SppAdapterConfig struct {
 	ClickhouseConfig
 	UriOfOrchestrator   string        `yaml:"URI_OF_ORCHESTRATOR" env:"URI_OF_ORCHESTRATOR"`
 	AdmTimeout          time.Duration `yaml:"ADM_TIMEOUT" env:"ADM_TIMEOUT"`
-	NurlTimeout         time.Duration `yaml:"NURL_TIMEOUT" env:"NURL_TIMEOUT"`
 	GetWinnerBidTimeout time.Duration `yaml:"GET_WINNER_BID_TIMEOUT" env:"GET_WINNER_BID_TIMEOUT"`
 	GeoIpDbPath         string        `yaml:"GEO_IP_DB_PATH" env:"GEO_IP_DB_PATH"`
 
@@ -220,7 +219,7 @@ type SppAdapterConfig struct {
 type AdmAdapterConfig struct {
 	HttpServer              HttpServer
 	AdmTimeout              time.Duration `yaml:"ADM_TIMEOUT" env:"ADM_TIMEOUT"`
-	NurlTimeout             time.Duration `yaml:"NURL_TIMEOUT" env:"NURL_TIMEOUT"`
+	BurlTimeout             time.Duration `yaml:"BURL_TIMEOUT" env:"BURL_TIMEOUT"`
 	FullChain               string        `yaml:"FULLCHAIN_PEM" env:"FULLCHAIN_PEM"`
 	PrivKey                 string        `yaml:"PRIVKEY_PEM" env:"PRIVKEY_PEM"`
 	RsaFullChain            string        `yaml:"RSA_FULLCHAIN_PEM" env:"RSA_FULLCHAIN_PEM"`
@@ -320,7 +319,7 @@ type RedisConfig struct {
 	// Separate Redis for fast ADM/NURL UUID guards.
 	RedisUUIDAddr   string        `yaml:"REDIS_UUID_ADDR" env:"REDIS_UUID_ADDR"`
 	RedisDBAdm      int           `yaml:"REDIS_DB_ADM" env:"REDIS_DB_ADM" env-default:"1"`
-	RedisDBNurl     int           `yaml:"REDIS_DB_NURL" env:"REDIS_DB_NURL" env-default:"0"`
+	RedisDBBurl     int           `yaml:"REDIS_DB_BURL" env:"REDIS_DB_BURL" env-default:"0"`
 	RedisUUIDKeyTTL time.Duration `yaml:"REDIS_UUID_KEY_TTL" env:"REDIS_UUID_KEY_TTL" env-default:"45m"`
 
 	// Redis ORTB

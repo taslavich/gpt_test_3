@@ -24,7 +24,7 @@ type Server struct {
 	ProfitPercent              float32
 	redisClients               []*redis.Client
 	redisAdmClient             *redis.Client
-	redisNurlClient            *redis.Client
+	redisBurlClient            *redis.Client
 	redisUUIDKeyTTL            time.Duration
 	redisSetOrtb               string
 	timeout                    time.Duration
@@ -54,7 +54,7 @@ func NewServer(
 	ProfitPercent float32,
 	redisClients []*redis.Client,
 	redisAdmClient *redis.Client,
-	redisNurlClient *redis.Client,
+	redisBurlClient *redis.Client,
 	redisUUIDKeyTTL time.Duration,
 	redisSetOrtb string,
 	GetWinnerBidInternal_V_2_5 func(
@@ -81,7 +81,7 @@ func NewServer(
 		ProfitPercent:              ProfitPercent,
 		redisClients:               redisClients,
 		redisAdmClient:             redisAdmClient,
-		redisNurlClient:            redisNurlClient,
+		redisBurlClient:            redisBurlClient,
 		redisUUIDKeyTTL:            redisUUIDKeyTTL,
 		redisSetOrtb:               redisSetOrtb,
 		GetWinnerBidInternal_V_2_5: GetWinnerBidInternal_V_2_5,
@@ -113,7 +113,7 @@ func (s *Server) GetWinnerBid_V2_5(
 		}
 	}()
 
-	bidResponse, clickhouseBid, nurlUUIDs, admUUIDs := s.GetWinnerBidInternal_V_2_5(
+	bidResponse, clickhouseBid, burlUUIDs, admUUIDs := s.GetWinnerBidInternal_V_2_5(
 		ctx,
 		req,
 		s.ProfitPercent,
@@ -132,9 +132,9 @@ func (s *Server) GetWinnerBid_V2_5(
 		}
 	}
 
-	for _, uuid := range nurlUUIDs {
-		if err := utils.WriteUUIDKeyToRedis(ctx, s.redisNurlClient, uuid, s.redisUUIDKeyTTL); err != nil {
-			log.Printf("failed to write NURL UUID key in GetWinnerBidInternal: %v", err)
+	for _, uuid := range burlUUIDs {
+		if err := utils.WriteUUIDKeyToRedis(ctx, s.redisBurlClient, uuid, s.redisUUIDKeyTTL); err != nil {
+			log.Printf("failed to write BURL UUID key in GetWinnerBidInternal: %v", err)
 			s.redisWriteErrorMonitor.RecordForURL(err, req.SspUrl)
 		}
 	}

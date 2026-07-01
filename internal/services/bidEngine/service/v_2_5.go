@@ -106,7 +106,7 @@ func GetWinnerBidInternal_V_2_5(
 		},
 	}
 	clickhouseSeatBid := clickhouse_types.GetEmpty(ImpIdUuid)
-	nurlUUIDs := make([]string, 0, len(ImpIdUuid))
+	burlUUIDs := make([]string, 0, len(ImpIdUuid))
 	admUUIDs := make([]string, 0, len(ImpIdUuid))
 
 	for impID, bids := range impBids {
@@ -160,7 +160,8 @@ func GetWinnerBidInternal_V_2_5(
 
 		var finalBid *ortb_V2_5.Bid
 
-		wrappedNurl := utils.WrapNurlURL(admDomain, winner.bid.GetNurl(), ImpIdUuid[impID], req.Format)
+		wrappedNurl := utils.WrapNurlURL(admDomain, winner.bid.GetNurl(), ImpIdUuid[impID])
+		wrappedBurl := utils.WrapBurlURL(admDomain, winner.bid.GetBurl(), ImpIdUuid[impID], req.Format)
 
 		if logged {
 			wrappedAdm := utils.WrapURL(admDomain, winner.bid.GetAdm(), ImpIdUuid[impID], req.Format)
@@ -171,6 +172,7 @@ func GetWinnerBidInternal_V_2_5(
 				Adm:   &wrappedAdm,
 				Adid:  winner.bid.Adid,
 				Nurl:  &wrappedNurl,
+				Burl:  &wrappedBurl,
 				Cid:   winner.bid.Cid,
 				Crid:  winner.bid.Crid,
 			}
@@ -182,6 +184,7 @@ func GetWinnerBidInternal_V_2_5(
 				Adm:   winner.bid.Adm,
 				Adid:  winner.bid.Adid,
 				Nurl:  &wrappedNurl,
+				Burl:  &wrappedBurl,
 				Cid:   winner.bid.Cid,
 				Crid:  winner.bid.Crid,
 			}
@@ -211,7 +214,7 @@ func GetWinnerBidInternal_V_2_5(
 		uuid := ImpIdUuid[impID]
 		seatBid[0].Bid = append(seatBid[0].Bid, finalBid)
 		clickhouseSeatBid[uuid] = clickhouseBid
-		nurlUUIDs = append(nurlUUIDs, uuid)
+		burlUUIDs = append(burlUUIDs, uuid)
 		if logged {
 			admUUIDs = append(admUUIDs, uuid)
 		}
@@ -222,7 +225,7 @@ func GetWinnerBidInternal_V_2_5(
 		Seatbid: seatBid,
 	}
 
-	return bidResponse, clickhouseSeatBid, nurlUUIDs, admUUIDs
+	return bidResponse, clickhouseSeatBid, burlUUIDs, admUUIDs
 }
 
 func applyPriceConstraintsAndPercent(dspPrice, bidFloor, profitPercent float32, needed bool) (
