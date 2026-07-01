@@ -189,6 +189,12 @@ ORDER BY (event_time_clicks, uuid)
 TTL created_at + INTERVAL 1 HOUR DELETE;
 
 ALTER TABLE {db}.impressions_in
+    ADD COLUMN IF NOT EXISTS impressions_uuid UUID AFTER uuid;
+
+ALTER TABLE {db}.clicks_in
+    ADD COLUMN IF NOT EXISTS clicks_uuid UUID AFTER uuid;
+
+ALTER TABLE {db}.impressions_in
     ADD INDEX IF NOT EXISTS idx_impressions_in_impressions_uuid impressions_uuid TYPE bloom_filter(0.01) GRANULARITY 1;
 
 ALTER TABLE {db}.clicks_in
@@ -307,6 +313,13 @@ PARTITION BY toYYYYMMDD(event_date)
 ORDER BY event_time
 TTL event_date + INTERVAL 6 MONTH DELETE
 SETTINGS index_granularity = 8192;
+
+
+ALTER TABLE {db}.fact_impressions
+    ADD COLUMN IF NOT EXISTS impressions_uuid UUID AFTER uuid;
+
+ALTER TABLE {db}.fact_clicks
+    ADD COLUMN IF NOT EXISTS clicks_uuid UUID AFTER uuid;
 
 
 -- ============================================================

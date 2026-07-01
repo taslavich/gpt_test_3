@@ -112,19 +112,11 @@ func getBurl(
 	redisSetImpressions string,
 	redisWriteErrorMonitor *services.RedisWriteErrorMonitor,
 	sspAdapterWorkStatusURL string,
-	nurlClient *http.Client,
 ) {
 	input := r.Context().Value(httpin.Input).(*admNurlBurlRequest)
 	format, ok := constants.CodeToFormat[input.Format]
 	if !ok {
 		log.Printf("in getBurl invalid format code: %q", input.Format)
-		w.WriteHeader(http.StatusBadRequest)
-		return
-	}
-
-	decodedURL, err := url.QueryUnescape(input.DspURL)
-	if err != nil {
-		log.Printf("in getBurl Failed to decode original URL: %v", err)
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
@@ -154,21 +146,6 @@ func getBurl(
 		log.Printf("failed to add impression UUID to Redis set in getBurl: %v", err)
 		redisWriteErrorMonitor.RecordForURL(err, sspAdapterWorkStatusURL)
 		w.WriteHeader(http.StatusServiceUnavailable)
-		return
-	}
-
-	resp, err := nurlClient.Get(decodedURL)
-	if err != nil {
-		log.Printf("failed to call burl target: %v", err)
-		w.WriteHeader(http.StatusNoContent)
-		return
-	}
-	defer resp.Body.Close()
-
-	_, err = io.Copy(io.Discard, io.LimitReader(resp.Body, 4096))
-	if err != nil {
-		log.Printf("failed to read burl target response: %v", err)
-		w.WriteHeader(http.StatusNoContent)
 		return
 	}
 

@@ -260,10 +260,6 @@ func InitNurlBurlRoutes(
 		Timeout: 3 * time.Second,
 	}
 
-	var burlClient = &http.Client{
-		Timeout: 3 * time.Second,
-	}
-
 	httpRouter.With(
 		httpin.NewInput(admNurlBurlRequest{}),
 	).Get(GetNurlUrl, func(w http.ResponseWriter, r *http.Request) {
@@ -273,6 +269,6 @@ func InitNurlBurlRoutes(
 	httpRouter.With(
 		httpin.NewInput(admNurlBurlRequest{}),
 	).Get(GetBurlUrl, func(w http.ResponseWriter, r *http.Request) {
-		getBurl(ctx, w, r, redisClientsImp, redisNurlClient, redisSetImpressions, redisWriteErrorMonitor, sspAdapterWorkStatusURL, burlClient)
+		getBurl(ctx, w, r, redisClientsImp, redisNurlClient, redisSetImpressions, redisWriteErrorMonitor, sspAdapterWorkStatusURL)
 	})
 }

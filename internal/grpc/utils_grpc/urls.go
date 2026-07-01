@@ -24,8 +24,7 @@ func WrapNurlURL(hostname, originalURL, globalId string) string {
 		hostname, globalId, encodeUrl)
 }
 
-func WrapBurlURL(hostname, originalURL, globalId, format string) string {
-	encodeUrl := url.QueryEscape(originalURL)
-	return fmt.Sprintf("http://%s:80/burl?id=%s&url=%s&f=%s",
-		hostname, globalId, encodeUrl, constants.FormatToCodes[format])
+func WrapBurlURL(hostname, globalId, format string) string {
+	return fmt.Sprintf("http://%s:80/burl?id=%s&f=%s",
+		hostname, globalId, constants.FormatToCodes[format])
 }
