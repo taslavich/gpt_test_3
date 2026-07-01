@@ -3,6 +3,7 @@ package clickhouse_loader
 import (
 	"context"
 	"fmt"
+	"log"
 	"time"
 
 	"github.com/ClickHouse/clickhouse-go/v2"
@@ -100,6 +101,8 @@ func insertBatchImpressions(
 		}
 
 		ts := time.UnixMilli(r.EventTimeImpressionsMs).UTC()
+
+		log.Printf("TIMESTAMP: %s", ts.String())
 
 		if err := batch.Append(impressions_u, ortb_u, ts, r.Format); err != nil {
 			stats.AppendErrors++
