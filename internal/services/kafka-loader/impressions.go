@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"log"
-	"time"
 
 	"github.com/redis/go-redis/v9"
 	"github.com/segmentio/kafka-go"
@@ -63,16 +62,9 @@ func buildImpressionKafkaMessage(
 		FORMAT:                 format,
 	}
 
-	ts := time.UnixMilli(parseUnixMsSafe(rawRecord.EVENT_TIME_IMPRESSIONS)).UTC()
-	log.Printf("TIMESTAMP#1: %s", ts.String())
-
 	if !HasDataImpressions(rawRecord) {
-		log.Println("HasDataImpressions")
 		return kafka.Message{}, false, nil
 	}
-
-	ts2 := time.UnixMilli(parseUnixMsSafe(rawRecord.EVENT_TIME_IMPRESSIONS)).UTC()
-	log.Printf("TIMESTAMP#2: %s", ts2.String())
 
 	record := &eventspb.ImpressionEvent{
 		ImpressionsUuid:        rawRecord.IMPRESSIONS_UUID,
