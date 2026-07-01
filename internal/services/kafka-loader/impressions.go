@@ -3,6 +3,8 @@ package kafka_loader
 import (
 	"context"
 	"fmt"
+	"log"
+	"time"
 
 	"github.com/redis/go-redis/v9"
 	"github.com/segmentio/kafka-go"
@@ -60,6 +62,9 @@ func buildImpressionKafkaMessage(
 		EVENT_TIME_IMPRESSIONS: eventTime,
 		FORMAT:                 format,
 	}
+
+	ts := time.UnixMilli(parseUnixMsSafe(rawRecord.EVENT_TIME_IMPRESSIONS)).UTC()
+	log.Printf("TIMESTAMP: %s", ts.String())
 
 	if !HasDataImpressions(rawRecord) {
 		return kafka.Message{}, false, nil
