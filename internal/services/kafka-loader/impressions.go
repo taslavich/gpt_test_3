@@ -71,6 +71,9 @@ func buildImpressionKafkaMessage(
 		return kafka.Message{}, false, nil
 	}
 
+	ts2 := time.UnixMilli(parseUnixMsSafe(rawRecord.EVENT_TIME_IMPRESSIONS)).UTC()
+	log.Printf("TIMESTAMP#2: %s", ts2.String())
+
 	record := &eventspb.ImpressionEvent{
 		ImpressionsUuid:        rawRecord.IMPRESSIONS_UUID,
 		OrtbUuid:               rawRecord.ORTB_UUID,
@@ -83,9 +86,6 @@ func buildImpressionKafkaMessage(
 		log.Println("Marshal")
 		return kafka.Message{}, false, fmt.Errorf("❌ shard %d: failed to marshal impression protobuf for UUID %s: %v", shardID, impressions_uuid, err)
 	}
-
-	ts2 := time.UnixMilli(parseUnixMsSafe(rawRecord.EVENT_TIME_IMPRESSIONS)).UTC()
-	log.Printf("TIMESTAMP#2: %s", ts2.String())
 
 	return kafka.Message{
 		Key:   []byte(impressions_uuid),
