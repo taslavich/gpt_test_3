@@ -208,7 +208,7 @@ func WriteClickStats(
 	}
 
 	fields := map[string]interface{}{
-		constants.UUID:                     globalId,
+		constants.ORTB_UUID:                globalId,
 		constants.EVENT_TIME_CLICKS_COLUMN: time.Now().UTC().Format("2006-01-02 15:04:05.000"),
 		constants.FORMAT_COLUMN:            format,
 	}
@@ -243,7 +243,7 @@ func WriteImpressionStats(
 	}
 
 	fields := map[string]interface{}{
-		constants.UUID:                          globalId,
+		constants.ORTB_UUID:                     globalId,
 		constants.EVENT_TIME_IMPRESSIONS_COLUMN: time.Now().UTC().Format("2006-01-02 15:04:05.000"),
 		constants.FORMAT_COLUMN:                 format,
 	}

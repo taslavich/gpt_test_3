@@ -34,6 +34,7 @@ func ProcessBatchClicks(
 			WriteMessagesName:    "clicks",
 			SuccessLogName:       "Clicks",
 			HMGetFields: []string{
+				constants.ORTB_UUID,
 				constants.EVENT_TIME_CLICKS_COLUMN,
 				constants.FORMAT_COLUMN,
 			},
@@ -46,14 +47,16 @@ func ProcessBatchClicks(
 
 func buildClickKafkaMessage(
 	shardID int,
-	uuid string,
+	clicks_uuid string,
 	values []interface{},
 ) (kafka.Message, bool, error) {
-	eventTime := valueAsString(values, 0)
-	format := valueAsString(values, 1)
+	ortb_uuid := valueAsString(values, 0)
+	eventTime := valueAsString(values, 1)
+	format := valueAsString(values, 2)
 
 	rawRecord := types.Clicks{
-		UUID:              uuid,
+		CLICKS_UUID:       clicks_uuid,
+		ORTB_UUID:         ortb_uuid,
 		EVENT_TIME_CLICKS: eventTime,
 		FORMAT:            format,
 	}
@@ -63,18 +66,19 @@ func buildClickKafkaMessage(
 	}
 
 	record := &eventspb.ClickEvent{
-		Uuid:              rawRecord.UUID,
+		ClicksUuid:        rawRecord.CLICKS_UUID,
+		OrtbUuid:          rawRecord.ORTB_UUID,
 		EventTimeClicksMs: parseUnixMsSafe(rawRecord.EVENT_TIME_CLICKS),
 		Format:            rawRecord.FORMAT,
 	}
 
 	protoData, err := proto.Marshal(record)
 	if err != nil {
-		return kafka.Message{}, false, fmt.Errorf("❌ shard %d: failed to marshal click protobuf for UUID %s: %v", shardID, uuid, err)
+		return kafka.Message{}, false, fmt.Errorf("❌ shard %d: failed to marshal click protobuf for UUID %s: %v", shardID, clicks_uuid, err)
 	}
 
 	return kafka.Message{
-		Key:   []byte(uuid),
+		Key:   []byte(clicks_uuid),
 		Value: protoData,
 	}, true, nil
 }

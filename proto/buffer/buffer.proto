@@ -47,15 +47,15 @@ message OrtbEvent {
 }
 
 message ImpressionEvent {
-  string uuid = 1;
-  int64 event_time_impressions_ms = 2;
-  string format = 3;
-  string imp_uuid = 4;
+  string impressions_uuid = 1;
+  string ortb_uuid = 2;
+  int64 event_time_impressions_ms = 3;
+  string format = 4;
 }
 
 message ClickEvent {
-  string uuid = 1;
-  int64 event_time_clicks_ms = 2;
-  string format = 3;
-  string click_uuid = 4;
+  string clicks_uuid = 1;
+  string ortb_uuid = 2;
+  int64 event_time_clicks_ms = 3;
+  string format = 4;
 }

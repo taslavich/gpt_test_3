@@ -30,13 +30,15 @@ type Ortb struct {
 }
 
 type Clicks struct {
-	UUID              string `json:"UUID"`
+	CLICKS_UUID       string `json:"CLICKS_UUID"`
+	ORTB_UUID         string `json:"ORTB_UUID"`
 	EVENT_TIME_CLICKS string `json:"EVENT_TIME_CLICKS"`
 	FORMAT            string `json:"FORMAT"`
 }
 
 type Impressions struct {
-	UUID                   string `json:"UUID"`
+	IMPRESSIONS_UUID       string `json:"IMPRESSIONS_UUID"`
+	ORTB_UUID              string `json:"ORTB_UUID"`
 	EVENT_TIME_IMPRESSIONS string `json:"EVENT_TIME_IMPRESSIONS"`
 	FORMAT                 string `json:"FORMAT"`
 }

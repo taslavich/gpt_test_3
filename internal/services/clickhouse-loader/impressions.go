@@ -55,7 +55,7 @@ func hasDataImpressionProtoCH(record *eventspb.ImpressionEvent) bool {
 		return false
 	}
 
-	return record.Uuid != ""
+	return record.ImpressionsUuid != "" && record.OrtbUuid != ""
 }
 
 func insertBatchImpressions(
@@ -72,6 +72,7 @@ func insertBatchImpressions(
 
 	query := fmt.Sprintf(`
 		INSERT INTO %s (
+			impressions_uuid,
 			uuid,
 			event_time_impressions,
 			ad_format
@@ -86,15 +87,21 @@ func insertBatchImpressions(
 	for i := range records {
 		r := &records[i]
 
-		u, err := uuid.Parse(r.Uuid)
+		impressions_u, err := uuid.Parse(r.ImpressionsUuid)
 		if err != nil {
 			stats.BadUUIDCount++
-			u = uuid.Nil
+			impressions_u = uuid.Nil
+		}
+
+		ortb_u, err := uuid.Parse(r.OrtbUuid)
+		if err != nil {
+			stats.BadUUIDCount++
+			ortb_u = uuid.Nil
 		}
 
 		ts := time.UnixMilli(r.EventTimeImpressionsMs).UTC()
 
-		if err := batch.Append(u, ts, r.Format); err != nil {
+		if err := batch.Append(impressions_u, ortb_u, ts, r.Format); err != nil {
 			stats.AppendErrors++
 			return stats, fmt.Errorf("Record %d: batch.Append: %w", i, err)
 		}

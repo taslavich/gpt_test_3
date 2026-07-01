@@ -162,7 +162,8 @@ CREATE TABLE IF NOT EXISTS {db}.impressions_in
 
     ad_format                 LowCardinality(String) DEFAULT '',
 
-    uuid UUID
+    uuid UUID,
+    impressions_uuid UUID
 )
 ENGINE = MergeTree
 ORDER BY (event_time_impressions, uuid)
@@ -176,7 +177,8 @@ CREATE TABLE IF NOT EXISTS {db}.clicks_in
 
     ad_format            LowCardinality(String) DEFAULT '',
 
-    uuid UUID
+    uuid UUID,
+    clicks_uuid UUID
 )
 ENGINE = MergeTree
 ORDER BY (event_time_clicks, uuid)
@@ -195,6 +197,7 @@ CREATE TABLE IF NOT EXISTS {db}.fact_impressions
     event_hour             DateTime('UTC'),
 
     uuid                   UUID,
+    impressions_uuid UUID,
     code                   UInt16 DEFAULT 0,
 
     format                 LowCardinality(String),
@@ -252,6 +255,7 @@ CREATE TABLE IF NOT EXISTS {db}.fact_clicks
     event_hour        DateTime('UTC'),
 
     uuid              UUID,
+    clicks_uuid       UUID,
     code              UInt16 DEFAULT 0,
 
     format            LowCardinality(String),
@@ -390,6 +394,7 @@ SELECT
     toStartOfHour(toDateTime(o.event_time, 'UTC')) AS event_hour,
 
     o.uuid AS uuid,
+    a.impressions_uuid AS impressions_uuid,
     o.code AS code,
 
     o.format AS format,
@@ -428,8 +433,8 @@ SELECT
 FROM {db}.impressions_in AS a
 ANY INNER JOIN {db}.ortb AS o
     ON a.uuid = o.uuid
-WHERE a.uuid NOT IN (
-    SELECT uuid
+WHERE a.impressions_uuid NOT IN (
+    SELECT impressions_uuid
     FROM {db}.fact_impressions
     WHERE created_at >= now() - INTERVAL 65 MINUTE
 )
@@ -453,6 +458,7 @@ SELECT
     toStartOfHour(toDateTime(o.event_time, 'UTC')) AS event_hour,
 
     o.uuid AS uuid,
+    a.clicks_uuid AS clicks_uuid,
     o.code AS code,
 
     o.format AS format,
@@ -491,8 +497,8 @@ SELECT
 FROM {db}.clicks_in AS a
 ANY INNER JOIN {db}.ortb AS o
     ON a.uuid = o.uuid
-WHERE a.uuid NOT IN (
-    SELECT uuid
+WHERE a.clicks_uuid NOT IN (
+    SELECT clicks_uuid
     FROM {db}.fact_clicks
     WHERE created_at >= now() - INTERVAL 65 MINUTE
 )

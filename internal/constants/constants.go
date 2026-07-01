@@ -42,7 +42,7 @@ const (
 )
 
 const (
-	UUID = "UUID"
+	ORTB_UUID = "ORTB_UUID"
 )
 
 const (

@@ -483,11 +483,11 @@ func compactKafkaWriteError(err error) string {
 }
 
 func HasDataClicks(record types.Clicks) bool {
-	return record.UUID != ""
+	return record.CLICKS_UUID != "" && record.ORTB_UUID != ""
 }
 
 func HasDataImpressions(record types.Impressions) bool {
-	return record.UUID != ""
+	return record.IMPRESSIONS_UUID != "" && record.ORTB_UUID != ""
 }
 
 func HasDataOrtb(record types.Ortb) bool {

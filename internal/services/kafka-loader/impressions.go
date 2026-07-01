@@ -34,6 +34,7 @@ func ProcessBatchImpressions(
 			WriteMessagesName:    "impressions",
 			SuccessLogName:       "Impressions",
 			HMGetFields: []string{
+				constants.ORTB_UUID,
 				constants.EVENT_TIME_IMPRESSIONS_COLUMN,
 				constants.FORMAT_COLUMN,
 			},
@@ -46,14 +47,16 @@ func ProcessBatchImpressions(
 
 func buildImpressionKafkaMessage(
 	shardID int,
-	uuid string,
+	impressions_uuid string,
 	values []interface{},
 ) (kafka.Message, bool, error) {
-	eventTime := valueAsString(values, 0)
-	format := valueAsString(values, 1)
+	ortb_uuid := valueAsString(values, 0)
+	eventTime := valueAsString(values, 1)
+	format := valueAsString(values, 2)
 
 	rawRecord := types.Impressions{
-		UUID:                   uuid,
+		IMPRESSIONS_UUID:       impressions_uuid,
+		ORTB_UUID:              ortb_uuid,
 		EVENT_TIME_IMPRESSIONS: eventTime,
 		FORMAT:                 format,
 	}
@@ -63,18 +66,19 @@ func buildImpressionKafkaMessage(
 	}
 
 	record := &eventspb.ImpressionEvent{
-		Uuid:                   rawRecord.UUID,
+		ImpressionsUuid:        rawRecord.IMPRESSIONS_UUID,
+		OrtbUuid:               rawRecord.ORTB_UUID,
 		EventTimeImpressionsMs: parseUnixMsSafe(rawRecord.EVENT_TIME_IMPRESSIONS),
 		Format:                 rawRecord.FORMAT,
 	}
 
 	protoData, err := proto.Marshal(record)
 	if err != nil {
-		return kafka.Message{}, false, fmt.Errorf("❌ shard %d: failed to marshal impression protobuf for UUID %s: %v", shardID, uuid, err)
+		return kafka.Message{}, false, fmt.Errorf("❌ shard %d: failed to marshal impression protobuf for UUID %s: %v", shardID, impressions_uuid, err)
 	}
 
 	return kafka.Message{
-		Key:   []byte(uuid),
+		Key:   []byte(impressions_uuid),
 		Value: protoData,
 	}, true, nil
 }

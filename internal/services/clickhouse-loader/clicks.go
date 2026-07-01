@@ -55,7 +55,7 @@ func hasDataClickProtoCH(record *eventspb.ClickEvent) bool {
 		return false
 	}
 
-	return record.Uuid != ""
+	return record.ClicksUuid != "" && record.OrtbUuid != ""
 }
 
 func insertBatchClicks(
@@ -72,6 +72,7 @@ func insertBatchClicks(
 
 	query := fmt.Sprintf(`
 		INSERT INTO %s (
+			clicks_uuid,
 			uuid,
 			event_time_clicks,
 			ad_format
@@ -86,15 +87,21 @@ func insertBatchClicks(
 	for i := range records {
 		r := &records[i]
 
-		u, err := uuid.Parse(r.Uuid)
+		clicks_u, err := uuid.Parse(r.ClicksUuid)
 		if err != nil {
 			stats.BadUUIDCount++
-			u = uuid.Nil
+			clicks_u = uuid.Nil
+		}
+
+		ortb_u, err := uuid.Parse(r.OrtbUuid)
+		if err != nil {
+			stats.BadUUIDCount++
+			ortb_u = uuid.Nil
 		}
 
 		ts := time.UnixMilli(r.EventTimeClicksMs).UTC()
 
-		if err := batch.Append(u, ts, r.Format); err != nil {
+		if err := batch.Append(clicks_u, ortb_u, ts, r.Format); err != nil {
 			stats.AppendErrors++
 			return stats, fmt.Errorf("Record %d: batch.Append: %w", i, err)
 		}
