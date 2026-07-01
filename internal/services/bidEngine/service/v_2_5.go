@@ -166,7 +166,7 @@ func GetWinnerBidInternal_V_2_5(
 
 		var finalBid *ortb_V2_5.Bid
 
-		wrappedNurl := utils.WrapNurlURL(admDomain, winner.bid.GetNurl(), ImpIdUuid[impID], req.SspDomain)
+		wrappedNurl := utils.WrapNurlURL(admDomain, winner.bid.GetNurl(), ImpIdUuid[impID], winner.domain)
 		wrappedBurl := utils.WrapBurlURL(admDomain, ImpIdUuid[impID], req.Format)
 
 		if logged {
