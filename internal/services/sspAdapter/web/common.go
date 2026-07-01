@@ -164,6 +164,10 @@ func getBurl(
 		return
 	}
 
+	if input.GlobalId == "" {
+		log.Printf("in getBurl missing GlobalId")
+	}
+
 	exists, err := utils.UUIDKeyExistsInRedis(ctx, redisNurlClient, input.GlobalId)
 	if err != nil {
 		log.Printf("failed to check BURL UUID key %s in url %s in getBurl: %v", input.GlobalId, r.URL.String(), err)
