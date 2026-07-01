@@ -163,7 +163,9 @@ CREATE TABLE IF NOT EXISTS {db}.impressions_in
     ad_format                 LowCardinality(String) DEFAULT '',
 
     uuid UUID,
-    impressions_uuid UUID
+    impressions_uuid UUID,
+
+    INDEX idx_impressions_in_impressions_uuid impressions_uuid TYPE bloom_filter(0.01) GRANULARITY 1
 )
 ENGINE = MergeTree
 ORDER BY (event_time_impressions, uuid)
@@ -178,11 +180,19 @@ CREATE TABLE IF NOT EXISTS {db}.clicks_in
     ad_format            LowCardinality(String) DEFAULT '',
 
     uuid UUID,
-    clicks_uuid UUID
+    clicks_uuid UUID,
+
+    INDEX idx_clicks_in_clicks_uuid clicks_uuid TYPE bloom_filter(0.01) GRANULARITY 1
 )
 ENGINE = MergeTree
 ORDER BY (event_time_clicks, uuid)
 TTL created_at + INTERVAL 1 HOUR DELETE;
+
+ALTER TABLE {db}.impressions_in
+    ADD INDEX IF NOT EXISTS idx_impressions_in_impressions_uuid impressions_uuid TYPE bloom_filter(0.01) GRANULARITY 1;
+
+ALTER TABLE {db}.clicks_in
+    ADD INDEX IF NOT EXISTS idx_clicks_in_clicks_uuid clicks_uuid TYPE bloom_filter(0.01) GRANULARITY 1;
 
 
 -- ============================================================
