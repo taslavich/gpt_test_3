@@ -3,6 +3,7 @@ package utils
 import (
 	"context"
 	"fmt"
+	"log"
 	"time"
 
 	"github.com/redis/go-redis/v9"
@@ -247,6 +248,8 @@ func WriteImpressionStats(
 		constants.EVENT_TIME_IMPRESSIONS_COLUMN: time.Now().UTC().Format("2006-01-02 15:04:05.000"),
 		constants.FORMAT_COLUMN:                 format,
 	}
+
+	log.Printf("TIMESTAMP: %s", time.Now().UTC())
 
 	pipe := client.Pipeline()
 	pipe.HSet(ctx, impressionsUuid, fields)
