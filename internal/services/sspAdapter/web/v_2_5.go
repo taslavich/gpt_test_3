@@ -562,6 +562,9 @@ func postBid_V2_5(
 
 	failedImpIds := append([]string(nil), res.GetFailedImpIds()...)
 	for impID, uuid := range res.GetImpIdUuidClone() {
+		if uuid == "" {
+			log.Printf("Empty clone uuid jjj 2")
+		}
 		if !writeStatsOrtbAndAddToSet(
 			ctx,
 			redisClients,
