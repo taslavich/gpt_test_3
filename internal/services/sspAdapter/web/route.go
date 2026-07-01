@@ -71,9 +71,10 @@ type postBidResponse_V2_5 struct {
 }
 
 type admNurlBurlRequest struct {
-	GlobalId string `in:"query=id" required:"true"`
-	DspURL   string `in:"query=url" required:"true"`
-	Format   string `in:"query=f" required:"true"`
+	GlobalId   string `in:"query=id" required:"true"`
+	DspURL     string `in:"query=url" required:"true"`
+	Format     string `in:"query=f" required:"true"`
+	Ssp_Domain string `in:"query=s" required:"true"`
 }
 
 type putWorkStatusRequest struct {
@@ -263,7 +264,7 @@ func InitNurlBurlRoutes(
 	httpRouter.With(
 		httpin.NewInput(admNurlBurlRequest{}),
 	).Get(GetNurlUrl, func(w http.ResponseWriter, r *http.Request) {
-		getNurl(w, r, nurlClient)
+		getNurl(ctx, w, r, nurlClient, redisClientsImp, redisNurlClient, redisSetImpressions, redisWriteErrorMonitor, sspAdapterWorkStatusURL)
 	})
 
 	httpRouter.With(

@@ -72,11 +72,54 @@ func getAdm(
 }
 
 func getNurl(
+	ctx context.Context,
 	w http.ResponseWriter,
 	r *http.Request,
 	nurlClient *http.Client,
+	redisClients []*redis.Client,
+	redisNurlClient *redis.Client,
+	redisSetImpressions string,
+	redisWriteErrorMonitor *services.RedisWriteErrorMonitor,
+	sspAdapterWorkStatusURL string,
 ) {
 	input := r.Context().Value(httpin.Input).(*admNurlBurlRequest)
+
+	if input.Ssp_Domain == "adl_pb.com" {
+		format, ok := constants.CodeToFormat[input.Format]
+		if !ok {
+			log.Printf("in getNurl invalid format code: %q", input.Format)
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+
+		exists, err := utils.UUIDKeyExistsInRedis(ctx, redisNurlClient, input.GlobalId)
+		if err != nil {
+			log.Printf("failed to check NURL UUID key %s in url %s in getNurl: %v", input.GlobalId, r.URL.String(), err)
+			redisWriteErrorMonitor.RecordForURL(err, sspAdapterWorkStatusURL)
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+		if !exists {
+			log.Printf("NURL UUID key %s does not exist in url %s in getNurl", input.GlobalId, r.URL.String())
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+
+		impressionsUuid := uuid.New().String()
+
+		if err := utils.WriteImpressionStats(ctx, redisClients, impressionsUuid, input.GlobalId, format, true); err != nil {
+			log.Printf("failed to WriteImpressionStats in getNurl: %v", err)
+			redisWriteErrorMonitor.RecordForURL(err, sspAdapterWorkStatusURL)
+			w.WriteHeader(http.StatusServiceUnavailable)
+			return
+		}
+		if err := utils.AddUUIDToRedisSet(ctx, redisClients, redisSetImpressions, impressionsUuid, true); err != nil {
+			log.Printf("failed to add impression UUID to Redis set in getNurl: %v", err)
+			redisWriteErrorMonitor.RecordForURL(err, sspAdapterWorkStatusURL)
+			w.WriteHeader(http.StatusServiceUnavailable)
+			return
+		}
+	}
 
 	decodedURL, err := url.QueryUnescape(input.DspURL)
 	if err != nil {

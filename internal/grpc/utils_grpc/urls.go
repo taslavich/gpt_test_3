@@ -18,10 +18,10 @@ func WrapURL(hostname, originalURL, globalId, format string) string {
 		hostname, globalId, encodeUrl, constants.FormatToCodes[format])
 }
 
-func WrapNurlURL(hostname, originalURL, globalId string) string {
+func WrapNurlURL(hostname, originalURL, globalId, ssp_domain string) string {
 	encodeUrl := url.QueryEscape(originalURL)
-	return fmt.Sprintf("http://%s:80/nurl?id=%s&url=%s",
-		hostname, globalId, encodeUrl)
+	return fmt.Sprintf("http://%s:80/nurl?id=%s&url=%s&s=%s",
+		hostname, globalId, encodeUrl, ssp_domain)
 }
 
 func WrapBurlURL(hostname, globalId, format string) string {
