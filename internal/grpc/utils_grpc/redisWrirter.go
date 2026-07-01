@@ -193,6 +193,7 @@ func WriteStatsOrtb(
 func WriteClickStats(
 	ctx context.Context,
 	redisClients []*redis.Client,
+	clickUuid string,
 	globalId string,
 	format string,
 	logged bool,
@@ -201,22 +202,23 @@ func WriteClickStats(
 		return nil
 	}
 
-	client, idx, err := redis_service.SelectShard(redisClients, globalId)
+	client, idx, err := redis_service.SelectShard(redisClients, clickUuid)
 	if err != nil {
-		return fmt.Errorf("failed to select shard for uuid %s: %w", globalId, err)
+		return fmt.Errorf("failed to select shard for uuid %s: %w", clickUuid, err)
 	}
 
 	fields := map[string]interface{}{
+		constants.UUID:                     globalId,
 		constants.EVENT_TIME_CLICKS_COLUMN: time.Now().UTC().Format("2006-01-02 15:04:05.000"),
 		constants.FORMAT_COLUMN:            format,
 	}
 
 	pipe := client.Pipeline()
-	pipe.HSet(ctx, globalId, fields)
-	pipe.Expire(ctx, globalId, RedisKeyTTL)
+	pipe.HSet(ctx, clickUuid, fields)
+	pipe.Expire(ctx, clickUuid, RedisKeyTTL)
 
 	if _, err := pipe.Exec(ctx); err != nil {
-		return fmt.Errorf("failed to write click stats to Redis (uuid=%s, shard=%d): %w", globalId, idx, err)
+		return fmt.Errorf("failed to write click stats to Redis (uuid=%s, shard=%d): %w", clickUuid, idx, err)
 	}
 
 	return nil
@@ -226,6 +228,7 @@ func WriteClickStats(
 func WriteImpressionStats(
 	ctx context.Context,
 	redisClients []*redis.Client,
+	impressionsUuid string,
 	globalId string,
 	format string,
 	logged bool,
@@ -234,22 +237,23 @@ func WriteImpressionStats(
 		return nil
 	}
 
-	client, idx, err := redis_service.SelectShard(redisClients, globalId)
+	client, idx, err := redis_service.SelectShard(redisClients, impressionsUuid)
 	if err != nil {
-		return fmt.Errorf("failed to select shard for uuid %s: %w", globalId, err)
+		return fmt.Errorf("failed to select shard for uuid %s: %w", impressionsUuid, err)
 	}
 
 	fields := map[string]interface{}{
+		constants.UUID:                          globalId,
 		constants.EVENT_TIME_IMPRESSIONS_COLUMN: time.Now().UTC().Format("2006-01-02 15:04:05.000"),
 		constants.FORMAT_COLUMN:                 format,
 	}
 
 	pipe := client.Pipeline()
-	pipe.HSet(ctx, globalId, fields)
-	pipe.Expire(ctx, globalId, RedisKeyTTL)
+	pipe.HSet(ctx, impressionsUuid, fields)
+	pipe.Expire(ctx, impressionsUuid, RedisKeyTTL)
 
 	if _, err := pipe.Exec(ctx); err != nil {
-		return fmt.Errorf("failed to write impression stats to Redis (uuid=%s, shard=%d): %w", globalId, idx, err)
+		return fmt.Errorf("failed to write impression stats to Redis (uuid=%s, shard=%d): %w", impressionsUuid, idx, err)
 	}
 
 	return nil
