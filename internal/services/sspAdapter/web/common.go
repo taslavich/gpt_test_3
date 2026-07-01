@@ -88,7 +88,7 @@ func getNurl(
 	resp, err := nurlClient.Get(decodedURL)
 	if err != nil {
 		log.Printf("failed to call nurl target: %v", err)
-		w.WriteHeader(http.StatusBadGateway)
+		w.WriteHeader(http.StatusNoContent)
 		return
 	}
 	defer resp.Body.Close()
@@ -96,7 +96,7 @@ func getNurl(
 	_, err = io.Copy(io.Discard, io.LimitReader(resp.Body, 4096))
 	if err != nil {
 		log.Printf("failed to read nurl target response: %v", err)
-		w.WriteHeader(http.StatusBadGateway)
+		w.WriteHeader(http.StatusNoContent)
 		return
 	}
 
@@ -160,7 +160,7 @@ func getBurl(
 	resp, err := nurlClient.Get(decodedURL)
 	if err != nil {
 		log.Printf("failed to call burl target: %v", err)
-		w.WriteHeader(http.StatusBadGateway)
+		w.WriteHeader(http.StatusNoContent)
 		return
 	}
 	defer resp.Body.Close()
@@ -168,7 +168,7 @@ func getBurl(
 	_, err = io.Copy(io.Discard, io.LimitReader(resp.Body, 4096))
 	if err != nil {
 		log.Printf("failed to read burl target response: %v", err)
-		w.WriteHeader(http.StatusBadGateway)
+		w.WriteHeader(http.StatusNoContent)
 		return
 	}
 
