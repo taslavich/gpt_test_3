@@ -609,15 +609,15 @@ func postBid_V2_5(
 				log.Printf("Burl == nil")
 			}
 
-			if !strings.HasPrefix(v2.GetAdm(), "https://server1.twinbidexchange.com/adm") {
+			if !strings.HasPrefix(v2.GetAdm(), "https://server2.twinbidexchange.com/adm") {
 				log.Printf("GOT ADM HOSTNAME %q", v2.GetAdm())
 			}
 
-			if !strings.HasPrefix(v2.GetBurl(), "http://server1.twinbidexchange.com:80/burl") {
+			if !strings.HasPrefix(v2.GetBurl(), "http://server2.twinbidexchange.com:80/burl") {
 				log.Printf("GOT BURL HOSTNAME %q", v2.GetBurl())
 			}
 
-			if !strings.HasPrefix(v2.GetNurl(), "http://server1.twinbidexchange.com:80/nurl") {
+			if !strings.HasPrefix(v2.GetNurl(), "http://server2.twinbidexchange.com:80/nurl") {
 				log.Printf("GOT NURL HOSTNAME %q", v2.GetNurl())
 			}
 		}
