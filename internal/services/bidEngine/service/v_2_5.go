@@ -163,10 +163,6 @@ func GetWinnerBidInternal_V_2_5(
 		wrappedNurl := utils.WrapNurlURL(admDomain, winner.bid.GetNurl(), ImpIdUuid[impID], req.SspDomain)
 		wrappedBurl := utils.WrapBurlURL(admDomain, ImpIdUuid[impID], req.Format)
 
-		if !strings.HasPrefix(wrappedBurl, "http://server4.twinbidexchange.com:80/burl") {
-			log.Printf("GOT HOSTNAME %q", wrappedBurl)
-		}
-
 		if logged {
 			wrappedAdm := utils.WrapURL(admDomain, winner.bid.GetAdm(), ImpIdUuid[impID], req.Format)
 			finalBid = &ortb_V2_5.Bid{

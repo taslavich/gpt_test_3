@@ -25,6 +25,6 @@ func WrapNurlURL(hostname, originalURL, globalId, ssp_domain string) string {
 }
 
 func WrapBurlURL(hostname, globalId, format string) string {
-	return fmt.Sprintf("http://%s:80/burl?id=%s&f=%s",
+	return fmt.Sprintf("https://%s/burl?id=%s&f=%s",
 		hostname, globalId, constants.FormatToCodes[format])
 }

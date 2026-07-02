@@ -118,8 +118,12 @@ func main() {
 		redisAdmClient,
 		cfg.RedisSetClicks,
 		cfg.AdmTimeout,
+		cfg.BurlTimeout,
 		redisWriteErrorMonitor,
 		cfg.SspAdapterWorkStatusURL,
+		redisBurlClient,
+		cfg.RedisSetImpressions,
+		redisClients.Impressions,
 	)
 	log.Println("ADM HTTPS routes initialized")
 
