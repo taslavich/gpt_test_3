@@ -20,7 +20,7 @@ func WrapURL(hostname, originalURL, globalId, format string) string {
 
 func WrapNurlURL(hostname, originalURL, globalId, ssp_domain string) string {
 	encodeUrl := url.QueryEscape(originalURL)
-	return fmt.Sprintf("http://%s:80/nurl?id=%s&url=%s&s=%s",
+	return fmt.Sprintf("https://%s/nurl?id=%s&url=%s&s=%s",
 		hostname, globalId, encodeUrl, ssp_domain)
 }
 

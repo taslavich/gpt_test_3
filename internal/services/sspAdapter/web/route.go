@@ -242,6 +242,10 @@ func InitHttpsRoutes(
 ) {
 	integration.UseGochiURLParam("path", chi.URLParam)
 
+	var nurlClient = &http.Client{
+		Timeout: 3 * time.Second,
+	}
+
 	httpRouter.With(
 		httpin.NewInput(admNurlBurlRequest{}),
 	).Get(GetAdmUrl, func(w http.ResponseWriter, r *http.Request) {
@@ -253,9 +257,15 @@ func InitHttpsRoutes(
 	).Get(GetBurlUrl, func(w http.ResponseWriter, r *http.Request) {
 		getBurl(ctx, w, r, redisClientsImp, redisNurlClient, redisSetImpressions, redisWriteErrorMonitor, sspAdapterWorkStatusURL)
 	})
+
+	httpRouter.With(
+		httpin.NewInput(admNurlBurlRequest{}),
+	).Get(GetNurlUrl, func(w http.ResponseWriter, r *http.Request) {
+		getNurl(ctx, w, r, nurlClient, redisClientsImp, redisNurlClient, redisSetImpressions, redisWriteErrorMonitor, sspAdapterWorkStatusURL)
+	})
 }
 
-func InitNurlBurlRoutes(
+/*func InitNurlBurlRoutes(
 	ctx context.Context,
 	httpRouter *chi.Mux,
 	redisClientsImp []*redis.Client,
@@ -276,4 +286,4 @@ func InitNurlBurlRoutes(
 	).Get(GetNurlUrl, func(w http.ResponseWriter, r *http.Request) {
 		getNurl(ctx, w, r, nurlClient, redisClientsImp, redisNurlClient, redisSetImpressions, redisWriteErrorMonitor, sspAdapterWorkStatusURL)
 	})
-}
+}*/

@@ -127,7 +127,7 @@ func main() {
 	)
 	log.Println("ADM HTTPS routes initialized")
 
-	nurlBurlRouter := httpServer.InitHttpRouter(chi.NewRouter())
+	/*nurlBurlRouter := httpServer.InitHttpRouter(chi.NewRouter())
 	sppAdapterWeb.InitNurlBurlRoutes(
 		ctx,
 		nurlBurlRouter,
@@ -140,6 +140,6 @@ func main() {
 	)
 	log.Println("NURL/BURL HTTP routes initialized")
 
-	go httpServer.RunHttpServer(ctx, nurlBurlRouter, cfg.HttpServer.Host, 80)
+	go httpServer.RunHttpServer(ctx, nurlBurlRouter, cfg.HttpServer.Host, 80)*/
 	httpServer.RunHttpsServerOptimized(ctx, admRouter, cfg.HttpServer.Host, cfg.HttpServer.Port, cfg.FullChain, cfg.PrivKey, cfg.RsaFullChain, cfg.RsaPrivKey)
 }
