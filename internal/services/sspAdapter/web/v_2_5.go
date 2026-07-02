@@ -7,6 +7,7 @@ import (
 	"log"
 	"net/http"
 	"runtime/debug"
+	"strings"
 	"time"
 
 	"github.com/ggicci/httpin"
@@ -592,6 +593,34 @@ func postBid_V2_5(
 	if !bidResponseHasBids(res.BidResponse) {
 		w.WriteHeader(http.StatusNoContent)
 		return
+	}
+
+	for k1 := range res.BidResponse.Seatbid {
+		for _, v2 := range res.BidResponse.Seatbid[k1].Bid {
+			if v2.Adm == nil {
+				log.Printf("Adm == nil")
+			}
+
+			if v2.Nurl == nil {
+				log.Printf("Nurl == nil")
+			}
+
+			if v2.Burl == nil {
+				log.Printf("Burl == nil")
+			}
+
+			if !strings.HasPrefix(v2.GetAdm(), "https://server1.twinbidexchange.com/adm") {
+				log.Printf("GOT ADM HOSTNAME %q", v2.GetAdm())
+			}
+
+			if !strings.HasPrefix(v2.GetBurl(), "http://server1.twinbidexchange.com:80/burl") {
+				log.Printf("GOT BURL HOSTNAME %q", v2.GetBurl())
+			}
+
+			if !strings.HasPrefix(v2.GetNurl(), "http://server1.twinbidexchange.com:80/nurl") {
+				log.Printf("GOT NURL HOSTNAME %q", v2.GetNurl())
+			}
+		}
 	}
 
 	if err = rnr.JSON(w, http.StatusOK, postBidResponse_V2_5{
