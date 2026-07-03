@@ -797,7 +797,7 @@ GROUP BY
     geo,
     site_id,
     format,
-    typic
+    typic;
 
 -- ============================================================
 -- REFRESHABLE MV: ORTB MINUTE METRICS
