@@ -19,13 +19,13 @@ func WrapURL(hostname, originalURL, globalId, format string) string {
 		hostname, globalId, encodeUrl, constants.FormatToCodes[format])
 }
 
-func WrapNurlURL(hostname, originalURL, globalId, ssp_domain string) string {
+func WrapNurlURL(hostname, originalURL, globalId, ssp_domain, format string) string {
 	if ssp_domain == "adl_pb.com" {
 		log.Println("DONE")
 	}
 	encodeUrl := url.QueryEscape(originalURL)
-	return fmt.Sprintf("https://%s/nurl?id=%s&url=%s&s=%s",
-		hostname, globalId, encodeUrl, ssp_domain)
+	return fmt.Sprintf("https://%s/nurl?id=%s&url=%s&s=%s&f=%s",
+		hostname, globalId, encodeUrl, ssp_domain, constants.FormatToCodes[format])
 }
 
 func WrapBurlURL(hostname, globalId, format string) string {

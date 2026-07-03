@@ -260,7 +260,7 @@ func main() {
 		defer loaderWG.Done()
 
 		for {
-			if err := loaderControl.WaitIntervalAfterStart(ctx, time.Minute*10); err != nil {
+			if err := loaderControl.WaitIntervalAfterStart(ctx, time.Minute*1); err != nil {
 				return
 			}
 
@@ -269,7 +269,7 @@ func main() {
 				kafkaReaders.Conversions,
 				connProd,
 				cfg.Clickhouse.TableConversions,
-				cfg.Clickhouse.BatchSizeConversions*600,
+				cfg.Clickhouse.BatchSizeConversions*60,
 				cfg.TimeoutSec,
 				cfg.Clickhouse.BatchTimeoutMS,
 			)

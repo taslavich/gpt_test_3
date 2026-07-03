@@ -123,6 +123,7 @@ func getNurl(
 			w.WriteHeader(http.StatusServiceUnavailable)
 			return
 		}
+		log.Println("NNN")
 	}
 
 	decodedURL, err := url.QueryUnescape(input.DspURL)

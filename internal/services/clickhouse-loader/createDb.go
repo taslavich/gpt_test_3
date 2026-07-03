@@ -329,7 +329,6 @@ SETTINGS index_granularity = 8192;
 
 CREATE TABLE IF NOT EXISTS {db}.fact_conversions
 (
-    event_time_clicks DateTime64(3, 'UTC'),
     event_time        DateTime64(3, 'UTC'),
     event_date        Date,
     event_hour        DateTime('UTC'),

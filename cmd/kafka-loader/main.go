@@ -262,7 +262,7 @@ func main() {
 		defer loaderWG.Done()
 
 		for {
-			if err := loaderControl.WaitIntervalAfterStart(ctx, 10*time.Minute); err != nil {
+			if err := loaderControl.WaitIntervalAfterStart(ctx, 1*time.Minute); err != nil {
 				return
 			}
 
@@ -270,7 +270,7 @@ func main() {
 				ctx,
 				redisClients.Conversions,
 				kafkaWriter.Conversions,
-				cfg.RedisConfig.BatchSizeConversions*600,
+				cfg.RedisConfig.BatchSizeConversions*60,
 				cfg.RedisSetConversions,
 			)
 			if err != nil {
