@@ -599,7 +599,6 @@ REFRESH EVERY 10 MINUTE
 APPEND TO {db}.fact_conversions
 AS
 SELECT
-    a.event_time_clicks AS event_time_clicks,
     o.event_time AS event_time,
     toDate(o.event_time) AS event_date,
     toStartOfHour(toDateTime(o.event_time, 'UTC')) AS event_hour,
