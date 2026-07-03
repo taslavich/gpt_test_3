@@ -85,10 +85,6 @@ func getNurl(
 	input := r.Context().Value(httpin.Input).(*admNurlBurlRequest)
 
 	if input.Ssp_Domain == "adl_pb.com" {
-		log.Println("DONE")
-	}
-
-	if input.Ssp_Domain == "adl_pb.com" {
 		format, ok := constants.CodeToFormat[input.Format]
 		if !ok {
 			log.Printf("in getNurl invalid format code: %q", input.Format)
@@ -123,7 +119,6 @@ func getNurl(
 			w.WriteHeader(http.StatusServiceUnavailable)
 			return
 		}
-		log.Println("NNN")
 	}
 
 	decodedURL, err := url.QueryUnescape(input.DspURL)
