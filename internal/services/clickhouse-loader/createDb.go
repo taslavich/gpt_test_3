@@ -314,6 +314,12 @@ ORDER BY event_time
 TTL event_date + INTERVAL 6 MONTH DELETE
 SETTINGS index_granularity = 8192;
 
+ALTER TABLE {db}.fact_impressions
+    ADD COLUMN IF NOT EXISTS impressions_uuid UUID AFTER uuid;
+
+ALTER TABLE {db}.fact_clicks
+    ADD COLUMN IF NOT EXISTS clicks_uuid UUID AFTER uuid;
+
 
 ALTER TABLE {db}.fact_impressions
     ADD COLUMN IF NOT EXISTS impressions_uuid UUID AFTER uuid;
