@@ -72,7 +72,7 @@ func insertBatchConversions(
 
 	query := fmt.Sprintf(`
 		INSERT INTO %s (
-			conversions_uuid,
+			clicks_uuid,
 			payout
 		)
 	`, table)
