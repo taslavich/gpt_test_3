@@ -620,7 +620,7 @@ SELECT
     ifNull(o.browser_version, '') AS browser_version,
     ifNull(o.os, '') AS os,
     ifNull(o.os_version, '') AS os_version,
-    ifNull(o.device, '') AS device_type,
+    ifNull(o.device_type, '') AS device_type,
 
     ifNull(o.site_id, '') AS site_id,
     ifNull(o.site_domain, '') AS site_domain,
