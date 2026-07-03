@@ -445,6 +445,58 @@ func (x *ClickEvent) GetFormat() string {
 	return ""
 }
 
+type ConversionEvent struct {
+	state           protoimpl.MessageState `protogen:"open.v1"`
+	ConversionsUuid string                 `protobuf:"bytes,1,opt,name=conversions_uuid,json=conversionsUuid,proto3" json:"conversions_uuid,omitempty"`
+	Payout          string                 `protobuf:"bytes,2,opt,name=payout,proto3" json:"payout,omitempty"`
+	unknownFields   protoimpl.UnknownFields
+	sizeCache       protoimpl.SizeCache
+}
+
+func (x *ConversionEvent) Reset() {
+	*x = ConversionEvent{}
+	mi := &file_buffer_buffer_proto_msgTypes[4]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ConversionEvent) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ConversionEvent) ProtoMessage() {}
+
+func (x *ConversionEvent) ProtoReflect() protoreflect.Message {
+	mi := &file_buffer_buffer_proto_msgTypes[4]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ConversionEvent.ProtoReflect.Descriptor instead.
+func (*ConversionEvent) Descriptor() ([]byte, []int) {
+	return file_buffer_buffer_proto_rawDescGZIP(), []int{4}
+}
+
+func (x *ConversionEvent) GetConversionsUuid() string {
+	if x != nil {
+		return x.ConversionsUuid
+	}
+	return ""
+}
+
+func (x *ConversionEvent) GetPayout() string {
+	if x != nil {
+		return x.Payout
+	}
+	return ""
+}
+
 var File_buffer_buffer_proto protoreflect.FileDescriptor
 
 const file_buffer_buffer_proto_rawDesc = "" +
@@ -501,7 +553,10 @@ const file_buffer_buffer_proto_rawDesc = "" +
 	"clicksUuid\x12\x1b\n" +
 	"\tortb_uuid\x18\x02 \x01(\tR\bortbUuid\x12/\n" +
 	"\x14event_time_clicks_ms\x18\x03 \x01(\x03R\x11eventTimeClicksMs\x12\x16\n" +
-	"\x06format\x18\x04 \x01(\tR\x06formatBNZLgitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/proto/buffer;eventspbb\x06proto3"
+	"\x06format\x18\x04 \x01(\tR\x06format\"T\n" +
+	"\x0fConversionEvent\x12)\n" +
+	"\x10conversions_uuid\x18\x01 \x01(\tR\x0fconversionsUuid\x12\x16\n" +
+	"\x06payout\x18\x02 \x01(\tR\x06payoutBNZLgitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/proto/buffer;eventspbb\x06proto3"
 
 var (
 	file_buffer_buffer_proto_rawDescOnce sync.Once
@@ -515,18 +570,19 @@ func file_buffer_buffer_proto_rawDescGZIP() []byte {
 	return file_buffer_buffer_proto_rawDescData
 }
 
-var file_buffer_buffer_proto_msgTypes = make([]protoimpl.MessageInfo, 6)
+var file_buffer_buffer_proto_msgTypes = make([]protoimpl.MessageInfo, 7)
 var file_buffer_buffer_proto_goTypes = []any{
 	(*BidResponses)(nil),    // 0: events.BidResponses
 	(*OrtbEvent)(nil),       // 1: events.OrtbEvent
 	(*ImpressionEvent)(nil), // 2: events.ImpressionEvent
 	(*ClickEvent)(nil),      // 3: events.ClickEvent
-	nil,                     // 4: events.BidResponses.ItemsEntry
-	nil,                     // 5: events.OrtbEvent.BidResponsesEntry
+	(*ConversionEvent)(nil), // 4: events.ConversionEvent
+	nil,                     // 5: events.BidResponses.ItemsEntry
+	nil,                     // 6: events.OrtbEvent.BidResponsesEntry
 }
 var file_buffer_buffer_proto_depIdxs = []int32{
-	4, // 0: events.BidResponses.items:type_name -> events.BidResponses.ItemsEntry
-	5, // 1: events.OrtbEvent.bid_responses:type_name -> events.OrtbEvent.BidResponsesEntry
+	5, // 0: events.BidResponses.items:type_name -> events.BidResponses.ItemsEntry
+	6, // 1: events.OrtbEvent.bid_responses:type_name -> events.OrtbEvent.BidResponsesEntry
 	2, // [2:2] is the sub-list for method output_type
 	2, // [2:2] is the sub-list for method input_type
 	2, // [2:2] is the sub-list for extension type_name
@@ -545,7 +601,7 @@ func file_buffer_buffer_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_buffer_buffer_proto_rawDesc), len(file_buffer_buffer_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   6,
+			NumMessages:   7,
 			NumExtensions: 0,
 			NumServices:   0,
 		},

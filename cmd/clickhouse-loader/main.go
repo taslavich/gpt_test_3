@@ -255,6 +255,31 @@ func main() {
 		}
 	}()
 
+	loaderWG.Add(1)
+	go func() {
+		defer loaderWG.Done()
+
+		for {
+			if err := loaderControl.WaitIntervalAfterStart(ctx, time.Minute*10); err != nil {
+				return
+			}
+
+			err := clickhouse_loader.ProcessKafkaMessagesConversions(
+				ctx,
+				kafkaReaders.Conversions,
+				connProd,
+				cfg.Clickhouse.TableConversions,
+				cfg.Clickhouse.BatchSizeConversions*600,
+				cfg.TimeoutSec,
+				cfg.Clickhouse.BatchTimeoutMS,
+			)
+			if err != nil {
+				handleStreamError(err)
+				continue
+			}
+		}
+	}()
+
 	<-sigChan
 	log.Print("🛑 Graceful shutdown requested")
 

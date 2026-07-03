@@ -59,6 +59,7 @@ func main() {
 		cfg.RedisDBOrtb,
 		cfg.RedisDBImpressions,
 		cfg.RedisDBClicks,
+		cfg.RedisDBConversions,
 		cfg.RedisUseTLS,
 		cfg.RedisPoolSize,
 		cfg.RedisMinIdleConns,

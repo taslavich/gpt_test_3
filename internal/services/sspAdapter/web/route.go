@@ -45,6 +45,7 @@ const (
 	GetAdmUrl  = "/adm"
 	GetNurlUrl = "/nurl"
 	GetBurlUrl = "/burl"
+	GetCurlUrl = "/curl"
 
 	GetWorkStatusUrl = "/work_status"
 
@@ -75,6 +76,11 @@ type admNurlBurlRequest struct {
 	DspURL     string `in:"query=url" required:"true"`
 	Format     string `in:"query=f" required:"true"`
 	Ssp_Domain string `in:"query=s" required:"true"`
+}
+
+type curlRequest struct {
+	ClickUuid string `in:"query=click_id" required:"true"`
+	Payout    string `in:"query=payout" required:"true"`
 }
 
 type putWorkStatusRequest struct {
@@ -239,6 +245,8 @@ func InitHttpsRoutes(
 	redisNurlClient *redis.Client,
 	redisSetImpressions string,
 	redisClientsImp []*redis.Client,
+	redisSetConversions string,
+	redisClientsConv []*redis.Client,
 ) {
 	integration.UseGochiURLParam("path", chi.URLParam)
 
@@ -262,6 +270,12 @@ func InitHttpsRoutes(
 		httpin.NewInput(admNurlBurlRequest{}),
 	).Get(GetNurlUrl, func(w http.ResponseWriter, r *http.Request) {
 		getNurl(ctx, w, r, nurlClient, redisClientsImp, redisNurlClient, redisSetImpressions, redisWriteErrorMonitor, sspAdapterWorkStatusURL)
+	})
+
+	httpRouter.With(
+		httpin.NewInput(curlRequest{}),
+	).Get(GetCurlUrl, func(w http.ResponseWriter, r *http.Request) {
+		getCurl(ctx, w, r, redisClientsConv, redisSetConversions, redisWriteErrorMonitor, sspAdapterWorkStatusURL)
 	})
 }
 

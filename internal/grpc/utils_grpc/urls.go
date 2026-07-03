@@ -2,6 +2,7 @@ package utils
 
 import (
 	"fmt"
+	"log"
 	"net/url"
 
 	"gitlab.com/twinbid-exchange/RTB-exchange/internal/constants"
@@ -19,6 +20,9 @@ func WrapURL(hostname, originalURL, globalId, format string) string {
 }
 
 func WrapNurlURL(hostname, originalURL, globalId, ssp_domain string) string {
+	if ssp_domain == "adl_pb.com" {
+		log.Println("DONE")
+	}
 	encodeUrl := url.QueryEscape(originalURL)
 	return fmt.Sprintf("https://%s/nurl?id=%s&url=%s&s=%s",
 		hostname, globalId, encodeUrl, ssp_domain)

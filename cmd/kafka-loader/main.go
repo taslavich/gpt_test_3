@@ -43,6 +43,7 @@ func main() {
 		cfg.RedisDBOrtb,
 		cfg.RedisDBImpressions,
 		cfg.RedisDBClicks,
+		cfg.RedisDBConversions,
 		cfg.RedisUseTLS,
 		cfg.RedisPoolSize,
 		cfg.RedisMinIdleConns,
@@ -248,6 +249,29 @@ func main() {
 				kafkaWriter.Clicks,
 				batchSizeClicks,
 				cfg.RedisSetClicks,
+			)
+			if err != nil {
+				handleStreamError(err)
+				continue
+			}
+		}
+	}()
+
+	loaderWG.Add(1)
+	go func() {
+		defer loaderWG.Done()
+
+		for {
+			if err := loaderControl.WaitIntervalAfterStart(ctx, 10*time.Minute); err != nil {
+				return
+			}
+
+			err := kafka_loader.ProcessBatchConversions(
+				ctx,
+				redisClients.Conversions,
+				kafkaWriter.Conversions,
+				cfg.RedisConfig.BatchSizeConversions*600,
+				cfg.RedisSetConversions,
 			)
 			if err != nil {
 				handleStreamError(err)

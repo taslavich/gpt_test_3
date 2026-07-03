@@ -85,6 +85,10 @@ func getNurl(
 	input := r.Context().Value(httpin.Input).(*admNurlBurlRequest)
 
 	if input.Ssp_Domain == "adl_pb.com" {
+		log.Println("DONE")
+	}
+
+	if input.Ssp_Domain == "adl_pb.com" {
 		format, ok := constants.CodeToFormat[input.Format]
 		if !ok {
 			log.Printf("in getNurl invalid format code: %q", input.Format)
@@ -187,6 +191,33 @@ func getBurl(
 	}
 	if err := utils.AddUUIDToRedisSet(ctx, redisClients, redisSetImpressions, impressionsUuid, true); err != nil {
 		log.Printf("failed to add impression UUID to Redis set in getBurl: %v", err)
+		redisWriteErrorMonitor.RecordForURL(err, sspAdapterWorkStatusURL)
+		w.WriteHeader(http.StatusServiceUnavailable)
+		return
+	}
+
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func getCurl(
+	ctx context.Context,
+	w http.ResponseWriter,
+	r *http.Request,
+	redisClients []*redis.Client,
+	redisSetConversions string,
+	redisWriteErrorMonitor *services.RedisWriteErrorMonitor,
+	sspAdapterWorkStatusURL string,
+) {
+	input := r.Context().Value(httpin.Input).(*curlRequest)
+
+	if err := utils.WriteConversionStats(ctx, redisClients, input.ClickUuid, input.Payout, true); err != nil {
+		log.Printf("failed to WriteConversionStats in getCurl: %v", err)
+		redisWriteErrorMonitor.RecordForURL(err, sspAdapterWorkStatusURL)
+		w.WriteHeader(http.StatusServiceUnavailable)
+		return
+	}
+	if err := utils.AddUUIDToRedisSet(ctx, redisClients, redisSetConversions, input.ClickUuid, true); err != nil {
+		log.Printf("failed to add conversion UUID to Redis set in getCurl: %v", err)
 		redisWriteErrorMonitor.RecordForURL(err, sspAdapterWorkStatusURL)
 		w.WriteHeader(http.StatusServiceUnavailable)
 		return

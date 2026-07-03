@@ -46,6 +46,10 @@ const (
 )
 
 const (
+	PAYOUT = "PAYOUT"
+)
+
+const (
 	FALSE = "0"
 	TRUE  = "1"
 )

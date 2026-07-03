@@ -258,3 +258,34 @@ func WriteImpressionStats(
 
 	return nil
 }
+
+func WriteConversionStats(
+	ctx context.Context,
+	redisClients []*redis.Client,
+	clickUuid string,
+	payout string,
+	logged bool,
+) error {
+	if !logged {
+		return nil
+	}
+
+	client, idx, err := redis_service.SelectShard(redisClients, clickUuid)
+	if err != nil {
+		return fmt.Errorf("failed to select shard for uuid %s: %w", clickUuid, err)
+	}
+
+	fields := map[string]interface{}{
+		constants.PAYOUT: payout,
+	}
+
+	pipe := client.Pipeline()
+	pipe.HSet(ctx, clickUuid, fields)
+	pipe.Expire(ctx, clickUuid, RedisKeyTTL)
+
+	if _, err := pipe.Exec(ctx); err != nil {
+		return fmt.Errorf("failed to write conversion stats to Redis (uuid=%s, shard=%d): %w", clickUuid, idx, err)
+	}
+
+	return nil
+}

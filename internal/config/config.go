@@ -255,9 +255,11 @@ type ClickhouseConfig struct {
 	TableOrtb                   string  `yaml:"CLICKHOUSE_TABLE_ORTB" env:"CLICKHOUSE_TABLE_ORTB" env-default:"ortb"`
 	TableImpressions            string  `yaml:"CLICKHOUSE_TABLE_IMPRESSIONS" env:"CLICKHOUSE_TABLE_IMPRESSIONS" env-default:"impressions_in"`
 	TableClicks                 string  `yaml:"CLICKHOUSE_TABLE_CLICKS" env:"CLICKHOUSE_TABLE_CLICKS" env-default:"clicks_in"`
+	TableConversions            string  `yaml:"CLICKHOUSE_TABLE_CONVERSIONS" env:"CLICKHOUSE_TABLE_CONVERSIONS" env-default:"conversions_in"`
 	BatchSizeOrtb               int     `yaml:"CLICKHOUSE_BATCH_SIZE_ORTB" env:"CLICKHOUSE_BATCH_SIZE_ORTB"`
 	BatchSizeImpressions        int     `yaml:"CLICKHOUSE_BATCH_SIZE_IMPRESSIONS" env:"CLICKHOUSE_BATCH_SIZE_IMPRESSIONS"`
 	BatchSizeClicks             int     `yaml:"CLICKHOUSE_BATCH_SIZE_CLICKS" env:"CLICKHOUSE_BATCH_SIZE_CLICKS"`
+	BatchSizeConversions        int     `yaml:"CLICKHOUSE_BATCH_SIZE_CONVERSIONS" env:"CLICKHOUSE_BATCH_SIZE_CONVERSIONS"`
 	BatchSizeImpressionsPercent float64 `yaml:"CLICKHOUSE_BATCH_SIZE_IMPRESSIONS_PERCENT" env:"CLICKHOUSE_BATCH_SIZE_IMPRESSIONS_PERCENT"`
 	BatchSizeClicksPercent      float64 `yaml:"CLICKHOUSE_BATCH_SIZE_CLICKS_PERCENT" env:"CLICKHOUSE_BATCH_SIZE_CLICKS_PERCENT"`
 	BatchTimeoutMS              int     `yaml:"CLICKHOUSE_BATCH_TIMEOUT_MS" env:"CLICKHOUSE_BATCH_TIMEOUT_MS" env-default:"800"`
@@ -338,6 +340,12 @@ type RedisConfig struct {
 	BatchSizeClicks        int64   `yaml:"BATCH_SIZE_CLICKS" env:"BATCH_SIZE_CLICKS"`
 	BatchSizeClicksPercent float64 `yaml:"BATCH_SIZE_CLICKS_PERCENT" env:"BATCH_SIZE_CLICKS_PERCENT"`
 	RedisSetClicks         string  `yaml:"REDIS_SET_CLICKS" env:"REDIS_SET_CLICKS" env-default:"clicks:ready"`
+
+	// Redis Conversions
+	RedisDBConversions          int     `yaml:"REDIS_DB_CONVERSIONS" env:"REDIS_DB_CONVERSIONS"`
+	BatchSizeConversions        int64   `yaml:"BATCH_SIZE_CONVERSIONS" env:"BATCH_SIZE_CONVERSIONS"`
+	BatchSizeConversionsPercent float64 `yaml:"BATCH_SIZE_CONVERSIONS_PERCENT" env:"BATCH_SIZE_CONVERSIONS_PERCENT"`
+	RedisSetConversions         string  `yaml:"REDIS_SET_CONVERSIONS" env:"REDIS_SET_CONVERSIONS" env-default:"conversions:ready"`
 }
 
 type KafkaConfig struct {
@@ -350,11 +358,13 @@ type KafkaConfig struct {
 	KafkaTopicOrtb        string `yaml:"KAFKA_TOPIC_ORTB" env:"KAFKA_TOPIC_ORTB" env-default:"ortb"`
 	KafkaTopicImpressions string `yaml:"KAFKA_TOPIC_IMPRESSIONS" env:"KAFKA_TOPIC_IMPRESSIONS" env-default:"impressions"`
 	KafkaTopicClicks      string `yaml:"KAFKA_TOPIC_CLICKS" env:"KAFKA_TOPIC_CLICKS" env-default:"clicks"`
+	KafkaTopicConversions string `yaml:"KAFKA_TOPIC_CONVERSIONS" env:"KAFKA_TOPIC_CONVERSIONS" env-default:"conversions"`
 
 	// Kafka consumer groups
 	KafkaGroupIDOrtb        string `yaml:"KAFKA_GROUP_ID_ORTB" env:"KAFKA_GROUP_ID_ORTB" env-default:"groupIdOrtb"`
 	KafkaGroupIDImpressions string `yaml:"KAFKA_GROUP_ID_IMPRESSIONS" env:"KAFKA_GROUP_ID_IMPRESSIONS" env-default:"groupIdImpressions"`
 	KafkaGroupIDClicks      string `yaml:"KAFKA_GROUP_ID_CLICKS" env:"KAFKA_GROUP_ID_CLICKS" env-default:"groupIdClicks"`
+	KafkaGroupIDConversions string `yaml:"KAFKA_GROUP_ID_CONVERSIONS" env:"KAFKA_GROUP_ID_CONVERSIONS" env-default:"groupIdConversions"`
 }
 
 type HttpServer struct {

@@ -19,12 +19,14 @@ type KafkaReaders struct {
 	Ortb        *kafka.Reader
 	Impressions *kafka.Reader
 	Clicks      *kafka.Reader
+	Conversions *kafka.Reader
 }
 
 type KafkaWriters struct {
 	Ortb        *kafka.Writer
 	Impressions *kafka.Writer
 	Clicks      *kafka.Writer
+	Conversions *kafka.Writer
 }
 
 func kafkaTopics(cfg config.KafkaConfig) []string {
@@ -32,6 +34,7 @@ func kafkaTopics(cfg config.KafkaConfig) []string {
 		cfg.KafkaTopicOrtb,
 		cfg.KafkaTopicImpressions,
 		cfg.KafkaTopicClicks,
+		cfg.KafkaTopicConversions,
 	}
 }
 
@@ -239,10 +242,29 @@ func InitKafkaReaders(cfg config.KafkaConfig) (*KafkaReaders, error) {
 		return nil, err
 	}
 
+	conversionsReader, err := InitKafkaReader(
+		cfg,
+		cfg.KafkaTopicConversions,
+		cfg.KafkaGroupIDConversions,
+	)
+	if err != nil {
+		if closeErr := clicksReader.Close(); closeErr != nil {
+			log.Printf("⚠️ failed to close Clicks Kafka reader after init error: %v", closeErr)
+		}
+		if closeErr := impressionsReader.Close(); closeErr != nil {
+			log.Printf("⚠️ failed to close Impressions Kafka reader after init error: %v", closeErr)
+		}
+		if closeErr := ortbReader.Close(); closeErr != nil {
+			log.Printf("⚠️ failed to close ORTB Kafka reader after init error: %v", closeErr)
+		}
+		return nil, err
+	}
+
 	return &KafkaReaders{
 		Ortb:        ortbReader,
 		Impressions: impressionsReader,
 		Clicks:      clicksReader,
+		Conversions: conversionsReader,
 	}, nil
 }
 
@@ -345,9 +367,24 @@ func CreateKafkaWriters(cfg config.KafkaConfig) (*KafkaWriters, error) {
 		return nil, err
 	}
 
+	conversionsWriter, err := CreateKafkaWriter(cfg.KafkaBrokers, cfg.KafkaTopicConversions)
+	if err != nil {
+		if closeErr := ortbWriter.Close(); closeErr != nil {
+			log.Printf("⚠️ failed to close ORTB Kafka writer after init error: %v", closeErr)
+		}
+		if closeErr := impressionsWriter.Close(); closeErr != nil {
+			log.Printf("⚠️ failed to close Impressions Kafka writer after init error: %v", closeErr)
+		}
+		if closeErr := clicksWriter.Close(); closeErr != nil {
+			log.Printf("⚠️ failed to close Clicks Kafka writer after init error: %v", closeErr)
+		}
+		return nil, err
+	}
+
 	return &KafkaWriters{
 		Ortb:        ortbWriter,
 		Impressions: impressionsWriter,
 		Clicks:      clicksWriter,
+		Conversions: conversionsWriter,
 	}, nil
 }

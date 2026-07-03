@@ -1,6 +1,5 @@
 package kafka_loader
 
-/*
 import (
 	"context"
 	"fmt"
@@ -75,4 +74,3 @@ func buildConversionKafkaMessage(
 		Value: protoData,
 	}, true, nil
 }
-*/

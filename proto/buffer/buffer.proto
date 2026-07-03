@@ -59,3 +59,8 @@ message ClickEvent {
   int64 event_time_clicks_ms = 3;
   string format = 4;
 }
+
+message ConversionEvent {
+  string conversions_uuid = 1;
+  string payout = 2;
+}

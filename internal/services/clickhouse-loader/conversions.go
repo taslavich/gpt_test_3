@@ -1,6 +1,5 @@
 package clickhouse_loader
 
-/*
 import (
 	"context"
 	"fmt"
@@ -117,4 +116,3 @@ func parseFloat64WithError(s string) (float64, error) {
 	}
 	return strconv.ParseFloat(s, 64)
 }
-*/

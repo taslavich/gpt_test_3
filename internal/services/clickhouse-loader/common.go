@@ -12,9 +12,10 @@ import (
 )
 
 type clickhouseInsertStats struct {
-	BadUUIDCount int
-	BadIPCount   int
-	AppendErrors int
+	BadUUIDCount   int
+	BadIPCount     int
+	BadPayoutCount int
+	AppendErrors   int
 }
 
 type clickhouseBatchConfig[T any] struct {
@@ -134,7 +135,7 @@ func processKafkaMessagesBatch[T any](
 	log.Printf("COMMITED %s records=%d offsets=%d", cfg.LogName, len(records), len(commitMessages))
 
 	log.Printf(
-		"%s batch: read=%d inserted=%d offsets=%d empty=%d bad_uuid=%d bad_ip=%d append_errors=%d duration=%s",
+		"%s batch: read=%d inserted=%d offsets=%d empty=%d bad_uuid=%d bad_ip=%d bad_payout=%d append_errors=%d duration=%s",
 		cfg.LogName,
 		readCount,
 		len(records),
@@ -142,6 +143,7 @@ func processKafkaMessagesBatch[T any](
 		emptyCount,
 		stats.BadUUIDCount,
 		stats.BadIPCount,
+		stats.BadPayoutCount,
 		stats.AppendErrors,
 		time.Since(start),
 	)

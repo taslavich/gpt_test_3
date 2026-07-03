@@ -34,6 +34,7 @@ func main() {
 		cfg.RedisDBOrtb,
 		cfg.RedisDBImpressions,
 		cfg.RedisDBClicks,
+		cfg.RedisDBConversions,
 		cfg.RedisUseTLS,
 		cfg.RedisPoolSize,
 		cfg.RedisMinIdleConns,
@@ -124,6 +125,8 @@ func main() {
 		redisBurlClient,
 		cfg.RedisSetImpressions,
 		redisClients.Impressions,
+		cfg.RedisSetConversions,
+		redisClients.Conversions,
 	)
 	log.Println("ADM HTTPS routes initialized")
 

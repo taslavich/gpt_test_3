@@ -14,12 +14,14 @@ type RedisClients struct {
 	Ortb        *redis.Client
 	Clicks      *redis.Client
 	Impressions *redis.Client
+	Conversions *redis.Client
 }
 
 type RedisShardedClients struct {
 	Ortb        []*redis.Client
 	Clicks      []*redis.Client
 	Impressions []*redis.Client
+	Conversions []*redis.Client
 }
 
 func ShardIndex(uuid string, shardCount int) int {
@@ -96,6 +98,14 @@ func (c *RedisShardedClients) Close() error {
 		}
 	}
 
+	if err := CloseClients(c.Conversions); err != nil {
+		if lastErr != nil {
+			lastErr = fmt.Errorf("%v; conversions: %w", lastErr, err)
+		} else {
+			lastErr = fmt.Errorf("failed to close conversions clients: %w", err)
+		}
+	}
+
 	return lastErr
 }
 
@@ -105,6 +115,7 @@ func NewRedisShardedClients(
 	ortbDb int,
 	impressionsDb int,
 	clicksDb int,
+	conversionsDb int,
 	useTLS bool,
 	poolSize int,
 	minIdleConns int,
@@ -138,10 +149,19 @@ func NewRedisShardedClients(
 		return nil, fmt.Errorf("failed to create clicks redis shard clients: %w", err)
 	}
 
+	conversionClients, err := newRedisClientsForDB(addrs, password, conversionsDb, useTLS, poolSize, minIdleConns)
+	if err != nil {
+		CloseClients(ortbClients)
+		CloseClients(impressionClients)
+		CloseClients(clickClients)
+		return nil, fmt.Errorf("failed to create conversions redis shard clients: %w", err)
+	}
+
 	return &RedisShardedClients{
 		Ortb:        ortbClients,
 		Impressions: impressionClients,
 		Clicks:      clickClients,
+		Conversions: conversionClients,
 	}, nil
 }
 
@@ -254,6 +274,10 @@ func PingAllShards(ctx context.Context, sharded *RedisShardedClients) error {
 	}
 
 	if err := PingClients(ctx, "clicks", sharded.Clicks); err != nil {
+		return err
+	}
+
+	if err := PingClients(ctx, "conversions", sharded.Conversions); err != nil {
 		return err
 	}
 

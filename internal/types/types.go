@@ -43,6 +43,11 @@ type Impressions struct {
 	FORMAT                 string `json:"FORMAT"`
 }
 
+type Conversions struct {
+	CONVERSIONS_UUID string `json:"CONVERSIONS_UUID"`
+	PAYOUT           string `json:"PAYOUT"`
+}
+
 type PercentAndBidfloor struct {
 	Percent  float32 `json:"percent"`
 	Bidfloor bool    `json:"bidfloor"`

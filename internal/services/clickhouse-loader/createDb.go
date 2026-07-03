@@ -188,6 +188,18 @@ ENGINE = MergeTree
 ORDER BY (event_time_clicks, uuid)
 TTL created_at + INTERVAL 1 HOUR DELETE;
 
+CREATE TABLE IF NOT EXISTS {db}.conversions_in
+(
+    created_at        DateTime64(3, 'UTC') DEFAULT now64(3),
+    clicks_uuid UUID,
+    payout Float64 DEFAULT 0,
+
+    INDEX idx_conversions_in_clicks_uuid clicks_uuid TYPE bloom_filter(0.01) GRANULARITY 1
+)
+ENGINE = MergeTree
+ORDER BY (created_at, clicks_uuid)
+TTL created_at + INTERVAL 24 HOUR DELETE;
+
 ALTER TABLE {db}.impressions_in
     ADD COLUMN IF NOT EXISTS impressions_uuid UUID AFTER uuid;
 
@@ -315,6 +327,59 @@ TTL event_date + INTERVAL 6 MONTH DELETE
 SETTINGS index_granularity = 8192;
 
 
+CREATE TABLE IF NOT EXISTS {db}.fact_conversions
+(
+    event_time_clicks DateTime64(3, 'UTC'),
+    event_time        DateTime64(3, 'UTC'),
+    event_date        Date,
+    event_hour        DateTime('UTC'),
+
+    uuid              UUID,
+    clicks_uuid       UUID,
+    code              UInt16 DEFAULT 0,
+
+    format            LowCardinality(String),
+    typic             LowCardinality(String),
+
+    spp_domain        Nullable(String),
+
+    ip                Nullable(IPv4),
+    ipv6              Nullable(IPv6),
+
+    lang              LowCardinality(String),
+    browser           LowCardinality(String),
+    browser_version   LowCardinality(String),
+    os                LowCardinality(String),
+    os_version        LowCardinality(String),
+    device_type       LowCardinality(String),
+
+    site_id           LowCardinality(String),
+    site_domain       LowCardinality(String),
+
+    bid_floor         Float64,
+
+    geo               LowCardinality(String),
+    city_id           Nullable(Int32),
+    bid_responses_raw String DEFAULT '',
+
+    win_dsp_domain    LowCardinality(String),
+
+    win_final_price   Float64,
+    win_dsp_price     Float64,
+
+    win_cid           String DEFAULT '',
+    win_crid          String DEFAULT '',
+    win_user_id       String DEFAULT '',
+
+    payout            Float64 DEFAULT 0,
+    created_at        DateTime64(3, 'UTC') DEFAULT now64(3)
+)
+ENGINE = MergeTree
+PARTITION BY toYYYYMMDD(event_date)
+ORDER BY event_time
+TTL event_date + INTERVAL 6 MONTH DELETE
+SETTINGS index_granularity = 8192;
+
 ALTER TABLE {db}.fact_impressions
     ADD COLUMN IF NOT EXISTS impressions_uuid UUID AFTER uuid;
 
@@ -349,9 +414,11 @@ CREATE TABLE IF NOT EXISTS {db}.agg_stats
 
     impressions         UInt64,
     clicks              UInt64,
+    conversions         UInt64,
 
     spend_clicks_table  Float64,
-    spend_views_table   Float64
+    spend_views_table   Float64,
+    spend_payout_table  Float64
 )
 ENGINE = SummingMergeTree
 PARTITION BY toYYYYMMDD(event_date)
@@ -526,6 +593,64 @@ WHERE a.clicks_uuid NOT IN (
     WHERE created_at >= now() - INTERVAL 65 MINUTE
 )
 AND a.created_at >= now() - INTERVAL 60 MINUTE;
+
+CREATE MATERIALIZED VIEW IF NOT EXISTS {db}.mv_conversions_to_fact
+REFRESH EVERY 10 MINUTE
+APPEND TO {db}.fact_conversions
+AS
+SELECT
+    a.event_time_clicks AS event_time_clicks,
+    o.event_time AS event_time,
+    toDate(o.event_time) AS event_date,
+    toStartOfHour(toDateTime(o.event_time, 'UTC')) AS event_hour,
+
+    o.uuid AS uuid,
+    a.clicks_uuid AS clicks_uuid,
+    o.code AS code,
+
+    o.format AS format,
+    o.typic AS typic,
+
+    o.spp_domain AS spp_domain,
+
+    o.ip AS ip,
+    o.ipv6 AS ipv6,
+
+    ifNull(o.lang, '') AS lang,
+    ifNull(o.browser, '') AS browser,
+    ifNull(o.browser_version, '') AS browser_version,
+    ifNull(o.os, '') AS os,
+    ifNull(o.os_version, '') AS os_version,
+    ifNull(o.device, '') AS device_type,
+
+    ifNull(o.site_id, '') AS site_id,
+    ifNull(o.site_domain, '') AS site_domain,
+
+    o.bid_floor AS bid_floor,
+
+    ifNull(o.geo, '') AS geo,
+    o.city_id AS city_id,
+
+    o.bid_responses_raw AS bid_responses_raw,
+
+    ifNull(o.win_dsp_domain, '') AS win_dsp_domain,
+
+    o.win_final_price AS win_final_price,
+    o.win_dsp_price AS win_dsp_price,
+
+    o.win_cid AS win_cid,
+    o.win_crid AS win_crid,
+    o.win_user_id AS win_user_id,
+    a.payout AS payout
+FROM {db}.conversions_in AS a
+ANY INNER JOIN {db}.fact_clicks AS o
+    ON a.clicks_uuid = o.clicks_uuid
+WHERE a.clicks_uuid NOT IN (
+    SELECT clicks_uuid
+    FROM {db}.fact_conversions
+    WHERE created_at >= now() - INTERVAL 1445 MINUTE
+)
+AND a.created_at >= now() - INTERVAL 1440 MINUTE;
 -- ============================================================
 -- MV: FACT IMPRESSIONS -> AGG STATS
 -- browser_version здесь специально НЕ группируется
@@ -554,8 +679,10 @@ SELECT
 
     count() AS impressions,
     toUInt64(0) AS clicks,
+    toUInt64(0)  as conversions,
 
     toFloat64(0) AS spend_clicks_table,
+    toFloat64(0) AS spend_payout_table,
 
     sum(win_dsp_price / 1000) AS spend_views_table
 FROM {db}.fact_impressions
@@ -606,12 +733,14 @@ SELECT
 
     toUInt64(0) AS impressions,
     count() AS clicks,
+    toUInt64(0)  as conversions,
 
     CASE 
         WHEN format = 'POP' THEN sum(win_dsp_price) / 1000
         ELSE sum(win_dsp_price)
     END AS spend_clicks_table,
-    toFloat64(0) AS spend_views_table
+    toFloat64(0) AS spend_views_table,
+    toFloat64(0) AS spend_payout_table
 FROM {db}.fact_clicks
 GROUP BY
     win_user_id,
@@ -630,6 +759,43 @@ GROUP BY
 
     format,
     typic;
+
+CREATE MATERIALIZED VIEW IF NOT EXISTS {db}.mv_fact_conversions_to_agg_stats
+TO {db}.agg_stats
+AS
+SELECT
+    win_user_id,
+    win_cid,
+    win_crid,
+    event_date,
+    device_type,
+    os,
+    event_hour,
+    browser,
+    geo,
+    site_id,
+    format,
+    typic,
+    toUInt64(0) AS impressions,
+    toUInt64(0) AS clicks,
+    count() AS conversions,
+    toFloat64(0) AS spend_clicks_table,
+    toFloat64(0) AS spend_views_table,
+    sum(win_final_price) AS spend_payout_table
+FROM ads.fact_conversions
+GROUP BY
+    win_user_id,
+    win_cid,
+    win_crid,
+    event_date,
+    device_type,
+    os,
+    event_hour,
+    browser,
+    geo,
+    site_id,
+    format,
+    typic
 
 -- ============================================================
 -- REFRESHABLE MV: ORTB MINUTE METRICS
