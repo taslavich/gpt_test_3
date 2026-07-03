@@ -439,6 +439,9 @@ ORDER BY
 )
 SETTINGS index_granularity = 8192;
 
+ALTER TABLE ads.agg_stats ADD COLUMN IF NOT EXISTS conversions UInt64 DEFAULT 0;
+ALTER TABLE ads.agg_stats ADD COLUMN IF NOT EXISTS spend_payout_table Float64 DEFAULT 0;
+
 -- ============================================================
 -- ORTB MINUTE METRICS
 -- ============================================================
