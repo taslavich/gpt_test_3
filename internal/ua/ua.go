@@ -20,10 +20,8 @@ func normalizeDevice(ua useragent.UserAgent) string {
 		return "tablet"
 	case ua.Desktop:
 		return "desktop"
-	case ua.Device != "":
-		return ua.Device
 	default:
-		return "unknown"
+		return "other"
 	}
 }
 
