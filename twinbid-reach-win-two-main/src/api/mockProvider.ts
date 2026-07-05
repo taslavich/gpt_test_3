@@ -102,6 +102,7 @@ export const mockProvider = {
       name: body.full_name || "",
       telegram: body.telegram,
       manager_telegram: body.manager_telegram,
+      utm_source: body.utm_source ?? null,
     };
     saveState();
     saveSession({ user_id: "mock-user", email: body.email, full_name: body.full_name || "" });

@@ -28,6 +28,7 @@ export interface ApiUser {
   campaign_status_notifications: boolean;
   low_balance_notifications: boolean;
   balance_treshold: number;
+  utm_source?: string | null;
 }
 
 export interface ApiCampaign {
