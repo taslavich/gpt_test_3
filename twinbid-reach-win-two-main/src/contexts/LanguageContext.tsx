@@ -19,8 +19,8 @@ const translations: Record<string, Record<"ru" | "en", string>> = {
 
   // Hero
   "hero.badge": { ru: "Рекламная платформа нового поколения", en: "Next-generation ad platform" },
-  "hero.title1": { ru: "TwinBid — ", en: "TwinBid — " },
-  "hero.title2": { ru: "рекламная платформа-агрегатор", en: "advertising aggregator platform" },
+  "hero.title1": { ru: "TwinBid — рекламная", en: "TwinBid — advertising" },
+  "hero.title2": { ru: "платформа-агрегатор", en: "aggregator platform" },
   "hero.subtitle": { ru: "Объединяет трафик сотен рекламных сетей. Одна регистрация — и вы получаете доступ к инвентарю более чем", en: "Combines traffic from hundreds of ad networks. One registration — and you get access to inventory from more than" },
   "hero.subtitleSites": { ru: "1 млн сайтов", en: "1M websites" },
   "hero.subtitleEnd": { ru: "через единый кабинет закупки, аналитики и оптимизации.", en: "through a single dashboard for buying, analytics and optimization." },
@@ -84,6 +84,10 @@ const translations: Record<string, Record<"ru" | "en", string>> = {
   "cta.trust1": { ru: "✓ Минимальный депозит $100", en: "✓ Minimum deposit $100" },
   "cta.trust2": { ru: "✓ +25% бонус", en: "✓ +25% bonus" },
   "cta.trust3": { ru: "✓ Мгновенный старт", en: "✓ Instant start" },
+
+  // Marquee
+  "marquee.tryTwinBid": { ru: "Попробуй TwinBid", en: "Try TwinBid" },
+  "marquee.registerNow": { ru: "Зарегистрируйся сейчас", en: "Register now" },
 
   // Footer
   "footer.privacy": { ru: "Политика конфиденциальности", en: "Privacy Policy" },
@@ -421,6 +425,43 @@ const translations: Record<string, Record<"ru" | "en", string>> = {
   "create.urlMacrosHint": { ru: "Нажмите для добавления макросов отслеживания:", en: "Click to add tracking macros:" },
   "create.endDateError": { ru: "Дата окончания не может быть раньше сегодняшнего дня", en: "End date cannot be earlier than today" },
   "create.endDateRequired": { ru: "Укажите корректные даты для завершения создания", en: "Specify valid dates to complete creation" },
+  "create.step4": { ru: "Отслеживание конверсий", en: "Conversion tracking" },
+  "create.creating": { ru: "Кампания создаётся, пожалуйста, подождите...", en: "Creating campaign, please wait..." },
+
+  // Postback / conversion tracking
+  "postback.urlLabel": { ru: "Postback URL", en: "Postback URL" },
+  "postback.copy": { ru: "Копировать", en: "Copy" },
+  "postback.copied": { ru: "Скопировано", en: "Copied" },
+  "postback.copyFailed": { ru: "Не удалось скопировать", en: "Failed to copy" },
+  "postback.help1": {
+    ru: "Скопируйте Postback URL и добавьте его в настройках вашего трекера, CPA-сети или прямого рекламодателя.",
+    en: "Copy the Postback URL and add it to the settings of your tracker, CPA network or direct advertiser.",
+  },
+  "postback.help2": {
+    ru: "Когда по вашей кампании произойдёт конверсия, система отправит нам информацию об этом по данной ссылке. После этого конверсия появится в статистике кампании, и вы сможете оценивать эффективность трафика и доход прямо внутри нашей платформы.",
+    en: "When a conversion occurs in your campaign, the system will send us information about it via this URL. After that the conversion will appear in the campaign statistics, and you'll be able to evaluate traffic efficiency and revenue right inside our platform.",
+  },
+  "postback.help3": {
+    ru: "Ссылка статичная и не меняется — её можно использовать для всех кампаний.",
+    en: "The link is static and does not change — you can use it for all campaigns.",
+  },
+  "postback.payoutLabel": { ru: "Выплата за конверсию", en: "Conversion payout" },
+  "postback.payoutHint": {
+    ru: "Если выплата по конверсии не будет автоматически передана через postback, в статистике будет использоваться значение из этого поля.",
+    en: "If the conversion payout is not delivered automatically via postback, the value from this field will be used in statistics.",
+  },
+
+  // Stats CSV export
+  "stats.downloadCsv": { ru: "Скачать CSV", en: "Download CSV" },
+  "stats.showConversions": { ru: "Показывать конверсии", en: "Show conversions" },
+  "stats.postbackHint": {
+    ru: "Для отслеживания конверсий используйте Postback URL из настроек кампании.",
+    en: "To track conversions, use the Postback URL from your campaign settings.",
+  },
+  "stats.conversions": { ru: "Конверсии", en: "Conversions" },
+  "stats.cr": { ru: "CR", en: "CR" },
+  "stats.income": { ru: "Доход", en: "Income" },
+  "stats.roi": { ru: "ROI", en: "ROI" },
 
   // Edit Campaign
   "edit.title": { ru: "Редактирование кампании", en: "Edit campaign" },
@@ -435,6 +476,7 @@ const translations: Record<string, Record<"ru" | "en", string>> = {
   "edit.save": { ru: "Сохранить", en: "Save" },
   "edit.savedModeration": { ru: "Кампания сохранена и отправлена на модерацию", en: "Campaign saved and sent for moderation" },
   "edit.saved": { ru: "Кампания сохранена", en: "Campaign saved" },
+  "edit.conversion": { ru: "Отслеживание конверсий", en: "Conversion tracking" },
 
   // Targeting Section
   "targeting.description": { ru: "Для каждого параметра выберите режим: Whitelist (только эти значения) или Blacklist (исключить эти значения)", en: "For each parameter choose a mode: Whitelist (only these values) or Blacklist (exclude these values)" },

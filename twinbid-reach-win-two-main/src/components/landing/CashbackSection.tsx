@@ -1,5 +1,7 @@
 import { DollarSign, TrendingUp, Zap } from "lucide-react";
 import { useLanguage } from "@/contexts/LanguageContext";
+import { motion } from "framer-motion";
+import { WordsReveal, LineReveal } from "./CinematicReveal";
 
 const tiers = [
   { min: 1000, percent: 3, icon: DollarSign },
@@ -11,38 +13,54 @@ export function CashbackSection() {
   const { t } = useLanguage();
 
   return (
-    <section className="py-20 relative">
-      <div className="absolute top-0 right-0 w-80 h-80 bg-accent/10 rounded-full blur-[140px]" />
-      <div className="container mx-auto px-4 relative z-10">
-        <div className="text-center mb-16">
-          <h2 className="text-3xl md:text-5xl font-bold mb-4">
-            {t("cashback.title")}
-          </h2>
-          <p className="text-muted-foreground text-lg max-w-2xl mx-auto">
-            {t("cashback.subtitle")}
-          </p>
-        </div>
+    <section className="relative py-[140px] frame-coral">
+      <div className="container mx-auto px-8">
+        <div className="max-w-[1280px] mx-auto">
+          <div className="text-center mb-24">
+            <LineReveal>
+              <div className="eyebrow mb-8 inline-block">— 03 / CASHBACK</div>
+            </LineReveal>
+            <WordsReveal
+              as="h2"
+              text={t("cashback.title")}
+              className="text-display-xl block text-foreground"
+              stagger={0.05}
+            />
+            <LineReveal delay={0.4} className="mt-8 max-w-xl mx-auto">
+              <p className="text-lg text-muted-foreground">{t("cashback.subtitle")}</p>
+            </LineReveal>
+          </div>
 
-        <div className="grid md:grid-cols-3 gap-6 max-w-4xl mx-auto">
-          {tiers.map((tier) => (
-            <div
-              key={tier.min}
-              className="group glass rounded-2xl p-8 text-center hover-glow transition-all duration-300 flex flex-col items-center"
-            >
-              <div className="w-14 h-14 rounded-xl gradient-primary flex items-center justify-center mb-5 group-hover:glow-primary transition-shadow">
-                <tier.icon className="w-7 h-7 text-primary-foreground" />
-              </div>
-              <div className="text-4xl font-bold gradient-text mb-2">
-                {tier.percent}%
-              </div>
-              <p className="text-muted-foreground text-sm mb-1">
-                {t("cashback.from")} ${tier.min.toLocaleString()}
-              </p>
-              <p className="text-xs text-muted-foreground">
-                {t("cashback.perWeek")}
-              </p>
-            </div>
-          ))}
+          <div className="grid md:grid-cols-3 gap-px bg-border">
+            {tiers.map((tier, i) => (
+              <motion.div
+                key={tier.min}
+                initial={{ opacity: 0, y: 30 }}
+                whileInView={{ opacity: 1, y: 0 }}
+                viewport={{ once: true, margin: "-60px" }}
+                transition={{ duration: 0.8, delay: i * 0.1, ease: [0.22, 1, 0.36, 1] }}
+                className="bg-background p-10 md:p-12 group hover:bg-secondary/30 transition-colors duration-500"
+              >
+                <div className="flex items-center justify-between mb-10">
+                  <span className="font-mono-eyebrow text-[11px] tracking-[0.22em] text-muted-foreground">
+                    TIER · 0{i + 1}
+                  </span>
+                  <tier.icon className="w-4 h-4 text-accent opacity-70" strokeWidth={1.4} />
+                </div>
+                <div className="font-display font-light text-foreground leading-none tracking-tight mb-6">
+                  <span className="text-[96px] md:text-[140px] block">
+                    {tier.percent}<span className="text-accent">%</span>
+                  </span>
+                </div>
+                <div className="rule mb-5" />
+                <p className="text-foreground text-base mb-1">
+                  {t("cashback.from")}{" "}
+                  <span className="font-mono-eyebrow tracking-wider">${tier.min.toLocaleString()}</span>
+                </p>
+                <p className="eyebrow !text-[10px] mt-2">{t("cashback.perWeek")}</p>
+              </motion.div>
+            ))}
+          </div>
         </div>
       </div>
     </section>

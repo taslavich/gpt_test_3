@@ -12,6 +12,8 @@ import { useNotifications } from "@/contexts/NotificationContext";
 import { TargetingSection, targetingConfigs } from "@/components/dashboard/TargetingSection";
 import { BudgetSection } from "@/components/dashboard/BudgetSection";
 import { CreativesEditor } from "@/components/dashboard/CreativesEditor";
+import { PostbackSection } from "@/components/dashboard/PostbackSection";
+import { Loader2 } from "lucide-react";
 import { useLanguage } from "@/contexts/LanguageContext";
 
 const formatLabels: Record<string, string> = {
@@ -58,7 +60,9 @@ export default function CreateCampaign() {
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
   const [evenSpend, setEvenSpend] = useState(false);
+  const [conversionPayout, setConversionPayout] = useState("");
   const savedAsDraft = useRef(false);
+  const [isCreating, setIsCreating] = useState(false);
 
   const clearError = (...keys: string[]) => setErrors(prev => {
     const next = { ...prev };
@@ -147,12 +151,15 @@ export default function CreateCampaign() {
 
   const handleNext = async () => {
     if (step === 1 && !validateStep1()) return;
-    if (step === 3) { if (!validateStep3()) return; await handleCreate(); return; }
+    if (step === 3) { if (!validateStep3()) return; setStep(4); setErrors({}); return; }
+    if (step === 4) { await handleCreate(); return; }
     setStep(step + 1);
     setErrors({});
   };
 
   const handleCreate = async () => {
+    if (isCreating) return;
+    setIsCreating(true);
     try {
       // Create as draft first, then PATCH to moderation (per backend flow)
       const id = await addCampaign({
@@ -163,9 +170,11 @@ export default function CreateCampaign() {
         targeting: Object.fromEntries(Object.entries(lists).map(([k, v]) => [k, { mode: v.mode, items: v.items }])),
         evenSpend, bannerSize: adFormat === "banner" ? bannerSize : undefined,
         brandName: showBrandName ? brandName : undefined,
+        conversionPayout: conversionPayout ? parseNum(conversionPayout) : null,
       });
       if (!id) {
         toast.error(t("create.failed") || "Failed to create campaign");
+        setIsCreating(false);
         return;
       }
       savedAsDraft.current = true;
@@ -173,12 +182,14 @@ export default function CreateCampaign() {
         await updateCampaign(id, { status: "moderation" });
       } catch (e: any) {
         toast.error(`${t("create.failed") || "Failed to submit campaign"}: ${e?.message || e}`);
+        setIsCreating(false);
         return;
       }
       toast.success(t("create.created"));
       navigate("/dashboard/campaigns");
     } catch (e: any) {
       toast.error(`${t("create.failed") || "Failed to create campaign"}: ${e?.message || e}`);
+      setIsCreating(false);
     }
   };
 
@@ -197,6 +208,7 @@ export default function CreateCampaign() {
         targeting: Object.fromEntries(Object.entries(lists).map(([k, v]) => [k, { mode: v.mode, items: v.items }])),
         evenSpend, bannerSize: adFormat === "banner" ? bannerSize : undefined,
         brandName: showBrandName ? brandName : undefined,
+        conversionPayout: conversionPayout ? parseNum(conversionPayout) : null,
       });
     } catch (e: any) {
       toast.error(`${t("create.failed") || "Failed to save draft"}: ${e?.message || e}`);
@@ -215,17 +227,17 @@ export default function CreateCampaign() {
   useEffect(() => { return () => {}; }, []);
 
   return (
-    <div className="space-y-6 max-w-3xl">
+    <div className="space-y-6 max-w-3xl relative">
       <div className="flex items-center gap-4">
-        <Button variant="ghost" size="icon" onClick={handleBack}><ArrowLeft className="h-5 w-5" /></Button>
+        <Button variant="ghost" size="icon" onClick={handleBack} disabled={isCreating}><ArrowLeft className="h-5 w-5" /></Button>
         <div>
           <h2 className="text-2xl font-bold">{t("create.title")}</h2>
-          <p className="text-muted-foreground text-sm">{t("create.step")} {step} {t("create.of")} 3</p>
+          <p className="text-muted-foreground text-sm">{t("create.step")} {step} {t("create.of")} 4</p>
         </div>
       </div>
 
       <div className="flex gap-2">
-        {[1, 2, 3].map((s) => (
+        {[1, 2, 3, 4].map((s) => (
           <div key={s} className={`h-1.5 flex-1 rounded-full transition-colors ${s <= step ? "bg-primary" : "bg-muted"}`} />
         ))}
       </div>
@@ -236,6 +248,7 @@ export default function CreateCampaign() {
             {step === 1 && t("create.step1")}
             {step === 2 && t("create.step2")}
             {step === 3 && t("create.step3")}
+            {step === 4 && t("create.step4")}
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-5">
@@ -348,18 +361,30 @@ export default function CreateCampaign() {
               errors={errors}
             />
           )}
+
+          {step === 4 && <PostbackSection payout={conversionPayout} onPayoutChange={setConversionPayout} />}
         </CardContent>
       </Card>
 
       <div className="flex justify-between">
         {step > 1 ? (
-          <Button variant="outline" onClick={() => { setStep(step - 1); setErrors({}); }} className="border-border">{t("create.back")}</Button>
+          <Button variant="outline" disabled={isCreating} onClick={() => { setStep(step - 1); setErrors({}); }} className="border-border">{t("create.back")}</Button>
         ) : <div />}
         <Button onClick={handleNext}
-          className={step < 3 ? "bg-primary hover:bg-primary/90 text-primary-foreground" : "bg-accent hover:bg-accent/90 text-accent-foreground"}>
-          {step < 3 ? t("create.next") : t("create.createBtn")}
+          disabled={isCreating}
+          className={step < 4 ? "bg-primary hover:bg-primary/90 text-primary-foreground" : "bg-accent hover:bg-accent/90 text-accent-foreground"}>
+          {step < 4 ? t("create.next") : t("create.createBtn")}
         </Button>
       </div>
+
+      {isCreating && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/70 backdrop-blur-sm">
+          <div className="flex flex-col items-center gap-3 rounded-lg border border-border bg-card px-8 py-6 shadow-lg">
+            <Loader2 className="h-8 w-8 animate-spin text-primary" />
+            <p className="text-sm text-foreground">{t("create.creating")}</p>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

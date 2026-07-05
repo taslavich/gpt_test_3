@@ -1,56 +1,63 @@
-import { Gift, DollarSign } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { Gift } from "lucide-react";
 import { AuthDialog } from "./AuthDialog";
 import { useLanguage } from "@/contexts/LanguageContext";
+import { WordsReveal, LineReveal } from "./CinematicReveal";
+import { motion } from "framer-motion";
 
 export function StartConditions() {
   const { t } = useLanguage();
 
   return (
-    <section className="py-20 relative">
-      <div className="container mx-auto px-4">
-        <div className="max-w-4xl mx-auto">
-          <div className="relative rounded-2xl overflow-hidden">
-            <div className="absolute inset-0 gradient-accent opacity-10" />
-            <div className="absolute inset-0 bg-card/80" />
-            <div className="relative p-8 md:p-12">
-              <div className="grid md:grid-cols-2 gap-8 items-center">
-                <div className="text-center md:text-left">
-                  <div className="inline-flex items-center gap-3 mb-4">
-                    <div className="w-12 h-12 rounded-xl gradient-primary flex items-center justify-center glow-primary">
-                      <DollarSign className="w-6 h-6 text-primary-foreground" />
-                    </div>
-                    <div>
-                      <div className="text-sm text-muted-foreground">{t("start.conditionsLabel")}</div>
-                      <div className="text-2xl font-bold text-foreground">{t("start.minDeposit")}</div>
-                    </div>
-                  </div>
-                  <div className="text-5xl md:text-6xl font-bold gradient-text mb-2">$100</div>
-                  <p className="text-muted-foreground">{t("start.startSmall")}</p>
-                </div>
+    <section className="py-[140px] relative">
+      <div className="container mx-auto px-8">
+        <div className="max-w-[1280px] mx-auto">
+          <div className="grid md:grid-cols-12 gap-12 items-center">
+            <div className="md:col-span-7">
+              <LineReveal>
+                <div className="eyebrow mb-8">— 01 / {t("start.conditionsLabel")}</div>
+              </LineReveal>
+              <motion.div
+                initial={{ opacity: 0, scale: 0.96 }}
+                whileInView={{ opacity: 1, scale: 1 }}
+                viewport={{ once: true, margin: "-100px" }}
+                transition={{ duration: 1.1, ease: [0.22, 1, 0.36, 1] }}
+                className="font-display font-extralight text-foreground leading-[0.82] tracking-tight"
+              >
+                <span className="text-[120px] md:text-[200px] block">
+                  <span className="text-primary">$</span>100
+                </span>
+              </motion.div>
+              <LineReveal delay={0.4}>
+                <div className="rule mt-8 mb-6 max-w-md" />
+                <p className="text-foreground text-xl mb-2">{t("start.minDeposit")}</p>
+                <p className="text-muted-foreground text-base max-w-md">{t("start.startSmall")}</p>
+              </LineReveal>
+            </div>
 
-                <div className="relative">
-                  <div className="glass rounded-2xl p-6 border border-primary/30 hover-glow">
-                    <div className="flex items-center gap-3 mb-4">
-                      <div className="w-10 h-10 rounded-lg bg-primary/20 flex items-center justify-center">
-                        <Gift className="w-5 h-5 text-primary" />
-                      </div>
-                      <span className="text-sm font-medium text-primary">{t("start.bonusBadge")}</span>
-                    </div>
-                    <div className="text-4xl md:text-5xl font-bold text-foreground mb-3">+25%</div>
-                    <p className="text-muted-foreground mb-6">{t("start.bonusDesc")}</p>
-                    <AuthDialog
-                      defaultTab="register"
-                      trigger={
-                        <Button className="w-full gradient-primary text-primary-foreground hover:opacity-90 glow-primary">
-                          {t("start.getBonus")}
-                        </Button>
-                      }
-                    />
-                  </div>
-                  <div className="absolute -top-4 -right-4 w-24 h-24 bg-primary/30 rounded-full blur-[60px]" />
+            <div className="md:col-span-5">
+              <motion.div
+                initial={{ opacity: 0, y: 30 }}
+                whileInView={{ opacity: 1, y: 0 }}
+                viewport={{ once: true, margin: "-80px" }}
+                transition={{ duration: 0.9, delay: 0.2, ease: [0.22, 1, 0.36, 1] }}
+                className="border border-border p-10"
+              >
+                <div className="flex items-center gap-3 mb-8">
+                  <Gift className="w-4 h-4 text-primary" strokeWidth={1.4} />
+                  <span className="eyebrow !text-[11px]">{t("start.bonusBadge")}</span>
                 </div>
-              </div>
+                <WordsReveal
+                  text="+25%"
+                  className="font-display font-extralight text-foreground leading-none tracking-tight text-[88px] md:text-[120px] block mb-6"
+                  stagger={0.04}
+                />
+                <div className="rule mb-6" />
+                <p className="text-muted-foreground text-[14px] leading-relaxed mb-8">{t("start.bonusDesc")}</p>
+                <AuthDialog
+                  defaultTab="register"
+                  trigger={<button className="pill pill-primary w-full justify-center py-3.5">{t("start.getBonus")}</button>}
+                />
+              </motion.div>
             </div>
           </div>
         </div>

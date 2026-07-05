@@ -9,8 +9,8 @@ export const ES_TRANSLATIONS: Record<string, string> = {
 
   // Hero
   "hero.badge": "Plataforma publicitaria de nueva generación",
-  "hero.title1": "TwinBid — ",
-  "hero.title2": "plataforma agregadora de publicidad",
+  "hero.title1": "TwinBid — plataforma",
+  "hero.title2": "agregadora publicitaria",
   "hero.subtitle": "Combina tráfico de cientos de redes publicitarias. Un solo registro y obtienes acceso al inventario de más de",
   "hero.subtitleSites": "1 millón de sitios",
   "hero.subtitleEnd": "a través de un único panel de compra, analítica y optimización.",
@@ -541,4 +541,25 @@ export const ES_TRANSLATIONS: Record<string, string> = {
   // Budget notification
   "notif.campaignBudgetLow": "El presupuesto de la campaña se está agotando",
   "notif.budgetRemaining": "de presupuesto restante",
+
+  // Conversion tracking
+  "create.step4": "Seguimiento de conversiones",
+  "edit.conversion": "Seguimiento de conversiones",
+  "create.creating": "Creando la campaña, por favor espera...",
+  "postback.urlLabel": "Postback URL",
+  "postback.copy": "Copiar",
+  "postback.copied": "Copiado",
+  "postback.copyFailed": "Error al copiar",
+  "postback.help1": "Copia el Postback URL y añádelo en la configuración de tu tracker, red CPA o anunciante directo.",
+  "postback.help2": "Cuando se produzca una conversión en tu campaña, el sistema nos enviará la información a través de este enlace. Después, la conversión aparecerá en las estadísticas de la campaña y podrás evaluar la eficacia del tráfico y los ingresos dentro de nuestra plataforma.",
+  "postback.help3": "El enlace es estático y no cambia — puedes usarlo para todas las campañas.",
+  "postback.payoutLabel": "Pago por conversión",
+  "postback.payoutHint": "Si el pago por conversión no se envía automáticamente por postback, en las estadísticas se utilizará el valor de este campo.",
+  "stats.downloadCsv": "Descargar CSV",
+  "stats.showConversions": "Mostrar conversiones",
+  "stats.postbackHint": "Para rastrear conversiones, utiliza el Postback URL desde la configuración de la campaña.",
+  "stats.conversions": "Conversiones",
+  "stats.cr": "CR",
+  "stats.income": "Ingresos",
+  "stats.roi": "ROI",
 };

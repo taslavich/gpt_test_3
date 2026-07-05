@@ -3,7 +3,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
-import { Eye, MousePointer, Target, TrendingUp, ArrowUpDown, CalendarIcon, RefreshCw, Filter } from "lucide-react";
+import { Eye, MousePointer, Target, TrendingUp, ArrowUpDown, CalendarIcon, RefreshCw, Filter, Download, Zap, Percent, DollarSign } from "lucide-react";
+import { Switch } from "@/components/ui/switch";
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
 import { format, subDays } from "date-fns";
 import { Calendar } from "@/components/ui/calendar";
@@ -21,10 +22,10 @@ import { api } from "@/api";
 import type { StatsGroupBy, StatsFilterBy } from "@/api/types";
 
 type GroupBy = "dates" | "hours" | "browsers" | "siteid" | "devices" | "os" | "country";
-type SortKey = "label" | "impressions" | "clicks" | "spent";
+type SortKey = "label" | "impressions" | "clicks" | "spent" | "conversions" | "income";
 type SortDir = "asc" | "desc";
 
-interface UiRow { label: string; impressions: number; clicks: number; spent: number; }
+interface UiRow { label: string; impressions: number; clicks: number; spent: number; conversions: number; income: number; }
 
 // UI groupBy → ClickHouse group_by + bucket key in the response row.
 const GROUP_MAP: Record<GroupBy, { api: StatsGroupBy }> = {
@@ -125,6 +126,7 @@ export default function DashboardStatistics() {
     appliedFilterBrowser, setAppliedFilterBrowser,
     appliedFilterDevice, setAppliedFilterDevice,
     appliedFilterOS, setAppliedFilterOS,
+    showConversions, setShowConversions,
   } = useStatistics();
 
   const appliedGroupBy = groupBy;
@@ -217,15 +219,18 @@ export default function DashboardStatistics() {
       filters,
     }).then(res => {
       if (cancelled) return;
-      const byKey = new Map<string, { impressions: number; clicks: number; spent: number }>();
+      const byKey = new Map<string, { impressions: number; clicks: number; spent: number; conversions: number; income: number }>();
       for (const [key, m] of Object.entries(res.rows)) {
+        const extra = m as unknown as { conversions?: number; income?: number; revenue?: number };
         byKey.set(key, {
           impressions: Number(m.impressions) || 0,
           clicks: Number(m.clicks) || 0,
           spent: Number(m.spent) || 0,
+          conversions: Number(extra.conversions) || 0,
+          income: Number(extra.income ?? extra.revenue) || 0,
         });
       }
-      const empty = { impressions: 0, clicks: 0, spent: 0 };
+      const empty = { impressions: 0, clicks: 0, spent: 0, conversions: 0, income: 0 };
       let rows: UiRow[];
       if (apiGroup === "hour") {
         // Fill every hour in the selected range with zeros for missing buckets,
@@ -275,18 +280,32 @@ export default function DashboardStatistics() {
     };
   }, [appliedCampaignIds, appliedCreativeIds, appliedGroupBy, appliedDateRange, appliedFilterCountry, appliedFilterBrowser, appliedFilterDevice, appliedFilterOS, hasSelection]);
 
+  
+
   const metricCards = useMemo(() => {
     const totalImpressions = data.reduce((s, r) => s + r.impressions, 0);
     const totalClicks = data.reduce((s, r) => s + r.clicks, 0);
     const totalSpent = data.reduce((s, r) => s + r.spent, 0);
+    const totalConversions = data.reduce((s, r) => s + r.conversions, 0);
+    const totalIncome = data.reduce((s, r) => s + r.income, 0);
     const ctr = totalImpressions > 0 ? ((totalClicks / totalImpressions) * 100).toFixed(2) : "0.00";
-    return [
+    const cr = totalClicks > 0 ? ((totalConversions / totalClicks) * 100).toFixed(2) : "0.00";
+    const roi = totalSpent > 0 ? (((totalIncome - totalSpent) / totalSpent) * 100).toFixed(2) : "0.00";
+    const base = [
       { label: t("stats.impressions"), value: totalImpressions.toLocaleString(), icon: Eye },
       { label: t("stats.clicks"), value: totalClicks.toLocaleString(), icon: MousePointer },
       { label: t("stats.ctr"), value: `${ctr}%`, icon: Target },
       { label: t("stats.spent"), value: `$${totalSpent.toLocaleString()}`, icon: TrendingUp },
     ];
-  }, [data, t]);
+    if (!showConversions) return base;
+    return [
+      ...base,
+      { label: t("stats.conversions"), value: totalConversions.toLocaleString(), icon: Zap },
+      { label: t("stats.cr"), value: `${cr}%`, icon: Percent },
+      { label: t("stats.income"), value: `$${totalIncome.toLocaleString()}`, icon: DollarSign },
+      { label: t("stats.roi"), value: `${roi}%`, icon: TrendingUp },
+    ];
+  }, [data, t, showConversions]);
 
   useEffect(() => {
     if (appliedGroupBy === "dates") { setSortKey("label"); setSortDir("desc"); }
@@ -355,10 +374,51 @@ export default function DashboardStatistics() {
     impressions: sortedData.reduce((s, r) => s + r.impressions, 0),
     clicks: sortedData.reduce((s, r) => s + r.clicks, 0),
     spent: sortedData.reduce((s, r) => s + r.spent, 0),
+    conversions: sortedData.reduce((s, r) => s + r.conversions, 0),
+    income: sortedData.reduce((s, r) => s + r.income, 0),
   }), [sortedData]);
 
   const labelHeader = appliedGroupBy === "dates" ? t("stats.date") : appliedGroupBy === "hours" ? t("stats.dateAndHour") : appliedGroupBy === "browsers" ? t("stats.browser") : appliedGroupBy === "siteid" ? "SiteID" : appliedGroupBy === "os" ? t("stats.os") : appliedGroupBy === "country" ? t("stats.country") : t("stats.device");
   const canSortByLabel = appliedGroupBy === "dates" || appliedGroupBy === "hours";
+
+  const handleDownloadCsv = useCallback(() => {
+    if (!sortedData.length) return;
+    const baseHeaders = [labelHeader, t("stats.impressions"), t("stats.clicks"), t("stats.ctr"), t("stats.spent")];
+    const convHeaders = [t("stats.conversions"), t("stats.cr"), t("stats.income"), t("stats.roi")];
+    const headers = showConversions ? [...baseHeaders, ...convHeaders] : baseHeaders;
+    const escape = (v: string | number) => {
+      const s = String(v);
+      return /[",\n;]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+    };
+    const rows = sortedData.map(r => {
+      const label = appliedGroupBy === "country" ? formatCountryLabel(r.label, lang) : r.label;
+      const ctr = r.impressions > 0 ? ((r.clicks / r.impressions) * 100).toFixed(2) + "%" : "0.00%";
+      const base = [label, r.impressions, r.clicks, ctr, r.spent.toFixed(2)];
+      if (!showConversions) return base.map(escape).join(",");
+      const cr = r.clicks > 0 ? ((r.conversions / r.clicks) * 100).toFixed(2) + "%" : "0.00%";
+      const roi = r.spent > 0 ? (((r.income - r.spent) / r.spent) * 100).toFixed(2) + "%" : "0.00%";
+      return [...base, r.conversions, cr, r.income.toFixed(2), roi].map(escape).join(",");
+    });
+    const ctrTotal = totals.impressions > 0 ? ((totals.clicks / totals.impressions) * 100).toFixed(2) + "%" : "0.00%";
+    const baseTotal = [t("stats.total"), totals.impressions, totals.clicks, ctrTotal, totals.spent.toFixed(2)];
+    const crTotal = totals.clicks > 0 ? ((totals.conversions / totals.clicks) * 100).toFixed(2) + "%" : "0.00%";
+    const roiTotal = totals.spent > 0 ? (((totals.income - totals.spent) / totals.spent) * 100).toFixed(2) + "%" : "0.00%";
+    const totalsRow = (showConversions
+      ? [...baseTotal, totals.conversions, crTotal, totals.income.toFixed(2), roiTotal]
+      : baseTotal
+    ).map(escape).join(",");
+    const csv = "\uFEFF" + [headers.map(escape).join(","), ...rows, totalsRow].join("\n");
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    const ts = new Date().toISOString().slice(0, 19).replace(/[:T]/g, "-");
+    a.href = url;
+    a.download = `twinbid-stats-${appliedGroupBy}-${ts}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }, [sortedData, totals, labelHeader, appliedGroupBy, lang, t, showConversions]);
 
   // Custom tooltip for hours chart
   const HoursTooltip = ({ active, payload, label }: { active?: boolean; payload?: Array<{ value?: number }>; label?: string }) => {
@@ -488,10 +548,30 @@ export default function DashboardStatistics() {
           </div>
         </div>
 
+        <label
+          className={cn(
+            "inline-flex items-center gap-2 px-3 h-10 rounded-md border cursor-pointer transition-colors select-none shrink-0 whitespace-nowrap",
+            showConversions
+              ? "border-primary/60 bg-primary/10 text-primary"
+              : "border-border bg-card text-muted-foreground hover:text-foreground"
+          )}
+        >
+          <Zap className="h-4 w-4" />
+          <span className="text-sm font-medium">{t("stats.showConversions")}</span>
+          <Switch checked={showConversions} onCheckedChange={setShowConversions} />
+        </label>
+
         <Button onClick={handleRefresh} className="bg-primary hover:bg-primary/90 text-primary-foreground gap-2">
           <RefreshCw className="h-4 w-4" /> {t("stats.refresh")}
         </Button>
+        <Button onClick={handleDownloadCsv} variant="outline" className="border-border gap-2" disabled={!hasSelection || sortedData.length === 0}>
+          <Download className="h-4 w-4" /> {t("stats.downloadCsv")}
+        </Button>
       </div>
+
+      <p className={cn("text-sm text-muted-foreground -mt-2", !showConversions && "invisible")}>
+        {t("stats.postbackHint")}
+      </p>
 
       {/* Filters */}
       <Card className="bg-card border-border">
@@ -631,10 +711,26 @@ export default function DashboardStatistics() {
                         <th className="text-left py-3 px-4 text-sm font-medium text-muted-foreground cursor-pointer select-none w-[140px]" onClick={() => toggleSort("spent")}>
                           {t("stats.spent")} <SortIcon col="spent" />
                         </th>
+                        {showConversions && (
+                          <>
+                            <th className="text-left py-3 px-4 text-sm font-medium text-muted-foreground cursor-pointer select-none w-[130px]" onClick={() => toggleSort("conversions")}>
+                              {t("stats.conversions")} <SortIcon col="conversions" />
+                            </th>
+                            <th className="text-left py-3 px-4 text-sm font-medium text-muted-foreground w-[100px]">{t("stats.cr")}</th>
+                            <th className="text-left py-3 px-4 text-sm font-medium text-muted-foreground cursor-pointer select-none w-[140px]" onClick={() => toggleSort("income")}>
+                              {t("stats.income")} <SortIcon col="income" />
+                            </th>
+                            <th className="text-left py-3 px-4 text-sm font-medium text-muted-foreground w-[110px]">{t("stats.roi")}</th>
+                          </>
+                        )}
                       </tr>
                     </thead>
                     <tbody>
-                      {sortedData.map((row) => (
+                      {sortedData.map((row) => {
+                        const cr = row.clicks > 0 ? ((row.conversions / row.clicks) * 100).toFixed(2) : "0.00";
+                        const roiNum = row.spent > 0 ? ((row.income - row.spent) / row.spent) * 100 : 0;
+                        const roi = row.spent > 0 ? roiNum.toFixed(2) : "0.00";
+                        return (
                         <tr key={row.label} className="border-b border-border/50 hover:bg-muted/50 transition-colors">
                           <td className="py-3 px-4 font-medium truncate">
                             {appliedGroupBy === "country" ? formatCountryLabel(row.label, lang) : row.label}
@@ -643,14 +739,36 @@ export default function DashboardStatistics() {
                           <td className="py-3 px-4">{row.clicks.toLocaleString()}</td>
                           <td className="py-3 px-4">{row.impressions > 0 ? ((row.clicks / row.impressions) * 100).toFixed(2) : "0.00"}%</td>
                           <td className="py-3 px-4">${row.spent.toLocaleString()}</td>
+                          {showConversions && (
+                            <>
+                              <td className="py-3 px-4">{row.conversions.toLocaleString()}</td>
+                              <td className="py-3 px-4">{cr}%</td>
+                              <td className="py-3 px-4">${row.income.toLocaleString()}</td>
+                              <td className={cn("py-3 px-4 font-medium", roiNum > 0 ? "text-emerald-500" : roiNum < 0 ? "text-red-500" : "")}>{roi}%</td>
+                            </>
+                          )}
                         </tr>
-                      ))}
+                        );
+                      })}
                       <tr className="bg-muted/30 font-semibold">
                         <td className="py-3 px-4">{t("stats.total")}</td>
                         <td className="py-3 px-4">{totals.impressions.toLocaleString()}</td>
                         <td className="py-3 px-4">{totals.clicks.toLocaleString()}</td>
                         <td className="py-3 px-4">{totals.impressions > 0 ? ((totals.clicks / totals.impressions) * 100).toFixed(2) : "0.00"}%</td>
                         <td className="py-3 px-4">${totals.spent.toLocaleString()}</td>
+                        {showConversions && (() => {
+                          const cr = totals.clicks > 0 ? ((totals.conversions / totals.clicks) * 100).toFixed(2) : "0.00";
+                          const roiNum = totals.spent > 0 ? ((totals.income - totals.spent) / totals.spent) * 100 : 0;
+                          const roi = totals.spent > 0 ? roiNum.toFixed(2) : "0.00";
+                          return (
+                            <>
+                              <td className="py-3 px-4">{totals.conversions.toLocaleString()}</td>
+                              <td className="py-3 px-4">{cr}%</td>
+                              <td className="py-3 px-4">${totals.income.toLocaleString()}</td>
+                              <td className={cn("py-3 px-4", roiNum > 0 ? "text-emerald-500" : roiNum < 0 ? "text-red-500" : "")}>{roi}%</td>
+                            </>
+                          );
+                        })()}
                       </tr>
                     </tbody>
                   </table>

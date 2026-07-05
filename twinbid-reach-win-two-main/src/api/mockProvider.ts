@@ -94,7 +94,7 @@ const promoFixtures: Record<string, { id: string; bonus_percent: number }> = {
  */
 export const mockProvider = {
   // -- auth ---------------------------------------------------------------
-  async signup(body: { email: string; password: string; full_name?: string; telegram: string; manager_telegram: string }): Promise<ApiEnvelope<AuthResponse>> {
+  async signup(body: { email: string; password: string; full_name?: string; telegram: string; manager_telegram: string; utm_source?: string }): Promise<ApiEnvelope<AuthResponse>> {
     state.user = {
       ...defaultUser,
       login: body.email,

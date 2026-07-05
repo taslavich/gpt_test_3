@@ -13,10 +13,11 @@ import {
   COUNTRY_CODES, LANGUAGE_CODES, DEVICE_TYPES,
 } from "@/lib/dimensions";
 
-const countryNames: Record<string, { ru: string; en: string }> =
-  Object.fromEntries(COUNTRIES.map(c => [c.code, { ru: c.ru, en: c.en }]));
-const languageNames: Record<string, string> =
-  Object.fromEntries(LANGUAGES.map(l => [l.code, l.en]));
+const countryNames: Record<string, { ru: string; en: string; es: string }> =
+  Object.fromEntries(COUNTRIES.map(c => [c.code, { ru: c.ru, en: c.en, es: c.es }]));
+const languageNames: Record<string, { ru: string; en: string; es: string }> =
+  Object.fromEntries(LANGUAGES.map(l => [l.code, { ru: l.ru, en: l.en, es: l.es }]));
+
 
 const targetingOptions: Record<string, string[]> = {
   country: COUNTRY_CODES,
@@ -59,9 +60,10 @@ function AutocompleteInput({
 
   const getDisplayLabel = (option: string) => {
     if (countryNames[option]) return `${countryNames[option][lang]} (${option})`;
-    if (languageNames[option]) return `${languageNames[option]} (${option})`;
+    if (languageNames[option]) return `${languageNames[option][lang]} (${option})`;
     return option;
   };
+
 
   const filtered = options.filter(o => {
     const display = getDisplayLabel(o);
@@ -335,9 +337,10 @@ function ListItem({ config, list: rawList, onUpdate }: {
 
   const getDisplayLabel = (item: string) => {
     if (countryNames[item]) return `${countryNames[item][lang]} (${item})`;
-    if (languageNames[item]) return `${languageNames[item]} (${item})`;
+    if (languageNames[item]) return `${languageNames[item][lang]} (${item})`;
     return item;
   };
+
 
   const addItem = (item: string) => {
     if (item && !list.items.includes(item)) {

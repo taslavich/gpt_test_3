@@ -3,7 +3,7 @@ import type { DateRange } from "react-day-picker";
 
 type GroupBy = "dates" | "hours" | "browsers" | "siteid" | "devices" | "os" | "country";
 type ChartMetric = "impressions" | "clicks" | "spent";
-type SortKey = "label" | "impressions" | "clicks" | "spent";
+type SortKey = "label" | "impressions" | "clicks" | "spent" | "conversions" | "income";
 type SortDir = "asc" | "desc";
 
 interface StatisticsState {
@@ -45,6 +45,8 @@ interface StatisticsState {
   setAppliedFilterDevice: React.Dispatch<React.SetStateAction<Set<string>>>;
   appliedFilterOS: Set<string>;
   setAppliedFilterOS: React.Dispatch<React.SetStateAction<Set<string>>>;
+  showConversions: boolean;
+  setShowConversions: React.Dispatch<React.SetStateAction<boolean>>;
 }
 
 const StatisticsContext = createContext<StatisticsState | null>(null);
@@ -69,6 +71,7 @@ export function StatisticsProvider({ children }: { children: ReactNode }) {
   const [appliedFilterBrowser, setAppliedFilterBrowser] = useState<Set<string>>(new Set());
   const [appliedFilterDevice, setAppliedFilterDevice] = useState<Set<string>>(new Set());
   const [appliedFilterOS, setAppliedFilterOS] = useState<Set<string>>(new Set());
+  const [showConversions, setShowConversions] = useState(false);
 
   return (
     <StatisticsContext.Provider value={{
@@ -91,6 +94,7 @@ export function StatisticsProvider({ children }: { children: ReactNode }) {
       appliedFilterBrowser, setAppliedFilterBrowser,
       appliedFilterDevice, setAppliedFilterDevice,
       appliedFilterOS, setAppliedFilterOS,
+      showConversions, setShowConversions,
     }}>
       {children}
     </StatisticsContext.Provider>

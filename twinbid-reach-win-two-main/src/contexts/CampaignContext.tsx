@@ -73,18 +73,30 @@ export interface Campaign {
   trafficType: TrafficType;
   verticals: Vertical[];
   description?: string;
+  /** Fixed reward per conversion (USD). Sent as `payout` on the API body. */
+  conversionPayout?: number | null;
 }
 
-// ---- Targeting <-> TargetingMap conversion --------------------------------
-function targetingStateToMap(t: TargetingState): TargetingMap {
-  if (t.mode === "none" || t.items.length === 0) return {};
-  const flag: 0 | 1 = t.mode === "white" ? 1 : 0;
-  return Object.fromEntries(t.items.map(v => [v, flag])) as TargetingMap;
+// ---- Targeting <-> API list conversion ------------------------------------
+// New API shape: { isWhiteList: boolean, objects: string[] }.
+// Old shape (still accepted on read for backwards compatibility): { "<id>": 0 | 1 }.
+interface TargetingListPayload { isWhiteList: boolean; objects: string[] }
+function targetingStateToPayload(t: TargetingState): TargetingListPayload {
+  if (t.mode === "none" || t.items.length === 0) return { isWhiteList: true, objects: [] };
+  return { isWhiteList: t.mode === "white", objects: t.items };
 }
-function targetingMapToState(m: TargetingMap | undefined): TargetingState {
-  if (!m || Object.keys(m).length === 0) return { mode: "none", items: [] };
-  const entries = Object.entries(m);
-  const allWhite = entries.every(([, v]) => v === 1);
+function targetingPayloadToState(m: TargetingListPayload | TargetingMap | undefined): TargetingState {
+  if (!m) return { mode: "none", items: [] };
+  // New shape
+  if (typeof (m as any).isWhiteList === "boolean" && Array.isArray((m as any).objects)) {
+    const p = m as TargetingListPayload;
+    if (!p.objects.length) return { mode: "none", items: [] };
+    return { mode: p.isWhiteList ? "white" : "black", items: p.objects.map(String) };
+  }
+  // Old shape
+  const entries = Object.entries(m as Record<string, unknown>);
+  if (!entries.length) return { mode: "none", items: [] };
+  const allWhite = entries.every(([, v]) => v === 1 || v === true);
   return { mode: allWhite ? "white" : "black", items: entries.map(([k]) => k) };
 }
 
@@ -92,15 +104,22 @@ function verticalsToApiArray(verticals: readonly string[] | undefined): Record<s
   return Object.fromEntries((verticals || []).map(v => [v, 1])) as Record<string, 1>;
 }
 
+// Backend tracker macros — booleans, no `click_id` (mandatory server-side).
+const TRACKER_MACRO_KEYS = [
+  "device", "browser", "site_id", "device_os", "ip_address",
+  "campaign_id", "creative_id", "country_code",
+] as const;
+function extractMacrosFromUrl(url: string | undefined): Record<string, boolean> {
+  return Object.fromEntries(
+    TRACKER_MACRO_KEYS.map(m => [m, !!(url && url.includes(`{${m}}`))])
+  ) as Record<string, boolean>;
+}
+// URL tokens that may appear in the landing URL (includes click_id for stripping).
 const URL_MACRO_TOKENS = [
   "click_id", "site_id", "country_code", "creative_id",
   "campaign_id", "browser", "device", "device_os", "ip_address",
 ] as const;
-function extractMacrosFromUrl(url: string | undefined): Record<string, 0 | 1> {
-  return Object.fromEntries(
-    URL_MACRO_TOKENS.map(m => [m, (url && url.includes(`{${m}}`)) ? 1 : 0])
-  ) as Record<string, 0 | 1>;
-}
+
 // Strip macro query params (e.g. `click_id={click_id}`) so the backend
 // receives only the bare landing URL. Macros are sent separately via
 // `trackers_macros`.
@@ -181,16 +200,19 @@ function activeIntervalsToSchedule(intervals: ApiCampaign["active_intervals"] | 
 }
 
 function buildApiTargeting(targeting: Record<string, TargetingState>): Pick<ApiCampaign, TargetKey> {
-  const out = {} as Pick<ApiCampaign, TargetKey>;
-  for (const [uiKey, apiKey] of TARGET_KEY_MAP) out[apiKey] = targetingStateToMap(targeting[uiKey] || { mode: "none", items: [] });
-  return out;
+  const out: any = {};
+  for (const [uiKey, apiKey] of TARGET_KEY_MAP) {
+    out[apiKey] = targetingStateToPayload(targeting[uiKey] || { mode: "none", items: [] });
+  }
+  return out as Pick<ApiCampaign, TargetKey>;
 }
 function readApiTargeting(c: ApiCampaign): Record<string, TargetingState> {
   return {
-    ...Object.fromEntries(TARGET_KEY_MAP.map(([uiKey, apiKey]) => [uiKey, targetingMapToState(c[apiKey])])),
+    ...Object.fromEntries(TARGET_KEY_MAP.map(([uiKey, apiKey]) => [uiKey, targetingPayloadToState(c[apiKey] as any)])),
     schedule: activeIntervalsToSchedule(c.active_intervals),
   };
 }
+
 
 // ---- Mapping --------------------------------------------------------------
 function mapApiCampaignToUi(c: ApiCampaign, creatives: Creative[]): Campaign {
@@ -224,6 +246,7 @@ function mapApiCampaignToUi(c: ApiCampaign, creatives: Creative[]): Campaign {
         ? Object.entries(c.vertical as Record<string, 0 | 1>).filter(([, v]) => v === 1).map(([k]) => k)
         : []) as Vertical[],
     description: undefined,
+    conversionPayout: c.payout ?? null,
   };
 }
 
@@ -303,6 +326,10 @@ function buildApiCampaignBody(c: Omit<Campaign, "id">): Omit<ApiCampaign, "campa
   // brand_name is optional. Only include when the user provided a value
   // so the backend can apply its own default / nullability handling.
   if (c.brandName) body.brand_name = c.brandName;
+  // Fixed conversion payout. Backend column: `payout` on the campaign.
+  if (c.conversionPayout !== undefined && c.conversionPayout !== null) {
+    body.payout = c.conversionPayout;
+  }
   // For popunder, the backend only stores CPM. If the user selected CPC,
   // convert the value to an equivalent CPM and send CPM as the model.
   if (c.formatKey === "popunder" && c.pricingModel === "cpc") {
@@ -356,6 +383,9 @@ function buildApiCampaignPatch(updates: Partial<Campaign>): Partial<ApiCampaign>
   if (updates.targeting !== undefined) {
     Object.assign(p, buildApiTargeting(updates.targeting));
     p.active_intervals = scheduleToActiveIntervals(updates.targeting.schedule);
+  }
+  if (updates.conversionPayout !== undefined) {
+    p.payout = updates.conversionPayout;
   }
   return p;
 }
@@ -452,21 +482,17 @@ export function CampaignProvider({ children }: { children: ReactNode }) {
         effectiveUpdates.priceValue = (effectiveUpdates.priceValue as number) * 1000;
       }
     }
-    // Build a *partial* patch so toggling a single field (status, budget,
-    // ...) does not rewrite unrelated fields.
-    const patch = buildApiCampaignPatch(effectiveUpdates);
-    if (Object.keys(patch).length > 0) {
-      await api.patchCampaign(id, patch);
-    }
-
+    // Sync creatives BEFORE patching the campaign. Some status transitions
+    // (draft → moderation) are rejected by the backend when the campaign has
+    // no creatives, so we need the creatives to exist before the PATCH runs.
     if (updates.creatives !== undefined) {
       const existingRaw = await api.readCreatives(id).catch(() => [] as ApiCreative[]);
       const existing: ApiCreative[] = Array.isArray(existingRaw) ? existingRaw : [];
       const existingById = new Map(existing.map(cr => [cr.id, cr]));
       // Resolve current banner size for w/h on creative body.
-      const current = campaigns.find(c => c.id === id);
-      const formatKey = updates.formatKey ?? current?.formatKey;
-      const bannerSize = updates.bannerSize ?? current?.bannerSize;
+      const currentC = campaigns.find(c => c.id === id);
+      const formatKey = updates.formatKey ?? currentC?.formatKey;
+      const bannerSize = updates.bannerSize ?? currentC?.bannerSize;
       let cw: number | null = null, ch: number | null = null;
       if (formatKey === "banner" && bannerSize && /^\d+x\d+$/.test(bannerSize)) {
         const [ws, hs] = bannerSize.split("x");
@@ -505,6 +531,14 @@ export function CampaignProvider({ children }: { children: ReactNode }) {
         );
       }
     }
+
+    // Build a *partial* patch so toggling a single field (status, budget,
+    // ...) does not rewrite unrelated fields.
+    const patch = buildApiCampaignPatch(effectiveUpdates);
+    if (Object.keys(patch).length > 0) {
+      await api.patchCampaign(id, patch);
+    }
+
     await fetchCampaigns();
   }, [user, fetchCampaigns, campaigns]);
 

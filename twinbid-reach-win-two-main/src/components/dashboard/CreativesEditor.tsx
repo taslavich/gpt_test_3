@@ -104,24 +104,36 @@ export function CreativesEditor({ formatKey, creatives, onChange, errors = {}, o
     }
   };
 
-  const toggleMacro = (creativeId: string, macro: string, currentUrl: string) => {
+  const appendMacro = (url: string, macro: string) => {
+    if (url.includes(`{${macro}}`)) return url;
     const token = `${macro}={${macro}}`;
-    // Check if macro already in URL
+    const separator = url.includes("?") ? "&" : "?";
+    return url + separator + token;
+  };
+
+  const toggleMacro = (creativeId: string, macro: string, currentUrl: string) => {
+    // click_id is mandatory — clicking the badge always keeps it in the URL.
+    if (macro === "click_id") {
+      updateCreative(creativeId, { url: appendMacro(currentUrl, macro) });
+      return;
+    }
     if (currentUrl.includes(`{${macro}}`)) {
-      // Remove the macro param from URL
       let newUrl = currentUrl;
-      // Remove &macro={macro} or ?macro={macro}
       const regexAmp = new RegExp(`[&?]${macro}=\\{${macro}\\}`, "g");
       newUrl = newUrl.replace(regexAmp, "");
-      // Fix leading & if ? was removed
       if (newUrl.includes("&") && !newUrl.includes("?")) {
         newUrl = newUrl.replace("&", "?");
       }
       updateCreative(creativeId, { url: newUrl });
     } else {
-      // Add macro
-      const separator = currentUrl.includes("?") ? "&" : "?";
-      updateCreative(creativeId, { url: currentUrl + separator + token });
+      updateCreative(creativeId, { url: appendMacro(currentUrl, macro) });
+    }
+  };
+
+  const ensureClickId = (creativeId: string, url: string) => {
+    if (!url.trim()) return;
+    if (!url.includes("{click_id}")) {
+      updateCreative(creativeId, { url: appendMacro(url, "click_id") });
     }
   };
 
@@ -178,6 +190,7 @@ export function CreativesEditor({ formatKey, creatives, onChange, errors = {}, o
             <div className="space-y-2">
               <Label>{t("create.creativeUrl")} *</Label>
               <Input value={creative.url} onChange={e => { updateCreative(creative.id, { url: e.target.value }); if (e.target.value.trim()) onClearError?.(`creative_${creative.id}_url`); }}
+                onBlur={e => ensureClickId(creative.id, e.target.value)}
                 placeholder="https://example.com/landing"
                 className={`bg-background border-border ${errors[`creative_${creative.id}_url`] ? "border-destructive" : ""}`} />
               {errors[`creative_${creative.id}_url`] && <p className="text-xs text-destructive">{errors[`creative_${creative.id}_url`]}</p>}
@@ -186,18 +199,22 @@ export function CreativesEditor({ formatKey, creatives, onChange, errors = {}, o
                 <div className="flex flex-wrap gap-1.5">
                   {URL_MACROS.map(macro => {
                     const isActive = activeMacros.has(macro);
+                    const isRequired = macro === "click_id";
                     return (
                       <Badge
                         key={macro}
                         variant="outline"
                         className={`cursor-pointer text-xs font-mono transition-colors ${
-                          isActive
-                            ? "bg-primary/15 border-primary/40 text-primary hover:bg-primary/25"
-                            : "hover:bg-primary/10 hover:border-primary/30"
+                          isRequired
+                            ? "bg-primary/20 border-primary/60 text-primary"
+                            : isActive
+                              ? "bg-primary/15 border-primary/40 text-primary hover:bg-primary/25"
+                              : "hover:bg-primary/10 hover:border-primary/30"
                         }`}
                         onClick={() => toggleMacro(creative.id, macro, creative.url)}
+                        title={isRequired ? "Required" : undefined}
                       >
-                        {`{${macro}}`}
+                        {`{${macro}}`}{isRequired ? " *" : ""}
                       </Badge>
                     );
                   })}

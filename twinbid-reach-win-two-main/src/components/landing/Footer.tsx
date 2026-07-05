@@ -21,19 +21,19 @@ export function Footer() {
   return (
     <footer className="py-12 border-t border-border">
       <div className="container mx-auto px-4">
-        <div className="flex flex-col md:flex-row items-center justify-between gap-8">
-          <div className="flex flex-col items-center md:items-start gap-2">
+        <div className="flex flex-col md:flex-row items-center gap-8">
+          <div className="flex-1 flex flex-col items-center md:items-start gap-2">
             <a href="#" className="flex items-center gap-2">
-              <img src={twinbidLogo} alt="TwinBid" className="h-8" />
+              <img src={twinbidLogo} alt="TwinBid" className="h-12" />
             </a>
             <p className="text-sm text-muted-foreground">© {new Date().getFullYear()} TwinBid. All rights reserved.</p>
           </div>
-          <div className="flex flex-wrap items-center justify-center gap-6 text-sm">
+          <div className="flex-none flex flex-wrap items-center justify-center gap-6 text-sm">
             <Link to="/legal#privacy" className="text-muted-foreground hover:text-foreground transition-colors">{t("footer.privacy")}</Link>
             <Link to="/legal#terms" className="text-muted-foreground hover:text-foreground transition-colors">{t("footer.terms")}</Link>
             <a href="#" className="text-muted-foreground hover:text-foreground transition-colors">{t("footer.docs")}</a>
           </div>
-          <div className="flex items-center gap-4">
+          <div className="flex-1 flex items-center justify-center md:justify-end gap-4">
             <button onClick={() => setEmailOpen(true)} className="w-10 h-10 rounded-lg bg-secondary flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-primary/20 transition-colors" title="Email">
               <Mail className="w-5 h-5" />
             </button>

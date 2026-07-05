@@ -12,6 +12,7 @@ import { useCampaigns, type TargetingState, type PricingModel, type TrafficQuali
 import { TargetingSection } from "@/components/dashboard/TargetingSection";
 import { BudgetSection } from "@/components/dashboard/BudgetSection";
 import { CreativesEditor } from "@/components/dashboard/CreativesEditor";
+import { PostbackSection } from "@/components/dashboard/PostbackSection";
 import { useLanguage } from "@/contexts/LanguageContext";
 
 const bannerSizes = ["300x100", "300x250", "300x600", "728x90"];
@@ -41,6 +42,7 @@ export default function EditCampaign() {
   const [trafficType, setTrafficType] = useState<TrafficType>("mainstream");
   const [initialTrafficType, setInitialTrafficType] = useState<TrafficType>("mainstream");
   const [verticals, setVerticals] = useState<Vertical[]>([]);
+  const [conversionPayout, setConversionPayout] = useState("");
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [activeTab, setActiveTab] = useState(defaultTab);
 
@@ -71,6 +73,7 @@ export default function EditCampaign() {
       setTrafficType(campaign.trafficType || "mainstream");
       setInitialTrafficType(campaign.trafficType || "mainstream");
       setVerticals(campaign.verticals || []);
+      setConversionPayout(campaign.conversionPayout != null ? String(campaign.conversionPayout) : "");
       setInitialBannerSize(campaign.bannerSize || "");
     }
   }, [campaign]);
@@ -192,6 +195,7 @@ export default function EditCampaign() {
         priceValue: pv, pricingModel, trafficQuality, startDate, endDate, evenSpend, status: newStatus,
         bannerSize: showBannerSize ? bannerSize : undefined,
         brandName: showBrandName ? brandName : undefined,
+        conversionPayout: conversionPayout ? parseNum(conversionPayout) : null,
       });
     } catch (err: any) {
       toast.error(`${t("edit.saveFailed") || "Failed to save campaign"}: ${err?.message || err}`);
@@ -232,6 +236,7 @@ export default function EditCampaign() {
           <TabsTrigger value="general">{t("edit.general")}</TabsTrigger>
           <TabsTrigger value="targeting">{t("edit.targeting")}</TabsTrigger>
           <TabsTrigger value="budget">{t("edit.budget")}</TabsTrigger>
+          <TabsTrigger value="conversion">{t("edit.conversion")}</TabsTrigger>
         </TabsList>
 
         <TabsContent value="general">
@@ -339,12 +344,19 @@ export default function EditCampaign() {
             </CardContent>
           </Card>
         </TabsContent>
+
+        <TabsContent value="conversion">
+          <Card className="bg-card border-border">
+            <CardHeader><CardTitle className="text-lg">{t("edit.conversion")}</CardTitle></CardHeader>
+            <CardContent><PostbackSection payout={conversionPayout} onPayoutChange={setConversionPayout} /></CardContent>
+          </Card>
+        </TabsContent>
       </Tabs>
 
       {(() => {
-        const tabs = ["general", "targeting", "budget"];
+        const tabs = ["general", "targeting", "budget", "conversion"];
         const idx = tabs.indexOf(activeTab);
-        const isLast = activeTab === "budget";
+        const isLast = activeTab === "conversion";
 
         const validateGeneral = () => {
           const e: Record<string, string> = {};

@@ -3,6 +3,7 @@ import { api, ApiError } from "@/api";
 import { ACCESS_TOKEN_KEY, REFRESH_TOKEN_KEY, API_BASE_URL } from "@/api/config";
 import { DEFAULT_MANAGER_TELEGRAM } from "@/lib/constants";
 import { useLanguage } from "@/contexts/LanguageContext";
+import { getStoredUtmSource } from "@/lib/utmSource";
 
 /** Minimal user shape consumed by the rest of the UI. */
 export interface AuthUser {
@@ -95,7 +96,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const signUp = async (email: string, password: string, fullName: string | undefined, telegram: string) => {
     try {
-      const res = await api.signup({ email, password, full_name: fullName, telegram, manager_telegram: DEFAULT_MANAGER_TELEGRAM });
+      const utm_source = getStoredUtmSource() ?? undefined;
+      const res = await api.signup({ email, password, full_name: fullName, telegram, manager_telegram: DEFAULT_MANAGER_TELEGRAM, utm_source });
       storeTokens(res.access_token, res.refresh_token);
       setUser({ id: "mock-user", email: res.user.mail, full_name: res.user.name });
       return { error: null };
