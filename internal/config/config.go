@@ -232,6 +232,11 @@ type AdmAdapterConfig struct {
 
 	RedisConfig
 }
+
+type AdvConfig struct {
+	HttpServer HttpServer
+	GrpcServer GrpcServer
+}
 type KafkaLoaderConfig struct {
 	RedisConfig
 	KafkaConfig
@@ -369,7 +374,7 @@ type GrpcServer struct {
 }
 
 func getEnvFileNames() []string {
-	return []string{".env.local", ".env", "bid-engine.env", "clickhouse-loader.env", "kafka-loader.env", "dsp1.env", "dsp2.env", "dsp3.env", "orchestrator.env", "router.env", "spp-adapter.env", "adm-adapter.env"}
+	return []string{".env.local", ".env", "bid-engine.env", "clickhouse-loader.env", "kafka-loader.env", "dsp1.env", "dsp2.env", "dsp3.env", "orchestrator.env", "router.env", "spp-adapter.env", "adm-adapter.env", "adv.env"}
 }
 
 func LoadConfig[
@@ -381,7 +386,8 @@ func LoadConfig[
 		ClickhouseLoaderConfig |
 		MockDspConfig |
 		PercenterConfig |
-		AdmAdapterConfig,
+		AdmAdapterConfig |
+		AdvConfig,
 ](ctx context.Context) (*T, error) {
 	for _, fileName := range getEnvFileNames() {
 		err := godotenv.Load(fileName)

@@ -1,0 +1,22 @@
+syntax = "proto3";
+package adv;
+option go_package = "gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/proto/services/adv;advGrpc";
+
+import "types/ortb_V2_5/ortb.proto";
+
+service AdvService {
+  rpc DoAuction(DoAuctionRequest) returns (DoAuctionResponse) {};
+}
+
+message DoAuctionRequest {
+  ortb_V2_5.BidRequest bidRequest = 1;
+}
+
+message DoAuctionResponse {
+  bool selected = 1;
+  string campaign_id = 2;
+  string creative_id = 3;
+  string adm = 4;
+  double auction_price = 5;
+  int32 code = 6;
+}
