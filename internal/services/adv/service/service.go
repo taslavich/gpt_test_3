@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"gitlab.com/twinbid-exchange/RTB-exchange/internal/filter"
+	filterV2 "gitlab.com/twinbid-exchange/RTB-exchange/internal/filterV2"
 	"gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/proto/types/ortb_V2_5"
 )
 
@@ -64,8 +65,15 @@ type TimeRange struct {
 // Creative хранит минимальные данные креатива, которые нужны аукциону для ADM-ссылки.
 type Creative struct {
 	ID             string
+	CampaignID     string
 	ADMURL         string
 	TrackersMacros map[string]bool
+	W              int
+	H              int
+	Name           string
+	CreativeName   string
+	Title          string
+	Description    string
 }
 
 // TrackerMacroValues содержит значения макросов, которых нет или пока может не быть в BidRequest.
@@ -86,8 +94,10 @@ var weekdayIndex = map[string]int{
 }
 
 // ParseActiveIntervalSchedule разворачивает недельное расписание из БД вида:
-// [["mon,0", "mon,3"], ["mon,12", "tue,15"], ["tue,17", "sun,23"]]
-// в конкретные UTC TimeRange внутри окна кампании. Конец интервала эксклюзивный.
+// [["mon,4", "mon,4"], ["mon,6", "tue,10"], ["tue,18", "sun,23"]]
+// в конкретные UTC TimeRange внутри окна кампании. Точки расписания задают
+// включительные часы, поэтому End в TimeRange выставляется на следующий час
+// после конечной точки и остаётся эксклюзивным.
 func ParseActiveIntervalSchedule(schedule [][]string, windowStart, windowEnd time.Time) ([]TimeRange, error) {
 	if len(schedule) == 0 || !windowStart.Before(windowEnd) {
 		return nil, nil
@@ -109,13 +119,14 @@ func ParseActiveIntervalSchedule(schedule [][]string, windowStart, windowEnd tim
 		if err != nil {
 			return nil, err
 		}
-		if endOffset <= startOffset {
+		if endOffset < startOffset {
 			endOffset += 7 * 24 * time.Hour
 		}
+		endExclusiveOffset := endOffset + time.Hour
 
 		for base := weekStart; base.Before(expandedUntil); base = base.Add(7 * 24 * time.Hour) {
 			start := base.Add(startOffset)
-			end := base.Add(endOffset)
+			end := base.Add(endExclusiveOffset)
 			clippedStart := maxTime(start, windowStart.UTC())
 			clippedEnd := minTime(end, windowEnd.UTC())
 			if clippedStart.Before(clippedEnd) {
@@ -149,13 +160,293 @@ func startOfWeek(t time.Time) time.Time {
 	return dayStart.Add(-time.Duration(dayStart.Weekday()) * 24 * time.Hour)
 }
 
+const getCampaignsQuery = `
+	SELECT
+		user_id,
+		device_type,
+		os,
+		browser,
+		site_id,
+		ip,
+		campaign_id,
+		h,
+		w,
+		vertical,
+		base_price,
+		evenness_by_slot_mode,
+		start_ts,
+		end_ts,
+		active_intervals,
+		country,
+		language,
+		campaign_name,
+		format_type,
+		brand_name,
+		quality_type,
+		pricing_model,
+		status,
+		traffic_type
+	FROM campaigns
+`
+
+const getCreativesByCampaignQuery = `
+	SELECT
+		id,
+		campaign_id,
+		trackers_macros,
+		w,
+		h,
+		name,
+		creative_name,
+		link,
+		title,
+		description
+	FROM creatives
+	WHERE campaign_id = $1
+`
+
+// GetCampaignsFromPostgres загружает все кампании из Postgres и возвращает мапу
+// campaign_id -> Campaign. Для каждой кампании дополнительно загружаются креативы.
+func GetCampaignsFromPostgres(ctx context.Context, db *sql.DB) (map[string]*Campaign, error) {
+	if db == nil {
+		return nil, fmt.Errorf("postgres db is nil")
+	}
+
+	rows, err := db.QueryContext(ctx, getCampaignsQuery)
+	if err != nil {
+		return nil, fmt.Errorf("query campaigns: %w", err)
+	}
+	defer rows.Close()
+
+	campaigns := make(map[string]*Campaign)
+	for rows.Next() {
+		var row campaignRow
+		if err := rows.Scan(
+			&row.UserID, &row.DeviceType, &row.OS, &row.Browser, &row.SiteID, &row.IP,
+			&row.CampaignID, &row.H, &row.W, &row.Vertical, &row.BasePrice,
+			&row.EvennessBySlotMode, &row.StartTS, &row.EndTS, &row.ActiveIntervals,
+			&row.Country, &row.Language, &row.CampaignName, &row.FormatType, &row.BrandName,
+			&row.QualityType, &row.PricingModel, &row.Status, &row.TrafficType,
+		); err != nil {
+			return nil, fmt.Errorf("scan campaign row: %w", err)
+		}
+
+		campaign, err := row.toCampaign()
+		if err != nil {
+			return nil, err
+		}
+		campaigns[campaign.ID] = campaign
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate campaign rows: %w", err)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, fmt.Errorf("close campaign rows: %w", err)
+	}
+
+	for campaignID, campaign := range campaigns {
+		creatives, err := getCreativesForCampaignFromPostgres(ctx, db, campaignID)
+		if err != nil {
+			return nil, err
+		}
+		campaign.Creatives = creatives
+	}
+
+	return campaigns, nil
+}
+
+func getCreativesForCampaignFromPostgres(ctx context.Context, db *sql.DB, campaignID string) (map[string]*Creative, error) {
+	rows, err := db.QueryContext(ctx, getCreativesByCampaignQuery, campaignID)
+	if err != nil {
+		return nil, fmt.Errorf("query creatives for campaign_id=%s: %w", campaignID, err)
+	}
+	defer rows.Close()
+
+	creatives := make(map[string]*Creative)
+	for rows.Next() {
+		var row creativeRow
+		if err := rows.Scan(
+			&row.ID, &row.CampaignID, &row.TrackersMacros, &row.W, &row.H,
+			&row.Name, &row.CreativeName, &row.ADMURL, &row.Title, &row.Description,
+		); err != nil {
+			return nil, fmt.Errorf("scan creative row for campaign_id=%s: %w", campaignID, err)
+		}
+
+		creative, err := row.toCreative()
+		if err != nil {
+			return nil, fmt.Errorf("parse creative for campaign_id=%s: %w", campaignID, err)
+		}
+		creatives[creative.ID] = creative
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate creatives for campaign_id=%s: %w", campaignID, err)
+	}
+	return creatives, nil
+}
+
+type creativeRow struct {
+	ID, CampaignID, Name, CreativeName, ADMURL, Title, Description sql.NullString
+	TrackersMacros                                                 []byte
+	W, H                                                           sql.NullInt64
+}
+
+func (r creativeRow) toCreative() (*Creative, error) {
+	creativeID := nullableString(r.ID)
+	if creativeID == "" {
+		return nil, fmt.Errorf("creative id is empty")
+	}
+	trackersMacros, err := parseTrackersMacrosJSONB(r.TrackersMacros)
+	if err != nil {
+		return nil, fmt.Errorf("parse trackers_macros for creative_id=%s: %w", creativeID, err)
+	}
+	return &Creative{
+		ID:             creativeID,
+		CampaignID:     nullableString(r.CampaignID),
+		TrackersMacros: trackersMacros,
+		W:              int(r.W.Int64),
+		H:              int(r.H.Int64),
+		Name:           nullableString(r.Name),
+		CreativeName:   nullableString(r.CreativeName),
+		ADMURL:         nullableString(r.ADMURL),
+		Title:          nullableString(r.Title),
+		Description:    nullableString(r.Description),
+	}, nil
+}
+
+func parseTrackersMacrosJSONB(raw []byte) (map[string]bool, error) {
+	if len(raw) == 0 || string(raw) == "null" || string(raw) == "{}" {
+		return nil, nil
+	}
+	var macros map[string]bool
+	if err := json.Unmarshal(raw, &macros); err != nil {
+		return nil, err
+	}
+	return macros, nil
+}
+
+type campaignRow struct {
+	UserID, CampaignID, BasePrice, CampaignName, FormatType        sql.NullString
+	BrandName, QualityType, PricingModel, Status, TrafficType      sql.NullString
+	DeviceType, OS, Browser, SiteID, IP, Vertical, ActiveIntervals []byte
+	Country, Language                                              []byte
+	H, W                                                           sql.NullInt64
+	EvennessBySlotMode                                             sql.NullBool
+	StartTS, EndTS                                                 sql.NullTime
+}
+
+func (r campaignRow) toCampaign() (*Campaign, error) {
+	campaignID := nullableString(r.CampaignID)
+	if campaignID == "" {
+		return nil, fmt.Errorf("campaign_id is empty")
+	}
+	basePrice, err := parseNullFloat64(r.BasePrice)
+	if err != nil {
+		return nil, fmt.Errorf("parse base_price for campaign_id=%s: %w", campaignID, err)
+	}
+	activeIntervals, err := parseActiveIntervalsJSONB(r.ActiveIntervals, r.StartTS.Time, r.EndTS.Time)
+	if err != nil {
+		return nil, fmt.Errorf("parse active_intervals for campaign_id=%s: %w", campaignID, err)
+	}
+	countryFilter, err := parseCampaignFilter(r.Country, campaignID, "country")
+	if err != nil {
+		return nil, err
+	}
+	languageFilter, err := parseCampaignFilter(r.Language, campaignID, "language")
+	if err != nil {
+		return nil, err
+	}
+	deviceTypeFilter, err := parseCampaignFilter(r.DeviceType, campaignID, "device_type")
+	if err != nil {
+		return nil, err
+	}
+	osFilter, err := parseCampaignFilter(r.OS, campaignID, "os")
+	if err != nil {
+		return nil, err
+	}
+	browserFilter, err := parseCampaignFilter(r.Browser, campaignID, "browser")
+	if err != nil {
+		return nil, err
+	}
+	siteIDFilter, err := parseCampaignFilter(r.SiteID, campaignID, "site_id")
+	if err != nil {
+		return nil, err
+	}
+	ipFilter, err := parseCampaignFilter(r.IP, campaignID, "ip")
+	if err != nil {
+		return nil, err
+	}
+
+	campaign := &Campaign{
+		ID: campaignID, UserID: nullableString(r.UserID), Status: nullableString(r.Status), PricingModel: nullableString(r.PricingModel),
+		Format: nullableString(r.FormatType), CampaignName: nullableString(r.CampaignName), BrandName: nullableString(r.BrandName),
+		QualitySegment: nullableString(r.QualityType), TrafficType: nullableString(r.TrafficType), H: int(r.H.Int64), W: int(r.W.Int64),
+		Vertical: cloneJSONRawMessage(r.Vertical), BasePrice: basePrice, EvennessBySlotMode: r.EvennessBySlotMode.Valid && r.EvennessBySlotMode.Bool,
+		StartTS: r.StartTS.Time, EndTS: r.EndTS.Time, CountryFilter: countryFilter, LanguageFilter: languageFilter,
+		DeviceTypeFilter: deviceTypeFilter, OSFilter: osFilter, BrowserFilter: browserFilter, SiteIDFilter: siteIDFilter, IPFilter: ipFilter,
+		ActiveIntervals: activeIntervals, Creatives: make(map[string]*Creative),
+	}
+	campaign.normalizeDefaultsLocked()
+	return campaign, nil
+}
+
+func nullableString(value sql.NullString) string {
+	if !value.Valid {
+		return ""
+	}
+	return value.String
+}
+
+func parseNullFloat64(value sql.NullString) (float64, error) {
+	if !value.Valid || strings.TrimSpace(value.String) == "" {
+		return 0, nil
+	}
+	return strconv.ParseFloat(value.String, 64)
+}
+
+func cloneJSONRawMessage(raw []byte) json.RawMessage {
+	if len(raw) == 0 || string(raw) == "null" {
+		return nil
+	}
+	return append(json.RawMessage(nil), raw...)
+}
+
+func parseCampaignFilter(raw []byte, campaignID, field string) (*filterV2.Filters, error) {
+	filters, err := filterV2.GetFiltersFromJSONB(raw)
+	if err != nil {
+		return nil, fmt.Errorf("parse %s filter for campaign_id=%s: %w", field, campaignID, err)
+	}
+	return filters, nil
+}
+
+func parseActiveIntervalsJSONB(raw []byte, windowStart, windowEnd time.Time) ([]TimeRange, error) {
+	if len(raw) == 0 || string(raw) == "null" || string(raw) == "[]" {
+		return nil, nil
+	}
+	var schedule [][]string
+	if err := json.Unmarshal(raw, &schedule); err == nil {
+		return ParseActiveIntervalSchedule(schedule, windowStart, windowEnd)
+	}
+	var ranges []TimeRange
+	if err := json.Unmarshal(raw, &ranges); err != nil {
+		return nil, err
+	}
+	return ranges, nil
+}
+
 // Campaign представляет рекламную кампанию
 type Campaign struct {
 	// Основные поля
 	ID                  string
+	UserID              string
 	Status              string
 	PricingModel        string
 	Format              string
+	CampaignName        string
+	BrandName           string
+	TrafficType         string
+	H                   int
+	W                   int
+	Vertical            json.RawMessage
 	BasePrice           float64
 	PlatformFeePercent  float64
 	EvennessBySlotMode  bool
@@ -172,6 +463,14 @@ type Campaign struct {
 
 	// Связь с фильтрами
 	DSPURL string // URL DSP, которому принадлежит кампания
+
+	CountryFilter    *filterV2.Filters
+	LanguageFilter   *filterV2.Filters
+	DeviceTypeFilter *filterV2.Filters
+	OSFilter         *filterV2.Filters
+	BrowserFilter    *filterV2.Filters
+	SiteIDFilter     *filterV2.Filters
+	IPFilter         *filterV2.Filters
 
 	// Активные интервалы (nil или пустой = всегда активна)
 	ActiveIntervals []TimeRange

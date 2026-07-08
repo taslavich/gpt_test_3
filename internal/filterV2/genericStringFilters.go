@@ -22,7 +22,7 @@ type CampaignFiltersBoxes struct {
 	IP         *FiltersBox
 }
 
-func getFiltersFromJSONB(raw []byte) (*Filters, error) {
+func GetFiltersFromJSONB(raw []byte) (*Filters, error) {
 	if len(raw) == 0 || string(raw) == "null" || string(raw) == "{}" {
 		return NewFilters(false, false, nil), nil
 	}
@@ -94,37 +94,37 @@ func GetCampaignFiltersBoxesFromPostgres(
 			return nil, fmt.Errorf("failed to scan campaign filters row: %w", err)
 		}
 
-		countryAllowers[campaignID], err = getFiltersFromJSONB(countryRaw)
+		countryAllowers[campaignID], err = GetFiltersFromJSONB(countryRaw)
 		if err != nil {
 			return nil, fmt.Errorf("failed to parse country filter for campaign_id=%s: %w", campaignID, err)
 		}
 
-		languageAllowers[campaignID], err = getFiltersFromJSONB(languageRaw)
+		languageAllowers[campaignID], err = GetFiltersFromJSONB(languageRaw)
 		if err != nil {
 			return nil, fmt.Errorf("failed to parse language filter for campaign_id=%s: %w", campaignID, err)
 		}
 
-		deviceTypeAllowers[campaignID], err = getFiltersFromJSONB(deviceTypeRaw)
+		deviceTypeAllowers[campaignID], err = GetFiltersFromJSONB(deviceTypeRaw)
 		if err != nil {
 			return nil, fmt.Errorf("failed to parse device_type filter for campaign_id=%s: %w", campaignID, err)
 		}
 
-		osAllowers[campaignID], err = getFiltersFromJSONB(osRaw)
+		osAllowers[campaignID], err = GetFiltersFromJSONB(osRaw)
 		if err != nil {
 			return nil, fmt.Errorf("failed to parse os filter for campaign_id=%s: %w", campaignID, err)
 		}
 
-		browserAllowers[campaignID], err = getFiltersFromJSONB(browserRaw)
+		browserAllowers[campaignID], err = GetFiltersFromJSONB(browserRaw)
 		if err != nil {
 			return nil, fmt.Errorf("failed to parse browser filter for campaign_id=%s: %w", campaignID, err)
 		}
 
-		siteIDAllowers[campaignID], err = getFiltersFromJSONB(siteIDRaw)
+		siteIDAllowers[campaignID], err = GetFiltersFromJSONB(siteIDRaw)
 		if err != nil {
 			return nil, fmt.Errorf("failed to parse site_id filter for campaign_id=%s: %w", campaignID, err)
 		}
 
-		ipAllowers[campaignID], err = getFiltersFromJSONB(ipRaw)
+		ipAllowers[campaignID], err = GetFiltersFromJSONB(ipRaw)
 		if err != nil {
 			return nil, fmt.Errorf("failed to parse ip filter for campaign_id=%s: %w", campaignID, err)
 		}
