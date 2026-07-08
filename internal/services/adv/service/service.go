@@ -752,18 +752,69 @@ func (c *Campaign) FirstCreative() *Creative {
 
 // AuctionService - сервис аукциона
 type AuctionService struct {
-	campaigns             map[string]*Campaign
-	creativesByCampaignID map[string]map[string]*Creative
+	campaigns             *map[string]*Campaign
+	creativesByCampaignID *map[string]map[string]*Creative
 	filterProcessor       *filter.OptimizedFilterProcessor
 	mu                    sync.RWMutex
 }
 
 func NewAuctionService(filterProcessor *filter.OptimizedFilterProcessor) *AuctionService {
 	return &AuctionService{
-		campaigns:             make(map[string]*Campaign),
-		creativesByCampaignID: make(map[string]map[string]*Creative),
+		campaigns:             &map[string]*Campaign{},
+		creativesByCampaignID: &map[string]map[string]*Creative{},
 		filterProcessor:       filterProcessor,
 	}
+}
+
+func (s *AuctionService) ReplaceCampaigns(campaigns map[string]*Campaign) {
+	if campaigns == nil {
+		campaigns = make(map[string]*Campaign)
+	}
+
+	creativesByCampaignID := make(map[string]map[string]*Creative, len(campaigns))
+	for campaignID, campaign := range campaigns {
+		if campaign == nil {
+			continue
+		}
+		campaign.mu.Lock()
+		campaign.normalizeDefaultsLocked()
+		campaign.mu.Unlock()
+		creativesByCampaignID[campaignID] = campaign.Creatives
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.campaigns = &campaigns
+	s.creativesByCampaignID = &creativesByCampaignID
+}
+
+func (s *AuctionService) StartPostgresRefreshTicker(ctx context.Context, db *sql.DB, interval time.Duration) {
+	if interval <= 0 {
+		interval = 5 * time.Second
+	}
+
+	refresh := func() {
+		campaigns, err := GetCampaignsFromPostgres(ctx, db)
+		if err != nil {
+			log.Printf("[Auction] failed to refresh campaigns: %v", err)
+			return
+		}
+		s.ReplaceCampaigns(campaigns)
+	}
+
+	refresh()
+	ticker := time.NewTicker(interval)
+	go func() {
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				refresh()
+			}
+		}
+	}()
 }
 
 func (s *AuctionService) AddCampaign(campaign *Campaign) {
@@ -775,14 +826,14 @@ func (s *AuctionService) AddCampaign(campaign *Campaign) {
 	campaign.mu.Unlock()
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.campaigns[campaign.ID] = campaign
-	s.creativesByCampaignID[campaign.ID] = campaign.Creatives
+	(*s.campaigns)[campaign.ID] = campaign
+	(*s.creativesByCampaignID)[campaign.ID] = campaign.Creatives
 }
 
 func (s *AuctionService) GetCampaign(id string) *Campaign {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	return s.campaigns[id]
+	return (*s.campaigns)[id]
 }
 
 // SetCampaignCreatives задаёт креативы кампании в формате:
@@ -794,8 +845,8 @@ func (s *AuctionService) SetCampaignCreatives(campaignID string, creatives map[s
 	if creatives == nil {
 		creatives = make(map[string]*Creative)
 	}
-	s.creativesByCampaignID[campaignID] = creatives
-	if campaign := s.campaigns[campaignID]; campaign != nil {
+	(*s.creativesByCampaignID)[campaignID] = creatives
+	if campaign := (*s.campaigns)[campaignID]; campaign != nil {
 		campaign.mu.Lock()
 		campaign.Creatives = creatives
 		campaign.mu.Unlock()
@@ -822,7 +873,7 @@ func (s *AuctionService) ApplyCreativeTrackerMacros(
 	defer rows.Close()
 
 	s.mu.RLock()
-	campaignCreatives := s.creativesByCampaignID[campaignID]
+	campaignCreatives := (*s.creativesByCampaignID)[campaignID]
 	s.mu.RUnlock()
 	if len(campaignCreatives) == 0 {
 		return nil
@@ -964,7 +1015,7 @@ func (s *AuctionService) SelectCampaign(req *ortb_V2_5.BidRequest, now time.Time
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	var priority, regular, active []*Campaign
-	for _, c := range s.campaigns {
+	for _, c := range *s.campaigns {
 		auctionPrice := c.GetAuctionPrice()
 		if auctionPrice <= 0 || !c.IsActiveGlobal(now) || !c.IsEligibleByMinThreshold() {
 			continue
@@ -1020,7 +1071,7 @@ func (s *AuctionService) SlotTick(now time.Time) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	log.Printf("[Auction] New slot started at %v", now.Truncate(SlotDuration))
-	for _, campaign := range s.campaigns {
+	for _, campaign := range *s.campaigns {
 		campaign.ResetSlotDone()
 	}
 }
@@ -1029,7 +1080,7 @@ func (s *AuctionService) GetActiveCampaignsCount(now time.Time) int {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	count := 0
-	for _, campaign := range s.campaigns {
+	for _, campaign := range *s.campaigns {
 		if campaign.IsActiveGlobal(now) {
 			count++
 		}

@@ -72,6 +72,21 @@ func main() {
 	}
 	log.Println("✅ Connected to Clicks Redis shards")
 
+	if len(redisAddrs) == 0 {
+		log.Fatal("Cannot init ADV balance ticker: redis addrs list is empty")
+	}
+	if err := kafka_service.StartAdvBalanceRedisTicker(
+		ctx,
+		cfg.KafkaConfig,
+		redisAddrs[0],
+		cfg.RedisPassword,
+		cfg.RedisPoolSize,
+		cfg.RedisMinIdleConns,
+	); err != nil {
+		log.Fatalf("Cannot init ADV balance ticker: %v", err)
+	}
+	log.Println("✅ ADV balance Kafka to Redis ticker initialized")
+
 	kafkaWriter, err := kafka_service.CreateKafkaWriters(cfg.KafkaConfig)
 	if err != nil {
 		log.Fatalf("Cannot init kafka: %v", err)
