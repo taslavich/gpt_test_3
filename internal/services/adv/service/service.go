@@ -1117,8 +1117,7 @@ func (s *AuctionService) SelectAuction(req *ortb_V2_5.BidRequest, now time.Time,
 			continue
 		}
 
-		adm := appendTrackerMacrosToADMURL(creative.ADMURL, creative.TrackersMacros, campaign.ID, creative.ID, req, macroValues)
-		candidates = append(candidates, &AuctionResult{Campaign: campaign, Creative: creative, AuctionPrice: price, ADM: adm})
+		candidates = append(candidates, &AuctionResult{Campaign: campaign, Creative: creative, AuctionPrice: price})
 	}
 	s.mu.RUnlock()
 
@@ -1126,7 +1125,16 @@ func (s *AuctionService) SelectAuction(req *ortb_V2_5.BidRequest, now time.Time,
 		return nil
 	}
 	sort.SliceStable(candidates, func(i, j int) bool { return candidates[i].AuctionPrice > candidates[j].AuctionPrice })
-	return candidates[0]
+	winner := candidates[0]
+	winner.ADM = appendTrackerMacrosToADMURL(
+		winner.Creative.ADMURL,
+		winner.Creative.TrackersMacros,
+		winner.Campaign.ID,
+		winner.Creative.ID,
+		req,
+		macroValues,
+	)
+	return winner
 }
 
 func (s *AuctionService) percentMapForOptions(options AuctionRequestOptions) map[string]map[string]map[string]*types.PercentAndBidfloor {

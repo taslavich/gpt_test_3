@@ -135,6 +135,7 @@ func redisFloatValue(ctx context.Context, client *redis.Client, key string, valu
 
 	return value, nil
 }
+func buildBidResponse(req *ortb_V2_5.BidRequest, campaign *auction.Campaign, creative *auction.Creative, adm string, price float64) *ortb_V2_5.BidResponse {
 	if req == nil || campaign == nil || creative == nil {
 		return nil
 	}
