@@ -16,17 +16,254 @@ const (
 )
 
 type KafkaReaders struct {
-	Ortb        *kafka.Reader
-	Impressions *kafka.Reader
-	Clicks      *kafka.Reader
-	Conversions *kafka.Reader
+	Ortb                 *kafka.Reader
+	Impressions          *kafka.Reader
+	Clicks               *kafka.Reader
+	Conversions          *kafka.Reader
+	CampaignBalanceMinus *kafka.Reader
+	CampaignBalancePlus  *kafka.Reader
+	UserBalanceMinus     *kafka.Reader
+	UserBalancePlus      *kafka.Reader
+	CampaignsCreated     *kafka.Reader
 }
 
 type KafkaWriters struct {
-	Ortb        *kafka.Writer
-	Impressions *kafka.Writer
-	Clicks      *kafka.Writer
-	Conversions *kafka.Writer
+	Ortb                 *kafka.Writer
+	Impressions          *kafka.Writer
+	Clicks               *kafka.Writer
+	Conversions          *kafka.Writer
+	CampaignBalanceMinus *kafka.Writer
+	CampaignBalancePlus  *kafka.Writer
+	UserBalanceMinus     *kafka.Writer
+	UserBalancePlus      *kafka.Writer
+	CampaignsCreated     *kafka.Writer
+}
+
+type AdvKafkaWriters struct {
+	CampaignBalanceMinus *kafka.Writer
+	CampaignBalancePlus  *kafka.Writer
+	UserBalanceMinus     *kafka.Writer
+	UserBalancePlus      *kafka.Writer
+	CampaignsCreated     *kafka.Writer
+}
+
+type AdvKafkaReaders struct {
+	CampaignBalanceMinus *kafka.Reader
+	CampaignBalancePlus  *kafka.Reader
+	UserBalanceMinus     *kafka.Reader
+	UserBalancePlus      *kafka.Reader
+	CampaignsCreated     *kafka.Reader
+}
+
+func (w *AdvKafkaWriters) Close() error {
+	if w == nil {
+		return nil
+	}
+
+	writers := []struct {
+		name   string
+		writer *kafka.Writer
+	}{
+		{name: "CampaignBalanceMinus", writer: w.CampaignBalanceMinus},
+		{name: "CampaignBalancePlus", writer: w.CampaignBalancePlus},
+		{name: "UserBalanceMinus", writer: w.UserBalanceMinus},
+		{name: "UserBalancePlus", writer: w.UserBalancePlus},
+		{name: "CampaignsCreated", writer: w.CampaignsCreated},
+	}
+
+	var lastErr error
+	for _, item := range writers {
+		if item.writer == nil {
+			continue
+		}
+		if err := item.writer.Close(); err != nil {
+			lastErr = fmt.Errorf("failed to close ADV %s Kafka writer: %w", item.name, err)
+			log.Printf("⚠️ %v", lastErr)
+		}
+	}
+
+	return lastErr
+}
+
+func (r *AdvKafkaReaders) Close() error {
+	if r == nil {
+		return nil
+	}
+
+	readers := []struct {
+		name   string
+		reader *kafka.Reader
+	}{
+		{name: "CampaignBalanceMinus", reader: r.CampaignBalanceMinus},
+		{name: "CampaignBalancePlus", reader: r.CampaignBalancePlus},
+		{name: "UserBalanceMinus", reader: r.UserBalanceMinus},
+		{name: "UserBalancePlus", reader: r.UserBalancePlus},
+		{name: "CampaignsCreated", reader: r.CampaignsCreated},
+	}
+
+	var lastErr error
+	for _, item := range readers {
+		if item.reader == nil {
+			continue
+		}
+		if err := item.reader.Close(); err != nil {
+			lastErr = fmt.Errorf("failed to close ADV %s Kafka reader: %w", item.name, err)
+			log.Printf("⚠️ %v", lastErr)
+		}
+	}
+
+	return lastErr
+}
+
+func CreateAdvKafkaWriters(cfg config.KafkaConfig) (*AdvKafkaWriters, error) {
+	type writerConfig struct {
+		name  string
+		topic string
+	}
+
+	writerConfigs := []writerConfig{
+		{name: "CampaignBalanceMinus", topic: cfg.KafkaTopicCampaignBalanceMinus},
+		{name: "CampaignBalancePlus", topic: cfg.KafkaTopicCampaignBalancePlus},
+		{name: "UserBalanceMinus", topic: cfg.KafkaTopicUserBalanceMinus},
+		{name: "UserBalancePlus", topic: cfg.KafkaTopicUserBalancePlus},
+		{name: "CampaignsCreated", topic: cfg.KafkaTopicCampaignsCreated},
+	}
+
+	writers := make([]*kafka.Writer, 0, len(writerConfigs))
+	closeWriters := func() {
+		for i := len(writers) - 1; i >= 0; i-- {
+			if closeErr := writers[i].Close(); closeErr != nil {
+				log.Printf("⚠️ failed to close ADV %s Kafka writer after init error: %v", writerConfigs[i].name, closeErr)
+			}
+		}
+	}
+
+	for _, writerCfg := range writerConfigs {
+		writer, err := CreateKafkaWriter(cfg.KafkaBrokers, writerCfg.topic)
+		if err != nil {
+			closeWriters()
+			return nil, err
+		}
+		writers = append(writers, writer)
+	}
+
+	return &AdvKafkaWriters{
+		CampaignBalanceMinus: writers[0],
+		CampaignBalancePlus:  writers[1],
+		UserBalanceMinus:     writers[2],
+		UserBalancePlus:      writers[3],
+		CampaignsCreated:     writers[4],
+	}, nil
+}
+
+func CreateAdvKafkaReaders(cfg config.KafkaConfig) (*AdvKafkaReaders, error) {
+	type readerConfig struct {
+		name    string
+		topic   string
+		groupID string
+	}
+
+	readerConfigs := []readerConfig{
+		{name: "CampaignBalanceMinus", topic: cfg.KafkaTopicCampaignBalanceMinus, groupID: cfg.KafkaGroupIDCampaignBalanceMinus},
+		{name: "CampaignBalancePlus", topic: cfg.KafkaTopicCampaignBalancePlus, groupID: cfg.KafkaGroupIDCampaignBalancePlus},
+		{name: "UserBalanceMinus", topic: cfg.KafkaTopicUserBalanceMinus, groupID: cfg.KafkaGroupIDUserBalanceMinus},
+		{name: "UserBalancePlus", topic: cfg.KafkaTopicUserBalancePlus, groupID: cfg.KafkaGroupIDUserBalancePlus},
+		{name: "CampaignsCreated", topic: cfg.KafkaTopicCampaignsCreated, groupID: cfg.KafkaGroupIDCampaignsCreated},
+	}
+
+	readers := make([]*kafka.Reader, 0, len(readerConfigs))
+	closeReaders := func() {
+		for i := len(readers) - 1; i >= 0; i-- {
+			if closeErr := readers[i].Close(); closeErr != nil {
+				log.Printf("⚠️ failed to close ADV %s Kafka reader after init error: %v", readerConfigs[i].name, closeErr)
+			}
+		}
+	}
+
+	for _, readerCfg := range readerConfigs {
+		reader, err := InitKafkaReader(cfg, readerCfg.topic, readerCfg.groupID)
+		if err != nil {
+			closeReaders()
+			return nil, err
+		}
+		readers = append(readers, reader)
+	}
+
+	return &AdvKafkaReaders{
+		CampaignBalanceMinus: readers[0],
+		CampaignBalancePlus:  readers[1],
+		UserBalanceMinus:     readers[2],
+		UserBalancePlus:      readers[3],
+		CampaignsCreated:     readers[4],
+	}, nil
+}
+
+func (r *KafkaReaders) Close() error {
+	if r == nil {
+		return nil
+	}
+
+	readers := []struct {
+		name   string
+		reader *kafka.Reader
+	}{
+		{name: "ORTB", reader: r.Ortb},
+		{name: "Impressions", reader: r.Impressions},
+		{name: "Clicks", reader: r.Clicks},
+		{name: "Conversions", reader: r.Conversions},
+		{name: "CampaignBalanceMinus", reader: r.CampaignBalanceMinus},
+		{name: "CampaignBalancePlus", reader: r.CampaignBalancePlus},
+		{name: "UserBalanceMinus", reader: r.UserBalanceMinus},
+		{name: "UserBalancePlus", reader: r.UserBalancePlus},
+		{name: "CampaignsCreated", reader: r.CampaignsCreated},
+	}
+
+	var lastErr error
+	for _, item := range readers {
+		if item.reader == nil {
+			continue
+		}
+		if err := item.reader.Close(); err != nil {
+			lastErr = fmt.Errorf("failed to close %s Kafka reader: %w", item.name, err)
+			log.Printf("⚠️ %v", lastErr)
+		}
+	}
+
+	return lastErr
+}
+
+func (w *KafkaWriters) Close() error {
+	if w == nil {
+		return nil
+	}
+
+	writers := []struct {
+		name   string
+		writer *kafka.Writer
+	}{
+		{name: "ORTB", writer: w.Ortb},
+		{name: "Impressions", writer: w.Impressions},
+		{name: "Clicks", writer: w.Clicks},
+		{name: "Conversions", writer: w.Conversions},
+		{name: "CampaignBalanceMinus", writer: w.CampaignBalanceMinus},
+		{name: "CampaignBalancePlus", writer: w.CampaignBalancePlus},
+		{name: "UserBalanceMinus", writer: w.UserBalanceMinus},
+		{name: "UserBalancePlus", writer: w.UserBalancePlus},
+		{name: "CampaignsCreated", writer: w.CampaignsCreated},
+	}
+
+	var lastErr error
+	for _, item := range writers {
+		if item.writer == nil {
+			continue
+		}
+		if err := item.writer.Close(); err != nil {
+			lastErr = fmt.Errorf("failed to close %s Kafka writer: %w", item.name, err)
+			log.Printf("⚠️ %v", lastErr)
+		}
+	}
+
+	return lastErr
 }
 
 func kafkaTopics(cfg config.KafkaConfig) []string {
@@ -35,6 +272,11 @@ func kafkaTopics(cfg config.KafkaConfig) []string {
 		cfg.KafkaTopicImpressions,
 		cfg.KafkaTopicClicks,
 		cfg.KafkaTopicConversions,
+		cfg.KafkaTopicCampaignBalanceMinus,
+		cfg.KafkaTopicCampaignBalancePlus,
+		cfg.KafkaTopicUserBalanceMinus,
+		cfg.KafkaTopicUserBalancePlus,
+		cfg.KafkaTopicCampaignsCreated,
 	}
 }
 
@@ -206,65 +448,53 @@ func InitKafkaReaders(cfg config.KafkaConfig) (*KafkaReaders, error) {
 		return nil, fmt.Errorf("failed to ensure Kafka topics exist: %w", err)
 	}
 
-	ortbReader, err := InitKafkaReader(
-		cfg,
-		cfg.KafkaTopicOrtb,
-		cfg.KafkaGroupIDOrtb,
-	)
-	if err != nil {
-		return nil, err
+	type readerConfig struct {
+		name    string
+		topic   string
+		groupID string
 	}
 
-	impressionsReader, err := InitKafkaReader(
-		cfg,
-		cfg.KafkaTopicImpressions,
-		cfg.KafkaGroupIDImpressions,
-	)
-	if err != nil {
-		if closeErr := ortbReader.Close(); closeErr != nil {
-			log.Printf("⚠️ failed to close ORTB Kafka reader after init error: %v", closeErr)
-		}
-		return nil, err
+	readerConfigs := []readerConfig{
+		{name: "ORTB", topic: cfg.KafkaTopicOrtb, groupID: cfg.KafkaGroupIDOrtb},
+		{name: "Impressions", topic: cfg.KafkaTopicImpressions, groupID: cfg.KafkaGroupIDImpressions},
+		{name: "Clicks", topic: cfg.KafkaTopicClicks, groupID: cfg.KafkaGroupIDClicks},
+		{name: "Conversions", topic: cfg.KafkaTopicConversions, groupID: cfg.KafkaGroupIDConversions},
+		{name: "CampaignBalanceMinus", topic: cfg.KafkaTopicCampaignBalanceMinus, groupID: cfg.KafkaGroupIDCampaignBalanceMinus},
+		{name: "CampaignBalancePlus", topic: cfg.KafkaTopicCampaignBalancePlus, groupID: cfg.KafkaGroupIDCampaignBalancePlus},
+		{name: "UserBalanceMinus", topic: cfg.KafkaTopicUserBalanceMinus, groupID: cfg.KafkaGroupIDUserBalanceMinus},
+		{name: "UserBalancePlus", topic: cfg.KafkaTopicUserBalancePlus, groupID: cfg.KafkaGroupIDUserBalancePlus},
+		{name: "CampaignsCreated", topic: cfg.KafkaTopicCampaignsCreated, groupID: cfg.KafkaGroupIDCampaignsCreated},
 	}
 
-	clicksReader, err := InitKafkaReader(
-		cfg,
-		cfg.KafkaTopicClicks,
-		cfg.KafkaGroupIDClicks,
-	)
-	if err != nil {
-		if closeErr := impressionsReader.Close(); closeErr != nil {
-			log.Printf("⚠️ failed to close Impressions Kafka reader after init error: %v", closeErr)
+	readers := make([]*kafka.Reader, 0, len(readerConfigs))
+	closeReaders := func() {
+		for i := len(readers) - 1; i >= 0; i-- {
+			if closeErr := readers[i].Close(); closeErr != nil {
+				log.Printf("⚠️ failed to close %s Kafka reader after init error: %v", readerConfigs[i].name, closeErr)
+			}
 		}
-		if closeErr := ortbReader.Close(); closeErr != nil {
-			log.Printf("⚠️ failed to close ORTB Kafka reader after init error: %v", closeErr)
-		}
-		return nil, err
 	}
 
-	conversionsReader, err := InitKafkaReader(
-		cfg,
-		cfg.KafkaTopicConversions,
-		cfg.KafkaGroupIDConversions,
-	)
-	if err != nil {
-		if closeErr := clicksReader.Close(); closeErr != nil {
-			log.Printf("⚠️ failed to close Clicks Kafka reader after init error: %v", closeErr)
+	for _, readerCfg := range readerConfigs {
+		reader, err := InitKafkaReader(cfg, readerCfg.topic, readerCfg.groupID)
+		if err != nil {
+			closeReaders()
+			return nil, err
 		}
-		if closeErr := impressionsReader.Close(); closeErr != nil {
-			log.Printf("⚠️ failed to close Impressions Kafka reader after init error: %v", closeErr)
-		}
-		if closeErr := ortbReader.Close(); closeErr != nil {
-			log.Printf("⚠️ failed to close ORTB Kafka reader after init error: %v", closeErr)
-		}
-		return nil, err
+
+		readers = append(readers, reader)
 	}
 
 	return &KafkaReaders{
-		Ortb:        ortbReader,
-		Impressions: impressionsReader,
-		Clicks:      clicksReader,
-		Conversions: conversionsReader,
+		Ortb:                 readers[0],
+		Impressions:          readers[1],
+		Clicks:               readers[2],
+		Conversions:          readers[3],
+		CampaignBalanceMinus: readers[4],
+		CampaignBalancePlus:  readers[5],
+		UserBalanceMinus:     readers[6],
+		UserBalancePlus:      readers[7],
+		CampaignsCreated:     readers[8],
 	}, nil
 }
 
@@ -342,49 +572,51 @@ func CreateKafkaWriters(cfg config.KafkaConfig) (*KafkaWriters, error) {
 		return nil, fmt.Errorf("failed to ensure Kafka topics exist: %w", err)
 	}
 
-	ortbWriter, err := CreateKafkaWriter(cfg.KafkaBrokers, cfg.KafkaTopicOrtb)
-	if err != nil {
-		return nil, err
+	type writerConfig struct {
+		name  string
+		topic string
 	}
 
-	impressionsWriter, err := CreateKafkaWriter(cfg.KafkaBrokers, cfg.KafkaTopicImpressions)
-	if err != nil {
-		if closeErr := ortbWriter.Close(); closeErr != nil {
-			log.Printf("⚠️ failed to close ORTB Kafka writer after init error: %v", closeErr)
-		}
-
-		return nil, err
+	writerConfigs := []writerConfig{
+		{name: "ORTB", topic: cfg.KafkaTopicOrtb},
+		{name: "Impressions", topic: cfg.KafkaTopicImpressions},
+		{name: "Clicks", topic: cfg.KafkaTopicClicks},
+		{name: "Conversions", topic: cfg.KafkaTopicConversions},
+		{name: "CampaignBalanceMinus", topic: cfg.KafkaTopicCampaignBalanceMinus},
+		{name: "CampaignBalancePlus", topic: cfg.KafkaTopicCampaignBalancePlus},
+		{name: "UserBalanceMinus", topic: cfg.KafkaTopicUserBalanceMinus},
+		{name: "UserBalancePlus", topic: cfg.KafkaTopicUserBalancePlus},
+		{name: "CampaignsCreated", topic: cfg.KafkaTopicCampaignsCreated},
 	}
 
-	clicksWriter, err := CreateKafkaWriter(cfg.KafkaBrokers, cfg.KafkaTopicClicks)
-	if err != nil {
-		if closeErr := ortbWriter.Close(); closeErr != nil {
-			log.Printf("⚠️ failed to close ORTB Kafka writer after init error: %v", closeErr)
+	writers := make([]*kafka.Writer, 0, len(writerConfigs))
+	closeWriters := func() {
+		for i := len(writers) - 1; i >= 0; i-- {
+			if closeErr := writers[i].Close(); closeErr != nil {
+				log.Printf("⚠️ failed to close %s Kafka writer after init error: %v", writerConfigs[i].name, closeErr)
+			}
 		}
-		if closeErr := impressionsWriter.Close(); closeErr != nil {
-			log.Printf("⚠️ failed to close Impressions Kafka writer after init error: %v", closeErr)
-		}
-		return nil, err
 	}
 
-	conversionsWriter, err := CreateKafkaWriter(cfg.KafkaBrokers, cfg.KafkaTopicConversions)
-	if err != nil {
-		if closeErr := ortbWriter.Close(); closeErr != nil {
-			log.Printf("⚠️ failed to close ORTB Kafka writer after init error: %v", closeErr)
+	for _, writerCfg := range writerConfigs {
+		writer, err := CreateKafkaWriter(cfg.KafkaBrokers, writerCfg.topic)
+		if err != nil {
+			closeWriters()
+			return nil, err
 		}
-		if closeErr := impressionsWriter.Close(); closeErr != nil {
-			log.Printf("⚠️ failed to close Impressions Kafka writer after init error: %v", closeErr)
-		}
-		if closeErr := clicksWriter.Close(); closeErr != nil {
-			log.Printf("⚠️ failed to close Clicks Kafka writer after init error: %v", closeErr)
-		}
-		return nil, err
+
+		writers = append(writers, writer)
 	}
 
 	return &KafkaWriters{
-		Ortb:        ortbWriter,
-		Impressions: impressionsWriter,
-		Clicks:      clicksWriter,
-		Conversions: conversionsWriter,
+		Ortb:                 writers[0],
+		Impressions:          writers[1],
+		Clicks:               writers[2],
+		Conversions:          writers[3],
+		CampaignBalanceMinus: writers[4],
+		CampaignBalancePlus:  writers[5],
+		UserBalanceMinus:     writers[6],
+		UserBalancePlus:      writers[7],
+		CampaignsCreated:     writers[8],
 	}, nil
 }
