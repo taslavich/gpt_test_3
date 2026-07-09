@@ -25,6 +25,9 @@ const (
 type DoAuctionRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	BidRequest    *ortb_V2_5.BidRequest  `protobuf:"bytes,1,opt,name=bidRequest,proto3" json:"bidRequest,omitempty"`
+	Format        string                 `protobuf:"bytes,2,opt,name=format,proto3" json:"format,omitempty"`
+	TrafficType   string                 `protobuf:"bytes,3,opt,name=traffic_type,json=trafficType,proto3" json:"traffic_type,omitempty"`
+	SspDomain     string                 `protobuf:"bytes,4,opt,name=ssp_domain,json=sspDomain,proto3" json:"ssp_domain,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -66,6 +69,27 @@ func (x *DoAuctionRequest) GetBidRequest() *ortb_V2_5.BidRequest {
 	return nil
 }
 
+func (x *DoAuctionRequest) GetFormat() string {
+	if x != nil {
+		return x.Format
+	}
+	return ""
+}
+
+func (x *DoAuctionRequest) GetTrafficType() string {
+	if x != nil {
+		return x.TrafficType
+	}
+	return ""
+}
+
+func (x *DoAuctionRequest) GetSspDomain() string {
+	if x != nil {
+		return x.SspDomain
+	}
+	return ""
+}
+
 type DoAuctionResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Selected      bool                   `protobuf:"varint,1,opt,name=selected,proto3" json:"selected,omitempty"`
@@ -74,6 +98,7 @@ type DoAuctionResponse struct {
 	Adm           string                 `protobuf:"bytes,4,opt,name=adm,proto3" json:"adm,omitempty"`
 	AuctionPrice  float64                `protobuf:"fixed64,5,opt,name=auction_price,json=auctionPrice,proto3" json:"auction_price,omitempty"`
 	Code          int32                  `protobuf:"varint,6,opt,name=code,proto3" json:"code,omitempty"`
+	BidResponse   *ortb_V2_5.BidResponse `protobuf:"bytes,7,opt,name=bid_response,json=bidResponse,proto3" json:"bid_response,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -148,6 +173,13 @@ func (x *DoAuctionResponse) GetCode() int32 {
 		return x.Code
 	}
 	return 0
+}
+
+func (x *DoAuctionResponse) GetBidResponse() *ortb_V2_5.BidResponse {
+	if x != nil {
+		return x.BidResponse
+	}
+	return nil
 }
 
 var File_services_adv_proto protoreflect.FileDescriptor

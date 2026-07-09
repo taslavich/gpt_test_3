@@ -238,6 +238,11 @@ type AdvConfig struct {
 	RedisConfig
 	KafkaConfig
 
+	SspGeoDspPercentsAdultFilePath      string        `yaml:"SSP_GEO_DSP_PERCENTS_ADULT_FILE_PATH" env:"SSP_GEO_DSP_PERCENTS_ADULT_FILE_PATH"`
+	SspGeoDspPercentsMainstreamFilePath string        `yaml:"SSP_GEO_DSP_PERCENTS_MAINSTREAM_FILE_PATH" env:"SSP_GEO_DSP_PERCENTS_MAINSTREAM_FILE_PATH"`
+	PostgresDSN                         string        `yaml:"POSTGRES_DSN" env:"POSTGRES_DSN"`
+	CampaignRefreshInterval             time.Duration `yaml:"CAMPAIGN_REFRESH_INTERVAL" env:"CAMPAIGN_REFRESH_INTERVAL" env-default:"5s"`
+
 	RedisDBUserBalanceThreshold     int `yaml:"REDIS_DB_USER_BALANCE_THRESHOLD" env:"REDIS_DB_USER_BALANCE_THRESHOLD" env-default:"5"`
 	RedisDBUserBalanceSpent         int `yaml:"REDIS_DB_USER_BALANCE_SPENT" env:"REDIS_DB_USER_BALANCE_SPENT" env-default:"6"`
 	RedisDBCampaignBalanceThreshold int `yaml:"REDIS_DB_CAMPAIGN_BALANCE_THRESHOLD" env:"REDIS_DB_CAMPAIGN_BALANCE_THRESHOLD" env-default:"7"`

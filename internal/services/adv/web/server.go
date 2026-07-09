@@ -11,6 +11,7 @@ import (
 	"github.com/redis/go-redis/v9"
 
 	advGrpc "gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/proto/services/adv"
+	ortb_V2_5 "gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/proto/types/ortb_V2_5"
 	auction "gitlab.com/twinbid-exchange/RTB-exchange/internal/services/adv/service"
 )
 
@@ -50,11 +51,17 @@ func (s *Server) DoAuction(ctx context.Context, req *advGrpc.DoAuctionRequest) (
 		return &advGrpc.DoAuctionResponse{Selected: false, Code: http.StatusServiceUnavailable}, nil
 	}
 
-	campaign := s.auctionService.SelectCampaign(req.GetBidRequest(), time.Now())
-	if campaign == nil {
+	auctionResult := s.auctionService.SelectAuction(req.GetBidRequest(), time.Now(), auction.AuctionRequestOptions{
+		Format:      req.GetFormat(),
+		TrafficType: req.GetTrafficType(),
+		SSPDomain:   req.GetSspDomain(),
+	})
+	if auctionResult == nil || auctionResult.Campaign == nil || auctionResult.Creative == nil {
 		return &advGrpc.DoAuctionResponse{Selected: false, Code: http.StatusNoContent}, nil
 	}
 
+	campaign := auctionResult.Campaign
+	creative := auctionResult.Creative
 	if err := s.ensurePositiveBalances(ctx, campaign.UserID, campaign.ID); err != nil {
 		if errors.Is(err, redis.Nil) || errors.Is(err, errUserBalanceNotPositive) {
 			return &advGrpc.DoAuctionResponse{Selected: false, Code: http.StatusNoContent}, nil
@@ -63,19 +70,16 @@ func (s *Server) DoAuction(ctx context.Context, req *advGrpc.DoAuctionRequest) (
 		return &advGrpc.DoAuctionResponse{Selected: false, Code: http.StatusServiceUnavailable}, nil
 	}
 
-	var creativeID, adm string
-	if creative := campaign.FirstCreative(); creative != nil {
-		creativeID = creative.ID
-		adm = creative.ADMURL
-	}
+	bidResponse := buildBidResponse(req.GetBidRequest(), campaign, creative, auctionResult.ADM, auctionResult.AuctionPrice)
 
 	return &advGrpc.DoAuctionResponse{
 		Selected:     true,
 		CampaignId:   campaign.ID,
-		CreativeId:   creativeID,
-		Adm:          adm,
-		AuctionPrice: campaign.GetAuctionPrice(),
+		CreativeId:   creative.ID,
+		Adm:          auctionResult.ADM,
+		AuctionPrice: auctionResult.AuctionPrice,
 		Code:         http.StatusOK,
+		BidResponse:  bidResponse,
 	}, nil
 }
 
@@ -130,4 +134,44 @@ func redisFloatValue(ctx context.Context, client *redis.Client, key string, valu
 	}
 
 	return value, nil
+}
+	if req == nil || campaign == nil || creative == nil {
+		return nil
+	}
+
+	bidID := req.GetId()
+	impID := ""
+	if len(req.GetImp()) > 0 {
+		impID = req.GetImp()[0].GetId()
+	}
+	price32 := float32(price)
+	cid := campaign.ID
+	crid := creative.ID
+	adomain := []string{campaign.CampaignName}
+	w := int32(creative.W)
+	h := int32(creative.H)
+	cur := "USD"
+
+	return &ortb_V2_5.BidResponse{
+		Id:    &bidID,
+		Bidid: &bidID,
+		Cur:   &cur,
+		Seatbid: []*ortb_V2_5.SeatBid{
+			{
+				Bid: []*ortb_V2_5.Bid{
+					{
+						Id:      &bidID,
+						Impid:   &impID,
+						Price:   &price32,
+						Adm:     &adm,
+						Adomain: adomain,
+						Cid:     &cid,
+						Crid:    &crid,
+						W:       &w,
+						H:       &h,
+					},
+				},
+			},
+		},
+	}
 }

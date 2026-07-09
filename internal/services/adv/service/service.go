@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log"
 	"math"
+	"math/rand"
 	"net/url"
 	"sort"
 	"strconv"
@@ -17,6 +18,9 @@ import (
 	"gitlab.com/twinbid-exchange/RTB-exchange/internal/filter"
 	filterV2 "gitlab.com/twinbid-exchange/RTB-exchange/internal/filterV2"
 	"gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/proto/types/ortb_V2_5"
+	utils "gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/utils_grpc"
+	"gitlab.com/twinbid-exchange/RTB-exchange/internal/types"
+	"gitlab.com/twinbid-exchange/RTB-exchange/internal/ua"
 )
 
 // SlotDuration задаёт длительность одного временного слота (5 минут)
@@ -750,11 +754,29 @@ func (c *Campaign) FirstCreative() *Creative {
 	return nil
 }
 
+func (c *Campaign) RandomCreative() *Creative {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	if len(c.Creatives) == 0 {
+		return nil
+	}
+	idx := rand.Intn(len(c.Creatives))
+	for _, creative := range c.Creatives {
+		if idx == 0 {
+			return creative
+		}
+		idx--
+	}
+	return nil
+}
+
 // AuctionService - сервис аукциона
 type AuctionService struct {
 	campaigns             *map[string]*Campaign
 	creativesByCampaignID *map[string]map[string]*Creative
 	filterProcessor       *filter.OptimizedFilterProcessor
+	percentMapAdult       *map[string]map[string]map[string]*types.PercentAndBidfloor
+	percentMapMainstream  *map[string]map[string]map[string]*types.PercentAndBidfloor
 	mu                    sync.RWMutex
 }
 
@@ -763,6 +785,8 @@ func NewAuctionService(filterProcessor *filter.OptimizedFilterProcessor) *Auctio
 		campaigns:             &map[string]*Campaign{},
 		creativesByCampaignID: &map[string]map[string]*Creative{},
 		filterProcessor:       filterProcessor,
+		percentMapAdult:       &map[string]map[string]map[string]*types.PercentAndBidfloor{},
+		percentMapMainstream:  &map[string]map[string]map[string]*types.PercentAndBidfloor{},
 	}
 }
 
@@ -1008,6 +1032,134 @@ func GetSSPDomainsForQualitySegment(segment string) []string {
 		domains = qualitySegmentSSPMap[QualitySegmentUsual]
 	}
 	return append([]string(nil), domains...)
+}
+
+type AuctionRequestOptions struct {
+	Format      string
+	TrafficType string
+	SSPDomain   string
+}
+
+type AuctionResult struct {
+	Campaign     *Campaign
+	Creative     *Creative
+	AuctionPrice float64
+	ADM          string
+}
+
+func (s *AuctionService) SetPercentMaps(
+	percentMapAdult map[string]map[string]map[string]*types.PercentAndBidfloor,
+	percentMapMainstream map[string]map[string]map[string]*types.PercentAndBidfloor,
+) {
+	if percentMapAdult == nil {
+		percentMapAdult = make(map[string]map[string]map[string]*types.PercentAndBidfloor)
+	}
+	if percentMapMainstream == nil {
+		percentMapMainstream = make(map[string]map[string]map[string]*types.PercentAndBidfloor)
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.percentMapAdult = &percentMapAdult
+	s.percentMapMainstream = &percentMapMainstream
+}
+
+func QualitySegmentBySSPDomain(sspDomain string) string {
+	sspDomain = strings.TrimSpace(strings.ToLower(sspDomain))
+	if sspDomain == "" {
+		return ""
+	}
+	for segment, domains := range qualitySegmentSSPMap {
+		for _, domain := range domains {
+			if strings.EqualFold(domain, sspDomain) {
+				return string(segment)
+			}
+		}
+	}
+	return ""
+}
+
+func (s *AuctionService) SelectAuction(req *ortb_V2_5.BidRequest, now time.Time, options AuctionRequestOptions) *AuctionResult {
+	if req == nil {
+		return nil
+	}
+
+	uaValues := ua.ParseUA("")
+	if req.GetDevice() != nil {
+		uaValues = ua.ParseUA(req.GetDevice().GetUa())
+	}
+	macroValues := TrackerMacroValues{Device: uaValues.Device, Browser: uaValues.Browser, DeviceOS: uaValues.OS}
+	qualitySegment := QualitySegmentBySSPDomain(options.SSPDomain)
+
+	s.mu.RLock()
+	campaigns := *s.campaigns
+	percentMap := s.percentMapForOptions(options)
+	candidates := make([]*AuctionResult, 0, len(campaigns))
+	for _, campaign := range campaigns {
+		if campaign == nil || !campaignMatchesAuctionOptions(campaign, now, options, qualitySegment) || !s.passesFilters(campaign, req) {
+			continue
+		}
+
+		creative := campaign.RandomCreative()
+		if creative == nil {
+			continue
+		}
+
+		price := campaign.GetAuctionPrice()
+		percentValue := utils.GetValueFomSspGeoDspMap(
+			options.SSPDomain,
+			bidRequestCountry(req),
+			campaign.ID,
+			percentMap,
+			&types.PercentAndBidfloor{Percent: 0, Bidfloor: false},
+		)
+		price = price - price*float64(percentValue.Percent)
+		if price <= 0 {
+			continue
+		}
+
+		adm := appendTrackerMacrosToADMURL(creative.ADMURL, creative.TrackersMacros, campaign.ID, creative.ID, req, macroValues)
+		candidates = append(candidates, &AuctionResult{Campaign: campaign, Creative: creative, AuctionPrice: price, ADM: adm})
+	}
+	s.mu.RUnlock()
+
+	if len(candidates) == 0 {
+		return nil
+	}
+	sort.SliceStable(candidates, func(i, j int) bool { return candidates[i].AuctionPrice > candidates[j].AuctionPrice })
+	return candidates[0]
+}
+
+func (s *AuctionService) percentMapForOptions(options AuctionRequestOptions) map[string]map[string]map[string]*types.PercentAndBidfloor {
+	if strings.EqualFold(options.TrafficType, "ADULT") {
+		return *s.percentMapAdult
+	}
+	return *s.percentMapMainstream
+}
+
+func bidRequestCountry(req *ortb_V2_5.BidRequest) string {
+	if req != nil && req.GetDevice() != nil && req.GetDevice().GetGeo() != nil {
+		return req.GetDevice().GetGeo().GetCountry()
+	}
+	return ""
+}
+
+func campaignMatchesAuctionOptions(campaign *Campaign, now time.Time, options AuctionRequestOptions, qualitySegment string) bool {
+	campaign.mu.RLock()
+	format := campaign.Format
+	trafficType := campaign.TrafficType
+	campaignQualitySegment := campaign.QualitySegment
+	campaign.mu.RUnlock()
+
+	if strings.TrimSpace(options.Format) != "" && !strings.EqualFold(format, options.Format) {
+		return false
+	}
+	if strings.TrimSpace(options.TrafficType) != "" && !strings.EqualFold(trafficType, options.TrafficType) {
+		return false
+	}
+	if qualitySegment != "" && !strings.EqualFold(campaignQualitySegment, qualitySegment) {
+		return false
+	}
+	return campaign.IsActiveGlobal(now) && campaign.IsEligibleByMinThreshold()
 }
 
 // SelectCampaign выбирает кампанию для BidRequest.
