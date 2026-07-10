@@ -69,6 +69,7 @@ func main() {
 	if err := userBalanceSpentRedisClient.Ping(ctx).Err(); err != nil {
 		log.Fatalf("Failed to connect to user balance spent redis: %v", err)
 	}
+
 	advKafkaWriters, err := kafkaService.CreateAdvKafkaWriters(cfg.KafkaConfig)
 	if err != nil {
 		log.Fatalf("Cannot init ADV kafka writers: %v", err)
