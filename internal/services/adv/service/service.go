@@ -542,6 +542,55 @@ func (c *Campaign) GetAuctionPrice() float64 {
 	return c.BasePrice * (1 - fee/100)
 }
 
+func (c *Campaign) GetAuctionPriceForFormat(format string) float64 {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+
+	price := c.BasePrice
+	if strings.TrimSpace(format) == "" {
+		format = c.Format
+	}
+
+	switch normalizedAuctionFormat(format) {
+	case "ipp", "native", "banner", "popunder":
+		if strings.EqualFold(c.PricingModel, PricingModelCPM) {
+			price = c.BasePrice / 1000
+		} else if strings.EqualFold(c.PricingModel, PricingModelCPC) {
+			price = c.BasePrice
+		}
+	default:
+		if strings.EqualFold(c.PricingModel, PricingModelCPM) {
+			price = c.BasePrice / 1000
+		} else if strings.EqualFold(c.PricingModel, PricingModelCPC) {
+			price = c.BasePrice
+		}
+	}
+
+	fee := math.Max(0, math.Min(c.PlatformFeePercent, 100))
+	return price * (1 - fee/100)
+}
+
+func normalizedAuctionFormat(format string) string {
+	switch strings.ToLower(strings.TrimSpace(format)) {
+	case "ipp", "in-page-push", "in_page_push":
+		return "ipp"
+	case "nat", "native":
+		return "native"
+	case "ban", "banner":
+		return "banner"
+	case "pop", "popunder", "pop_under":
+		return "popunder"
+	default:
+		return strings.ToLower(strings.TrimSpace(format))
+	}
+}
+
+func (c *Campaign) IsStatusActive() bool {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return strings.EqualFold(c.Status, CampaignStatusActive)
+}
+
 // IsActiveInIntervals проверяет, попадает ли текущее время в один из заданных интервалов.
 func (c *Campaign) IsActiveInIntervals(now time.Time) bool {
 	if len(c.ActiveIntervals) == 0 {
@@ -1095,7 +1144,10 @@ func (s *AuctionService) SelectAuction(req *ortb_V2_5.BidRequest, now time.Time,
 	percentMap := s.percentMapForOptions(options)
 	candidates := make([]*AuctionResult, 0, len(campaigns))
 	for _, campaign := range campaigns {
-		if campaign == nil || !campaignMatchesAuctionOptions(campaign, now, options, qualitySegment) || !s.passesFilters(campaign, req) {
+		if campaign == nil || !campaign.IsStatusActive() {
+			continue
+		}
+		if !campaignMatchesAuctionOptions(campaign, now, options, qualitySegment) || !s.passesFilters(campaign, req) {
 			continue
 		}
 
@@ -1104,15 +1156,15 @@ func (s *AuctionService) SelectAuction(req *ortb_V2_5.BidRequest, now time.Time,
 			continue
 		}
 
-		price := campaign.GetAuctionPrice()
+		price := campaign.GetAuctionPriceForFormat(options.Format)
 		percentValue := utils.GetValueFomSspGeoDspMap(
 			options.SSPDomain,
 			bidRequestCountry(req),
-			campaign.ID,
+			campaign.UserID,
 			percentMap,
-			&types.PercentAndBidfloor{Percent: 0, Bidfloor: false},
+			&types.PercentAndBidfloor{Percent: 1, Bidfloor: false},
 		)
-		price = price - price*float64(percentValue.Percent)
+		price = price * float64(percentValue.Percent)
 		if price <= 0 {
 			continue
 		}
