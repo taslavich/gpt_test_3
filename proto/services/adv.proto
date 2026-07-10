@@ -10,6 +10,9 @@ service AdvService {
 
 message DoAuctionRequest {
   ortb_V2_5.BidRequest bidRequest = 1;
+  string format = 2;
+  string traffic_type = 3;
+  string ssp_domain = 4;
 }
 
 message DoAuctionResponse {
@@ -19,4 +22,5 @@ message DoAuctionResponse {
   string adm = 4;
   double auction_price = 5;
   int32 code = 6;
+  ortb_V2_5.BidResponse bid_response = 7;
 }
