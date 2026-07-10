@@ -148,6 +148,7 @@ type RouterConfig struct {
 	CidSspDspLinksMainstreamFilePath string `yaml:"CID_SSP_DSP_LINKS_MAINSTREAM_FILE_PATH" env:"CID_SSP_DSP_LINKS_MAINSTREAM_FILE_PATH"`
 
 	BidResponsesTimeout time.Duration `yaml:"BID_RESPONSES_TIMEOUT" env:"BID_RESPONSES_TIMEOUT"`
+	UriOfAdv            string        `yaml:"URI_OF_ADV" env:"URI_OF_ADV"`
 
 	DspFiltersAdlFilePath string `yaml:"DSP_FILTERS_ADULT_FILE_PATH" env:"DSP_FILTERS_ADULT_FILE_PATH"`
 	DspFiltersMcFilePath  string `yaml:"DSP_FILTERS_MAINSTREAM_FILE_PATH" env:"DSP_FILTERS_MAINSTREAM_FILE_PATH"`
@@ -243,10 +244,8 @@ type AdvConfig struct {
 	PostgresDSN                         string        `yaml:"POSTGRES_DSN" env:"POSTGRES_DSN"`
 	CampaignRefreshInterval             time.Duration `yaml:"CAMPAIGN_REFRESH_INTERVAL" env:"CAMPAIGN_REFRESH_INTERVAL" env-default:"5s"`
 
-	RedisDBUserBalanceThreshold     int `yaml:"REDIS_DB_USER_BALANCE_THRESHOLD" env:"REDIS_DB_USER_BALANCE_THRESHOLD" env-default:"5"`
-	RedisDBUserBalanceSpent         int `yaml:"REDIS_DB_USER_BALANCE_SPENT" env:"REDIS_DB_USER_BALANCE_SPENT" env-default:"6"`
-	RedisDBCampaignBalanceThreshold int `yaml:"REDIS_DB_CAMPAIGN_BALANCE_THRESHOLD" env:"REDIS_DB_CAMPAIGN_BALANCE_THRESHOLD" env-default:"7"`
-	RedisDBCampaignBalanceSpent     int `yaml:"REDIS_DB_CAMPAIGN_BALANCE_SPENT" env:"REDIS_DB_CAMPAIGN_BALANCE_SPENT" env-default:"8"`
+	RedisDBUserBalanceThreshold int `yaml:"REDIS_DB_USER_BALANCE_THRESHOLD" env:"REDIS_DB_USER_BALANCE_THRESHOLD" env-default:"5"`
+	RedisDBUserBalanceSpent     int `yaml:"REDIS_DB_USER_BALANCE_SPENT" env:"REDIS_DB_USER_BALANCE_SPENT" env-default:"6"`
 }
 type KafkaLoaderConfig struct {
 	RedisConfig

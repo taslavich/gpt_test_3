@@ -467,13 +467,14 @@ func postBid_V2_5(
 	res, err := orchestratorClient.GetWinnerBid_V2_5(
 		reqCtx,
 		&orchestratorProto.OrchestratorRequest_V2_5{
-			BidRequest: input.Payload.BidRequest,
-			SspDomain:  ssp_domain,
-			Logged:     logged,
-			Typic:      typic,
-			Format:     format,
-			ImpIdUuid:  impIdUuid,
-			SspUrl:     sspAdapterWorkStatusURL,
+			BidRequest:  input.Payload.BidRequest,
+			SspDomain:   ssp_domain,
+			Logged:      logged,
+			Typic:       typic,
+			Format:      format,
+			TrafficType: typic,
+			ImpIdUuid:   impIdUuid,
+			SspUrl:      sspAdapterWorkStatusURL,
 		},
 	)
 	if err != nil {

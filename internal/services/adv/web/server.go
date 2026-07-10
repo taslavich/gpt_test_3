@@ -18,11 +18,9 @@ import (
 // Server exposes the ADV auction service over gRPC.
 type Server struct {
 	advGrpc.UnimplementedAdvServiceServer
-	auctionService                      *auction.AuctionService
-	userBalanceThresholdRedisClient     *redis.Client
-	userBalanceSpentRedisClient         *redis.Client
-	campaignBalanceThresholdRedisClient *redis.Client
-	campaignBalanceSpentRedisClient     *redis.Client
+	auctionService                  *auction.AuctionService
+	userBalanceThresholdRedisClient *redis.Client
+	userBalanceSpentRedisClient     *redis.Client
 }
 
 // NewServer creates a gRPC server that delegates auction decisions to AuctionService.
@@ -30,15 +28,11 @@ func NewServer(
 	auctionService *auction.AuctionService,
 	userBalanceThresholdRedisClient *redis.Client,
 	userBalanceSpentRedisClient *redis.Client,
-	campaignBalanceThresholdRedisClient *redis.Client,
-	campaignBalanceSpentRedisClient *redis.Client,
 ) *Server {
 	return &Server{
-		auctionService:                      auctionService,
-		userBalanceThresholdRedisClient:     userBalanceThresholdRedisClient,
-		userBalanceSpentRedisClient:         userBalanceSpentRedisClient,
-		campaignBalanceThresholdRedisClient: campaignBalanceThresholdRedisClient,
-		campaignBalanceSpentRedisClient:     campaignBalanceSpentRedisClient,
+		auctionService:                  auctionService,
+		userBalanceThresholdRedisClient: userBalanceThresholdRedisClient,
+		userBalanceSpentRedisClient:     userBalanceSpentRedisClient,
 	}
 }
 
@@ -62,7 +56,7 @@ func (s *Server) DoAuction(ctx context.Context, req *advGrpc.DoAuctionRequest) (
 
 	campaign := auctionResult.Campaign
 	creative := auctionResult.Creative
-	if err := s.ensurePositiveBalances(ctx, campaign.UserID, campaign.ID); err != nil {
+	if err := s.ensurePositiveUserBalance(ctx, campaign.UserID); err != nil {
 		if errors.Is(err, redis.Nil) || errors.Is(err, errUserBalanceNotPositive) {
 			return &advGrpc.DoAuctionResponse{Selected: false, Code: http.StatusNoContent}, nil
 		}
@@ -85,19 +79,12 @@ func (s *Server) DoAuction(ctx context.Context, req *advGrpc.DoAuctionRequest) (
 
 var errUserBalanceNotPositive = errors.New("balance is not positive")
 
-func (s *Server) ensurePositiveBalances(ctx context.Context, userID, campaignID string) error {
+func (s *Server) ensurePositiveUserBalance(ctx context.Context, userID string) error {
 	if userID == "" {
 		return fmt.Errorf("campaign user_id is empty")
 	}
-	if campaignID == "" {
-		return fmt.Errorf("campaign_id is empty")
-	}
 
-	if err := ensurePositiveRemainingBalance(ctx, s.userBalanceThresholdRedisClient, s.userBalanceSpentRedisClient, userID); err != nil {
-		return err
-	}
-
-	return ensurePositiveRemainingBalance(ctx, s.campaignBalanceThresholdRedisClient, s.campaignBalanceSpentRedisClient, campaignID)
+	return ensurePositiveRemainingBalance(ctx, s.userBalanceThresholdRedisClient, s.userBalanceSpentRedisClient, userID)
 }
 
 func ensurePositiveRemainingBalance(ctx context.Context, thresholdClient, spentClient *redis.Client, balanceKey string) error {
@@ -135,6 +122,7 @@ func redisFloatValue(ctx context.Context, client *redis.Client, key string, valu
 
 	return value, nil
 }
+
 func buildBidResponse(req *ortb_V2_5.BidRequest, campaign *auction.Campaign, creative *auction.Creative, adm string, price float64) *ortb_V2_5.BidResponse {
 	if req == nil || campaign == nil || creative == nil {
 		return nil

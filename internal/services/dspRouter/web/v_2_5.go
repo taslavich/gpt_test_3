@@ -20,6 +20,7 @@ import (
 	"gitlab.com/twinbid-exchange/RTB-exchange/internal/constants"
 	"gitlab.com/twinbid-exchange/RTB-exchange/internal/filter"
 	eventspb "gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/proto/buffer"
+	advGrpc "gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/proto/services/adv"
 	dspRouterGrpc "gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/proto/services/dspRouter"
 	"gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/proto/types/ortb_V2_5"
 	utils "gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/utils_grpc"
@@ -63,6 +64,8 @@ type Server struct {
 
 	configTimeouts config.MapStringToDuration
 
+	advClient advGrpc.AdvServiceClient
+
 	dspRouterGrpc.UnimplementedDspRouterServiceServer
 }
 
@@ -85,6 +88,7 @@ func NewServer(
 	filterBoxChangerMc *filter.ChangersBoxChanger,
 	configTimeouts config.MapStringToDuration,
 	redisWriteErrorMonitor *services.RedisWriteErrorMonitor,
+	advClient advGrpc.AdvServiceClient,
 ) *Server {
 	rang := cidranger.NewPCTrieRanger()
 
@@ -113,6 +117,7 @@ func NewServer(
 		filterBoxChangerAdl: filterBoxChangerAdl,
 		filterBoxChangerMc:  filterBoxChangerMc,
 		configTimeouts:      configTimeouts,
+		advClient:           advClient,
 	}
 }
 
@@ -124,6 +129,41 @@ type dspDomainResp struct {
 type dspDomainCode struct {
 	domain string
 	code   string
+}
+
+func trafficTypeFromDspRouterRequest(req *dspRouterGrpc.DspRouterRequest_V2_5) string {
+	if req == nil {
+		return ""
+	}
+	if req.GetTrafficType() != "" {
+		return req.GetTrafficType()
+	}
+	return req.GetTypic()
+}
+
+func (s *Server) doAdvAuction(
+	ctx context.Context,
+	req *dspRouterGrpc.DspRouterRequest_V2_5,
+	timeout time.Duration,
+) (*ortb_V2_5.BidResponse, int32, error) {
+	if s.advClient == nil {
+		return nil, http.StatusNoContent, fmt.Errorf("adv client is not configured")
+	}
+
+	advCtx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+
+	resp, err := s.advClient.DoAuction(advCtx, &advGrpc.DoAuctionRequest{
+		BidRequest:  req.BidRequest,
+		Format:      req.Format,
+		TrafficType: trafficTypeFromDspRouterRequest(req),
+		SspDomain:   req.SspDomain,
+	})
+	if err != nil {
+		return nil, 0, err
+	}
+
+	return resp.GetBidResponse(), resp.GetCode(), nil
 }
 
 func (s *Server) GetBids_V2_5(
@@ -218,6 +258,17 @@ func (s *Server) GetBids_V2_5(
 
 		return ""
 	}()
+
+	if advBidResponse, advCode, advErr := s.doAdvAuction(ctx, req, timeout); advErr == nil && advCode == http.StatusOK && advBidResponse != nil {
+		return &dspRouterGrpc.DspRouterResponse_V2_5{
+			BidRequest: req.BidRequest,
+			BidResponses: map[string]*ortb_V2_5.BidResponse{
+				"adv": advBidResponse,
+			},
+			SspDomain: req.SspDomain,
+			Code:      http.StatusOK,
+		}, nil
+	}
 
 	for endpoint, domain := range dspList {
 		endpoint := endpoint

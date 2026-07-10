@@ -40,36 +40,15 @@ func StartAdvBalanceRedisTicker(
 		userThresholdRedis.Close()
 		return fmt.Errorf("init user spent redis: %w", err)
 	}
-	campaignThresholdRedis, err := redisService.NewRedisClient(redisAddr, redisPassword, 7, poolSize, minIdleConns)
-	if err != nil {
-		userThresholdRedis.Close()
-		userSpentRedis.Close()
-		return fmt.Errorf("init campaign threshold redis: %w", err)
-	}
-	campaignSpentRedis, err := redisService.NewRedisClient(redisAddr, redisPassword, 8, poolSize, minIdleConns)
-	if err != nil {
-		userThresholdRedis.Close()
-		userSpentRedis.Close()
-		campaignThresholdRedis.Close()
-		return fmt.Errorf("init campaign spent redis: %w", err)
-	}
-
 	userPlusReader, err := InitKafkaReader(cfg, cfg.KafkaTopicUserBalancePlus, cfg.KafkaGroupIDUserBalancePlus)
 	if err != nil {
-		closeRedisClients(userThresholdRedis, userSpentRedis, campaignThresholdRedis, campaignSpentRedis)
+		closeRedisClients(userThresholdRedis, userSpentRedis)
 		return fmt.Errorf("init user balance plus reader: %w", err)
-	}
-	campaignPlusReader, err := InitKafkaReader(cfg, cfg.KafkaTopicCampaignBalancePlus, cfg.KafkaGroupIDCampaignBalancePlus)
-	if err != nil {
-		userPlusReader.Close()
-		closeRedisClients(userThresholdRedis, userSpentRedis, campaignThresholdRedis, campaignSpentRedis)
-		return fmt.Errorf("init campaign balance plus reader: %w", err)
 	}
 
 	go func() {
-		defer closeRedisClients(userThresholdRedis, userSpentRedis, campaignThresholdRedis, campaignSpentRedis)
+		defer closeRedisClients(userThresholdRedis, userSpentRedis)
 		defer userPlusReader.Close()
-		defer campaignPlusReader.Close()
 
 		ticker := time.NewTicker(5 * time.Second)
 		defer ticker.Stop()
@@ -87,16 +66,6 @@ func StartAdvBalanceRedisTicker(
 						return err
 					}
 					return userSpentRedis.Set(ctx, event.UserID, "0", 0).Err()
-				})
-				drainAdvBalanceReader(ctx, campaignPlusReader, func(event advBalanceEvent) error {
-					threshold, ok := event.campaignThresholdValue()
-					if !ok || event.CampaignID == "" {
-						return nil
-					}
-					if err := campaignThresholdRedis.Set(ctx, event.CampaignID, strconv.FormatFloat(threshold, 'f', -1, 64), 0).Err(); err != nil {
-						return err
-					}
-					return campaignSpentRedis.Set(ctx, event.CampaignID, "0", 0).Err()
 				})
 			}
 		}

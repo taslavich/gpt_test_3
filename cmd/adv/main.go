@@ -63,41 +63,11 @@ func main() {
 	}
 	defer userBalanceSpentRedisClient.Close()
 
-	campaignBalanceThresholdRedisClient, err := redisService.NewRedisClient(
-		redisAddr,
-		cfg.RedisPassword,
-		cfg.RedisDBCampaignBalanceThreshold,
-		cfg.RedisPoolSize,
-		cfg.RedisMinIdleConns,
-	)
-	if err != nil {
-		log.Fatalf("Cannot init campaign balance threshold redis client: %v", err)
-	}
-	defer campaignBalanceThresholdRedisClient.Close()
-
-	campaignBalanceSpentRedisClient, err := redisService.NewRedisClient(
-		redisAddr,
-		cfg.RedisPassword,
-		cfg.RedisDBCampaignBalanceSpent,
-		cfg.RedisPoolSize,
-		cfg.RedisMinIdleConns,
-	)
-	if err != nil {
-		log.Fatalf("Cannot init campaign balance spent redis client: %v", err)
-	}
-	defer campaignBalanceSpentRedisClient.Close()
-
 	if err := userBalanceThresholdRedisClient.Ping(ctx).Err(); err != nil {
 		log.Fatalf("Failed to connect to user balance threshold redis: %v", err)
 	}
 	if err := userBalanceSpentRedisClient.Ping(ctx).Err(); err != nil {
 		log.Fatalf("Failed to connect to user balance spent redis: %v", err)
-	}
-	if err := campaignBalanceThresholdRedisClient.Ping(ctx).Err(); err != nil {
-		log.Fatalf("Failed to connect to campaign balance threshold redis: %v", err)
-	}
-	if err := campaignBalanceSpentRedisClient.Ping(ctx).Err(); err != nil {
-		log.Fatalf("Failed to connect to campaign balance spent redis: %v", err)
 	}
 
 	advKafkaWriters, err := kafkaService.CreateAdvKafkaWriters(cfg.KafkaConfig)
@@ -146,7 +116,7 @@ func main() {
 	s := grpc.NewServer()
 	advGrpc.RegisterAdvServiceServer(
 		s,
-		advWeb.NewServer(auctionService, userBalanceThresholdRedisClient, userBalanceSpentRedisClient, campaignBalanceThresholdRedisClient, campaignBalanceSpentRedisClient),
+		advWeb.NewServer(auctionService, userBalanceThresholdRedisClient, userBalanceSpentRedisClient),
 	)
 
 	router := httpServer.InitHttpRouter(chi.NewRouter())
