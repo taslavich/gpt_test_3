@@ -148,6 +148,7 @@ type RouterConfig struct {
 	CidSspDspLinksMainstreamFilePath string `yaml:"CID_SSP_DSP_LINKS_MAINSTREAM_FILE_PATH" env:"CID_SSP_DSP_LINKS_MAINSTREAM_FILE_PATH"`
 
 	BidResponsesTimeout time.Duration `yaml:"BID_RESPONSES_TIMEOUT" env:"BID_RESPONSES_TIMEOUT"`
+	UriOfAdv            string        `yaml:"URI_OF_ADV" env:"URI_OF_ADV"`
 
 	DspFiltersAdlFilePath string `yaml:"DSP_FILTERS_ADULT_FILE_PATH" env:"DSP_FILTERS_ADULT_FILE_PATH"`
 	DspFiltersMcFilePath  string `yaml:"DSP_FILTERS_MAINSTREAM_FILE_PATH" env:"DSP_FILTERS_MAINSTREAM_FILE_PATH"`
@@ -235,6 +236,16 @@ type AdmAdapterConfig struct {
 type AdvConfig struct {
 	HttpServer HttpServer
 	GrpcServer GrpcServer
+	RedisConfig
+	KafkaConfig
+
+	SspGeoDspPercentsAdultFilePath      string        `yaml:"SSP_GEO_DSP_PERCENTS_ADULT_FILE_PATH" env:"SSP_GEO_DSP_PERCENTS_ADULT_FILE_PATH"`
+	SspGeoDspPercentsMainstreamFilePath string        `yaml:"SSP_GEO_DSP_PERCENTS_MAINSTREAM_FILE_PATH" env:"SSP_GEO_DSP_PERCENTS_MAINSTREAM_FILE_PATH"`
+	PostgresDSN                         string        `yaml:"POSTGRES_DSN" env:"POSTGRES_DSN"`
+	CampaignRefreshInterval             time.Duration `yaml:"CAMPAIGN_REFRESH_INTERVAL" env:"CAMPAIGN_REFRESH_INTERVAL" env-default:"5s"`
+
+	RedisDBUserBalanceThreshold int `yaml:"REDIS_DB_USER_BALANCE_THRESHOLD" env:"REDIS_DB_USER_BALANCE_THRESHOLD" env-default:"5"`
+	RedisDBUserBalanceSpent     int `yaml:"REDIS_DB_USER_BALANCE_SPENT" env:"REDIS_DB_USER_BALANCE_SPENT" env-default:"6"`
 }
 type KafkaLoaderConfig struct {
 	RedisConfig
@@ -365,11 +376,23 @@ type KafkaConfig struct {
 	KafkaTopicClicks      string `yaml:"KAFKA_TOPIC_CLICKS" env:"KAFKA_TOPIC_CLICKS" env-default:"clicks"`
 	KafkaTopicConversions string `yaml:"KAFKA_TOPIC_CONVERSIONS" env:"KAFKA_TOPIC_CONVERSIONS" env-default:"conversions"`
 
+	KafkaTopicCampaignBalanceMinus string `yaml:"KAFKA_TOPIC_CAMPAIGN_BALANCE_MINUS" env:"KAFKA_TOPIC_CAMPAIGN_BALANCE_MINUS" env-default:"campaign_balance_minus"`
+	KafkaTopicCampaignBalancePlus  string `yaml:"KAFKA_TOPIC_CAMPAIGN_BALANCE_PLUS" env:"KAFKA_TOPIC_CAMPAIGN_BALANCE_PLUS" env-default:"campaign_balance_plus"`
+	KafkaTopicUserBalanceMinus     string `yaml:"KAFKA_TOPIC_USER_BALANCE_MINUS" env:"KAFKA_TOPIC_USER_BALANCE_MINUS" env-default:"user_balance_minus"`
+	KafkaTopicUserBalancePlus      string `yaml:"KAFKA_TOPIC_USER_BALANCE_PLUS" env:"KAFKA_TOPIC_USER_BALANCE_PLUS" env-default:"user_balance_plus"`
+	KafkaTopicCampaignsCreated     string `yaml:"KAFKA_TOPIC_CAMPAIGNS_CREATED" env:"KAFKA_TOPIC_CAMPAIGNS_CREATED" env-default:"campaigns_created"`
+
 	// Kafka consumer groups
 	KafkaGroupIDOrtb        string `yaml:"KAFKA_GROUP_ID_ORTB" env:"KAFKA_GROUP_ID_ORTB" env-default:"groupIdOrtb"`
 	KafkaGroupIDImpressions string `yaml:"KAFKA_GROUP_ID_IMPRESSIONS" env:"KAFKA_GROUP_ID_IMPRESSIONS" env-default:"groupIdImpressions"`
 	KafkaGroupIDClicks      string `yaml:"KAFKA_GROUP_ID_CLICKS" env:"KAFKA_GROUP_ID_CLICKS" env-default:"groupIdClicks"`
 	KafkaGroupIDConversions string `yaml:"KAFKA_GROUP_ID_CONVERSIONS" env:"KAFKA_GROUP_ID_CONVERSIONS" env-default:"groupIdConversions"`
+
+	KafkaGroupIDCampaignBalanceMinus string `yaml:"KAFKA_GROUP_ID_CAMPAIGN_BALANCE_MINUS" env:"KAFKA_GROUP_ID_CAMPAIGN_BALANCE_MINUS" env-default:"groupIdCampaignBalanceMinus"`
+	KafkaGroupIDCampaignBalancePlus  string `yaml:"KAFKA_GROUP_ID_CAMPAIGN_BALANCE_PLUS" env:"KAFKA_GROUP_ID_CAMPAIGN_BALANCE_PLUS" env-default:"groupIdCampaignBalancePlus"`
+	KafkaGroupIDUserBalanceMinus     string `yaml:"KAFKA_GROUP_ID_USER_BALANCE_MINUS" env:"KAFKA_GROUP_ID_USER_BALANCE_MINUS" env-default:"groupIdUserBalanceMinus"`
+	KafkaGroupIDUserBalancePlus      string `yaml:"KAFKA_GROUP_ID_USER_BALANCE_PLUS" env:"KAFKA_GROUP_ID_USER_BALANCE_PLUS" env-default:"groupIdUserBalancePlus"`
+	KafkaGroupIDCampaignsCreated     string `yaml:"KAFKA_GROUP_ID_CAMPAIGNS_CREATED" env:"KAFKA_GROUP_ID_CAMPAIGNS_CREATED" env-default:"groupIdCampaignsCreated"`
 }
 
 type HttpServer struct {

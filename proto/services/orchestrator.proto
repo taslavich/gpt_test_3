@@ -16,6 +16,7 @@ message OrchestratorRequest_V2_5 {
   string typic = 5;
   string format = 6;
   string sspUrl = 7;
+  string traffic_type = 8;
 }
 
 message OrchestratorResponse_V2_5 {

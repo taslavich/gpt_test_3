@@ -13,6 +13,7 @@ import (
 
 	"gitlab.com/twinbid-exchange/RTB-exchange/internal/config"
 	"gitlab.com/twinbid-exchange/RTB-exchange/internal/filter"
+	advGrpc "gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/proto/services/adv"
 	dspRouterGrpc "gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/proto/services/dspRouter"
 	utils "gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/utils_grpc"
 	httpServer "gitlab.com/twinbid-exchange/RTB-exchange/internal/http"
@@ -24,6 +25,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/redis/go-redis/v9"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials/insecure"
 )
 
 func main() {
@@ -166,6 +168,18 @@ func main() {
 	)
 	redisWriteErrorMonitor.Start()
 
+	var advClient advGrpc.AdvServiceClient
+	var advConn *grpc.ClientConn
+	if cfg.UriOfAdv != "" {
+		advConn, err = grpc.NewClient(cfg.UriOfAdv, grpc.WithTransportCredentials(insecure.NewCredentials()))
+		if err != nil {
+			log.Fatalf("Cannot init ADV grpc client: %v", err)
+		}
+		defer advConn.Close()
+		advClient = advGrpc.NewAdvServiceClient(advConn)
+		log.Println("✅ ADV grpc client initialized")
+	}
+
 	s := grpc.NewServer()
 	routerServer := dspRouterWeb.NewServer(
 		ruleManager,
@@ -186,6 +200,7 @@ func main() {
 		changersMc,
 		cfg.SspHttpClientTimeouts,
 		redisWriteErrorMonitor,
+		advClient,
 	)
 
 	if err := routerServer.LoadNetset(cfg.AllowedIpDbPath); err != nil {

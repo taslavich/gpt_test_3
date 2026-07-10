@@ -38,6 +38,16 @@ func NewServer(
 	}
 }
 
+func trafficTypeFromOrchestratorRequest(req *orchestratorGrpc.OrchestratorRequest_V2_5) string {
+	if req == nil {
+		return ""
+	}
+	if req.GetTrafficType() != "" {
+		return req.GetTrafficType()
+	}
+	return req.GetTypic()
+}
+
 func (s *Server) GetWinnerBid_V2_5(
 	ctx context.Context,
 	req *orchestratorGrpc.OrchestratorRequest_V2_5,
@@ -62,13 +72,14 @@ func (s *Server) GetWinnerBid_V2_5(
 	bids, err := s.dspRouterGrpcClient.GetBids_V2_5(
 		getBidsReqCtx,
 		&dspRouterGrpc.DspRouterRequest_V2_5{
-			BidRequest: req.BidRequest,
-			SspDomain:  req.SspDomain,
-			Logged:     req.Logged,
-			Typic:      req.Typic,
-			Format:     req.Format,
-			ImpIdUuid:  req.ImpIdUuid,
-			SspUrl:     req.SspUrl,
+			BidRequest:  req.BidRequest,
+			SspDomain:   req.SspDomain,
+			Logged:      req.Logged,
+			Typic:       req.Typic,
+			Format:      req.Format,
+			TrafficType: trafficTypeFromOrchestratorRequest(req),
+			ImpIdUuid:   req.ImpIdUuid,
+			SspUrl:      req.SspUrl,
 		},
 	)
 	if err != nil {
