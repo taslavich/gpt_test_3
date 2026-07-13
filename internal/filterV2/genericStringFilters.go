@@ -199,23 +199,26 @@ func NewFilters(apply, isWhiteList bool, objects []string) *Filters {
 	}
 }
 
-func (s *Filters) Allowed(object string) bool {
-	if s == nil {
+func (s *Filters) Allowed(object *string) bool {
+	if s == nil || !s.Apply {
 		return true
 	}
 
-	if !s.Apply {
-		return true
+	// Если объект не передан (nil) — действуем по правилам фильтра
+	if object == nil {
+		// Для белого списка: nil не в списке → запрещено
+		// Для чёрного списка: nil не в списке → разрешено
+		return !s.IsWhiteList
 	}
 
 	if s.IsWhiteList {
-		return s.Objects[object]
+		return s.Objects[*object]
 	}
 
-	return !s.Objects[object]
+	return !s.Objects[*object]
 }
 
-func (f *FiltersBox) Allowed(object string, campaignID string, all bool) bool {
+func (f *FiltersBox) Allowed(object *string, campaignID string, all bool) bool {
 	if f == nil {
 		return true
 	}
