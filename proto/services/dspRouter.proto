@@ -24,4 +24,7 @@ message DspRouterResponse_V2_5 {
   map<string, ortb_V2_5.BidResponse> bidResponses = 2;
   string ssp_domain = 3;
   int32 code = 4;
+  bool rekl = 5;
+  ortb_V2_5.BidResponse adv_bid_response = 6;
+  map<string, string> winner_user_ids = 7;
 }

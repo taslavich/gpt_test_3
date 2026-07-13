@@ -28,6 +28,7 @@ type DoAuctionRequest struct {
 	Format        string                 `protobuf:"bytes,2,opt,name=format,proto3" json:"format,omitempty"`
 	TrafficType   string                 `protobuf:"bytes,3,opt,name=traffic_type,json=trafficType,proto3" json:"traffic_type,omitempty"`
 	SspDomain     string                 `protobuf:"bytes,4,opt,name=ssp_domain,json=sspDomain,proto3" json:"ssp_domain,omitempty"`
+	ImpIdUuid     map[string]string      `protobuf:"bytes,5,rep,name=imp_id_uuid,json=impIdUuid,proto3" json:"imp_id_uuid,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -90,6 +91,13 @@ func (x *DoAuctionRequest) GetSspDomain() string {
 	return ""
 }
 
+func (x *DoAuctionRequest) GetImpIdUuid() map[string]string {
+	if x != nil {
+		return x.ImpIdUuid
+	}
+	return nil
+}
+
 type DoAuctionResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Selected      bool                   `protobuf:"varint,1,opt,name=selected,proto3" json:"selected,omitempty"`
@@ -99,6 +107,7 @@ type DoAuctionResponse struct {
 	AuctionPrice  float64                `protobuf:"fixed64,5,opt,name=auction_price,json=auctionPrice,proto3" json:"auction_price,omitempty"`
 	Code          int32                  `protobuf:"varint,6,opt,name=code,proto3" json:"code,omitempty"`
 	BidResponse   *ortb_V2_5.BidResponse `protobuf:"bytes,7,opt,name=bid_response,json=bidResponse,proto3" json:"bid_response,omitempty"`
+	WinnerUserIds map[string]string      `protobuf:"bytes,8,rep,name=winner_user_ids,json=winnerUserIds,proto3" json:"winner_user_ids,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -182,15 +191,30 @@ func (x *DoAuctionResponse) GetBidResponse() *ortb_V2_5.BidResponse {
 	return nil
 }
 
+func (x *DoAuctionResponse) GetWinnerUserIds() map[string]string {
+	if x != nil {
+		return x.WinnerUserIds
+	}
+	return nil
+}
+
 var File_services_adv_proto protoreflect.FileDescriptor
 
 const file_services_adv_proto_rawDesc = "" +
 	"\n" +
-	"\x12services/adv.proto\x12\x03adv\x1a\x1atypes/ortb_V2_5/ortb.proto\"I\n" +
+	"\x12services/adv.proto\x12\x03adv\x1a\x1atypes/ortb_V2_5/ortb.proto\"\xa7\x02\n" +
 	"\x10DoAuctionRequest\x125\n" +
 	"\n" +
 	"bidRequest\x18\x01 \x01(\v2\x15.ortb_V2_5.BidRequestR\n" +
-	"bidRequest\"\xbc\x01\n" +
+	"bidRequest\x12\x16\n" +
+	"\x06format\x18\x02 \x01(\tR\x06format\x12!\n" +
+	"\ftraffic_type\x18\x03 \x01(\tR\vtrafficType\x12\x1d\n" +
+	"\n" +
+	"ssp_domain\x18\x04 \x01(\tR\tsspDomain\x12D\n" +
+	"\vimp_id_uuid\x18\x05 \x03(\v2$.adv.DoAuctionRequest.ImpIdUuidEntryR\timpIdUuid\x1a<\n" +
+	"\x0eImpIdUuidEntry\x12\x10\n" +
+	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\x8c\x03\n" +
 	"\x11DoAuctionResponse\x12\x1a\n" +
 	"\bselected\x18\x01 \x01(\bR\bselected\x12\x1f\n" +
 	"\vcampaign_id\x18\x02 \x01(\tR\n" +
@@ -199,7 +223,12 @@ const file_services_adv_proto_rawDesc = "" +
 	"creativeId\x12\x10\n" +
 	"\x03adm\x18\x04 \x01(\tR\x03adm\x12#\n" +
 	"\rauction_price\x18\x05 \x01(\x01R\fauctionPrice\x12\x12\n" +
-	"\x04code\x18\x06 \x01(\x05R\x04code2J\n" +
+	"\x04code\x18\x06 \x01(\x05R\x04code\x129\n" +
+	"\fbid_response\x18\a \x01(\v2\x16.ortb_V2_5.BidResponseR\vbidResponse\x12Q\n" +
+	"\x0fwinner_user_ids\x18\b \x03(\v2).adv.DoAuctionResponse.WinnerUserIdsEntryR\rwinnerUserIds\x1a@\n" +
+	"\x12WinnerUserIdsEntry\x12\x10\n" +
+	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x012J\n" +
 	"\n" +
 	"AdvService\x12<\n" +
 	"\tDoAuction\x12\x15.adv.DoAuctionRequest\x1a\x16.adv.DoAuctionResponse\"\x00BSZQgitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/proto/services/adv;advGrpcb\x06proto3"
@@ -216,21 +245,27 @@ func file_services_adv_proto_rawDescGZIP() []byte {
 	return file_services_adv_proto_rawDescData
 }
 
-var file_services_adv_proto_msgTypes = make([]protoimpl.MessageInfo, 2)
+var file_services_adv_proto_msgTypes = make([]protoimpl.MessageInfo, 4)
 var file_services_adv_proto_goTypes = []any{
-	(*DoAuctionRequest)(nil),     // 0: adv.DoAuctionRequest
-	(*DoAuctionResponse)(nil),    // 1: adv.DoAuctionResponse
-	(*ortb_V2_5.BidRequest)(nil), // 2: ortb_V2_5.BidRequest
+	(*DoAuctionRequest)(nil),      // 0: adv.DoAuctionRequest
+	(*DoAuctionResponse)(nil),     // 1: adv.DoAuctionResponse
+	nil,                           // 2: adv.DoAuctionRequest.ImpIdUuidEntry
+	nil,                           // 3: adv.DoAuctionResponse.WinnerUserIdsEntry
+	(*ortb_V2_5.BidRequest)(nil),  // 4: ortb_V2_5.BidRequest
+	(*ortb_V2_5.BidResponse)(nil), // 5: ortb_V2_5.BidResponse
 }
 var file_services_adv_proto_depIdxs = []int32{
-	2, // 0: adv.DoAuctionRequest.bidRequest:type_name -> ortb_V2_5.BidRequest
-	0, // 1: adv.AdvService.DoAuction:input_type -> adv.DoAuctionRequest
-	1, // 2: adv.AdvService.DoAuction:output_type -> adv.DoAuctionResponse
-	2, // [2:3] is the sub-list for method output_type
-	1, // [1:2] is the sub-list for method input_type
-	1, // [1:1] is the sub-list for extension type_name
-	1, // [1:1] is the sub-list for extension extendee
-	0, // [0:1] is the sub-list for field type_name
+	4, // 0: adv.DoAuctionRequest.bidRequest:type_name -> ortb_V2_5.BidRequest
+	2, // 1: adv.DoAuctionRequest.imp_id_uuid:type_name -> adv.DoAuctionRequest.ImpIdUuidEntry
+	5, // 2: adv.DoAuctionResponse.bid_response:type_name -> ortb_V2_5.BidResponse
+	3, // 3: adv.DoAuctionResponse.winner_user_ids:type_name -> adv.DoAuctionResponse.WinnerUserIdsEntry
+	0, // 4: adv.AdvService.DoAuction:input_type -> adv.DoAuctionRequest
+	1, // 5: adv.AdvService.DoAuction:output_type -> adv.DoAuctionResponse
+	5, // [5:6] is the sub-list for method output_type
+	4, // [4:5] is the sub-list for method input_type
+	4, // [4:4] is the sub-list for extension type_name
+	4, // [4:4] is the sub-list for extension extendee
+	0, // [0:4] is the sub-list for field type_name
 }
 
 func init() { file_services_adv_proto_init() }
@@ -244,7 +279,7 @@ func file_services_adv_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_services_adv_proto_rawDesc), len(file_services_adv_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   2,
+			NumMessages:   4,
 			NumExtensions: 0,
 			NumServices:   1,
 		},
