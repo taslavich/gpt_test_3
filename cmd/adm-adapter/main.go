@@ -10,6 +10,9 @@ import (
 	httpServer "gitlab.com/twinbid-exchange/RTB-exchange/internal/http"
 	services "gitlab.com/twinbid-exchange/RTB-exchange/internal/services"
 	redis_service "gitlab.com/twinbid-exchange/RTB-exchange/internal/services/redis"
+	"gitlab.com/twinbid-exchange/RTB-exchange/internal/services/sspAdapter/billing"
+	"gitlab.com/twinbid-exchange/RTB-exchange/internal/services/sspAdapter/emergency"
+	"gitlab.com/twinbid-exchange/RTB-exchange/internal/services/sspAdapter/outbox"
 	sppAdapterWeb "gitlab.com/twinbid-exchange/RTB-exchange/internal/services/sspAdapter/web"
 )
 
@@ -59,7 +62,7 @@ func main() {
 	log.Println("✅ Connected to Clicks Redis shards")
 
 	redisAdmClient, err := redis_service.NewRedisClient(
-		cfg.RedisUUIDAddr,
+		cfg.AdmRedisAddr,
 		cfg.RedisPassword,
 		cfg.RedisDBAdm,
 		cfg.RedisPoolSize,
@@ -75,7 +78,7 @@ func main() {
 	}()
 
 	redisBurlClient, err := redis_service.NewRedisClient(
-		cfg.RedisUUIDAddr,
+		cfg.AdmRedisAddr,
 		cfg.RedisPassword,
 		cfg.RedisDBBurl,
 		cfg.RedisPoolSize,
@@ -97,6 +100,22 @@ func main() {
 		log.Fatalf("Failed to connect to BURL Redis: %v", err)
 	}
 	log.Println("✅ Connected to ADM/BURL Redis")
+	advRuntimeRedisClient, err := redis_service.NewRedisClient(cfg.AdmRedisAddr, cfg.RedisPassword, cfg.RedisDBAdvRuntime, cfg.RedisPoolSize, cfg.RedisMinIdleConns)
+	if err != nil {
+		log.Fatalf("Cannot init ADV runtime Redis client: %v", err)
+	}
+	defer advRuntimeRedisClient.Close()
+	advWinnerRedisClient, err := redis_service.NewRedisClient(cfg.AdmRedisAddr, cfg.RedisPassword, cfg.RedisDBAdvWinner, cfg.RedisPoolSize, cfg.RedisMinIdleConns)
+	if err != nil {
+		log.Fatalf("Cannot init ADV winner Redis client: %v", err)
+	}
+	defer advWinnerRedisClient.Close()
+	if err := advRuntimeRedisClient.Ping(ctx).Err(); err != nil {
+		log.Fatalf("Failed to connect to ADV runtime Redis: %v", err)
+	}
+	if err := advWinnerRedisClient.Ping(ctx).Err(); err != nil {
+		log.Fatalf("Failed to connect to ADV winner Redis: %v", err)
+	}
 
 	redisWriteErrorMonitor := services.NewRedisWriteErrorMonitorWithSettings(
 		"adm-adapter",
@@ -110,6 +129,17 @@ func main() {
 		ctx,
 	)
 	redisWriteErrorMonitor.Start()
+	outboxStore, err := outbox.Open(cfg.BillingOutboxPath)
+	if err != nil {
+		log.Fatalf("Cannot open billing outbox: %v", err)
+	}
+	defer outboxStore.Close()
+	billingStore := billing.NewStore(advRuntimeRedisClient, cfg.BillingMarkerTTL, cfg.BillingWatchRetries, cfg.BillingWatchBackoff)
+	winnerStore := billing.NewWinnerStore(advWinnerRedisClient)
+	emergencyController := emergency.NewController(cfg.AdvControlURLs, cfg.AdvControlTimeout, utils.NewBotMessage(cfg.BotBaseURL, cfg.BotInternalSecret))
+	billingWorker := billing.NewWorker(billingStore, outboxStore, cfg.BillingRetryInterval)
+	go billingWorker.Run(ctx)
+	callbackDeps := &sppAdapterWeb.CallbackDeps{Winner: winnerStore, Billing: billingStore, Outbox: outboxStore, Emergency: emergencyController}
 
 	admRouter := httpServer.InitHttpRouter(chi.NewRouter())
 	sppAdapterWeb.InitHttpsRoutes(
@@ -127,6 +157,7 @@ func main() {
 		redisClients.Impressions,
 		cfg.RedisSetConversions,
 		redisClients.Conversions,
+		callbackDeps,
 	)
 	log.Println("ADM HTTPS routes initialized")
 

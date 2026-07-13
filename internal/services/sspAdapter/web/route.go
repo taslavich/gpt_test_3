@@ -258,6 +258,7 @@ func InitHttpsRoutes(
 	redisClientsImp []*redis.Client,
 	redisSetConversions string,
 	redisClientsConv []*redis.Client,
+	deps *CallbackDeps,
 ) {
 	integration.UseGochiURLParam("path", chi.URLParam)
 
@@ -268,13 +269,13 @@ func InitHttpsRoutes(
 	httpRouter.With(
 		httpin.NewInput(admRequest{}),
 	).Get(GetAdmUrl, func(w http.ResponseWriter, r *http.Request) {
-		getAdm(ctx, w, r, redisClientsClicks, redisAdmClient, redisSetClicks, redisWriteErrorMonitor, sspAdapterWorkStatusURL)
+		getAdm(ctx, w, r, redisClientsClicks, redisAdmClient, redisSetClicks, redisWriteErrorMonitor, sspAdapterWorkStatusURL, deps)
 	})
 
 	httpRouter.With(
 		httpin.NewInput(burlRequest{}),
 	).Get(GetBurlUrl, func(w http.ResponseWriter, r *http.Request) {
-		getBurl(ctx, w, r, redisClientsImp, redisNurlClient, redisSetImpressions, redisWriteErrorMonitor, sspAdapterWorkStatusURL)
+		getBurl(ctx, w, r, redisClientsImp, redisNurlClient, redisSetImpressions, redisWriteErrorMonitor, sspAdapterWorkStatusURL, deps)
 	})
 
 	httpRouter.With(
