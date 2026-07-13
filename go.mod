@@ -58,6 +58,7 @@ require (
 	github.com/ilyakaznacheev/cleanenv v1.5.0
 	github.com/joho/godotenv v1.5.1
 	github.com/json-iterator/go v1.1.12
+	github.com/lib/pq v1.10.9
 	github.com/mileusna/useragent v1.3.5
 	github.com/orcaman/concurrent-map/v2 v2.0.1
 	github.com/oschwald/maxminddb-golang v1.12.0
@@ -67,3 +68,5 @@ require (
 	github.com/yl2chen/cidranger v1.0.2
 	golang.org/x/sys v0.36.0 // indirect
 )
+
+replace github.com/lib/pq => ./internal/third_party/libpqstub
