@@ -109,14 +109,17 @@ func (s *Server) GetWinnerBid_V2_5(
 	winner, err := s.bidEngineGrpcClient.GetWinnerBid_V2_5(
 		getWinnerBidReqCtx,
 		&bidEngineGrpc.BidEngineRequest_V2_5{
-			BidRequest:   bids.BidRequest,
-			BidResponses: bids.BidResponses,
-			SspDomain:    bids.SspDomain,
-			Logged:       req.Logged,
-			Typic:        req.Typic,
-			Format:       req.Format,
-			ImpIdUuid:    req.ImpIdUuid,
-			SspUrl:       req.SspUrl,
+			BidRequest:     bids.BidRequest,
+			BidResponses:   bids.BidResponses,
+			SspDomain:      bids.SspDomain,
+			Logged:         req.Logged,
+			Typic:          req.Typic,
+			Format:         req.Format,
+			ImpIdUuid:      req.ImpIdUuid,
+			SspUrl:         req.SspUrl,
+			Rekl:           bids.GetRekl(),
+			AdvBidResponse: bids.GetAdvBidResponse(),
+			WinnerUserIds:  bids.GetWinnerUserIds(),
 		},
 	)
 	if err != nil {
@@ -138,5 +141,7 @@ func (s *Server) GetWinnerBid_V2_5(
 		Code:           winner.Code,
 		FailedImpIds:   winner.FailedImpIds,
 		ImpIdUuidClone: winner.ImpIdUuidClone,
+		Rekl:           bids.GetRekl(),
+		WinnerUserIds:  bids.GetWinnerUserIds(),
 	}, nil
 }

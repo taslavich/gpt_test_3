@@ -25,4 +25,6 @@ message OrchestratorResponse_V2_5 {
   int32 code = 3;
   repeated string failedImpIds = 4;
   map<string, string> impIdUuidClone = 5;
+  bool rekl = 6;
+  map<string, string> winner_user_ids = 7;
 }

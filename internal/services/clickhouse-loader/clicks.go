@@ -29,7 +29,7 @@ func ProcessKafkaMessagesClicks(
 		batchSize,
 		timeoutSec,
 		timeoutMs,
-		clickhouseBatchConfig[eventspb.ClickEvent]{
+		clickhouseBatchConfig[*eventspb.ClickEvent]{
 			LogName:    "CLICKS",
 			CommitName: "click",
 			Unmarshal:  unmarshalClickEvent,
@@ -41,13 +41,13 @@ func ProcessKafkaMessagesClicks(
 	return err
 }
 
-func unmarshalClickEvent(value []byte) (eventspb.ClickEvent, error) {
+func unmarshalClickEvent(value []byte) (*eventspb.ClickEvent, error) {
 	var record eventspb.ClickEvent
 	if err := proto.Unmarshal(value, &record); err != nil {
-		return eventspb.ClickEvent{}, err
+		return nil, err
 	}
 
-	return record, nil
+	return &record, nil
 }
 
 func hasDataClickProtoCH(record *eventspb.ClickEvent) bool {
@@ -62,7 +62,7 @@ func insertBatchClicks(
 	ctx context.Context,
 	ch clickhouse.Conn,
 	table string,
-	records []eventspb.ClickEvent,
+	records []*eventspb.ClickEvent,
 ) (clickhouseInsertStats, error) {
 	var stats clickhouseInsertStats
 
@@ -85,7 +85,7 @@ func insertBatchClicks(
 	}
 
 	for i := range records {
-		r := &records[i]
+		r := records[i]
 
 		clicks_u, err := uuid.Parse(r.ClicksUuid)
 		if err != nil {

@@ -29,7 +29,7 @@ func ProcessKafkaMessagesConversions(
 		batchSize,
 		timeoutSec,
 		timeoutMs,
-		clickhouseBatchConfig[eventspb.ConversionEvent]{
+		clickhouseBatchConfig[*eventspb.ConversionEvent]{
 			LogName:    "CONVERSIONS",
 			CommitName: "conversion",
 			Unmarshal:  unmarshalConversionEvent,
@@ -41,13 +41,13 @@ func ProcessKafkaMessagesConversions(
 	return err
 }
 
-func unmarshalConversionEvent(value []byte) (eventspb.ConversionEvent, error) {
+func unmarshalConversionEvent(value []byte) (*eventspb.ConversionEvent, error) {
 	var record eventspb.ConversionEvent
 	if err := proto.Unmarshal(value, &record); err != nil {
-		return eventspb.ConversionEvent{}, err
+		return nil, err
 	}
 
-	return record, nil
+	return &record, nil
 }
 
 func hasDataConversionProtoCH(record *eventspb.ConversionEvent) bool {
@@ -62,7 +62,7 @@ func insertBatchConversions(
 	ctx context.Context,
 	ch clickhouse.Conn,
 	table string,
-	records []eventspb.ConversionEvent,
+	records []*eventspb.ConversionEvent,
 ) (clickhouseInsertStats, error) {
 	var stats clickhouseInsertStats
 
@@ -83,7 +83,7 @@ func insertBatchConversions(
 	}
 
 	for i := range records {
-		r := &records[i]
+		r := records[i]
 
 		conversions_u, err := uuid.Parse(r.ConversionsUuid)
 		if err != nil {
