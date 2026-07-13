@@ -42,11 +42,11 @@ func (o *TOrchestrator) GetGrpClients() (*GrpcClients, func()) {
 		},
 		func() {
 			if err := bidEngineConn.Close(); err != nil {
-				log.Printf("Cannot close bidEngine connection: %w", err)
+				log.Printf("Cannot close bidEngine connection: %v", err)
 			}
 
 			if err := dspRouterConn.Close(); err != nil {
-				log.Printf("Cannot close dspRouter connection: %w", err)
+				log.Printf("Cannot close dspRouter connection: %v", err)
 			}
 		}
 }

@@ -191,6 +191,7 @@ const getCampaignsQuery = `
 		status,
 		traffic_type
 	FROM campaigns
+	WHERE status = 'active'
 `
 
 const getCreativesByCampaignQuery = `
@@ -461,7 +462,6 @@ type Campaign struct {
 	DailySpentResetDate time.Time
 	QualitySegment      string
 	CumDoneDollars      float64
-	SlotDoneDollars     float64
 	StartTS             time.Time
 	EndTS               time.Time
 
@@ -542,32 +542,37 @@ func (c *Campaign) GetAuctionPrice() float64 {
 	return c.BasePrice * (1 - fee/100)
 }
 
+func (c *Campaign) ChargePriceForFormat(format string) float64 {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return chargePrice(c.BasePrice, c.PricingModel, format)
+}
+
+func chargePrice(base float64, pricingModel, format string) float64 {
+	if base <= 0 {
+		return 0
+	}
+	if strings.EqualFold(pricingModel, PricingModelCPM) {
+		return base / 1000
+	}
+	if strings.EqualFold(pricingModel, PricingModelCPC) && normalizedAuctionFormat(format) == "popunder" {
+		return base / 1000
+	}
+	if strings.EqualFold(pricingModel, PricingModelCPC) {
+		return base
+	}
+	return 0
+}
+
 func (c *Campaign) GetAuctionPriceForFormat(format string) float64 {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
-
-	price := c.BasePrice
 	if strings.TrimSpace(format) == "" {
 		format = c.Format
 	}
-
-	switch normalizedAuctionFormat(format) {
-	case "ipp", "native", "banner", "popunder":
-		if strings.EqualFold(c.PricingModel, PricingModelCPM) {
-			price = c.BasePrice / 1000
-		} else if strings.EqualFold(c.PricingModel, PricingModelCPC) {
-			price = c.BasePrice
-		}
-	default:
-		if strings.EqualFold(c.PricingModel, PricingModelCPM) {
-			price = c.BasePrice / 1000
-		} else if strings.EqualFold(c.PricingModel, PricingModelCPC) {
-			price = c.BasePrice
-		}
-	}
-
-	fee := math.Max(0, math.Min(c.PlatformFeePercent, 100))
-	return price * (1 - fee/100)
+	price := chargePrice(c.BasePrice, c.PricingModel, format)
+	deduction := math.Max(0, math.Min(c.PlatformFeePercent, 1))
+	return price * (1 - deduction)
 }
 
 func normalizedAuctionFormat(format string) string {
@@ -705,7 +710,7 @@ func (c *Campaign) IsEligibleByMinThreshold() bool {
 		return false
 	}
 	remainingShare := (goal - c.CumDoneDollars) / goal
-	return remainingShare >= 0.20
+	return remainingShare >= 0.05
 }
 
 // ShouldParticipateInSlot определяет, может ли кампания участвовать в слоте.
@@ -719,7 +724,7 @@ func (c *Campaign) ShouldParticipateInSlot(now time.Time) bool {
 		return true
 	}
 	target := c.slotTargetLocked(now)
-	return target > 0 && c.SlotDoneDollars < target
+	return target > 0
 }
 
 func (c *Campaign) slotTargetLocked(now time.Time) float64 {
@@ -751,47 +756,7 @@ func (c *Campaign) checkDailyBudgetLocked(now time.Time) bool {
 	return c.DailySpent < *c.DailyBudget
 }
 
-// RecordEvent учитывает событие показа или клика и обновляет бюджетные статусы.
-func (c *Campaign) RecordEvent(eventType string) {
-	now := time.Now()
-	cost := c.GetCost(eventType)
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	c.normalizeDefaultsLocked()
-	if now.After(c.EndTS) {
-		c.Status = CampaignStatusCompleted
-		return
-	}
-	if !c.checkDailyBudgetLocked(now) {
-		log.Printf("[Auction] daily budget reached: campaign=%s", c.ID)
-		return
-	}
-	if cost <= 0 {
-		return
-	}
-	c.CumDoneDollars += cost
-	c.SlotDoneDollars += cost
-	if c.DailyBudget != nil {
-		c.DailySpent += cost
-	}
-	if c.CumDoneDollars >= c.goalLocked() {
-		c.Status = CampaignStatusNoBudget
-	}
-	if now.After(c.EndTS) {
-		c.Status = CampaignStatusCompleted
-	}
-	log.Printf("[Auction] recorded %s: campaign=%s cost=%.6f total=%.6f status=%s", eventType, c.ID, cost, c.CumDoneDollars, c.Status)
-}
-
-// ResetSlotDone обнуляет счётчик слота.
-func (c *Campaign) ResetSlotDone() { c.mu.Lock(); defer c.mu.Unlock(); c.SlotDoneDollars = 0 }
-
-func (c *Campaign) GetCumDone() float64 { c.mu.RLock(); defer c.mu.RUnlock(); return c.CumDoneDollars }
-func (c *Campaign) GetSlotDone() float64 {
-	c.mu.RLock()
-	defer c.mu.RUnlock()
-	return c.SlotDoneDollars
-}
+// Runtime spend is stored in Redis DB 5; Campaign snapshots are not mutated for billing.
 
 // FirstCreative возвращает первый доступный креатив кампании.
 func (c *Campaign) FirstCreative() *Creative {
@@ -1258,9 +1223,9 @@ func (s *AuctionService) SelectCampaign(req *ortb_V2_5.BidRequest, now time.Time
 		return nil
 	}
 	auctionPrice := selected.GetAuctionPrice()
-	log.Printf("[Auction] Selected campaign: ID=%s, auction_price=%.2f, DSP=%s, segment=%s, feeds=%v, mode=%s, slot_done=%.2f, slot_target=%.2f",
+	log.Printf("[Auction] Selected campaign: ID=%s, auction_price=%.2f, DSP=%s, segment=%s, feeds=%v, mode=%s, slot_target=%.2f",
 		selected.ID, auctionPrice, selected.DSPURL, selected.QualitySegment,
-		GetSSPDomainsForQualitySegment(selected.QualitySegment), mode, selected.GetSlotDone(), selected.SlotTarget(now))
+		GetSSPDomainsForQualitySegment(selected.QualitySegment), mode, selected.SlotTarget(now))
 	return selected
 }
 
@@ -1280,12 +1245,7 @@ func CheckUserBalance(campaigns []*Campaign, hasPositiveBalance bool) {
 }
 
 func (s *AuctionService) SlotTick(now time.Time) {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	log.Printf("[Auction] New slot started at %v", now.Truncate(SlotDuration))
-	for _, campaign := range *s.campaigns {
-		campaign.ResetSlotDone()
-	}
+	log.Printf("[Auction] New Redis pacing slot starts at %v", now.Truncate(SlotDuration))
 }
 
 func (s *AuctionService) GetActiveCampaignsCount(now time.Time) int {

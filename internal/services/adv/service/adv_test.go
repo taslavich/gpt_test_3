@@ -21,7 +21,6 @@ func setupTestService(t *testing.T) (*AuctionService, []*Campaign) {
 			EvennessBySlotMode: false,
 			GoalTotalDollars:   1000,
 			CumDoneDollars:     0,
-			SlotDoneDollars:    0,
 			StartTS:            time.Now().Add(-1 * time.Hour),
 			EndTS:              time.Now().Add(1 * time.Hour),
 			DSPURL:             "dsp1.example.com",
@@ -33,7 +32,6 @@ func setupTestService(t *testing.T) (*AuctionService, []*Campaign) {
 			EvennessBySlotMode: false,
 			GoalTotalDollars:   500,
 			CumDoneDollars:     0,
-			SlotDoneDollars:    0,
 			StartTS:            time.Now().Add(-1 * time.Hour),
 			EndTS:              time.Now().Add(1 * time.Hour),
 			DSPURL:             "dsp1.example.com",
@@ -45,7 +43,6 @@ func setupTestService(t *testing.T) (*AuctionService, []*Campaign) {
 			EvennessBySlotMode: true,
 			GoalTotalDollars:   1000,
 			CumDoneDollars:     500,
-			SlotDoneDollars:    0,
 			StartTS:            time.Now().Add(-1 * time.Hour),
 			EndTS:              time.Now().Add(1 * time.Hour),
 			DSPURL:             "dsp2.example.com",
@@ -94,7 +91,6 @@ func TestSelectCampaign_GlobalInactive(t *testing.T) {
 		EvennessBySlotMode: false,
 		GoalTotalDollars:   100,
 		CumDoneDollars:     0,
-		SlotDoneDollars:    0,
 		StartTS:            time.Now().Add(-2 * time.Hour),
 		EndTS:              time.Now().Add(-1 * time.Hour),
 		DSPURL:             "dsp1.example.com",
@@ -124,7 +120,6 @@ func TestSelectCampaign_BudgetExhausted(t *testing.T) {
 		EvennessBySlotMode: false,
 		GoalTotalDollars:   100,
 		CumDoneDollars:     100,
-		SlotDoneDollars:    0,
 		StartTS:            time.Now().Add(-1 * time.Hour),
 		EndTS:              time.Now().Add(1 * time.Hour),
 		DSPURL:             "dsp1.example.com",
@@ -166,7 +161,7 @@ func TestSelectCampaign_EvennessMode(t *testing.T) {
 	now := time.Now()
 
 	slotTarget := evenCamp.SlotTarget(now)
-	evenCamp.RecordImpression(slotTarget)
+	evenCamp.CumDoneDollars += slotTarget
 
 	selected := service.SelectCampaign(req, now)
 
@@ -181,20 +176,7 @@ func TestSlotTick(t *testing.T) {
 
 	now := time.Now()
 
-	for _, camp := range campaigns {
-		camp.RecordImpression(10.0)
-		if camp.GetSlotDone() == 0 {
-			t.Errorf("Campaign %s slot_done should be > 0 after RecordImpression", camp.ID)
-		}
-	}
-
 	service.SlotTick(now)
-
-	for _, camp := range campaigns {
-		if camp.GetSlotDone() != 0 {
-			t.Errorf("Campaign %s slot_done should be 0 after SlotTick, got %.2f", camp.ID, camp.GetSlotDone())
-		}
-	}
 }
 
 // TestSlotTargetCalculation проверяет расчёт цели слота
@@ -231,7 +213,6 @@ func TestCompensationAfterUnderDelivery(t *testing.T) {
 		EvennessBySlotMode: true,
 		GoalTotalDollars:   1000,
 		CumDoneDollars:     0,
-		SlotDoneDollars:    0,
 		StartTS:            time.Now(),
 		EndTS:              time.Now().Add(30 * time.Minute),
 		ActiveIntervals:    nil,
@@ -240,7 +221,7 @@ func TestCompensationAfterUnderDelivery(t *testing.T) {
 
 	now := time.Now()
 
-	camp.RecordImpression(100)
+	camp.CumDoneDollars += 100
 
 	service.SlotTick(now.Add(5 * time.Minute))
 	now = now.Add(5 * time.Minute)
@@ -263,7 +244,6 @@ func TestCompensationAfterOverDelivery(t *testing.T) {
 		EvennessBySlotMode: true,
 		GoalTotalDollars:   1000,
 		CumDoneDollars:     0,
-		SlotDoneDollars:    0,
 		StartTS:            time.Now(),
 		EndTS:              time.Now().Add(30 * time.Minute),
 		ActiveIntervals:    nil,
@@ -272,7 +252,7 @@ func TestCompensationAfterOverDelivery(t *testing.T) {
 
 	now := time.Now()
 
-	camp.RecordImpression(200)
+	camp.CumDoneDollars += 200
 
 	service.SlotTick(now.Add(5 * time.Minute))
 	now = now.Add(5 * time.Minute)
@@ -295,7 +275,6 @@ func TestMultipleRequestsInSlot(t *testing.T) {
 		EvennessBySlotMode: true,
 		GoalTotalDollars:   100,
 		CumDoneDollars:     0,
-		SlotDoneDollars:    0,
 		StartTS:            time.Now(),
 		EndTS:              time.Now().Add(5 * time.Minute),
 		DSPURL:             "dsp1.example.com",
@@ -313,14 +292,14 @@ func TestMultipleRequestsInSlot(t *testing.T) {
 		t.Fatal("First request: no campaign selected")
 	}
 
-	selected1.RecordImpression(60)
+	selected1.CumDoneDollars += 60
 
 	selected2 := service.SelectCampaign(req, now)
 	if selected2 == nil {
 		t.Error("Second request: campaign should still be available")
 	}
 
-	selected2.RecordImpression(50)
+	selected2.CumDoneDollars += 50
 
 	selected3 := service.SelectCampaign(req, now)
 	if selected3 != nil && selected3.ID == camp.ID {
@@ -919,7 +898,6 @@ func TestInterval_WithBudgetAndSlot(t *testing.T) {
 		EvennessBySlotMode: true,
 		GoalTotalDollars:   100,
 		CumDoneDollars:     0,
-		SlotDoneDollars:    0,
 		StartTS:            start,
 		EndTS:              end,
 		DSPURL:             "dsp1",
@@ -934,7 +912,7 @@ func TestInterval_WithBudgetAndSlot(t *testing.T) {
 	if selected == nil {
 		t.Fatal("Campaign should be active inside interval")
 	}
-	selected.RecordImpression(60) // тратим 60
+	selected.CumDoneDollars += 60 // тратим 60
 
 	// Второй запрос в том же слоте (цель слота = 100/2 = 50, потрачено 60 -> лимит)
 	selected2 := service.SelectCampaign(req, now)
