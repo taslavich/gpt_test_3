@@ -14,6 +14,7 @@ import (
 	auction "gitlab.com/twinbid-exchange/RTB-exchange/internal/services/adv/service"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/proto"
 )
 
 type Server struct {
@@ -52,11 +53,21 @@ func (s *Server) DoAuction(ctx context.Context, req *advGrpc.DoAuctionRequest) (
 	selectedCreative := ""
 	selectedADM := ""
 	selectedPrice := 0.0
+	winnerUserIDs := make(map[string]string)
 	for _, imp := range req.GetBidRequest().GetImp() {
 		if imp == nil {
 			continue
 		}
-		result := s.auctionService.SelectAuction(req.GetBidRequest(), time.Now(), auction.AuctionRequestOptions{Format: req.GetFormat(), TrafficType: req.GetTrafficType(), SSPDomain: req.GetSspDomain()})
+		impUUID := req.GetImpIdUuid()[imp.GetId()]
+		if impUUID == "" {
+			continue
+		}
+		bidReq := req.GetBidRequest()
+		if cloned, ok := proto.Clone(req.GetBidRequest()).(*ortb_V2_5.BidRequest); ok {
+			cloned.Imp = []*ortb_V2_5.Imp{imp}
+			bidReq = cloned
+		}
+		result := s.auctionService.SelectAuction(bidReq, time.Now(), auction.AuctionRequestOptions{Format: req.GetFormat(), TrafficType: req.GetTrafficType(), SSPDomain: req.GetSspDomain()})
 		if result == nil || result.Campaign == nil || result.Creative == nil {
 			continue
 		}
@@ -64,7 +75,6 @@ func (s *Server) DoAuction(ctx context.Context, req *advGrpc.DoAuctionRequest) (
 		if charge <= 0 {
 			continue
 		}
-		impUUID := imp.GetId()
 		if s.winnerRedisClient != nil {
 			if err := s.winnerRedisClient.HSet(ctx, impUUID, map[string]any{"price": strconv.FormatFloat(charge, 'f', -1, 64), "user_id": result.Campaign.UserID, "campaign_id": result.Campaign.ID, "format": req.GetFormat()}).Err(); err != nil {
 				continue
@@ -77,11 +87,12 @@ func (s *Server) DoAuction(ctx context.Context, req *advGrpc.DoAuctionRequest) (
 		selectedCreative = result.Creative.ID
 		selectedADM = result.ADM
 		selectedPrice = charge
+		winnerUserIDs[imp.GetId()] = result.Campaign.UserID
 	}
 	if len(br.GetSeatbid()) == 0 || len(br.GetSeatbid()[0].GetBid()) == 0 {
 		return &advGrpc.DoAuctionResponse{Selected: false, Code: http.StatusNoContent}, nil
 	}
-	return &advGrpc.DoAuctionResponse{Selected: true, CampaignId: selectedCampaign, CreativeId: selectedCreative, Adm: selectedADM, AuctionPrice: selectedPrice, Code: http.StatusOK, BidResponse: br}, nil
+	return &advGrpc.DoAuctionResponse{Selected: true, CampaignId: selectedCampaign, CreativeId: selectedCreative, Adm: selectedADM, AuctionPrice: selectedPrice, Code: http.StatusOK, BidResponse: br, WinnerUserIds: winnerUserIDs}, nil
 }
 func buildBid(req *ortb_V2_5.BidRequest, imp *ortb_V2_5.Imp, campaign *auction.Campaign, creative *auction.Creative, adm string, price float64) *ortb_V2_5.Bid {
 	bidID := creative.ID

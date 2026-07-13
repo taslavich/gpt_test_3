@@ -6,6 +6,7 @@ import (
 	"log"
 	"net/http"
 	"runtime/debug"
+	"strings"
 	"time"
 
 	"github.com/redis/go-redis/v9"
@@ -112,6 +113,69 @@ func (s *Server) GetWinnerBid_V2_5(
 			funcErr = status.Error(grpcCode, err.Error())
 		}
 	}()
+
+	if req.GetRekl() {
+		bidResponse := req.GetAdvBidResponse()
+		if bidResponse == nil || len(bidResponse.GetSeatbid()) == 0 || len(bidResponse.GetSeatbid()[0].GetBid()) == 0 {
+			return &bidEngineGrpc.BidEngineResponse_V2_5{BidResponse: nil, Code: http.StatusNoContent}, nil
+		}
+		impIdUuidClone := make(map[string]string, len(req.ImpIdUuid))
+		for impID, uuid := range req.ImpIdUuid {
+			impIdUuidClone[impID] = uuid
+		}
+		clickhouseBid := clickhouse_types.GetEmpty(req.ImpIdUuid)
+		failedImpIds := make([]string, 0)
+		advDomain := "adv"
+		for _, seatBid := range bidResponse.GetSeatbid() {
+			for _, bid := range seatBid.GetBid() {
+				if bid == nil {
+					continue
+				}
+				impID := bid.GetImpid()
+				uuid := req.ImpIdUuid[impID]
+				if strings.TrimSpace(uuid) == "" {
+					continue
+				}
+				userID := req.WinnerUserIds[impID]
+				price := bid.GetPrice()
+				cid := bid.GetCid()
+				crid := bid.GetCrid()
+				clickhouseBid[uuid] = &clickhouse_types.Bid{
+					WinDspDomain: &advDomain,
+					WinPrice:     &price,
+					WinDspPrice:  &price,
+					WinCid:       &cid,
+					WinCrid:      &crid,
+					WinUserId:    &userID,
+				}
+				if err := utils.WriteUUIDKeyToRedis(ctx, s.redisBurlClient, uuid, s.redisUUIDKeyTTL); err != nil {
+					log.Printf("failed to write ADV BURL UUID key: %v", err)
+					s.redisWriteErrorMonitor.RecordForURL(err, req.SspUrl)
+				}
+				if req.Logged {
+					if err := utils.WriteUUIDKeyToRedis(ctx, s.redisAdmClient, uuid, s.redisUUIDKeyTTL); err != nil {
+						log.Printf("failed to write ADV ADM UUID key: %v", err)
+						s.redisWriteErrorMonitor.RecordForURL(err, req.SspUrl)
+					}
+				}
+				if err := utils.WriteWinStats(ctx, s.redisClients, uuid, clickhouseBid[uuid], req.Logged); err != nil {
+					log.Printf("failed to write ADV win stats: %v", err)
+					s.redisWriteErrorMonitor.RecordForURL(err, req.SspUrl)
+					failedImpIds = append(failedImpIds, impID)
+					delete(impIdUuidClone, impID)
+				}
+			}
+		}
+		if len(impIdUuidClone) == 0 {
+			return &bidEngineGrpc.BidEngineResponse_V2_5{BidResponse: nil, Code: http.StatusNoContent}, nil
+		}
+		return &bidEngineGrpc.BidEngineResponse_V2_5{
+			BidResponse:    bidResponse,
+			Code:           http.StatusOK,
+			FailedImpIds:   failedImpIds,
+			ImpIdUuidClone: impIdUuidClone,
+		}, nil
+	}
 
 	bidResponse, clickhouseBid, burlUUIDs, admUUIDs := s.GetWinnerBidInternal_V_2_5(
 		ctx,

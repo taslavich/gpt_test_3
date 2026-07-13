@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"gitlab.com/twinbid-exchange/RTB-exchange/internal/config"
+	dbpkg "gitlab.com/twinbid-exchange/RTB-exchange/internal/db"
 	kafkaService "gitlab.com/twinbid-exchange/RTB-exchange/internal/services/kafka"
 	redisService "gitlab.com/twinbid-exchange/RTB-exchange/internal/services/redis"
 )
@@ -48,6 +49,9 @@ func main() {
 		log.Fatal(err)
 	}
 	defer db.Close()
+	if err := dbpkg.MigrateUserGoalSpent(ctx, db); err != nil {
+		log.Fatal(err)
+	}
 	var work atomic.Bool
 	work.Store(true)
 	mux := http.NewServeMux()

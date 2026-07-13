@@ -17,6 +17,9 @@ message BidEngineRequest_V2_5 {
   string typic = 6;
   string format = 7;
   string sspUrl = 8;
+  bool rekl = 9;
+  ortb_V2_5.BidResponse adv_bid_response = 10;
+  map<string, string> winner_user_ids = 11;
 }
 
 message BidEngineResponse_V2_5 {

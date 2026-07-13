@@ -25,7 +25,7 @@ func getAdm(
 	redisWriteErrorMonitor *services.RedisWriteErrorMonitor,
 	sspAdapterWorkStatusURL string,
 ) {
-	input := r.Context().Value(httpin.Input).(*admNurlBurlRequest)
+	input := r.Context().Value(httpin.Input).(*admRequest)
 	format, ok := constants.CodeToFormat[input.Format]
 	if !ok {
 		log.Printf("in getAdm invalid format code: %q", input.Format)
@@ -82,7 +82,7 @@ func getNurl(
 	redisWriteErrorMonitor *services.RedisWriteErrorMonitor,
 	sspAdapterWorkStatusURL string,
 ) {
-	input := r.Context().Value(httpin.Input).(*admNurlBurlRequest)
+	input := r.Context().Value(httpin.Input).(*nurlRequest)
 
 	if input.Ssp_Domain == "adl_pb.com" {
 		format, ok := constants.CodeToFormat[input.Format]
@@ -156,7 +156,7 @@ func getBurl(
 	redisWriteErrorMonitor *services.RedisWriteErrorMonitor,
 	sspAdapterWorkStatusURL string,
 ) {
-	input := r.Context().Value(httpin.Input).(*admNurlBurlRequest)
+	input := r.Context().Value(httpin.Input).(*burlRequest)
 	format, ok := constants.CodeToFormat[input.Format]
 	if !ok {
 		log.Printf("in getBurl invalid format code: %q", input.Format)

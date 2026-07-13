@@ -1042,9 +1042,6 @@ func (s *AuctionService) chooseFirstFilteredByAuctionPrice(campaigns []*Campaign
 // GetSSPDomainsForQualitySegment возвращает SSP-фиды для сегмента качества.
 func GetSSPDomainsForQualitySegment(segment string) []string {
 	domains := qualitySegmentSSPMap[QualitySegment(segment)]
-	if len(domains) == 0 {
-		domains = qualitySegmentSSPMap[QualitySegmentUsual]
-	}
 	return append([]string(nil), domains...)
 }
 
@@ -1103,6 +1100,9 @@ func (s *AuctionService) SelectAuction(req *ortb_V2_5.BidRequest, now time.Time,
 	}
 	macroValues := TrackerMacroValues{Device: uaValues.Device, Browser: uaValues.Browser, DeviceOS: uaValues.OS}
 	qualitySegment := QualitySegmentBySSPDomain(options.SSPDomain)
+	if qualitySegment == "" {
+		return nil
+	}
 
 	s.mu.RLock()
 	campaigns := *s.campaigns

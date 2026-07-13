@@ -12,6 +12,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"gitlab.com/twinbid-exchange/RTB-exchange/internal/config"
+	dbpkg "gitlab.com/twinbid-exchange/RTB-exchange/internal/db"
 	"gitlab.com/twinbid-exchange/RTB-exchange/internal/filter"
 	advGrpc "gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/proto/services/adv"
 	utils "gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/utils_grpc"
@@ -75,6 +76,9 @@ func main() {
 			log.Fatalf("Cannot open ADV postgres: %v", err)
 		}
 		defer db.Close()
+		if err := dbpkg.MigrateUserGoalSpent(ctx, db); err != nil {
+			log.Fatalf("Cannot migrate user goal/spent columns: %v", err)
+		}
 		auctionService.StartPostgresRefreshTicker(ctx, db, cfg.CampaignRefreshInterval)
 	}
 

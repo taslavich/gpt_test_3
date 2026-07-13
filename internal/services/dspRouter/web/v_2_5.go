@@ -141,13 +141,19 @@ func trafficTypeFromDspRouterRequest(req *dspRouterGrpc.DspRouterRequest_V2_5) s
 	return req.GetTypic()
 }
 
+type advAuctionResult struct {
+	bidResponse   *ortb_V2_5.BidResponse
+	winnerUserIDs map[string]string
+	code          int32
+}
+
 func (s *Server) doAdvAuction(
 	ctx context.Context,
 	req *dspRouterGrpc.DspRouterRequest_V2_5,
 	timeout time.Duration,
-) (*ortb_V2_5.BidResponse, int32, error) {
+) (*advAuctionResult, error) {
 	if s.advClient == nil {
-		return nil, http.StatusNoContent, fmt.Errorf("adv client is not configured")
+		return &advAuctionResult{code: http.StatusNoContent}, fmt.Errorf("adv client is not configured")
 	}
 
 	advCtx, cancel := context.WithTimeout(ctx, timeout)
@@ -158,12 +164,13 @@ func (s *Server) doAdvAuction(
 		Format:      req.Format,
 		TrafficType: trafficTypeFromDspRouterRequest(req),
 		SspDomain:   req.SspDomain,
+		ImpIdUuid:   req.ImpIdUuid,
 	})
 	if err != nil {
-		return nil, 0, err
+		return nil, err
 	}
 
-	return resp.GetBidResponse(), resp.GetCode(), nil
+	return &advAuctionResult{bidResponse: resp.GetBidResponse(), winnerUserIDs: resp.GetWinnerUserIds(), code: resp.GetCode()}, nil
 }
 
 func (s *Server) GetBids_V2_5(
@@ -259,14 +266,17 @@ func (s *Server) GetBids_V2_5(
 		return ""
 	}()
 
-	if advBidResponse, advCode, advErr := s.doAdvAuction(ctx, req, timeout); advErr == nil && advCode == http.StatusOK && advBidResponse != nil {
+	if advResult, advErr := s.doAdvAuction(ctx, req, timeout); advErr == nil && advResult != nil && advResult.code == http.StatusOK && advResult.bidResponse != nil {
 		return &dspRouterGrpc.DspRouterResponse_V2_5{
 			BidRequest: req.BidRequest,
 			BidResponses: map[string]*ortb_V2_5.BidResponse{
-				"adv": advBidResponse,
+				"adv": advResult.bidResponse,
 			},
-			SspDomain: req.SspDomain,
-			Code:      http.StatusOK,
+			SspDomain:      req.SspDomain,
+			Code:           http.StatusOK,
+			Rekl:           true,
+			AdvBidResponse: advResult.bidResponse,
+			WinnerUserIds:  advResult.winnerUserIDs,
 		}, nil
 	}
 
