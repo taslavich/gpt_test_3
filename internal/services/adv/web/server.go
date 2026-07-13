@@ -5,162 +5,103 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-	"strconv"
+	"runtime/debug"
+	"sync/atomic"
 	"time"
 
-	"github.com/redis/go-redis/v9"
-
 	advGrpc "gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/proto/services/adv"
-	ortb_V2_5 "gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/proto/types/ortb_V2_5"
+	ortb "gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/proto/types/ortb_V2_5"
 	auction "gitlab.com/twinbid-exchange/RTB-exchange/internal/services/adv/service"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
 
-// Server exposes the ADV auction service over gRPC.
-type Server struct {
-	advGrpc.UnimplementedAdvServiceServer
-	auctionService                  *auction.AuctionService
-	userBalanceThresholdRedisClient *redis.Client
-	userBalanceSpentRedisClient     *redis.Client
+const disabledMessage = "ADV service is temporarily disabled after Redis write failure"
+
+type WorkController struct {
+	enabled atomic.Bool
 }
 
-// NewServer creates a gRPC server that delegates auction decisions to AuctionService.
-func NewServer(
-	auctionService *auction.AuctionService,
-	userBalanceThresholdRedisClient *redis.Client,
-	userBalanceSpentRedisClient *redis.Client,
-) *Server {
-	return &Server{
-		auctionService:                  auctionService,
-		userBalanceThresholdRedisClient: userBalanceThresholdRedisClient,
-		userBalanceSpentRedisClient:     userBalanceSpentRedisClient,
-	}
+func NewWorkController() *WorkController {
+	controller := &WorkController{}
+	controller.enabled.Store(true)
+	return controller
 }
 
-// DoAuction accepts an OpenRTB bid request and runs the ADV auction selection logic.
-func (s *Server) DoAuction(ctx context.Context, req *advGrpc.DoAuctionRequest) (*advGrpc.DoAuctionResponse, error) {
-	if req == nil || req.GetBidRequest() == nil {
-		return &advGrpc.DoAuctionResponse{Selected: false, Code: http.StatusBadRequest}, nil
+func (c *WorkController) Set(enabled bool) error {
+	if c == nil {
+		return errors.New("ADV work controller is nil")
 	}
-	if s.auctionService == nil {
-		return &advGrpc.DoAuctionResponse{Selected: false, Code: http.StatusServiceUnavailable}, nil
-	}
-
-	auctionResult := s.auctionService.SelectAuction(req.GetBidRequest(), time.Now(), auction.AuctionRequestOptions{
-		Format:      req.GetFormat(),
-		TrafficType: req.GetTrafficType(),
-		SSPDomain:   req.GetSspDomain(),
-	})
-	if auctionResult == nil || auctionResult.Campaign == nil || auctionResult.Creative == nil {
-		return &advGrpc.DoAuctionResponse{Selected: false, Code: http.StatusNoContent}, nil
-	}
-
-	campaign := auctionResult.Campaign
-	creative := auctionResult.Creative
-	if err := s.ensurePositiveUserBalance(ctx, campaign.UserID); err != nil {
-		if errors.Is(err, redis.Nil) || errors.Is(err, errUserBalanceNotPositive) {
-			return &advGrpc.DoAuctionResponse{Selected: false, Code: http.StatusNoContent}, nil
-		}
-
-		return &advGrpc.DoAuctionResponse{Selected: false, Code: http.StatusServiceUnavailable}, nil
-	}
-
-	bidResponse := buildBidResponse(req.GetBidRequest(), campaign, creative, auctionResult.ADM, auctionResult.AuctionPrice)
-
-	return &advGrpc.DoAuctionResponse{
-		Selected:     true,
-		CampaignId:   campaign.ID,
-		CreativeId:   creative.ID,
-		Adm:          auctionResult.ADM,
-		AuctionPrice: auctionResult.AuctionPrice,
-		Code:         http.StatusOK,
-		BidResponse:  bidResponse,
-	}, nil
-}
-
-var errUserBalanceNotPositive = errors.New("balance is not positive")
-
-func (s *Server) ensurePositiveUserBalance(ctx context.Context, userID string) error {
-	if userID == "" {
-		return fmt.Errorf("campaign user_id is empty")
-	}
-
-	return ensurePositiveRemainingBalance(ctx, s.userBalanceThresholdRedisClient, s.userBalanceSpentRedisClient, userID)
-}
-
-func ensurePositiveRemainingBalance(ctx context.Context, thresholdClient, spentClient *redis.Client, balanceKey string) error {
-	threshold, err := redisFloatValue(ctx, thresholdClient, balanceKey, "threshold")
-	if err != nil {
-		return err
-	}
-
-	spent, err := redisFloatValue(ctx, spentClient, balanceKey, "spent")
-	if err != nil {
-		return err
-	}
-
-	if threshold-spent <= 0 {
-		return errUserBalanceNotPositive
-	}
-
+	c.enabled.Store(enabled)
 	return nil
 }
 
-func redisFloatValue(ctx context.Context, client *redis.Client, key string, valueName string) (float64, error) {
-	if client == nil {
-		return 0, fmt.Errorf("redis %s client is nil", valueName)
-	}
-
-	valueRaw, err := client.Get(ctx, key).Result()
-	if err != nil {
-		return 0, err
-	}
-
-	value, err := strconv.ParseFloat(valueRaw, 64)
-	if err != nil {
-		return 0, fmt.Errorf("parse redis %s for key %s: %w", valueName, key, err)
-	}
-
-	return value, nil
+func (c *WorkController) Enabled() bool {
+	return c != nil && c.enabled.Load()
 }
 
-func buildBidResponse(req *ortb_V2_5.BidRequest, campaign *auction.Campaign, creative *auction.Creative, adm string, price float64) *ortb_V2_5.BidResponse {
-	if req == nil || campaign == nil || creative == nil {
-		return nil
+type Server struct {
+	advGrpc.UnimplementedAdvServiceServer
+	auctionService *auction.AuctionService
+	work           *WorkController
+}
+
+func NewServer(auctionService *auction.AuctionService, work *WorkController) *Server {
+	return &Server{auctionService: auctionService, work: work}
+}
+
+func (s *Server) DoAuction(ctx context.Context, req *advGrpc.DoAuctionRequest) (resp *advGrpc.DoAuctionResponse, funcErr error) {
+	defer func() {
+		if recovered := recover(); recovered != nil {
+			resp = nil
+			funcErr = status.Error(codes.Internal, fmt.Sprintf("ADV auction panic: %v\n%s", recovered, debug.Stack()))
+		}
+	}()
+	if s == nil || s.work == nil || !s.work.Enabled() {
+		return nil, status.Error(codes.Unavailable, disabledMessage)
+	}
+	if req == nil || req.GetBidRequest() == nil || len(req.GetBidRequest().GetImp()) == 0 {
+		return &advGrpc.DoAuctionResponse{Selected: false, Code: http.StatusBadRequest}, nil
+	}
+	if s.auctionService == nil {
+		return nil, status.Error(codes.Unavailable, "ADV auction service is unavailable")
 	}
 
-	bidID := req.GetId()
-	impID := ""
-	if len(req.GetImp()) > 0 {
-		impID = req.GetImp()[0].GetId()
+	outcome, err := s.auctionService.Auction(ctx, req.GetBidRequest(), time.Now().UTC(), auction.AuctionRequestOptions{
+		Format:      req.GetFormat(),
+		TrafficType: req.GetTrafficType(),
+		SSPDomain:   req.GetSspDomain(),
+		ImpIDUUID:   req.GetImpIdUuid(),
+	})
+	if errors.Is(err, auction.ErrInvalidAuctionRequest) {
+		return &advGrpc.DoAuctionResponse{Selected: false, Code: http.StatusBadRequest}, nil
 	}
-	price32 := float32(price)
-	cid := campaign.ID
-	crid := creative.ID
-	adomain := []string{campaign.CampaignName}
-	w := int32(creative.W)
-	h := int32(creative.H)
-	cur := "USD"
+	if err != nil {
+		return nil, status.Error(codes.Unavailable, fmt.Sprintf("ADV auction failed: %v", err))
+	}
+	if outcome == nil || !hasBids(outcome.BidResponse) {
+		return &advGrpc.DoAuctionResponse{
+			Selected:      false,
+			Code:          http.StatusNoContent,
+			WinnerUserIds: map[string]string{},
+		}, nil
+	}
+	return &advGrpc.DoAuctionResponse{
+		Selected:      true,
+		Code:          http.StatusOK,
+		BidResponse:   outcome.BidResponse,
+		WinnerUserIds: outcome.WinnerUserIDs,
+	}, nil
+}
 
-	return &ortb_V2_5.BidResponse{
-		Id:    &bidID,
-		Bidid: &bidID,
-		Cur:   &cur,
-		Seatbid: []*ortb_V2_5.SeatBid{
-			{
-				Bid: []*ortb_V2_5.Bid{
-					{
-						Id:      &bidID,
-						Impid:   &impID,
-						Price:   &price32,
-						Adm:     &adm,
-						Adomain: adomain,
-						Cid:     &cid,
-						Crid:    &crid,
-						W:       &w,
-						H:       &h,
-					},
-				},
-			},
-		},
+func hasBids(response *ortb.BidResponse) bool {
+	if response == nil {
+		return false
 	}
+	for _, seat := range response.GetSeatbid() {
+		if seat != nil && len(seat.GetBid()) > 0 {
+			return true
+		}
+	}
+	return false
 }

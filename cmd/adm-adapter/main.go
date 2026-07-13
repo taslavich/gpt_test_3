@@ -2,7 +2,9 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"log"
+	"strings"
 
 	"github.com/go-chi/chi/v5"
 	"gitlab.com/twinbid-exchange/RTB-exchange/internal/config"
@@ -10,6 +12,8 @@ import (
 	httpServer "gitlab.com/twinbid-exchange/RTB-exchange/internal/http"
 	services "gitlab.com/twinbid-exchange/RTB-exchange/internal/services"
 	redis_service "gitlab.com/twinbid-exchange/RTB-exchange/internal/services/redis"
+	billing "gitlab.com/twinbid-exchange/RTB-exchange/internal/services/sspAdapter/billing"
+	outbox "gitlab.com/twinbid-exchange/RTB-exchange/internal/services/sspAdapter/outbox"
 	sppAdapterWeb "gitlab.com/twinbid-exchange/RTB-exchange/internal/services/sspAdapter/web"
 )
 
@@ -20,6 +24,9 @@ func main() {
 	cfg, err := config.LoadConfig[config.AdmAdapterConfig](ctx)
 	if err != nil {
 		log.Fatalf("Cannot load config: %v", err)
+	}
+	if err := validateConfig(cfg); err != nil {
+		log.Fatalf("Invalid ADM adapter config: %v", err)
 	}
 	log.Println("Config initialized!")
 
@@ -98,6 +105,37 @@ func main() {
 	}
 	log.Println("✅ Connected to ADM/BURL Redis")
 
+	advRuntimeRedis, err := redis_service.NewRedisClient(
+		cfg.RedisUUIDAddr, cfg.RedisPassword, cfg.RedisDBAdvRuntime, cfg.RedisPoolSize, cfg.RedisMinIdleConns,
+	)
+	if err != nil {
+		log.Fatalf("Cannot init ADV runtime Redis: %v", err)
+	}
+	defer advRuntimeRedis.Close()
+	advWinnerRedis, err := redis_service.NewRedisClient(
+		cfg.RedisUUIDAddr, cfg.RedisPassword, cfg.RedisDBAdvWinner, cfg.RedisPoolSize, cfg.RedisMinIdleConns,
+	)
+	if err != nil {
+		log.Fatalf("Cannot init ADV winner Redis: %v", err)
+	}
+	defer advWinnerRedis.Close()
+	if err := advRuntimeRedis.Ping(ctx).Err(); err != nil {
+		log.Fatalf("ADV runtime Redis unavailable: %v", err)
+	}
+	if err := advWinnerRedis.Ping(ctx).Err(); err != nil {
+		log.Fatalf("ADV winner Redis unavailable: %v", err)
+	}
+	if err := redis_service.ValidateAOF(ctx, advRuntimeRedis); err != nil {
+		log.Fatalf("ADV accounting Redis persistence is unsafe: %v", err)
+	}
+
+	advOutbox, err := outbox.Open(cfg.AdvOutboxPath)
+	if err != nil {
+		log.Fatalf("Cannot open ADV billing outbox: %v", err)
+	}
+	defer advOutbox.Close()
+	advBillingStore := billing.NewStore(advRuntimeRedis, advWinnerRedis, cfg.AdvAppliedMarkerTTL)
+
 	redisWriteErrorMonitor := services.NewRedisWriteErrorMonitorWithSettings(
 		"adm-adapter",
 		cfg.RedisWriteErrorLogThresholdPerSec,
@@ -110,6 +148,22 @@ func main() {
 		ctx,
 	)
 	redisWriteErrorMonitor.Start()
+
+	pendingRecords, err := advOutbox.List()
+	if err != nil {
+		log.Fatalf("Cannot inspect ADV billing outbox: %v", err)
+	}
+	if len(pendingRecords) > 0 {
+		pendingErr := fmt.Errorf("ADV billing outbox contains %d pending events after startup", len(pendingRecords))
+		statuses := services.SetADVWorkStatus(ctx, []string(cfg.AdvServiceControlURLs), false)
+		redisWriteErrorMonitor.RecordForURL(pendingErr, cfg.SspAdapterWorkStatusURL)
+		message := fmt.Sprintf("ADV remains disabled while durable billing outbox is pending: error=%v adv_statuses=%v", pendingErr, statuses)
+		log.Print(message)
+		if notifyErr := redisWriteErrorMonitor.NotifyNowForRecordedError(message); notifyErr != nil {
+			log.Printf("ADV outbox startup notification failed: %v", notifyErr)
+		}
+	}
+	billing.NewWorker(advBillingStore, advOutbox, cfg.AdvOutboxRetryInterval, cfg.AdvOutboxMaxBackoff).Start(ctx)
 
 	admRouter := httpServer.InitHttpRouter(chi.NewRouter())
 	sppAdapterWeb.InitHttpsRoutes(
@@ -127,6 +181,9 @@ func main() {
 		redisClients.Impressions,
 		cfg.RedisSetConversions,
 		redisClients.Conversions,
+		advBillingStore,
+		advOutbox,
+		[]string(cfg.AdvServiceControlURLs),
 	)
 	log.Println("ADM HTTPS routes initialized")
 
@@ -145,4 +202,39 @@ func main() {
 
 	go httpServer.RunHttpServer(ctx, nurlBurlRouter, cfg.HttpServer.Host, 80)*/
 	httpServer.RunHttpsServerOptimized(ctx, admRouter, cfg.HttpServer.Host, cfg.HttpServer.Port, cfg.FullChain, cfg.PrivKey, cfg.RsaFullChain, cfg.RsaPrivKey)
+}
+
+func validateConfig(cfg *config.AdmAdapterConfig) error {
+	if cfg == nil {
+		return fmt.Errorf("config is nil")
+	}
+	if cfg.RedisDBAdvRuntime != 5 || cfg.RedisDBAdvWinner != 6 {
+		return fmt.Errorf("ADV billing requires Redis DB 5 for runtime and DB 6 for winners")
+	}
+	if strings.TrimSpace(cfg.RedisUUIDAddr) == "" {
+		return fmt.Errorf("REDIS_UUID_ADDR is required")
+	}
+	if strings.TrimSpace(cfg.AdvOutboxPath) == "" {
+		return fmt.Errorf("ADV_OUTBOX_PATH is required")
+	}
+	if strings.TrimSpace(cfg.SspAdapterWorkStatusURL) == "" {
+		return fmt.Errorf("SSP_ADAPTER_WORK_STATUS_URL is required for the existing Redis error monitor")
+	}
+	if cfg.AdvOutboxRetryInterval <= 0 || cfg.AdvOutboxMaxBackoff <= 0 || cfg.AdvAppliedMarkerTTL <= 0 {
+		return fmt.Errorf("ADV outbox durations must be positive")
+	}
+	validControlURL := false
+	for _, rawURL := range cfg.AdvServiceControlURLs {
+		if strings.TrimSpace(rawURL) != "" {
+			validControlURL = true
+			break
+		}
+	}
+	if !validControlURL {
+		return fmt.Errorf("ADV_SERVICE_CONTROL_URLS must contain at least one non-empty URL")
+	}
+	if strings.TrimSpace(cfg.BotBaseURL) == "" || strings.TrimSpace(cfg.BotInternalSecret) == "" {
+		return fmt.Errorf("BOT_BASE_URL and BOT_INTERNAL_SECRET are required for Redis failure notifications")
+	}
+	return nil
 }

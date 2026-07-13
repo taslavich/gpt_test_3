@@ -8,19 +8,17 @@ import (
 	"net"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 
 	"github.com/go-chi/chi/v5"
+	_ "github.com/lib/pq"
 	"gitlab.com/twinbid-exchange/RTB-exchange/internal/config"
-	"gitlab.com/twinbid-exchange/RTB-exchange/internal/filter"
 	advGrpc "gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/proto/services/adv"
-	utils "gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/utils_grpc"
 	httpServer "gitlab.com/twinbid-exchange/RTB-exchange/internal/http"
 	auction "gitlab.com/twinbid-exchange/RTB-exchange/internal/services/adv/service"
 	advWeb "gitlab.com/twinbid-exchange/RTB-exchange/internal/services/adv/web"
-	kafkaService "gitlab.com/twinbid-exchange/RTB-exchange/internal/services/kafka"
 	redisService "gitlab.com/twinbid-exchange/RTB-exchange/internal/services/redis"
-	"gitlab.com/twinbid-exchange/RTB-exchange/internal/types"
 	"google.golang.org/grpc"
 )
 
@@ -30,137 +28,128 @@ func main() {
 
 	cfg, err := config.LoadConfig[config.AdvConfig](ctx)
 	if err != nil {
-		log.Fatalf("Cannot load config: %v", err)
+		log.Fatalf("cannot load ADV config: %v", err)
 	}
-	log.Println("Config initialized!")
-
-	redisAddr := cfg.RedisUUIDAddr
+	if err := validateConfig(cfg); err != nil {
+		log.Fatalf("invalid ADV config: %v", err)
+	}
+	redisAddr := strings.TrimSpace(cfg.RedisUUIDAddr)
 	if redisAddr == "" && len(cfg.RedisShardAddrs) > 0 {
-		redisAddr = cfg.RedisShardAddrs[0]
+		redisAddr = strings.TrimSpace(cfg.RedisShardAddrs[0])
 	}
 
-	userBalanceThresholdRedisClient, err := redisService.NewRedisClient(
-		redisAddr,
-		cfg.RedisPassword,
-		cfg.RedisDBUserBalanceThreshold,
-		cfg.RedisPoolSize,
-		cfg.RedisMinIdleConns,
-	)
+	runtimeRedis, err := redisService.NewRedisClient(redisAddr, cfg.RedisPassword, cfg.RedisDBAdvRuntime, cfg.RedisPoolSize, cfg.RedisMinIdleConns)
 	if err != nil {
-		log.Fatalf("Cannot init user balance threshold redis client: %v", err)
+		log.Fatalf("cannot initialize ADV runtime Redis DB %d: %v", cfg.RedisDBAdvRuntime, err)
 	}
-	defer userBalanceThresholdRedisClient.Close()
-
-	userBalanceSpentRedisClient, err := redisService.NewRedisClient(
-		redisAddr,
-		cfg.RedisPassword,
-		cfg.RedisDBUserBalanceSpent,
-		cfg.RedisPoolSize,
-		cfg.RedisMinIdleConns,
-	)
+	defer runtimeRedis.Close()
+	winnerRedis, err := redisService.NewRedisClient(redisAddr, cfg.RedisPassword, cfg.RedisDBAdvWinner, cfg.RedisPoolSize, cfg.RedisMinIdleConns)
 	if err != nil {
-		log.Fatalf("Cannot init user balance spent redis client: %v", err)
+		log.Fatalf("cannot initialize ADV winner Redis DB %d: %v", cfg.RedisDBAdvWinner, err)
 	}
-	defer userBalanceSpentRedisClient.Close()
+	defer winnerRedis.Close()
+	if err := runtimeRedis.Ping(ctx).Err(); err != nil {
+		log.Fatalf("ADV runtime Redis unavailable: %v", err)
+	}
+	if err := winnerRedis.Ping(ctx).Err(); err != nil {
+		log.Fatalf("ADV winner Redis unavailable: %v", err)
+	}
+	if err := redisService.ValidateAOF(ctx, runtimeRedis); err != nil {
+		log.Fatalf("ADV accounting Redis persistence is unsafe: %v", err)
+	}
 
-	if err := userBalanceThresholdRedisClient.Ping(ctx).Err(); err != nil {
-		log.Fatalf("Failed to connect to user balance threshold redis: %v", err)
-	}
-	if err := userBalanceSpentRedisClient.Ping(ctx).Err(); err != nil {
-		log.Fatalf("Failed to connect to user balance spent redis: %v", err)
-	}
-
-	advKafkaWriters, err := kafkaService.CreateAdvKafkaWriters(cfg.KafkaConfig)
+	percentStore, err := auction.NewPercentStore(cfg.SspGeoDspPercentsAdultFilePath, cfg.SspGeoDspPercentsMainstreamFilePath)
 	if err != nil {
-		log.Fatalf("Cannot init ADV kafka writers: %v", err)
+		log.Fatalf("cannot initialize ADV percent maps: %v", err)
 	}
-	defer func() {
-		if err := advKafkaWriters.Close(); err != nil {
-			log.Printf("⚠️ failed to close ADV kafka writers: %v", err)
-		}
-	}()
-
-	advKafkaReaders, err := kafkaService.CreateAdvKafkaReaders(cfg.KafkaConfig)
+	qualityStore, err := auction.NewQualityStore(cfg.AdvQualityMapFilePath)
 	if err != nil {
-		log.Fatalf("Cannot init ADV kafka readers: %v", err)
+		log.Fatalf("cannot initialize ADV quality map: %v", err)
 	}
-	defer func() {
-		if err := advKafkaReaders.Close(); err != nil {
-			log.Printf("⚠️ failed to close ADV kafka readers: %v", err)
-		}
-	}()
 
-	sspGeoDspMapAdult, err := utils.InitSspGeoDspMap[*types.PercentAndBidfloor](cfg.SspGeoDspPercentsAdultFilePath)
+	if strings.TrimSpace(cfg.PostgresDSN) == "" {
+		log.Fatal("POSTGRES_DSN is required for ADV")
+	}
+	db, err := sql.Open("postgres", cfg.PostgresDSN)
 	if err != nil {
-		log.Fatalf("Failed to Init ADV adult percent map: %v", err)
+		log.Fatalf("cannot open ADV PostgreSQL: %v", err)
+	}
+	defer db.Close()
+	if err := db.PingContext(ctx); err != nil {
+		log.Fatalf("ADV PostgreSQL unavailable: %v", err)
+	}
+	if err := auction.MigrateADVSchema(ctx, db); err != nil {
+		log.Fatalf("ADV schema migration failed: %v", err)
 	}
 
-	sspGeoDspMapMainstream, err := utils.InitSspGeoDspMap[*types.PercentAndBidfloor](cfg.SspGeoDspPercentsMainstreamFilePath)
-	if err != nil {
-		log.Fatalf("Failed to Init ADV mainstream percent map: %v", err)
+	runtimeStore := auction.NewRuntimeStore(runtimeRedis, cfg.AdvPacingCurrentTTL, cfg.AdvPacingSlotTTL)
+	winnerStore := auction.NewWinnerStore(winnerRedis, cfg.AdvWinnerTTL)
+	auctionService := auction.NewAuctionService(runtimeStore, winnerStore, percentStore, qualityStore, cfg.AdvDomain)
+	if err := auctionService.RefreshFromPostgres(ctx, db); err != nil {
+		log.Fatalf("initial ADV snapshot failed: %v", err)
 	}
+	auctionService.StartPostgresRefreshTicker(ctx, db, cfg.CampaignRefreshInterval, func(err error) {
+		log.Printf("ADV snapshot refresh failed; previous snapshot retained: %v", err)
+	})
+	auctionService.StartPacingTicker(ctx, cfg.AdvPacingTickInterval, func(err error) {
+		log.Printf("ADV pacing update failed: %v", err)
+	})
 
-	processor := filter.NewOptimizedFilterProcessor(filter.NewRuleManager())
-	auctionService := auction.NewAuctionService(processor)
-	auctionService.SetPercentMaps(sspGeoDspMapAdult, sspGeoDspMapMainstream)
-
-	if cfg.PostgresDSN != "" {
-		db, err := sql.Open("postgres", cfg.PostgresDSN)
-		if err != nil {
-			log.Fatalf("Cannot open ADV postgres: %v", err)
-		}
-		defer db.Close()
-		auctionService.StartPostgresRefreshTicker(ctx, db, cfg.CampaignRefreshInterval)
-	}
-
-	s := grpc.NewServer()
-	advGrpc.RegisterAdvServiceServer(
-		s,
-		advWeb.NewServer(auctionService, userBalanceThresholdRedisClient, userBalanceSpentRedisClient),
-	)
+	workController := advWeb.NewWorkController()
+	grpcServer := grpc.NewServer()
+	advGrpc.RegisterAdvServiceServer(grpcServer, advWeb.NewServer(auctionService, workController))
 
 	router := httpServer.InitHttpRouter(chi.NewRouter())
-	advWeb.InitHttpRoutes(
-		router,
-		cfg.SspGeoDspPercentsAdultFilePath,
-		cfg.SspGeoDspPercentsMainstreamFilePath,
-		&sspGeoDspMapAdult,
-		&sspGeoDspMapMainstream,
-	)
-	log.Println("HTTP routes initialized")
+	advWeb.InitHttpRoutes(router, percentStore, qualityStore, workController)
 
-	errChan := make(chan error)
-
-	lis, err := net.Listen(
-		"tcp",
-		fmt.Sprintf(
-			"%s:%d",
-			cfg.GrpcServer.Host,
-			cfg.GrpcServer.Port,
-		),
-	)
+	listener, err := net.Listen("tcp", fmt.Sprintf("%s:%d", cfg.GrpcServer.Host, cfg.GrpcServer.Port))
 	if err != nil {
-		log.Fatalf("failed to listen: %v", err)
+		log.Fatalf("ADV gRPC listen failed: %v", err)
 	}
-
+	errChan := make(chan error, 1)
 	go httpServer.RunHttpServer(ctx, router, cfg.HttpServer.Host, cfg.HttpServer.Port)
-
-	log.Printf("Server started on %s:%d", cfg.GrpcServer.Host, cfg.GrpcServer.Port)
 	go func() {
-		if err := s.Serve(lis); err != nil {
-			errChan <- err
-			log.Printf("failed to serve: %v", err)
-		}
+		errChan <- grpcServer.Serve(listener)
 	}()
+	log.Printf("ADV started: grpc=%s:%d http=%s:%d", cfg.GrpcServer.Host, cfg.GrpcServer.Port, cfg.HttpServer.Host, cfg.HttpServer.Port)
 
 	stop := make(chan os.Signal, 1)
 	signal.Notify(stop, os.Interrupt, syscall.SIGTERM)
-
 	select {
 	case <-stop:
-		log.Println("Shutting down gracefully...")
-		s.GracefulStop()
+		cancel()
+		grpcServer.GracefulStop()
 	case err := <-errChan:
-		log.Fatalf("Server crashed: %v", err)
+		if err != nil {
+			log.Fatalf("ADV server stopped: %v", err)
+		}
 	}
+}
+
+func validateConfig(cfg *config.AdvConfig) error {
+	if cfg == nil {
+		return fmt.Errorf("config is nil")
+	}
+	if cfg.RedisDBAdvRuntime != 5 || cfg.RedisDBAdvWinner != 6 {
+		return fmt.Errorf("ADV requires Redis DB 5 for runtime and DB 6 for winners")
+	}
+	if strings.TrimSpace(cfg.RedisUUIDAddr) == "" && len(cfg.RedisShardAddrs) == 0 {
+		return fmt.Errorf("REDIS_UUID_ADDR or REDIS_SHARD_ADDRS is required")
+	}
+	if strings.TrimSpace(cfg.SspGeoDspPercentsAdultFilePath) == "" || strings.TrimSpace(cfg.SspGeoDspPercentsMainstreamFilePath) == "" {
+		return fmt.Errorf("both ADV percent map paths are required")
+	}
+	if strings.TrimSpace(cfg.AdvQualityMapFilePath) == "" {
+		return fmt.Errorf("ADV_QUALITY_MAP_FILE_PATH is required")
+	}
+	if strings.TrimSpace(cfg.AdvDomain) == "" {
+		return fmt.Errorf("ADM_DOMAIN is required")
+	}
+	if strings.TrimSpace(cfg.PostgresDSN) == "" {
+		return fmt.Errorf("POSTGRES_DSN is required")
+	}
+	if cfg.CampaignRefreshInterval <= 0 || cfg.AdvWinnerTTL <= 0 || cfg.AdvPacingTickInterval <= 0 || cfg.AdvPacingCurrentTTL <= 0 || cfg.AdvPacingSlotTTL <= 0 {
+		return fmt.Errorf("ADV durations must be positive")
+	}
+	return nil
 }

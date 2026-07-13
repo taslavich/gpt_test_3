@@ -168,17 +168,16 @@ func main() {
 	)
 	redisWriteErrorMonitor.Start()
 
-	var advClient advGrpc.AdvServiceClient
-	var advConn *grpc.ClientConn
-	if cfg.UriOfAdv != "" {
-		advConn, err = grpc.NewClient(cfg.UriOfAdv, grpc.WithTransportCredentials(insecure.NewCredentials()))
-		if err != nil {
-			log.Fatalf("Cannot init ADV grpc client: %v", err)
-		}
-		defer advConn.Close()
-		advClient = advGrpc.NewAdvServiceClient(advConn)
-		log.Println("✅ ADV grpc client initialized")
+	if cfg.UriOfAdv == "" {
+		log.Fatal("URI_OF_ADV is required")
 	}
+	advConn, err := grpc.NewClient(cfg.UriOfAdv, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	if err != nil {
+		log.Fatalf("Cannot init ADV grpc client: %v", err)
+	}
+	defer advConn.Close()
+	advClient := advGrpc.NewAdvServiceClient(advConn)
+	log.Println("✅ ADV grpc client initialized")
 
 	s := grpc.NewServer()
 	routerServer := dspRouterWeb.NewServer(

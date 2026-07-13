@@ -2,139 +2,161 @@ package web
 
 import (
 	"encoding/json"
+	"errors"
+	"io"
 	"log"
 	"net/http"
-	"os"
+	"strconv"
+	"strings"
 
-	"github.com/ggicci/httpin"
-	"github.com/ggicci/httpin/integration"
 	"github.com/go-chi/chi/v5"
-	"github.com/unrolled/render"
-	utils "gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/utils_grpc"
-	sppAdapterWeb "gitlab.com/twinbid-exchange/RTB-exchange/internal/services/sspAdapter/web"
-	"gitlab.com/twinbid-exchange/RTB-exchange/internal/types"
+	auction "gitlab.com/twinbid-exchange/RTB-exchange/internal/services/adv/service"
 )
-
-var rnr = render.New(render.Options{
-	StreamingJSON: true,
-	UnEscapeHTML:  true,
-})
 
 const (
-	GetSspGeoDspPercentsMapUrl      = "/filter/ssp_geo_dsp_percents_map"
-	PutSspGeoDspPercentsMapUrl      = "/filter/ssp_geo_dsp_percents_map"
-	GetDebugSspGeoDspPercentsMapUrl = "/filter/debug_ssp_geo_dsp_percents_map"
+	GetSspGeoDspPercentsMapURL      = "/filter/ssp_geo_dsp_percents_map"
+	PutSspGeoDspPercentsMapURL      = "/filter/ssp_geo_dsp_percents_map"
+	GetDebugSspGeoDspPercentsMapURL = "/filter/debug_ssp_geo_dsp_percents_map"
+	GetQualityMapURL                = "/filter/quality_map"
+	PutQualityMapURL                = "/filter/quality_map"
+	GetDebugQualityMapURL           = "/filter/debug_quality_map"
+	WorkStatusURL                   = "/work_status"
 )
 
-type getSspGeoDspPercentsRequestV25 struct {
-	Typic string `in:"query=typic" required:"true"`
-}
+// Backward-compatible aliases for callers that used the previous spelling.
+const (
+	GetSspGeoDspPercentsMapUrl      = GetSspGeoDspPercentsMapURL
+	PutSspGeoDspPercentsMapUrl      = PutSspGeoDspPercentsMapURL
+	GetDebugSspGeoDspPercentsMapUrl = GetDebugSspGeoDspPercentsMapURL
+)
 
-type putSspGeoDspPercentsRequestV25 struct {
-	Typic string                                                     `in:"query=typic" required:"true"`
-	Mapa  map[string]map[string]map[string]*types.PercentAndBidfloor `in:"body=json"`
-}
-
-func InitHttpRoutes(
-	httpRouter *chi.Mux,
-	percentFilenameAdult string,
-	percentFilenameMainstream string,
-	percentMapAdult *map[string]map[string]map[string]*types.PercentAndBidfloor,
-	percentMapMainstream *map[string]map[string]map[string]*types.PercentAndBidfloor,
-) {
-	integration.UseGochiURLParam("path", chi.URLParam)
-
-	httpRouter.With(
-		httpin.NewInput(getSspGeoDspPercentsRequestV25{}),
-	).Get(GetSspGeoDspPercentsMapUrl, func(w http.ResponseWriter, r *http.Request) {
-		getSspGeoPercentsMap(w, r, percentFilenameAdult, percentFilenameMainstream)
+func InitHttpRoutes(httpRouter *chi.Mux, percentStore *auction.PercentStore, qualityStore *auction.QualityStore, work *WorkController) {
+	httpRouter.Get(GetSspGeoDspPercentsMapURL, func(w http.ResponseWriter, r *http.Request) {
+		traffic, ok := queryTrafficType(r)
+		if !ok || percentStore == nil {
+			http.Error(w, "invalid traffic type or percent store", http.StatusBadRequest)
+			return
+		}
+		value, err := percentStore.Saved(traffic)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		writeJSON(w, http.StatusOK, value)
 	})
 
-	httpRouter.With(
-		httpin.NewInput(getSspGeoDspPercentsRequestV25{}),
-	).Get(GetDebugSspGeoDspPercentsMapUrl, func(w http.ResponseWriter, r *http.Request) {
-		getSspGeoPercentsMapDebug(w, r, percentMapAdult, percentMapMainstream)
+	httpRouter.Get(GetDebugSspGeoDspPercentsMapURL, func(w http.ResponseWriter, r *http.Request) {
+		traffic, ok := queryTrafficType(r)
+		if !ok || percentStore == nil {
+			http.Error(w, "invalid traffic type or percent store", http.StatusBadRequest)
+			return
+		}
+		writeJSON(w, http.StatusOK, percentStore.Memory(traffic))
 	})
 
-	httpRouter.With(
-		httpin.NewInput(putSspGeoDspPercentsRequestV25{}),
-	).Put(PutSspGeoDspPercentsMapUrl, func(w http.ResponseWriter, r *http.Request) {
-		putSspGeoPercentsMap(w, r, percentFilenameAdult, percentFilenameMainstream, percentMapAdult, percentMapMainstream)
+	httpRouter.Put(PutSspGeoDspPercentsMapURL, func(w http.ResponseWriter, r *http.Request) {
+		traffic, ok := queryTrafficType(r)
+		if !ok || percentStore == nil {
+			http.Error(w, "invalid traffic type or percent store", http.StatusBadRequest)
+			return
+		}
+		defer r.Body.Close()
+		decoder := json.NewDecoder(http.MaxBytesReader(w, r.Body, 16<<20))
+		decoder.DisallowUnknownFields()
+		var input auction.PercentMap
+		if err := decoder.Decode(&input); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		if err := ensureJSONEOF(decoder); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		if err := percentStore.Update(traffic, input); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
+	})
+
+	httpRouter.Get(GetQualityMapURL, func(w http.ResponseWriter, _ *http.Request) {
+		if qualityStore == nil {
+			http.Error(w, "quality store is unavailable", http.StatusServiceUnavailable)
+			return
+		}
+		value, err := qualityStore.Saved()
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		writeJSON(w, http.StatusOK, value)
+	})
+	httpRouter.Get(GetDebugQualityMapURL, func(w http.ResponseWriter, _ *http.Request) {
+		if qualityStore == nil {
+			http.Error(w, "quality store is unavailable", http.StatusServiceUnavailable)
+			return
+		}
+		writeJSON(w, http.StatusOK, qualityStore.Memory())
+	})
+	httpRouter.Put(PutQualityMapURL, func(w http.ResponseWriter, r *http.Request) {
+		if qualityStore == nil {
+			http.Error(w, "quality store is unavailable", http.StatusServiceUnavailable)
+			return
+		}
+		defer r.Body.Close()
+		data, err := io.ReadAll(http.MaxBytesReader(w, r.Body, 16<<20))
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		if err := qualityStore.UpdateJSON(data); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
+	})
+
+	httpRouter.Get(WorkStatusURL, func(w http.ResponseWriter, _ *http.Request) {
+		if work == nil {
+			http.Error(w, "work controller is unavailable", http.StatusServiceUnavailable)
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]bool{"work": work.Enabled()})
+	})
+	httpRouter.Put(WorkStatusURL, func(w http.ResponseWriter, r *http.Request) {
+		raw := strings.TrimSpace(r.URL.Query().Get("work"))
+		enabled, err := strconv.ParseBool(raw)
+		if err != nil {
+			http.Error(w, "work must be true or false", http.StatusBadRequest)
+			return
+		}
+		if work == nil || work.Set(enabled) != nil {
+			http.Error(w, "cannot change ADV work status", http.StatusServiceUnavailable)
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]bool{"work": enabled})
 	})
 }
 
-func putSspGeoPercentsMap(
-	w http.ResponseWriter,
-	r *http.Request,
-	percentFilenameAdult string,
-	percentFilenameMainstream string,
-	percentMapAdult *map[string]map[string]map[string]*types.PercentAndBidfloor,
-	percentMapMainstream *map[string]map[string]map[string]*types.PercentAndBidfloor,
-) {
-	var err error
-	input := r.Context().Value(httpin.Input).(*putSspGeoDspPercentsRequestV25)
-	switch input.Typic {
-	case sppAdapterWeb.ADULT:
-		*percentMapAdult, err = utils.RewriteSspGeoDspFileNextVer[*types.PercentAndBidfloor](input.Mapa, percentFilenameAdult)
-	case sppAdapterWeb.MAINSTREAM:
-		*percentMapMainstream, err = utils.RewriteSspGeoDspFileNextVer[*types.PercentAndBidfloor](input.Mapa, percentFilenameMainstream)
-	default:
-		http.Error(w, "Invalid Typic value", http.StatusBadRequest)
-		return
+func ensureJSONEOF(decoder *json.Decoder) error {
+	var extra any
+	if err := decoder.Decode(&extra); errors.Is(err, io.EOF) {
+		return nil
+	} else if err != nil {
+		return err
 	}
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
+	return errors.New("request contains more than one JSON value")
+}
+
+func queryTrafficType(r *http.Request) (string, bool) {
+	value := strings.ToUpper(strings.TrimSpace(r.URL.Query().Get("typic")))
+	return value, value == auction.TrafficAdult || value == auction.TrafficMainstream
+}
+
+func writeJSON(w http.ResponseWriter, statusCode int, value any) {
 	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusNoContent)
-}
-
-func getSspGeoPercentsMap(w http.ResponseWriter, r *http.Request, percentFilenameAdult string, percentFilenameMainstream string) {
-	var filename string
-	input := r.Context().Value(httpin.Input).(*getSspGeoDspPercentsRequestV25)
-	switch input.Typic {
-	case sppAdapterWeb.ADULT:
-		filename = percentFilenameAdult
-	case sppAdapterWeb.MAINSTREAM:
-		filename = percentFilenameMainstream
-	default:
-		http.Error(w, "Invalid Typic value", http.StatusBadRequest)
-		return
-	}
-	data, err := os.ReadFile(filename)
-	if err != nil {
-		http.Error(w, "Cannot ReadFile", http.StatusInternalServerError)
-		return
-	}
-	var mapa map[string]map[string]map[string]*types.PercentAndBidfloor
-	if err := json.Unmarshal(data, &mapa); err != nil {
-		http.Error(w, "Cannot Unmarshal", http.StatusInternalServerError)
-		return
-	}
-	if err := rnr.JSON(w, http.StatusOK, mapa); err != nil {
-		log.Printf("Cannot make HTTP response back: %v\n", err)
-	}
-}
-
-func getSspGeoPercentsMapDebug(
-	w http.ResponseWriter,
-	r *http.Request,
-	percentMapAdult *map[string]map[string]map[string]*types.PercentAndBidfloor,
-	percentMapMainstream *map[string]map[string]map[string]*types.PercentAndBidfloor,
-) {
-	var mapa map[string]map[string]map[string]*types.PercentAndBidfloor
-	input := r.Context().Value(httpin.Input).(*getSspGeoDspPercentsRequestV25)
-	switch input.Typic {
-	case sppAdapterWeb.ADULT:
-		mapa = *percentMapAdult
-	case sppAdapterWeb.MAINSTREAM:
-		mapa = *percentMapMainstream
-	default:
-		http.Error(w, "Invalid Typic value", http.StatusBadRequest)
-		return
-	}
-	if err := rnr.JSON(w, http.StatusOK, mapa); err != nil {
-		log.Printf("Cannot make HTTP response back: %v\n", err)
+	w.WriteHeader(statusCode)
+	if err := json.NewEncoder(w).Encode(value); err != nil {
+		log.Printf("write ADV HTTP response: %v", err)
 	}
 }

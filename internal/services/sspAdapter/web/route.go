@@ -11,6 +11,8 @@ import (
 	"gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/proto/types/ortb_V2_5"
 	utils "gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/utils_grpc"
 	services "gitlab.com/twinbid-exchange/RTB-exchange/internal/services"
+	billing "gitlab.com/twinbid-exchange/RTB-exchange/internal/services/sspAdapter/billing"
+	outbox "gitlab.com/twinbid-exchange/RTB-exchange/internal/services/sspAdapter/outbox"
 
 	"github.com/ggicci/httpin"
 	"github.com/ggicci/httpin/integration"
@@ -71,11 +73,22 @@ type postBidResponse_V2_5 struct {
 	*ortb_V2_5.BidResponse
 }
 
-type admNurlBurlRequest struct {
+type admRequest struct {
+	GlobalId string `in:"query=id" required:"true"`
+	DspURL   string `in:"query=url" required:"true"`
+	Format   string `in:"query=f" required:"true"`
+}
+
+type nurlRequest struct {
 	GlobalId   string `in:"query=id" required:"true"`
-	DspURL     string `in:"query=url" required:"true"`
+	DspURL     string `in:"query=url"`
 	Format     string `in:"query=f" required:"true"`
 	Ssp_Domain string `in:"query=s" required:"true"`
+}
+
+type burlRequest struct {
+	GlobalId string `in:"query=id" required:"true"`
+	Format   string `in:"query=f" required:"true"`
 }
 
 type curlRequest struct {
@@ -247,6 +260,9 @@ func InitHttpsRoutes(
 	redisClientsImp []*redis.Client,
 	redisSetConversions string,
 	redisClientsConv []*redis.Client,
+	advBillingStore *billing.Store,
+	advOutbox *outbox.Store,
+	advControlURLs []string,
 ) {
 	integration.UseGochiURLParam("path", chi.URLParam)
 
@@ -255,19 +271,19 @@ func InitHttpsRoutes(
 	}
 
 	httpRouter.With(
-		httpin.NewInput(admNurlBurlRequest{}),
+		httpin.NewInput(admRequest{}),
 	).Get(GetAdmUrl, func(w http.ResponseWriter, r *http.Request) {
-		getAdm(ctx, w, r, redisClientsClicks, redisAdmClient, redisSetClicks, redisWriteErrorMonitor, sspAdapterWorkStatusURL)
+		getAdm(ctx, w, r, redisClientsClicks, redisAdmClient, redisSetClicks, redisWriteErrorMonitor, sspAdapterWorkStatusURL, advBillingStore, advOutbox, advControlURLs)
 	})
 
 	httpRouter.With(
-		httpin.NewInput(admNurlBurlRequest{}),
+		httpin.NewInput(burlRequest{}),
 	).Get(GetBurlUrl, func(w http.ResponseWriter, r *http.Request) {
-		getBurl(ctx, w, r, redisClientsImp, redisNurlClient, redisSetImpressions, redisWriteErrorMonitor, sspAdapterWorkStatusURL)
+		getBurl(ctx, w, r, redisClientsImp, redisNurlClient, redisSetImpressions, redisWriteErrorMonitor, sspAdapterWorkStatusURL, advBillingStore, advOutbox, advControlURLs)
 	})
 
 	httpRouter.With(
-		httpin.NewInput(admNurlBurlRequest{}),
+		httpin.NewInput(nurlRequest{}),
 	).Get(GetNurlUrl, func(w http.ResponseWriter, r *http.Request) {
 		getNurl(ctx, w, r, nurlClient, redisClientsImp, redisNurlClient, redisSetImpressions, redisWriteErrorMonitor, sspAdapterWorkStatusURL)
 	})
@@ -278,26 +294,3 @@ func InitHttpsRoutes(
 		getCurl(ctx, w, r, redisClientsConv, redisSetConversions, redisWriteErrorMonitor, sspAdapterWorkStatusURL)
 	})
 }
-
-/*func InitNurlBurlRoutes(
-	ctx context.Context,
-	httpRouter *chi.Mux,
-	redisClientsImp []*redis.Client,
-	redisNurlClient *redis.Client,
-	redisSetImpressions string,
-	nurlTimeout time.Duration,
-	redisWriteErrorMonitor *services.RedisWriteErrorMonitor,
-	sspAdapterWorkStatusURL string,
-) {
-	integration.UseGochiURLParam("path", chi.URLParam)
-
-	var nurlClient = &http.Client{
-		Timeout: 3 * time.Second,
-	}
-
-	httpRouter.With(
-		httpin.NewInput(admNurlBurlRequest{}),
-	).Get(GetNurlUrl, func(w http.ResponseWriter, r *http.Request) {
-		getNurl(ctx, w, r, nurlClient, redisClientsImp, redisNurlClient, redisSetImpressions, redisWriteErrorMonitor, sspAdapterWorkStatusURL)
-	})
-}*/

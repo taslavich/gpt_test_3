@@ -6,20 +6,11 @@ import (
 )
 
 func WrapError(prefix string, wrapError error) error {
-	st, ok := status.FromError(wrapError)
-	if !ok {
-		return status.Errorf(
-			codes.Unknown,
-			"Because got unknown error %s: %s",
-			prefix,
-			st.Err(),
-		)
+	if wrapError == nil {
+		return status.Errorf(codes.Unknown, "%s: unknown error", prefix)
 	}
-	return status.Errorf(
-		st.Code(),
-		"%s: %s",
-		prefix,
-		st.Err(),
-	)
+	if st, ok := status.FromError(wrapError); ok {
+		return status.Errorf(st.Code(), "%s: %s", prefix, st.Message())
+	}
+	return status.Errorf(codes.Unknown, "%s: %s", prefix, wrapError.Error())
 }
-

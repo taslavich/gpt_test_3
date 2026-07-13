@@ -1,6 +1,6 @@
 module gitlab.com/twinbid-exchange/RTB-exchange
 
-go 1.25
+go 1.25.0
 
 toolchain go1.25.11
 
@@ -58,6 +58,7 @@ require (
 	github.com/ilyakaznacheev/cleanenv v1.5.0
 	github.com/joho/godotenv v1.5.1
 	github.com/json-iterator/go v1.1.12
+	github.com/lib/pq v1.10.9
 	github.com/mileusna/useragent v1.3.5
 	github.com/orcaman/concurrent-map/v2 v2.0.1
 	github.com/oschwald/maxminddb-golang v1.12.0
@@ -65,5 +66,6 @@ require (
 	github.com/segmentio/kafka-go v0.4.49
 	github.com/shopspring/decimal v1.4.0 // indirect
 	github.com/yl2chen/cidranger v1.0.2
-	golang.org/x/sys v0.36.0 // indirect
+	go.etcd.io/bbolt v1.5.0
+	golang.org/x/sys v0.45.0 // indirect
 )

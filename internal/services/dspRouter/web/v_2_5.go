@@ -145,25 +145,45 @@ func (s *Server) doAdvAuction(
 	ctx context.Context,
 	req *dspRouterGrpc.DspRouterRequest_V2_5,
 	timeout time.Duration,
-) (*ortb_V2_5.BidResponse, int32, error) {
-	if s.advClient == nil {
-		return nil, http.StatusNoContent, fmt.Errorf("adv client is not configured")
+) (*advGrpc.DoAuctionResponse, error) {
+	if s == nil || s.advClient == nil {
+		return nil, fmt.Errorf("adv client is not configured")
 	}
-
+	if req == nil || req.GetBidRequest() == nil {
+		return nil, fmt.Errorf("ADV request is empty")
+	}
 	advCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
-
-	resp, err := s.advClient.DoAuction(advCtx, &advGrpc.DoAuctionRequest{
-		BidRequest:  req.BidRequest,
-		Format:      req.Format,
+	return s.advClient.DoAuction(advCtx, &advGrpc.DoAuctionRequest{
+		BidRequest:  req.GetBidRequest(),
+		Format:      req.GetFormat(),
 		TrafficType: trafficTypeFromDspRouterRequest(req),
-		SspDomain:   req.SspDomain,
+		SspDomain:   req.GetSspDomain(),
+		ImpIdUuid:   cloneStringMap(req.GetImpIdUuid()),
 	})
-	if err != nil {
-		return nil, 0, err
-	}
+}
 
-	return resp.GetBidResponse(), resp.GetCode(), nil
+func cloneStringMap(input map[string]string) map[string]string {
+	if len(input) == 0 {
+		return map[string]string{}
+	}
+	output := make(map[string]string, len(input))
+	for key, value := range input {
+		output[key] = value
+	}
+	return output
+}
+
+func bidResponseHasBids(response *ortb_V2_5.BidResponse) bool {
+	if response == nil {
+		return false
+	}
+	for _, seat := range response.GetSeatbid() {
+		if seat != nil && len(seat.GetBid()) > 0 {
+			return true
+		}
+	}
+	return false
 }
 
 func (s *Server) GetBids_V2_5(
@@ -178,12 +198,19 @@ func (s *Server) GetBids_V2_5(
 		}
 	}()
 
-	timeout := getSspTimeout(req.SspDomain, s.configTimeouts)
-
+	if s == nil {
+		return nil, status.Error(codes.Unavailable, "router service is nil")
+	}
+	if req == nil || req.GetBidRequest() == nil {
+		return nil, status.Error(codes.InvalidArgument, "bid request is nil")
+	}
+	timeout := getSspTimeout(req.GetSspDomain(), s.configTimeouts)
+	if timeout <= 0 {
+		timeout = time.Second
+	}
 	newTmax := int32(float64(timeout.Milliseconds()) * 0.85)
 	req.BidRequest.Tmax = &newTmax
-
-	if req.BidRequest.Device.Ip == nil && req.BidRequest.Device.Ipv6 != nil {
+	if req.BidRequest.Device != nil && req.BidRequest.Device.Ip == nil && req.BidRequest.Device.Ipv6 != nil {
 		req.BidRequest.Device.Ip = req.BidRequest.Device.Ipv6
 	}
 
@@ -193,8 +220,7 @@ func (s *Server) GetBids_V2_5(
 
 		grpcCode := codes.Unknown
 
-		st, ok := status.FromError(err)
-		if !ok {
+		if st, ok := status.FromError(err); ok {
 			grpcCode = st.Code()
 			newErr = fmt.Errorf("Can not marshal in GetBids_V_2_5 because got error: %v", st.Err())
 		}
@@ -214,67 +240,72 @@ func (s *Server) GetBids_V2_5(
 	var filters *filter.FiltersBox
 	var filtersCid *filter.FilterCidBoxType
 	var filterBoxChanger *filter.ChangersBoxChanger
-	if req.Typic == sppAdapterWeb.ADULT && req.Format == constants.POP {
-		dspList = s.dspEndpoints_adult_v_2_5
-		linkMap = *s.linkMap_adult
+	switch trafficTypeFromDspRouterRequest(req) {
+	case sppAdapterWeb.ADULT:
 		filters = s.filtersAdl
 		filtersCid = s.filtersCidAdl
 		filterBoxChanger = s.filterBoxChangerAdl
-	} else if req.Typic == sppAdapterWeb.MAINSTREAM && req.Format == constants.POP {
-		dspList = s.dspEndpoints_mainstream_v_2_5
-		linkMap = *s.linkMap_mainstream
+		if req.GetFormat() == constants.POP {
+			dspList = s.dspEndpoints_adult_v_2_5
+			if s.linkMap_adult != nil {
+				linkMap = *s.linkMap_adult
+			}
+		}
+	case sppAdapterWeb.MAINSTREAM:
 		filters = s.filtersMc
 		filtersCid = s.filtersCidMc
 		filterBoxChanger = s.filterBoxChangerMc
-	} else {
-		/*allsTrue := map[string]map[string]map[string]bool{
-			"ALL": {
-				"ALL": {
-					"ALL": true,
-				},
-			},
-		}*/
-		dspList = nil /*config.MapStringToString{
-			"none": "none",
-		}*/
-		linkMap = nil //allsTrue
-		filters = nil
-		filtersCid = nil
-		filterBoxChanger = nil
+		if req.GetFormat() == constants.POP {
+			dspList = s.dspEndpoints_mainstream_v_2_5
+			if s.linkMap_mainstream != nil {
+				linkMap = *s.linkMap_mainstream
+			}
+		}
 	}
 
-	if !filters.Allowed(req.BidRequest, "", true) {
+	if filters != nil && !filters.Allowed(req.BidRequest, "", true) {
 		return &dspRouterGrpc.DspRouterResponse_V2_5{
 			BidRequest:   req.BidRequest,
 			BidResponses: map[string]*ortb_V2_5.BidResponse{},
 			Code:         703,
+			Rekl:         false,
+			ImpIdUuid:    cloneStringMap(req.GetImpIdUuid()),
 		}, nil
 	}
 
-	globalUuid := func() string {
-		for _, uuid := range req.ImpIdUuid {
-			return uuid
-		}
+	globalUuid := ""
+	for _, value := range req.GetImpIdUuid() {
+		globalUuid = value
+		break
+	}
 
-		return ""
-	}()
-
-	if advBidResponse, advCode, advErr := s.doAdvAuction(ctx, req, timeout); advErr == nil && advCode == http.StatusOK && advBidResponse != nil {
+	advResponse, advErr := s.doAdvAuction(ctx, req, timeout)
+	if advErr != nil {
+		log.Printf("ADV auction failed, falling back to DSP: %v", advErr)
+	} else if advResponse != nil && advResponse.GetCode() == http.StatusOK && advResponse.GetSelected() && bidResponseHasBids(advResponse.GetBidResponse()) {
 		return &dspRouterGrpc.DspRouterResponse_V2_5{
-			BidRequest: req.BidRequest,
-			BidResponses: map[string]*ortb_V2_5.BidResponse{
-				"adv": advBidResponse,
-			},
-			SspDomain: req.SspDomain,
-			Code:      http.StatusOK,
+			BidRequest:       req.GetBidRequest(),
+			BidResponses:     map[string]*ortb_V2_5.BidResponse{},
+			SspDomain:        req.GetSspDomain(),
+			Code:             http.StatusOK,
+			Rekl:             true,
+			ReadyBidResponse: advResponse.GetBidResponse(),
+			WinnerUserIds:    cloneStringMap(advResponse.GetWinnerUserIds()),
+			ImpIdUuid:        cloneStringMap(req.GetImpIdUuid()),
 		}, nil
+	} else if advResponse != nil && advResponse.GetCode() != http.StatusNoContent {
+		log.Printf("ADV returned code %d without a usable bid, falling back to DSP", advResponse.GetCode())
 	}
 
 	for endpoint, domain := range dspList {
 		endpoint := endpoint
 		domain := domain
 
-		if !utils.GetValueFomSspGeoDspMap(req.SspDomain, req.BidRequest.Device.Geo.GetCountry(), domain, linkMap, false) {
+		country := ""
+		if req.GetBidRequest().GetDevice() != nil && req.GetBidRequest().GetDevice().GetGeo() != nil {
+			country = req.GetBidRequest().GetDevice().GetGeo().GetCountry()
+		}
+		if linkMap != nil && !utils.GetValueFomSspGeoDspMap(req.SspDomain, country, domain, linkMap, false) {
 			codesCh <- &dspDomainCode{
 				domain: domain,
 				code:   "-2",
@@ -300,7 +331,7 @@ func (s *Server) GetBids_V2_5(
 			continue
 		}
 
-		if !filters.Allowed(req.BidRequest, domain, false) {
+		if filters != nil && !filters.Allowed(req.BidRequest, domain, false) {
 			//log.Println("Gor DSP filter")
 			codesCh <- &dspDomainCode{
 				domain: domain,
@@ -342,8 +373,7 @@ func (s *Server) GetBids_V2_5(
 
 				grpcCode := codes.Unknown
 
-				st, ok := status.FromError(err)
-				if !ok {
+				if st, ok := status.FromError(err); ok {
 					grpcCode = st.Code()
 					newErr = fmt.Errorf("Can not marshal in GetBids_V_2_5 because got error: %v", st.Err())
 				}
@@ -352,21 +382,22 @@ func (s *Server) GetBids_V2_5(
 			}
 		}
 
-		if bidRequest, isChanged := filterBoxChanger.Change(mainRequest, domain); isChanged {
-			//fmt.Println(bidRequest.Site.GetId())
-			jsonDataTmp, err = jsoniter.Marshal(bidRequest)
-			if err != nil {
-				newErr := fmt.Errorf("Can not marshal in GetBids_V_2_5 because got uknown error: %v", err)
+		if filterBoxChanger != nil {
+			if bidRequest, isChanged := filterBoxChanger.Change(mainRequest, domain); isChanged {
+				//fmt.Println(bidRequest.Site.GetId())
+				jsonDataTmp, err = jsoniter.Marshal(bidRequest)
+				if err != nil {
+					newErr := fmt.Errorf("Can not marshal in GetBids_V_2_5 because got uknown error: %v", err)
 
-				grpcCode := codes.Unknown
+					grpcCode := codes.Unknown
 
-				st, ok := status.FromError(err)
-				if !ok {
-					grpcCode = st.Code()
-					newErr = fmt.Errorf("Can not marshal in GetBids_V_2_5 because got error: %v", st.Err())
+					if st, ok := status.FromError(err); ok {
+						grpcCode = st.Code()
+						newErr = fmt.Errorf("Can not marshal in GetBids_V_2_5 because got error: %v", st.Err())
+					}
+
+					return nil, status.Error(grpcCode, newErr.Error())
 				}
-
-				return nil, status.Error(grpcCode, newErr.Error())
 			}
 		}
 
@@ -396,7 +427,7 @@ func (s *Server) GetBids_V2_5(
 				)*/
 			}
 
-			if code == http.StatusOK {
+			if code == http.StatusOK && filtersCid != nil {
 				if !filter.GetValueFomCidMap(dspResp, req.SspDomain, domain, *filtersCid) {
 					codesCh <- &dspDomainCode{
 						domain: domain,
@@ -409,6 +440,9 @@ func (s *Server) GetBids_V2_5(
 			codesCh <- &dspDomainCode{
 				domain: domain,
 				code:   fmt.Sprintf("%d", code),
+			}
+			if dspResp == nil {
+				return
 			}
 
 			if !s.processor.ProcessResponseForSPPV25(DeletePrefix(req.SspDomain), dspResp).Allowed {
@@ -466,7 +500,9 @@ func (s *Server) GetBids_V2_5(
 	for _, uuid := range req.ImpIdUuid {
 		if err := writeBidResponsesToRedis(s.redisClients, uuid, clickResponses, req.Logged); err != nil {
 			log.Printf("failed to write bid responses to Redis: %v", err)
-			s.redisWriteErrorMonitor.RecordForURL(err, req.SspUrl)
+			if s.redisWriteErrorMonitor != nil {
+				s.redisWriteErrorMonitor.RecordForURL(err, req.SspUrl)
+			}
 		}
 	}
 
@@ -476,9 +512,11 @@ func (s *Server) GetBids_V2_5(
 	}
 
 	return &dspRouterGrpc.DspRouterResponse_V2_5{
-		BidRequest:   req.BidRequest,
+		BidRequest:   req.GetBidRequest(),
 		BidResponses: responses,
-		SspDomain:    req.SspDomain,
+		SspDomain:    req.GetSspDomain(),
+		Rekl:         false,
+		ImpIdUuid:    cloneStringMap(req.GetImpIdUuid()),
 	}, nil
 }
 

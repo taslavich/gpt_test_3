@@ -17,6 +17,9 @@ message BidEngineRequest_V2_5 {
   string typic = 6;
   string format = 7;
   string sspUrl = 8;
+  bool rekl = 9;
+  ortb_V2_5.BidResponse readyBidResponse = 10;
+  map<string, string> winnerUserIds = 11;
 }
 
 message BidEngineResponse_V2_5 {
@@ -25,4 +28,6 @@ message BidEngineResponse_V2_5 {
   int32 code = 3;
   repeated string failedImpIds = 4;
   map<string, string> impIdUuidClone = 5;
+  bool rekl = 6;
+  map<string, string> winnerUserIds = 7;
 }

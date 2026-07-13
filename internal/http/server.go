@@ -25,6 +25,10 @@ func WorkSspAdapterMiddleware(workStatus *sppAdapterWeb.WorkStatus) func(http.Ha
 				next.ServeHTTP(w, r)
 				return
 			}
+			if workStatus == nil {
+				http.Error(w, "Service Unavailable", http.StatusServiceUnavailable)
+				return
+			}
 
 			work, err := workStatus.Get(r.URL.Path)
 			if err == nil && !work {

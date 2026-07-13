@@ -27,6 +27,9 @@ func GetWinnerBidInternal_V_2_5(
 	typic string,
 	admDomain string,
 ) (*ortb_V2_5.BidResponse, clickhouse_types.UuidImpBidResponse, []string, []string) {
+	if req == nil || req.GetBidRequest() == nil {
+		return &ortb_V2_5.BidResponse{Seatbid: []*ortb_V2_5.SeatBid{{Bid: []*ortb_V2_5.Bid{}}}}, clickhouse_types.GetEmpty(ImpIdUuid), nil, nil
+	}
 	for l := range req.ImpIdUuid {
 		if strings.TrimSpace(req.ImpIdUuid[l]) == "" {
 			log.Printf("Empty uuid jjj")
@@ -125,14 +128,22 @@ func GetWinnerBidInternal_V_2_5(
 		var percentMap map[string]map[string]map[string]*types.PercentAndBidfloor
 		switch typic {
 		case sppAdapterWeb.ADULT:
-			percentMap = *percentMapAdult
+			if percentMapAdult != nil {
+				percentMap = *percentMapAdult
+			}
 		case sppAdapterWeb.MAINSTREAM:
-			percentMap = *percentMapMainstream
+			if percentMapMainstream != nil {
+				percentMap = *percentMapMainstream
+			}
+		}
+		country := ""
+		if req.GetBidRequest().GetDevice() != nil && req.GetBidRequest().GetDevice().GetGeo() != nil {
+			country = req.GetBidRequest().GetDevice().GetGeo().GetCountry()
 		}
 
 		newBids := make([]*bidWithDomain, 0)
 		for k := range bids {
-			value := utils.GetValueFomSspGeoDspMap(req.SspDomain, req.BidRequest.Device.Geo.GetCountry(), bids[k].domain, percentMap, &types.PercentAndBidfloor{
+			value := utils.GetValueFomSspGeoDspMap(req.SspDomain, country, bids[k].domain, percentMap, &types.PercentAndBidfloor{
 				Percent:  profitPercent,
 				Bidfloor: true,
 			})
@@ -152,6 +163,9 @@ func GetWinnerBidInternal_V_2_5(
 
 		}
 
+		if len(newBids) == 0 {
+			continue
+		}
 		sort.Slice(newBids, func(i, j int) bool {
 			return newBids[i].finalPrice > newBids[j].finalPrice
 		})

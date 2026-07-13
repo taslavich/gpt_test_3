@@ -70,13 +70,13 @@ func writeStatsOrtbAndAddToSet(
 		bidFloor,
 	); err != nil {
 		log.Printf("failed to WriteStats in postBid_V2_5: %v", err)
-		redisWriteErrorMonitor.RecordForURL(err, sspAdapterWorkStatusURL)
+		recordRedisError(redisWriteErrorMonitor, err, sspAdapterWorkStatusURL)
 		return false
 	}
 
 	if err := utils.AddUUIDToRedisSet(ctx, redisClients, redisSetOrtb, globalId, logged); err != nil {
 		log.Printf("failed to add ORTB UUID to Redis set in postBid_V2_5: %v", err)
-		redisWriteErrorMonitor.RecordForURL(err, sspAdapterWorkStatusURL)
+		recordRedisError(redisWriteErrorMonitor, err, sspAdapterWorkStatusURL)
 		return false
 	}
 
@@ -161,22 +161,32 @@ func postBid_V2_5(
 			http.Error(w, "", http.StatusInternalServerError)
 		}
 	}()
-	input = r.Context().Value(httpin.Input).(*postBidRequest_V2_5)
+	rawInput := r.Context().Value(httpin.Input)
+	parsedInput, ok := rawInput.(*postBidRequest_V2_5)
+	if !ok || parsedInput == nil {
+		err := fmt.Errorf("invalid request: parsed input is missing")
+		log.Print(err.Error(), r.RemoteAddr)
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	input = parsedInput
 
-	var ssp_domain string
-	var ok bool
-
-	ssp_domain, ok = sspFeeds[input.Feed]
-	if !ok {
-		err := fmt.Errorf("Busy")
-		http.Error(w, err.Error(), http.StatusForbidden)
+	if input.Payload == nil || input.Payload.BidRequest == nil {
+		err := fmt.Errorf("invalid request: bid request payload is nil or missing")
+		log.Print(err.Error(), r.RemoteAddr)
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	if orchestratorClient == nil || isBadIp == nil || getCountryISO == nil || siteIdsAndDomains == nil || ipLimitStore == nil {
+		log.Print("SSP adapter request dependencies are not initialized")
+		http.Error(w, "service dependencies are unavailable", http.StatusServiceUnavailable)
 		return
 	}
 
-	if input == nil || input.Payload == nil {
-		err := fmt.Errorf("Invalid request: payload is nil or missing")
-		log.Print(err.Error(), r.RemoteAddr)
-		http.Error(w, err.Error(), http.StatusBadRequest)
+	ssp_domain, ok := sspFeeds[input.Feed]
+	if !ok {
+		err := fmt.Errorf("Busy")
+		http.Error(w, err.Error(), http.StatusForbidden)
 		return
 	}
 
@@ -439,7 +449,11 @@ func postBid_V2_5(
 	}
 
 	var lang string
-	if lang, ok = geoToLang[input.Payload.BidRequest.Device.Geo.GetCountry()]; !ok {
+	countryForLanguage := ""
+	if input.Payload.BidRequest.Device.Geo != nil {
+		countryForLanguage = input.Payload.BidRequest.Device.Geo.GetCountry()
+	}
+	if lang, ok = geoToLang[countryForLanguage]; !ok {
 		lang = geoToLang["DEFAULT"]
 	}
 
@@ -452,13 +466,30 @@ func postBid_V2_5(
 
 	uaFileds := ua.ParseUA(input.Payload.Device.GetUa())
 
+	if len(input.Payload.Imp) == 0 {
+		err := fmt.Errorf("invalid request: impressions are missing")
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
 	impIdUuid := make(map[string]string, len(input.Payload.Imp))
 	uuidBidFloor := make(map[string]float32, len(input.Payload.Imp))
 
-	for i := range input.Payload.Imp {
+	for _, imp := range input.Payload.Imp {
+		if imp == nil || imp.GetId() == "" {
+			err := fmt.Errorf("invalid request: impression id is missing")
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		if _, duplicate := impIdUuid[imp.GetId()]; duplicate {
+			err := fmt.Errorf("invalid request: duplicate impression id %q", imp.GetId())
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+
 		globalId := uuid.New().String()
-		impIdUuid[input.Payload.Imp[i].GetId()] = globalId
-		uuidBidFloor[globalId] = input.Payload.Imp[i].GetBidfloor()
+		impIdUuid[imp.GetId()] = globalId
+		uuidBidFloor[globalId] = imp.GetBidfloor()
 	}
 
 	reqCtx, cancel := context.WithTimeout(ctx, timeout)
@@ -478,17 +509,21 @@ func postBid_V2_5(
 		},
 	)
 	if err != nil {
-		httpErr := fmt.Errorf("Cannot GetWinnerBid because got error:")
+		httpErr := fmt.Errorf("Cannot GetWinnerBid because got error")
 
 		httpCode := http.StatusInternalServerError
 
-		st, ok := status.FromError(err)
-		if !ok {
+		if st, ok := status.FromError(err); ok {
 			httpCode = grpcRuntime.HTTPStatusFromCode(st.Code())
 		}
 
 		http.Error(w, httpErr.Error(), httpCode)
 		log.Print(err.Error())
+		return
+	}
+	if res == nil {
+		log.Print("orchestrator returned a nil response")
+		http.Error(w, "orchestrator returned an empty response", http.StatusServiceUnavailable)
 		return
 	}
 
@@ -606,6 +641,10 @@ func getWorkStatus(
 	w http.ResponseWriter,
 	workStatus *WorkStatus,
 ) {
+	if workStatus == nil {
+		http.Error(w, "work status is unavailable", http.StatusServiceUnavailable)
+		return
+	}
 	popAdult, _ := workStatus.Get(PostBid_POP_ADL_V_2_5_URL)
 	popMainstream, _ := workStatus.Get(PostBid_POP_MC_V_2_5_URL)
 	ippAdult, _ := workStatus.Get(PostBid_IPP_ADL_V_2_5_URL)
@@ -635,10 +674,14 @@ func putWorkStatus(
 	workStatus *WorkStatus,
 	streamURL string,
 ) {
-	input := r.Context().Value(httpin.Input).(*putWorkStatusRequest)
+	input, ok := r.Context().Value(httpin.Input).(*putWorkStatusRequest)
+	if !ok || input == nil || workStatus == nil {
+		http.Error(w, "invalid work status request", http.StatusBadRequest)
+		return
+	}
 
 	if err := workStatus.Set(streamURL, input.Work); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		http.Error(w, err.Error(), http.StatusServiceUnavailable)
 		return
 	}
 
@@ -652,7 +695,11 @@ func putAllWorkStatus(
 	r *http.Request,
 	workStatus *WorkStatus,
 ) {
-	input := r.Context().Value(httpin.Input).(*putWorkStatusRequest)
+	input, ok := r.Context().Value(httpin.Input).(*putWorkStatusRequest)
+	if !ok || input == nil || workStatus == nil {
+		http.Error(w, "invalid work status request", http.StatusBadRequest)
+		return
+	}
 	workStatus.SetAll(input.Work)
 
 	if err := rnr.Text(w, http.StatusOK, fmt.Sprintf("Changed all ORTB streams to %v", input.Work)); err != nil {

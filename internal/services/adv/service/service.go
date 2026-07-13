@@ -2,71 +2,39 @@ package auction
 
 import (
 	"context"
-	"database/sql"
-	"encoding/json"
+	"errors"
 	"fmt"
-	"log"
 	"math"
 	"math/rand"
 	"net/url"
 	"sort"
 	"strconv"
 	"strings"
-	"sync"
+	"sync/atomic"
 	"time"
 
-	"gitlab.com/twinbid-exchange/RTB-exchange/internal/filter"
+	"github.com/google/uuid"
 	filterV2 "gitlab.com/twinbid-exchange/RTB-exchange/internal/filterV2"
-	"gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/proto/types/ortb_V2_5"
+	ortb "gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/proto/types/ortb_V2_5"
 	utils "gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/utils_grpc"
-	"gitlab.com/twinbid-exchange/RTB-exchange/internal/types"
 	"gitlab.com/twinbid-exchange/RTB-exchange/internal/ua"
 )
 
-// SlotDuration задаёт длительность одного временного слота (5 минут)
-const SlotDuration = 5 * time.Minute
-
 const (
-	CampaignStatusActive       = "active"
-	CampaignStatusPaused       = "paused"
-	CampaignStatusDraft        = "draft"
-	CampaignStatusModeration   = "moderation"
-	CampaignStatusCompleted    = "completed"
-	CampaignStatusNoBudget     = "no_budget"
-	CampaignStatusPendingStart = "pending_start"
-
-	PricingModelCPM = "CPM"
-	PricingModelCPC = "CPC"
-
-	EventTypeImpression = "impression"
-	EventTypeClick      = "click"
+	SlotDuration         = 5 * time.Minute
+	CampaignStatusActive = "active"
+	PricingModelCPM      = "CPM"
+	PricingModelCPC      = "CPC"
+	TrafficAdult         = "ADULT"
+	TrafficMainstream    = "MAINSTREAM"
+	unknownTrackerValue  = "unknown"
 )
 
-// QualitySegment определяет сегмент качества трафика.
-type QualitySegment string
-
-const (
-	QualitySegmentUsual QualitySegment = "usual"
-	QualitySegmentHigh  QualitySegment = "high"
-	QualitySegmentUltra QualitySegment = "ultra"
-)
-
-// qualitySegmentSSPMap хранит SSP-домены по сегментам качества.
-// Домены являются локальной бизнес-настройкой; при наличии внешнего хранилища
-// этот маппинг должен загружаться из конфигурации/БД.
-var qualitySegmentSSPMap = map[QualitySegment][]string{
-	QualitySegmentUsual: {"usual.ssp.local"},
-	QualitySegmentHigh:  {"high.ssp.local"},
-	QualitySegmentUltra: {"ultra.ssp.local"},
-}
-
-// TimeRange представляет интервал времени с точными датой и временем (UTC)
 type TimeRange struct {
 	Start time.Time `json:"start"`
 	End   time.Time `json:"end"`
 }
 
-// Creative хранит минимальные данные креатива, которые нужны аукциону для ADM-ссылки.
 type Creative struct {
 	ID             string
 	CampaignID     string
@@ -80,393 +48,20 @@ type Creative struct {
 	Description    string
 }
 
-// TrackerMacroValues содержит значения макросов, которых нет или пока может не быть в BidRequest.
-type TrackerMacroValues struct {
-	Device   string
-	Browser  string
-	DeviceOS string
-}
-
-var weekdayIndex = map[string]int{
-	"sun": 0,
-	"mon": 1,
-	"tue": 2,
-	"wed": 3,
-	"thu": 4,
-	"fri": 5,
-	"sat": 6,
-}
-
-// ParseActiveIntervalSchedule разворачивает недельное расписание из БД вида:
-// [["mon,4", "mon,4"], ["mon,6", "tue,10"], ["tue,18", "sun,23"]]
-// в конкретные UTC TimeRange внутри окна кампании. Точки расписания задают
-// включительные часы, поэтому End в TimeRange выставляется на следующий час
-// после конечной точки и остаётся эксклюзивным.
-func ParseActiveIntervalSchedule(schedule [][]string, windowStart, windowEnd time.Time) ([]TimeRange, error) {
-	if len(schedule) == 0 || !windowStart.Before(windowEnd) {
-		return nil, nil
-	}
-
-	weekStart := startOfWeek(windowStart.UTC())
-	expandedUntil := windowEnd.UTC().Add(7 * 24 * time.Hour)
-	var intervals []TimeRange
-
-	for _, pair := range schedule {
-		if len(pair) != 2 {
-			return nil, fmt.Errorf("invalid schedule interval %v", pair)
-		}
-		startOffset, err := parseWeekOffset(pair[0])
-		if err != nil {
-			return nil, err
-		}
-		endOffset, err := parseWeekOffset(pair[1])
-		if err != nil {
-			return nil, err
-		}
-		if endOffset < startOffset {
-			endOffset += 7 * 24 * time.Hour
-		}
-		endExclusiveOffset := endOffset + time.Hour
-
-		for base := weekStart; base.Before(expandedUntil); base = base.Add(7 * 24 * time.Hour) {
-			start := base.Add(startOffset)
-			end := base.Add(endExclusiveOffset)
-			clippedStart := maxTime(start, windowStart.UTC())
-			clippedEnd := minTime(end, windowEnd.UTC())
-			if clippedStart.Before(clippedEnd) {
-				intervals = append(intervals, TimeRange{Start: clippedStart, End: clippedEnd})
-			}
-		}
-	}
-
-	sort.Slice(intervals, func(i, j int) bool { return intervals[i].Start.Before(intervals[j].Start) })
-	return intervals, nil
-}
-
-func parseWeekOffset(value string) (time.Duration, error) {
-	parts := strings.Split(value, ",")
-	if len(parts) != 2 {
-		return 0, fmt.Errorf("invalid schedule point %q", value)
-	}
-	day, ok := weekdayIndex[strings.ToLower(strings.TrimSpace(parts[0]))]
-	if !ok {
-		return 0, fmt.Errorf("invalid weekday %q", parts[0])
-	}
-	hour, err := strconv.Atoi(strings.TrimSpace(parts[1]))
-	if err != nil || hour < 0 || hour > 23 {
-		return 0, fmt.Errorf("invalid hour %q", parts[1])
-	}
-	return time.Duration(day*24+hour) * time.Hour, nil
-}
-
-func startOfWeek(t time.Time) time.Time {
-	dayStart := time.Date(t.Year(), t.Month(), t.Day(), 0, 0, 0, 0, time.UTC)
-	return dayStart.Add(-time.Duration(dayStart.Weekday()) * 24 * time.Hour)
-}
-
-const getCampaignsQuery = `
-	SELECT
-		user_id,
-		device_type,
-		os,
-		browser,
-		site_id,
-		ip,
-		campaign_id,
-		h,
-		w,
-		vertical,
-		base_price,
-		evenness_by_slot_mode,
-		start_ts,
-		end_ts,
-		active_intervals,
-		country,
-		language,
-		campaign_name,
-		format_type,
-		brand_name,
-		quality_type,
-		pricing_model,
-		status,
-		traffic_type
-	FROM campaigns
-`
-
-const getCreativesByCampaignQuery = `
-	SELECT
-		id,
-		campaign_id,
-		trackers_macros,
-		w,
-		h,
-		name,
-		creative_name,
-		link,
-		title,
-		description
-	FROM creatives
-	WHERE campaign_id = $1
-`
-
-// GetCampaignsFromPostgres загружает все кампании из Postgres и возвращает мапу
-// campaign_id -> Campaign. Для каждой кампании дополнительно загружаются креативы.
-func GetCampaignsFromPostgres(ctx context.Context, db *sql.DB) (map[string]*Campaign, error) {
-	if db == nil {
-		return nil, fmt.Errorf("postgres db is nil")
-	}
-
-	rows, err := db.QueryContext(ctx, getCampaignsQuery)
-	if err != nil {
-		return nil, fmt.Errorf("query campaigns: %w", err)
-	}
-	defer rows.Close()
-
-	campaigns := make(map[string]*Campaign)
-	for rows.Next() {
-		var row campaignRow
-		if err := rows.Scan(
-			&row.UserID, &row.DeviceType, &row.OS, &row.Browser, &row.SiteID, &row.IP,
-			&row.CampaignID, &row.H, &row.W, &row.Vertical, &row.BasePrice,
-			&row.EvennessBySlotMode, &row.StartTS, &row.EndTS, &row.ActiveIntervals,
-			&row.Country, &row.Language, &row.CampaignName, &row.FormatType, &row.BrandName,
-			&row.QualityType, &row.PricingModel, &row.Status, &row.TrafficType,
-		); err != nil {
-			return nil, fmt.Errorf("scan campaign row: %w", err)
-		}
-
-		campaign, err := row.toCampaign()
-		if err != nil {
-			return nil, err
-		}
-		campaigns[campaign.ID] = campaign
-	}
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("iterate campaign rows: %w", err)
-	}
-	if err := rows.Close(); err != nil {
-		return nil, fmt.Errorf("close campaign rows: %w", err)
-	}
-
-	for campaignID, campaign := range campaigns {
-		creatives, err := getCreativesForCampaignFromPostgres(ctx, db, campaignID)
-		if err != nil {
-			return nil, err
-		}
-		campaign.Creatives = creatives
-	}
-
-	return campaigns, nil
-}
-
-func getCreativesForCampaignFromPostgres(ctx context.Context, db *sql.DB, campaignID string) (map[string]*Creative, error) {
-	rows, err := db.QueryContext(ctx, getCreativesByCampaignQuery, campaignID)
-	if err != nil {
-		return nil, fmt.Errorf("query creatives for campaign_id=%s: %w", campaignID, err)
-	}
-	defer rows.Close()
-
-	creatives := make(map[string]*Creative)
-	for rows.Next() {
-		var row creativeRow
-		if err := rows.Scan(
-			&row.ID, &row.CampaignID, &row.TrackersMacros, &row.W, &row.H,
-			&row.Name, &row.CreativeName, &row.ADMURL, &row.Title, &row.Description,
-		); err != nil {
-			return nil, fmt.Errorf("scan creative row for campaign_id=%s: %w", campaignID, err)
-		}
-
-		creative, err := row.toCreative()
-		if err != nil {
-			return nil, fmt.Errorf("parse creative for campaign_id=%s: %w", campaignID, err)
-		}
-		creatives[creative.ID] = creative
-	}
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("iterate creatives for campaign_id=%s: %w", campaignID, err)
-	}
-	return creatives, nil
-}
-
-type creativeRow struct {
-	ID, CampaignID, Name, CreativeName, ADMURL, Title, Description sql.NullString
-	TrackersMacros                                                 []byte
-	W, H                                                           sql.NullInt64
-}
-
-func (r creativeRow) toCreative() (*Creative, error) {
-	creativeID := nullableString(r.ID)
-	if creativeID == "" {
-		return nil, fmt.Errorf("creative id is empty")
-	}
-	trackersMacros, err := parseTrackersMacrosJSONB(r.TrackersMacros)
-	if err != nil {
-		return nil, fmt.Errorf("parse trackers_macros for creative_id=%s: %w", creativeID, err)
-	}
-	return &Creative{
-		ID:             creativeID,
-		CampaignID:     nullableString(r.CampaignID),
-		TrackersMacros: trackersMacros,
-		W:              int(r.W.Int64),
-		H:              int(r.H.Int64),
-		Name:           nullableString(r.Name),
-		CreativeName:   nullableString(r.CreativeName),
-		ADMURL:         nullableString(r.ADMURL),
-		Title:          nullableString(r.Title),
-		Description:    nullableString(r.Description),
-	}, nil
-}
-
-func parseTrackersMacrosJSONB(raw []byte) (map[string]bool, error) {
-	if len(raw) == 0 || string(raw) == "null" || string(raw) == "{}" {
-		return nil, nil
-	}
-	var macros map[string]bool
-	if err := json.Unmarshal(raw, &macros); err != nil {
-		return nil, err
-	}
-	return macros, nil
-}
-
-type campaignRow struct {
-	UserID, CampaignID, BasePrice, CampaignName, FormatType        sql.NullString
-	BrandName, QualityType, PricingModel, Status, TrafficType      sql.NullString
-	DeviceType, OS, Browser, SiteID, IP, Vertical, ActiveIntervals []byte
-	Country, Language                                              []byte
-	H, W                                                           sql.NullInt64
-	EvennessBySlotMode                                             sql.NullBool
-	StartTS, EndTS                                                 sql.NullTime
-}
-
-func (r campaignRow) toCampaign() (*Campaign, error) {
-	campaignID := nullableString(r.CampaignID)
-	if campaignID == "" {
-		return nil, fmt.Errorf("campaign_id is empty")
-	}
-	basePrice, err := parseNullFloat64(r.BasePrice)
-	if err != nil {
-		return nil, fmt.Errorf("parse base_price for campaign_id=%s: %w", campaignID, err)
-	}
-	activeIntervals, err := parseActiveIntervalsJSONB(r.ActiveIntervals, r.StartTS.Time, r.EndTS.Time)
-	if err != nil {
-		return nil, fmt.Errorf("parse active_intervals for campaign_id=%s: %w", campaignID, err)
-	}
-	countryFilter, err := parseCampaignFilter(r.Country, campaignID, "country")
-	if err != nil {
-		return nil, err
-	}
-	languageFilter, err := parseCampaignFilter(r.Language, campaignID, "language")
-	if err != nil {
-		return nil, err
-	}
-	deviceTypeFilter, err := parseCampaignFilter(r.DeviceType, campaignID, "device_type")
-	if err != nil {
-		return nil, err
-	}
-	osFilter, err := parseCampaignFilter(r.OS, campaignID, "os")
-	if err != nil {
-		return nil, err
-	}
-	browserFilter, err := parseCampaignFilter(r.Browser, campaignID, "browser")
-	if err != nil {
-		return nil, err
-	}
-	siteIDFilter, err := parseCampaignFilter(r.SiteID, campaignID, "site_id")
-	if err != nil {
-		return nil, err
-	}
-	ipFilter, err := parseCampaignFilter(r.IP, campaignID, "ip")
-	if err != nil {
-		return nil, err
-	}
-
-	campaign := &Campaign{
-		ID: campaignID, UserID: nullableString(r.UserID), Status: nullableString(r.Status), PricingModel: nullableString(r.PricingModel),
-		Format: nullableString(r.FormatType), CampaignName: nullableString(r.CampaignName), BrandName: nullableString(r.BrandName),
-		QualitySegment: nullableString(r.QualityType), TrafficType: nullableString(r.TrafficType), H: int(r.H.Int64), W: int(r.W.Int64),
-		Vertical: cloneJSONRawMessage(r.Vertical), BasePrice: basePrice, EvennessBySlotMode: r.EvennessBySlotMode.Valid && r.EvennessBySlotMode.Bool,
-		StartTS: r.StartTS.Time, EndTS: r.EndTS.Time, CountryFilter: countryFilter, LanguageFilter: languageFilter,
-		DeviceTypeFilter: deviceTypeFilter, OSFilter: osFilter, BrowserFilter: browserFilter, SiteIDFilter: siteIDFilter, IPFilter: ipFilter,
-		ActiveIntervals: activeIntervals, Creatives: make(map[string]*Creative),
-	}
-	campaign.normalizeDefaultsLocked()
-	return campaign, nil
-}
-
-func nullableString(value sql.NullString) string {
-	if !value.Valid {
-		return ""
-	}
-	return value.String
-}
-
-func parseNullFloat64(value sql.NullString) (float64, error) {
-	if !value.Valid || strings.TrimSpace(value.String) == "" {
-		return 0, nil
-	}
-	return strconv.ParseFloat(value.String, 64)
-}
-
-func cloneJSONRawMessage(raw []byte) json.RawMessage {
-	if len(raw) == 0 || string(raw) == "null" {
-		return nil
-	}
-	return append(json.RawMessage(nil), raw...)
-}
-
-func parseCampaignFilter(raw []byte, campaignID, field string) (*filterV2.Filters, error) {
-	filters, err := filterV2.GetFiltersFromJSONB(raw)
-	if err != nil {
-		return nil, fmt.Errorf("parse %s filter for campaign_id=%s: %w", field, campaignID, err)
-	}
-	return filters, nil
-}
-
-func parseActiveIntervalsJSONB(raw []byte, windowStart, windowEnd time.Time) ([]TimeRange, error) {
-	if len(raw) == 0 || string(raw) == "null" || string(raw) == "[]" {
-		return nil, nil
-	}
-	var schedule [][]string
-	if err := json.Unmarshal(raw, &schedule); err == nil {
-		return ParseActiveIntervalSchedule(schedule, windowStart, windowEnd)
-	}
-	var ranges []TimeRange
-	if err := json.Unmarshal(raw, &ranges); err != nil {
-		return nil, err
-	}
-	return ranges, nil
-}
-
-// Campaign представляет рекламную кампанию
 type Campaign struct {
-	// Основные поля
-	ID                  string
-	UserID              string
-	Status              string
-	PricingModel        string
-	Format              string
-	CampaignName        string
-	BrandName           string
-	TrafficType         string
-	H                   int
-	W                   int
-	Vertical            json.RawMessage
-	BasePrice           float64
-	PlatformFeePercent  float64
-	EvennessBySlotMode  bool
-	GoalTotalDollars    float64
-	Budget              float64
-	DailyBudget         *float64
-	DailySpent          float64
-	DailySpentResetDate time.Time
-	QualitySegment      string
-	CumDoneDollars      float64
-	SlotDoneDollars     float64
-	StartTS             time.Time
-	EndTS               time.Time
-
-	// Связь с фильтрами
-	DSPURL string // URL DSP, которому принадлежит кампания
+	ID                 string
+	UserID             string
+	Status             string
+	PricingModel       string
+	Format             string
+	TrafficType        string
+	QualitySegment     string
+	BasePrice          float64
+	GoalTotalDollars   float64
+	EvennessBySlotMode bool
+	StartTS            time.Time
+	EndTS              time.Time
+	ActiveIntervals    []TimeRange
 
 	CountryFilter    *filterV2.Filters
 	LanguageFilter   *filterV2.Filters
@@ -476,826 +71,651 @@ type Campaign struct {
 	SiteIDFilter     *filterV2.Filters
 	IPFilter         *filterV2.Filters
 
-	// Активные интервалы (nil или пустой = всегда активна)
-	ActiveIntervals []TimeRange
-
-	// Креативы кампании: первый уровень мапы находится в AuctionService.creativesByCampaignID,
-	// а это локальная ссылка для удобного доступа из Campaign.
-	Creatives map[string]*Creative
-
-	// Защита от конкурентного доступа
-	mu sync.RWMutex
+	Creatives []*Creative
 }
 
-func (c *Campaign) normalizeDefaultsLocked() {
-	if c.Status == "" {
-		c.Status = CampaignStatusActive
-	}
-	if c.PricingModel == "" {
-		c.PricingModel = PricingModelCPM
-	}
-	if c.Budget == 0 {
-		c.Budget = c.GoalTotalDollars
-	}
-	if c.QualitySegment == "" {
-		c.QualitySegment = string(QualitySegmentUsual)
-	}
-	if c.Creatives == nil {
-		c.Creatives = make(map[string]*Creative)
-	}
-}
-
-// GetCPMEquivalent возвращает CPM-эквивалент для сортировки в аукционе.
-func (c *Campaign) GetCPMEquivalent() float64 {
-	c.mu.RLock()
-	defer c.mu.RUnlock()
-	return c.BasePrice
-}
-
-// GetCost возвращает стоимость события в зависимости от типа события и модели оплаты.
-func (c *Campaign) GetCost(eventType string) float64 {
-	c.mu.RLock()
-	defer c.mu.RUnlock()
-
-	switch eventType {
-	case EventTypeImpression:
-		if strings.EqualFold(c.PricingModel, PricingModelCPM) {
-			return c.BasePrice / 1000
-		}
-	case EventTypeClick:
-		if strings.EqualFold(c.PricingModel, PricingModelCPC) {
-			return c.BasePrice
-		}
-		if strings.EqualFold(c.PricingModel, PricingModelCPM) && (c.Format == "popunder" || c.Format == "in-page-push") {
-			return c.BasePrice / 1000
-		}
-	}
-
-	return 0
-}
-
-// GetAuctionPrice возвращает цену после вычета процента платформы.
-func (c *Campaign) GetAuctionPrice() float64 {
-	c.mu.RLock()
-	defer c.mu.RUnlock()
-	fee := math.Max(0, math.Min(c.PlatformFeePercent, 100))
-	return c.BasePrice * (1 - fee/100)
-}
-
-func (c *Campaign) GetAuctionPriceForFormat(format string) float64 {
-	c.mu.RLock()
-	defer c.mu.RUnlock()
-
-	price := c.BasePrice
-	if strings.TrimSpace(format) == "" {
-		format = c.Format
-	}
-
-	switch normalizedAuctionFormat(format) {
-	case "ipp", "native", "banner", "popunder":
-		if strings.EqualFold(c.PricingModel, PricingModelCPM) {
-			price = c.BasePrice / 1000
-		} else if strings.EqualFold(c.PricingModel, PricingModelCPC) {
-			price = c.BasePrice
-		}
-	default:
-		if strings.EqualFold(c.PricingModel, PricingModelCPM) {
-			price = c.BasePrice / 1000
-		} else if strings.EqualFold(c.PricingModel, PricingModelCPC) {
-			price = c.BasePrice
-		}
-	}
-
-	fee := math.Max(0, math.Min(c.PlatformFeePercent, 100))
-	return price * (1 - fee/100)
-}
-
-func normalizedAuctionFormat(format string) string {
-	switch strings.ToLower(strings.TrimSpace(format)) {
-	case "ipp", "in-page-push", "in_page_push":
-		return "ipp"
-	case "nat", "native":
-		return "native"
-	case "ban", "banner":
-		return "banner"
-	case "pop", "popunder", "pop_under":
-		return "popunder"
-	default:
-		return strings.ToLower(strings.TrimSpace(format))
-	}
-}
-
-func (c *Campaign) IsStatusActive() bool {
-	c.mu.RLock()
-	defer c.mu.RUnlock()
-	return strings.EqualFold(c.Status, CampaignStatusActive)
-}
-
-// IsActiveInIntervals проверяет, попадает ли текущее время в один из заданных интервалов.
-func (c *Campaign) IsActiveInIntervals(now time.Time) bool {
-	if len(c.ActiveIntervals) == 0 {
-		return true
-	}
-	for _, interval := range c.ActiveIntervals {
-		if (now.Equal(interval.Start) || now.After(interval.Start)) && now.Before(interval.End) {
-			return true
-		}
-	}
-	return false
-}
-
-// IsActiveGlobal проверяет, активна ли кампания глобально.
-func (c *Campaign) IsActiveGlobal(now time.Time) bool {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	c.normalizeDefaultsLocked()
-	if c.Status != CampaignStatusActive || now.Before(c.StartTS) || !now.Before(c.EndTS) {
-		return false
-	}
-	if !c.isActiveInIntervalsLocked(now) {
-		return false
-	}
-	return c.CumDoneDollars < c.goalLocked() && c.checkDailyBudgetLocked(now)
-}
-
-func (c *Campaign) goalLocked() float64 {
-	if c.Budget > 0 {
-		return c.Budget
-	}
-	return c.GoalTotalDollars
-}
-
-func (c *Campaign) isActiveInIntervalsLocked(now time.Time) bool {
-	if len(c.ActiveIntervals) == 0 {
-		return true
-	}
-	for _, interval := range c.ActiveIntervals {
-		if (now.Equal(interval.Start) || now.After(interval.Start)) && now.Before(interval.End) {
-			return true
-		}
-	}
-	return false
-}
-
-// calculateActiveSeconds возвращает количество секунд работы кампании от now до end с учётом интервалов.
-func calculateActiveSeconds(now time.Time, intervals []TimeRange, start, end time.Time) int64 {
-	from := maxTime(now, start)
-	if !from.Before(end) {
-		return 0
-	}
-	if len(intervals) == 0 {
-		return int64(end.Sub(from).Seconds())
-	}
-	var seconds int64
-	for _, interval := range intervals {
-		intervalStart := maxTime(from, interval.Start)
-		intervalEnd := minTime(end, interval.End)
-		if intervalStart.Before(intervalEnd) {
-			seconds += int64(intervalEnd.Sub(intervalStart).Seconds())
-		}
-	}
-	return seconds
-}
-
-func minTime(a, b time.Time) time.Time {
-	if a.Before(b) {
-		return a
-	}
-	return b
-}
-func maxTime(a, b time.Time) time.Time {
-	if a.After(b) {
-		return a
-	}
-	return b
-}
-
-// SlotsLeft возвращает количество полных активных слотов до окончания кампании.
-func (c *Campaign) SlotsLeft(now time.Time) int {
-	c.mu.RLock()
-	defer c.mu.RUnlock()
-	seconds := calculateActiveSeconds(now, c.ActiveIntervals, c.StartTS, c.EndTS)
-	if seconds <= 0 {
-		return 0
-	}
-	return int(math.Ceil(float64(seconds) / SlotDuration.Seconds()))
-}
-
-// SlotTarget вычисляет целевую сумму на текущий слот.
-func (c *Campaign) SlotTarget(now time.Time) float64 {
-	c.mu.RLock()
-	defer c.mu.RUnlock()
-	remaining := c.goalLocked() - c.CumDoneDollars
-	if remaining <= 0 {
-		return 0
-	}
-	seconds := calculateActiveSeconds(now, c.ActiveIntervals, c.StartTS, c.EndTS)
-	if seconds <= 0 {
-		return 0
-	}
-	return remaining / math.Ceil(float64(seconds)/SlotDuration.Seconds())
-}
-
-// IsEligibleByMinThreshold проверяет минимальный порог участия 20%.
-func (c *Campaign) IsEligibleByMinThreshold() bool {
-	c.mu.RLock()
-	defer c.mu.RUnlock()
-	goal := c.goalLocked()
-	if goal <= 0 {
-		return false
-	}
-	remainingShare := (goal - c.CumDoneDollars) / goal
-	return remainingShare >= 0.20
-}
-
-// ShouldParticipateInSlot определяет, может ли кампания участвовать в слоте.
-func (c *Campaign) ShouldParticipateInSlot(now time.Time) bool {
-	if !c.IsActiveGlobal(now) || !c.IsEligibleByMinThreshold() {
-		return false
-	}
-	c.mu.RLock()
-	defer c.mu.RUnlock()
-	if !c.EvennessBySlotMode {
-		return true
-	}
-	target := c.slotTargetLocked(now)
-	return target > 0 && c.SlotDoneDollars < target
-}
-
-func (c *Campaign) slotTargetLocked(now time.Time) float64 {
-	remaining := c.goalLocked() - c.CumDoneDollars
-	seconds := calculateActiveSeconds(now, c.ActiveIntervals, c.StartTS, c.EndTS)
-	if remaining <= 0 || seconds <= 0 {
-		return 0
-	}
-	return remaining / math.Ceil(float64(seconds)/SlotDuration.Seconds())
-}
-
-// CheckDailyBudget проверяет дневной лимит. Сброс счётчика между днями в памяти;
-// для нескольких инстансов сервиса требуется внешнее хранилище дневных расходов.
-func (c *Campaign) CheckDailyBudget(now time.Time) bool {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	return c.checkDailyBudgetLocked(now)
-}
-
-func (c *Campaign) checkDailyBudgetLocked(now time.Time) bool {
-	if c.DailyBudget == nil {
-		return true
-	}
-	day := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
-	if c.DailySpentResetDate.IsZero() || !c.DailySpentResetDate.Equal(day) {
-		c.DailySpentResetDate = day
-		c.DailySpent = 0
-	}
-	return c.DailySpent < *c.DailyBudget
-}
-
-// RecordEvent учитывает событие показа или клика и обновляет бюджетные статусы.
-func (c *Campaign) RecordEvent(eventType string) {
-	now := time.Now()
-	cost := c.GetCost(eventType)
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	c.normalizeDefaultsLocked()
-	if now.After(c.EndTS) {
-		c.Status = CampaignStatusCompleted
-		return
-	}
-	if !c.checkDailyBudgetLocked(now) {
-		log.Printf("[Auction] daily budget reached: campaign=%s", c.ID)
-		return
-	}
-	if cost <= 0 {
-		return
-	}
-	c.CumDoneDollars += cost
-	c.SlotDoneDollars += cost
-	if c.DailyBudget != nil {
-		c.DailySpent += cost
-	}
-	if c.CumDoneDollars >= c.goalLocked() {
-		c.Status = CampaignStatusNoBudget
-	}
-	if now.After(c.EndTS) {
-		c.Status = CampaignStatusCompleted
-	}
-	log.Printf("[Auction] recorded %s: campaign=%s cost=%.6f total=%.6f status=%s", eventType, c.ID, cost, c.CumDoneDollars, c.Status)
-}
-
-// ResetSlotDone обнуляет счётчик слота.
-func (c *Campaign) ResetSlotDone() { c.mu.Lock(); defer c.mu.Unlock(); c.SlotDoneDollars = 0 }
-
-func (c *Campaign) GetCumDone() float64 { c.mu.RLock(); defer c.mu.RUnlock(); return c.CumDoneDollars }
-func (c *Campaign) GetSlotDone() float64 {
-	c.mu.RLock()
-	defer c.mu.RUnlock()
-	return c.SlotDoneDollars
-}
-
-// FirstCreative возвращает первый доступный креатив кампании.
-func (c *Campaign) FirstCreative() *Creative {
-	c.mu.RLock()
-	defer c.mu.RUnlock()
-	for _, creative := range c.Creatives {
-		return creative
-	}
-	return nil
-}
-
-func (c *Campaign) RandomCreative() *Creative {
-	c.mu.RLock()
-	defer c.mu.RUnlock()
-	if len(c.Creatives) == 0 {
-		return nil
-	}
-	idx := rand.Intn(len(c.Creatives))
-	for _, creative := range c.Creatives {
-		if idx == 0 {
-			return creative
-		}
-		idx--
-	}
-	return nil
-}
-
-// AuctionService - сервис аукциона
-type AuctionService struct {
-	campaigns             *map[string]*Campaign
-	creativesByCampaignID *map[string]map[string]*Creative
-	filterProcessor       *filter.OptimizedFilterProcessor
-	percentMapAdult       *map[string]map[string]map[string]*types.PercentAndBidfloor
-	percentMapMainstream  *map[string]map[string]map[string]*types.PercentAndBidfloor
-	mu                    sync.RWMutex
-}
-
-func NewAuctionService(filterProcessor *filter.OptimizedFilterProcessor) *AuctionService {
-	return &AuctionService{
-		campaigns:             &map[string]*Campaign{},
-		creativesByCampaignID: &map[string]map[string]*Creative{},
-		filterProcessor:       filterProcessor,
-		percentMapAdult:       &map[string]map[string]map[string]*types.PercentAndBidfloor{},
-		percentMapMainstream:  &map[string]map[string]map[string]*types.PercentAndBidfloor{},
-	}
-}
-
-func (s *AuctionService) ReplaceCampaigns(campaigns map[string]*Campaign) {
-	if campaigns == nil {
-		campaigns = make(map[string]*Campaign)
-	}
-
-	creativesByCampaignID := make(map[string]map[string]*Creative, len(campaigns))
-	for campaignID, campaign := range campaigns {
-		if campaign == nil {
-			continue
-		}
-		campaign.mu.Lock()
-		campaign.normalizeDefaultsLocked()
-		campaign.mu.Unlock()
-		creativesByCampaignID[campaignID] = campaign.Creatives
-	}
-
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.campaigns = &campaigns
-	s.creativesByCampaignID = &creativesByCampaignID
-}
-
-func (s *AuctionService) StartPostgresRefreshTicker(ctx context.Context, db *sql.DB, interval time.Duration) {
-	if interval <= 0 {
-		interval = 5 * time.Second
-	}
-
-	refresh := func() {
-		campaigns, err := GetCampaignsFromPostgres(ctx, db)
-		if err != nil {
-			log.Printf("[Auction] failed to refresh campaigns: %v", err)
-			return
-		}
-		s.ReplaceCampaigns(campaigns)
-	}
-
-	refresh()
-	ticker := time.NewTicker(interval)
-	go func() {
-		defer ticker.Stop()
-		for {
-			select {
-			case <-ctx.Done():
-				return
-			case <-ticker.C:
-				refresh()
-			}
-		}
-	}()
-}
-
-func (s *AuctionService) AddCampaign(campaign *Campaign) {
-	campaign.mu.Lock()
-	campaign.normalizeDefaultsLocked()
-	if campaign.DailyBudget != nil && *campaign.DailyBudget > campaign.goalLocked() {
-		*campaign.DailyBudget = campaign.goalLocked()
-	}
-	campaign.mu.Unlock()
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	(*s.campaigns)[campaign.ID] = campaign
-	(*s.creativesByCampaignID)[campaign.ID] = campaign.Creatives
-}
-
-func (s *AuctionService) GetCampaign(id string) *Campaign {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	return (*s.campaigns)[id]
-}
-
-// SetCampaignCreatives задаёт креативы кампании в формате:
-// campaignID -> creativeID -> Creative. ADMURL берётся из Creative.ADMURL.
-func (s *AuctionService) SetCampaignCreatives(campaignID string, creatives map[string]*Creative) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	if creatives == nil {
-		creatives = make(map[string]*Creative)
-	}
-	(*s.creativesByCampaignID)[campaignID] = creatives
-	if campaign := (*s.campaigns)[campaignID]; campaign != nil {
-		campaign.mu.Lock()
-		campaign.Creatives = creatives
-		campaign.mu.Unlock()
-	}
-}
-
-// ApplyCreativeTrackerMacros читает из Postgres таблицу creatives (id, trackers_macros)
-// и добавляет в ADM-ссылки креативов включённые макросы как query-параметры.
-func (s *AuctionService) ApplyCreativeTrackerMacros(
-	ctx context.Context,
-	db *sql.DB,
-	campaignID string,
-	req *ortb_V2_5.BidRequest,
-	values TrackerMacroValues,
-) error {
-	if db == nil {
-		return fmt.Errorf("postgres db is nil")
-	}
-
-	rows, err := db.QueryContext(ctx, `SELECT id, trackers_macros FROM creatives`)
-	if err != nil {
-		return fmt.Errorf("query creatives trackers_macros: %w", err)
-	}
-	defer rows.Close()
-
-	s.mu.RLock()
-	campaignCreatives := (*s.creativesByCampaignID)[campaignID]
-	s.mu.RUnlock()
-	if len(campaignCreatives) == 0 {
-		return nil
-	}
-
-	for rows.Next() {
-		var creativeID string
-		var rawMacros []byte
-		if err := rows.Scan(&creativeID, &rawMacros); err != nil {
-			return fmt.Errorf("scan creative trackers_macros: %w", err)
-		}
-
-		creative := campaignCreatives[creativeID]
-		if creative == nil {
-			continue
-		}
-
-		var macros map[string]bool
-		if len(rawMacros) > 0 {
-			if err := json.Unmarshal(rawMacros, &macros); err != nil {
-				return fmt.Errorf("unmarshal trackers_macros for creative %s: %w", creativeID, err)
-			}
-		}
-		creative.TrackersMacros = macros
-		creative.ADMURL = appendTrackerMacrosToADMURL(creative.ADMURL, macros, campaignID, creativeID, req, values)
-	}
-
-	return rows.Err()
-}
-
-func appendTrackerMacrosToADMURL(
-	admURL string,
-	macros map[string]bool,
-	campaignID string,
-	creativeID string,
-	req *ortb_V2_5.BidRequest,
-	values TrackerMacroValues,
-) string {
-	if len(macros) == 0 {
-		return admURL
-	}
-
-	parsedURL, err := url.Parse(admURL)
-	if err != nil {
-		return admURL
-	}
-
-	query := parsedURL.Query()
-	for key, enabled := range macros {
-		if !enabled {
-			continue
-		}
-		query.Set(key, trackerMacroValue(key, campaignID, creativeID, req, values))
-	}
-	parsedURL.RawQuery = query.Encode()
-	return parsedURL.String()
-}
-
-func trackerMacroValue(
-	key string,
-	campaignID string,
-	creativeID string,
-	req *ortb_V2_5.BidRequest,
-	values TrackerMacroValues,
-) string {
-	switch key {
-	case "campaign_id":
-		return campaignID
-	case "creative_id":
-		return creativeID
-	case "country_code":
-		if req != nil && req.GetDevice() != nil && req.GetDevice().GetGeo() != nil {
-			return req.GetDevice().GetGeo().GetCountry()
-		}
-	case "ip_address":
-		if req != nil && req.GetDevice() != nil {
-			return req.GetDevice().GetIp()
-		}
-	case "device_os":
-		if values.DeviceOS != "" {
-			return values.DeviceOS
-		}
-		if req != nil && req.GetDevice() != nil {
-			return req.GetDevice().GetOs()
-		}
-	case "site_id":
-		if req != nil && req.GetSite() != nil {
-			return req.GetSite().GetId()
-		}
-	case "browser":
-		return values.Browser
-	case "device":
-		return values.Device
-	case "click_id":
-		if req != nil {
-			return req.GetId()
-		}
-	}
-	return ""
-}
-
-func (s *AuctionService) passesFilters(c *Campaign, req *ortb_V2_5.BidRequest) bool {
-	if s.filterProcessor == nil {
-		return true
-	}
-	return s.filterProcessor.ProcessRequestForDSPV25(c.DSPURL, req).Allowed
-}
-
-func chooseMostExpensive(campaigns []*Campaign) *Campaign {
-	if len(campaigns) == 0 {
-		return nil
-	}
-	sort.SliceStable(campaigns, func(i, j int) bool { return campaigns[i].GetAuctionPrice() > campaigns[j].GetAuctionPrice() })
-	return campaigns[0]
-}
-
-func (s *AuctionService) chooseFirstFilteredByAuctionPrice(campaigns []*Campaign, req *ortb_V2_5.BidRequest) *Campaign {
-	sortedCampaigns := append([]*Campaign(nil), campaigns...)
-	chooseMostExpensive(sortedCampaigns)
-	for _, campaign := range sortedCampaigns {
-		if s.passesFilters(campaign, req) {
-			return campaign
-		}
-	}
-	return nil
-}
-
-// GetSSPDomainsForQualitySegment возвращает SSP-фиды для сегмента качества.
-func GetSSPDomainsForQualitySegment(segment string) []string {
-	domains := qualitySegmentSSPMap[QualitySegment(segment)]
-	if len(domains) == 0 {
-		domains = qualitySegmentSSPMap[QualitySegmentUsual]
-	}
-	return append([]string(nil), domains...)
+type Snapshot struct {
+	Campaigns []*Campaign
+	UserGoals map[string]float64
 }
 
 type AuctionRequestOptions struct {
 	Format      string
 	TrafficType string
 	SSPDomain   string
+	ImpIDUUID   map[string]string
 }
 
-type AuctionResult struct {
-	Campaign     *Campaign
-	Creative     *Creative
-	AuctionPrice float64
-	ADM          string
+type AuctionOutcome struct {
+	BidResponse   *ortb.BidResponse
+	WinnerUserIDs map[string]string
 }
 
-func (s *AuctionService) SetPercentMaps(
-	percentMapAdult map[string]map[string]map[string]*types.PercentAndBidfloor,
-	percentMapMainstream map[string]map[string]map[string]*types.PercentAndBidfloor,
-) {
-	if percentMapAdult == nil {
-		percentMapAdult = make(map[string]map[string]map[string]*types.PercentAndBidfloor)
-	}
-	if percentMapMainstream == nil {
-		percentMapMainstream = make(map[string]map[string]map[string]*types.PercentAndBidfloor)
-	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.percentMapAdult = &percentMapAdult
-	s.percentMapMainstream = &percentMapMainstream
+type candidate struct {
+	campaign       *Campaign
+	creatives      []*Creative
+	chargePrice    float64
+	effectivePrice float64
 }
 
-func QualitySegmentBySSPDomain(sspDomain string) string {
-	sspDomain = strings.TrimSpace(strings.ToLower(sspDomain))
-	if sspDomain == "" {
-		return ""
+type AuctionService struct {
+	snapshot  atomic.Pointer[Snapshot]
+	runtime   *RuntimeStore
+	winners   *WinnerStore
+	percents  *PercentStore
+	quality   *QualityStore
+	admDomain string
+}
+
+func NewAuctionService(runtime *RuntimeStore, winners *WinnerStore, percents *PercentStore, quality *QualityStore, admDomain string) *AuctionService {
+	s := &AuctionService{runtime: runtime, winners: winners, percents: percents, quality: quality, admDomain: strings.TrimSpace(admDomain)}
+	s.snapshot.Store(&Snapshot{Campaigns: []*Campaign{}, UserGoals: map[string]float64{}})
+	return s
+}
+
+func (s *AuctionService) Snapshot() *Snapshot {
+	if s == nil {
+		return nil
 	}
-	for segment, domains := range qualitySegmentSSPMap {
-		for _, domain := range domains {
-			if strings.EqualFold(domain, sspDomain) {
-				return string(segment)
+	current := s.snapshot.Load()
+	if current == nil {
+		return nil
+	}
+	cloned, err := cloneAndValidateSnapshot(current)
+	if err != nil {
+		return nil
+	}
+	return cloned
+}
+
+func (s *AuctionService) currentSnapshot() *Snapshot {
+	if s == nil {
+		return nil
+	}
+	return s.snapshot.Load()
+}
+
+func (s *AuctionService) PublishSnapshot(snapshot *Snapshot) error {
+	if s == nil {
+		return errors.New("auction service is nil")
+	}
+	cloned, err := cloneAndValidateSnapshot(snapshot)
+	if err != nil {
+		return err
+	}
+	s.snapshot.Store(cloned)
+	return nil
+}
+
+func cloneAndValidateSnapshot(src *Snapshot) (*Snapshot, error) {
+	if src == nil {
+		return nil, errors.New("snapshot is nil")
+	}
+	out := &Snapshot{
+		Campaigns: make([]*Campaign, 0, len(src.Campaigns)),
+		UserGoals: make(map[string]float64, len(src.UserGoals)),
+	}
+	for rawID, goal := range src.UserGoals {
+		id := strings.TrimSpace(rawID)
+		if id == "" || !finiteNonNegative(goal) {
+			return nil, fmt.Errorf("invalid user goal for %q", rawID)
+		}
+		if _, duplicate := out.UserGoals[id]; duplicate {
+			return nil, fmt.Errorf("duplicate normalized user id %q", id)
+		}
+		out.UserGoals[id] = goal
+	}
+
+	campaignIDs := make(map[string]struct{}, len(src.Campaigns))
+	for _, campaign := range src.Campaigns {
+		if campaign == nil {
+			return nil, errors.New("snapshot contains nil campaign")
+		}
+		clone := *campaign
+		clone.ID = strings.TrimSpace(clone.ID)
+		clone.UserID = strings.TrimSpace(clone.UserID)
+		clone.Status = strings.ToLower(strings.TrimSpace(clone.Status))
+		clone.PricingModel = strings.ToUpper(strings.TrimSpace(clone.PricingModel))
+		clone.Format = normalizeFormat(clone.Format)
+		clone.TrafficType = normalizeTraffic(clone.TrafficType)
+		clone.QualitySegment = strings.ToLower(strings.TrimSpace(clone.QualitySegment))
+
+		if clone.ID == "" || clone.UserID == "" {
+			return nil, errors.New("campaign has empty id or user_id")
+		}
+		if _, duplicate := campaignIDs[clone.ID]; duplicate {
+			return nil, fmt.Errorf("duplicate campaign id %s", clone.ID)
+		}
+		campaignIDs[clone.ID] = struct{}{}
+		if clone.Status != CampaignStatusActive {
+			return nil, fmt.Errorf("campaign %s is not active", clone.ID)
+		}
+		if clone.PricingModel != PricingModelCPM && clone.PricingModel != PricingModelCPC {
+			return nil, fmt.Errorf("campaign %s has invalid pricing model", clone.ID)
+		}
+		if clone.Format == "" || clone.TrafficType == "" {
+			return nil, fmt.Errorf("campaign %s has invalid format or traffic type", clone.ID)
+		}
+		if _, ok := validQualitySegments[clone.QualitySegment]; !ok {
+			return nil, fmt.Errorf("campaign %s has invalid quality segment", clone.ID)
+		}
+		if !finitePositive(clone.BasePrice) || !finiteNonNegative(clone.GoalTotalDollars) {
+			return nil, fmt.Errorf("campaign %s has invalid price or goal", clone.ID)
+		}
+		if clone.StartTS.IsZero() || clone.EndTS.IsZero() || !clone.StartTS.Before(clone.EndTS) {
+			return nil, fmt.Errorf("campaign %s has invalid time window", clone.ID)
+		}
+		clone.StartTS = clone.StartTS.UTC()
+		clone.EndTS = clone.EndTS.UTC()
+		clone.ActiveIntervals = make([]TimeRange, 0, len(campaign.ActiveIntervals))
+		for _, interval := range campaign.ActiveIntervals {
+			interval.Start = interval.Start.UTC()
+			interval.End = interval.End.UTC()
+			if interval.Start.Before(clone.StartTS) || interval.End.After(clone.EndTS) || !interval.Start.Before(interval.End) {
+				return nil, fmt.Errorf("campaign %s has invalid active interval", clone.ID)
+			}
+			clone.ActiveIntervals = append(clone.ActiveIntervals, interval)
+		}
+		if _, ok := out.UserGoals[clone.UserID]; !ok {
+			return nil, fmt.Errorf("campaign %s has no user goal", clone.ID)
+		}
+
+		clone.CountryFilter = cloneFilter(campaign.CountryFilter)
+		clone.LanguageFilter = cloneFilter(campaign.LanguageFilter)
+		clone.DeviceTypeFilter = cloneFilter(campaign.DeviceTypeFilter)
+		clone.OSFilter = cloneFilter(campaign.OSFilter)
+		clone.BrowserFilter = cloneFilter(campaign.BrowserFilter)
+		clone.SiteIDFilter = cloneFilter(campaign.SiteIDFilter)
+		clone.IPFilter = cloneFilter(campaign.IPFilter)
+		clone.Creatives = make([]*Creative, 0, len(campaign.Creatives))
+		creativeIDs := make(map[string]struct{}, len(campaign.Creatives))
+		for _, creative := range campaign.Creatives {
+			if creative == nil {
+				return nil, fmt.Errorf("campaign %s contains nil creative", clone.ID)
+			}
+			cc := *creative
+			cc.ID = strings.TrimSpace(cc.ID)
+			cc.CampaignID = strings.TrimSpace(cc.CampaignID)
+			cc.ADMURL = strings.TrimSpace(cc.ADMURL)
+			if cc.ID == "" || cc.ADMURL == "" || cc.W <= 0 || cc.H <= 0 {
+				return nil, fmt.Errorf("campaign %s has invalid creative", clone.ID)
+			}
+			if cc.CampaignID == "" {
+				cc.CampaignID = clone.ID
+			}
+			if cc.CampaignID != clone.ID {
+				return nil, fmt.Errorf("creative %s belongs to another campaign", cc.ID)
+			}
+			if _, duplicate := creativeIDs[cc.ID]; duplicate {
+				return nil, fmt.Errorf("campaign %s has duplicate creative %s", clone.ID, cc.ID)
+			}
+			creativeIDs[cc.ID] = struct{}{}
+			cc.TrackersMacros = cloneBoolMap(creative.TrackersMacros)
+			clone.Creatives = append(clone.Creatives, &cc)
+		}
+		out.Campaigns = append(out.Campaigns, &clone)
+	}
+	return out, nil
+}
+
+func finiteNonNegative(value float64) bool {
+	return !math.IsNaN(value) && !math.IsInf(value, 0) && value >= 0
+}
+
+func finitePositive(value float64) bool {
+	return finiteNonNegative(value) && value > 0
+}
+
+func cloneFilter(src *filterV2.Filters) *filterV2.Filters {
+	if src == nil {
+		return nil
+	}
+	objects := make(map[string]bool, len(src.Objects))
+	for key, value := range src.Objects {
+		objects[key] = value
+	}
+	return &filterV2.Filters{Apply: src.Apply, IsWhiteList: src.IsWhiteList, Objects: objects}
+}
+
+func cloneBoolMap(src map[string]bool) map[string]bool {
+	if len(src) == 0 {
+		return nil
+	}
+	out := make(map[string]bool, len(src))
+	for key, value := range src {
+		out[key] = value
+	}
+	return out
+}
+
+func (s *AuctionService) Auction(ctx context.Context, req *ortb.BidRequest, now time.Time, options AuctionRequestOptions) (*AuctionOutcome, error) {
+	if s == nil || !validAuctionInput(req, options.ImpIDUUID) {
+		return nil, ErrInvalidAuctionRequest
+	}
+	if s.runtime == nil || s.winners == nil || s.percents == nil || s.quality == nil {
+		return nil, errors.New("auction dependencies are not initialized")
+	}
+	requestedFormat := normalizeFormat(options.Format)
+	trafficType := normalizeTraffic(options.TrafficType)
+	sspDomain := normalizeDomain(options.SSPDomain)
+	if requestedFormat == "" || trafficType == "" || sspDomain == "" {
+		return nil, ErrInvalidAuctionRequest
+	}
+	qualitySegment, ok := s.quality.Lookup(sspDomain)
+	if !ok {
+		return &AuctionOutcome{WinnerUserIDs: map[string]string{}}, nil
+	}
+	snapshot := s.currentSnapshot()
+	if snapshot == nil {
+		return nil, errors.New("campaign snapshot is unavailable")
+	}
+
+	seat := &ortb.SeatBid{Bid: make([]*ortb.Bid, 0, len(req.GetImp()))}
+	winnerUsers := make(map[string]string)
+	infrastructureErrors := 0
+
+	for _, imp := range req.GetImp() {
+		if imp == nil || strings.TrimSpace(imp.GetId()) == "" || !impressionMatchesFormat(imp, requestedFormat) {
+			continue
+		}
+		impID := imp.GetId()
+		winnerUUID := strings.TrimSpace(options.ImpIDUUID[impID])
+		if winnerUUID == "" {
+			continue
+		}
+		candidates := make([]candidate, 0, len(snapshot.Campaigns))
+		for _, campaign := range snapshot.Campaigns {
+			cand, eligible, infraErr := s.evaluateCampaign(ctx, snapshot, campaign, req, imp, now, requestedFormat, trafficType, qualitySegment, sspDomain)
+			if infraErr != nil {
+				infrastructureErrors++
+				continue
+			}
+			if eligible {
+				candidates = append(candidates, cand)
 			}
 		}
+		sort.SliceStable(candidates, func(i, j int) bool { return candidates[i].effectivePrice > candidates[j].effectivePrice })
+
+		for _, cand := range candidates {
+			if len(cand.creatives) == 0 {
+				continue
+			}
+			creative := cand.creatives[rand.Intn(len(cand.creatives))]
+			if creative == nil {
+				continue
+			}
+			bid := s.buildBid(req, imp, cand.campaign, creative, winnerUUID, requestedFormat, sspDomain)
+			if bid == nil {
+				continue
+			}
+			winner := WinnerRecord{Price: cand.chargePrice, UserID: cand.campaign.UserID, CampaignID: cand.campaign.ID, Format: requestedFormat}
+			if err := s.winners.Put(ctx, winnerUUID, winner); err != nil {
+				infrastructureErrors++
+				continue
+			}
+			seat.Bid = append(seat.Bid, bid)
+			winnerUsers[impID] = cand.campaign.UserID
+			break
+		}
 	}
-	return ""
+
+	if len(seat.Bid) == 0 {
+		if infrastructureErrors > 0 {
+			return nil, fmt.Errorf("ADV Redis operations failed for %d candidates", infrastructureErrors)
+		}
+		return &AuctionOutcome{WinnerUserIDs: winnerUsers}, nil
+	}
+	responseID := uuid.NewString()
+	currency := "USD"
+	return &AuctionOutcome{
+		BidResponse:   &ortb.BidResponse{Id: &responseID, Cur: &currency, Seatbid: []*ortb.SeatBid{seat}},
+		WinnerUserIDs: winnerUsers,
+	}, nil
 }
 
-func (s *AuctionService) SelectAuction(req *ortb_V2_5.BidRequest, now time.Time, options AuctionRequestOptions) *AuctionResult {
-	if req == nil {
+func validAuctionInput(req *ortb.BidRequest, impIDUUID map[string]string) bool {
+	if req == nil || len(req.GetImp()) == 0 || len(impIDUUID) == 0 {
+		return false
+	}
+	seen := make(map[string]struct{}, len(req.GetImp()))
+	seenUUIDs := make(map[string]struct{}, len(req.GetImp()))
+	for _, imp := range req.GetImp() {
+		if imp == nil {
+			continue
+		}
+		impID := strings.TrimSpace(imp.GetId())
+		if impID == "" {
+			return false
+		}
+		if _, duplicate := seen[impID]; duplicate {
+			return false
+		}
+		seen[impID] = struct{}{}
+		winnerUUID := strings.TrimSpace(impIDUUID[impID])
+		if winnerUUID != "" {
+			if _, duplicate := seenUUIDs[winnerUUID]; duplicate {
+				return false
+			}
+			seenUUIDs[winnerUUID] = struct{}{}
+		}
+	}
+	return len(seen) > 0
+}
+
+func (s *AuctionService) evaluateCampaign(ctx context.Context, snapshot *Snapshot, campaign *Campaign, req *ortb.BidRequest, imp *ortb.Imp, now time.Time, requestedFormat, trafficType, qualitySegment, sspDomain string) (candidate, bool, error) {
+	if campaign == nil || normalizeFormat(campaign.Format) != requestedFormat {
+		return candidate{}, false, nil
+	}
+	if normalizeTraffic(campaign.TrafficType) != trafficType {
+		return candidate{}, false, nil
+	}
+	if !strings.EqualFold(strings.TrimSpace(campaign.QualitySegment), qualitySegment) {
+		return candidate{}, false, nil
+	}
+	if !campaignActiveAt(campaign, now) {
+		return candidate{}, false, nil
+	}
+	chargePrice := CalculateChargePrice(campaign.BasePrice, campaign.PricingModel, requestedFormat)
+	if chargePrice <= 0 || math.IsNaN(chargePrice) || math.IsInf(chargePrice, 0) {
+		return candidate{}, false, nil
+	}
+	campaignSpent, err := s.runtime.CampaignSpent(ctx, campaign.ID)
+	if err != nil {
+		return candidate{}, false, err
+	}
+	if campaign.GoalTotalDollars-campaignSpent < chargePrice {
+		return candidate{}, false, nil
+	}
+	if campaign.EvennessBySlotMode {
+		eligible, err := s.runtime.PacingEligible(ctx, campaign, now, campaignSpent)
+		if err != nil {
+			return candidate{}, false, err
+		}
+		if !eligible {
+			return candidate{}, false, nil
+		}
+	}
+	userGoal, ok := snapshot.UserGoals[campaign.UserID]
+	if !ok || userGoal < 0 || math.IsNaN(userGoal) || math.IsInf(userGoal, 0) {
+		return candidate{}, false, nil
+	}
+	userSpent, err := s.runtime.UserSpent(ctx, campaign.UserID)
+	if err != nil {
+		return candidate{}, false, err
+	}
+	if userGoal-userSpent < chargePrice {
+		return candidate{}, false, nil
+	}
+	creatives := matchingCreatives(campaign.Creatives, imp, requestedFormat)
+	if len(creatives) == 0 {
+		return candidate{}, false, nil
+	}
+	if !campaignPassesFilters(campaign, req) {
+		return candidate{}, false, nil
+	}
+	deduction := s.percents.Lookup(trafficType, sspDomain, requestCountry(req), campaign.UserID)
+	effective := CalculateEffectiveAuctionPrice(chargePrice, deduction)
+	if effective <= 0 {
+		return candidate{}, false, nil
+	}
+	return candidate{campaign: campaign, creatives: creatives, chargePrice: chargePrice, effectivePrice: effective}, true, nil
+}
+
+func (s *AuctionService) buildBid(req *ortb.BidRequest, imp *ortb.Imp, campaign *Campaign, creative *Creative, winnerUUID, format, sspDomain string) *ortb.Bid {
+	if s == nil || imp == nil || campaign == nil || creative == nil || strings.TrimSpace(s.admDomain) == "" {
 		return nil
 	}
-
-	uaValues := ua.ParseUA("")
-	if req.GetDevice() != nil {
-		uaValues = ua.ParseUA(req.GetDevice().GetUa())
-	}
-	macroValues := TrackerMacroValues{Device: uaValues.Device, Browser: uaValues.Browser, DeviceOS: uaValues.OS}
-	qualitySegment := QualitySegmentBySSPDomain(options.SSPDomain)
-
-	s.mu.RLock()
-	campaigns := *s.campaigns
-	percentMap := s.percentMapForOptions(options)
-	candidates := make([]*AuctionResult, 0, len(campaigns))
-	for _, campaign := range campaigns {
-		if campaign == nil || !campaign.IsStatusActive() {
-			continue
-		}
-		if !campaignMatchesAuctionOptions(campaign, now, options, qualitySegment) || !s.passesFilters(campaign, req) {
-			continue
-		}
-
-		creative := campaign.RandomCreative()
-		if creative == nil {
-			continue
-		}
-
-		price := campaign.GetAuctionPriceForFormat(options.Format)
-		percentValue := utils.GetValueFomSspGeoDspMap(
-			options.SSPDomain,
-			bidRequestCountry(req),
-			campaign.UserID,
-			percentMap,
-			&types.PercentAndBidfloor{Percent: 1, Bidfloor: false},
-		)
-		price = price * float64(percentValue.Percent)
-		if price <= 0 {
-			continue
-		}
-
-		candidates = append(candidates, &AuctionResult{Campaign: campaign, Creative: creative, AuctionPrice: price})
-	}
-	s.mu.RUnlock()
-
-	if len(candidates) == 0 {
+	originalADM := appendTrackerMacros(creative.ADMURL, creative.TrackersMacros, campaign.ID, creative.ID, req)
+	if strings.TrimSpace(originalADM) == "" {
 		return nil
 	}
-	sort.SliceStable(candidates, func(i, j int) bool { return candidates[i].AuctionPrice > candidates[j].AuctionPrice })
-	winner := candidates[0]
-	winner.ADM = appendTrackerMacrosToADMURL(
-		winner.Creative.ADMURL,
-		winner.Creative.TrackersMacros,
-		winner.Campaign.ID,
-		winner.Creative.ID,
-		req,
-		macroValues,
-	)
-	return winner
-}
-
-func (s *AuctionService) percentMapForOptions(options AuctionRequestOptions) map[string]map[string]map[string]*types.PercentAndBidfloor {
-	if strings.EqualFold(options.TrafficType, "ADULT") {
-		return *s.percentMapAdult
+	adm := utils.WrapURL(s.admDomain, originalADM, winnerUUID, format)
+	nurl := utils.WrapNurlURL(s.admDomain, "", winnerUUID, sspDomain, format)
+	burl := utils.WrapBurlURL(s.admDomain, winnerUUID, format)
+	id, impID, cid, crid := creative.ID, imp.GetId(), campaign.ID, creative.ID
+	price := float32(campaign.BasePrice)
+	w, h := int32(creative.W), int32(creative.H)
+	bid := &ortb.Bid{Id: &id, Impid: &impID, Price: &price, Adm: &adm, Cid: &cid, Crid: &crid, W: &w, H: &h}
+	if nurl != "" {
+		bid.Nurl = &nurl
 	}
-	return *s.percentMapMainstream
+	if burl != "" {
+		bid.Burl = &burl
+	}
+	return bid
 }
 
-func bidRequestCountry(req *ortb_V2_5.BidRequest) string {
+func campaignActiveAt(campaign *Campaign, now time.Time) bool {
+	if campaign == nil || !strings.EqualFold(strings.TrimSpace(campaign.Status), CampaignStatusActive) {
+		return false
+	}
+	if campaign.StartTS.IsZero() || campaign.EndTS.IsZero() || now.Before(campaign.StartTS) || !now.Before(campaign.EndTS) {
+		return false
+	}
+	if len(campaign.ActiveIntervals) == 0 {
+		return true
+	}
+	for _, interval := range campaign.ActiveIntervals {
+		if !now.Before(interval.Start) && now.Before(interval.End) {
+			return true
+		}
+	}
+	return false
+}
+
+func matchingCreatives(creatives []*Creative, imp *ortb.Imp, format string) []*Creative {
+	if normalizeFormat(format) != "BAN" {
+		out := make([]*Creative, 0, len(creatives))
+		for _, creative := range creatives {
+			if creative != nil && strings.TrimSpace(creative.ID) != "" && strings.TrimSpace(creative.ADMURL) != "" {
+				out = append(out, creative)
+			}
+		}
+		return out
+	}
+	sizes := bannerSizes(imp)
+	if len(sizes) == 0 {
+		return nil
+	}
+	out := make([]*Creative, 0, len(creatives))
+	for _, creative := range creatives {
+		if creative == nil || creative.W <= 0 || creative.H <= 0 {
+			continue
+		}
+		if sizes[[2]int{creative.W, creative.H}] {
+			out = append(out, creative)
+		}
+	}
+	return out
+}
+
+func bannerSizes(imp *ortb.Imp) map[[2]int]bool {
+	if imp == nil || imp.GetBanner() == nil {
+		return nil
+	}
+	banner := imp.GetBanner()
+	out := make(map[[2]int]bool)
+	for _, size := range banner.GetFormat() {
+		if size != nil && size.GetW() > 0 && size.GetH() > 0 {
+			out[[2]int{int(size.GetW()), int(size.GetH())}] = true
+		}
+	}
+	if len(out) == 0 && banner.GetW() > 0 && banner.GetH() > 0 {
+		out[[2]int{int(banner.GetW()), int(banner.GetH())}] = true
+	}
+	return out
+}
+
+func impressionMatchesFormat(imp *ortb.Imp, format string) bool {
+	if imp == nil {
+		return false
+	}
+	switch normalizeFormat(format) {
+	case "BAN", "IPP":
+		return imp.GetBanner() != nil
+	case "NAT":
+		return imp.GetNative() != nil
+	case "POP":
+		// OpenRTB 2.5 has no dedicated popunder object. In this project a
+		// POP impression is represented by the absence of banner/native objects;
+		// the endpoint-provided format remains the authoritative route format.
+		return imp.GetBanner() == nil && imp.GetNative() == nil
+	default:
+		return false
+	}
+}
+
+func normalizeFormat(value string) string {
+	switch strings.ToUpper(strings.TrimSpace(value)) {
+	case "POP", "POPUNDER", "POP_UNDER":
+		return "POP"
+	case "BAN", "BANNER":
+		return "BAN"
+	case "NAT", "NATIVE":
+		return "NAT"
+	case "IPP", "IN-PAGE-PUSH", "IN_PAGE_PUSH":
+		return "IPP"
+	default:
+		return ""
+	}
+}
+
+func normalizeTraffic(value string) string {
+	switch strings.ToUpper(strings.TrimSpace(value)) {
+	case TrafficAdult:
+		return TrafficAdult
+	case TrafficMainstream:
+		return TrafficMainstream
+	default:
+		return ""
+	}
+}
+
+func requestCountry(req *ortb.BidRequest) string {
 	if req != nil && req.GetDevice() != nil && req.GetDevice().GetGeo() != nil {
-		return req.GetDevice().GetGeo().GetCountry()
+		return strings.ToUpper(strings.TrimSpace(req.GetDevice().GetGeo().GetCountry()))
 	}
 	return ""
 }
 
-func campaignMatchesAuctionOptions(campaign *Campaign, now time.Time, options AuctionRequestOptions, qualitySegment string) bool {
-	campaign.mu.RLock()
-	format := campaign.Format
-	trafficType := campaign.TrafficType
-	campaignQualitySegment := campaign.QualitySegment
-	campaign.mu.RUnlock()
-
-	if strings.TrimSpace(options.Format) != "" && !strings.EqualFold(format, options.Format) {
+func campaignPassesFilters(c *Campaign, req *ortb.BidRequest) bool {
+	if c == nil {
 		return false
 	}
-	if strings.TrimSpace(options.TrafficType) != "" && !strings.EqualFold(trafficType, options.TrafficType) {
-		return false
+	var country, language, deviceType, osName, browser, siteID, ip *string
+	if req != nil {
+		if device := req.GetDevice(); device != nil {
+			if geo := device.GetGeo(); geo != nil {
+				country = nonEmptyStringPtr(geo.GetCountry())
+			}
+			language = nonEmptyStringPtr(device.GetLanguage())
+			if device.DeviceType != nil {
+				value := strconv.Itoa(int(device.GetDeviceType()))
+				deviceType = &value
+			}
+			osName = nonEmptyStringPtr(device.GetOs())
+			ip = nonEmptyStringPtr(device.GetIp())
+			parsed := ua.ParseUA(device.GetUa())
+			browser = nonEmptyStringPtr(parsed.Browser)
+			if osName == nil {
+				osName = nonEmptyStringPtr(parsed.OS)
+			}
+		}
+		if site := req.GetSite(); site != nil {
+			siteID = nonEmptyStringPtr(site.GetId())
+		}
 	}
-	if qualitySegment != "" && !strings.EqualFold(campaignQualitySegment, qualitySegment) {
-		return false
-	}
-	return campaign.IsActiveGlobal(now) && campaign.IsEligibleByMinThreshold()
+	return allowed(c.CountryFilter, country) &&
+		allowed(c.LanguageFilter, language) &&
+		allowed(c.DeviceTypeFilter, deviceType) &&
+		allowed(c.OSFilter, osName) &&
+		allowed(c.BrowserFilter, browser) &&
+		allowed(c.SiteIDFilter, siteID) &&
+		allowed(c.IPFilter, ip)
 }
 
-// SelectCampaign выбирает кампанию для BidRequest.
-func (s *AuctionService) SelectCampaign(req *ortb_V2_5.BidRequest, now time.Time) *Campaign {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	var priority, regular, active []*Campaign
-	for _, c := range *s.campaigns {
-		auctionPrice := c.GetAuctionPrice()
-		if auctionPrice <= 0 || !c.IsActiveGlobal(now) || !c.IsEligibleByMinThreshold() {
-			continue
-		}
+func allowed(filter *filterV2.Filters, value *string) bool {
+	if filter == nil {
+		return true
+	}
+	return filter.Allowed(value)
+}
 
-		active = append(active, c)
-		c.mu.RLock()
-		even := c.EvennessBySlotMode
-		c.mu.RUnlock()
-		if !even {
-			priority = append(priority, c)
-		} else if c.ShouldParticipateInSlot(now) {
-			regular = append(regular, c)
-		}
-	}
-	var selected *Campaign
-	mode := "fallback"
-	if len(priority) > 0 {
-		selected = s.chooseFirstFilteredByAuctionPrice(priority, req)
-		mode = "priority"
-	} else if len(regular) > 0 {
-		selected = s.chooseFirstFilteredByAuctionPrice(regular, req)
-		mode = "even"
-	} else {
-		selected = s.chooseFirstFilteredByAuctionPrice(active, req)
-	}
-	if selected == nil {
+func nonEmptyStringPtr(value string) *string {
+	value = strings.TrimSpace(value)
+	if value == "" {
 		return nil
 	}
-	auctionPrice := selected.GetAuctionPrice()
-	log.Printf("[Auction] Selected campaign: ID=%s, auction_price=%.2f, DSP=%s, segment=%s, feeds=%v, mode=%s, slot_done=%.2f, slot_target=%.2f",
-		selected.ID, auctionPrice, selected.DSPURL, selected.QualitySegment,
-		GetSSPDomainsForQualitySegment(selected.QualitySegment), mode, selected.GetSlotDone(), selected.SlotTarget(now))
-	return selected
+	return &value
 }
 
-// CheckUserBalance обновляет статусы кампаний пользователя по внешнему сигналу баланса.
-// В текущей in-memory модели userID не хранится, поэтому вызывающий код должен передать кампании нужного пользователя.
-func CheckUserBalance(campaigns []*Campaign, hasPositiveBalance bool) {
-	for _, c := range campaigns {
-		c.mu.Lock()
-		if hasPositiveBalance && c.Status == CampaignStatusPaused {
-			c.Status = CampaignStatusActive
+func appendTrackerMacros(admURL string, macros map[string]bool, campaignID, creativeID string, req *ortb.BidRequest) string {
+	if len(macros) == 0 {
+		return admURL
+	}
+	parsed, err := url.Parse(admURL)
+	if err != nil {
+		return admURL
+	}
+	q := parsed.Query()
+	for key, enabled := range macros {
+		if !enabled || !supportedTrackerMacro(key) {
+			continue
 		}
-		if !hasPositiveBalance && c.Status == CampaignStatusActive {
-			c.Status = CampaignStatusPaused
-		}
-		c.mu.Unlock()
+		q.Set(key, trackerMacroValue(key, campaignID, creativeID, req))
+	}
+	parsed.RawQuery = q.Encode()
+	return parsed.String()
+}
+
+func supportedTrackerMacro(key string) bool {
+	switch key {
+	case "device", "browser", "site_id", "device_os", "ip_address", "campaign_id", "creative_id", "country_code":
+		return true
+	default:
+		return false
 	}
 }
 
-func (s *AuctionService) SlotTick(now time.Time) {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	log.Printf("[Auction] New slot started at %v", now.Truncate(SlotDuration))
-	for _, campaign := range *s.campaigns {
-		campaign.ResetSlotDone()
-	}
-}
-
-func (s *AuctionService) GetActiveCampaignsCount(now time.Time) int {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	count := 0
-	for _, campaign := range *s.campaigns {
-		if campaign.IsActiveGlobal(now) {
-			count++
+func trackerMacroValue(key, campaignID, creativeID string, req *ortb.BidRequest) string {
+	value := ""
+	switch key {
+	case "campaign_id":
+		value = campaignID
+	case "creative_id":
+		value = creativeID
+	case "site_id":
+		if req != nil && req.GetSite() != nil {
+			value = req.GetSite().GetId()
+		}
+	case "ip_address":
+		if req != nil && req.GetDevice() != nil {
+			value = req.GetDevice().GetIp()
+		}
+	case "country_code":
+		if req != nil && req.GetDevice() != nil && req.GetDevice().GetGeo() != nil {
+			value = req.GetDevice().GetGeo().GetCountry()
+		}
+	case "device_os":
+		if req != nil && req.GetDevice() != nil {
+			value = req.GetDevice().GetOs()
+			if strings.TrimSpace(value) == "" {
+				value = ua.ParseUA(req.GetDevice().GetUa()).OS
+			}
+		}
+	case "browser":
+		if req != nil && req.GetDevice() != nil {
+			value = ua.ParseUA(req.GetDevice().GetUa()).Browser
+		}
+	case "device":
+		if req != nil && req.GetDevice() != nil {
+			value = ua.ParseUA(req.GetDevice().GetUa()).Device
 		}
 	}
-	return count
+	if strings.TrimSpace(value) == "" {
+		return unknownTrackerValue
+	}
+	return value
 }
+
+var ErrInvalidAuctionRequest = errors.New("invalid ADV auction request")

@@ -66,7 +66,18 @@ func (s *Server) GetWinnerBid_V2_5(
 			funcErr = status.Error(grpcCode, err.Error())
 		}
 	}()
-	getBidsReqCtx, cancel := context.WithTimeout(ctx, s.getBidsTimeout)
+	if s == nil || req == nil || req.GetBidRequest() == nil {
+		return nil, status.Error(codes.InvalidArgument, "orchestrator request or bid request is nil")
+	}
+	if s.dspRouterGrpcClient == nil || s.bidEngineGrpcClient == nil {
+		return nil, status.Error(codes.Unavailable, "orchestrator downstream client is unavailable")
+	}
+
+	getBidsTimeout := s.getBidsTimeout
+	if getBidsTimeout <= 0 {
+		getBidsTimeout = time.Second
+	}
+	getBidsReqCtx, cancel := context.WithTimeout(ctx, getBidsTimeout)
 	defer cancel()
 
 	bids, err := s.dspRouterGrpcClient.GetBids_V2_5(
@@ -87,36 +98,48 @@ func (s *Server) GetWinnerBid_V2_5(
 
 		grpcCode := codes.Unknown
 
-		st, ok := status.FromError(err)
-		if !ok {
+		if st, ok := status.FromError(err); ok {
 			grpcCode = st.Code()
-			newErr = fmt.Errorf("Can not get bids from router in  GetWinnerBid because got error: %w", st.Err())
+			newErr = fmt.Errorf("Can not get bids from router in GetWinnerBid because got error: %w", st.Err())
 		}
 
 		return nil, status.Error(grpcCode, newErr.Error())
 	}
 
-	if bids.Code == 703 {
+	if bids == nil {
+		return nil, status.Error(codes.Unavailable, "router returned a nil response")
+	}
+
+	if bids.GetCode() == 703 {
 		return &orchestratorGrpc.OrchestratorResponse_V2_5{
-			BidResponse: nil,
-			Code:        bids.Code,
+			BidResponse:   nil,
+			Code:          bids.GetCode(),
+			Rekl:          false,
+			WinnerUserIds: map[string]string{},
 		}, nil
 	}
 
-	getWinnerBidReqCtx, cancel := context.WithTimeout(ctx, s.getWinnerBidTimeout)
+	getWinnerBidTimeout := s.getWinnerBidTimeout
+	if getWinnerBidTimeout <= 0 {
+		getWinnerBidTimeout = time.Second
+	}
+	getWinnerBidReqCtx, cancel := context.WithTimeout(ctx, getWinnerBidTimeout)
 	defer cancel()
 
 	winner, err := s.bidEngineGrpcClient.GetWinnerBid_V2_5(
 		getWinnerBidReqCtx,
 		&bidEngineGrpc.BidEngineRequest_V2_5{
-			BidRequest:   bids.BidRequest,
-			BidResponses: bids.BidResponses,
-			SspDomain:    bids.SspDomain,
-			Logged:       req.Logged,
-			Typic:        req.Typic,
-			Format:       req.Format,
-			ImpIdUuid:    req.ImpIdUuid,
-			SspUrl:       req.SspUrl,
+			BidRequest:       bids.GetBidRequest(),
+			BidResponses:     bids.GetBidResponses(),
+			SspDomain:        bids.GetSspDomain(),
+			Logged:           req.GetLogged(),
+			Typic:            req.GetTypic(),
+			Format:           req.GetFormat(),
+			ImpIdUuid:        bids.GetImpIdUuid(),
+			SspUrl:           req.GetSspUrl(),
+			Rekl:             bids.GetRekl(),
+			ReadyBidResponse: bids.GetReadyBidResponse(),
+			WinnerUserIds:    bids.GetWinnerUserIds(),
 		},
 	)
 	if err != nil {
@@ -124,8 +147,7 @@ func (s *Server) GetWinnerBid_V2_5(
 
 		grpcCode := codes.Unknown
 
-		st, ok := status.FromError(err)
-		if !ok {
+		if st, ok := status.FromError(err); ok {
 			grpcCode = st.Code()
 			newErr = fmt.Errorf("Can not GetWinnerBid_V2_5 from bidEngine in GetWinnerBid because got error: %w", st.Err())
 		}
@@ -133,10 +155,16 @@ func (s *Server) GetWinnerBid_V2_5(
 		return nil, status.Error(grpcCode, newErr.Error())
 	}
 
+	if winner == nil {
+		return nil, status.Error(codes.Unavailable, "bid engine returned a nil response")
+	}
+
 	return &orchestratorGrpc.OrchestratorResponse_V2_5{
-		BidResponse:    winner.BidResponse,
-		Code:           winner.Code,
-		FailedImpIds:   winner.FailedImpIds,
-		ImpIdUuidClone: winner.ImpIdUuidClone,
+		BidResponse:    winner.GetBidResponse(),
+		Code:           winner.GetCode(),
+		FailedImpIds:   winner.GetFailedImpIds(),
+		ImpIdUuidClone: winner.GetImpIdUuidClone(),
+		Rekl:           winner.GetRekl(),
+		WinnerUserIds:  winner.GetWinnerUserIds(),
 	}, nil
 }

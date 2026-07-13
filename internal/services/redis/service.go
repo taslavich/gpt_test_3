@@ -5,6 +5,7 @@ import (
 	"crypto/tls"
 	"fmt"
 	"hash/fnv"
+	"strings"
 	"time"
 
 	"github.com/redis/go-redis/v9"
@@ -281,5 +282,52 @@ func PingAllShards(ctx context.Context, sharded *RedisShardedClients) error {
 		return err
 	}
 
+	return nil
+}
+
+// ValidateAOF verifies the persistence guarantees required by ADV accounting.
+func ValidateAOF(ctx context.Context, client *redis.Client) error {
+	if client == nil {
+		return fmt.Errorf("redis client is nil")
+	}
+	info, err := client.Info(ctx, "persistence").Result()
+	if err != nil {
+		return fmt.Errorf("read redis persistence info: %w", err)
+	}
+	values := make(map[string]string)
+	for _, line := range strings.Split(info, "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		parts := strings.SplitN(line, ":", 2)
+		if len(parts) == 2 {
+			values[strings.TrimSpace(parts[0])] = strings.TrimSpace(parts[1])
+		}
+	}
+	if values["aof_enabled"] != "1" {
+		return fmt.Errorf("redis AOF is disabled")
+	}
+	if status := values["aof_last_write_status"]; status != "ok" {
+		return fmt.Errorf("redis AOF last write status is %q", status)
+	}
+	if status := values["aof_last_bgrewrite_status"]; status != "" && status != "ok" {
+		return fmt.Errorf("redis AOF last rewrite status is %q", status)
+	}
+	appendOnly, err := client.ConfigGet(ctx, "appendonly").Result()
+	if err != nil {
+		return fmt.Errorf("read redis appendonly configuration: %w", err)
+	}
+	if !strings.EqualFold(strings.TrimSpace(appendOnly["appendonly"]), "yes") {
+		return fmt.Errorf("redis appendonly must be yes")
+	}
+
+	appendFsync, err := client.ConfigGet(ctx, "appendfsync").Result()
+	if err != nil {
+		return fmt.Errorf("read redis appendfsync configuration: %w", err)
+	}
+	if !strings.EqualFold(strings.TrimSpace(appendFsync["appendfsync"]), "everysec") {
+		return fmt.Errorf("redis appendfsync must be everysec")
+	}
 	return nil
 }

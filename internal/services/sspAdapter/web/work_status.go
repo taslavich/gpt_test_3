@@ -30,6 +30,9 @@ func NewWorkStatus(workAdult, workMainstream bool) *WorkStatus {
 }
 
 func (s *WorkStatus) Get(stream string) (bool, error) {
+	if s == nil {
+		return false, fmt.Errorf("work status is nil")
+	}
 	switch stream {
 	case PostBid_POP_ADL_V_2_5_URL:
 		return s.popAdult.Load(), nil
@@ -53,6 +56,9 @@ func (s *WorkStatus) Get(stream string) (bool, error) {
 }
 
 func (s *WorkStatus) Set(stream string, work bool) error {
+	if s == nil {
+		return fmt.Errorf("work status is nil")
+	}
 	switch stream {
 	case PostBid_POP_ADL_V_2_5_URL:
 		s.popAdult.Store(work)
@@ -77,6 +83,9 @@ func (s *WorkStatus) Set(stream string, work bool) error {
 }
 
 func (s *WorkStatus) SetAll(work bool) {
+	if s == nil {
+		return
+	}
 	s.popAdult.Store(work)
 	s.popMainstream.Store(work)
 	s.ippAdult.Store(work)

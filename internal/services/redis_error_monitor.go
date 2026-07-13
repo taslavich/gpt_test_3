@@ -32,6 +32,15 @@ func NewRedisWriteErrorMonitorWithSettings(name string, logThresholdPerSec uint6
 	if ctx == nil {
 		ctx = context.Background()
 	}
+	if tickerInterval <= 0 {
+		tickerInterval = time.Second
+	}
+	if logThresholdPerSec == 0 {
+		logThresholdPerSec = 1
+	}
+	if stopThresholdPerSec == 0 {
+		stopThresholdPerSec = logThresholdPerSec
+	}
 	return &RedisWriteErrorMonitor{
 		name:                 name,
 		logThresholdPerTick:  redisWriteErrorsPerTick(logThresholdPerSec, tickerInterval),
@@ -70,14 +79,21 @@ func (m *RedisWriteErrorMonitor) Start() {
 		ticker := time.NewTicker(m.tickerInterval)
 		defer ticker.Stop()
 
-		for range ticker.C {
+		for {
+			select {
+			case <-m.ctx.Done():
+				return
+			case <-ticker.C:
+			}
 			count := m.errors.Swap(0)
 			if count >= m.stopThresholdPerTick {
 				workStatusURL, _ := m.lastURL.Load().(string)
 				message := fmt.Sprintf("ОСТАНОВКА service=%s Redis write errors reached %d requests per monitor tick, stopping SSP adapter ORTB streams; ticker_interval=%s; ssp_adapter_url=%s", m.name, count, m.tickerInterval, workStatusURL)
 				log.Print(message)
-				if err := m.notifier.SendTextMessageToBot(m.ctx, message); err != nil {
-					log.Printf("❌ failed to send bot notification: %v", err)
+				if m.notifier != nil {
+					if err := m.notifier.SendTextMessageToBot(m.ctx, message); err != nil {
+						log.Printf("❌ failed to send bot notification: %v", err)
+					}
 				}
 				if m.stopFunc != nil {
 					m.stopFunc(count, workStatusURL)
@@ -89,8 +105,10 @@ func (m *RedisWriteErrorMonitor) Start() {
 				workStatusURL, _ := m.lastURL.Load().(string)
 				message := fmt.Sprintf("ПРЕДУПРЕЖДЕНИЕ service=%s Redis write errors reached %d requests per monitor tick; ticker_interval=%s; ssp_adapter_url=%s", m.name, count, m.tickerInterval, workStatusURL)
 				log.Print(message)
-				if err := m.notifier.SendTextMessageToBot(m.ctx, message); err != nil {
-					log.Printf("❌ failed to send bot notification: %v", err)
+				if m.notifier != nil {
+					if err := m.notifier.SendTextMessageToBot(m.ctx, message); err != nil {
+						log.Printf("❌ failed to send bot notification: %v", err)
+					}
 				}
 			}
 		}
@@ -121,6 +139,9 @@ func StopAllSspAdapterOrtbStreams(ctx context.Context, workStatusURLs []string) 
 }
 
 func stopSspAdapterAllStreams(parent context.Context, endpoint string) error {
+	if parent == nil {
+		parent = context.Background()
+	}
 	requestURL, err := buildSspAdapterStopAllURL(endpoint)
 	if err != nil {
 		return err
@@ -160,6 +181,100 @@ func buildSspAdapterStopAllURL(endpoint string) (string, error) {
 	}
 	q := u.Query()
 	q.Set("work", "false")
+	u.RawQuery = q.Encode()
+	return u.String(), nil
+}
+
+// NotifyNow sends an immediate alert through the same notifier used by the
+// RedisWriteErrorMonitor. It is used for single billing failures that cannot
+// wait for the aggregate monitor tick.
+func (m *RedisWriteErrorMonitor) NotifyNow(message string) error {
+	if m == nil || m.notifier == nil {
+		return fmt.Errorf("redis write error notifier is not configured")
+	}
+	return m.notifier.SendTextMessageToBot(m.ctx, message)
+}
+
+// NotifyNowForRecordedError sends one immediate notification for an error that
+// was already registered through RecordForURL. It consumes that one counter so
+// the same billing failure is not reported again by the aggregate ticker.
+func (m *RedisWriteErrorMonitor) NotifyNowForRecordedError(message string) error {
+	if m == nil {
+		return fmt.Errorf("redis write error monitor is nil")
+	}
+	m.consumeErrors(1)
+	return m.NotifyNow(message)
+}
+
+func (m *RedisWriteErrorMonitor) consumeErrors(count uint64) {
+	if m == nil || count == 0 {
+		return
+	}
+	for {
+		current := m.errors.Load()
+		if current == 0 {
+			return
+		}
+		next := uint64(0)
+		if current > count {
+			next = current - count
+		}
+		if m.errors.CompareAndSwap(current, next) {
+			return
+		}
+	}
+}
+
+// SetADVWorkStatus calls every configured ADV control endpoint and returns an
+// actual HTTP status per address. Network and request failures are represented
+// as 503, as required by the billing failure policy.
+func SetADVWorkStatus(parent context.Context, endpoints []string, work bool) map[string]int {
+	if parent == nil {
+		parent = context.Background()
+	}
+	result := make(map[string]int)
+	for _, raw := range endpoints {
+		endpoint := strings.TrimSpace(raw)
+		if endpoint == "" {
+			continue
+		}
+		statusCode := http.StatusServiceUnavailable
+		requestURL, err := buildADVWorkStatusURL(endpoint, work)
+		if err == nil {
+			ctx, cancel := context.WithTimeout(parent, 3*time.Second)
+			req, reqErr := http.NewRequestWithContext(ctx, http.MethodPut, requestURL, nil)
+			if reqErr == nil {
+				resp, doErr := http.DefaultClient.Do(req)
+				if doErr == nil {
+					if resp.StatusCode == http.StatusOK {
+						statusCode = http.StatusOK
+					}
+					_ = resp.Body.Close()
+				}
+			}
+			cancel()
+		}
+		result[endpoint] = statusCode
+	}
+	return result
+}
+
+func buildADVWorkStatusURL(endpoint string, work bool) (string, error) {
+	if !strings.HasPrefix(endpoint, "http://") && !strings.HasPrefix(endpoint, "https://") {
+		endpoint = "http://" + endpoint
+	}
+	u, err := url.Parse(endpoint)
+	if err != nil {
+		return "", err
+	}
+	if u.Host == "" {
+		return "", fmt.Errorf("ADV endpoint has no host")
+	}
+	if u.Path == "" || u.Path == "/" {
+		u.Path = "/work_status"
+	}
+	q := u.Query()
+	q.Set("work", fmt.Sprintf("%t", work))
 	u.RawQuery = q.Encode()
 	return u.String(), nil
 }

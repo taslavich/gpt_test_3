@@ -2,10 +2,15 @@ package sppAdapterWeb
 
 import (
 	"context"
+	"encoding/json"
+	"errors"
+	"fmt"
 	"io"
 	"log"
 	"net/http"
 	"net/url"
+	"strings"
+	"time"
 
 	"github.com/ggicci/httpin"
 	"github.com/google/uuid"
@@ -13,6 +18,8 @@ import (
 	"gitlab.com/twinbid-exchange/RTB-exchange/internal/constants"
 	utils "gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/utils_grpc"
 	services "gitlab.com/twinbid-exchange/RTB-exchange/internal/services"
+	"gitlab.com/twinbid-exchange/RTB-exchange/internal/services/sspAdapter/billing"
+	"gitlab.com/twinbid-exchange/RTB-exchange/internal/services/sspAdapter/outbox"
 )
 
 func getAdm(
@@ -24,50 +31,58 @@ func getAdm(
 	redisSetClicks string,
 	redisWriteErrorMonitor *services.RedisWriteErrorMonitor,
 	sspAdapterWorkStatusURL string,
+	advBillingStore *billing.Store,
+	advOutbox *outbox.Store,
+	advControlURLs []string,
 ) {
-	input := r.Context().Value(httpin.Input).(*admNurlBurlRequest)
+	input, ok := r.Context().Value(httpin.Input).(*admRequest)
+	if !ok || input == nil {
+		http.Error(w, "invalid ADM request", http.StatusBadRequest)
+		return
+	}
 	format, ok := constants.CodeToFormat[input.Format]
 	if !ok {
-		log.Printf("in getAdm invalid format code: %q", input.Format)
-		w.WriteHeader(http.StatusBadRequest)
+		http.Error(w, "invalid format", http.StatusBadRequest)
 		return
 	}
-
 	decodedURL, err := url.QueryUnescape(input.DspURL)
-	if err != nil {
-		log.Printf("in getAdm Failed to decode original URL: %v", err)
-		w.WriteHeader(http.StatusBadRequest)
+	if err != nil || strings.TrimSpace(decodedURL) == "" {
+		http.Error(w, "invalid redirect URL", http.StatusBadRequest)
 		return
 	}
-
-	exists, err := utils.UUIDKeyExistsInRedis(ctx, redisAdmClient, input.GlobalId)
-	if err != nil {
-		log.Printf("failed to check ADM UUID key %s in url %s in getAdm: %v", input.GlobalId, r.URL.String(), err)
-		redisWriteErrorMonitor.RecordForURL(err, sspAdapterWorkStatusURL)
-		w.WriteHeader(http.StatusBadRequest)
-		return
+	isADV := false
+	if format == constants.IPP {
+		var err error
+		isADV, err = billADVCallback(r.Context(), input.GlobalId, format, "adm", advBillingStore, advOutbox, advControlURLs, sspAdapterWorkStatusURL, redisWriteErrorMonitor)
+		if err != nil {
+			w.WriteHeader(http.StatusServiceUnavailable)
+			return
+		}
 	}
-	if !exists {
-		log.Printf("ADM UUID key %s does not exist in url %s in getAdm", input.GlobalId, r.URL.String())
-		w.WriteHeader(http.StatusBadRequest)
-		return
+	if !isADV {
+		exists, err := utils.UUIDKeyExistsInRedis(ctx, redisAdmClient, input.GlobalId)
+		if err != nil {
+			recordRedisError(redisWriteErrorMonitor, err, sspAdapterWorkStatusURL)
+			w.WriteHeader(http.StatusServiceUnavailable)
+			return
+		}
+		if !exists {
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
 	}
 
-	clickUuid := uuid.New().String()
-
-	if err := utils.WriteClickStats(ctx, redisClients, clickUuid, input.GlobalId, format, true); err != nil {
-		log.Printf("failed to WriteClickStats in getAdm: %v", err)
-		redisWriteErrorMonitor.RecordForURL(err, sspAdapterWorkStatusURL)
+	clickUUID := uuid.NewString()
+	if err := utils.WriteClickStats(ctx, redisClients, clickUUID, input.GlobalId, format, true); err != nil {
+		recordRedisError(redisWriteErrorMonitor, err, sspAdapterWorkStatusURL)
 		w.WriteHeader(http.StatusServiceUnavailable)
 		return
 	}
-	if err := utils.AddUUIDToRedisSet(ctx, redisClients, redisSetClicks, clickUuid, true); err != nil {
-		log.Printf("failed to add click UUID to Redis set in getAdm: %v", err)
-		redisWriteErrorMonitor.RecordForURL(err, sspAdapterWorkStatusURL)
+	if err := utils.AddUUIDToRedisSet(ctx, redisClients, redisSetClicks, clickUUID, true); err != nil {
+		recordRedisError(redisWriteErrorMonitor, err, sspAdapterWorkStatusURL)
 		w.WriteHeader(http.StatusServiceUnavailable)
 		return
 	}
-
 	http.Redirect(w, r, decodedURL, http.StatusFound)
 }
 
@@ -82,67 +97,55 @@ func getNurl(
 	redisWriteErrorMonitor *services.RedisWriteErrorMonitor,
 	sspAdapterWorkStatusURL string,
 ) {
-	input := r.Context().Value(httpin.Input).(*admNurlBurlRequest)
-
+	input, ok := r.Context().Value(httpin.Input).(*nurlRequest)
+	if !ok || input == nil {
+		http.Error(w, "invalid NURL request", http.StatusBadRequest)
+		return
+	}
 	if input.Ssp_Domain == "adl_pb.com" {
 		format, ok := constants.CodeToFormat[input.Format]
 		if !ok {
-			log.Printf("in getNurl invalid format code: %q", input.Format)
 			w.WriteHeader(http.StatusBadRequest)
 			return
 		}
-
 		exists, err := utils.UUIDKeyExistsInRedis(ctx, redisNurlClient, input.GlobalId)
 		if err != nil {
-			log.Printf("failed to check NURL UUID key %s in url %s in getNurl: %v", input.GlobalId, r.URL.String(), err)
-			redisWriteErrorMonitor.RecordForURL(err, sspAdapterWorkStatusURL)
-			w.WriteHeader(http.StatusBadRequest)
+			recordRedisError(redisWriteErrorMonitor, err, sspAdapterWorkStatusURL)
+			w.WriteHeader(http.StatusServiceUnavailable)
 			return
 		}
 		if !exists {
-			log.Printf("NURL UUID key %s does not exist in url %s in getNurl", input.GlobalId, r.URL.String())
 			w.WriteHeader(http.StatusBadRequest)
 			return
 		}
-
-		impressionsUuid := uuid.New().String()
-
-		if err := utils.WriteImpressionStats(ctx, redisClients, impressionsUuid, input.GlobalId, format, true); err != nil {
-			log.Printf("failed to WriteImpressionStats in getNurl: %v", err)
-			redisWriteErrorMonitor.RecordForURL(err, sspAdapterWorkStatusURL)
+		impressionUUID := uuid.NewString()
+		if err := utils.WriteImpressionStats(ctx, redisClients, impressionUUID, input.GlobalId, format, true); err != nil {
+			recordRedisError(redisWriteErrorMonitor, err, sspAdapterWorkStatusURL)
 			w.WriteHeader(http.StatusServiceUnavailable)
 			return
 		}
-		if err := utils.AddUUIDToRedisSet(ctx, redisClients, redisSetImpressions, impressionsUuid, true); err != nil {
-			log.Printf("failed to add impression UUID to Redis set in getNurl: %v", err)
-			redisWriteErrorMonitor.RecordForURL(err, sspAdapterWorkStatusURL)
+		if err := utils.AddUUIDToRedisSet(ctx, redisClients, redisSetImpressions, impressionUUID, true); err != nil {
+			recordRedisError(redisWriteErrorMonitor, err, sspAdapterWorkStatusURL)
 			w.WriteHeader(http.StatusServiceUnavailable)
 			return
 		}
 	}
-
 	decodedURL, err := url.QueryUnescape(input.DspURL)
 	if err != nil {
-		log.Printf("in getNurl Failed to decode original URL: %v", err)
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
-
+	if strings.TrimSpace(decodedURL) == "" {
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
 	resp, err := nurlClient.Get(decodedURL)
 	if err != nil {
-		log.Printf("failed to call nurl target: %v", err)
 		w.WriteHeader(http.StatusNoContent)
 		return
 	}
 	defer resp.Body.Close()
-
-	_, err = io.Copy(io.Discard, io.LimitReader(resp.Body, 4096))
-	if err != nil {
-		log.Printf("failed to read nurl target response: %v", err)
-		w.WriteHeader(http.StatusNoContent)
-		return
-	}
-
+	_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 4096))
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -155,44 +158,117 @@ func getBurl(
 	redisSetImpressions string,
 	redisWriteErrorMonitor *services.RedisWriteErrorMonitor,
 	sspAdapterWorkStatusURL string,
+	advBillingStore *billing.Store,
+	advOutbox *outbox.Store,
+	advControlURLs []string,
 ) {
-	input := r.Context().Value(httpin.Input).(*admNurlBurlRequest)
+	input, ok := r.Context().Value(httpin.Input).(*burlRequest)
+	if !ok || input == nil {
+		http.Error(w, "invalid BURL request", http.StatusBadRequest)
+		return
+	}
 	format, ok := constants.CodeToFormat[input.Format]
 	if !ok {
-		log.Printf("in getBurl invalid format code: %q", input.Format)
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
-
-	exists, err := utils.UUIDKeyExistsInRedis(ctx, redisNurlClient, input.GlobalId)
-	if err != nil {
-		log.Printf("failed to check BURL UUID key %s in url %s in getBurl: %v", input.GlobalId, r.URL.String(), err)
-		redisWriteErrorMonitor.RecordForURL(err, sspAdapterWorkStatusURL)
-		w.WriteHeader(http.StatusBadRequest)
-		return
+	isADV := false
+	if format == constants.NAT || format == constants.BAN || format == constants.POP {
+		var err error
+		isADV, err = billADVCallback(r.Context(), input.GlobalId, format, "burl", advBillingStore, advOutbox, advControlURLs, sspAdapterWorkStatusURL, redisWriteErrorMonitor)
+		if err != nil {
+			w.WriteHeader(http.StatusServiceUnavailable)
+			return
+		}
 	}
-	if !exists {
-		log.Printf("BURL UUID key %s does not exist in url %s in getBurl", input.GlobalId, r.URL.String())
-		w.WriteHeader(http.StatusBadRequest)
-		return
+	if !isADV {
+		exists, err := utils.UUIDKeyExistsInRedis(ctx, redisNurlClient, input.GlobalId)
+		if err != nil {
+			recordRedisError(redisWriteErrorMonitor, err, sspAdapterWorkStatusURL)
+			w.WriteHeader(http.StatusServiceUnavailable)
+			return
+		}
+		if !exists {
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
 	}
-
-	impressionsUuid := uuid.New().String()
-
-	if err := utils.WriteImpressionStats(ctx, redisClients, impressionsUuid, input.GlobalId, format, true); err != nil {
-		log.Printf("failed to WriteImpressionStats in getBurl: %v", err)
-		redisWriteErrorMonitor.RecordForURL(err, sspAdapterWorkStatusURL)
+	impressionUUID := uuid.NewString()
+	if err := utils.WriteImpressionStats(ctx, redisClients, impressionUUID, input.GlobalId, format, true); err != nil {
+		recordRedisError(redisWriteErrorMonitor, err, sspAdapterWorkStatusURL)
 		w.WriteHeader(http.StatusServiceUnavailable)
 		return
 	}
-	if err := utils.AddUUIDToRedisSet(ctx, redisClients, redisSetImpressions, impressionsUuid, true); err != nil {
-		log.Printf("failed to add impression UUID to Redis set in getBurl: %v", err)
-		redisWriteErrorMonitor.RecordForURL(err, sspAdapterWorkStatusURL)
+	if err := utils.AddUUIDToRedisSet(ctx, redisClients, redisSetImpressions, impressionUUID, true); err != nil {
+		recordRedisError(redisWriteErrorMonitor, err, sspAdapterWorkStatusURL)
 		w.WriteHeader(http.StatusServiceUnavailable)
 		return
 	}
-
 	w.WriteHeader(http.StatusNoContent)
+}
+
+func billADVCallback(
+	ctx context.Context,
+	winnerUUID, format, source string,
+	store *billing.Store,
+	outboxStore *outbox.Store,
+	controlURLs []string,
+	sspAdapterWorkStatusURL string,
+	monitor *services.RedisWriteErrorMonitor,
+) (bool, error) {
+	if store == nil {
+		return false, nil
+	}
+	winner, err := store.ReadWinner(ctx, winnerUUID, format)
+	if errors.Is(err, redis.Nil) {
+		return false, nil
+	}
+	if err != nil {
+		recordRedisError(monitor, err, sspAdapterWorkStatusURL)
+		return false, err
+	}
+	record := outbox.Record{
+		EventID: uuid.NewString(), UserID: winner.UserID, CampaignID: winner.CampaignID,
+		Price: winner.Price, Format: winner.Format, Source: source, CreatedAt: time.Now().UTC(), Attempts: 1,
+	}
+	if err := store.Apply(ctx, record); err != nil {
+		record.LastError = err.Error()
+		record.LastAttemptAt = time.Now().UTC()
+		handleADVWriteFailure(err, record, outboxStore, controlURLs, sspAdapterWorkStatusURL, monitor)
+		return true, err
+	}
+	return true, nil
+}
+
+func handleADVWriteFailure(redisErr error, record outbox.Record, outboxStore *outbox.Store, controlURLs []string, sspAdapterWorkStatusURL string, monitor *services.RedisWriteErrorMonitor) {
+	outboxErr := errors.New("ADV outbox is not initialized")
+	if outboxStore != nil {
+		outboxErr = outboxStore.Save(record)
+	}
+	stopCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	statuses := services.SetADVWorkStatus(stopCtx, controlURLs, false)
+	cancel()
+	if monitor != nil {
+		monitor.RecordForURL(redisErr, sspAdapterWorkStatusURL)
+	}
+	statusJSON, _ := json.Marshal(statuses)
+	severity := "ADV billing Redis failure"
+	if outboxErr != nil {
+		severity = "CRITICAL ADV billing Redis and outbox failure"
+	}
+	message := fmt.Sprintf("%s: redis_error=%v outbox_error=%v event_id=%s adv_statuses=%s", severity, redisErr, outboxErr, record.EventID, statusJSON)
+	log.Print(message)
+	if monitor != nil {
+		if err := monitor.NotifyNowForRecordedError(message); err != nil {
+			log.Printf("ADV billing immediate notification failed: %v", err)
+		}
+	}
+}
+
+func recordRedisError(monitor *services.RedisWriteErrorMonitor, err error, url string) {
+	if monitor != nil {
+		monitor.RecordForURL(err, url)
+	}
 }
 
 func getCurl(
@@ -204,20 +280,20 @@ func getCurl(
 	redisWriteErrorMonitor *services.RedisWriteErrorMonitor,
 	sspAdapterWorkStatusURL string,
 ) {
-	input := r.Context().Value(httpin.Input).(*curlRequest)
-
+	input, ok := r.Context().Value(httpin.Input).(*curlRequest)
+	if !ok || input == nil {
+		http.Error(w, "invalid conversion callback request", http.StatusBadRequest)
+		return
+	}
 	if err := utils.WriteConversionStats(ctx, redisClients, input.ClickUuid, input.Payout, true); err != nil {
-		log.Printf("failed to WriteConversionStats in getCurl: %v", err)
-		redisWriteErrorMonitor.RecordForURL(err, sspAdapterWorkStatusURL)
+		recordRedisError(redisWriteErrorMonitor, err, sspAdapterWorkStatusURL)
 		w.WriteHeader(http.StatusServiceUnavailable)
 		return
 	}
 	if err := utils.AddUUIDToRedisSet(ctx, redisClients, redisSetConversions, input.ClickUuid, true); err != nil {
-		log.Printf("failed to add conversion UUID to Redis set in getCurl: %v", err)
-		redisWriteErrorMonitor.RecordForURL(err, sspAdapterWorkStatusURL)
+		recordRedisError(redisWriteErrorMonitor, err, sspAdapterWorkStatusURL)
 		w.WriteHeader(http.StatusServiceUnavailable)
 		return
 	}
-
 	w.WriteHeader(http.StatusNoContent)
 }
