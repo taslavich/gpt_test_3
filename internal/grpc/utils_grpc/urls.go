@@ -1,8 +1,8 @@
 package utils
 
 import (
-	"fmt"
 	"net/url"
+	"strings"
 
 	"gitlab.com/twinbid-exchange/RTB-exchange/internal/constants"
 )
@@ -12,19 +12,48 @@ const (
 	ADM  = "adm"
 )
 
-func WrapURL(hostname, originalURL, globalId, format string) string {
-	encodeUrl := url.QueryEscape(originalURL)
-	return fmt.Sprintf("https://%s/adm?id=%s&url=%s&f=%s",
-		hostname, globalId, encodeUrl, constants.FormatToCodes[format])
+func WrapURL(hostname, originalURL, globalID, format string) string {
+	return buildCallbackURL(hostname, ADM, map[string]string{
+		"id":  globalID,
+		"url": originalURL,
+		"f":   formatCode(format),
+	}, "id", "url", "f")
 }
 
-func WrapNurlURL(hostname, originalURL, globalId, ssp_domain, format string) string {
-	encodeUrl := url.QueryEscape(originalURL)
-	return fmt.Sprintf("https://%s/nurl?id=%s&url=%s&s=%s&f=%s",
-		hostname, globalId, encodeUrl, ssp_domain, constants.FormatToCodes[format])
+func WrapNurlURL(hostname, originalURL, globalID, sspDomain, format string) string {
+	return buildCallbackURL(hostname, NURL, map[string]string{
+		"id":  globalID,
+		"url": originalURL,
+		"s":   sspDomain,
+		"f":   formatCode(format),
+	}, "id", "url", "s", "f")
 }
 
-func WrapBurlURL(hostname, globalId, format string) string {
-	return fmt.Sprintf("https://%s/burl?id=%s&f=%s",
-		hostname, globalId, constants.FormatToCodes[format])
+func WrapBurlURL(hostname, globalID, format string) string {
+	return buildCallbackURL(hostname, "burl", map[string]string{
+		"id": globalID,
+		"f":  formatCode(format),
+	}, "id", "f")
+}
+
+func formatCode(format string) string {
+	return constants.FormatToCodes[strings.ToUpper(strings.TrimSpace(format))]
+}
+
+func buildCallbackURL(hostname, path string, values map[string]string, required ...string) string {
+	hostname = strings.TrimSpace(hostname)
+	path = strings.TrimSpace(path)
+	if hostname == "" || path == "" {
+		return ""
+	}
+	for _, key := range required {
+		if strings.TrimSpace(values[key]) == "" {
+			return ""
+		}
+	}
+	query := make(url.Values, len(values))
+	for key, value := range values {
+		query.Set(key, strings.TrimSpace(value))
+	}
+	return (&url.URL{Scheme: "https", Host: hostname, Path: "/" + path, RawQuery: query.Encode()}).String()
 }

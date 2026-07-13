@@ -66,6 +66,9 @@ func main() {
 	if err != nil {
 		log.Fatalf("cannot initialize ADV quality map: %v", err)
 	}
+	if qualityStore.Count() == 0 {
+		log.Fatal("ADV quality map is empty; configure at least one normalized ssp_domain")
+	}
 
 	if strings.TrimSpace(cfg.PostgresDSN) == "" {
 		log.Fatal("POSTGRES_DSN is required for ADV")

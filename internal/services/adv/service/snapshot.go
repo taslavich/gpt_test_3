@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"math"
 	"sort"
 	"strconv"
@@ -211,7 +212,9 @@ func LoadSnapshotFromPostgres(ctx context.Context, db *sql.DB) (*Snapshot, error
 	campaigns := make([]*Campaign, 0)
 	campaignByID := make(map[string]*Campaign)
 	userSet := make(map[string]struct{})
+	activeRows := 0
 	for rows.Next() {
+		activeRows++
 		var row campaignDBRow
 		if err := rows.Scan(
 			&row.UserID, &row.CampaignID, &row.BasePrice,
@@ -224,10 +227,12 @@ func LoadSnapshotFromPostgres(ctx context.Context, db *sql.DB) (*Snapshot, error
 		}
 		campaign, err := row.campaign()
 		if err != nil {
-			return nil, err
+			log.Printf("ADV snapshot: skipping invalid active campaign: %v", err)
+			continue
 		}
 		if _, duplicate := campaignByID[campaign.ID]; duplicate {
-			return nil, fmt.Errorf("duplicate active campaign_id %s", campaign.ID)
+			log.Printf("ADV snapshot: skipping duplicate active campaign_id %s", campaign.ID)
+			continue
 		}
 		campaigns = append(campaigns, campaign)
 		campaignByID[campaign.ID] = campaign
@@ -253,12 +258,21 @@ func LoadSnapshotFromPostgres(ctx context.Context, db *sql.DB) (*Snapshot, error
 	if err != nil {
 		return nil, err
 	}
-	for id := range userSet {
-		if _, ok := userGoals[id]; !ok {
-			return nil, fmt.Errorf("no users.goal found for active campaign owner %s", id)
+	validCampaigns := make([]*Campaign, 0, len(campaigns))
+	for _, campaign := range campaigns {
+		if campaign == nil {
+			continue
 		}
+		if _, ok := userGoals[campaign.UserID]; !ok {
+			log.Printf("ADV snapshot: skipping campaign %s because users.goal is missing or invalid for owner %s", campaign.ID, campaign.UserID)
+			continue
+		}
+		validCampaigns = append(validCampaigns, campaign)
 	}
-	return &Snapshot{Campaigns: campaigns, UserGoals: userGoals}, nil
+	if activeRows > 0 && len(validCampaigns) == 0 {
+		return nil, fmt.Errorf("all %d active campaign rows were invalid; previous snapshot must be retained", activeRows)
+	}
+	return &Snapshot{Campaigns: validCampaigns, UserGoals: userGoals}, nil
 }
 
 func campaignGoalColumn(ctx context.Context, db *sql.DB) (string, error) {
@@ -314,6 +328,26 @@ func (r campaignDBRow) campaign() (*Campaign, error) {
 	if err != nil {
 		return nil, fmt.Errorf("campaign %s goal: %w", id, err)
 	}
+	if basePrice <= 0 {
+		return nil, fmt.Errorf("campaign %s base_price must be positive", id)
+	}
+	status := strings.ToLower(strings.TrimSpace(r.Status.String))
+	pricingModel := strings.ToUpper(strings.TrimSpace(r.PricingModel.String))
+	format := normalizeFormat(r.Format.String)
+	trafficType := normalizeTraffic(r.TrafficType.String)
+	quality := strings.ToLower(strings.TrimSpace(r.Quality.String))
+	if status != CampaignStatusActive {
+		return nil, fmt.Errorf("campaign %s status is not active", id)
+	}
+	if pricingModel != PricingModelCPM && pricingModel != PricingModelCPC {
+		return nil, fmt.Errorf("campaign %s has invalid pricing_model", id)
+	}
+	if format == "" || trafficType == "" {
+		return nil, fmt.Errorf("campaign %s has invalid format or traffic_type", id)
+	}
+	if _, ok := validQualitySegments[quality]; !ok {
+		return nil, fmt.Errorf("campaign %s has invalid quality_type", id)
+	}
 	if !r.StartTS.Valid || !r.EndTS.Valid || !r.StartTS.Time.Before(r.EndTS.Time) {
 		return nil, fmt.Errorf("campaign %s has invalid start_ts/end_ts", id)
 	}
@@ -358,10 +392,10 @@ func (r campaignDBRow) campaign() (*Campaign, error) {
 	}
 
 	return &Campaign{
-		ID: id, UserID: userID, Status: strings.TrimSpace(r.Status.String),
-		PricingModel: strings.ToUpper(strings.TrimSpace(r.PricingModel.String)),
-		Format:       normalizeFormat(r.Format.String), TrafficType: normalizeTraffic(r.TrafficType.String),
-		QualitySegment: strings.ToLower(strings.TrimSpace(r.Quality.String)),
+		ID: id, UserID: userID, Status: status,
+		PricingModel: pricingModel,
+		Format:       format, TrafficType: trafficType,
+		QualitySegment: quality,
 		BasePrice:      basePrice, GoalTotalDollars: goal, EvennessBySlotMode: r.Evenness.Valid && r.Evenness.Bool,
 		StartTS: r.StartTS.Time.UTC(), EndTS: r.EndTS.Time.UTC(), ActiveIntervals: activeIntervals,
 		CountryFilter: country, LanguageFilter: language, DeviceTypeFilter: deviceType,
@@ -383,6 +417,7 @@ func loadCreativesBatch(ctx context.Context, db *sql.DB, campaignIDs []string, c
 		return fmt.Errorf("batch query creatives: %w", err)
 	}
 	defer rows.Close()
+	creativeIDs := make(map[string]map[string]struct{}, len(campaigns))
 	for rows.Next() {
 		var id, campaignID, adm, name, creativeName, title, description sql.NullString
 		var trackers []byte
@@ -395,15 +430,28 @@ func loadCreativesBatch(ctx context.Context, db *sql.DB, campaignIDs []string, c
 			continue
 		}
 		creativeID := strings.TrimSpace(id.String)
-		if creativeID == "" {
-			return fmt.Errorf("campaign %s has creative with empty id", campaign.ID)
+		admURL := strings.TrimSpace(adm.String)
+		if creativeID == "" || admURL == "" || !w.Valid || !h.Valid || w.Int64 <= 0 || h.Int64 <= 0 {
+			log.Printf("ADV snapshot: skipping invalid creative for campaign %s", campaign.ID)
+			continue
+		}
+		seen := creativeIDs[campaign.ID]
+		if seen == nil {
+			seen = make(map[string]struct{})
+			creativeIDs[campaign.ID] = seen
+		}
+		if _, duplicate := seen[creativeID]; duplicate {
+			log.Printf("ADV snapshot: skipping duplicate creative %s for campaign %s", creativeID, campaign.ID)
+			continue
 		}
 		macros, err := parseTrackersMacrosJSONB(trackers)
 		if err != nil {
-			return fmt.Errorf("creative %s trackers_macros: %w", creativeID, err)
+			log.Printf("ADV snapshot: skipping creative %s with invalid trackers_macros: %v", creativeID, err)
+			continue
 		}
+		seen[creativeID] = struct{}{}
 		campaign.Creatives = append(campaign.Creatives, &Creative{
-			ID: creativeID, CampaignID: campaign.ID, ADMURL: strings.TrimSpace(adm.String),
+			ID: creativeID, CampaignID: campaign.ID, ADMURL: admURL,
 			TrackersMacros: macros, W: int(w.Int64), H: int(h.Int64), Name: name.String,
 			CreativeName: creativeName.String, Title: title.String, Description: description.String,
 		})
@@ -426,11 +474,13 @@ func loadUserGoalsBatch(ctx context.Context, db *sql.DB, userIDs []string) (map[
 		if err := rows.Scan(&id, &rawGoal); err != nil {
 			return nil, fmt.Errorf("scan user goal: %w", err)
 		}
+		id = strings.TrimSpace(id)
 		goal, err := parseFiniteNonNegative(rawGoal)
-		if err != nil {
-			return nil, fmt.Errorf("user %s goal: %w", id, err)
+		if id == "" || err != nil {
+			log.Printf("ADV snapshot: skipping invalid users.goal row for user %q: %v", id, err)
+			continue
 		}
-		goals[strings.TrimSpace(id)] = goal
+		goals[id] = goal
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err

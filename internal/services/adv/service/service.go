@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"gitlab.com/twinbid-exchange/RTB-exchange/internal/constants"
 	filterV2 "gitlab.com/twinbid-exchange/RTB-exchange/internal/filterV2"
 	ortb "gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/proto/types/ortb_V2_5"
 	utils "gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/utils_grpc"
@@ -344,7 +345,7 @@ func (s *AuctionService) Auction(ctx context.Context, req *ortb.BidRequest, now 
 			if creative == nil {
 				continue
 			}
-			bid := s.buildBid(req, imp, cand.campaign, creative, winnerUUID, requestedFormat, sspDomain)
+			bid := s.buildBid(req, imp, cand.campaign, creative, winnerUUID, requestedFormat)
 			if bid == nil {
 				continue
 			}
@@ -461,7 +462,7 @@ func (s *AuctionService) evaluateCampaign(ctx context.Context, snapshot *Snapsho
 	return candidate{campaign: campaign, creatives: creatives, chargePrice: chargePrice, effectivePrice: effective}, true, nil
 }
 
-func (s *AuctionService) buildBid(req *ortb.BidRequest, imp *ortb.Imp, campaign *Campaign, creative *Creative, winnerUUID, format, sspDomain string) *ortb.Bid {
+func (s *AuctionService) buildBid(req *ortb.BidRequest, imp *ortb.Imp, campaign *Campaign, creative *Creative, winnerUUID, format string) *ortb.Bid {
 	if s == nil || imp == nil || campaign == nil || creative == nil || strings.TrimSpace(s.admDomain) == "" {
 		return nil
 	}
@@ -470,15 +471,18 @@ func (s *AuctionService) buildBid(req *ortb.BidRequest, imp *ortb.Imp, campaign 
 		return nil
 	}
 	adm := utils.WrapURL(s.admDomain, originalADM, winnerUUID, format)
-	nurl := utils.WrapNurlURL(s.admDomain, "", winnerUUID, sspDomain, format)
-	burl := utils.WrapBurlURL(s.admDomain, winnerUUID, format)
+	if adm == "" {
+		return nil
+	}
+	burl := ""
+	switch normalizeFormat(format) {
+	case "NAT", "BAN", "POP":
+		burl = utils.WrapBurlURL(s.admDomain, winnerUUID, format)
+	}
 	id, impID, cid, crid := creative.ID, imp.GetId(), campaign.ID, creative.ID
 	price := float32(campaign.BasePrice)
 	w, h := int32(creative.W), int32(creative.H)
 	bid := &ortb.Bid{Id: &id, Impid: &impID, Price: &price, Adm: &adm, Cid: &cid, Crid: &crid, W: &w, H: &h}
-	if nurl != "" {
-		bid.Nurl = &nurl
-	}
 	if burl != "" {
 		bid.Burl = &burl
 	}
@@ -550,15 +554,25 @@ func impressionMatchesFormat(imp *ortb.Imp, format string) bool {
 	if imp == nil {
 		return false
 	}
-	switch normalizeFormat(format) {
+	normalized := normalizeFormat(format)
+	switch normalized {
 	case "BAN", "IPP":
-		return imp.GetBanner() != nil
+		banner := imp.GetBanner()
+		if banner == nil || imp.GetNative() != nil {
+			return false
+		}
+		expected := constants.ADVImpressionFormatMarkerPrefix + normalized
+		for _, value := range banner.GetExt() {
+			if strings.EqualFold(strings.TrimSpace(value), expected) {
+				return true
+			}
+		}
+		return false
 	case "NAT":
-		return imp.GetNative() != nil
+		return imp.GetNative() != nil && imp.GetBanner() == nil
 	case "POP":
-		// OpenRTB 2.5 has no dedicated popunder object. In this project a
-		// POP impression is represented by the absence of banner/native objects;
-		// the endpoint-provided format remains the authoritative route format.
+		// OpenRTB 2.5 has no dedicated popunder object. In this project POP is
+		// represented by an impression without banner/native objects.
 		return imp.GetBanner() == nil && imp.GetNative() == nil
 	default:
 		return false
@@ -712,7 +726,8 @@ func trackerMacroValue(key, campaignID, creativeID string, req *ortb.BidRequest)
 			value = ua.ParseUA(req.GetDevice().GetUa()).Device
 		}
 	}
-	if strings.TrimSpace(value) == "" {
+	value = strings.TrimSpace(value)
+	if value == "" {
 		return unknownTrackerValue
 	}
 	return value

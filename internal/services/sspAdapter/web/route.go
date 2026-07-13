@@ -81,7 +81,7 @@ type admRequest struct {
 
 type nurlRequest struct {
 	GlobalId   string `in:"query=id" required:"true"`
-	DspURL     string `in:"query=url"`
+	DspURL     string `in:"query=url" required:"true"`
 	Format     string `in:"query=f" required:"true"`
 	Ssp_Domain string `in:"query=s" required:"true"`
 }

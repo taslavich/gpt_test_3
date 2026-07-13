@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"gitlab.com/twinbid-exchange/RTB-exchange/internal/constants"
 	filterV2 "gitlab.com/twinbid-exchange/RTB-exchange/internal/filterV2"
 	ortb "gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/proto/types/ortb_V2_5"
 	"gitlab.com/twinbid-exchange/RTB-exchange/internal/types"
@@ -124,5 +125,29 @@ func TestSnapshotDeepClone(t *testing.T) {
 	creative.TrackersMacros["device"] = false
 	if clone.UserGoals["u"] != 10 || !clone.Campaigns[0].CountryFilter.Objects["SE"] || !clone.Campaigns[0].Creatives[0].TrackersMacros["device"] {
 		t.Fatal("published snapshot shares mutable state")
+	}
+}
+
+func TestBannerAndIPPFormatsRequireDistinctRouterMarker(t *testing.T) {
+	banner := &ortb.Banner{Ext: []string{constants.ADVImpressionFormatMarkerPrefix + constants.BAN}}
+	imp := &ortb.Imp{Banner: banner}
+	if !impressionMatchesFormat(imp, constants.BAN) {
+		t.Fatal("BAN marker must match BAN")
+	}
+	if impressionMatchesFormat(imp, constants.IPP) {
+		t.Fatal("BAN marker must not match IPP")
+	}
+	banner.Ext = []string{constants.ADVImpressionFormatMarkerPrefix + constants.IPP}
+	if !impressionMatchesFormat(imp, constants.IPP) {
+		t.Fatal("IPP marker must match IPP")
+	}
+	if impressionMatchesFormat(imp, constants.BAN) {
+		t.Fatal("IPP marker must not match BAN")
+	}
+}
+
+func TestQualityMapRejectsEmptySnapshot(t *testing.T) {
+	if _, err := validateQualityMap(map[string]string{}); err == nil {
+		t.Fatal("empty quality map must be rejected")
 	}
 }

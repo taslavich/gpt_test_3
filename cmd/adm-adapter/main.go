@@ -142,7 +142,7 @@ func main() {
 		cfg.RedisWriteErrorStopThresholdPerSec,
 		cfg.RedisWriteErrorMonitorTickerInterval,
 		func(count uint64, workStatusURL string) {
-			services.StopSspAdapterOrtbStreams(ctx, cfg.SspAdapterWorkStatusURL)
+			services.StopSspAdapterOrtbStreams(ctx, workStatusURL)
 		},
 		utils.NewBotMessage(cfg.BotBaseURL, cfg.BotInternalSecret),
 		ctx,

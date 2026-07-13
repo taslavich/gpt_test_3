@@ -50,14 +50,21 @@ func getAdm(
 		http.Error(w, "invalid redirect URL", http.StatusBadRequest)
 		return
 	}
-	isADV := false
-	if format == constants.IPP {
-		var err error
-		isADV, err = billADVCallback(r.Context(), input.GlobalId, format, "adm", advBillingStore, advOutbox, advControlURLs, sspAdapterWorkStatusURL, redisWriteErrorMonitor)
-		if err != nil {
-			w.WriteHeader(http.StatusServiceUnavailable)
-			return
-		}
+	isADV, err := handleADVCallback(
+		r.Context(),
+		input.GlobalId,
+		format,
+		"adm",
+		format == constants.IPP,
+		advBillingStore,
+		advOutbox,
+		advControlURLs,
+		sspAdapterWorkStatusURL,
+		redisWriteErrorMonitor,
+	)
+	if err != nil {
+		w.WriteHeader(http.StatusServiceUnavailable)
+		return
 	}
 	if !isADV {
 		exists, err := utils.UUIDKeyExistsInRedis(ctx, redisAdmClient, input.GlobalId)
@@ -136,7 +143,7 @@ func getNurl(
 		return
 	}
 	if strings.TrimSpace(decodedURL) == "" {
-		w.WriteHeader(http.StatusNoContent)
+		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
 	resp, err := nurlClient.Get(decodedURL)
@@ -172,14 +179,22 @@ func getBurl(
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
-	isADV := false
-	if format == constants.NAT || format == constants.BAN || format == constants.POP {
-		var err error
-		isADV, err = billADVCallback(r.Context(), input.GlobalId, format, "burl", advBillingStore, advOutbox, advControlURLs, sspAdapterWorkStatusURL, redisWriteErrorMonitor)
-		if err != nil {
-			w.WriteHeader(http.StatusServiceUnavailable)
-			return
-		}
+	billable := format == constants.NAT || format == constants.BAN || format == constants.POP
+	isADV, err := handleADVCallback(
+		r.Context(),
+		input.GlobalId,
+		format,
+		"burl",
+		billable,
+		advBillingStore,
+		advOutbox,
+		advControlURLs,
+		sspAdapterWorkStatusURL,
+		redisWriteErrorMonitor,
+	)
+	if err != nil {
+		w.WriteHeader(http.StatusServiceUnavailable)
+		return
 	}
 	if !isADV {
 		exists, err := utils.UUIDKeyExistsInRedis(ctx, redisNurlClient, input.GlobalId)
@@ -207,9 +222,10 @@ func getBurl(
 	w.WriteHeader(http.StatusNoContent)
 }
 
-func billADVCallback(
+func handleADVCallback(
 	ctx context.Context,
 	winnerUUID, format, source string,
+	billable bool,
 	store *billing.Store,
 	outboxStore *outbox.Store,
 	controlURLs []string,
@@ -226,6 +242,9 @@ func billADVCallback(
 	if err != nil {
 		recordRedisError(monitor, err, sspAdapterWorkStatusURL)
 		return false, err
+	}
+	if !billable {
+		return true, nil
 	}
 	record := outbox.Record{
 		EventID: uuid.NewString(), UserID: winner.UserID, CampaignID: winner.CampaignID,

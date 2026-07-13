@@ -12,3 +12,12 @@ WARNING: DO NOT MOVE OR RENAME THESE FILES!
 
 We recommend not moving these files. For more information, see the Certbot
 User Guide at https://certbot.eff.org/docs/using.html#where-are-my-certificates.
+
+ADV billing outbox persistence
+==============================
+
+`ADV_OUTBOX_PATH` must point to a persistent filesystem. The provided
+`docker-compose.outbox.yml` mounts the named volume `adv_billing_outbox` at
+`/var/lib/adm-adapter`; do not replace that volume with an ephemeral container
+layer. A Redis write error is acknowledged only after the event is durably
+stored in this bbolt file.

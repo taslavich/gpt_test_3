@@ -61,6 +61,11 @@ const (
 	NAT string = "NAT"
 )
 
+// ADVImpressionFormatMarkerPrefix is attached only to the cloned request sent
+// from Router to ADV. It disambiguates banner-based BAN and IPP impressions
+// without changing the request that is forwarded to external DSPs.
+const ADVImpressionFormatMarkerPrefix = "twinbid_adv_format="
+
 const (
 	BOOLEAN_FALSE = false
 	BOOLEAN_TRUE  = true

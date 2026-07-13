@@ -154,13 +154,45 @@ func (s *Server) doAdvAuction(
 	}
 	advCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
+	advBidRequest, err := buildADVAuctionBidRequest(req.GetBidRequest(), req.GetFormat())
+	if err != nil {
+		return nil, err
+	}
 	return s.advClient.DoAuction(advCtx, &advGrpc.DoAuctionRequest{
-		BidRequest:  req.GetBidRequest(),
+		BidRequest:  advBidRequest,
 		Format:      req.GetFormat(),
 		TrafficType: trafficTypeFromDspRouterRequest(req),
 		SspDomain:   req.GetSspDomain(),
 		ImpIdUuid:   cloneStringMap(req.GetImpIdUuid()),
 	})
+}
+
+func buildADVAuctionBidRequest(source *ortb_V2_5.BidRequest, requestedFormat string) (*ortb_V2_5.BidRequest, error) {
+	if source == nil {
+		return nil, fmt.Errorf("ADV bid request is nil")
+	}
+	cloned, ok := proto.Clone(source).(*ortb_V2_5.BidRequest)
+	if !ok || cloned == nil {
+		return nil, fmt.Errorf("cannot clone ADV bid request")
+	}
+	format := strings.ToUpper(strings.TrimSpace(requestedFormat))
+	if format != constants.BAN && format != constants.IPP {
+		return cloned, nil
+	}
+	marker := constants.ADVImpressionFormatMarkerPrefix + format
+	for _, imp := range cloned.GetImp() {
+		if imp == nil || imp.GetBanner() == nil || imp.GetNative() != nil {
+			continue
+		}
+		ext := imp.Banner.GetExt()[:0]
+		for _, value := range imp.Banner.GetExt() {
+			if !strings.HasPrefix(strings.TrimSpace(value), constants.ADVImpressionFormatMarkerPrefix) {
+				ext = append(ext, value)
+			}
+		}
+		imp.Banner.Ext = append(ext, marker)
+	}
+	return cloned, nil
 }
 
 func cloneStringMap(input map[string]string) map[string]string {

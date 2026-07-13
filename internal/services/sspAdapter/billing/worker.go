@@ -3,7 +3,6 @@ package billing
 import (
 	"context"
 	"log"
-	"math"
 	"time"
 
 	"gitlab.com/twinbid-exchange/RTB-exchange/internal/services/sspAdapter/outbox"
@@ -56,10 +55,7 @@ func (w *Worker) run(ctx context.Context) {
 		if last.IsZero() {
 			last = record.CreatedAt
 		}
-		backoff := w.interval * time.Duration(math.Pow(2, float64(maxInt(record.Attempts-1, 0))))
-		if backoff > w.maxBackoff {
-			backoff = w.maxBackoff
-		}
+		backoff := retryBackoff(w.interval, w.maxBackoff, record.Attempts)
 		if now.Before(last.Add(backoff)) {
 			continue
 		}
@@ -75,9 +71,22 @@ func (w *Worker) run(ctx context.Context) {
 	}
 }
 
-func maxInt(a, b int) int {
-	if a > b {
-		return a
+func retryBackoff(base, maximum time.Duration, attempts int) time.Duration {
+	if base <= 0 {
+		base = time.Second
 	}
-	return b
+	if maximum <= 0 || maximum < base {
+		maximum = base
+	}
+	backoff := base
+	for attempt := 1; attempt < attempts && backoff < maximum; attempt++ {
+		if backoff > maximum/2 {
+			return maximum
+		}
+		backoff *= 2
+	}
+	if backoff > maximum {
+		return maximum
+	}
+	return backoff
 }

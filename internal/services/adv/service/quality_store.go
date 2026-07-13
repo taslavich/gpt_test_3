@@ -110,6 +110,9 @@ func parseQualityMap(data []byte) (map[string]string, error) {
 }
 
 func validateQualityMap(input map[string]string) (map[string]string, error) {
+	if len(input) == 0 {
+		return nil, errors.New("quality map must contain at least one SSP domain")
+	}
 	out := make(map[string]string, len(input))
 	for rawDomain, rawSegment := range input {
 		domain := normalizeDomain(rawDomain)
@@ -134,6 +137,17 @@ func cloneStringStringMap(input map[string]string) map[string]string {
 		out[key] = value
 	}
 	return out
+}
+
+func (s *QualityStore) Count() int {
+	if s == nil {
+		return 0
+	}
+	current := s.value.Load()
+	if current == nil {
+		return 0
+	}
+	return len(*current)
 }
 
 func (s *QualityStore) Lookup(domain string) (string, bool) {

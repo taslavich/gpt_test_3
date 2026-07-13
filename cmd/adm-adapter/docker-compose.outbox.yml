@@ -1,0 +1,13 @@
+services:
+  adm-adapter:
+    image: ${ADM_ADAPTER_IMAGE:?set ADM_ADAPTER_IMAGE}
+    restart: unless-stopped
+    env_file:
+      - adm-adapter.env
+    environment:
+      ADV_OUTBOX_PATH: /var/lib/adm-adapter/adv-billing-outbox.db
+    volumes:
+      - adv_billing_outbox:/var/lib/adm-adapter
+
+volumes:
+  adv_billing_outbox:

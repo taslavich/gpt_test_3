@@ -39,3 +39,26 @@ func TestADVCallbackWrappersAlwaysIncludeFormat(t *testing.T) {
 		"id": globalID, "f": constants.FormatToCodes[format],
 	})
 }
+
+func TestCallbackWrappersRejectMissingRequiredValues(t *testing.T) {
+	if got := WrapURL("adm.example.test", "", "id", constants.BAN); got != "" {
+		t.Fatalf("ADM wrapper must reject empty redirect URL: %q", got)
+	}
+	if got := WrapNurlURL("adm.example.test", "", "id", "ssp.example.test", constants.BAN); got != "" {
+		t.Fatalf("NURL wrapper must reject empty redirect URL: %q", got)
+	}
+	if got := WrapBurlURL("adm.example.test", "id", "unknown"); got != "" {
+		t.Fatalf("BURL wrapper must reject unknown format: %q", got)
+	}
+}
+
+func TestCallbackWrappersNormalizeFormat(t *testing.T) {
+	got := WrapBurlURL("adm.example.test", "id", " ban ")
+	parsed, err := url.Parse(got)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if parsed.Path != "/burl" || parsed.Query().Get("id") != "id" || parsed.Query().Get("f") != constants.FormatToCodes[constants.BAN] {
+		t.Fatalf("unexpected normalized callback URL: %s", got)
+	}
+}

@@ -177,31 +177,27 @@ func GetWinnerBidInternal_V_2_5(
 		wrappedNurl := utils.WrapNurlURL(admDomain, winner.bid.GetNurl(), ImpIdUuid[impID], req.SspDomain, req.Format)
 		wrappedBurl := utils.WrapBurlURL(admDomain, ImpIdUuid[impID], req.Format)
 
+		finalBid = &ortb_V2_5.Bid{
+			Id:    winner.bid.Id,
+			Impid: winner.bid.Impid,
+			Price: &winner.finalPrice,
+			Adm:   winner.bid.Adm,
+			Adid:  winner.bid.Adid,
+			Cid:   winner.bid.Cid,
+			Crid:  winner.bid.Crid,
+		}
 		if logged {
 			wrappedAdm := utils.WrapURL(admDomain, winner.bid.GetAdm(), ImpIdUuid[impID], req.Format)
-			finalBid = &ortb_V2_5.Bid{
-				Id:    winner.bid.Id,
-				Impid: winner.bid.Impid,
-				Price: &winner.finalPrice,
-				Adm:   &wrappedAdm,
-				Adid:  winner.bid.Adid,
-				Nurl:  &wrappedNurl,
-				Burl:  &wrappedBurl,
-				Cid:   winner.bid.Cid,
-				Crid:  winner.bid.Crid,
+			if wrappedAdm == "" {
+				continue
 			}
-		} else {
-			finalBid = &ortb_V2_5.Bid{
-				Id:    winner.bid.Id,
-				Impid: winner.bid.Impid,
-				Price: &winner.finalPrice,
-				Adm:   winner.bid.Adm,
-				Adid:  winner.bid.Adid,
-				Nurl:  &wrappedNurl,
-				Burl:  &wrappedBurl,
-				Cid:   winner.bid.Cid,
-				Crid:  winner.bid.Crid,
-			}
+			finalBid.Adm = &wrappedAdm
+		}
+		if wrappedNurl != "" {
+			finalBid.Nurl = &wrappedNurl
+		}
+		if wrappedBurl != "" {
+			finalBid.Burl = &wrappedBurl
 		}
 
 		userId := ""
