@@ -13,6 +13,7 @@ message DoAuctionRequest {
   string format = 2;
   string traffic_type = 3;
   string ssp_domain = 4;
+  map<string,string> imp_id_uuid = 5;
 }
 
 message DoAuctionResponse {
@@ -23,4 +24,5 @@ message DoAuctionResponse {
   double auction_price = 5;
   int32 code = 6;
   ortb_V2_5.BidResponse bid_response = 7;
+  map<string,string> winner_user_ids = 8;
 }

@@ -22,8 +22,8 @@ func (m *MapStringToString) SetValue(value string) error {
 
 	pairs := strings.Split(value, ",")
 	for _, pair := range pairs {
-		// Ищем только ПЕРВЫЙ знак | как разделитель ключ-значение
-		idx := strings.Index(pair, "|")
+		// Ищем только ПЕРВЫЙ знак = как разделитель ключ-значение
+		idx := strings.Index(pair, "=")
 		if idx == -1 {
 			continue // пропускаем некорректные пары
 		}
@@ -45,8 +45,8 @@ func (m *MapStringToDuration) SetValue(value string) error {
 
 	pairs := strings.Split(value, ",")
 	for _, pair := range pairs {
-		// Ищем только ПЕРВЫЙ знак | как разделитель ключ-значение
-		idx := strings.Index(pair, "|")
+		// Ищем только ПЕРВЫЙ знак = как разделитель ключ-значение
+		idx := strings.Index(pair, "=")
 		if idx == -1 {
 			continue // пропускаем некорректные пары
 		}
@@ -226,6 +226,16 @@ type AdmAdapterConfig struct {
 	RsaFullChain            string        `yaml:"RSA_FULLCHAIN_PEM" env:"RSA_FULLCHAIN_PEM"`
 	RsaPrivKey              string        `yaml:"RSA_PRIVKEY_PEM" env:"RSA_PRIVKEY_PEM"`
 	SspAdapterWorkStatusURL string        `yaml:"SSP_ADAPTER_WORK_STATUS_URL" env:"SSP_ADAPTER_WORK_STATUS_URL"`
+	AdmRedisAddr            string        `yaml:"ADM_REDIS_ADDR" env:"ADM_REDIS_ADDR"`
+	RedisDBAdvRuntime       int           `yaml:"REDIS_DB_ADV_RUNTIME" env:"REDIS_DB_ADV_RUNTIME" env-default:"5"`
+	RedisDBAdvWinner        int           `yaml:"REDIS_DB_ADV_WINNER" env:"REDIS_DB_ADV_WINNER" env-default:"6"`
+	AdvControlURLs          []string      `yaml:"ADV_CONTROL_URLS" env:"ADV_CONTROL_URLS"`
+	AdvControlTimeout       time.Duration `yaml:"ADV_CONTROL_TIMEOUT" env:"ADV_CONTROL_TIMEOUT" env-default:"2s"`
+	BillingOutboxPath       string        `yaml:"BILLING_OUTBOX_PATH" env:"BILLING_OUTBOX_PATH" env-default:"./billing_outbox.db"`
+	BillingRetryInterval    time.Duration `yaml:"BILLING_RETRY_INTERVAL" env:"BILLING_RETRY_INTERVAL" env-default:"1s"`
+	BillingMarkerTTL        time.Duration `yaml:"BILLING_MARKER_TTL" env:"BILLING_MARKER_TTL" env-default:"720h"`
+	BillingWatchRetries     int           `yaml:"BILLING_WATCH_RETRIES" env:"BILLING_WATCH_RETRIES" env-default:"3"`
+	BillingWatchBackoff     time.Duration `yaml:"BILLING_WATCH_BACKOFF" env:"BILLING_WATCH_BACKOFF" env-default:"20ms"`
 	RedisWriteErrorMonitorConfig
 	BotBaseURL        string `yaml:"BOT_BASE_URL" env:"BOT_BASE_URL"`
 	BotInternalSecret string `yaml:"BOT_INTERNAL_SECRET" env:"BOT_INTERNAL_SECRET"`
@@ -237,15 +247,20 @@ type AdvConfig struct {
 	HttpServer HttpServer
 	GrpcServer GrpcServer
 	RedisConfig
-	KafkaConfig
 
 	SspGeoDspPercentsAdultFilePath      string        `yaml:"SSP_GEO_DSP_PERCENTS_ADULT_FILE_PATH" env:"SSP_GEO_DSP_PERCENTS_ADULT_FILE_PATH"`
 	SspGeoDspPercentsMainstreamFilePath string        `yaml:"SSP_GEO_DSP_PERCENTS_MAINSTREAM_FILE_PATH" env:"SSP_GEO_DSP_PERCENTS_MAINSTREAM_FILE_PATH"`
 	PostgresDSN                         string        `yaml:"POSTGRES_DSN" env:"POSTGRES_DSN"`
 	CampaignRefreshInterval             time.Duration `yaml:"CAMPAIGN_REFRESH_INTERVAL" env:"CAMPAIGN_REFRESH_INTERVAL" env-default:"5s"`
 
-	RedisDBUserBalanceThreshold int `yaml:"REDIS_DB_USER_BALANCE_THRESHOLD" env:"REDIS_DB_USER_BALANCE_THRESHOLD" env-default:"5"`
-	RedisDBUserBalanceSpent     int `yaml:"REDIS_DB_USER_BALANCE_SPENT" env:"REDIS_DB_USER_BALANCE_SPENT" env-default:"6"`
+	RedisDBAdvRuntime     int           `yaml:"REDIS_DB_ADV_RUNTIME" env:"REDIS_DB_ADV_RUNTIME" env-default:"5"`
+	RedisDBAdvWinner      int           `yaml:"REDIS_DB_ADV_WINNER" env:"REDIS_DB_ADV_WINNER" env-default:"6"`
+	AdvWinnerTTL          time.Duration `yaml:"ADV_WINNER_TTL" env:"ADV_WINNER_TTL" env-default:"45m"`
+	PacingCurrentTTL      time.Duration `yaml:"ADV_PACING_CURRENT_TTL" env:"ADV_PACING_CURRENT_TTL" env-default:"10m"`
+	PacingSlotTTL         time.Duration `yaml:"ADV_PACING_SLOT_TTL" env:"ADV_PACING_SLOT_TTL" env-default:"720h"`
+	AdvQualityMapFilePath string        `yaml:"ADV_QUALITY_MAP_FILE_PATH" env:"ADV_QUALITY_MAP_FILE_PATH"`
+	RedisAddr             string        `yaml:"ADV_REDIS_ADDR" env:"ADV_REDIS_ADDR"`
+	AdvADMDomain          string        `yaml:"ADV_ADM_DOMAIN" env:"ADV_ADM_DOMAIN"`
 }
 type KafkaLoaderConfig struct {
 	RedisConfig
@@ -256,6 +271,20 @@ type KafkaLoaderConfig struct {
 	SspAdapterWorkStatusURLs []string `yaml:"SSP_ADAPTER_WORK_STATUS_URLS" env:"SSP_ADAPTER_WORK_STATUS_URLS" env-default:"server1.twinbidexchange.com:8050,server2.twinbidexchange.com:8050,server3.twinbidexchange.com:8050,server4.twinbidexchange.com:8050"`
 	BotBaseURL               string   `yaml:"BOT_BASE_URL" env:"BOT_BASE_URL"`
 	BotInternalSecret        string   `yaml:"BOT_INTERNAL_SECRET" env:"BOT_INTERNAL_SECRET"`
+}
+
+type KafkaRedisConfig struct {
+	RedisConfig
+	KafkaConfig
+	PostgresDSN       string        `yaml:"POSTGRES_DSN" env:"POSTGRES_DSN"`
+	RedisDBAdvRuntime int           `yaml:"REDIS_DB_ADV_RUNTIME" env:"REDIS_DB_ADV_RUNTIME" env-default:"5"`
+	ExporterInterval  time.Duration `yaml:"KAFKAREDIS_EXPORTER_INTERVAL" env:"KAFKAREDIS_EXPORTER_INTERVAL" env-default:"30s"`
+	RedisScanCount    int64         `yaml:"KAFKAREDIS_REDIS_SCAN_COUNT" env:"KAFKAREDIS_REDIS_SCAN_COUNT" env-default:"1000"`
+	HTTPHost          string        `yaml:"KAFKAREDIS_HTTP_HOST" env:"KAFKAREDIS_HTTP_HOST" env-default:"0.0.0.0"`
+	HTTPPort          uint16        `yaml:"KAFKAREDIS_HTTP_PORT" env:"KAFKAREDIS_HTTP_PORT" env-default:"8095"`
+	SelfControlURL    string        `yaml:"KAFKAREDIS_SELF_CONTROL_URL" env:"KAFKAREDIS_SELF_CONTROL_URL"`
+	BotBaseURL        string        `yaml:"BOT_BASE_URL" env:"BOT_BASE_URL"`
+	BotInternalSecret string        `yaml:"BOT_INTERNAL_SECRET" env:"BOT_INTERNAL_SECRET"`
 }
 
 type ClickhouseConfig struct {
@@ -376,11 +405,9 @@ type KafkaConfig struct {
 	KafkaTopicClicks      string `yaml:"KAFKA_TOPIC_CLICKS" env:"KAFKA_TOPIC_CLICKS" env-default:"clicks"`
 	KafkaTopicConversions string `yaml:"KAFKA_TOPIC_CONVERSIONS" env:"KAFKA_TOPIC_CONVERSIONS" env-default:"conversions"`
 
-	KafkaTopicCampaignBalanceMinus string `yaml:"KAFKA_TOPIC_CAMPAIGN_BALANCE_MINUS" env:"KAFKA_TOPIC_CAMPAIGN_BALANCE_MINUS" env-default:"campaign_balance_minus"`
-	KafkaTopicCampaignBalancePlus  string `yaml:"KAFKA_TOPIC_CAMPAIGN_BALANCE_PLUS" env:"KAFKA_TOPIC_CAMPAIGN_BALANCE_PLUS" env-default:"campaign_balance_plus"`
-	KafkaTopicUserBalanceMinus     string `yaml:"KAFKA_TOPIC_USER_BALANCE_MINUS" env:"KAFKA_TOPIC_USER_BALANCE_MINUS" env-default:"user_balance_minus"`
-	KafkaTopicUserBalancePlus      string `yaml:"KAFKA_TOPIC_USER_BALANCE_PLUS" env:"KAFKA_TOPIC_USER_BALANCE_PLUS" env-default:"user_balance_plus"`
-	KafkaTopicCampaignsCreated     string `yaml:"KAFKA_TOPIC_CAMPAIGNS_CREATED" env:"KAFKA_TOPIC_CAMPAIGNS_CREATED" env-default:"campaigns_created"`
+	KafkaTopicSpentTotals             string `yaml:"KAFKA_TOPIC_SPENT_TOTALS" env:"KAFKA_TOPIC_SPENT_TOTALS" env-default:"spent_totals"`
+	KafkaSpentTotalsPartitions        int    `yaml:"KAFKA_SPENT_TOTALS_PARTITIONS" env:"KAFKA_SPENT_TOTALS_PARTITIONS" env-default:"1"`
+	KafkaSpentTotalsReplicationFactor int    `yaml:"KAFKA_SPENT_TOTALS_REPLICATION_FACTOR" env:"KAFKA_SPENT_TOTALS_REPLICATION_FACTOR" env-default:"1"`
 
 	// Kafka consumer groups
 	KafkaGroupIDOrtb        string `yaml:"KAFKA_GROUP_ID_ORTB" env:"KAFKA_GROUP_ID_ORTB" env-default:"groupIdOrtb"`
@@ -388,11 +415,7 @@ type KafkaConfig struct {
 	KafkaGroupIDClicks      string `yaml:"KAFKA_GROUP_ID_CLICKS" env:"KAFKA_GROUP_ID_CLICKS" env-default:"groupIdClicks"`
 	KafkaGroupIDConversions string `yaml:"KAFKA_GROUP_ID_CONVERSIONS" env:"KAFKA_GROUP_ID_CONVERSIONS" env-default:"groupIdConversions"`
 
-	KafkaGroupIDCampaignBalanceMinus string `yaml:"KAFKA_GROUP_ID_CAMPAIGN_BALANCE_MINUS" env:"KAFKA_GROUP_ID_CAMPAIGN_BALANCE_MINUS" env-default:"groupIdCampaignBalanceMinus"`
-	KafkaGroupIDCampaignBalancePlus  string `yaml:"KAFKA_GROUP_ID_CAMPAIGN_BALANCE_PLUS" env:"KAFKA_GROUP_ID_CAMPAIGN_BALANCE_PLUS" env-default:"groupIdCampaignBalancePlus"`
-	KafkaGroupIDUserBalanceMinus     string `yaml:"KAFKA_GROUP_ID_USER_BALANCE_MINUS" env:"KAFKA_GROUP_ID_USER_BALANCE_MINUS" env-default:"groupIdUserBalanceMinus"`
-	KafkaGroupIDUserBalancePlus      string `yaml:"KAFKA_GROUP_ID_USER_BALANCE_PLUS" env:"KAFKA_GROUP_ID_USER_BALANCE_PLUS" env-default:"groupIdUserBalancePlus"`
-	KafkaGroupIDCampaignsCreated     string `yaml:"KAFKA_GROUP_ID_CAMPAIGNS_CREATED" env:"KAFKA_GROUP_ID_CAMPAIGNS_CREATED" env-default:"groupIdCampaignsCreated"`
+	KafkaGroupIDSpentTotals string `yaml:"KAFKA_GROUP_ID_SPENT_TOTALS" env:"KAFKA_GROUP_ID_SPENT_TOTALS" env-default:"groupIdSpentTotals"`
 }
 
 type HttpServer struct {
@@ -406,7 +429,7 @@ type GrpcServer struct {
 }
 
 func getEnvFileNames() []string {
-	return []string{".env.local", ".env", "bid-engine.env", "clickhouse-loader.env", "kafka-loader.env", "dsp1.env", "dsp2.env", "dsp3.env", "orchestrator.env", "router.env", "spp-adapter.env", "adm-adapter.env", "adv.env"}
+	return []string{".env.local", ".env", "bid-engine.env", "clickhouse-loader.env", "kafka-loader.env", "dsp1.env", "dsp2.env", "dsp3.env", "orchestrator.env", "router.env", "spp-adapter.env", "adm-adapter.env", "adv.env", "kafkaredis.env"}
 }
 
 func LoadConfig[
@@ -419,7 +442,8 @@ func LoadConfig[
 		MockDspConfig |
 		PercenterConfig |
 		AdmAdapterConfig |
-		AdvConfig,
+		AdvConfig |
+		KafkaRedisConfig,
 ](ctx context.Context) (*T, error) {
 	for _, fileName := range getEnvFileNames() {
 		err := godotenv.Load(fileName)

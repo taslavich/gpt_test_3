@@ -132,7 +132,7 @@ func GetWinnerBidInternal_V_2_5(
 
 		newBids := make([]*bidWithDomain, 0)
 		for k := range bids {
-			value := utils.GetValueFomSspGeoDspMap(req.SspDomain, req.BidRequest.Device.Geo.GetCountry(), bids[k].domain, percentMap, &types.PercentAndBidfloor{
+			value := utils.GetValueFomSspGeoDspMap(req.SspDomain, bidRequestCountry(req.BidRequest), bids[k].domain, percentMap, &types.PercentAndBidfloor{
 				Percent:  profitPercent,
 				Bidfloor: true,
 			})
@@ -155,6 +155,10 @@ func GetWinnerBidInternal_V_2_5(
 		sort.Slice(newBids, func(i, j int) bool {
 			return newBids[i].finalPrice > newBids[j].finalPrice
 		})
+
+		if len(newBids) == 0 {
+			continue
+		}
 
 		winner := newBids[0]
 
@@ -241,4 +245,11 @@ func applyPriceConstraintsAndPercent(dspPrice, bidFloor, profitPercent float32, 
 	}
 
 	return finalDspPrice, nil
+}
+
+func bidRequestCountry(req *ortb_V2_5.BidRequest) string {
+	if req == nil || req.GetDevice() == nil || req.GetDevice().GetGeo() == nil {
+		return ""
+	}
+	return req.GetDevice().GetGeo().GetCountry()
 }
