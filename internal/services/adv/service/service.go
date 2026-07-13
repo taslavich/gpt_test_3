@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"math"
 	"math/rand"
 	"net/url"
 	"sort"
@@ -13,6 +14,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/lib/pq"
 	"github.com/redis/go-redis/v9"
 	"gitlab.com/twinbid-exchange/RTB-exchange/internal/filter"
 	filterV2 "gitlab.com/twinbid-exchange/RTB-exchange/internal/filterV2"
@@ -236,7 +238,7 @@ func GetCampaignsAndUserGoalsFromPostgres(ctx context.Context, db *sql.DB) (map[
 		for id := range userSet {
 			ids = append(ids, id)
 		}
-		gr, err := db.QueryContext(ctx, getUserGoalsQuery, ids)
+		gr, err := db.QueryContext(ctx, getUserGoalsQuery, pq.Array(ids))
 		if err != nil {
 			return nil, nil, err
 		}
@@ -247,14 +249,34 @@ func GetCampaignsAndUserGoalsFromPostgres(ctx context.Context, db *sql.DB) (map[
 			if err := gr.Scan(&id, &goal); err != nil {
 				return nil, nil, err
 			}
-			goals[id] = goal
+			if validUserGoal(id, goal) {
+				goals[strings.TrimSpace(id)] = goal
+			}
 		}
 		if err := gr.Err(); err != nil {
 			return nil, nil, err
 		}
 	}
+	pruneCampaignsWithoutUserGoals(campaigns, goals)
 	return campaigns, goals, nil
 }
+
+func pruneCampaignsWithoutUserGoals(campaigns map[string]*Campaign, goals map[string]float64) {
+	for id, c := range campaigns {
+		if c == nil {
+			delete(campaigns, id)
+			continue
+		}
+		if _, ok := goals[c.UserID]; !ok {
+			delete(campaigns, id)
+		}
+	}
+}
+
+func validUserGoal(userID string, goal float64) bool {
+	return strings.TrimSpace(userID) != "" && !math.IsNaN(goal) && !math.IsInf(goal, 0) && goal > 0
+}
+
 func (r campaignRow) toCampaign() (*Campaign, error) {
 	id := nullableString(r.CampaignID)
 	if id == "" {

@@ -33,31 +33,41 @@ func MigrateUserGoalSpent(ctx context.Context, db *sql.DB) error {
 	if db == nil {
 		return errors.New("db is nil")
 	}
-	goalExists, err := columnExists(ctx, db, "users", "goal")
+	tx, err := db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	goalExists, err := columnExists(ctx, tx, "users", "goal")
 	if err != nil {
 		return err
 	}
 	if !goalExists {
-		if _, err := db.ExecContext(ctx, `ALTER TABLE users ADD COLUMN goal NUMERIC(18,6) NOT NULL DEFAULT 0`); err != nil {
+		if _, err := tx.ExecContext(ctx, `ALTER TABLE users ADD COLUMN goal NUMERIC(18,6) NOT NULL DEFAULT 0`); err != nil {
 			return err
 		}
-		if _, err := db.ExecContext(ctx, `UPDATE users SET goal = COALESCE(balance, 0) WHERE balance IS NOT NULL`); err != nil {
+		if _, err := tx.ExecContext(ctx, `UPDATE users SET goal = COALESCE(balance, 0) WHERE balance IS NOT NULL`); err != nil {
 			return err
 		}
 	}
-	spentExists, err := columnExists(ctx, db, "users", "spent")
+	spentExists, err := columnExists(ctx, tx, "users", "spent")
 	if err != nil {
 		return err
 	}
 	if !spentExists {
-		if _, err := db.ExecContext(ctx, `ALTER TABLE users ADD COLUMN spent NUMERIC(18,6) NOT NULL DEFAULT 0`); err != nil {
+		if _, err := tx.ExecContext(ctx, `ALTER TABLE users ADD COLUMN spent NUMERIC(18,6) NOT NULL DEFAULT 0`); err != nil {
 			return err
 		}
 	}
-	return nil
+	return tx.Commit()
 }
 
-func columnExists(ctx context.Context, db *sql.DB, tableName, columnName string) (bool, error) {
+type queryer interface {
+	QueryRowContext(context.Context, string, ...any) *sql.Row
+}
+
+func columnExists(ctx context.Context, db queryer, tableName, columnName string) (bool, error) {
 	var exists bool
 	err := db.QueryRowContext(ctx, `SELECT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = ANY (current_schemas(false)) AND table_name = $1 AND column_name = $2)`, tableName, columnName).Scan(&exists)
 	if err != nil {
