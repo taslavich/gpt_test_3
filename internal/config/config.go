@@ -237,7 +237,6 @@ type AdvConfig struct {
 	HttpServer HttpServer
 	GrpcServer GrpcServer
 	RedisConfig
-	KafkaConfig
 
 	SspGeoDspPercentsAdultFilePath      string        `yaml:"SSP_GEO_DSP_PERCENTS_ADULT_FILE_PATH" env:"SSP_GEO_DSP_PERCENTS_ADULT_FILE_PATH"`
 	SspGeoDspPercentsMainstreamFilePath string        `yaml:"SSP_GEO_DSP_PERCENTS_MAINSTREAM_FILE_PATH" env:"SSP_GEO_DSP_PERCENTS_MAINSTREAM_FILE_PATH"`
@@ -250,7 +249,8 @@ type AdvConfig struct {
 	PacingCurrentTTL      time.Duration `yaml:"ADV_PACING_CURRENT_TTL" env:"ADV_PACING_CURRENT_TTL" env-default:"10m"`
 	PacingSlotTTL         time.Duration `yaml:"ADV_PACING_SLOT_TTL" env:"ADV_PACING_SLOT_TTL" env-default:"720h"`
 	AdvQualityMapFilePath string        `yaml:"ADV_QUALITY_MAP_FILE_PATH" env:"ADV_QUALITY_MAP_FILE_PATH"`
-	AdvServiceControlURLs []string      `yaml:"ADV_SERVICE_CONTROL_URLS" env:"ADV_SERVICE_CONTROL_URLS"`
+	RedisAddr             string        `yaml:"ADV_REDIS_ADDR" env:"ADV_REDIS_ADDR"`
+	AdvADMDomain          string        `yaml:"ADV_ADM_DOMAIN" env:"ADV_ADM_DOMAIN"`
 }
 type KafkaLoaderConfig struct {
 	RedisConfig

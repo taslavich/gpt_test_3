@@ -148,16 +148,6 @@ func (s *Server) GetWinnerBid_V2_5(
 					WinCrid:      &crid,
 					WinUserId:    &userID,
 				}
-				if err := utils.WriteUUIDKeyToRedis(ctx, s.redisBurlClient, uuid, s.redisUUIDKeyTTL); err != nil {
-					log.Printf("failed to write ADV BURL UUID key: %v", err)
-					s.redisWriteErrorMonitor.RecordForURL(err, req.SspUrl)
-				}
-				if req.Logged {
-					if err := utils.WriteUUIDKeyToRedis(ctx, s.redisAdmClient, uuid, s.redisUUIDKeyTTL); err != nil {
-						log.Printf("failed to write ADV ADM UUID key: %v", err)
-						s.redisWriteErrorMonitor.RecordForURL(err, req.SspUrl)
-					}
-				}
 				if err := utils.WriteWinStats(ctx, s.redisClients, uuid, clickhouseBid[uuid], req.Logged); err != nil {
 					log.Printf("failed to write ADV win stats: %v", err)
 					s.redisWriteErrorMonitor.RecordForURL(err, req.SspUrl)

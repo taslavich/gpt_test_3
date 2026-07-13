@@ -565,6 +565,26 @@ func (s *AuctionService) SlotTick(now time.Time) {
 		}
 	}
 }
+
+func (s *AuctionService) StartPacingTicker(ctx context.Context, interval time.Duration) {
+	if interval <= 0 {
+		interval = SlotDuration
+	}
+	s.SlotTick(time.Now())
+	go func() {
+		t := time.NewTicker(interval)
+		defer t.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case now := <-t.C:
+				s.SlotTick(now)
+			}
+		}
+	}()
+}
+
 func (s *AuctionService) GetActiveCampaignsCount(now time.Time) int {
 	n := 0
 	for _, c := range s.snapshots.Load().Campaigns {

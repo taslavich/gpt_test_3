@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"database/sql"
 	"fmt"
 	"log"
 	"net"
@@ -11,6 +10,7 @@ import (
 	"syscall"
 
 	"github.com/go-chi/chi/v5"
+	_ "github.com/lib/pq"
 	"gitlab.com/twinbid-exchange/RTB-exchange/internal/config"
 	dbpkg "gitlab.com/twinbid-exchange/RTB-exchange/internal/db"
 	"gitlab.com/twinbid-exchange/RTB-exchange/internal/filter"
@@ -32,9 +32,9 @@ func main() {
 	}
 	log.Println("Config initialized!")
 
-	redisAddr := cfg.RedisUUIDAddr
-	if redisAddr == "" && len(cfg.RedisShardAddrs) > 0 {
-		redisAddr = cfg.RedisShardAddrs[0]
+	redisAddr := cfg.RedisAddr
+	if redisAddr == "" {
+		log.Fatalf("ADV_REDIS_ADDR is required")
 	}
 
 	advRuntimeRedisClient, err := redisService.NewRedisClient(redisAddr, cfg.RedisPassword, cfg.RedisDBAdvRuntime, cfg.RedisPoolSize, cfg.RedisMinIdleConns)
@@ -62,28 +62,33 @@ func main() {
 		log.Fatalf("Failed to load ADV percent store: %v", err)
 	}
 	auctionService.SetPercentStore(percentStore)
-	if cfg.AdvQualityMapFilePath != "" {
-		qualityStore, err := auction.LoadQualityStore(cfg.AdvQualityMapFilePath)
-		if err != nil {
-			log.Fatalf("Failed to load ADV quality map: %v", err)
-		}
-		auctionService.SetQualityStore(qualityStore)
+	if cfg.AdvQualityMapFilePath == "" {
+		log.Fatalf("ADV_QUALITY_MAP_FILE_PATH is required")
 	}
+	qualityStore, err := auction.LoadQualityStore(cfg.AdvQualityMapFilePath)
+	if err != nil {
+		log.Fatalf("Failed to load ADV quality map: %v", err)
+	}
+	auctionService.SetQualityStore(qualityStore)
 
-	if cfg.PostgresDSN != "" {
-		db, err := sql.Open("postgres", cfg.PostgresDSN)
-		if err != nil {
-			log.Fatalf("Cannot open ADV postgres: %v", err)
-		}
-		defer db.Close()
-		if err := dbpkg.MigrateUserGoalSpent(ctx, db); err != nil {
-			log.Fatalf("Cannot migrate user goal/spent columns: %v", err)
-		}
-		auctionService.StartPostgresRefreshTicker(ctx, db, cfg.CampaignRefreshInterval)
+	if cfg.PostgresDSN == "" {
+		log.Fatalf("POSTGRES_DSN is required")
 	}
+	db, err := dbpkg.InitDBAndMigrate(ctx, cfg.PostgresDSN)
+	if err != nil {
+		log.Fatalf("Cannot init ADV postgres: %v", err)
+	}
+	defer db.Close()
+	initialCampaigns, initialUserGoals, err := auction.GetCampaignsAndUserGoalsFromPostgres(ctx, db)
+	if err != nil {
+		log.Fatalf("Cannot load initial ADV snapshot: %v", err)
+	}
+	auctionService.ReplaceSnapshot(initialCampaigns, initialUserGoals)
+	auctionService.StartPostgresRefreshTicker(ctx, db, cfg.CampaignRefreshInterval)
+	auctionService.StartPacingTicker(ctx, auction.SlotDuration)
 
 	s := grpc.NewServer()
-	advServer := advWeb.NewServer(auctionService, advRuntimeRedisClient, advWinnerRedisClient, cfg.AdvWinnerTTL)
+	advServer := advWeb.NewServer(auctionService, advRuntimeRedisClient, advWinnerRedisClient, cfg.AdvWinnerTTL, cfg.AdvADMDomain)
 	advGrpc.RegisterAdvServiceServer(s, advServer)
 
 	router := httpServer.InitHttpRouter(chi.NewRouter())
