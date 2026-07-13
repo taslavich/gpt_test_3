@@ -67,7 +67,7 @@ func (s *Server) DoAuction(ctx context.Context, req *advGrpc.DoAuctionRequest) (
 			cloned.Imp = []*ortb_V2_5.Imp{imp}
 			bidReq = cloned
 		}
-		result := s.auctionService.SelectAuction(bidReq, time.Now(), auction.AuctionRequestOptions{Format: req.GetFormat(), TrafficType: req.GetTrafficType(), SSPDomain: req.GetSspDomain()})
+		result := s.auctionService.SelectAuctionWithContext(ctx, bidReq, time.Now(), auction.AuctionRequestOptions{Format: req.GetFormat(), TrafficType: req.GetTrafficType(), SSPDomain: req.GetSspDomain()})
 		if result == nil || result.Campaign == nil || result.Creative == nil {
 			continue
 		}

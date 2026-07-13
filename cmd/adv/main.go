@@ -15,12 +15,10 @@ import (
 	dbpkg "gitlab.com/twinbid-exchange/RTB-exchange/internal/db"
 	"gitlab.com/twinbid-exchange/RTB-exchange/internal/filter"
 	advGrpc "gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/proto/services/adv"
-	utils "gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/utils_grpc"
 	httpServer "gitlab.com/twinbid-exchange/RTB-exchange/internal/http"
 	auction "gitlab.com/twinbid-exchange/RTB-exchange/internal/services/adv/service"
 	advWeb "gitlab.com/twinbid-exchange/RTB-exchange/internal/services/adv/web"
 	redisService "gitlab.com/twinbid-exchange/RTB-exchange/internal/services/redis"
-	"gitlab.com/twinbid-exchange/RTB-exchange/internal/types"
 	"google.golang.org/grpc"
 )
 
@@ -56,19 +54,21 @@ func main() {
 		log.Fatalf("Failed to connect to ADV winner redis: %v", err)
 	}
 
-	sspGeoDspMapAdult, err := utils.InitSspGeoDspMap[*types.PercentAndBidfloor](cfg.SspGeoDspPercentsAdultFilePath)
-	if err != nil {
-		log.Fatalf("Failed to Init ADV adult percent map: %v", err)
-	}
-
-	sspGeoDspMapMainstream, err := utils.InitSspGeoDspMap[*types.PercentAndBidfloor](cfg.SspGeoDspPercentsMainstreamFilePath)
-	if err != nil {
-		log.Fatalf("Failed to Init ADV mainstream percent map: %v", err)
-	}
-
 	processor := filter.NewOptimizedFilterProcessor(filter.NewRuleManager())
 	auctionService := auction.NewAuctionService(processor)
-	auctionService.SetPercentMaps(sspGeoDspMapAdult, sspGeoDspMapMainstream)
+	auctionService.SetRuntimeRedis(advRuntimeRedisClient, cfg.PacingCurrentTTL)
+	percentStore := auction.NewPercentStore(cfg.SspGeoDspPercentsAdultFilePath, cfg.SspGeoDspPercentsMainstreamFilePath)
+	if err := percentStore.LoadInitial(); err != nil {
+		log.Fatalf("Failed to load ADV percent store: %v", err)
+	}
+	auctionService.SetPercentStore(percentStore)
+	if cfg.AdvQualityMapFilePath != "" {
+		qualityStore, err := auction.LoadQualityStore(cfg.AdvQualityMapFilePath)
+		if err != nil {
+			log.Fatalf("Failed to load ADV quality map: %v", err)
+		}
+		auctionService.SetQualityStore(qualityStore)
+	}
 
 	if cfg.PostgresDSN != "" {
 		db, err := sql.Open("postgres", cfg.PostgresDSN)
@@ -91,8 +91,7 @@ func main() {
 		router,
 		cfg.SspGeoDspPercentsAdultFilePath,
 		cfg.SspGeoDspPercentsMainstreamFilePath,
-		&sspGeoDspMapAdult,
-		&sspGeoDspMapMainstream,
+		percentStore,
 	)
 	advWeb.InitWorkStatusRoutes(router, advServer.WorkController())
 	log.Println("HTTP routes initialized")
