@@ -29,7 +29,7 @@ func ProcessKafkaMessagesImpressions(
 		batchSize,
 		timeoutSec,
 		timeoutMs,
-		clickhouseBatchConfig[eventspb.ImpressionEvent]{
+		clickhouseBatchConfig[*eventspb.ImpressionEvent]{
 			LogName:    "IMPRESSIONS",
 			CommitName: "impression",
 			Unmarshal:  unmarshalImpressionEvent,
@@ -41,13 +41,13 @@ func ProcessKafkaMessagesImpressions(
 	return err
 }
 
-func unmarshalImpressionEvent(value []byte) (eventspb.ImpressionEvent, error) {
+func unmarshalImpressionEvent(value []byte) (*eventspb.ImpressionEvent, error) {
 	var record eventspb.ImpressionEvent
 	if err := proto.Unmarshal(value, &record); err != nil {
-		return eventspb.ImpressionEvent{}, err
+		return nil, err
 	}
 
-	return record, nil
+	return &record, nil
 }
 
 func hasDataImpressionProtoCH(record *eventspb.ImpressionEvent) bool {
@@ -62,7 +62,7 @@ func insertBatchImpressions(
 	ctx context.Context,
 	ch clickhouse.Conn,
 	table string,
-	records []eventspb.ImpressionEvent,
+	records []*eventspb.ImpressionEvent,
 ) (clickhouseInsertStats, error) {
 	var stats clickhouseInsertStats
 
@@ -85,7 +85,7 @@ func insertBatchImpressions(
 	}
 
 	for i := range records {
-		r := &records[i]
+		r := records[i]
 
 		impressions_u, err := uuid.Parse(r.ImpressionsUuid)
 		if err != nil {

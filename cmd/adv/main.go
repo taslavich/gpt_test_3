@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"database/sql"
 	"fmt"
 	"log"
 	"net"
@@ -11,16 +10,15 @@ import (
 	"syscall"
 
 	"github.com/go-chi/chi/v5"
+	_ "github.com/lib/pq"
 	"gitlab.com/twinbid-exchange/RTB-exchange/internal/config"
 	dbpkg "gitlab.com/twinbid-exchange/RTB-exchange/internal/db"
 	"gitlab.com/twinbid-exchange/RTB-exchange/internal/filter"
 	advGrpc "gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/proto/services/adv"
-	utils "gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/utils_grpc"
 	httpServer "gitlab.com/twinbid-exchange/RTB-exchange/internal/http"
 	auction "gitlab.com/twinbid-exchange/RTB-exchange/internal/services/adv/service"
 	advWeb "gitlab.com/twinbid-exchange/RTB-exchange/internal/services/adv/web"
 	redisService "gitlab.com/twinbid-exchange/RTB-exchange/internal/services/redis"
-	"gitlab.com/twinbid-exchange/RTB-exchange/internal/types"
 	"google.golang.org/grpc"
 )
 
@@ -34,9 +32,9 @@ func main() {
 	}
 	log.Println("Config initialized!")
 
-	redisAddr := cfg.RedisUUIDAddr
-	if redisAddr == "" && len(cfg.RedisShardAddrs) > 0 {
-		redisAddr = cfg.RedisShardAddrs[0]
+	redisAddr := cfg.RedisAddr
+	if redisAddr == "" {
+		log.Fatalf("ADV_REDIS_ADDR is required")
 	}
 
 	advRuntimeRedisClient, err := redisService.NewRedisClient(redisAddr, cfg.RedisPassword, cfg.RedisDBAdvRuntime, cfg.RedisPoolSize, cfg.RedisMinIdleConns)
@@ -56,34 +54,41 @@ func main() {
 		log.Fatalf("Failed to connect to ADV winner redis: %v", err)
 	}
 
-	sspGeoDspMapAdult, err := utils.InitSspGeoDspMap[*types.PercentAndBidfloor](cfg.SspGeoDspPercentsAdultFilePath)
-	if err != nil {
-		log.Fatalf("Failed to Init ADV adult percent map: %v", err)
-	}
-
-	sspGeoDspMapMainstream, err := utils.InitSspGeoDspMap[*types.PercentAndBidfloor](cfg.SspGeoDspPercentsMainstreamFilePath)
-	if err != nil {
-		log.Fatalf("Failed to Init ADV mainstream percent map: %v", err)
-	}
-
 	processor := filter.NewOptimizedFilterProcessor(filter.NewRuleManager())
 	auctionService := auction.NewAuctionService(processor)
-	auctionService.SetPercentMaps(sspGeoDspMapAdult, sspGeoDspMapMainstream)
-
-	if cfg.PostgresDSN != "" {
-		db, err := sql.Open("postgres", cfg.PostgresDSN)
-		if err != nil {
-			log.Fatalf("Cannot open ADV postgres: %v", err)
-		}
-		defer db.Close()
-		if err := dbpkg.MigrateUserGoalSpent(ctx, db); err != nil {
-			log.Fatalf("Cannot migrate user goal/spent columns: %v", err)
-		}
-		auctionService.StartPostgresRefreshTicker(ctx, db, cfg.CampaignRefreshInterval)
+	auctionService.SetRuntimeRedis(advRuntimeRedisClient, cfg.PacingCurrentTTL)
+	percentStore := auction.NewPercentStore(cfg.SspGeoDspPercentsAdultFilePath, cfg.SspGeoDspPercentsMainstreamFilePath)
+	if err := percentStore.LoadInitial(); err != nil {
+		log.Fatalf("Failed to load ADV percent store: %v", err)
 	}
+	auctionService.SetPercentStore(percentStore)
+	if cfg.AdvQualityMapFilePath == "" {
+		log.Fatalf("ADV_QUALITY_MAP_FILE_PATH is required")
+	}
+	qualityStore, err := auction.LoadQualityStore(cfg.AdvQualityMapFilePath)
+	if err != nil {
+		log.Fatalf("Failed to load ADV quality map: %v", err)
+	}
+	auctionService.SetQualityStore(qualityStore)
+
+	if cfg.PostgresDSN == "" {
+		log.Fatalf("POSTGRES_DSN is required")
+	}
+	db, err := dbpkg.InitDBAndMigrate(ctx, cfg.PostgresDSN)
+	if err != nil {
+		log.Fatalf("Cannot init ADV postgres: %v", err)
+	}
+	defer db.Close()
+	initialCampaigns, initialUserGoals, err := auction.GetCampaignsAndUserGoalsFromPostgres(ctx, db)
+	if err != nil {
+		log.Fatalf("Cannot load initial ADV snapshot: %v", err)
+	}
+	auctionService.ReplaceSnapshot(initialCampaigns, initialUserGoals)
+	auctionService.StartPostgresRefreshTicker(ctx, db, cfg.CampaignRefreshInterval)
+	auctionService.StartPacingTicker(ctx, auction.SlotDuration)
 
 	s := grpc.NewServer()
-	advServer := advWeb.NewServer(auctionService, advRuntimeRedisClient, advWinnerRedisClient, cfg.AdvWinnerTTL)
+	advServer := advWeb.NewServer(auctionService, advRuntimeRedisClient, advWinnerRedisClient, cfg.AdvWinnerTTL, cfg.AdvADMDomain)
 	advGrpc.RegisterAdvServiceServer(s, advServer)
 
 	router := httpServer.InitHttpRouter(chi.NewRouter())
@@ -91,8 +96,7 @@ func main() {
 		router,
 		cfg.SspGeoDspPercentsAdultFilePath,
 		cfg.SspGeoDspPercentsMainstreamFilePath,
-		&sspGeoDspMapAdult,
-		&sspGeoDspMapMainstream,
+		percentStore,
 	)
 	advWeb.InitWorkStatusRoutes(router, advServer.WorkController())
 	log.Println("HTTP routes initialized")

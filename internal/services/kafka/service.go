@@ -227,6 +227,12 @@ func checkKafkaWriterConnection(brokers []string, topic string) error {
 func CreateKafkaWriter(brokers []string, topic string) (*kafka.Writer, error) {
 	return CreateKafkaWriterWithPartitions(brokers, topic, DefaultTopicPartitions, 1)
 }
+func newKafkaWriter(brokers []string, topic string, balancer kafka.Balancer) *kafka.Writer {
+	return &kafka.Writer{Addr: kafka.TCP(brokers...), Topic: topic, Balancer: balancer, Async: false, RequiredAcks: kafka.RequireOne, MaxAttempts: 3, WriteTimeout: 5 * time.Second}
+}
+
+func spentTotalsBalancer() kafka.Balancer { return &kafka.Hash{} }
+
 func CreateKafkaWriterWithPartitions(brokers []string, topic string, partitions, replicationFactor int) (*kafka.Writer, error) {
 	if err := ensureTopicExistsWithReplication(brokers, topic, partitions, replicationFactor); err != nil {
 		return nil, err
@@ -234,7 +240,17 @@ func CreateKafkaWriterWithPartitions(brokers []string, topic string, partitions,
 	if err := checkKafkaWriterConnection(brokers, topic); err != nil {
 		return nil, err
 	}
-	return &kafka.Writer{Addr: kafka.TCP(brokers...), Topic: topic, Balancer: &kafka.LeastBytes{}, Async: false, RequiredAcks: kafka.RequireOne, MaxAttempts: 3, WriteTimeout: 5 * time.Second}, nil
+	return newKafkaWriter(brokers, topic, &kafka.LeastBytes{}), nil
+}
+
+func CreateSpentTotalsWriter(cfg config.KafkaConfig) (*kafka.Writer, error) {
+	if err := ensureTopicExistsWithReplication(cfg.KafkaBrokers, cfg.KafkaTopicSpentTotals, cfg.KafkaSpentTotalsPartitions, cfg.KafkaSpentTotalsReplicationFactor); err != nil {
+		return nil, err
+	}
+	if err := checkKafkaWriterConnection(cfg.KafkaBrokers, cfg.KafkaTopicSpentTotals); err != nil {
+		return nil, err
+	}
+	return newKafkaWriter(cfg.KafkaBrokers, cfg.KafkaTopicSpentTotals, spentTotalsBalancer()), nil
 }
 func CreateKafkaWriters(cfg config.KafkaConfig) (*KafkaWriters, error) {
 	if err := EnsureTopicsExist(cfg); err != nil {
@@ -262,7 +278,7 @@ func CreateKafkaWriters(cfg config.KafkaConfig) (*KafkaWriters, error) {
 	return &KafkaWriters{w1, w2, w3, w4}, nil
 }
 func CreateAdvKafkaWriters(cfg config.KafkaConfig) (*AdvKafkaWriters, error) {
-	w, err := CreateKafkaWriterWithPartitions(cfg.KafkaBrokers, cfg.KafkaTopicSpentTotals, cfg.KafkaSpentTotalsPartitions, cfg.KafkaSpentTotalsReplicationFactor)
+	w, err := CreateSpentTotalsWriter(cfg)
 	if err != nil {
 		return nil, err
 	}

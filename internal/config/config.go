@@ -226,6 +226,16 @@ type AdmAdapterConfig struct {
 	RsaFullChain            string        `yaml:"RSA_FULLCHAIN_PEM" env:"RSA_FULLCHAIN_PEM"`
 	RsaPrivKey              string        `yaml:"RSA_PRIVKEY_PEM" env:"RSA_PRIVKEY_PEM"`
 	SspAdapterWorkStatusURL string        `yaml:"SSP_ADAPTER_WORK_STATUS_URL" env:"SSP_ADAPTER_WORK_STATUS_URL"`
+	AdmRedisAddr            string        `yaml:"ADM_REDIS_ADDR" env:"ADM_REDIS_ADDR"`
+	RedisDBAdvRuntime       int           `yaml:"REDIS_DB_ADV_RUNTIME" env:"REDIS_DB_ADV_RUNTIME" env-default:"5"`
+	RedisDBAdvWinner        int           `yaml:"REDIS_DB_ADV_WINNER" env:"REDIS_DB_ADV_WINNER" env-default:"6"`
+	AdvControlURLs          []string      `yaml:"ADV_CONTROL_URLS" env:"ADV_CONTROL_URLS"`
+	AdvControlTimeout       time.Duration `yaml:"ADV_CONTROL_TIMEOUT" env:"ADV_CONTROL_TIMEOUT" env-default:"2s"`
+	BillingOutboxPath       string        `yaml:"BILLING_OUTBOX_PATH" env:"BILLING_OUTBOX_PATH" env-default:"./billing_outbox.db"`
+	BillingRetryInterval    time.Duration `yaml:"BILLING_RETRY_INTERVAL" env:"BILLING_RETRY_INTERVAL" env-default:"1s"`
+	BillingMarkerTTL        time.Duration `yaml:"BILLING_MARKER_TTL" env:"BILLING_MARKER_TTL" env-default:"720h"`
+	BillingWatchRetries     int           `yaml:"BILLING_WATCH_RETRIES" env:"BILLING_WATCH_RETRIES" env-default:"3"`
+	BillingWatchBackoff     time.Duration `yaml:"BILLING_WATCH_BACKOFF" env:"BILLING_WATCH_BACKOFF" env-default:"20ms"`
 	RedisWriteErrorMonitorConfig
 	BotBaseURL        string `yaml:"BOT_BASE_URL" env:"BOT_BASE_URL"`
 	BotInternalSecret string `yaml:"BOT_INTERNAL_SECRET" env:"BOT_INTERNAL_SECRET"`
@@ -237,7 +247,6 @@ type AdvConfig struct {
 	HttpServer HttpServer
 	GrpcServer GrpcServer
 	RedisConfig
-	KafkaConfig
 
 	SspGeoDspPercentsAdultFilePath      string        `yaml:"SSP_GEO_DSP_PERCENTS_ADULT_FILE_PATH" env:"SSP_GEO_DSP_PERCENTS_ADULT_FILE_PATH"`
 	SspGeoDspPercentsMainstreamFilePath string        `yaml:"SSP_GEO_DSP_PERCENTS_MAINSTREAM_FILE_PATH" env:"SSP_GEO_DSP_PERCENTS_MAINSTREAM_FILE_PATH"`
@@ -250,7 +259,8 @@ type AdvConfig struct {
 	PacingCurrentTTL      time.Duration `yaml:"ADV_PACING_CURRENT_TTL" env:"ADV_PACING_CURRENT_TTL" env-default:"10m"`
 	PacingSlotTTL         time.Duration `yaml:"ADV_PACING_SLOT_TTL" env:"ADV_PACING_SLOT_TTL" env-default:"720h"`
 	AdvQualityMapFilePath string        `yaml:"ADV_QUALITY_MAP_FILE_PATH" env:"ADV_QUALITY_MAP_FILE_PATH"`
-	AdvServiceControlURLs []string      `yaml:"ADV_SERVICE_CONTROL_URLS" env:"ADV_SERVICE_CONTROL_URLS"`
+	RedisAddr             string        `yaml:"ADV_REDIS_ADDR" env:"ADV_REDIS_ADDR"`
+	AdvADMDomain          string        `yaml:"ADV_ADM_DOMAIN" env:"ADV_ADM_DOMAIN"`
 }
 type KafkaLoaderConfig struct {
 	RedisConfig
@@ -266,15 +276,18 @@ type KafkaLoaderConfig struct {
 type KafkaRedisConfig struct {
 	RedisConfig
 	KafkaConfig
-	PostgresDSN       string        `yaml:"POSTGRES_DSN" env:"POSTGRES_DSN"`
-	RedisDBAdvRuntime int           `yaml:"REDIS_DB_ADV_RUNTIME" env:"REDIS_DB_ADV_RUNTIME" env-default:"5"`
-	ExporterInterval  time.Duration `yaml:"KAFKAREDIS_EXPORTER_INTERVAL" env:"KAFKAREDIS_EXPORTER_INTERVAL" env-default:"30s"`
-	RedisScanCount    int64         `yaml:"KAFKAREDIS_REDIS_SCAN_COUNT" env:"KAFKAREDIS_REDIS_SCAN_COUNT" env-default:"1000"`
-	HTTPHost          string        `yaml:"KAFKAREDIS_HTTP_HOST" env:"KAFKAREDIS_HTTP_HOST" env-default:"0.0.0.0"`
-	HTTPPort          uint16        `yaml:"KAFKAREDIS_HTTP_PORT" env:"KAFKAREDIS_HTTP_PORT" env-default:"8095"`
-	SelfControlURL    string        `yaml:"KAFKAREDIS_SELF_CONTROL_URL" env:"KAFKAREDIS_SELF_CONTROL_URL"`
-	BotBaseURL        string        `yaml:"BOT_BASE_URL" env:"BOT_BASE_URL"`
-	BotInternalSecret string        `yaml:"BOT_INTERNAL_SECRET" env:"BOT_INTERNAL_SECRET"`
+	PostgresDSN        string        `yaml:"POSTGRES_DSN" env:"POSTGRES_DSN"`
+	AdvRedisAddr       string        `yaml:"ADV_REDIS_ADDR" env:"ADV_REDIS_ADDR"`
+	RedisDBAdvRuntime  int           `yaml:"REDIS_DB_ADV_RUNTIME" env:"REDIS_DB_ADV_RUNTIME" env-default:"5"`
+	ExporterInterval   time.Duration `yaml:"KAFKAREDIS_EXPORTER_INTERVAL" env:"KAFKAREDIS_EXPORTER_INTERVAL" env-default:"30s"`
+	RedisScanCount     int64         `yaml:"KAFKAREDIS_REDIS_SCAN_COUNT" env:"KAFKAREDIS_REDIS_SCAN_COUNT" env-default:"1000"`
+	FetchBackoff       time.Duration `yaml:"KAFKAREDIS_FETCH_BACKOFF" env:"KAFKAREDIS_FETCH_BACKOFF" env-default:"1s"`
+	HTTPHost           string        `yaml:"KAFKAREDIS_HTTP_HOST" env:"KAFKAREDIS_HTTP_HOST" env-default:"0.0.0.0"`
+	HTTPPort           uint16        `yaml:"KAFKAREDIS_HTTP_PORT" env:"KAFKAREDIS_HTTP_PORT" env-default:"8095"`
+	SelfControlURL     string        `yaml:"KAFKAREDIS_SELF_CONTROL_URL" env:"KAFKAREDIS_SELF_CONTROL_URL"`
+	SelfControlTimeout time.Duration `yaml:"KAFKAREDIS_SELF_CONTROL_TIMEOUT" env:"KAFKAREDIS_SELF_CONTROL_TIMEOUT" env-default:"2s"`
+	BotBaseURL         string        `yaml:"BOT_BASE_URL" env:"BOT_BASE_URL"`
+	BotInternalSecret  string        `yaml:"BOT_INTERNAL_SECRET" env:"BOT_INTERNAL_SECRET"`
 }
 
 type ClickhouseConfig struct {

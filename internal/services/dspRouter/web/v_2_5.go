@@ -185,12 +185,15 @@ func (s *Server) GetBids_V2_5(
 		}
 	}()
 
+	if req == nil || req.BidRequest == nil {
+		return &dspRouterGrpc.DspRouterResponse_V2_5{BidResponses: map[string]*ortb_V2_5.BidResponse{}, Code: http.StatusBadRequest}, nil
+	}
 	timeout := getSspTimeout(req.SspDomain, s.configTimeouts)
 
 	newTmax := int32(float64(timeout.Milliseconds()) * 0.85)
 	req.BidRequest.Tmax = &newTmax
 
-	if req.BidRequest.Device.Ip == nil && req.BidRequest.Device.Ipv6 != nil {
+	if req.BidRequest.GetDevice() != nil && req.BidRequest.Device.Ip == nil && req.BidRequest.Device.Ipv6 != nil {
 		req.BidRequest.Device.Ip = req.BidRequest.Device.Ipv6
 	}
 
@@ -250,7 +253,7 @@ func (s *Server) GetBids_V2_5(
 		filterBoxChanger = nil
 	}
 
-	if !filters.Allowed(req.BidRequest, "", true) {
+	if filters != nil && !filters.Allowed(req.BidRequest, "", true) {
 		return &dspRouterGrpc.DspRouterResponse_V2_5{
 			BidRequest:   req.BidRequest,
 			BidResponses: map[string]*ortb_V2_5.BidResponse{},
@@ -268,10 +271,8 @@ func (s *Server) GetBids_V2_5(
 
 	if advResult, advErr := s.doAdvAuction(ctx, req, timeout); advErr == nil && advResult != nil && advResult.code == http.StatusOK && advResult.bidResponse != nil {
 		return &dspRouterGrpc.DspRouterResponse_V2_5{
-			BidRequest: req.BidRequest,
-			BidResponses: map[string]*ortb_V2_5.BidResponse{
-				"adv": advResult.bidResponse,
-			},
+			BidRequest:     req.BidRequest,
+			BidResponses:   map[string]*ortb_V2_5.BidResponse{},
 			SspDomain:      req.SspDomain,
 			Code:           http.StatusOK,
 			Rekl:           true,
@@ -284,7 +285,7 @@ func (s *Server) GetBids_V2_5(
 		endpoint := endpoint
 		domain := domain
 
-		if !utils.GetValueFomSspGeoDspMap(req.SspDomain, req.BidRequest.Device.Geo.GetCountry(), domain, linkMap, false) {
+		if !utils.GetValueFomSspGeoDspMap(req.SspDomain, routerBidRequestCountry(req.BidRequest), domain, linkMap, false) {
 			codesCh <- &dspDomainCode{
 				domain: domain,
 				code:   "-2",
@@ -310,7 +311,7 @@ func (s *Server) GetBids_V2_5(
 			continue
 		}
 
-		if !filters.Allowed(req.BidRequest, domain, false) {
+		if filters != nil && !filters.Allowed(req.BidRequest, domain, false) {
 			//log.Println("Gor DSP filter")
 			codesCh <- &dspDomainCode{
 				domain: domain,
@@ -362,21 +363,23 @@ func (s *Server) GetBids_V2_5(
 			}
 		}
 
-		if bidRequest, isChanged := filterBoxChanger.Change(mainRequest, domain); isChanged {
-			//fmt.Println(bidRequest.Site.GetId())
-			jsonDataTmp, err = jsoniter.Marshal(bidRequest)
-			if err != nil {
-				newErr := fmt.Errorf("Can not marshal in GetBids_V_2_5 because got uknown error: %v", err)
+		if filterBoxChanger != nil {
+			if bidRequest, isChanged := filterBoxChanger.Change(mainRequest, domain); isChanged {
+				//fmt.Println(bidRequest.Site.GetId())
+				jsonDataTmp, err = jsoniter.Marshal(bidRequest)
+				if err != nil {
+					newErr := fmt.Errorf("Can not marshal in GetBids_V_2_5 because got uknown error: %v", err)
 
-				grpcCode := codes.Unknown
+					grpcCode := codes.Unknown
 
-				st, ok := status.FromError(err)
-				if !ok {
-					grpcCode = st.Code()
-					newErr = fmt.Errorf("Can not marshal in GetBids_V_2_5 because got error: %v", st.Err())
+					st, ok := status.FromError(err)
+					if !ok {
+						grpcCode = st.Code()
+						newErr = fmt.Errorf("Can not marshal in GetBids_V_2_5 because got error: %v", st.Err())
+					}
+
+					return nil, status.Error(grpcCode, newErr.Error())
 				}
-
-				return nil, status.Error(grpcCode, newErr.Error())
 			}
 		}
 
@@ -560,4 +563,11 @@ func writeBidResponsesToRedis(
 	}
 
 	return utils.WriteBytesToRedis(bg, redisClients, uuid, constants.BID_RESPONSES_COLUMN, payload, logged)
+}
+
+func routerBidRequestCountry(req *ortb_V2_5.BidRequest) string {
+	if req == nil || req.GetDevice() == nil || req.GetDevice().GetGeo() == nil {
+		return ""
+	}
+	return req.GetDevice().GetGeo().GetCountry()
 }

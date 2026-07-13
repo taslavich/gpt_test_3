@@ -23,7 +23,7 @@ type clickhouseBatchConfig[T any] struct {
 	CommitName string
 
 	Unmarshal func(value []byte) (T, error)
-	HasData   func(record *T) bool
+	HasData   func(record T) bool
 	Insert    func(ctx context.Context, ch clickhouse.Conn, table string, records []T) (clickhouseInsertStats, error)
 }
 
@@ -90,7 +90,7 @@ func processKafkaMessagesBatch[T any](
 			)
 		}
 
-		if !cfg.HasData(&record) {
+		if !cfg.HasData(record) {
 			emptyCount++
 			rememberCommitMessage(commitMap, msg)
 			continue

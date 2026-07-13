@@ -31,7 +31,7 @@ func ProcessKafkaMessagesOrtb(
 		batchSize,
 		timeoutSec,
 		timeoutMs,
-		clickhouseBatchConfig[eventspb.OrtbEvent]{
+		clickhouseBatchConfig[*eventspb.OrtbEvent]{
 			LogName:    "ORTB",
 			CommitName: "ORTB",
 			Unmarshal:  unmarshalOrtbEvent,
@@ -41,20 +41,20 @@ func ProcessKafkaMessagesOrtb(
 	)
 }
 
-func unmarshalOrtbEvent(value []byte) (eventspb.OrtbEvent, error) {
+func unmarshalOrtbEvent(value []byte) (*eventspb.OrtbEvent, error) {
 	var record eventspb.OrtbEvent
 	if err := proto.Unmarshal(value, &record); err != nil {
-		return eventspb.OrtbEvent{}, err
+		return nil, err
 	}
 
-	return record, nil
+	return &record, nil
 }
 
 func insertBatchOrtb(
 	ctx context.Context,
 	ch clickhouse.Conn,
 	table string,
-	records []eventspb.OrtbEvent,
+	records []*eventspb.OrtbEvent,
 ) (clickhouseInsertStats, error) {
 	var stats clickhouseInsertStats
 
@@ -99,7 +99,7 @@ func insertBatchOrtb(
 	}
 
 	for i := range records {
-		r := &records[i]
+		r := records[i]
 
 		u, err := uuid.Parse(r.Uuid)
 		if err != nil {
