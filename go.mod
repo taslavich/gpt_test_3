@@ -66,7 +66,10 @@ require (
 	github.com/segmentio/kafka-go v0.4.49
 	github.com/shopspring/decimal v1.4.0 // indirect
 	github.com/yl2chen/cidranger v1.0.2
+	go.etcd.io/bbolt v1.4.0
 	golang.org/x/sys v0.36.0 // indirect
 )
 
 replace github.com/lib/pq => ./internal/third_party/libpqstub
+
+replace go.etcd.io/bbolt => ./internal/third_party/bboltstub

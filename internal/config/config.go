@@ -226,6 +226,16 @@ type AdmAdapterConfig struct {
 	RsaFullChain            string        `yaml:"RSA_FULLCHAIN_PEM" env:"RSA_FULLCHAIN_PEM"`
 	RsaPrivKey              string        `yaml:"RSA_PRIVKEY_PEM" env:"RSA_PRIVKEY_PEM"`
 	SspAdapterWorkStatusURL string        `yaml:"SSP_ADAPTER_WORK_STATUS_URL" env:"SSP_ADAPTER_WORK_STATUS_URL"`
+	AdmRedisAddr            string        `yaml:"ADM_REDIS_ADDR" env:"ADM_REDIS_ADDR"`
+	RedisDBAdvRuntime       int           `yaml:"REDIS_DB_ADV_RUNTIME" env:"REDIS_DB_ADV_RUNTIME" env-default:"5"`
+	RedisDBAdvWinner        int           `yaml:"REDIS_DB_ADV_WINNER" env:"REDIS_DB_ADV_WINNER" env-default:"6"`
+	AdvControlURLs          []string      `yaml:"ADV_CONTROL_URLS" env:"ADV_CONTROL_URLS"`
+	AdvControlTimeout       time.Duration `yaml:"ADV_CONTROL_TIMEOUT" env:"ADV_CONTROL_TIMEOUT" env-default:"2s"`
+	BillingOutboxPath       string        `yaml:"BILLING_OUTBOX_PATH" env:"BILLING_OUTBOX_PATH" env-default:"./billing_outbox.db"`
+	BillingRetryInterval    time.Duration `yaml:"BILLING_RETRY_INTERVAL" env:"BILLING_RETRY_INTERVAL" env-default:"1s"`
+	BillingMarkerTTL        time.Duration `yaml:"BILLING_MARKER_TTL" env:"BILLING_MARKER_TTL" env-default:"720h"`
+	BillingWatchRetries     int           `yaml:"BILLING_WATCH_RETRIES" env:"BILLING_WATCH_RETRIES" env-default:"3"`
+	BillingWatchBackoff     time.Duration `yaml:"BILLING_WATCH_BACKOFF" env:"BILLING_WATCH_BACKOFF" env-default:"20ms"`
 	RedisWriteErrorMonitorConfig
 	BotBaseURL        string `yaml:"BOT_BASE_URL" env:"BOT_BASE_URL"`
 	BotInternalSecret string `yaml:"BOT_INTERNAL_SECRET" env:"BOT_INTERNAL_SECRET"`
