@@ -18,7 +18,6 @@ import (
 	httpServer "gitlab.com/twinbid-exchange/RTB-exchange/internal/http"
 	auction "gitlab.com/twinbid-exchange/RTB-exchange/internal/services/adv/service"
 	advWeb "gitlab.com/twinbid-exchange/RTB-exchange/internal/services/adv/web"
-	kafkaService "gitlab.com/twinbid-exchange/RTB-exchange/internal/services/kafka"
 	redisService "gitlab.com/twinbid-exchange/RTB-exchange/internal/services/redis"
 	"gitlab.com/twinbid-exchange/RTB-exchange/internal/types"
 	"google.golang.org/grpc"
@@ -39,56 +38,22 @@ func main() {
 		redisAddr = cfg.RedisShardAddrs[0]
 	}
 
-	userBalanceThresholdRedisClient, err := redisService.NewRedisClient(
-		redisAddr,
-		cfg.RedisPassword,
-		cfg.RedisDBUserBalanceThreshold,
-		cfg.RedisPoolSize,
-		cfg.RedisMinIdleConns,
-	)
+	advRuntimeRedisClient, err := redisService.NewRedisClient(redisAddr, cfg.RedisPassword, cfg.RedisDBAdvRuntime, cfg.RedisPoolSize, cfg.RedisMinIdleConns)
 	if err != nil {
-		log.Fatalf("Cannot init user balance threshold redis client: %v", err)
+		log.Fatalf("Cannot init ADV runtime redis client: %v", err)
 	}
-	defer userBalanceThresholdRedisClient.Close()
-
-	userBalanceSpentRedisClient, err := redisService.NewRedisClient(
-		redisAddr,
-		cfg.RedisPassword,
-		cfg.RedisDBUserBalanceSpent,
-		cfg.RedisPoolSize,
-		cfg.RedisMinIdleConns,
-	)
+	defer advRuntimeRedisClient.Close()
+	advWinnerRedisClient, err := redisService.NewRedisClient(redisAddr, cfg.RedisPassword, cfg.RedisDBAdvWinner, cfg.RedisPoolSize, cfg.RedisMinIdleConns)
 	if err != nil {
-		log.Fatalf("Cannot init user balance spent redis client: %v", err)
+		log.Fatalf("Cannot init ADV winner redis client: %v", err)
 	}
-	defer userBalanceSpentRedisClient.Close()
-
-	if err := userBalanceThresholdRedisClient.Ping(ctx).Err(); err != nil {
-		log.Fatalf("Failed to connect to user balance threshold redis: %v", err)
+	defer advWinnerRedisClient.Close()
+	if err := advRuntimeRedisClient.Ping(ctx).Err(); err != nil {
+		log.Fatalf("Failed to connect to ADV runtime redis: %v", err)
 	}
-	if err := userBalanceSpentRedisClient.Ping(ctx).Err(); err != nil {
-		log.Fatalf("Failed to connect to user balance spent redis: %v", err)
+	if err := advWinnerRedisClient.Ping(ctx).Err(); err != nil {
+		log.Fatalf("Failed to connect to ADV winner redis: %v", err)
 	}
-
-	advKafkaWriters, err := kafkaService.CreateAdvKafkaWriters(cfg.KafkaConfig)
-	if err != nil {
-		log.Fatalf("Cannot init ADV kafka writers: %v", err)
-	}
-	defer func() {
-		if err := advKafkaWriters.Close(); err != nil {
-			log.Printf("⚠️ failed to close ADV kafka writers: %v", err)
-		}
-	}()
-
-	advKafkaReaders, err := kafkaService.CreateAdvKafkaReaders(cfg.KafkaConfig)
-	if err != nil {
-		log.Fatalf("Cannot init ADV kafka readers: %v", err)
-	}
-	defer func() {
-		if err := advKafkaReaders.Close(); err != nil {
-			log.Printf("⚠️ failed to close ADV kafka readers: %v", err)
-		}
-	}()
 
 	sspGeoDspMapAdult, err := utils.InitSspGeoDspMap[*types.PercentAndBidfloor](cfg.SspGeoDspPercentsAdultFilePath)
 	if err != nil {
@@ -114,10 +79,8 @@ func main() {
 	}
 
 	s := grpc.NewServer()
-	advGrpc.RegisterAdvServiceServer(
-		s,
-		advWeb.NewServer(auctionService, userBalanceThresholdRedisClient, userBalanceSpentRedisClient),
-	)
+	advServer := advWeb.NewServer(auctionService, advRuntimeRedisClient, advWinnerRedisClient, cfg.AdvWinnerTTL)
+	advGrpc.RegisterAdvServiceServer(s, advServer)
 
 	router := httpServer.InitHttpRouter(chi.NewRouter())
 	advWeb.InitHttpRoutes(
@@ -127,6 +90,7 @@ func main() {
 		&sspGeoDspMapAdult,
 		&sspGeoDspMapMainstream,
 	)
+	advWeb.InitWorkStatusRoutes(router, advServer.WorkController())
 	log.Println("HTTP routes initialized")
 
 	errChan := make(chan error)

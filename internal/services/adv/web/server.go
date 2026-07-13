@@ -2,165 +2,115 @@ package web
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"net/http"
 	"strconv"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/redis/go-redis/v9"
-
 	advGrpc "gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/proto/services/adv"
 	ortb_V2_5 "gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/proto/types/ortb_V2_5"
 	auction "gitlab.com/twinbid-exchange/RTB-exchange/internal/services/adv/service"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
 
-// Server exposes the ADV auction service over gRPC.
 type Server struct {
 	advGrpc.UnimplementedAdvServiceServer
-	auctionService                  *auction.AuctionService
-	userBalanceThresholdRedisClient *redis.Client
-	userBalanceSpentRedisClient     *redis.Client
+	auctionService     *auction.AuctionService
+	runtimeRedisClient *redis.Client
+	winnerRedisClient  *redis.Client
+	winnerTTL          time.Duration
+	work               *WorkController
 }
 
-// NewServer creates a gRPC server that delegates auction decisions to AuctionService.
-func NewServer(
-	auctionService *auction.AuctionService,
-	userBalanceThresholdRedisClient *redis.Client,
-	userBalanceSpentRedisClient *redis.Client,
-) *Server {
-	return &Server{
-		auctionService:                  auctionService,
-		userBalanceThresholdRedisClient: userBalanceThresholdRedisClient,
-		userBalanceSpentRedisClient:     userBalanceSpentRedisClient,
+func NewServer(auctionService *auction.AuctionService, runtimeRedisClient, winnerRedisClient *redis.Client, winnerTTL time.Duration) *Server {
+	if winnerTTL <= 0 {
+		winnerTTL = 45 * time.Minute
 	}
+	return &Server{auctionService: auctionService, runtimeRedisClient: runtimeRedisClient, winnerRedisClient: winnerRedisClient, winnerTTL: winnerTTL, work: NewWorkController(true)}
 }
-
-// DoAuction accepts an OpenRTB bid request and runs the ADV auction selection logic.
+func (s *Server) WorkController() *WorkController { return s.work }
 func (s *Server) DoAuction(ctx context.Context, req *advGrpc.DoAuctionRequest) (*advGrpc.DoAuctionResponse, error) {
+	if s.work != nil && !s.work.Enabled() {
+		return nil, status.Error(codes.Unavailable, "ADV service is temporarily disabled after Redis write failure")
+	}
 	if req == nil || req.GetBidRequest() == nil {
 		return &advGrpc.DoAuctionResponse{Selected: false, Code: http.StatusBadRequest}, nil
 	}
 	if s.auctionService == nil {
 		return &advGrpc.DoAuctionResponse{Selected: false, Code: http.StatusServiceUnavailable}, nil
 	}
-
-	auctionResult := s.auctionService.SelectAuction(req.GetBidRequest(), time.Now(), auction.AuctionRequestOptions{
-		Format:      req.GetFormat(),
-		TrafficType: req.GetTrafficType(),
-		SSPDomain:   req.GetSspDomain(),
-	})
-	if auctionResult == nil || auctionResult.Campaign == nil || auctionResult.Creative == nil {
+	br := &ortb_V2_5.BidResponse{}
+	id := uuid.NewString()
+	cur := "USD"
+	br.Id = &id
+	br.Cur = &cur
+	br.Seatbid = []*ortb_V2_5.SeatBid{{}}
+	selectedCampaign := ""
+	selectedCreative := ""
+	selectedADM := ""
+	selectedPrice := 0.0
+	for _, imp := range req.GetBidRequest().GetImp() {
+		if imp == nil {
+			continue
+		}
+		result := s.auctionService.SelectAuction(req.GetBidRequest(), time.Now(), auction.AuctionRequestOptions{Format: req.GetFormat(), TrafficType: req.GetTrafficType(), SSPDomain: req.GetSspDomain()})
+		if result == nil || result.Campaign == nil || result.Creative == nil {
+			continue
+		}
+		charge := result.Campaign.ChargePriceForFormat(req.GetFormat())
+		if charge <= 0 {
+			continue
+		}
+		impUUID := imp.GetId()
+		if s.winnerRedisClient != nil {
+			if err := s.winnerRedisClient.HSet(ctx, impUUID, map[string]any{"price": strconv.FormatFloat(charge, 'f', -1, 64), "user_id": result.Campaign.UserID, "campaign_id": result.Campaign.ID, "format": req.GetFormat()}).Err(); err != nil {
+				continue
+			}
+			_ = s.winnerRedisClient.Expire(ctx, impUUID, s.winnerTTL).Err()
+		}
+		bid := buildBid(req.GetBidRequest(), imp, result.Campaign, result.Creative, result.ADM, result.Campaign.BasePrice)
+		br.Seatbid[0].Bid = append(br.Seatbid[0].Bid, bid)
+		selectedCampaign = result.Campaign.ID
+		selectedCreative = result.Creative.ID
+		selectedADM = result.ADM
+		selectedPrice = charge
+	}
+	if len(br.GetSeatbid()) == 0 || len(br.GetSeatbid()[0].GetBid()) == 0 {
 		return &advGrpc.DoAuctionResponse{Selected: false, Code: http.StatusNoContent}, nil
 	}
-
-	campaign := auctionResult.Campaign
-	creative := auctionResult.Creative
-	if err := s.ensurePositiveUserBalance(ctx, campaign.UserID); err != nil {
-		if errors.Is(err, redis.Nil) || errors.Is(err, errUserBalanceNotPositive) {
-			return &advGrpc.DoAuctionResponse{Selected: false, Code: http.StatusNoContent}, nil
-		}
-
-		return &advGrpc.DoAuctionResponse{Selected: false, Code: http.StatusServiceUnavailable}, nil
-	}
-
-	bidResponse := buildBidResponse(req.GetBidRequest(), campaign, creative, auctionResult.ADM, auctionResult.AuctionPrice)
-
-	return &advGrpc.DoAuctionResponse{
-		Selected:     true,
-		CampaignId:   campaign.ID,
-		CreativeId:   creative.ID,
-		Adm:          auctionResult.ADM,
-		AuctionPrice: auctionResult.AuctionPrice,
-		Code:         http.StatusOK,
-		BidResponse:  bidResponse,
-	}, nil
+	return &advGrpc.DoAuctionResponse{Selected: true, CampaignId: selectedCampaign, CreativeId: selectedCreative, Adm: selectedADM, AuctionPrice: selectedPrice, Code: http.StatusOK, BidResponse: br}, nil
 }
-
-var errUserBalanceNotPositive = errors.New("balance is not positive")
-
-func (s *Server) ensurePositiveUserBalance(ctx context.Context, userID string) error {
-	if userID == "" {
-		return fmt.Errorf("campaign user_id is empty")
-	}
-
-	return ensurePositiveRemainingBalance(ctx, s.userBalanceThresholdRedisClient, s.userBalanceSpentRedisClient, userID)
+func buildBid(req *ortb_V2_5.BidRequest, imp *ortb_V2_5.Imp, campaign *auction.Campaign, creative *auction.Creative, adm string, price float64) *ortb_V2_5.Bid {
+	bidID := creative.ID
+	impID := imp.GetId()
+	price32 := float32(price)
+	cid := campaign.ID
+	crid := creative.ID
+	w := int32(creative.W)
+	h := int32(creative.H)
+	return &ortb_V2_5.Bid{Id: &bidID, Impid: &impID, Price: &price32, Adm: &adm, Cid: &cid, Crid: &crid, W: &w, H: &h}
 }
-
-func ensurePositiveRemainingBalance(ctx context.Context, thresholdClient, spentClient *redis.Client, balanceKey string) error {
-	threshold, err := redisFloatValue(ctx, thresholdClient, balanceKey, "threshold")
-	if err != nil {
-		return err
+func buildBidResponse(req *ortb_V2_5.BidRequest, campaign *auction.Campaign, creative *auction.Creative, adm string, price float64) *ortb_V2_5.BidResponse {
+	if req == nil || len(req.GetImp()) == 0 {
+		return nil
 	}
-
-	spent, err := redisFloatValue(ctx, spentClient, balanceKey, "spent")
-	if err != nil {
-		return err
-	}
-
-	if threshold-spent <= 0 {
-		return errUserBalanceNotPositive
-	}
-
-	return nil
+	id := uuid.NewString()
+	cur := "USD"
+	return &ortb_V2_5.BidResponse{Id: &id, Cur: &cur, Seatbid: []*ortb_V2_5.SeatBid{{Bid: []*ortb_V2_5.Bid{buildBid(req, req.GetImp()[0], campaign, creative, adm, price)}}}}
 }
-
 func redisFloatValue(ctx context.Context, client *redis.Client, key string, valueName string) (float64, error) {
 	if client == nil {
 		return 0, fmt.Errorf("redis %s client is nil", valueName)
 	}
-
-	valueRaw, err := client.Get(ctx, key).Result()
+	raw, err := client.Get(ctx, key).Result()
+	if err == redis.Nil {
+		return 0, nil
+	}
 	if err != nil {
 		return 0, err
 	}
-
-	value, err := strconv.ParseFloat(valueRaw, 64)
-	if err != nil {
-		return 0, fmt.Errorf("parse redis %s for key %s: %w", valueName, key, err)
-	}
-
-	return value, nil
-}
-
-func buildBidResponse(req *ortb_V2_5.BidRequest, campaign *auction.Campaign, creative *auction.Creative, adm string, price float64) *ortb_V2_5.BidResponse {
-	if req == nil || campaign == nil || creative == nil {
-		return nil
-	}
-
-	bidID := req.GetId()
-	impID := ""
-	if len(req.GetImp()) > 0 {
-		impID = req.GetImp()[0].GetId()
-	}
-	price32 := float32(price)
-	cid := campaign.ID
-	crid := creative.ID
-	adomain := []string{campaign.CampaignName}
-	w := int32(creative.W)
-	h := int32(creative.H)
-	cur := "USD"
-
-	return &ortb_V2_5.BidResponse{
-		Id:    &bidID,
-		Bidid: &bidID,
-		Cur:   &cur,
-		Seatbid: []*ortb_V2_5.SeatBid{
-			{
-				Bid: []*ortb_V2_5.Bid{
-					{
-						Id:      &bidID,
-						Impid:   &impID,
-						Price:   &price32,
-						Adm:     &adm,
-						Adomain: adomain,
-						Cid:     &cid,
-						Crid:    &crid,
-						W:       &w,
-						H:       &h,
-					},
-				},
-			},
-		},
-	}
+	return strconv.ParseFloat(raw, 64)
 }

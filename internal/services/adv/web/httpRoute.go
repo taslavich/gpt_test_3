@@ -138,3 +138,21 @@ func getSspGeoPercentsMapDebug(
 		log.Printf("Cannot make HTTP response back: %v\n", err)
 	}
 }
+
+func InitWorkStatusRoutes(httpRouter *chi.Mux, controller *WorkController) {
+	httpRouter.Get("/work_status", func(w http.ResponseWriter, r *http.Request) {
+		_ = rnr.JSON(w, http.StatusOK, map[string]bool{"work": controller.Enabled()})
+	})
+	httpRouter.Put("/work_status", func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Query().Get("work") {
+		case "true":
+			_ = controller.Set(true)
+			w.WriteHeader(http.StatusOK)
+		case "false":
+			_ = controller.Set(false)
+			w.WriteHeader(http.StatusOK)
+		default:
+			http.Error(w, "invalid work parameter", http.StatusBadRequest)
+		}
+	})
+}

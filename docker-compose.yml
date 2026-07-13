@@ -1,0 +1,15 @@
+services:
+  redis-aof:
+    image: redis:7-alpine
+    command: ["redis-server", "/usr/local/etc/redis/redis.conf"]
+    volumes:
+      - ./deploy/redis/redis.conf:/usr/local/etc/redis/redis.conf:ro
+      - redis-aof-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+volumes:
+  redis-aof-data:
