@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"net/http"
 	"runtime/debug"
 	"sync/atomic"
 	"time"
@@ -61,7 +60,7 @@ func (s *Server) DoAuction(ctx context.Context, req *advGrpc.DoAuctionRequest) (
 		return nil, status.Error(codes.Unavailable, disabledMessage)
 	}
 	if req == nil || req.GetBidRequest() == nil || len(req.GetBidRequest().GetImp()) == 0 {
-		return &advGrpc.DoAuctionResponse{Selected: false, Code: http.StatusBadRequest}, nil
+		return nil, status.Error(codes.InvalidArgument, "ADV auction request must contain at least one impression")
 	}
 	if s.auctionService == nil {
 		return nil, status.Error(codes.Unavailable, "ADV auction service is unavailable")
@@ -75,21 +74,17 @@ func (s *Server) DoAuction(ctx context.Context, req *advGrpc.DoAuctionRequest) (
 		ImpIDUUID:   req.GetImpIdUuid(),
 	})
 	if errors.Is(err, auction.ErrInvalidAuctionRequest) {
-		return &advGrpc.DoAuctionResponse{Selected: false, Code: http.StatusBadRequest}, nil
+		return nil, status.Error(codes.InvalidArgument, err.Error())
 	}
 	if err != nil {
 		return nil, status.Error(codes.Unavailable, fmt.Sprintf("ADV auction failed: %v", err))
 	}
 	if outcome == nil || !hasBids(outcome.BidResponse) {
 		return &advGrpc.DoAuctionResponse{
-			Selected:      false,
-			Code:          http.StatusNoContent,
 			WinnerUserIds: map[string]string{},
 		}, nil
 	}
 	return &advGrpc.DoAuctionResponse{
-		Selected:      true,
-		Code:          http.StatusOK,
 		BidResponse:   outcome.BidResponse,
 		WinnerUserIds: outcome.WinnerUserIDs,
 	}, nil

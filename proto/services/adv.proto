@@ -18,12 +18,13 @@ message DoAuctionRequest {
 }
 
 message DoAuctionResponse {
-  bool selected = 1;
+  reserved 1, 6;
+  reserved "selected", "code";
+
   string campaign_id = 2;
   string creative_id = 3;
   string adm = 4;
   double auction_price = 5;
-  int32 code = 6;
   ortb_V2_5.BidResponse bid_response = 7;
   map<string, string> winnerUserIds = 8;
 }

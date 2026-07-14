@@ -207,18 +207,6 @@ func cloneStringMap(input map[string]string) map[string]string {
 	return output
 }
 
-func bidResponseHasBids(response *ortb_V2_5.BidResponse) bool {
-	if response == nil {
-		return false
-	}
-	for _, seat := range response.GetSeatbid() {
-		if seat != nil && len(seat.GetBid()) > 0 {
-			return true
-		}
-	}
-	return false
-}
-
 func (s *Server) GetBids_V2_5(
 	ctx context.Context,
 	req *dspRouterGrpc.DspRouterRequest_V2_5,
@@ -315,7 +303,7 @@ func (s *Server) GetBids_V2_5(
 	advResponse, advErr := s.doAdvAuction(ctx, req, timeout)
 	if advErr != nil {
 		log.Printf("ADV auction failed, falling back to DSP: %v", advErr)
-	} else if advResponse != nil && advResponse.GetCode() == http.StatusOK && advResponse.GetSelected() && bidResponseHasBids(advResponse.GetBidResponse()) {
+	} else if advResponse != nil && advResponse.GetBidResponse() != nil {
 		return &dspRouterGrpc.DspRouterResponse_V2_5{
 			BidRequest:       req.GetBidRequest(),
 			BidResponses:     map[string]*ortb_V2_5.BidResponse{},
@@ -326,8 +314,6 @@ func (s *Server) GetBids_V2_5(
 			WinnerUserIds:    cloneStringMap(advResponse.GetWinnerUserIds()),
 			ImpIdUuid:        cloneStringMap(req.GetImpIdUuid()),
 		}, nil
-	} else if advResponse != nil && advResponse.GetCode() != http.StatusNoContent {
-		log.Printf("ADV returned code %d without a usable bid, falling back to DSP", advResponse.GetCode())
 	}
 
 	for endpoint, domain := range dspList {
