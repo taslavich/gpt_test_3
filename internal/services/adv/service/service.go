@@ -239,8 +239,11 @@ func cloneAndValidateSnapshot(src *Snapshot) (*Snapshot, error) {
 			cc.ID = strings.TrimSpace(cc.ID)
 			cc.CampaignID = strings.TrimSpace(cc.CampaignID)
 			cc.ADMURL = strings.TrimSpace(cc.ADMURL)
-			if cc.ID == "" || cc.ADMURL == "" || cc.W <= 0 || cc.H <= 0 {
+			if cc.ID == "" || cc.ADMURL == "" {
 				return nil, fmt.Errorf("campaign %s has invalid creative", clone.ID)
+			}
+			if normalizeFormat(clone.Format) == "BAN" && (cc.W <= 0 || cc.H <= 0) {
+				return nil, fmt.Errorf("banner campaign %s has creative %s without valid dimensions", clone.ID, cc.ID)
 			}
 			if cc.CampaignID == "" {
 				cc.CampaignID = clone.ID

@@ -431,8 +431,12 @@ func loadCreativesBatch(ctx context.Context, db *sql.DB, campaignIDs []string, c
 		}
 		creativeID := strings.TrimSpace(id.String)
 		admURL := strings.TrimSpace(adm.String)
-		if creativeID == "" || admURL == "" || !w.Valid || !h.Valid || w.Int64 <= 0 || h.Int64 <= 0 {
+		if creativeID == "" || admURL == "" {
 			log.Printf("ADV snapshot: skipping invalid creative for campaign %s", campaign.ID)
+			continue
+		}
+		if normalizeFormat(campaign.Format) == "BAN" && (!w.Valid || !h.Valid || w.Int64 <= 0 || h.Int64 <= 0) {
+			log.Printf("ADV snapshot: skipping banner creative %s without valid dimensions for campaign %s", creativeID, campaign.ID)
 			continue
 		}
 		seen := creativeIDs[campaign.ID]
@@ -450,9 +454,16 @@ func loadCreativesBatch(ctx context.Context, db *sql.DB, campaignIDs []string, c
 			continue
 		}
 		seen[creativeID] = struct{}{}
+		creativeW, creativeH := 0, 0
+		if w.Valid && w.Int64 > 0 {
+			creativeW = int(w.Int64)
+		}
+		if h.Valid && h.Int64 > 0 {
+			creativeH = int(h.Int64)
+		}
 		campaign.Creatives = append(campaign.Creatives, &Creative{
 			ID: creativeID, CampaignID: campaign.ID, ADMURL: admURL,
-			TrackersMacros: macros, W: int(w.Int64), H: int(h.Int64), Name: name.String,
+			TrackersMacros: macros, W: creativeW, H: creativeH, Name: name.String,
 			CreativeName: creativeName.String, Title: title.String, Description: description.String,
 		})
 	}

@@ -220,3 +220,41 @@ func TestQualityStoreReplacesOneMapAndPreservesOverlappingMemberships(t *testing
 		t.Fatal("atomic all-map update lost overlapping memberships")
 	}
 }
+
+func TestCreativeDimensionsRequiredOnlyForBanner(t *testing.T) {
+	now := time.Date(2026, 7, 13, 12, 0, 0, 0, time.UTC)
+	newSnapshot := func(format string) *Snapshot {
+		return &Snapshot{
+			UserGoals: map[string]float64{"u": 100},
+			Campaigns: []*Campaign{{
+				ID: "c", UserID: "u", Status: CampaignStatusActive,
+				PricingModel: PricingModelCPM, Format: format,
+				TrafficType: TrafficMainstream, QualitySegment: "usual",
+				BasePrice: 1, GoalTotalDollars: 100,
+				StartTS: now, EndTS: now.Add(time.Hour),
+				Creatives: []*Creative{{
+					ID: "cr", CampaignID: "c", ADMURL: "https://example.test/creative",
+				}},
+			}},
+		}
+	}
+
+	for _, format := range []string{"NAT", "IPP", "POP"} {
+		if _, err := cloneAndValidateSnapshot(newSnapshot(format)); err != nil {
+			t.Fatalf("%s creative without dimensions must be accepted: %v", format, err)
+		}
+	}
+	if _, err := cloneAndValidateSnapshot(newSnapshot("BAN")); err == nil {
+		t.Fatal("banner creative without dimensions must be rejected")
+	}
+}
+
+func TestMatchingCreativesIgnoresDimensionsOutsideBanner(t *testing.T) {
+	creative := &Creative{ID: "cr", ADMURL: "https://example.test/creative"}
+	for _, format := range []string{"NAT", "IPP", "POP"} {
+		matched := matchingCreatives([]*Creative{creative}, &ortb.Imp{}, format)
+		if len(matched) != 1 || matched[0] != creative {
+			t.Fatalf("%s creative without dimensions must remain eligible", format)
+		}
+	}
+}
