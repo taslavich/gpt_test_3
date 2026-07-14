@@ -79,37 +79,89 @@ func InitHttpRoutes(httpRouter *chi.Mux, percentStore *auction.PercentStore, qua
 		w.WriteHeader(http.StatusNoContent)
 	})
 
-	httpRouter.Get(GetQualityMapURL, func(w http.ResponseWriter, _ *http.Request) {
+	httpRouter.Get(GetQualityMapURL, func(w http.ResponseWriter, r *http.Request) {
 		if qualityStore == nil {
 			http.Error(w, "quality store is unavailable", http.StatusServiceUnavailable)
 			return
 		}
-		value, err := qualityStore.Saved()
+		segment, present, valid := queryQualitySegment(r)
+		if present && !valid {
+			http.Error(w, "quality must be usual, high or ultra", http.StatusBadRequest)
+			return
+		}
+		if !present {
+			value, err := qualityStore.SavedAll()
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
+			}
+			writeJSON(w, http.StatusOK, value)
+			return
+		}
+		value, err := qualityStore.Saved(segment)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
 		writeJSON(w, http.StatusOK, value)
 	})
-	httpRouter.Get(GetDebugQualityMapURL, func(w http.ResponseWriter, _ *http.Request) {
+	httpRouter.Get(GetDebugQualityMapURL, func(w http.ResponseWriter, r *http.Request) {
 		if qualityStore == nil {
 			http.Error(w, "quality store is unavailable", http.StatusServiceUnavailable)
 			return
 		}
-		writeJSON(w, http.StatusOK, qualityStore.Memory())
+		segment, present, valid := queryQualitySegment(r)
+		if present && !valid {
+			http.Error(w, "quality must be usual, high or ultra", http.StatusBadRequest)
+			return
+		}
+		if !present {
+			writeJSON(w, http.StatusOK, qualityStore.MemoryAll())
+			return
+		}
+		writeJSON(w, http.StatusOK, qualityStore.Memory(segment))
 	})
 	httpRouter.Put(PutQualityMapURL, func(w http.ResponseWriter, r *http.Request) {
 		if qualityStore == nil {
 			http.Error(w, "quality store is unavailable", http.StatusServiceUnavailable)
 			return
 		}
+		segment, present, valid := queryQualitySegment(r)
+		if present && !valid {
+			http.Error(w, "quality must be usual, high or ultra", http.StatusBadRequest)
+			return
+		}
 		defer r.Body.Close()
-		data, err := io.ReadAll(http.MaxBytesReader(w, r.Body, 16<<20))
-		if err != nil {
+		decoder := json.NewDecoder(http.MaxBytesReader(w, r.Body, 16<<20))
+		decoder.DisallowUnknownFields()
+		if !present {
+			var input auction.QualityMaps
+			if err := decoder.Decode(&input); err != nil {
+				http.Error(w, err.Error(), http.StatusBadRequest)
+				return
+			}
+			if err := ensureJSONEOF(decoder); err != nil {
+				http.Error(w, err.Error(), http.StatusBadRequest)
+				return
+			}
+			if err := qualityStore.UpdateAll(input); err != nil {
+				http.Error(w, err.Error(), http.StatusBadRequest)
+				return
+			}
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
+
+		var input auction.QualityFeedMap
+		if err := decoder.Decode(&input); err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
-		if err := qualityStore.UpdateJSON(data); err != nil {
+		if err := ensureJSONEOF(decoder); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		if err := qualityStore.Update(segment, input); err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
@@ -151,6 +203,15 @@ func ensureJSONEOF(decoder *json.Decoder) error {
 func queryTrafficType(r *http.Request) (string, bool) {
 	value := strings.ToUpper(strings.TrimSpace(r.URL.Query().Get("typic")))
 	return value, value == auction.TrafficAdult || value == auction.TrafficMainstream
+}
+
+func queryQualitySegment(r *http.Request) (segment string, present bool, valid bool) {
+	raw := strings.TrimSpace(r.URL.Query().Get("quality"))
+	if raw == "" {
+		return "", false, false
+	}
+	value := strings.ToLower(raw)
+	return value, true, value == "usual" || value == "high" || value == "ultra"
 }
 
 func writeJSON(w http.ResponseWriter, statusCode int, value any) {

@@ -84,6 +84,7 @@ type AuctionRequestOptions struct {
 	Format      string
 	TrafficType string
 	SSPDomain   string
+	Feed        string
 	ImpIDUUID   map[string]string
 }
 
@@ -299,11 +300,11 @@ func (s *AuctionService) Auction(ctx context.Context, req *ortb.BidRequest, now 
 	requestedFormat := normalizeFormat(options.Format)
 	trafficType := normalizeTraffic(options.TrafficType)
 	sspDomain := normalizeDomain(options.SSPDomain)
-	if requestedFormat == "" || trafficType == "" || sspDomain == "" {
+	feed := normalizeFeed(options.Feed)
+	if requestedFormat == "" || trafficType == "" || sspDomain == "" || feed == "" {
 		return nil, ErrInvalidAuctionRequest
 	}
-	qualitySegment, ok := s.quality.Lookup(sspDomain)
-	if !ok {
+	if !s.quality.ContainsAny(feed) {
 		return &AuctionOutcome{WinnerUserIDs: map[string]string{}}, nil
 	}
 	snapshot := s.currentSnapshot()
@@ -326,7 +327,7 @@ func (s *AuctionService) Auction(ctx context.Context, req *ortb.BidRequest, now 
 		}
 		candidates := make([]candidate, 0, len(snapshot.Campaigns))
 		for _, campaign := range snapshot.Campaigns {
-			cand, eligible, infraErr := s.evaluateCampaign(ctx, snapshot, campaign, req, imp, now, requestedFormat, trafficType, qualitySegment, sspDomain)
+			cand, eligible, infraErr := s.evaluateCampaign(ctx, snapshot, campaign, req, imp, now, requestedFormat, trafficType, feed, sspDomain)
 			if infraErr != nil {
 				infrastructureErrors++
 				continue
@@ -403,14 +404,14 @@ func validAuctionInput(req *ortb.BidRequest, impIDUUID map[string]string) bool {
 	return len(seen) > 0
 }
 
-func (s *AuctionService) evaluateCampaign(ctx context.Context, snapshot *Snapshot, campaign *Campaign, req *ortb.BidRequest, imp *ortb.Imp, now time.Time, requestedFormat, trafficType, qualitySegment, sspDomain string) (candidate, bool, error) {
+func (s *AuctionService) evaluateCampaign(ctx context.Context, snapshot *Snapshot, campaign *Campaign, req *ortb.BidRequest, imp *ortb.Imp, now time.Time, requestedFormat, trafficType, feed, sspDomain string) (candidate, bool, error) {
 	if campaign == nil || normalizeFormat(campaign.Format) != requestedFormat {
 		return candidate{}, false, nil
 	}
 	if normalizeTraffic(campaign.TrafficType) != trafficType {
 		return candidate{}, false, nil
 	}
-	if !strings.EqualFold(strings.TrimSpace(campaign.QualitySegment), qualitySegment) {
+	if !s.quality.Contains(campaign.QualitySegment, feed) {
 		return candidate{}, false, nil
 	}
 	if !campaignActiveAt(campaign, now) {

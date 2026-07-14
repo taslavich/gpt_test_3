@@ -164,6 +164,7 @@ func (s *Server) doAdvAuction(
 		TrafficType: trafficTypeFromDspRouterRequest(req),
 		SspDomain:   req.GetSspDomain(),
 		ImpIdUuid:   cloneStringMap(req.GetImpIdUuid()),
+		Feed:        req.GetFeed(),
 	})
 }
 

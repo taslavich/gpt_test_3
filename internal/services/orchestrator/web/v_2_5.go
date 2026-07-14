@@ -91,6 +91,7 @@ func (s *Server) GetWinnerBid_V2_5(
 			TrafficType: trafficTypeFromOrchestratorRequest(req),
 			ImpIdUuid:   req.ImpIdUuid,
 			SspUrl:      req.SspUrl,
+			Feed:        req.GetFeed(),
 		},
 	)
 	if err != nil {

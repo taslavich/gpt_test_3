@@ -146,8 +146,77 @@ func TestBannerAndIPPFormatsRequireDistinctRouterMarker(t *testing.T) {
 	}
 }
 
-func TestQualityMapRejectsEmptySnapshot(t *testing.T) {
-	if _, err := validateQualityMap(map[string]string{}); err == nil {
-		t.Fatal("empty quality map must be rejected")
+func TestQualityMapsRejectEmptySnapshot(t *testing.T) {
+	if _, err := buildQualitySnapshot(emptyQualityMaps()); err == nil {
+		t.Fatal("empty quality maps must be rejected")
+	}
+}
+
+func TestQualityMapsAllowFeedInMultipleSegments(t *testing.T) {
+	sharedFeed := "a15c30da-6dea-4945-a5cf-40bb34b1047b"
+	highOnlyFeed := "0260c40b-44ad-49bf-a54d-42d6bda5c90f"
+	snapshot, err := buildQualitySnapshot(QualityMaps{
+		"usual": {sharedFeed: true},
+		"high":  {sharedFeed: true, highOnlyFeed: true},
+		"ultra": {},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	store := &QualityStore{}
+	store.value.Store(snapshot)
+	if !store.Contains("usual", sharedFeed) {
+		t.Fatal("shared feed must be allowed for usual campaigns")
+	}
+	if !store.Contains("high", sharedFeed) {
+		t.Fatal("shared feed must also be allowed for high campaigns")
+	}
+	if store.Contains("ultra", sharedFeed) {
+		t.Fatal("shared feed must not be allowed for ultra until it is added there")
+	}
+	if !store.Contains("high", highOnlyFeed) || store.Contains("usual", highOnlyFeed) {
+		t.Fatal("high-only feed membership is incorrect")
+	}
+	if !store.ContainsAny(sharedFeed) || store.ContainsAny("f4071cc5-5556-4ab0-83a0-9adaf2ec50aa") {
+		t.Fatal("ContainsAny returned an incorrect result")
+	}
+}
+
+func TestQualityStoreReplacesOneMapAndPreservesOverlappingMemberships(t *testing.T) {
+	sharedFeed := "a15c30da-6dea-4945-a5cf-40bb34b1047b"
+	highOnlyFeed := "0260c40b-44ad-49bf-a54d-42d6bda5c90f"
+	path := t.TempDir() + "/quality.json"
+	if err := writeJSONAtomic(path, QualityMaps{
+		"usual": {sharedFeed: true},
+		"high":  {},
+		"ultra": {},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	store, err := NewQualityStore(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.Update("high", QualityFeedMap{sharedFeed: true, highOnlyFeed: true}); err != nil {
+		t.Fatal(err)
+	}
+	if !store.Contains("usual", sharedFeed) || !store.Contains("high", sharedFeed) {
+		t.Fatal("replacing high must preserve the same feed in usual")
+	}
+	if err := store.Update("ultra", QualityFeedMap{sharedFeed: true}); err != nil {
+		t.Fatal(err)
+	}
+	if !store.Contains("usual", sharedFeed) || !store.Contains("high", sharedFeed) || !store.Contains("ultra", sharedFeed) {
+		t.Fatal("the same feed must be allowed in all three quality maps")
+	}
+	if err := store.UpdateAll(QualityMaps{
+		"usual": {sharedFeed: true},
+		"high":  {sharedFeed: true, highOnlyFeed: true},
+		"ultra": {sharedFeed: true},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if !store.Contains("usual", sharedFeed) || !store.Contains("high", sharedFeed) || !store.Contains("ultra", sharedFeed) {
+		t.Fatal("atomic all-map update lost overlapping memberships")
 	}
 }
