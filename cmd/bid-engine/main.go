@@ -7,6 +7,7 @@ import (
 	"net"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 
 	"github.com/go-chi/chi/v5"
@@ -32,6 +33,9 @@ func main() {
 		log.Fatalf("Cannot load config: %v", err)
 	}
 	log.Println("Config initialized!")
+	if strings.TrimSpace(cfg.AdmDomain) == "" {
+		log.Fatal("ADM_DOMAIN is required for BidEngine callback finalization")
+	}
 
 	redisAddrs := cfg.RedisShardAddrs
 	if cfg.RedisUseTLS {

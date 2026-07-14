@@ -1,15 +1,15 @@
 # ADV runtime deployment notes
 
-The ADV service, `kafkaredis`, and ADM Adapter must use the same Redis server:
+ADV, `kafkaredis`, and ADM Adapter connect to an already deployed Redis through environment variables. This repository does not deploy or configure Redis.
+
+All three services must point to the same Redis server and use:
 
 - DB 5 for `spent:*`, `pacing:*`, and `outbox:applied:*`;
 - DB 6 for ADV winner hashes.
 
-Redis must run with AOF enabled (`appendonly yes`, `appendfsync everysec`) and a
-persistent data volume. The included compose file is an example for this setup.
+Required Redis connection variables are `REDIS_UUID_ADDR`, `REDIS_PASSWORD`, `REDIS_POOL_SIZE`, and `REDIS_MIN_IDLE_CONNS`. Keep `REDIS_DB_ADV_RUNTIME=5` and `REDIS_DB_ADV_WINNER=6`.
 
-`ADV_SERVICE_CONTROL_URLS` must contain the actual HTTP control URLs of all ADV
-instances so the ADM Adapter can disable them after an accounting write error.
+`ADV_SERVICE_CONTROL_URLS` must contain the actual HTTP control URLs of all ADV instances so the ADM Adapter can disable them after an accounting write error.
 
 ## SSP-domain quality maps
 

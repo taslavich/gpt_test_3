@@ -54,9 +54,6 @@ func main() {
 	if err := winnerRedis.Ping(ctx).Err(); err != nil {
 		log.Fatalf("ADV winner Redis unavailable: %v", err)
 	}
-	if err := redisService.ValidateAOF(ctx, runtimeRedis); err != nil {
-		log.Fatalf("ADV accounting Redis persistence is unsafe: %v", err)
-	}
 
 	percentStore, err := auction.NewPercentStore(cfg.SspGeoDspPercentsAdultFilePath, cfg.SspGeoDspPercentsMainstreamFilePath)
 	if err != nil {
@@ -87,7 +84,7 @@ func main() {
 
 	runtimeStore := auction.NewRuntimeStore(runtimeRedis, cfg.AdvPacingCurrentTTL, cfg.AdvPacingSlotTTL)
 	winnerStore := auction.NewWinnerStore(winnerRedis, cfg.AdvWinnerTTL)
-	auctionService := auction.NewAuctionService(runtimeStore, winnerStore, percentStore, qualityStore, cfg.AdvDomain)
+	auctionService := auction.NewAuctionService(runtimeStore, winnerStore, percentStore, qualityStore)
 	if err := auctionService.RefreshFromPostgres(ctx, db); err != nil {
 		log.Fatalf("initial ADV snapshot failed: %v", err)
 	}
@@ -144,9 +141,6 @@ func validateConfig(cfg *config.AdvConfig) error {
 	}
 	if strings.TrimSpace(cfg.AdvQualityMapFilePath) == "" {
 		return fmt.Errorf("ADV_QUALITY_MAP_FILE_PATH is required")
-	}
-	if strings.TrimSpace(cfg.AdvDomain) == "" {
-		return fmt.Errorf("ADM_DOMAIN is required")
 	}
 	if strings.TrimSpace(cfg.PostgresDSN) == "" {
 		return fmt.Errorf("POSTGRES_DSN is required")

@@ -249,7 +249,6 @@ type AdvConfig struct {
 	SspGeoDspPercentsAdultFilePath      string        `yaml:"SSP_GEO_DSP_PERCENTS_ADULT_FILE_PATH" env:"SSP_GEO_DSP_PERCENTS_ADULT_FILE_PATH"`
 	SspGeoDspPercentsMainstreamFilePath string        `yaml:"SSP_GEO_DSP_PERCENTS_MAINSTREAM_FILE_PATH" env:"SSP_GEO_DSP_PERCENTS_MAINSTREAM_FILE_PATH"`
 	AdvQualityMapFilePath               string        `yaml:"ADV_QUALITY_MAP_FILE_PATH" env:"ADV_QUALITY_MAP_FILE_PATH"`
-	AdvDomain                           string        `yaml:"ADM_DOMAIN" env:"ADM_DOMAIN"`
 	PostgresDSN                         string        `yaml:"POSTGRES_DSN" env:"POSTGRES_DSN"`
 	CampaignRefreshInterval             time.Duration `yaml:"CAMPAIGN_REFRESH_INTERVAL" env:"CAMPAIGN_REFRESH_INTERVAL" env-default:"30s"`
 	AdvWinnerTTL                        time.Duration `yaml:"ADV_WINNER_TTL" env:"ADV_WINNER_TTL" env-default:"45m"`

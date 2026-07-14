@@ -8,12 +8,14 @@ import (
 	"sort"
 	"strings"
 
+	"gitlab.com/twinbid-exchange/RTB-exchange/internal/constants"
 	bidEngineGrpc "gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/proto/services/bidEngine"
 	"gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/proto/types/ortb_V2_5"
 	utils "gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/utils_grpc"
 	sppAdapterWeb "gitlab.com/twinbid-exchange/RTB-exchange/internal/services/sspAdapter/web"
 	"gitlab.com/twinbid-exchange/RTB-exchange/internal/types"
 	clickhouse_types "gitlab.com/twinbid-exchange/RTB-exchange/internal/types/clickhouse"
+	"google.golang.org/protobuf/proto"
 )
 
 func GetWinnerBidInternal_V_2_5(
@@ -172,32 +174,27 @@ func GetWinnerBidInternal_V_2_5(
 
 		winner := newBids[0]
 
-		var finalBid *ortb_V2_5.Bid
-
-		wrappedNurl := utils.WrapNurlURL(admDomain, winner.bid.GetNurl(), ImpIdUuid[impID], req.SspDomain, req.Format)
-		wrappedBurl := utils.WrapBurlURL(admDomain, ImpIdUuid[impID], req.Format)
-
-		finalBid = &ortb_V2_5.Bid{
+		baseBid := &ortb_V2_5.Bid{
 			Id:    winner.bid.Id,
 			Impid: winner.bid.Impid,
 			Price: &winner.finalPrice,
 			Adm:   winner.bid.Adm,
+			Nurl:  winner.bid.Nurl,
 			Adid:  winner.bid.Adid,
 			Cid:   winner.bid.Cid,
 			Crid:  winner.bid.Crid,
 		}
-		if logged {
-			wrappedAdm := utils.WrapURL(admDomain, winner.bid.GetAdm(), ImpIdUuid[impID], req.Format)
-			if wrappedAdm == "" {
-				continue
-			}
-			finalBid.Adm = &wrappedAdm
-		}
-		if wrappedNurl != "" {
-			finalBid.Nurl = &wrappedNurl
-		}
-		if wrappedBurl != "" {
-			finalBid.Burl = &wrappedBurl
+		finalBid, ok := FinalizeBidCallbacks(
+			baseBid,
+			admDomain,
+			ImpIdUuid[impID],
+			req.SspDomain,
+			req.Format,
+			logged,
+			true,
+		)
+		if !ok {
+			continue
 		}
 
 		userId := ""
@@ -234,6 +231,62 @@ func GetWinnerBidInternal_V_2_5(
 	}
 
 	return bidResponse, clickhouseSeatBid, burlUUIDs, admUUIDs
+}
+
+// FinalizeBidCallbacks is the single BidEngine callback-finalization path for
+// both auctioned DSP bids and preselected ADV bids. The caller controls whether
+// ADM and BURL wrappers are required, while NURL is wrapped whenever the source
+// bid contains one.
+func FinalizeBidCallbacks(
+	source *ortb_V2_5.Bid,
+	admDomain, globalID, sspDomain, format string,
+	wrapADM, wrapBURL bool,
+) (*ortb_V2_5.Bid, bool) {
+	if source == nil || strings.TrimSpace(admDomain) == "" || strings.TrimSpace(globalID) == "" || strings.TrimSpace(format) == "" {
+		return nil, false
+	}
+	finalBid, ok := proto.Clone(source).(*ortb_V2_5.Bid)
+	if !ok || finalBid == nil {
+		return nil, false
+	}
+
+	// Never pass callback URLs supplied by the source unchanged.
+	finalBid.Nurl = nil
+	finalBid.Burl = nil
+
+	if wrapADM {
+		wrappedADM := utils.WrapURL(admDomain, source.GetAdm(), globalID, format)
+		if wrappedADM == "" {
+			return nil, false
+		}
+		finalBid.Adm = &wrappedADM
+	}
+	if source.GetNurl() != "" {
+		wrappedNURL := utils.WrapNurlURL(admDomain, source.GetNurl(), globalID, sspDomain, format)
+		if wrappedNURL == "" {
+			return nil, false
+		}
+		finalBid.Nurl = &wrappedNURL
+	}
+	if wrapBURL {
+		wrappedBURL := utils.WrapBurlURL(admDomain, globalID, format)
+		if wrappedBURL == "" {
+			return nil, false
+		}
+		finalBid.Burl = &wrappedBURL
+	}
+	return finalBid, true
+}
+
+// ADVUsesBURL preserves ADV billing semantics: NAT, BAN and POP are charged by
+// BURL, while IPP is charged by the ADM callback.
+func ADVUsesBURL(format string) bool {
+	switch strings.ToUpper(strings.TrimSpace(format)) {
+	case constants.NAT, constants.BAN, constants.POP:
+		return true
+	default:
+		return false
+	}
 }
 
 func applyPriceConstraintsAndPercent(dspPrice, bidFloor, profitPercent float32, needed bool) (

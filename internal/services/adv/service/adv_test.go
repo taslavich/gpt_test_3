@@ -289,3 +289,24 @@ func TestMatchingCreativesIgnoresDimensionsOutsideBanner(t *testing.T) {
 		}
 	}
 }
+
+func TestBuildBidLeavesCallbackFinalizationToBidEngine(t *testing.T) {
+	service := &AuctionService{}
+	impID := "imp-1"
+	reqID := "request-1"
+	req := &ortb.BidRequest{Id: &reqID}
+	imp := &ortb.Imp{Id: &impID}
+	campaign := &Campaign{ID: "campaign-1", BasePrice: 2.5}
+	creative := &Creative{ID: "creative-1", ADMURL: "https://creative.example/render", W: 300, H: 250}
+
+	bid := service.buildBid(req, imp, campaign, creative)
+	if bid == nil {
+		t.Fatal("buildBid returned nil")
+	}
+	if got := bid.GetAdm(); got != creative.ADMURL {
+		t.Fatalf("ADV must return raw creative ADM for BidEngine finalization: got %q want %q", got, creative.ADMURL)
+	}
+	if bid.GetNurl() != "" || bid.GetBurl() != "" {
+		t.Fatalf("ADV must not form callbacks: nurl=%q burl=%q", bid.GetNurl(), bid.GetBurl())
+	}
+}

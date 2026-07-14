@@ -58,9 +58,6 @@ func main() {
 	if err := runtimeRedis.Ping(ctx).Err(); err != nil {
 		log.Fatalf("kafkaredis Redis unavailable: %v", err)
 	}
-	if err := redisService.ValidateAOF(ctx, runtimeRedis); err != nil {
-		log.Fatalf("kafkaredis Redis persistence is unsafe: %v", err)
-	}
 
 	if strings.TrimSpace(cfg.PostgresDSN) == "" {
 		log.Fatal("POSTGRES_DSN is required")

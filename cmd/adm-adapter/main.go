@@ -125,9 +125,6 @@ func main() {
 	if err := advWinnerRedis.Ping(ctx).Err(); err != nil {
 		log.Fatalf("ADV winner Redis unavailable: %v", err)
 	}
-	if err := redis_service.ValidateAOF(ctx, advRuntimeRedis); err != nil {
-		log.Fatalf("ADV accounting Redis persistence is unsafe: %v", err)
-	}
 
 	advOutbox, err := outbox.Open(cfg.AdvOutboxPath)
 	if err != nil {

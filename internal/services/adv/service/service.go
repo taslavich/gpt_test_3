@@ -17,7 +17,6 @@ import (
 	"gitlab.com/twinbid-exchange/RTB-exchange/internal/constants"
 	filterV2 "gitlab.com/twinbid-exchange/RTB-exchange/internal/filterV2"
 	ortb "gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/proto/types/ortb_V2_5"
-	utils "gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/utils_grpc"
 	"gitlab.com/twinbid-exchange/RTB-exchange/internal/ua"
 )
 
@@ -100,16 +99,15 @@ type candidate struct {
 }
 
 type AuctionService struct {
-	snapshot  atomic.Pointer[Snapshot]
-	runtime   *RuntimeStore
-	winners   *WinnerStore
-	percents  *PercentStore
-	quality   *QualityStore
-	admDomain string
+	snapshot atomic.Pointer[Snapshot]
+	runtime  *RuntimeStore
+	winners  *WinnerStore
+	percents *PercentStore
+	quality  *QualityStore
 }
 
-func NewAuctionService(runtime *RuntimeStore, winners *WinnerStore, percents *PercentStore, quality *QualityStore, admDomain string) *AuctionService {
-	s := &AuctionService{runtime: runtime, winners: winners, percents: percents, quality: quality, admDomain: strings.TrimSpace(admDomain)}
+func NewAuctionService(runtime *RuntimeStore, winners *WinnerStore, percents *PercentStore, quality *QualityStore) *AuctionService {
+	s := &AuctionService{runtime: runtime, winners: winners, percents: percents, quality: quality}
 	s.snapshot.Store(&Snapshot{Campaigns: []*Campaign{}, UserGoals: map[string]float64{}})
 	return s
 }
@@ -347,7 +345,7 @@ func (s *AuctionService) Auction(ctx context.Context, req *ortb.BidRequest, now 
 			if creative == nil {
 				continue
 			}
-			bid := s.buildBid(req, imp, cand.campaign, creative, winnerUUID, requestedFormat)
+			bid := s.buildBid(req, imp, cand.campaign, creative)
 			if bid == nil {
 				continue
 			}
@@ -464,31 +462,18 @@ func (s *AuctionService) evaluateCampaign(ctx context.Context, snapshot *Snapsho
 	return candidate{campaign: campaign, creatives: creatives, chargePrice: chargePrice, effectivePrice: effective}, true, nil
 }
 
-func (s *AuctionService) buildBid(req *ortb.BidRequest, imp *ortb.Imp, campaign *Campaign, creative *Creative, winnerUUID, format string) *ortb.Bid {
-	if s == nil || imp == nil || campaign == nil || creative == nil || strings.TrimSpace(s.admDomain) == "" {
+func (s *AuctionService) buildBid(req *ortb.BidRequest, imp *ortb.Imp, campaign *Campaign, creative *Creative) *ortb.Bid {
+	if s == nil || imp == nil || campaign == nil || creative == nil {
 		return nil
 	}
 	originalADM := appendTrackerMacros(creative.ADMURL, creative.TrackersMacros, campaign.ID, creative.ID, req)
 	if strings.TrimSpace(originalADM) == "" {
 		return nil
 	}
-	adm := utils.WrapURL(s.admDomain, originalADM, winnerUUID, format)
-	if adm == "" {
-		return nil
-	}
-	burl := ""
-	switch normalizeFormat(format) {
-	case "NAT", "BAN", "POP":
-		burl = utils.WrapBurlURL(s.admDomain, winnerUUID, format)
-	}
 	id, impID, cid, crid := creative.ID, imp.GetId(), campaign.ID, creative.ID
 	price := float32(campaign.BasePrice)
 	w, h := int32(creative.W), int32(creative.H)
-	bid := &ortb.Bid{Id: &id, Impid: &impID, Price: &price, Adm: &adm, Cid: &cid, Crid: &crid, W: &w, H: &h}
-	if burl != "" {
-		bid.Burl = &burl
-	}
-	return bid
+	return &ortb.Bid{Id: &id, Impid: &impID, Price: &price, Adm: &originalADM, Cid: &cid, Crid: &crid, W: &w, H: &h}
 }
 
 func campaignActiveAt(campaign *Campaign, now time.Time) bool {

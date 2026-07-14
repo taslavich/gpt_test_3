@@ -14,6 +14,7 @@ import (
 	"gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/proto/types/ortb_V2_5"
 	utils "gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/utils_grpc"
 	services "gitlab.com/twinbid-exchange/RTB-exchange/internal/services"
+	bidEngine "gitlab.com/twinbid-exchange/RTB-exchange/internal/services/bidEngine/service"
 	"gitlab.com/twinbid-exchange/RTB-exchange/internal/types"
 	clickhouse_types "gitlab.com/twinbid-exchange/RTB-exchange/internal/types/clickhouse"
 	"google.golang.org/grpc/codes"
@@ -226,8 +227,21 @@ func (s *Server) handleReadyADVResponse(ctx context.Context, req *bidEngineGrpc.
 				failed = append(failed, impID)
 				continue
 			}
-			price := bid.GetPrice()
-			cid, crid := bid.GetCid(), bid.GetCrid()
+			finalBid, ok := bidEngine.FinalizeBidCallbacks(
+				bid,
+				s.admDomain,
+				uuid,
+				req.GetSspDomain(),
+				req.GetFormat(),
+				true,
+				bidEngine.ADVUsesBURL(req.GetFormat()),
+			)
+			if !ok {
+				failed = append(failed, impID)
+				continue
+			}
+			price := finalBid.GetPrice()
+			cid, crid := finalBid.GetCid(), finalBid.GetCrid()
 			clickhouseBid := &clickhouse_types.Bid{
 				WinDspDomain: &advDomain,
 				WinPrice:     &price,
@@ -244,7 +258,7 @@ func (s *Server) handleReadyADVResponse(ctx context.Context, req *bidEngineGrpc.
 				failed = append(failed, impID)
 				continue
 			}
-			resultSeat.Bid = append(resultSeat.Bid, bid)
+			resultSeat.Bid = append(resultSeat.Bid, finalBid)
 			impUUID[impID] = uuid
 			winnerUsers[impID] = userID
 		}
