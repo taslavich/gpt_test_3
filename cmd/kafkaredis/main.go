@@ -69,6 +69,9 @@ func main() {
 	if err != nil {
 		log.Fatalf("cannot open PostgreSQL: %v", err)
 	}
+	db.SetMaxOpenConns(cfg.PostgresMaxOpenConns)
+	db.SetMaxIdleConns(cfg.PostgresMaxIdleConns)
+	db.SetConnMaxLifetime(cfg.PostgresConnMaxLifetime)
 	defer db.Close()
 	if err := db.PingContext(ctx); err != nil {
 		log.Fatalf("PostgreSQL unavailable: %v", err)
@@ -82,6 +85,9 @@ func main() {
 		log.Fatalf("cannot initialize spent_totals writer: %v", err)
 	}
 	writer.Balancer = &kafka.Hash{}
+	writer.RequiredAcks = kafka.RequireAll
+	writer.BatchSize = cfg.KafkaExportBatchSize
+	writer.BatchBytes = int64(cfg.KafkaExportBatchBytes)
 	defer writer.Close()
 	reader, err := kafkaService.InitKafkaReader(cfg.KafkaConfig, cfg.KafkaTopicSpentTotals, cfg.KafkaGroupIDSpentTotals)
 	if err != nil {
@@ -103,7 +109,7 @@ func main() {
 		}
 	}()
 
-	go runExporter(ctx, runtimeRedis, writer, cfg.RedisExportInterval, notifier)
+	go runExporter(ctx, runtimeRedis, writer, cfg, notifier)
 	go runImporter(ctx, reader, db, controller, cfg, notifier)
 
 	stop := make(chan os.Signal, 1)
@@ -144,13 +150,19 @@ func startControlServer(cfg *config.KafkaredisConfig, controller *importControll
 	return server, nil
 }
 
-func runExporter(ctx context.Context, client *redis.Client, writer *kafka.Writer, interval time.Duration, notifier *utils.BotMessage) {
+func runExporter(ctx context.Context, client *redis.Client, writer *kafka.Writer, cfg *config.KafkaredisConfig, notifier *utils.BotMessage) {
+	interval := cfg.RedisExportInterval
 	if interval <= 0 {
 		interval = 30 * time.Second
 	}
+	exportCfg := kafkaService.SpentTotalsExportConfig{
+		ScanCount:  int64(cfg.RedisScanCount),
+		BatchSize:  cfg.KafkaExportBatchSize,
+		BatchBytes: cfg.KafkaExportBatchBytes,
+	}
 	export := func() {
-		if err := kafkaService.ExportSpentTotals(ctx, client, writer); err != nil {
-			message := fmt.Sprintf("kafkaredis Redis->Kafka spent_totals export failed; Redis totals retained: %v", err)
+		if err := kafkaService.ExportSpentTotalsWithConfig(ctx, client, writer, exportCfg); err != nil {
+			message := fmt.Sprintf("kafkaredis Redis->Kafka spent_totals export failed; Redis totals retained and the next tick will retry current absolute totals: %v", err)
 			log.Print(message)
 			if notifyErr := notifier.SendTextMessageToBot(ctx, message); notifyErr != nil {
 				log.Printf("Telegram notification failed: %v", notifyErr)
@@ -171,11 +183,23 @@ func runExporter(ctx context.Context, client *redis.Client, writer *kafka.Writer
 }
 
 func runImporter(ctx context.Context, reader *kafka.Reader, db *sql.DB, controller *importController, cfg *config.KafkaredisConfig, notifier *utils.BotMessage) {
-	interval := cfg.PostgresImportInterval
-	if interval <= 0 {
-		interval = time.Second
+	disabledPoll := cfg.ImportDisabledPollInterval
+	if disabledPoll <= 0 {
+		disabledPoll = 250 * time.Millisecond
 	}
-	var pending *kafka.Message
+	batchSize := cfg.KafkaImportBatchSize
+	if batchSize <= 0 {
+		batchSize = 2000
+	}
+	batchTimeout := cfg.KafkaImportBatchTimeout
+	if batchTimeout <= 0 {
+		batchTimeout = 100 * time.Millisecond
+	}
+
+	// Keep fetched but uncommitted messages in memory while the importer is
+	// stopped. Re-enabling retries exactly this batch. A process restart also
+	// replays it because Kafka offsets were not committed.
+	var pending []kafka.Message
 	for {
 		if ctx.Err() != nil {
 			return
@@ -184,63 +208,115 @@ func runImporter(ctx context.Context, reader *kafka.Reader, db *sql.DB, controll
 			select {
 			case <-ctx.Done():
 				return
-			case <-time.After(interval):
+			case <-time.After(disabledPoll):
 				continue
 			}
 		}
-		if pending == nil {
-			fetchTimeout := interval
-			if fetchTimeout > time.Second {
-				fetchTimeout = time.Second
-			}
-			if fetchTimeout <= 0 {
-				fetchTimeout = time.Second
-			}
-			fetchCtx, fetchCancel := context.WithTimeout(ctx, fetchTimeout)
-			message, err := reader.FetchMessage(fetchCtx)
-			fetchCancel()
+
+		if len(pending) == 0 {
+			messages, err := fetchSpentTotalsBatch(ctx, reader, batchSize, batchTimeout)
 			if err != nil {
 				if ctx.Err() != nil {
 					return
 				}
-				if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) {
-					continue
-				}
-				stopImporter(context.Background(), controller, cfg, notifier, nil, fmt.Errorf("fetch spent_totals: %w", err))
+				stopImporter(context.Background(), controller, cfg, notifier, nil, fmt.Errorf("fetch spent_totals batch: %w", err))
 				continue
 			}
-			pending = &message
+			if len(messages) == 0 {
+				continue
+			}
+			pending = messages
 		}
-		event, err := kafkaService.DecodeSpentTotal(*pending)
-		if err == nil {
-			err = kafkaService.ApplySpentTotal(ctx, db, event)
+
+		events := make([]kafkaService.SpentTotal, 0, len(pending))
+		var processErr error
+		for i, message := range pending {
+			event, err := kafkaService.DecodeSpentTotal(message)
+			if err != nil {
+				processErr = fmt.Errorf("decode spent_totals batch message=%d partition=%d offset=%d: %w", i, message.Partition, message.Offset, err)
+				break
+			}
+			events = append(events, event)
 		}
-		if err == nil {
-			err = reader.CommitMessages(ctx, *pending)
+		if processErr == nil {
+			processErr = kafkaService.ApplySpentTotalsBatch(ctx, db, events)
 		}
-		if err != nil {
-			stopImporter(context.Background(), controller, cfg, notifier, pending, err)
+		if processErr == nil {
+			commitMessages := compactCommitMessages(pending)
+			processErr = reader.CommitMessages(ctx, commitMessages...)
+			if processErr != nil {
+				processErr = fmt.Errorf("commit spent_totals batch offsets: %w", processErr)
+			}
+		}
+		if processErr != nil {
+			stopImporter(context.Background(), controller, cfg, notifier, pending, processErr)
 			continue
 		}
+
+		log.Printf("kafkaredis PostgreSQL import batch committed: messages=%d offsets=%d", len(pending), len(compactCommitMessages(pending)))
 		pending = nil
-		select {
-		case <-ctx.Done():
-			return
-		case <-time.After(interval):
-		}
+		// No sleep after success: consume the next batch immediately.
 	}
 }
 
-func stopImporter(ctx context.Context, controller *importController, cfg *config.KafkaredisConfig, notifier *utils.BotMessage, message *kafka.Message, cause error) {
+func fetchSpentTotalsBatch(ctx context.Context, reader *kafka.Reader, batchSize int, timeout time.Duration) ([]kafka.Message, error) {
+	if reader == nil {
+		return nil, errors.New("spent_totals reader is nil")
+	}
+	if batchSize <= 0 {
+		return nil, errors.New("spent_totals batch size must be positive")
+	}
+	if timeout <= 0 {
+		timeout = 100 * time.Millisecond
+	}
+
+	readCtx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+	messages := make([]kafka.Message, 0, batchSize)
+	for len(messages) < batchSize {
+		message, err := reader.FetchMessage(readCtx)
+		if err != nil {
+			if ctx.Err() != nil {
+				return nil, ctx.Err()
+			}
+			if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) {
+				return messages, nil
+			}
+			return nil, err
+		}
+		messages = append(messages, message)
+	}
+	return messages, nil
+}
+
+func compactCommitMessages(messages []kafka.Message) []kafka.Message {
+	latestByPartition := make(map[int]kafka.Message, len(messages))
+	for _, message := range messages {
+		previous, exists := latestByPartition[message.Partition]
+		if !exists || message.Offset > previous.Offset {
+			latestByPartition[message.Partition] = message
+		}
+	}
+	result := make([]kafka.Message, 0, len(latestByPartition))
+	for _, message := range latestByPartition {
+		result = append(result, message)
+	}
+	return result
+}
+
+func stopImporter(ctx context.Context, controller *importController, cfg *config.KafkaredisConfig, notifier *utils.BotMessage, messages []kafka.Message, cause error) {
 	statusCode := callSelfControl(ctx, cfg, false)
 	if statusCode != http.StatusOK {
 		controller.enabled.Store(false)
 	}
-	topic, partition, offset := cfg.KafkaTopicSpentTotals, -1, int64(-1)
-	if message != nil {
-		topic, partition, offset = message.Topic, message.Partition, message.Offset
+	topic, partition, firstOffset, lastOffset := cfg.KafkaTopicSpentTotals, -1, int64(-1), int64(-1)
+	if len(messages) > 0 {
+		topic = messages[0].Topic
+		partition = messages[0].Partition
+		firstOffset = messages[0].Offset
+		lastOffset = messages[len(messages)-1].Offset
 	}
-	text := fmt.Sprintf("kafkaredis PostgreSQL import stopped: error=%v topic=%s partition=%d offset=%d stop_status=%d", cause, topic, partition, offset, statusCode)
+	text := fmt.Sprintf("kafkaredis PostgreSQL import stopped with uncommitted batch retained: error=%v topic=%s first_partition=%d first_offset=%d last_offset=%d batch_messages=%d stop_status=%d", cause, topic, partition, firstOffset, lastOffset, len(messages), statusCode)
 	log.Print(text)
 	if err := notifier.SendTextMessageToBot(ctx, text); err != nil {
 		log.Printf("Telegram notification failed: %v", err)
@@ -289,8 +365,14 @@ func validateConfig(cfg *config.KafkaredisConfig) error {
 	if len(cfg.KafkaBrokers) == 0 || strings.TrimSpace(cfg.KafkaTopicSpentTotals) == "" || strings.TrimSpace(cfg.KafkaGroupIDSpentTotals) == "" {
 		return fmt.Errorf("Kafka brokers, spent_totals topic and group ID are required")
 	}
-	if cfg.RedisExportInterval <= 0 || cfg.PostgresImportInterval <= 0 {
-		return fmt.Errorf("kafkaredis intervals must be positive")
+	if cfg.RedisExportInterval <= 0 || cfg.KafkaImportBatchTimeout <= 0 || cfg.ImportDisabledPollInterval <= 0 || cfg.PostgresConnMaxLifetime <= 0 {
+		return fmt.Errorf("kafkaredis intervals and timeouts must be positive")
+	}
+	if cfg.RedisScanCount <= 0 || cfg.KafkaExportBatchSize <= 0 || cfg.KafkaExportBatchBytes <= 0 || cfg.KafkaImportBatchSize <= 0 {
+		return fmt.Errorf("kafkaredis scan and batch limits must be positive")
+	}
+	if cfg.PostgresMaxOpenConns <= 0 || cfg.PostgresMaxIdleConns < 0 || cfg.PostgresMaxIdleConns > cfg.PostgresMaxOpenConns {
+		return fmt.Errorf("invalid PostgreSQL connection pool settings")
 	}
 	if cfg.HttpServer.Port == 0 {
 		return fmt.Errorf("HTTP_PORT is required")

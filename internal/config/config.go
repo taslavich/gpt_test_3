@@ -263,12 +263,20 @@ type KafkaredisConfig struct {
 	HttpServer HttpServer
 	RedisConfig
 	KafkaConfig
-	PostgresDSN            string        `yaml:"POSTGRES_DSN" env:"POSTGRES_DSN"`
-	RedisExportInterval    time.Duration `yaml:"KAFKAREDIS_REDIS_EXPORT_INTERVAL" env:"KAFKAREDIS_REDIS_EXPORT_INTERVAL" env-default:"30s"`
-	PostgresImportInterval time.Duration `yaml:"KAFKAREDIS_POSTGRES_IMPORT_INTERVAL" env:"KAFKAREDIS_POSTGRES_IMPORT_INTERVAL" env-default:"1s"`
-	SelfControlURL         string        `yaml:"KAFKAREDIS_SELF_CONTROL_URL" env:"KAFKAREDIS_SELF_CONTROL_URL"`
-	BotBaseURL             string        `yaml:"BOT_BASE_URL" env:"BOT_BASE_URL"`
-	BotInternalSecret      string        `yaml:"BOT_INTERNAL_SECRET" env:"BOT_INTERNAL_SECRET"`
+	PostgresDSN                string        `yaml:"POSTGRES_DSN" env:"POSTGRES_DSN"`
+	RedisExportInterval        time.Duration `yaml:"KAFKAREDIS_REDIS_EXPORT_INTERVAL" env:"KAFKAREDIS_REDIS_EXPORT_INTERVAL" env-default:"30s"`
+	RedisScanCount             int           `yaml:"KAFKAREDIS_REDIS_SCAN_COUNT" env:"KAFKAREDIS_REDIS_SCAN_COUNT" env-default:"2000"`
+	KafkaExportBatchSize       int           `yaml:"KAFKAREDIS_KAFKA_EXPORT_BATCH_SIZE" env:"KAFKAREDIS_KAFKA_EXPORT_BATCH_SIZE" env-default:"2000"`
+	KafkaExportBatchBytes      int           `yaml:"KAFKAREDIS_KAFKA_EXPORT_BATCH_BYTES" env:"KAFKAREDIS_KAFKA_EXPORT_BATCH_BYTES" env-default:"4194304"`
+	KafkaImportBatchSize       int           `yaml:"KAFKAREDIS_KAFKA_IMPORT_BATCH_SIZE" env:"KAFKAREDIS_KAFKA_IMPORT_BATCH_SIZE" env-default:"2000"`
+	KafkaImportBatchTimeout    time.Duration `yaml:"KAFKAREDIS_KAFKA_IMPORT_BATCH_TIMEOUT" env:"KAFKAREDIS_KAFKA_IMPORT_BATCH_TIMEOUT" env-default:"100ms"`
+	ImportDisabledPollInterval time.Duration `yaml:"KAFKAREDIS_IMPORT_DISABLED_POLL_INTERVAL" env:"KAFKAREDIS_IMPORT_DISABLED_POLL_INTERVAL" env-default:"250ms"`
+	PostgresMaxOpenConns       int           `yaml:"KAFKAREDIS_POSTGRES_MAX_OPEN_CONNS" env:"KAFKAREDIS_POSTGRES_MAX_OPEN_CONNS" env-default:"8"`
+	PostgresMaxIdleConns       int           `yaml:"KAFKAREDIS_POSTGRES_MAX_IDLE_CONNS" env:"KAFKAREDIS_POSTGRES_MAX_IDLE_CONNS" env-default:"8"`
+	PostgresConnMaxLifetime    time.Duration `yaml:"KAFKAREDIS_POSTGRES_CONN_MAX_LIFETIME" env:"KAFKAREDIS_POSTGRES_CONN_MAX_LIFETIME" env-default:"30m"`
+	SelfControlURL             string        `yaml:"KAFKAREDIS_SELF_CONTROL_URL" env:"KAFKAREDIS_SELF_CONTROL_URL"`
+	BotBaseURL                 string        `yaml:"BOT_BASE_URL" env:"BOT_BASE_URL"`
+	BotInternalSecret          string        `yaml:"BOT_INTERNAL_SECRET" env:"BOT_INTERNAL_SECRET"`
 }
 type KafkaLoaderConfig struct {
 	RedisConfig
