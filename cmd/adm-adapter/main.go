@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/redis/go-redis/v9"
 	"gitlab.com/twinbid-exchange/RTB-exchange/internal/config"
 	utils "gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/utils_grpc"
 	httpServer "gitlab.com/twinbid-exchange/RTB-exchange/internal/http"
@@ -105,16 +106,20 @@ func main() {
 	}
 	log.Println("✅ Connected to ADM/BURL Redis")
 
-	advRuntimeRedis, err := redis_service.NewRedisClient(
-		cfg.RedisUUIDAddr, cfg.RedisPassword, cfg.RedisDBAdvRuntime, cfg.RedisPoolSize, cfg.RedisMinIdleConns,
-	)
+	advRuntimeRedis := redis.NewClient(&redis.Options{
+		Addr:     cfg.RedisADVAddr,
+		Password: cfg.RedisPassword,
+		DB:       cfg.RedisDBAdvRuntime,
+	})
 	if err != nil {
 		log.Fatalf("Cannot init ADV runtime Redis: %v", err)
 	}
 	defer advRuntimeRedis.Close()
-	advWinnerRedis, err := redis_service.NewRedisClient(
-		cfg.RedisUUIDAddr, cfg.RedisPassword, cfg.RedisDBAdvWinner, cfg.RedisPoolSize, cfg.RedisMinIdleConns,
-	)
+	advWinnerRedis := redis.NewClient(&redis.Options{
+		Addr:     cfg.RedisADVAddr,
+		Password: cfg.RedisPassword,
+		DB:       cfg.RedisDBAdvWinner,
+	})
 	if err != nil {
 		log.Fatalf("Cannot init ADV winner Redis: %v", err)
 	}

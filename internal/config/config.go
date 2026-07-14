@@ -365,12 +365,10 @@ type RedisConfig struct {
 	RedisMinIdleConns  int      `yaml:"REDIS_MIN_IDLE_CONNS" env:"REDIS_MIN_IDLE_CONNS" env-default:"16"`
 
 	// Separate Redis for fast ADM/NURL UUID guards.
-	RedisUUIDAddr     string        `yaml:"REDIS_UUID_ADDR" env:"REDIS_UUID_ADDR"`
-	RedisDBAdm        int           `yaml:"REDIS_DB_ADM" env:"REDIS_DB_ADM" env-default:"1"`
-	RedisDBBurl       int           `yaml:"REDIS_DB_BURL" env:"REDIS_DB_BURL" env-default:"0"`
-	RedisUUIDKeyTTL   time.Duration `yaml:"REDIS_UUID_KEY_TTL" env:"REDIS_UUID_KEY_TTL" env-default:"45m"`
-	RedisDBAdvRuntime int           `yaml:"REDIS_DB_ADV_RUNTIME" env:"REDIS_DB_ADV_RUNTIME" env-default:"5"`
-	RedisDBAdvWinner  int           `yaml:"REDIS_DB_ADV_WINNER" env:"REDIS_DB_ADV_WINNER" env-default:"6"`
+	RedisUUIDAddr   string        `yaml:"REDIS_UUID_ADDR" env:"REDIS_UUID_ADDR"`
+	RedisDBAdm      int           `yaml:"REDIS_DB_ADM" env:"REDIS_DB_ADM" env-default:"1"`
+	RedisDBBurl     int           `yaml:"REDIS_DB_BURL" env:"REDIS_DB_BURL" env-default:"0"`
+	RedisUUIDKeyTTL time.Duration `yaml:"REDIS_UUID_KEY_TTL" env:"REDIS_UUID_KEY_TTL" env-default:"45m"`
 
 	// Redis ORTB
 	RedisDBOrtb   int    `yaml:"REDIS_DB_ORTB" env:"REDIS_DB_ORTB"`
@@ -394,6 +392,10 @@ type RedisConfig struct {
 	BatchSizeConversions        int64   `yaml:"BATCH_SIZE_CONVERSIONS" env:"BATCH_SIZE_CONVERSIONS"`
 	BatchSizeConversionsPercent float64 `yaml:"BATCH_SIZE_CONVERSIONS_PERCENT" env:"BATCH_SIZE_CONVERSIONS_PERCENT"`
 	RedisSetConversions         string  `yaml:"REDIS_SET_CONVERSIONS" env:"REDIS_SET_CONVERSIONS" env-default:"conversions:ready"`
+
+	RedisDBAdvRuntime int    `yaml:"REDIS_DB_ADV_RUNTIME" env:"REDIS_DB_ADV_RUNTIME" env-default:"5"`
+	RedisDBAdvWinner  int    `yaml:"REDIS_DB_ADV_WINNER" env:"REDIS_DB_ADV_WINNER" env-default:"6"`
+	RedisADVAddr      string `env:"REDIS_ADV_ADDR,required"`
 }
 
 type KafkaConfig struct {
