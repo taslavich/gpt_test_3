@@ -86,13 +86,38 @@ func (s *RuntimeStore) PacingEligible(ctx context.Context, campaign *Campaign, n
 	if err != nil {
 		return false, err
 	}
-	remaining := campaign.GoalTotalDollars - campaignSpent
-	activeSlots := ActiveSlotsLeft(campaign, now)
-	if remaining <= 0 || activeSlots <= 0 {
+	slotTarget, err := pacingSlotTarget(campaign, now, campaignSpent, slotSpent)
+	if err != nil {
+		return false, err
+	}
+	if slotTarget <= 0 {
 		return false, nil
 	}
-	slotTarget := remaining / activeSlots
 	return slotSpent < slotTarget, nil
+}
+
+func pacingSlotTarget(campaign *Campaign, now time.Time, campaignSpent, slotSpent float64) (float64, error) {
+	if campaign == nil {
+		return 0, nil
+	}
+	if campaignSpent < 0 || slotSpent < 0 || math.IsNaN(campaignSpent) || math.IsNaN(slotSpent) || math.IsInf(campaignSpent, 0) || math.IsInf(slotSpent, 0) {
+		return 0, errors.New("invalid pacing spend values")
+	}
+	if slotSpent > campaignSpent+1e-9 {
+		return 0, fmt.Errorf("current slot spend %.12f exceeds campaign spend %.12f", slotSpent, campaignSpent)
+	}
+
+	slotStart := now.UTC().Truncate(SlotDuration)
+	activeSlotsFromSlotStart := ActiveSlotsLeft(campaign, slotStart)
+	currentSlotFraction := CurrentSlotActiveFraction(campaign, now)
+	spentBeforeCurrentSlot := campaignSpent - slotSpent
+	remainingAtSlotStart := campaign.GoalTotalDollars - spentBeforeCurrentSlot
+	if remainingAtSlotStart <= 0 || activeSlotsFromSlotStart <= 0 || currentSlotFraction <= 0 {
+		return 0, nil
+	}
+
+	fullSlotTarget := remainingAtSlotStart / activeSlotsFromSlotStart
+	return fullSlotTarget * currentSlotFraction, nil
 }
 
 func (s *RuntimeStore) UpdatePacing(ctx context.Context, snapshot *Snapshot, now time.Time) error {

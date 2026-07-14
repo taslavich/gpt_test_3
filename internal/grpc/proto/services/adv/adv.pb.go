@@ -24,7 +24,6 @@ type DoAuctionRequest struct {
 	TrafficType   string                 `protobuf:"bytes,3,opt,name=traffic_type,json=trafficType,proto3" json:"traffic_type,omitempty"`
 	SspDomain     string                 `protobuf:"bytes,4,opt,name=ssp_domain,json=sspDomain,proto3" json:"ssp_domain,omitempty"`
 	ImpIdUuid     map[string]string      `protobuf:"bytes,5,rep,name=impIdUuid,proto3" json:"impIdUuid,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
-	Feed          string                 `protobuf:"bytes,6,opt,name=feed,proto3" json:"feed,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -89,13 +88,6 @@ func (x *DoAuctionRequest) GetImpIdUuid() map[string]string {
 		return x.ImpIdUuid
 	}
 	return nil
-}
-
-func (x *DoAuctionRequest) GetFeed() string {
-	if x != nil {
-		return x.Feed
-	}
-	return ""
 }
 
 type DoAuctionResponse struct {
@@ -181,16 +173,17 @@ func (x *DoAuctionResponse) GetWinnerUserIds() map[string]string {
 
 var File_services_adv_proto protoreflect.FileDescriptor
 
-const file_services_adv_proto_rawDesc = "\n\x12services/adv.proto\x12\x03adv\x1a\x1atypes/ortb_V2_5/ortb.proto\"\xb9\x02\n\x10DoAuctionRequest\x125\n\nbidRequest\x18\x01 \x01(\x0b2\x15" +
-	".ortb_V2_5.BidRequestR\nbidRequest\x12\x16\n\x06format\x18\x02 \x01(\tR\x06format\x12!\n\x0ctraffic_type\x18\x03 \x01(\tR\x0btrafficType\x12\x1d\n\n" +
-	"ssp_domain\x18\x04 \x01(\tR\tsspDomain\x12B\n\timpIdUuid\x18\x05 \x03(\x0b2$.adv.DoAuctionRequest.ImpIdUuidEntryR\timpIdUuid\x12" +
-	"\x12\n\x04feed\x18\x06 \x01(\tR\x04feed\x1a<\n\x0eImpIdUuidEntry\x12\x10\n\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\xf6\x02\n\x11DoAuctionR" +
-	"esponse\x12\x1f\n\x0bcampaign_id\x18\x02 \x01(\tR\ncampaignId\x12\x1f\n\x0bcreative_id\x18\x03 \x01(\tR\ncreativeId\x12\x10\n\x03adm\x18\x04 \x01(\tR\x03adm\x12#\n\ra" +
-	"uction_price\x18\x05 \x01(\x01R\x0cauctionPrice\x129\n\x0cbid_response\x18\x07 \x01(\x0b2\x16.ortb_V2_5.BidResponseR\x0bbidResponse\x12O\n\rw" +
-	"innerUserIds\x18\x08 \x03(\x0b2).adv.DoAuctionResponse.WinnerUserIdsEntryR\rwinnerUserIds\x1a@\n\x12WinnerUserIdsEnt" +
-	"ry\x12\x10\n\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n\x05value\x18\x02 \x01(\tR\x05value:\x028\x01J\x04\x08\x01\x10\x02J\x04\x08\x06\x10\x07R\x08selectedR\x04code2J\n\nAdvService\x12<\n\tDoAu" +
-	"ction\x12\x15.adv.DoAuctionRequest\x1a\x16.adv.DoAuctionResponse\"\x00BSZQgitlab.com/twinbid-exchange/RTB-exchan" +
-	"ge/internal/grpc/proto/services/adv;advGrpcb\x06proto3"
+const file_services_adv_proto_rawDesc = "\n\x12services/adv.proto\x12\x03adv\x1a\x1atypes/ortb_V2_5/ortb.proto\"\xb1\x02\n\x10DoAuctionRequest\x125\n\nbidRequest\x18\x01" +
+	" \x01(\x0b2\x15.ortb_V2_5.BidRequestR\nbidRequest\x12\x16\n\x06format\x18\x02 \x01(\tR\x06format\x12!\n\x0ctraffic_type\x18\x03 \x01(\tR\x0btra" +
+	"fficType\x12\x1d\n\nssp_domain\x18\x04 \x01(\tR\tsspDomain\x12B\n\timpIdUuid\x18\x05 \x03(\x0b2$.adv.DoAuctionRequest.ImpIdUui" +
+	"dEntryR\timpIdUuid\x1a<\n\x0eImpIdUuidEntry\x12\x10\n\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n\x05value\x18\x02 \x01(\tR\x05value:\x028\x01J\x04\x08\x06\x10\x07R\x04fee" +
+	"d\"\xf6\x02\n\x11DoAuctionResponse\x12\x1f\n\x0bcampaign_id\x18\x02 \x01(\tR\ncampaignId\x12\x1f\n\x0bcreative_id\x18\x03 \x01(\tR\ncreativeId\x12" +
+	"\x10\n\x03adm\x18\x04 \x01(\tR\x03adm\x12#\n\rauction_price\x18\x05 \x01(\x01R\x0cauctionPrice\x129\n\x0cbid_response\x18\x07 \x01(\x0b2\x16.ortb_V2_5.B" +
+	"idResponseR\x0bbidResponse\x12O\n\rwinnerUserIds\x18\x08 \x03(\x0b2).adv.DoAuctionResponse.WinnerUserIdsEntryR" +
+	"\rwinnerUserIds\x1a@\n\x12WinnerUserIdsEntry\x12\x10\n\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n\x05value\x18\x02 \x01(\tR\x05value:\x028\x01J\x04\x08\x01\x10\x02J\x04\x08\x06" +
+	"\x10\x07R\x08selectedR\x04code2J\n\nAdvService\x12<\n\tDoAuction\x12\x15.adv.DoAuctionRequest\x1a\x16.adv.DoAuctionRespon" +
+	"se\"\x00BSZQgitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/proto/services/adv;advGrpcb" +
+	"\x06proto3"
 
 var (
 	file_services_adv_proto_rawDescOnce sync.Once

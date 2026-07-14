@@ -8,19 +8,17 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
-
-	"github.com/google/uuid"
 )
 
 var validQualitySegments = map[string]struct{}{"usual": {}, "high": {}, "ultra": {}}
 
-// QualityFeedMap is a replaceable set of SSP feed UUIDs for one quality segment.
+// QualityDomainMap is a replaceable set of normalized SSP domains for one quality segment.
 // Only entries with value true are valid members of the set.
-type QualityFeedMap map[string]bool
+type QualityDomainMap map[string]bool
 
 // QualityMaps contains the three independently replaceable quality maps.
-// The same feed UUID may belong to more than one quality map.
-type QualityMaps map[string]QualityFeedMap
+// The same SSP domain may belong to more than one quality map.
+type QualityMaps map[string]QualityDomainMap
 
 type qualitySnapshot struct {
 	bySegment QualityMaps
@@ -56,10 +54,10 @@ func (s *QualityStore) Reload() error {
 	return nil
 }
 
-// Update replaces exactly one of the usual/high/ultra feed maps. The complete
+// Update replaces exactly one of the usual/high/ultra SSP-domain maps. The complete
 // next snapshot is validated before the file and in-memory pointer are replaced.
 // Membership in the other quality maps is preserved, including overlaps.
-func (s *QualityStore) Update(segment string, input QualityFeedMap) error {
+func (s *QualityStore) Update(segment string, input QualityDomainMap) error {
 	if s == nil || s.filename == "" {
 		return errors.New("ADV quality store is not configured")
 	}
@@ -67,7 +65,7 @@ func (s *QualityStore) Update(segment string, input QualityFeedMap) error {
 	if _, ok := validQualitySegments[segment]; !ok {
 		return fmt.Errorf("invalid quality segment %q", segment)
 	}
-	normalized, err := normalizeQualityFeedMap(input)
+	normalized, err := normalizeQualityDomainMap(input)
 	if err != nil {
 		return err
 	}
@@ -112,7 +110,7 @@ func (s *QualityStore) UpdateAll(input QualityMaps) error {
 }
 
 // Saved returns the persisted map for one quality segment.
-func (s *QualityStore) Saved(segment string) (QualityFeedMap, error) {
+func (s *QualityStore) Saved(segment string) (QualityDomainMap, error) {
 	if s == nil || s.filename == "" {
 		return nil, errors.New("ADV quality store is not configured")
 	}
@@ -128,7 +126,7 @@ func (s *QualityStore) Saved(segment string) (QualityFeedMap, error) {
 	if err != nil {
 		return nil, err
 	}
-	return cloneQualityFeedMap(snapshot.bySegment[segment]), nil
+	return cloneQualityDomainMap(snapshot.bySegment[segment]), nil
 }
 
 func (s *QualityStore) SavedAll() (QualityMaps, error) {
@@ -147,16 +145,16 @@ func (s *QualityStore) SavedAll() (QualityMaps, error) {
 }
 
 // Memory returns the current in-memory map for one quality segment.
-func (s *QualityStore) Memory(segment string) QualityFeedMap {
+func (s *QualityStore) Memory(segment string) QualityDomainMap {
 	segment = normalizeQualitySegment(segment)
 	if _, ok := validQualitySegments[segment]; !ok || s == nil {
-		return QualityFeedMap{}
+		return QualityDomainMap{}
 	}
 	current := s.value.Load()
 	if current == nil {
-		return QualityFeedMap{}
+		return QualityDomainMap{}
 	}
-	return cloneQualityFeedMap(current.bySegment[segment])
+	return cloneQualityDomainMap(current.bySegment[segment])
 }
 
 func (s *QualityStore) MemoryAll() QualityMaps {
@@ -173,7 +171,7 @@ func (s *QualityStore) MemoryAll() QualityMaps {
 func parseQualityMaps(data []byte) (*qualitySnapshot, error) {
 	input := QualityMaps{}
 	if err := json.Unmarshal(data, &input); err != nil {
-		return nil, fmt.Errorf("quality maps must be an object with usual/high/ultra feed maps: %w", err)
+		return nil, fmt.Errorf("quality maps must be an object with usual/high/ultra SSP-domain maps: %w", err)
 	}
 	return buildQualitySnapshot(input)
 }
@@ -200,7 +198,7 @@ func buildQualitySnapshot(input QualityMaps) (*qualitySnapshot, error) {
 	bySegment := emptyQualityMaps()
 	totalMemberships := 0
 	for _, segment := range []string{"usual", "high", "ultra"} {
-		normalized, err := normalizeQualityFeedMap(input[segment])
+		normalized, err := normalizeQualityDomainMap(input[segment])
 		if err != nil {
 			return nil, fmt.Errorf("%s quality map: %w", segment, err)
 		}
@@ -208,69 +206,63 @@ func buildQualitySnapshot(input QualityMaps) (*qualitySnapshot, error) {
 		totalMemberships += len(normalized)
 	}
 	if totalMemberships == 0 {
-		return nil, errors.New("quality maps must contain at least one feed UUID")
+		return nil, errors.New("quality maps must contain at least one SSP domain")
 	}
 	return &qualitySnapshot{bySegment: bySegment}, nil
 }
 
-func normalizeQualityFeedMap(input QualityFeedMap) (QualityFeedMap, error) {
+func normalizeQualityDomainMap(input QualityDomainMap) (QualityDomainMap, error) {
 	if input == nil {
-		return nil, errors.New("quality feed map must be a JSON object, not null")
+		return nil, errors.New("quality domain map must be a JSON object, not null")
 	}
-	out := make(QualityFeedMap, len(input))
-	for rawFeed, enabled := range input {
-		feed := normalizeFeed(rawFeed)
-		if feed == "" {
-			return nil, errors.New("quality map contains an empty feed UUID")
+	out := make(QualityDomainMap, len(input))
+	for rawDomain, enabled := range input {
+		domain := normalizeDomain(rawDomain)
+		if domain == "" {
+			return nil, errors.New("quality map contains an empty SSP domain")
 		}
 		if !enabled {
-			return nil, fmt.Errorf("quality map entry %s must be true or removed", rawFeed)
+			return nil, fmt.Errorf("quality map entry %s must be true or removed", rawDomain)
 		}
-		parsed, err := uuid.Parse(feed)
-		if err != nil {
-			return nil, fmt.Errorf("invalid feed UUID %q: %w", rawFeed, err)
+		if strings.ContainsAny(domain, " \t\r\n") {
+			return nil, fmt.Errorf("invalid SSP domain %q", rawDomain)
 		}
-		feed = strings.ToLower(parsed.String())
-		if _, exists := out[feed]; exists {
-			return nil, fmt.Errorf("duplicate normalized feed UUID %s", feed)
+		if _, exists := out[domain]; exists {
+			return nil, fmt.Errorf("duplicate normalized SSP domain %s", domain)
 		}
-		out[feed] = true
+		out[domain] = true
 	}
 	return out, nil
 }
 
 func emptyQualityMaps() QualityMaps {
 	return QualityMaps{
-		"usual": QualityFeedMap{},
-		"high":  QualityFeedMap{},
-		"ultra": QualityFeedMap{},
+		"usual": QualityDomainMap{},
+		"high":  QualityDomainMap{},
+		"ultra": QualityDomainMap{},
 	}
 }
 
-func cloneQualityFeedMap(input QualityFeedMap) QualityFeedMap {
-	out := make(QualityFeedMap, len(input))
-	for feed, enabled := range input {
-		out[feed] = enabled
+func cloneQualityDomainMap(input QualityDomainMap) QualityDomainMap {
+	out := make(QualityDomainMap, len(input))
+	for domain, enabled := range input {
+		out[domain] = enabled
 	}
 	return out
 }
 
 func cloneQualityMaps(input QualityMaps) QualityMaps {
 	out := emptyQualityMaps()
-	for segment, feeds := range input {
+	for segment, domains := range input {
 		segment = normalizeQualitySegment(segment)
 		if _, ok := validQualitySegments[segment]; ok {
-			out[segment] = cloneQualityFeedMap(feeds)
+			out[segment] = cloneQualityDomainMap(domains)
 		}
 	}
 	return out
 }
 
 func normalizeQualitySegment(value string) string {
-	return strings.ToLower(strings.TrimSpace(value))
-}
-
-func normalizeFeed(value string) string {
 	return strings.ToLower(strings.TrimSpace(value))
 }
 
@@ -289,9 +281,9 @@ func (s *QualityStore) Count() int {
 	return count
 }
 
-// Contains reports whether the incoming SSP feed UUID belongs to the requested
+// Contains reports whether the incoming SSP domain belongs to the requested
 // quality map. The campaign quality_type must be passed as segment.
-func (s *QualityStore) Contains(segment, feed string) bool {
+func (s *QualityStore) Contains(segment, sspDomain string) bool {
 	if s == nil {
 		return false
 	}
@@ -299,21 +291,21 @@ func (s *QualityStore) Contains(segment, feed string) bool {
 	if _, ok := validQualitySegments[segment]; !ok {
 		return false
 	}
-	feed = normalizeFeed(feed)
-	if feed == "" {
+	sspDomain = normalizeDomain(sspDomain)
+	if sspDomain == "" {
 		return false
 	}
 	current := s.value.Load()
 	if current == nil {
 		return false
 	}
-	return current.bySegment[segment][feed]
+	return current.bySegment[segment][sspDomain]
 }
 
-// ContainsAny reports whether the feed is present in at least one quality map.
-func (s *QualityStore) ContainsAny(feed string) bool {
+// ContainsAny reports whether the SSP domain is present in at least one quality map.
+func (s *QualityStore) ContainsAny(sspDomain string) bool {
 	for _, segment := range []string{"usual", "high", "ultra"} {
-		if s.Contains(segment, feed) {
+		if s.Contains(segment, sspDomain) {
 			return true
 		}
 	}

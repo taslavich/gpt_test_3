@@ -11,22 +11,19 @@ persistent data volume. The included compose file is an example for this setup.
 `ADV_SERVICE_CONTROL_URLS` must contain the actual HTTP control URLs of all ADV
 instances so the ADM Adapter can disable them after an accounting write error.
 
-## Feed quality maps
+## SSP-domain quality maps
 
-ADV receives the original SSP `feed` UUID in parallel with the existing
-`feed -> ssp_domain` conversion. The conversion and `ssp_domain` behavior are
-unchanged. Quality is selected only by membership of the original feed UUID in
-one of three maps stored in `ADV_QUALITY_MAP_FILE_PATH`:
+ADV uses the existing normalized `ssp_domain` passed through SSP Adapter,
+Orchestrator, and Router. Quality membership is stored in three maps in
+`ADV_QUALITY_MAP_FILE_PATH`:
 
 - `usual`;
 - `high`;
 - `ultra`.
 
-A feed UUID may exist in one, two, or all three maps. ADV does not assign one
-exclusive segment to a feed. For each campaign it reads `quality_type` and
-checks the incoming feed UUID only in the corresponding map. The checked-in
-file places all feeds currently configured in `cmd/spp-adapter/spp-adapter.env`
-into `usual`, while `high` and `ultra` start empty.
+The same SSP domain may exist in one, two, or all three maps. For each campaign
+ADV reads `quality_type` and checks the incoming `ssp_domain` only in the
+corresponding map.
 
 Read or atomically replace all three persisted maps:
 
@@ -37,7 +34,7 @@ PUT /filter/quality_map
 
 The body has the same `usual`/`high`/`ultra` structure as
 `adv_quality_map.json`. The update atomically replaces all three maps and may
-contain the same feed UUID in several maps.
+contain the same SSP domain in several maps.
 
 Read or replace one persisted map:
 
@@ -50,14 +47,14 @@ The PUT body is the complete replacement map for that segment:
 
 ```json
 {
-  "a15c30da-6dea-4945-a5cf-40bb34b1047b": true
+  "mc_moblivion.com": true
 }
 ```
 
 The same endpoints accept `quality=high` and `quality=ultra`. The replacement is
 fully validated, persisted atomically, and only then published as a new
-in-memory snapshot. Membership in other maps is preserved and overlapping feed
-UUIDs across segments are allowed.
+in-memory snapshot. Membership in other maps is preserved and overlapping SSP
+domains across segments are allowed.
 
 Debug the current in-memory maps with:
 

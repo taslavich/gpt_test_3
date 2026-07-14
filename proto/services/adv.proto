@@ -14,7 +14,8 @@ message DoAuctionRequest {
   string traffic_type = 3;
   string ssp_domain = 4;
   map<string, string> impIdUuid = 5;
-  string feed = 6;
+  reserved 6;
+  reserved "feed";
 }
 
 message DoAuctionResponse {

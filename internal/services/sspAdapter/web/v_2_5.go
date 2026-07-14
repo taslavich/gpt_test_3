@@ -506,7 +506,6 @@ func postBid_V2_5(
 			TrafficType: typic,
 			ImpIdUuid:   impIdUuid,
 			SspUrl:      sspAdapterWorkStatusURL,
-			Feed:        input.Feed,
 		},
 	)
 	if err != nil {

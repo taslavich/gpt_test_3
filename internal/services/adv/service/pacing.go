@@ -10,21 +10,38 @@ func ActiveSlotsLeft(campaign *Campaign, now time.Time) float64 {
 	if campaign == nil {
 		return 0
 	}
-	from := now.UTC()
-	if campaign.StartTS.After(from) {
-		from = campaign.StartTS
+	return activeSecondsBetween(campaign, now.UTC(), campaign.EndTS.UTC()) / SlotDuration.Seconds()
+}
+
+// CurrentSlotActiveFraction returns the active share of the current five-minute
+// slot. It is based on the entire slot, not only on the seconds remaining after
+// now, so the slot target stays stable while the slot is in progress.
+func CurrentSlotActiveFraction(campaign *Campaign, now time.Time) float64 {
+	if campaign == nil {
+		return 0
 	}
-	if !from.Before(campaign.EndTS) {
+	slotStart := now.UTC().Truncate(SlotDuration)
+	slotEnd := slotStart.Add(SlotDuration)
+	return activeSecondsBetween(campaign, slotStart, slotEnd) / SlotDuration.Seconds()
+}
+
+func activeSecondsBetween(campaign *Campaign, from, to time.Time) float64 {
+	if campaign == nil {
+		return 0
+	}
+	from = maxTime(from.UTC(), campaign.StartTS.UTC())
+	to = minTime(to.UTC(), campaign.EndTS.UTC())
+	if !from.Before(to) {
 		return 0
 	}
 	if len(campaign.ActiveIntervals) == 0 {
-		return campaign.EndTS.Sub(from).Seconds() / SlotDuration.Seconds()
+		return to.Sub(from).Seconds()
 	}
 
 	intervals := make([]TimeRange, 0, len(campaign.ActiveIntervals))
 	for _, interval := range campaign.ActiveIntervals {
 		start := maxTime(interval.Start.UTC(), from)
-		end := minTime(interval.End.UTC(), campaign.EndTS.UTC())
+		end := minTime(interval.End.UTC(), to)
 		if start.Before(end) {
 			intervals = append(intervals, TimeRange{Start: start, End: end})
 		}
@@ -48,7 +65,7 @@ func ActiveSlotsLeft(campaign *Campaign, now time.Time) float64 {
 	for _, interval := range merged {
 		seconds += interval.End.Sub(interval.Start).Seconds()
 	}
-	return seconds / SlotDuration.Seconds()
+	return seconds
 }
 
 func (s *AuctionService) StartPacingTicker(ctx context.Context, interval time.Duration, onError func(error)) {

@@ -79,6 +79,37 @@ func TestActiveSlotsLeftUsesFractionalEdges(t *testing.T) {
 	}
 }
 
+func TestCurrentSlotActiveFractionUsesWholeSlotEdge(t *testing.T) {
+	now := time.Date(2026, 7, 13, 12, 4, 30, 0, time.UTC)
+	campaign := &Campaign{
+		StartTS: time.Date(2026, 7, 13, 12, 4, 0, 0, time.UTC),
+		EndTS:   time.Date(2026, 7, 13, 12, 15, 0, 0, time.UTC),
+	}
+	if got := CurrentSlotActiveFraction(campaign, now); math.Abs(got-0.2) > 1e-12 {
+		t.Fatalf("got current slot fraction %v, want 0.2", got)
+	}
+}
+
+func TestPacingSlotTargetScalesPartialCurrentSlot(t *testing.T) {
+	now := time.Date(2026, 7, 13, 12, 4, 30, 0, time.UTC)
+	campaign := &Campaign{
+		GoalTotalDollars: 100,
+		StartTS:          time.Date(2026, 7, 13, 12, 4, 0, 0, time.UTC),
+		EndTS:            time.Date(2026, 7, 13, 12, 15, 0, 0, time.UTC),
+	}
+	got, err := pacingSlotTarget(campaign, now, 45, 5)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Spend before the current slot is 40, so 60 remains at slot start.
+	// Active time from slot start is 2.2 slot-equivalents and the current
+	// edge slot contributes 0.2, therefore its total target is 60/2.2*0.2.
+	want := 60.0 / 2.2 * 0.2
+	if math.Abs(got-want) > 1e-12 {
+		t.Fatalf("got slot target %v, want %v", got, want)
+	}
+}
+
 func TestTrackerMacrosUnknownAndEncoded(t *testing.T) {
 	siteID := "site id&1"
 	req := &ortb.BidRequest{Site: &ortb.Site{Id: &siteID}}
@@ -152,12 +183,12 @@ func TestQualityMapsRejectEmptySnapshot(t *testing.T) {
 	}
 }
 
-func TestQualityMapsAllowFeedInMultipleSegments(t *testing.T) {
-	sharedFeed := "a15c30da-6dea-4945-a5cf-40bb34b1047b"
-	highOnlyFeed := "0260c40b-44ad-49bf-a54d-42d6bda5c90f"
+func TestQualityMapsAllowDomainInMultipleSegments(t *testing.T) {
+	sharedDomain := "MC_Moblivion.COM."
+	highOnlyDomain := "high-only.example"
 	snapshot, err := buildQualitySnapshot(QualityMaps{
-		"usual": {sharedFeed: true},
-		"high":  {sharedFeed: true, highOnlyFeed: true},
+		"usual": {sharedDomain: true},
+		"high":  {sharedDomain: true, highOnlyDomain: true},
 		"ultra": {},
 	})
 	if err != nil {
@@ -165,29 +196,29 @@ func TestQualityMapsAllowFeedInMultipleSegments(t *testing.T) {
 	}
 	store := &QualityStore{}
 	store.value.Store(snapshot)
-	if !store.Contains("usual", sharedFeed) {
-		t.Fatal("shared feed must be allowed for usual campaigns")
+	if !store.Contains("usual", sharedDomain) {
+		t.Fatal("shared domain must be allowed for usual campaigns")
 	}
-	if !store.Contains("high", sharedFeed) {
-		t.Fatal("shared feed must also be allowed for high campaigns")
+	if !store.Contains("high", sharedDomain) {
+		t.Fatal("shared domain must also be allowed for high campaigns")
 	}
-	if store.Contains("ultra", sharedFeed) {
-		t.Fatal("shared feed must not be allowed for ultra until it is added there")
+	if store.Contains("ultra", sharedDomain) {
+		t.Fatal("shared domain must not be allowed for ultra until it is added there")
 	}
-	if !store.Contains("high", highOnlyFeed) || store.Contains("usual", highOnlyFeed) {
-		t.Fatal("high-only feed membership is incorrect")
+	if !store.Contains("high", highOnlyDomain) || store.Contains("usual", highOnlyDomain) {
+		t.Fatal("high-only domain membership is incorrect")
 	}
-	if !store.ContainsAny(sharedFeed) || store.ContainsAny("f4071cc5-5556-4ab0-83a0-9adaf2ec50aa") {
+	if !store.ContainsAny(sharedDomain) || store.ContainsAny("missing.example") {
 		t.Fatal("ContainsAny returned an incorrect result")
 	}
 }
 
-func TestQualityStoreReplacesOneMapAndPreservesOverlappingMemberships(t *testing.T) {
-	sharedFeed := "a15c30da-6dea-4945-a5cf-40bb34b1047b"
-	highOnlyFeed := "0260c40b-44ad-49bf-a54d-42d6bda5c90f"
+func TestQualityStoreReplacesOneMapAndPreservesOverlappingDomains(t *testing.T) {
+	sharedDomain := "MC_Moblivion.COM."
+	highOnlyDomain := "high-only.example"
 	path := t.TempDir() + "/quality.json"
 	if err := writeJSONAtomic(path, QualityMaps{
-		"usual": {sharedFeed: true},
+		"usual": {sharedDomain: true},
 		"high":  {},
 		"ultra": {},
 	}); err != nil {
@@ -197,26 +228,26 @@ func TestQualityStoreReplacesOneMapAndPreservesOverlappingMemberships(t *testing
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := store.Update("high", QualityFeedMap{sharedFeed: true, highOnlyFeed: true}); err != nil {
+	if err := store.Update("high", QualityDomainMap{sharedDomain: true, highOnlyDomain: true}); err != nil {
 		t.Fatal(err)
 	}
-	if !store.Contains("usual", sharedFeed) || !store.Contains("high", sharedFeed) {
-		t.Fatal("replacing high must preserve the same feed in usual")
+	if !store.Contains("usual", sharedDomain) || !store.Contains("high", sharedDomain) {
+		t.Fatal("replacing high must preserve the same domain in usual")
 	}
-	if err := store.Update("ultra", QualityFeedMap{sharedFeed: true}); err != nil {
+	if err := store.Update("ultra", QualityDomainMap{sharedDomain: true}); err != nil {
 		t.Fatal(err)
 	}
-	if !store.Contains("usual", sharedFeed) || !store.Contains("high", sharedFeed) || !store.Contains("ultra", sharedFeed) {
-		t.Fatal("the same feed must be allowed in all three quality maps")
+	if !store.Contains("usual", sharedDomain) || !store.Contains("high", sharedDomain) || !store.Contains("ultra", sharedDomain) {
+		t.Fatal("the same domain must be allowed in all three quality maps")
 	}
 	if err := store.UpdateAll(QualityMaps{
-		"usual": {sharedFeed: true},
-		"high":  {sharedFeed: true, highOnlyFeed: true},
-		"ultra": {sharedFeed: true},
+		"usual": {sharedDomain: true},
+		"high":  {sharedDomain: true, highOnlyDomain: true},
+		"ultra": {sharedDomain: true},
 	}); err != nil {
 		t.Fatal(err)
 	}
-	if !store.Contains("usual", sharedFeed) || !store.Contains("high", sharedFeed) || !store.Contains("ultra", sharedFeed) {
+	if !store.Contains("usual", sharedDomain) || !store.Contains("high", sharedDomain) || !store.Contains("ultra", sharedDomain) {
 		t.Fatal("atomic all-map update lost overlapping memberships")
 	}
 }

@@ -17,7 +17,8 @@ message DspRouterRequest_V2_5 {
   string format = 6;
   string sspUrl = 7;
   string traffic_type = 8;
-  string feed = 9;
+  reserved 9;
+  reserved "feed";
 }
 
 message DspRouterResponse_V2_5 {

@@ -152,7 +152,7 @@ func InitHttpRoutes(httpRouter *chi.Mux, percentStore *auction.PercentStore, qua
 			return
 		}
 
-		var input auction.QualityFeedMap
+		var input auction.QualityDomainMap
 		if err := decoder.Decode(&input); err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return

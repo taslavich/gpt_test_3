@@ -70,7 +70,6 @@ func (s *Server) DoAuction(ctx context.Context, req *advGrpc.DoAuctionRequest) (
 		Format:      req.GetFormat(),
 		TrafficType: req.GetTrafficType(),
 		SSPDomain:   req.GetSspDomain(),
-		Feed:        req.GetFeed(),
 		ImpIDUUID:   req.GetImpIdUuid(),
 	})
 	if errors.Is(err, auction.ErrInvalidAuctionRequest) {
