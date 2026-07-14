@@ -8,7 +8,6 @@ import (
 	"sort"
 	"strings"
 
-	"gitlab.com/twinbid-exchange/RTB-exchange/internal/constants"
 	bidEngineGrpc "gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/proto/services/bidEngine"
 	"gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/proto/types/ortb_V2_5"
 	utils "gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/utils_grpc"
@@ -278,15 +277,45 @@ func FinalizeBidCallbacks(
 	return finalBid, true
 }
 
-// ADVUsesBURL preserves ADV billing semantics: NAT, BAN and POP are charged by
-// BURL, while IPP is charged by the ADM callback.
-func ADVUsesBURL(format string) bool {
-	switch strings.ToUpper(strings.TrimSpace(format)) {
-	case constants.NAT, constants.BAN, constants.POP:
-		return true
-	default:
-		return false
+// FinalizeADVCallbacks finalizes a preselected ADV winner without treating ADV
+// as a downstream DSP. ADM keeps the original creative URL, while NURL and BURL
+// point only to this exchange and never contain an embedded downstream URL.
+func FinalizeADVCallbacks(
+	source *ortb_V2_5.Bid,
+	admDomain, globalID, sspDomain, format string,
+) (*ortb_V2_5.Bid, bool) {
+	if source == nil {
+		return nil, false
 	}
+
+	cleanSource, ok := proto.Clone(source).(*ortb_V2_5.Bid)
+	if !ok || cleanSource == nil {
+		return nil, false
+	}
+	// ADV cannot supply DSP callbacks. Discard them even if malformed input
+	// contains such fields, then synthesize exchange-only NURL/BURL below.
+	cleanSource.Nurl = nil
+	cleanSource.Burl = nil
+
+	finalBid, ok := FinalizeBidCallbacks(
+		cleanSource,
+		admDomain,
+		globalID,
+		sspDomain,
+		format,
+		true,
+		true,
+	)
+	if !ok || finalBid == nil {
+		return nil, false
+	}
+
+	wrappedNURL := utils.WrapADVNurlURL(admDomain, globalID, sspDomain, format)
+	if wrappedNURL == "" {
+		return nil, false
+	}
+	finalBid.Nurl = &wrappedNURL
+	return finalBid, true
 }
 
 func applyPriceConstraintsAndPercent(dspPrice, bidFloor, profitPercent float32, needed bool) (

@@ -29,6 +29,16 @@ func WrapNurlURL(hostname, originalURL, globalID, sspDomain, format string) stri
 	}, "id", "url", "s", "f")
 }
 
+// WrapADVNurlURL builds the exchange NURL for a preselected ADV winner.
+// ADV is not a DSP and therefore has no downstream/original NURL to embed.
+func WrapADVNurlURL(hostname, globalID, sspDomain, format string) string {
+	return buildCallbackURL(hostname, NURL, map[string]string{
+		"id": globalID,
+		"s":  sspDomain,
+		"f":  formatCode(format),
+	}, "id", "s", "f")
+}
+
 func WrapBurlURL(hostname, globalID, format string) string {
 	return buildCallbackURL(hostname, "burl", map[string]string{
 		"id": globalID,

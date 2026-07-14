@@ -227,14 +227,12 @@ func (s *Server) handleReadyADVResponse(ctx context.Context, req *bidEngineGrpc.
 				failed = append(failed, impID)
 				continue
 			}
-			finalBid, ok := bidEngine.FinalizeBidCallbacks(
+			finalBid, ok := bidEngine.FinalizeADVCallbacks(
 				bid,
 				s.admDomain,
 				uuid,
 				req.GetSspDomain(),
 				req.GetFormat(),
-				true,
-				bidEngine.ADVUsesBURL(req.GetFormat()),
 			)
 			if !ok {
 				failed = append(failed, impID)

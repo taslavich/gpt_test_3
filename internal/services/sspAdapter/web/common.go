@@ -103,18 +103,46 @@ func getNurl(
 	redisSetImpressions string,
 	redisWriteErrorMonitor *services.RedisWriteErrorMonitor,
 	sspAdapterWorkStatusURL string,
+	advBillingStore *billing.Store,
+	advOutbox *outbox.Store,
+	advControlURLs []string,
 ) {
 	input, ok := r.Context().Value(httpin.Input).(*nurlRequest)
 	if !ok || input == nil {
 		http.Error(w, "invalid NURL request", http.StatusBadRequest)
 		return
 	}
+	format, ok := constants.CodeToFormat[input.Format]
+	if !ok {
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+
+	// ADV has no downstream DSP NURL. Detect a preselected ADV winner by UUID
+	// in DB 6 and terminate the callback locally without requiring or calling
+	// an embedded url= target.
+	isADV, err := handleADVCallback(
+		r.Context(),
+		input.GlobalId,
+		format,
+		"nurl",
+		false,
+		advBillingStore,
+		advOutbox,
+		advControlURLs,
+		sspAdapterWorkStatusURL,
+		redisWriteErrorMonitor,
+	)
+	if err != nil {
+		w.WriteHeader(http.StatusServiceUnavailable)
+		return
+	}
+	if isADV {
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+
 	if input.Ssp_Domain == "adl_pb.com" {
-		format, ok := constants.CodeToFormat[input.Format]
-		if !ok {
-			w.WriteHeader(http.StatusBadRequest)
-			return
-		}
 		exists, err := utils.UUIDKeyExistsInRedis(ctx, redisNurlClient, input.GlobalId)
 		if err != nil {
 			recordRedisError(redisWriteErrorMonitor, err, sspAdapterWorkStatusURL)

@@ -35,6 +35,17 @@ func TestADVCallbackWrappersAlwaysIncludeFormat(t *testing.T) {
 	assertQuery(WrapNurlURL(host, original, globalID, sspDomain, format), map[string]string{
 		"id": globalID, "url": original, "s": sspDomain, "f": constants.FormatToCodes[format],
 	})
+	advNURL := WrapADVNurlURL(host, globalID, sspDomain, format)
+	assertQuery(advNURL, map[string]string{
+		"id": globalID, "s": sspDomain, "f": constants.FormatToCodes[format],
+	})
+	parsedADVNURL, err := url.Parse(advNURL)
+	if err != nil {
+		t.Fatalf("parse ADV NURL %q: %v", advNURL, err)
+	}
+	if _, exists := parsedADVNURL.Query()["url"]; exists {
+		t.Fatalf("ADV NURL must not contain url query: %q", advNURL)
+	}
 	assertQuery(WrapBurlURL(host, globalID, format), map[string]string{
 		"id": globalID, "f": constants.FormatToCodes[format],
 	})
@@ -46,6 +57,9 @@ func TestCallbackWrappersRejectMissingRequiredValues(t *testing.T) {
 	}
 	if got := WrapNurlURL("adm.example.test", "", "id", "ssp.example.test", constants.BAN); got != "" {
 		t.Fatalf("NURL wrapper must reject empty redirect URL: %q", got)
+	}
+	if got := WrapADVNurlURL("adm.example.test", "", "ssp.example.test", constants.BAN); got != "" {
+		t.Fatalf("ADV NURL wrapper must reject empty winner UUID: %q", got)
 	}
 	if got := WrapBurlURL("adm.example.test", "id", "unknown"); got != "" {
 		t.Fatalf("BURL wrapper must reject unknown format: %q", got)

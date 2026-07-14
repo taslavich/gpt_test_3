@@ -81,7 +81,7 @@ type admRequest struct {
 
 type nurlRequest struct {
 	GlobalId   string `in:"query=id" required:"true"`
-	DspURL     string `in:"query=url" required:"true"`
+	DspURL     string `in:"query=url"`
 	Format     string `in:"query=f" required:"true"`
 	Ssp_Domain string `in:"query=s" required:"true"`
 }
@@ -285,7 +285,20 @@ func InitHttpsRoutes(
 	httpRouter.With(
 		httpin.NewInput(nurlRequest{}),
 	).Get(GetNurlUrl, func(w http.ResponseWriter, r *http.Request) {
-		getNurl(ctx, w, r, nurlClient, redisClientsImp, redisNurlClient, redisSetImpressions, redisWriteErrorMonitor, sspAdapterWorkStatusURL)
+		getNurl(
+			ctx,
+			w,
+			r,
+			nurlClient,
+			redisClientsImp,
+			redisNurlClient,
+			redisSetImpressions,
+			redisWriteErrorMonitor,
+			sspAdapterWorkStatusURL,
+			advBillingStore,
+			advOutbox,
+			advControlURLs,
+		)
 	})
 
 	httpRouter.With(

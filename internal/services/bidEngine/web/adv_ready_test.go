@@ -49,7 +49,13 @@ func TestReadyADVResponseSkipsAuctionButFinalizesCallbacks(t *testing.T) {
 	}
 	finalBid := bids[0]
 	assertReadyCallback(t, finalBid.GetAdm(), "/adm", "winner-uuid", adm)
+	assertReadyCallback(t, finalBid.GetNurl(), "/nurl", "winner-uuid", "")
 	assertReadyCallback(t, finalBid.GetBurl(), "/burl", "winner-uuid", "")
+	if parsed, err := url.Parse(finalBid.GetNurl()); err != nil {
+		t.Fatalf("parse ADV NURL: %v", err)
+	} else if _, exists := parsed.Query()["url"]; exists {
+		t.Fatalf("ADV NURL must not contain downstream url: %q", finalBid.GetNurl())
+	}
 }
 
 func assertReadyCallback(t *testing.T, raw, path, winnerID, original string) {
