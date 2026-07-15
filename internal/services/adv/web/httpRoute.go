@@ -14,16 +14,22 @@ import (
 )
 
 const (
+	GetADVPercentMapURL      = "/filter/adv_percent_map"
+	PutADVPercentMapURL      = "/filter/adv_percent_map"
+	GetDebugADVPercentMapURL = "/filter/debug_adv_percent_map"
+
+	// Legacy routes remain available so existing control clients do not break.
 	GetSspGeoDspPercentsMapURL      = "/filter/ssp_geo_dsp_percents_map"
 	PutSspGeoDspPercentsMapURL      = "/filter/ssp_geo_dsp_percents_map"
 	GetDebugSspGeoDspPercentsMapURL = "/filter/debug_ssp_geo_dsp_percents_map"
-	GetQualityMapURL                = "/filter/quality_map"
-	PutQualityMapURL                = "/filter/quality_map"
-	GetDebugQualityMapURL           = "/filter/debug_quality_map"
-	WorkStatusURL                   = "/work_status"
+
+	GetQualityMapURL      = "/filter/quality_map"
+	PutQualityMapURL      = "/filter/quality_map"
+	GetDebugQualityMapURL = "/filter/debug_quality_map"
+	WorkStatusURL         = "/work_status"
 )
 
-// Backward-compatible aliases for callers that used the previous spelling.
+// Backward-compatible aliases for callers that used the previous Go constant spelling.
 const (
 	GetSspGeoDspPercentsMapUrl      = GetSspGeoDspPercentsMapURL
 	PutSspGeoDspPercentsMapUrl      = PutSspGeoDspPercentsMapURL
@@ -31,33 +37,28 @@ const (
 )
 
 func InitHttpRoutes(httpRouter *chi.Mux, percentStore *auction.PercentStore, qualityStore *auction.QualityStore, work *WorkController) {
-	httpRouter.Get(GetSspGeoDspPercentsMapURL, func(w http.ResponseWriter, r *http.Request) {
-		traffic, ok := queryTrafficType(r)
-		if !ok || percentStore == nil {
-			http.Error(w, "invalid traffic type or percent store", http.StatusBadRequest)
+	getPercentMap := func(w http.ResponseWriter, _ *http.Request) {
+		if percentStore == nil {
+			http.Error(w, "percent store is unavailable", http.StatusServiceUnavailable)
 			return
 		}
-		value, err := percentStore.Saved(traffic)
+		value, err := percentStore.Saved()
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
 		writeJSON(w, http.StatusOK, value)
-	})
-
-	httpRouter.Get(GetDebugSspGeoDspPercentsMapURL, func(w http.ResponseWriter, r *http.Request) {
-		traffic, ok := queryTrafficType(r)
-		if !ok || percentStore == nil {
-			http.Error(w, "invalid traffic type or percent store", http.StatusBadRequest)
+	}
+	getDebugPercentMap := func(w http.ResponseWriter, _ *http.Request) {
+		if percentStore == nil {
+			http.Error(w, "percent store is unavailable", http.StatusServiceUnavailable)
 			return
 		}
-		writeJSON(w, http.StatusOK, percentStore.Memory(traffic))
-	})
-
-	httpRouter.Put(PutSspGeoDspPercentsMapURL, func(w http.ResponseWriter, r *http.Request) {
-		traffic, ok := queryTrafficType(r)
-		if !ok || percentStore == nil {
-			http.Error(w, "invalid traffic type or percent store", http.StatusBadRequest)
+		writeJSON(w, http.StatusOK, percentStore.Memory())
+	}
+	putPercentMap := func(w http.ResponseWriter, r *http.Request) {
+		if percentStore == nil {
+			http.Error(w, "percent store is unavailable", http.StatusServiceUnavailable)
 			return
 		}
 		defer r.Body.Close()
@@ -72,12 +73,20 @@ func InitHttpRoutes(httpRouter *chi.Mux, percentStore *auction.PercentStore, qua
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
-		if err := percentStore.Update(traffic, input); err != nil {
+		if err := percentStore.Update(input); err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
 		w.WriteHeader(http.StatusNoContent)
-	})
+	}
+
+	httpRouter.Get(GetADVPercentMapURL, getPercentMap)
+	httpRouter.Get(GetDebugADVPercentMapURL, getDebugPercentMap)
+	httpRouter.Put(PutADVPercentMapURL, putPercentMap)
+
+	httpRouter.Get(GetSspGeoDspPercentsMapURL, getPercentMap)
+	httpRouter.Get(GetDebugSspGeoDspPercentsMapURL, getDebugPercentMap)
+	httpRouter.Put(PutSspGeoDspPercentsMapURL, putPercentMap)
 
 	httpRouter.Get(GetQualityMapURL, func(w http.ResponseWriter, r *http.Request) {
 		if qualityStore == nil {
@@ -198,11 +207,6 @@ func ensureJSONEOF(decoder *json.Decoder) error {
 		return err
 	}
 	return errors.New("request contains more than one JSON value")
-}
-
-func queryTrafficType(r *http.Request) (string, bool) {
-	value := strings.ToUpper(strings.TrimSpace(r.URL.Query().Get("typic")))
-	return value, value == auction.TrafficAdult || value == auction.TrafficMainstream
 }
 
 func queryQualitySegment(r *http.Request) (segment string, present bool, valid bool) {

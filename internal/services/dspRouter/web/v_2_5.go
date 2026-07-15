@@ -141,6 +141,16 @@ func trafficTypeFromDspRouterRequest(req *dspRouterGrpc.DspRouterRequest_V2_5) s
 	return req.GetTypic()
 }
 
+// successfulADVBidResponse returns a ready ADV bid only when the gRPC call
+// completed without an error. An error always wins over any response object so
+// the caller falls back to DSP even if a transport implementation returned both.
+func successfulADVBidResponse(response *advGrpc.DoAuctionResponse, callErr error) *ortb_V2_5.BidResponse {
+	if callErr != nil || response == nil {
+		return nil
+	}
+	return response.GetBidResponse()
+}
+
 func (s *Server) doAdvAuction(
 	ctx context.Context,
 	req *dspRouterGrpc.DspRouterRequest_V2_5,
@@ -300,16 +310,19 @@ func (s *Server) GetBids_V2_5(
 	}
 
 	advResponse, advErr := s.doAdvAuction(ctx, req, timeout)
+	readyADVResponse := successfulADVBidResponse(advResponse, advErr)
 	if advErr != nil {
+		// ADV errors always fall through to the DSP path, even if a response
+		// object was returned together with the error.
 		log.Printf("ADV auction failed, falling back to DSP: %v", advErr)
-	} else if advResponse != nil && advResponse.GetBidResponse() != nil {
+	} else if readyADVResponse != nil {
 		return &dspRouterGrpc.DspRouterResponse_V2_5{
 			BidRequest:       req.GetBidRequest(),
 			BidResponses:     map[string]*ortb_V2_5.BidResponse{},
 			SspDomain:        req.GetSspDomain(),
 			Code:             http.StatusOK,
 			Rekl:             true,
-			ReadyBidResponse: advResponse.GetBidResponse(),
+			ReadyBidResponse: readyADVResponse,
 			WinnerUserIds:    cloneStringMap(advResponse.GetWinnerUserIds()),
 			ImpIdUuid:        cloneStringMap(req.GetImpIdUuid()),
 		}, nil

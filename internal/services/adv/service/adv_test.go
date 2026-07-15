@@ -9,7 +9,6 @@ import (
 	"gitlab.com/twinbid-exchange/RTB-exchange/internal/constants"
 	filterV2 "gitlab.com/twinbid-exchange/RTB-exchange/internal/filterV2"
 	ortb "gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/proto/types/ortb_V2_5"
-	"gitlab.com/twinbid-exchange/RTB-exchange/internal/types"
 )
 
 func TestChargePriceRules(t *testing.T) {
@@ -130,9 +129,44 @@ func TestTrackerMacrosUnknownAndEncoded(t *testing.T) {
 }
 
 func TestPercentMapRejectsNaN(t *testing.T) {
-	_, err := validateAndNormalizePercentMap(PercentMap{"ssp.test": {"SE": {"user": &types.PercentAndBidfloor{Percent: float32(math.NaN())}}}})
+	_, err := validateAndNormalizePercentMap(PercentMap{"user-id": math.NaN()})
 	if err == nil {
 		t.Fatal("NaN percent must be rejected")
+	}
+}
+
+func TestPercentMapUsesCampaignUserIDOnly(t *testing.T) {
+	store := &PercentStore{}
+	store.value.Store(&percentSnapshot{Values: PercentMap{
+		"user-id": 0.25,
+	}})
+
+	if got := store.Lookup(" USER-ID "); math.Abs(got-0.25) > 1e-12 {
+		t.Fatalf("got %v, want 0.25", got)
+	}
+	if got := store.Lookup("other-user"); math.Abs(got-DefaultADVPercent) > 1e-12 {
+		t.Fatalf("missing user must use default deduction %v, got %v", DefaultADVPercent, got)
+	}
+}
+
+func TestPercentMapEmptySnapshotUsesThirtyPercentDefault(t *testing.T) {
+	store := &PercentStore{}
+	store.value.Store(&percentSnapshot{Values: PercentMap{}})
+
+	if got := store.Lookup("any-user"); math.Abs(got-0.30) > 1e-12 {
+		t.Fatalf("empty map default=%v, want 0.30", got)
+	}
+	if got := store.Lookup(""); math.Abs(got-0.30) > 1e-12 {
+		t.Fatalf("empty user ID default=%v, want 0.30", got)
+	}
+}
+
+func TestPercentMapExplicitZeroOverridesDefault(t *testing.T) {
+	store := &PercentStore{}
+	store.value.Store(&percentSnapshot{Values: PercentMap{"user-id": 0}})
+
+	if got := store.Lookup("user-id"); got != 0 {
+		t.Fatalf("explicit zero must override the default, got %v", got)
 	}
 }
 
@@ -177,9 +211,15 @@ func TestBannerAndIPPFormatsRequireDistinctRouterMarker(t *testing.T) {
 	}
 }
 
-func TestQualityMapsRejectEmptySnapshot(t *testing.T) {
-	if _, err := buildQualitySnapshot(emptyQualityMaps()); err == nil {
-		t.Fatal("empty quality maps must be rejected")
+func TestQualityMapsAllowEmptySnapshot(t *testing.T) {
+	snapshot, err := buildQualitySnapshot(emptyQualityMaps())
+	if err != nil {
+		t.Fatalf("empty quality maps must be valid: %v", err)
+	}
+	store := &QualityStore{}
+	store.value.Store(snapshot)
+	if store.ContainsAny("mc_example.com") {
+		t.Fatal("an empty quality snapshot must not match any SSP domain")
 	}
 }
 

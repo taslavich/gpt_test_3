@@ -261,6 +261,15 @@ func normalizeQualitySegment(value string) string {
 	return strings.ToLower(strings.TrimSpace(value))
 }
 
+// normalizeDomain makes SSP-domain keys stable across requests and map updates.
+// SSP domains in this project are identifiers such as mc_example.com rather
+// than URLs, so normalization is intentionally limited to case, surrounding
+// whitespace and a trailing DNS dot.
+func normalizeDomain(value string) string {
+	value = strings.ToLower(strings.TrimSpace(value))
+	return strings.TrimRight(value, ".")
+}
+
 func (s *QualityStore) Count() int {
 	if s == nil {
 		return 0

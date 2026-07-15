@@ -55,9 +55,9 @@ func main() {
 		log.Fatalf("ADV winner Redis unavailable: %v", err)
 	}
 
-	percentStore, err := auction.NewPercentStore(cfg.SspGeoDspPercentsAdultFilePath, cfg.SspGeoDspPercentsMainstreamFilePath)
+	percentStore, err := auction.NewPercentStore(cfg.AdvPercentMapFilePath)
 	if err != nil {
-		log.Fatalf("cannot initialize ADV percent maps: %v", err)
+		log.Fatalf("cannot initialize ADV percent map: %v", err)
 	}
 	qualityStore, err := auction.NewQualityStore(cfg.AdvQualityMapFilePath)
 	if err != nil {
@@ -133,8 +133,8 @@ func validateConfig(cfg *config.AdvConfig) error {
 	if strings.TrimSpace(cfg.RedisUUIDAddr) == "" && len(cfg.RedisShardAddrs) == 0 {
 		return fmt.Errorf("REDIS_UUID_ADDR or REDIS_SHARD_ADDRS is required")
 	}
-	if strings.TrimSpace(cfg.SspGeoDspPercentsAdultFilePath) == "" || strings.TrimSpace(cfg.SspGeoDspPercentsMainstreamFilePath) == "" {
-		return fmt.Errorf("both ADV percent map paths are required")
+	if strings.TrimSpace(cfg.AdvPercentMapFilePath) == "" {
+		return fmt.Errorf("ADV_PERCENT_MAP_FILE_PATH is required")
 	}
 	if strings.TrimSpace(cfg.AdvQualityMapFilePath) == "" {
 		return fmt.Errorf("ADV_QUALITY_MAP_FILE_PATH is required")

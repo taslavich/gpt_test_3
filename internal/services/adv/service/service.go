@@ -404,13 +404,16 @@ func validAuctionInput(req *ortb.BidRequest, impIDUUID map[string]string) bool {
 }
 
 func (s *AuctionService) evaluateCampaign(ctx context.Context, snapshot *Snapshot, campaign *Campaign, req *ortb.BidRequest, imp *ortb.Imp, now time.Time, requestedFormat, trafficType, sspDomain string) (candidate, bool, error) {
-	if campaign == nil || normalizeFormat(campaign.Format) != requestedFormat {
-		return candidate{}, false, nil
-	}
-	if normalizeTraffic(campaign.TrafficType) != trafficType {
+	if campaign == nil {
 		return candidate{}, false, nil
 	}
 	if !s.quality.Contains(campaign.QualitySegment, sspDomain) {
+		return candidate{}, false, nil
+	}
+	if normalizeFormat(campaign.Format) != requestedFormat {
+		return candidate{}, false, nil
+	}
+	if normalizeTraffic(campaign.TrafficType) != trafficType {
 		return candidate{}, false, nil
 	}
 	if !campaignActiveAt(campaign, now) {
@@ -454,7 +457,7 @@ func (s *AuctionService) evaluateCampaign(ctx context.Context, snapshot *Snapsho
 	if !campaignPassesFilters(campaign, req) {
 		return candidate{}, false, nil
 	}
-	deduction := s.percents.Lookup(trafficType, sspDomain, requestCountry(req), campaign.UserID)
+	deduction := s.percents.Lookup(campaign.UserID)
 	effective := CalculateEffectiveAuctionPrice(chargePrice, deduction)
 	if effective <= 0 {
 		return candidate{}, false, nil
@@ -590,13 +593,6 @@ func normalizeTraffic(value string) string {
 	default:
 		return ""
 	}
-}
-
-func requestCountry(req *ortb.BidRequest) string {
-	if req != nil && req.GetDevice() != nil && req.GetDevice().GetGeo() != nil {
-		return strings.ToUpper(strings.TrimSpace(req.GetDevice().GetGeo().GetCountry()))
-	}
-	return ""
 }
 
 func campaignPassesFilters(c *Campaign, req *ortb.BidRequest) bool {
