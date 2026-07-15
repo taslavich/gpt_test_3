@@ -9,14 +9,34 @@ REDIS_SERVICES=(
     "rtb-redis-7002"
     "rtb-redis-7003"
     "rtb-redis-7004"
+    "rtb-redis-7005"
+)
+
+# Kafka-loader и kafkaredis управляются вместе
+KAFKA_SERVICES=(
+    "rtb-kafka-loader"
+    "rtb-kafkaredis"
 )
 
 DATA_PIPELINE_SERVICES=(
-    "rtb-kafka-loader"
+    "${KAFKA_SERVICES[@]}"
     "rtb-clickhouse-loader"
 )
 
-# Все сервисы вместе
+# BidEngine и ADV управляются вместе
+BIDDING_SERVICES=(
+    "rtb-bid-engine"
+    "rtb-adv"
+)
+
+CORE_SERVICES=(
+    "${BIDDING_SERVICES[@]}"
+    "rtb-router"
+    "rtb-orchestrator"
+    "rtb-spp-adapter"
+    "rtb-adm-adapter"
+)
+
 ALL_SERVICES=(
     "${DATA_PIPELINE_SERVICES[@]}"
     "${CORE_SERVICES[@]}"
@@ -56,11 +76,19 @@ show_status() {
 wait_for_loaders() {
     echo "⏳ Waiting for loaders to initialize..."
     sleep 5
+
     if systemctl is-active rtb-kafka-loader >/dev/null 2>&1; then
         echo "✅ Kafka-loader ready"
     else
         echo "⚠️ Kafka-loader not running"
     fi
+
+    if systemctl is-active rtb-kafkaredis >/dev/null 2>&1; then
+        echo "✅ kafkaredis ready"
+    else
+        echo "⚠️ kafkaredis not running"
+    fi
+
     if systemctl is-active rtb-clickhouse-loader >/dev/null 2>&1; then
         echo "✅ ClickHouse-loader ready"
     else
@@ -82,6 +110,7 @@ case "$1" in
     stopD|stop-data-pipeline)
         echo "🛑 Stopping Data Pipeline..."
         stop_services "rtb-clickhouse-loader"
+        stop_services "rtb-kafkaredis"
         stop_services "rtb-kafka-loader"
         echo "✅ Data pipeline stopped"
         ;;
@@ -103,11 +132,15 @@ case "$1" in
         cd "$PROJECT_DIR"
         echo "📥 Updating Data Pipeline from git..."
         git pull
-        echo "🔨 Building Data Pipeline services (kafka-loader, clickhouse-loader)..."
+        echo "🔨 Building Data Pipeline services (kafka-loader, kafkaredis, clickhouse-loader)..."
+
         go build -o ./cmd/clickhouse-loader/clickhouse-loader ./cmd/clickhouse-loader
         go build -o ./cmd/kafka-loader/kafka-loader ./cmd/kafka-loader
+        go build -o ./cmd/kafkaredis/kafkaredis ./cmd/kafkaredis
+
         chmod +x ./cmd/clickhouse-loader/clickhouse-loader
         chmod +x ./cmd/kafka-loader/kafka-loader
+        chmod +x ./cmd/kafkaredis/kafkaredis
         echo "✅ Data Pipeline build done"
         $0 restartD
         ;;
@@ -143,10 +176,11 @@ case "$1" in
         cd "$PROJECT_DIR"
         echo "📥 Updating Core RTB Services from git..."
         git pull
-        echo "🔨 Building Core services (bid-engine, orchestrator, spp-adapter, adm-adapter, router)..."
+        echo "🔨 Building Core services (bid-engine, adv, orchestrator, spp-adapter, adm-adapter, router)..."
         go build -o ./cmd/router/router ./cmd/router
         go build -o ./cmd/orchestrator/orchestrator ./cmd/orchestrator
         go build -o ./cmd/bid-engine/bid-engine ./cmd/bid-engine
+        go build -o ./cmd/adv/adv ./cmd/adv
         go build -o ./cmd/spp-adapter/spp-adapter ./cmd/spp-adapter
         go build -o ./cmd/adm-adapter/adm-adapter ./cmd/adm-adapter
         chmod +x ./cmd/*/*
@@ -211,11 +245,18 @@ case "$1" in
         echo "🔨 Building all services..."
         go build -o ./cmd/router/router ./cmd/router
         go build -o ./cmd/orchestrator/orchestrator ./cmd/orchestrator
+
         go build -o ./cmd/bid-engine/bid-engine ./cmd/bid-engine
+        go build -o ./cmd/adv/adv ./cmd/adv
+
         go build -o ./cmd/spp-adapter/spp-adapter ./cmd/spp-adapter
         go build -o ./cmd/adm-adapter/adm-adapter ./cmd/adm-adapter
+
         go build -o ./cmd/clickhouse-loader/clickhouse-loader ./cmd/clickhouse-loader
+
         go build -o ./cmd/kafka-loader/kafka-loader ./cmd/kafka-loader
+        go build -o ./cmd/kafkaredis/kafkaredis ./cmd/kafkaredis
+
         chmod +x ./cmd/*/*
 
         # Копируем конфиги в корень для удобства
@@ -263,14 +304,14 @@ case "$1" in
         echo "Usage: $0 <command>"
         echo ""
         echo "Data Pipeline (D):"
-        echo "  startD              Start Redis shards, Kafka, Kafka-loader, ClickHouse-loader"
+        echo "  startD              Start Kafka-loader, kafkaredis and ClickHouse-loader"
         echo "  stopD               Stop Data Pipeline services"
         echo "  restartD            Restart Data Pipeline"
         echo "  statusD             Show Data Pipeline status"
         echo "  updateD             Git pull + build only loaders + restart Data Pipeline"
         echo ""
         echo "Core RTB Services (C):"
-        echo "  startC              Start bid-engine, orchestrator, spp-adapter, adm-adapter, router"
+        echo "  startC              Start bid-engine, ADV, router, orchestrator, spp-adapter and adm-adapter"
         echo "  stopC               Stop Core services"
         echo "  restartC            Restart Core services"
         echo "  statusC             Show Core services status"
