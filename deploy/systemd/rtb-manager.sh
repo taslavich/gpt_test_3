@@ -101,7 +101,7 @@ wait_for_loaders() {
 case "$1" in
     # --- Data Pipeline (D) ---
     startD|start-data-pipeline)
-        echo "🚀 Starting Data Pipeline (Redis shards, Kafka, Kafka-loader, ClickHouse-loader)..."
+        echo "🚀 Starting Data Pipeline services (Kafka-loader, kafkaredis, ClickHouse-loader)..."
         start_services "${DATA_PIPELINE_SERVICES[@]}"
         wait_for_loaders
         echo "✅ Data pipeline fully started"
@@ -116,10 +116,26 @@ case "$1" in
         ;;
 
     restartD|restart-data-pipeline)
+        check_project_dir
+        cd "$PROJECT_DIR"
+
+        echo "🔨 Rebuilding Data Pipeline services..."
+
+        go build -o ./cmd/clickhouse-loader/clickhouse-loader ./cmd/clickhouse-loader
+        go build -o ./cmd/kafka-loader/kafka-loader ./cmd/kafka-loader
+        go build -o ./cmd/kafkaredis/kafkaredis ./cmd/kafkaredis
+
+        chmod +x \
+            ./cmd/clickhouse-loader/clickhouse-loader \
+            ./cmd/kafka-loader/kafka-loader \
+            ./cmd/kafkaredis/kafkaredis
+
+        echo "✅ Data Pipeline rebuild completed"
+
         echo "🔄 Restarting Data Pipeline..."
-        $0 stopD
+        "$0" stopD
         sleep 3
-        $0 startD
+        "$0" startD
         ;;
 
     statusD|status-data-pipeline)
@@ -132,16 +148,6 @@ case "$1" in
         cd "$PROJECT_DIR"
         echo "📥 Updating Data Pipeline from git..."
         git pull
-        echo "🔨 Building Data Pipeline services (kafka-loader, kafkaredis, clickhouse-loader)..."
-
-        go build -o ./cmd/clickhouse-loader/clickhouse-loader ./cmd/clickhouse-loader
-        go build -o ./cmd/kafka-loader/kafka-loader ./cmd/kafka-loader
-        go build -o ./cmd/kafkaredis/kafkaredis ./cmd/kafkaredis
-
-        chmod +x ./cmd/clickhouse-loader/clickhouse-loader
-        chmod +x ./cmd/kafka-loader/kafka-loader
-        chmod +x ./cmd/kafkaredis/kafkaredis
-        echo "✅ Data Pipeline build done"
         $0 restartD
         ;;
 
@@ -160,10 +166,32 @@ case "$1" in
         ;;
 
     restartC|restart-core)
+        check_project_dir
+        cd "$PROJECT_DIR"
+
+        echo "🔨 Rebuilding Core RTB Services..."
+
+        go build -o ./cmd/router/router ./cmd/router
+        go build -o ./cmd/orchestrator/orchestrator ./cmd/orchestrator
+        go build -o ./cmd/bid-engine/bid-engine ./cmd/bid-engine
+        go build -o ./cmd/adv/adv ./cmd/adv
+        go build -o ./cmd/spp-adapter/spp-adapter ./cmd/spp-adapter
+        go build -o ./cmd/adm-adapter/adm-adapter ./cmd/adm-adapter
+
+        chmod +x \
+            ./cmd/router/router \
+            ./cmd/orchestrator/orchestrator \
+            ./cmd/bid-engine/bid-engine \
+            ./cmd/adv/adv \
+            ./cmd/spp-adapter/spp-adapter \
+            ./cmd/adm-adapter/adm-adapter
+
+        echo "✅ Core rebuild completed"
+
         echo "🔄 Restarting Core RTB Services..."
-        $0 stopC
+        "$0" stopC
         sleep 2
-        $0 startC
+        "$0" startC
         ;;
 
     statusC|status-core)
@@ -176,14 +204,6 @@ case "$1" in
         cd "$PROJECT_DIR"
         echo "📥 Updating Core RTB Services from git..."
         git pull
-        echo "🔨 Building Core services (bid-engine, adv, orchestrator, spp-adapter, adm-adapter, router)..."
-        go build -o ./cmd/router/router ./cmd/router
-        go build -o ./cmd/orchestrator/orchestrator ./cmd/orchestrator
-        go build -o ./cmd/bid-engine/bid-engine ./cmd/bid-engine
-        go build -o ./cmd/adv/adv ./cmd/adv
-        go build -o ./cmd/spp-adapter/spp-adapter ./cmd/spp-adapter
-        go build -o ./cmd/adm-adapter/adm-adapter ./cmd/adm-adapter
-        chmod +x ./cmd/*/*
 
         # Копируем конфиги в корень для удобства
         if [ -f "./cmd/router/dsp_rules_v25.json" ]; then
@@ -207,7 +227,6 @@ case "$1" in
             echo "⚠️ firehol_level1.netset not found"
         fi
 
-        echo "✅ Core services build done"
         $0 restartC
         ;;
 
@@ -225,9 +244,10 @@ case "$1" in
         ;;
 
     restart-all)
-        $0 stop-all
+        echo "🔄 Rebuilding and restarting all services..."
+        "$0" restartD
         sleep 3
-        $0 start-all
+        "$0" restartC
         ;;
 
     status)
