@@ -196,17 +196,12 @@ func buildQualitySnapshot(input QualityMaps) (*qualitySnapshot, error) {
 	}
 
 	bySegment := emptyQualityMaps()
-	totalMemberships := 0
 	for _, segment := range []string{"usual", "high", "ultra"} {
 		normalized, err := normalizeQualityDomainMap(input[segment])
 		if err != nil {
 			return nil, fmt.Errorf("%s quality map: %w", segment, err)
 		}
 		bySegment[segment] = normalized
-		totalMemberships += len(normalized)
-	}
-	if totalMemberships == 0 {
-		return nil, errors.New("quality maps must contain at least one SSP domain")
 	}
 	return &qualitySnapshot{bySegment: bySegment}, nil
 }
