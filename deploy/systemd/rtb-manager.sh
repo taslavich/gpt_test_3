@@ -26,7 +26,7 @@ DATA_PIPELINE_SERVICES=(
 # BidEngine и ADV управляются вместе
 BIDDING_SERVICES=(
     "rtb-bid-engine"
-    "rtb-adv"
+    #"rtb-adv"
 )
 
 CORE_SERVICES=(
@@ -174,7 +174,7 @@ case "$1" in
         go build -o ./cmd/router/router ./cmd/router
         go build -o ./cmd/orchestrator/orchestrator ./cmd/orchestrator
         go build -o ./cmd/bid-engine/bid-engine ./cmd/bid-engine
-        go build -o ./cmd/adv/adv ./cmd/adv
+        #go build -o ./cmd/adv/adv ./cmd/adv
         go build -o ./cmd/spp-adapter/spp-adapter ./cmd/spp-adapter
         go build -o ./cmd/adm-adapter/adm-adapter ./cmd/adm-adapter
 
@@ -182,7 +182,7 @@ case "$1" in
             ./cmd/router/router \
             ./cmd/orchestrator/orchestrator \
             ./cmd/bid-engine/bid-engine \
-            ./cmd/adv/adv \
+            #./cmd/adv/adv \
             ./cmd/spp-adapter/spp-adapter \
             ./cmd/adm-adapter/adm-adapter
 
@@ -267,7 +267,7 @@ case "$1" in
         go build -o ./cmd/orchestrator/orchestrator ./cmd/orchestrator
 
         go build -o ./cmd/bid-engine/bid-engine ./cmd/bid-engine
-        go build -o ./cmd/adv/adv ./cmd/adv
+        #go build -o ./cmd/adv/adv ./cmd/adv
 
         go build -o ./cmd/spp-adapter/spp-adapter ./cmd/spp-adapter
         go build -o ./cmd/adm-adapter/adm-adapter ./cmd/adm-adapter
