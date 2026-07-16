@@ -208,7 +208,7 @@ TTL created_at + INTERVAL 1 HOUR DELETE;
 CREATE TABLE IF NOT EXISTS {db}.conversions_in
 (
     created_at        DateTime64(3, 'UTC') DEFAULT now64(3),
-    conversion_event_time DateTime64(3, 'UTC') DEFAULT now64(3),
+    conversions_event_time DateTime64(3, 'UTC') DEFAULT now64(3),
     conversions_uuid UUID,
     clicks_uuid UUID,
     payout Float64 DEFAULT 0,
@@ -236,7 +236,7 @@ ALTER TABLE {db}.conversions_in
     ADD COLUMN IF NOT EXISTS conversions_uuid UUID AFTER conversions_event_time;
 
 ALTER TABLE {db}.conversions_in
-    ADD COLUMN IF NOT EXISTS conversion_event_time DateTime64(3, 'UTC')
+    ADD COLUMN IF NOT EXISTS conversions_event_time DateTime64(3, 'UTC')
     DEFAULT now64(3)
     AFTER created_at;
 
@@ -362,7 +362,7 @@ SETTINGS index_granularity = 8192;
 
 CREATE TABLE IF NOT EXISTS {db}.fact_conversions
 (
-    conversion_event_time DateTime64(3, 'UTC'),
+    conversions_event_time DateTime64(3, 'UTC'),
     event_time        DateTime64(3, 'UTC'),
     event_date        Date,
     event_hour        DateTime('UTC'),
@@ -422,7 +422,7 @@ ALTER TABLE {db}.fact_clicks
     ADD COLUMN IF NOT EXISTS clicks_uuid UUID AFTER uuid;
 
 ALTER TABLE {db}.fact_conversions
-    ADD COLUMN IF NOT EXISTS conversion_event_time DateTime64(3, 'UTC')
+    ADD COLUMN IF NOT EXISTS conversions_event_time DateTime64(3, 'UTC')
     DEFAULT now64(3);
 
 ALTER TABLE {db}.fact_conversions
@@ -657,7 +657,7 @@ REFRESH EVERY 10 MINUTE
 APPEND TO {db}.fact_conversions
 AS
 SELECT
-    a.conversion_event_time AS conversion_event_time,
+    a.conversions_event_time AS conversions_event_time,
     o.event_time AS event_time,
     toDate(o.event_time) AS event_date,
     toStartOfHour(toDateTime(o.event_time, 'UTC')) AS event_hour,
@@ -706,7 +706,7 @@ FROM
 (
     SELECT
         created_at,
-        conversion_event_time,
+        conversions_event_time,
         clicks_uuid,
         payout,
 
@@ -724,13 +724,13 @@ WHERE a.status IN ('', 'PENDING', 'APPROVED')
   AND a.created_at >= now() - toIntervalMinute(1440)
   AND (
       a.clicks_uuid,
-      a.conversion_event_time,
+      a.conversions_event_time,
       a.approved
   ) NOT IN
   (
       SELECT
           clicks_uuid,
-          conversion_event_time,
+          conversions_event_time,
           approved
       FROM {db}.fact_conversions
       WHERE created_at >= now() - toIntervalMinute(1445)
@@ -871,10 +871,10 @@ SELECT
     toUInt64(0) AS clicks,
 
     toUInt64(countIf(approved != 1)) AS conversions,
-    toFloat64(sumIf(conversion_payout, approved != 1)) AS payout,
+    toFloat64(sumIf(conversions_payout, approved != 1)) AS payout,
 
     toUInt64(countIf(approved = 1)) AS conversions_approved,
-    toFloat64(sumIf(conversion_payout, approved = 1)) AS payout_approved,
+    toFloat64(sumIf(conversions_payout, approved = 1)) AS payout_approved,
 
     toFloat64(0) AS spend_clicks_table,
     toFloat64(0) AS spend_views_table
@@ -894,7 +894,7 @@ FROM
         format,
         typic,
         approved,
-        payout AS conversion_payout
+        payout AS conversions_payout
     FROM {db}.fact_conversions
 ) AS source
 GROUP BY

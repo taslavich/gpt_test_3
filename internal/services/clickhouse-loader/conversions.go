@@ -77,7 +77,7 @@ func insertBatchConversions(
 		clicks_uuid,
 		payout,
 		status,
-		conversion_event_time
+		conversions_event_time
 	)
 	`, table)
 
@@ -107,10 +107,10 @@ func insertBatchConversions(
 			payout = 0
 		}
 
-		conversionEventTime := time.Now().UTC()
-		if r.ConversionEventTimeMs > 0 {
-			conversionEventTime = time.UnixMilli(
-				r.ConversionEventTimeMs,
+		conversionsEventTime := time.Now().UTC()
+		if r.ConversionsEventTimeMs > 0 {
+			conversionsEventTime = time.UnixMilli(
+				r.ConversionsEventTimeMs,
 			).UTC()
 		}
 
@@ -119,7 +119,7 @@ func insertBatchConversions(
 			clicksUUID,
 			payout,
 			r.Status,
-			conversionEventTime,
+			conversionsEventTime,
 		); err != nil {
 			stats.AppendErrors++
 			return stats, fmt.Errorf(

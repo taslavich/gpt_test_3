@@ -286,7 +286,7 @@ func WriteConversionStats(
 		constants.CLICKS_UUID: clickUuid,
 		constants.PAYOUT:      payout,
 		constants.STATUS:      status,
-		constants.CONVERSION_EVENT_TIME_COLUMN: conversionEventTime.
+		constants.CONVERSIONS_EVENT_TIME_COLUMN: conversionEventTime.
 			UTC().
 			Format("2006-01-02 15:04:05.000"),
 	}

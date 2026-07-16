@@ -44,11 +44,11 @@ type Impressions struct {
 }
 
 type Conversions struct {
-	CONVERSIONS_UUID      string `json:"CONVERSIONS_UUID"`
-	CLICKS_UUID           string `json:"CLICKS_UUID"`
-	PAYOUT                string `json:"PAYOUT"`
-	STATUS                string `json:"STATUS"`
-	CONVERSION_EVENT_TIME string `json:"CONVERSION_EVENT_TIME"`
+	CONVERSIONS_UUID       string `json:"CONVERSIONS_UUID"`
+	CLICKS_UUID            string `json:"CLICKS_UUID"`
+	PAYOUT                 string `json:"PAYOUT"`
+	STATUS                 string `json:"STATUS"`
+	CONVERSIONS_EVENT_TIME string `json:"CONVERSIONS_EVENT_TIME"`
 }
 
 type PercentAndBidfloor struct {

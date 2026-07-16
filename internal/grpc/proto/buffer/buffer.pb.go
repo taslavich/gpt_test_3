@@ -446,14 +446,14 @@ func (x *ClickEvent) GetFormat() string {
 }
 
 type ConversionEvent struct {
-	state                 protoimpl.MessageState `protogen:"open.v1"`
-	ConversionsUuid       string                 `protobuf:"bytes,1,opt,name=conversions_uuid,json=conversionsUuid,proto3" json:"conversions_uuid,omitempty"`
-	ClicksUuid            string                 `protobuf:"bytes,2,opt,name=clicks_uuid,json=clicksUuid,proto3" json:"clicks_uuid,omitempty"`
-	Payout                string                 `protobuf:"bytes,3,opt,name=payout,proto3" json:"payout,omitempty"`
-	Status                string                 `protobuf:"bytes,4,opt,name=status,proto3" json:"status,omitempty"`
-	ConversionEventTimeMs int64                  `protobuf:"varint,5,opt,name=conversion_event_time_ms,json=conversionEventTimeMs,proto3" json:"conversion_event_time_ms,omitempty"`
-	unknownFields         protoimpl.UnknownFields
-	sizeCache             protoimpl.SizeCache
+	state                  protoimpl.MessageState `protogen:"open.v1"`
+	ConversionsUuid        string                 `protobuf:"bytes,1,opt,name=conversions_uuid,json=conversionsUuid,proto3" json:"conversions_uuid,omitempty"`
+	ClicksUuid             string                 `protobuf:"bytes,2,opt,name=clicks_uuid,json=clicksUuid,proto3" json:"clicks_uuid,omitempty"`
+	Payout                 string                 `protobuf:"bytes,3,opt,name=payout,proto3" json:"payout,omitempty"`
+	Status                 string                 `protobuf:"bytes,4,opt,name=status,proto3" json:"status,omitempty"`
+	ConversionsEventTimeMs int64                  `protobuf:"varint,5,opt,name=conversions_event_time_ms,json=conversionsEventTimeMs,proto3" json:"conversions_event_time_ms,omitempty"`
+	unknownFields          protoimpl.UnknownFields
+	sizeCache              protoimpl.SizeCache
 }
 
 func (x *ConversionEvent) Reset() {
@@ -514,9 +514,9 @@ func (x *ConversionEvent) GetStatus() string {
 	return ""
 }
 
-func (x *ConversionEvent) GetConversionEventTimeMs() int64 {
+func (x *ConversionEvent) GetConversionsEventTimeMs() int64 {
 	if x != nil {
-		return x.ConversionEventTimeMs
+		return x.ConversionsEventTimeMs
 	}
 	return 0
 }
@@ -577,14 +577,14 @@ const file_buffer_buffer_proto_rawDesc = "" +
 	"clicksUuid\x12\x1b\n" +
 	"\tortb_uuid\x18\x02 \x01(\tR\bortbUuid\x12/\n" +
 	"\x14event_time_clicks_ms\x18\x03 \x01(\x03R\x11eventTimeClicksMs\x12\x16\n" +
-	"\x06format\x18\x04 \x01(\tR\x06format\"\xc6\x01\n" +
+	"\x06format\x18\x04 \x01(\tR\x06format\"\xc8\x01\n" +
 	"\x0fConversionEvent\x12)\n" +
 	"\x10conversions_uuid\x18\x01 \x01(\tR\x0fconversionsUuid\x12\x1f\n" +
 	"\vclicks_uuid\x18\x02 \x01(\tR\n" +
 	"clicksUuid\x12\x16\n" +
 	"\x06payout\x18\x03 \x01(\tR\x06payout\x12\x16\n" +
-	"\x06status\x18\x04 \x01(\tR\x06status\x127\n" +
-	"\x18conversion_event_time_ms\x18\x05 \x01(\x03R\x15conversionEventTimeMsBNZLgitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/proto/buffer;eventspbb\x06proto3"
+	"\x06status\x18\x04 \x01(\tR\x06status\x129\n" +
+	"\x19conversions_event_time_ms\x18\x05 \x01(\x03R\x16conversionsEventTimeMsBNZLgitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/proto/buffer;eventspbb\x06proto3"
 
 var (
 	file_buffer_buffer_proto_rawDescOnce sync.Once

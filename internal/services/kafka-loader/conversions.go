@@ -37,7 +37,7 @@ func ProcessBatchConversions(
 				constants.CLICKS_UUID,
 				constants.PAYOUT,
 				constants.STATUS,
-				constants.CONVERSION_EVENT_TIME_COLUMN,
+				constants.CONVERSIONS_EVENT_TIME_COLUMN,
 			},
 			BuildMessage: buildConversionKafkaMessage,
 		},
@@ -57,11 +57,11 @@ func buildConversionKafkaMessage(
 	conversionEventTime := valueAsString(values, 3)
 
 	rawRecord := types.Conversions{
-		CONVERSIONS_UUID:      conversionsUUID,
-		CLICKS_UUID:           clicksUuid,
-		PAYOUT:                payout,
-		STATUS:                status,
-		CONVERSION_EVENT_TIME: conversionEventTime,
+		CONVERSIONS_UUID:       conversionsUUID,
+		CLICKS_UUID:            clicksUuid,
+		PAYOUT:                 payout,
+		STATUS:                 status,
+		CONVERSIONS_EVENT_TIME: conversionEventTime,
 	}
 
 	if !HasDataConversions(rawRecord) {
@@ -73,8 +73,8 @@ func buildConversionKafkaMessage(
 		ClicksUuid:      rawRecord.CLICKS_UUID,
 		Payout:          rawRecord.PAYOUT,
 		Status:          rawRecord.STATUS,
-		ConversionEventTimeMs: parseUnixMsSafe(
-			rawRecord.CONVERSION_EVENT_TIME,
+		ConversionsEventTimeMs: parseUnixMsSafe(
+			rawRecord.CONVERSIONS_EVENT_TIME,
 		),
 	}
 
