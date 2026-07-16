@@ -209,6 +209,7 @@ CREATE TABLE IF NOT EXISTS {db}.conversions_in
 (
     created_at        DateTime64(3, 'UTC') DEFAULT now64(3),
     conversion_event_time DateTime64(3, 'UTC') DEFAULT now64(3),
+    conversions_uuid UUID,
     clicks_uuid UUID,
     payout Float64 DEFAULT 0,
     status LowCardinality(String) DEFAULT '',
@@ -230,6 +231,9 @@ ALTER TABLE {db}.impressions_in
 
 ALTER TABLE {db}.clicks_in
     ADD INDEX IF NOT EXISTS idx_clicks_in_clicks_uuid clicks_uuid TYPE bloom_filter(0.01) GRANULARITY 1;
+
+ALTER TABLE {db}.conversions_in
+    ADD COLUMN IF NOT EXISTS conversions_uuid UUID AFTER conversions_event_time;
 
 ALTER TABLE {db}.conversions_in
     ADD COLUMN IF NOT EXISTS conversion_event_time DateTime64(3, 'UTC')
