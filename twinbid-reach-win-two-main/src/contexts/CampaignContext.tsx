@@ -6,6 +6,42 @@ import type {
   CampaignStatus as ApiStatus, FormatType,
 } from "@/api/types";
 import { useAuth } from "@/contexts/AuthContext";
+import {
+  BROWSER_FILTER_MAP, OS_FILTER_MAP, DEVICE_FILTER_MAP,
+  BROWSER_REVERSE, OS_REVERSE, DEVICE_REVERSE,
+} from "@/lib/statFilters";
+
+// Browser/OS/device_type items in the UI are group keys (e.g. "Chrome",
+// "iOS", "mobile") but the backend targeting expects raw values (e.g.
+// "Chromium", "JSChromeBrowser"). Expand on send, collapse on read.
+// Unknown raw values on read are dropped silently — the UI has no "other"
+// bucket for targeting because targeting is a server-side rule and cannot
+// express "everything not in the known groups".
+const EXPAND_BY_UI_KEY: Record<string, Record<string, string[]>> = {
+  browser: BROWSER_FILTER_MAP,
+  os: OS_FILTER_MAP,
+  deviceType: DEVICE_FILTER_MAP,
+};
+const COLLAPSE_BY_UI_KEY: Record<string, Map<string, string>> = {
+  browser: BROWSER_REVERSE,
+  os: OS_REVERSE,
+  deviceType: DEVICE_REVERSE,
+};
+function expandTargetingItems(uiKey: string, items: string[]): string[] {
+  const map = EXPAND_BY_UI_KEY[uiKey];
+  if (!map) return items;
+  return Array.from(new Set(items.flatMap(k => map[k] ?? [k])));
+}
+function collapseTargetingItems(uiKey: string, items: string[]): string[] {
+  const rev = COLLAPSE_BY_UI_KEY[uiKey];
+  if (!rev) return items;
+  const out = new Set<string>();
+  for (const raw of items) {
+    const group = rev.get(raw);
+    if (group) out.add(group);
+  }
+  return Array.from(out);
+}
 
 export type CampaignStatus = ApiStatus;
 export type PricingModel = ApiPricing;
@@ -28,6 +64,8 @@ export interface TargetingState {
   items: string[];
 }
 
+export type CreativeType = "image" | "html" | "iframe";
+
 export interface Creative {
   id: string;
   name?: string;
@@ -39,6 +77,20 @@ export interface Creative {
   pendingFile?: File;
   title?: string;
   description?: string;
+  /** UI-only flag: the uploaded image dimensions don't match the required size. Not sent to API. */
+  sizeMismatch?: boolean;
+  /** UI-only: banner creative content type. Only "image" is persisted to the backend today. */
+  creativeType?: CreativeType;
+  /** UI-only: raw HTML markup (creativeType === "html"). Not sent to API. */
+  htmlCode?: string;
+  /** UI-only: iframe URL (creativeType === "iframe", iframeMode === "url"). Not sent to API. */
+  iframeUrl?: string;
+  /** UI-only: raw <iframe ...> snippet (creativeType === "iframe", iframeMode === "code"). Not sent to API. */
+  iframeCode?: string;
+  /** UI-only: sub-mode inside iframe creative type. Defaults to "url". Not sent to API. */
+  iframeMode?: "url" | "code";
+  /** UI-only: user confirmed the cross-origin iframe matches the banner size. */
+  iframeSizeConfirmed?: boolean;
 }
 
 export const VERTICALS = [
@@ -113,6 +165,27 @@ function extractMacrosFromUrl(url: string | undefined): Record<string, boolean> 
   return Object.fromEntries(
     TRACKER_MACRO_KEYS.map(m => [m, !!(url && url.includes(`{${m}}`))])
   ) as Record<string, boolean>;
+}
+function appendMacroToUrl(url: string, macro: string): string {
+  if (!url.trim()) return "";
+  if (url.includes(`{${macro}}`)) return url;
+  const separator = url.includes("?") ? "&" : "?";
+  return `${url}${separator}${macro}={${macro}}`;
+}
+// Rebuild the display URL from the bare backend `link` + `trackers_macros` map,
+// so the editor can highlight the active macro badges by looking at `{macro}`
+// substrings in `creative.url`.
+function buildUrlWithMacros(
+  cleanUrl: string | undefined,
+  macros: Record<string, boolean | 0 | 1> | undefined,
+): string {
+  let url = cleanUrl || "";
+  for (const macro of TRACKER_MACRO_KEYS) {
+    if (macros && (macros[macro] === true || macros[macro] === 1)) {
+      url = appendMacroToUrl(url, macro);
+    }
+  }
+  return url;
 }
 // URL tokens that may appear in the landing URL (includes click_id for stripping).
 const URL_MACRO_TOKENS = [
@@ -202,13 +275,18 @@ function activeIntervalsToSchedule(intervals: ApiCampaign["active_intervals"] | 
 function buildApiTargeting(targeting: Record<string, TargetingState>): Pick<ApiCampaign, TargetKey> {
   const out: any = {};
   for (const [uiKey, apiKey] of TARGET_KEY_MAP) {
-    out[apiKey] = targetingStateToPayload(targeting[uiKey] || { mode: "none", items: [] });
+    const state = targeting[uiKey] || { mode: "none", items: [] };
+    const expanded: TargetingState = { ...state, items: expandTargetingItems(uiKey, state.items) };
+    out[apiKey] = targetingStateToPayload(expanded);
   }
   return out as Pick<ApiCampaign, TargetKey>;
 }
 function readApiTargeting(c: ApiCampaign): Record<string, TargetingState> {
   return {
-    ...Object.fromEntries(TARGET_KEY_MAP.map(([uiKey, apiKey]) => [uiKey, targetingPayloadToState(c[apiKey] as any)])),
+    ...Object.fromEntries(TARGET_KEY_MAP.map(([uiKey, apiKey]) => {
+      const state = targetingPayloadToState(c[apiKey] as any);
+      return [uiKey, { ...state, items: collapseTargetingItems(uiKey, state.items) }];
+    })),
     schedule: activeIntervalsToSchedule(c.active_intervals),
   };
 }
@@ -269,7 +347,7 @@ function mapApiCreativeToUi(cr: ApiCreative): Creative {
   return {
     id: cr.id,
     name: cr.creative_name || undefined,
-    url: cr.link,
+    url: buildUrlWithMacros(cr.link, cr.trackers_macros as any),
     imageUrl: anyCr.presigned_s3_url || undefined,
     imageFileName: anyCr.name || undefined,
     title: anyCr.title || undefined,
@@ -326,10 +404,6 @@ function buildApiCampaignBody(c: Omit<Campaign, "id">): Omit<ApiCampaign, "campa
   // brand_name is optional. Only include when the user provided a value
   // so the backend can apply its own default / nullability handling.
   if (c.brandName) body.brand_name = c.brandName;
-  // Fixed conversion payout. Backend column: `payout` on the campaign.
-  if (c.conversionPayout !== undefined && c.conversionPayout !== null) {
-    body.payout = c.conversionPayout;
-  }
   // For popunder, the backend only stores CPM. If the user selected CPC,
   // convert the value to an equivalent CPM and send CPM as the model.
   if (c.formatKey === "popunder" && c.pricingModel === "cpc") {
@@ -383,9 +457,6 @@ function buildApiCampaignPatch(updates: Partial<Campaign>): Partial<ApiCampaign>
   if (updates.targeting !== undefined) {
     Object.assign(p, buildApiTargeting(updates.targeting));
     p.active_intervals = scheduleToActiveIntervals(updates.targeting.schedule);
-  }
-  if (updates.conversionPayout !== undefined) {
-    p.payout = updates.conversionPayout;
   }
   return p;
 }

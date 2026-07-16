@@ -4,7 +4,6 @@ import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { useCampaigns } from "@/contexts/CampaignContext";
-import { BalanceCard } from "@/components/dashboard/BalanceCard";
 import { Eye, MousePointer, Target } from "lucide-react";
 import { useCampaignStats, statOf } from "@/hooks/use-campaign-stats";
 
@@ -40,30 +39,25 @@ export default function DashboardOverview() {
 
   return (
     <div className="space-y-6">
-      <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
-        <div className="lg:col-span-3">
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-            {stats.map((stat) => (
-              <Card key={stat.label} className="bg-card border-border">
-                <CardContent className="p-6">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="text-sm text-muted-foreground">{stat.label}</p>
-                      <p className="text-2xl font-bold mt-1">{stat.value}</p>
-                    </div>
-                    <div className={`h-12 w-12 rounded-lg bg-muted flex items-center justify-center ${stat.color}`}>
-                      <stat.icon className="h-6 w-6" />
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-            ))}
-          </div>
-        </div>
-        <div className="lg:col-span-1"><BalanceCard /></div>
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        {stats.map((stat) => (
+          <Card key={stat.label} className="bg-card border-border">
+            <CardContent className="p-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm text-muted-foreground">{stat.label}</p>
+                  <p className="text-2xl font-bold mt-1">{stat.value}</p>
+                </div>
+                <div className={`h-12 w-12 rounded-lg bg-muted flex items-center justify-center ${stat.color}`}>
+                  <stat.icon className="h-6 w-6" />
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        ))}
       </div>
       <Card className="bg-card border-border">
-        <CardHeader><CardTitle>{t("campaigns.title")}</CardTitle></CardHeader>
+        <CardHeader><CardTitle>{t("overview.activeCampaignsTitle")}</CardTitle></CardHeader>
         <CardContent>
           <div className="overflow-x-auto">
             <table className="w-full">

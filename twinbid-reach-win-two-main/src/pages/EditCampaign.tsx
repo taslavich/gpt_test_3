@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -6,12 +6,14 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { AutoCropConfirmDialog } from "@/components/dashboard/AutoCropConfirmDialog";
+import { getTargetDims } from "@/lib/creativeTarget";
 import { ArrowLeft, Save, AlertCircle } from "lucide-react";
 import { toast } from "sonner";
 import { useCampaigns, type TargetingState, type PricingModel, type TrafficQuality, type TrafficType, type Creative, type Vertical, VERTICALS } from "@/contexts/CampaignContext";
 import { TargetingSection } from "@/components/dashboard/TargetingSection";
 import { BudgetSection } from "@/components/dashboard/BudgetSection";
-import { CreativesEditor } from "@/components/dashboard/CreativesEditor";
+import { CreativesEditor, type CreativesEditorHandle } from "@/components/dashboard/CreativesEditor";
 import { PostbackSection } from "@/components/dashboard/PostbackSection";
 import { useLanguage } from "@/contexts/LanguageContext";
 
@@ -42,9 +44,11 @@ export default function EditCampaign() {
   const [trafficType, setTrafficType] = useState<TrafficType>("mainstream");
   const [initialTrafficType, setInitialTrafficType] = useState<TrafficType>("mainstream");
   const [verticals, setVerticals] = useState<Vertical[]>([]);
-  const [conversionPayout, setConversionPayout] = useState("");
+  
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [activeTab, setActiveTab] = useState(defaultTab);
+  const [confirmMismatchOpen, setConfirmMismatchOpen] = useState(false);
+  const creativesEditorRef = useRef<CreativesEditorHandle>(null);
 
   useEffect(() => {
     if (campaign) {
@@ -73,7 +77,7 @@ export default function EditCampaign() {
       setTrafficType(campaign.trafficType || "mainstream");
       setInitialTrafficType(campaign.trafficType || "mainstream");
       setVerticals(campaign.verticals || []);
-      setConversionPayout(campaign.conversionPayout != null ? String(campaign.conversionPayout) : "");
+      
       setInitialBannerSize(campaign.bannerSize || "");
     }
   }, [campaign]);
@@ -113,7 +117,8 @@ export default function EditCampaign() {
       const mins = formatMins[campaign.formatKey] || formatMins.banner;
       const minCpm = mins[trafficQuality];
       const min = pricingModel === "cpc" ? +(minCpm * 1.7 / 1000).toFixed(5) : minCpm;
-      if (pv >= min) clearError("priceValue");
+      const max = pricingModel === "cpm" ? 1000 : 1;
+      if (pv >= min && pv <= max) clearError("priceValue");
     }
   }, [priceValue, pricingModel, trafficQuality, campaign]);
 
@@ -132,7 +137,8 @@ export default function EditCampaign() {
 
   const parseNum = (v: string) => parseFloat(v.replace(",", ".")) || 0;
 
-  const handleSave = async () => {
+  const handleSave = async (skipMismatchCheck = false, overrideCreatives?: Creative[]) => {
+    const crvs = overrideCreatives ?? creatives;
     const e: Record<string, string> = {};
     const tb = parseNum(totalBudget);
     if (!totalBudget || isNaN(tb) || tb < 1) e.totalBudget = t("edit.errorBudgetMin");
@@ -150,7 +156,9 @@ export default function EditCampaign() {
     const minCpm = mins[trafficQuality];
     const min = pricingModel === "cpc" ? +(minCpm * 1.7 / 1000).toFixed(5) : minCpm;
     const pv = parseNum(priceValue);
+    const max = pricingModel === "cpm" ? 1000 : 1;
     if (!priceValue || isNaN(pv) || pv < min) e.priceValue = `${t("budget.belowMin")} ($${min})`;
+    else if (pv > max) e.priceValue = t("budget.aboveMaxError").replace("{max}", String(max));
 
     if (!startDate) e.startDate = t("create.required");
     if (!endDate) e.endDate = t("create.required");
@@ -160,21 +168,74 @@ export default function EditCampaign() {
     }
     if (!name.trim()) e.name = t("create.required");
 
-    creatives.forEach(c => {
+    crvs.forEach(c => {
       if (!c.name?.trim()) e[`creative_${c.id}_name`] = t("create.required");
-      if (!c.url.trim()) e[`creative_${c.id}_url`] = t("create.required");
-      if (campaign.formatKey !== "popunder" && !c.imageUrl) e[`creative_${c.id}_image`] = t("create.required");
+      const type = campaign.formatKey === "banner" ? (c.creativeType || "image") : "image";
+      if (campaign.formatKey === "banner" && type === "html") {
+        if (!c.htmlCode?.trim()) e[`creative_${c.id}_html`] = t("create.required");
+      } else if (campaign.formatKey === "banner" && type === "iframe") {
+        const mode = c.iframeMode || "url";
+        let u = "";
+        if (mode === "code") {
+          const snippet = (c.iframeCode || "").trim();
+          if (!snippet) { e[`creative_${c.id}_iframe`] = t("create.required"); }
+          else {
+            const m = snippet.match(/<iframe[^>]*\ssrc\s*=\s*["']([^"']+)["']/i);
+            u = m ? m[1] : "";
+            if (!u) e[`creative_${c.id}_iframe`] = t("create.iframeCodeNoSrc");
+          }
+        } else {
+          u = (c.iframeUrl || "").trim();
+          if (!u) e[`creative_${c.id}_iframe`] = t("create.required");
+        }
+        if (u && !e[`creative_${c.id}_iframe`]) {
+          try { const p = new URL(u); if (p.protocol !== "https:") throw new Error(); }
+          catch { e[`creative_${c.id}_iframe`] = t("create.iframeUrlInvalid"); }
+        }
+      } else {
+        if (!c.url.trim()) e[`creative_${c.id}_url`] = t("create.required");
+        if (campaign.formatKey !== "popunder" && !c.imageUrl) e[`creative_${c.id}_image`] = t("create.required");
+      }
       if ((campaign.formatKey === "native" || campaign.formatKey === "push") && !c.title?.trim()) e[`creative_${c.id}_title`] = t("create.required");
       if ((campaign.formatKey === "native" || campaign.formatKey === "push") && !c.description?.trim()) e[`creative_${c.id}_description`] = t("create.required");
     });
 
     if (campaign.formatKey === "banner" && !bannerSize) e.bannerSize = t("create.required");
 
+    // Block save when a banner html/iframe creative has a size mismatch (no auto-crop for those).
+    if (campaign.formatKey === "banner") {
+      const bad = crvs.find(c => {
+        const type = c.creativeType || "image";
+        return (type === "html" || type === "iframe") && c.sizeMismatch;
+      });
+      if (bad) {
+        const key = bad.creativeType === "iframe" ? "iframe" : "html";
+        e[`creative_${bad.id}_${key}`] = t("create.required");
+        toast.error(
+          (bad.creativeType === "iframe"
+            ? t("create.iframeSizeMismatch")
+            : t("create.htmlSizeMismatch"))
+            .replace("{actualW}", "?").replace("{actualH}", "?")
+            .replace("{w}", String(bannerSize.split("x")[0] || "?"))
+            .replace("{h}", String(bannerSize.split("x")[1] || "?"))
+        );
+      }
+    }
+
     setErrors(e);
     if (Object.keys(e).length > 0) {
       if (e.totalBudget) setActiveTab("budget");
       return;
     }
+
+    // Only image creatives fall into the auto-crop confirm path.
+    if (!skipMismatchCheck && crvs.some(c => (c.creativeType || "image") === "image" && c.sizeMismatch)) {
+      setConfirmMismatchOpen(true);
+      return;
+    }
+
+
+
 
     let newStatus = campaign.status;
     if (campaign.status === "draft") {
@@ -189,13 +250,13 @@ export default function EditCampaign() {
 
     try {
       await updateCampaign(campaign.id, {
-        name: name.trim(), creatives, trafficType, verticals,
+        name: name.trim(), creatives: crvs, trafficType, verticals,
         targeting: Object.fromEntries(Object.entries(lists).map(([k, v]) => [k, { mode: v.mode, items: v.items }])),
         budget: tb, dailyBudget: null,
         priceValue: pv, pricingModel, trafficQuality, startDate, endDate, evenSpend, status: newStatus,
         bannerSize: showBannerSize ? bannerSize : undefined,
         brandName: showBrandName ? brandName : undefined,
-        conversionPayout: conversionPayout ? parseNum(conversionPayout) : null,
+        
       });
     } catch (err: any) {
       toast.error(`${t("edit.saveFailed") || "Failed to save campaign"}: ${err?.message || err}`);
@@ -314,7 +375,7 @@ export default function EditCampaign() {
 
               <div className="pt-2">
                 <p className="text-sm font-medium text-muted-foreground mb-3">{t("create.creatives")}</p>
-                <CreativesEditor formatKey={campaign.formatKey} creatives={creatives} onChange={setCreatives} errors={errors} onClearError={clearError} />
+                <CreativesEditor ref={creativesEditorRef} formatKey={campaign.formatKey} bannerSize={bannerSize} creatives={creatives} onChange={setCreatives} errors={errors} onClearError={clearError} />
               </div>
             </CardContent>
           </Card>
@@ -348,7 +409,7 @@ export default function EditCampaign() {
         <TabsContent value="conversion">
           <Card className="bg-card border-border">
             <CardHeader><CardTitle className="text-lg">{t("edit.conversion")}</CardTitle></CardHeader>
-            <CardContent><PostbackSection payout={conversionPayout} onPayoutChange={setConversionPayout} /></CardContent>
+            <CardContent><PostbackSection /></CardContent>
           </Card>
         </TabsContent>
       </Tabs>
@@ -386,7 +447,7 @@ export default function EditCampaign() {
               </Button>
             ) : <div />}
             {isLast ? (
-              <Button onClick={handleSave} className="bg-primary hover:bg-primary/90 text-primary-foreground">
+              <Button onClick={() => handleSave()} className="bg-primary hover:bg-primary/90 text-primary-foreground">
                 <Save className="h-4 w-4 mr-2" /> {t("edit.save")}
               </Button>
             ) : (
@@ -397,6 +458,23 @@ export default function EditCampaign() {
           </div>
         );
       })()}
+
+      <AutoCropConfirmDialog
+        open={confirmMismatchOpen}
+        creatives={creatives}
+        target={getTargetDims(campaign.formatKey, bannerSize)}
+        onCancel={() => {
+          setConfirmMismatchOpen(false);
+          setActiveTab("general");
+          setTimeout(() => { void creativesEditorRef.current?.openCropperFor(); }, 50);
+        }}
+        onConfirm={async (next) => {
+          setCreatives(next);
+          setConfirmMismatchOpen(false);
+          await handleSave(true, next);
+        }}
+      />
+
     </div>
   );
 }

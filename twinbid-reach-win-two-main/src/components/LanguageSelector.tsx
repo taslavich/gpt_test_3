@@ -9,7 +9,11 @@ import { Button } from "@/components/ui/button";
 import { Check, ChevronDown } from "lucide-react";
 import { cn } from "@/lib/utils";
 
-export function LanguageSelector() {
+interface LanguageSelectorProps {
+  className?: string;
+}
+
+export function LanguageSelector({ className }: LanguageSelectorProps) {
   const { lang, setLang } = useLanguage();
   const current = LANGUAGE_OPTIONS.find((o) => o.code === lang) ?? LANGUAGE_OPTIONS[0];
 
@@ -19,7 +23,10 @@ export function LanguageSelector() {
         <Button
           variant="ghost"
           size="sm"
-          className="h-8 px-2 gap-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground hover:text-foreground"
+          className={cn(
+            "h-8 px-2 gap-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground hover:text-foreground",
+            className
+          )}
         >
           {current.label}
           <ChevronDown className="h-3.5 w-3.5 opacity-70" />

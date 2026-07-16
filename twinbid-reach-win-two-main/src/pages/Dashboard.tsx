@@ -6,7 +6,7 @@ export default function Dashboard() {
   return (
     <div className="dashboard-root min-h-screen bg-background flex">
       <DashboardSidebar />
-      <div className="flex-1 min-h-screen">
+      <div className="flex-1 min-h-screen min-w-0">
         <DashboardHeader />
         <main className="p-6">
           <Outlet />

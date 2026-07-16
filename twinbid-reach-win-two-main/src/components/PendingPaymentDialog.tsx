@@ -5,6 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Copy, ExternalLink, Send } from "lucide-react";
 import { toast } from "sonner";
+import { notifyError } from "@/lib/apiStatus";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { useAuth } from "@/contexts/AuthContext";
 import { useNotifications } from "@/contexts/NotificationContext";
@@ -280,7 +281,7 @@ export function PendingPaymentDialog() {
         }
       }
     } catch (e: any) {
-      toast.error(`${t("balance.toast.submitError") || "Error submitting payment"}: ${e?.message || e}`);
+      notifyError(t("balance.toast.submitError"), e);
       console.error(e);
       return;
     }

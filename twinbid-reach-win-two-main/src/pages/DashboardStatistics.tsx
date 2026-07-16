@@ -1,4 +1,4 @@
-import { useMemo, useCallback, useEffect, useState } from "react";
+import { useMemo, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -17,15 +17,21 @@ import { useCampaigns } from "@/contexts/CampaignContext";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { useStatistics } from "@/contexts/StatisticsContext";
 import { formatCountryLabel } from "@/lib/countries";
-import { COUNTRY_CODES, OPERATING_SYSTEMS, BROWSERS, DEVICE_TYPES } from "@/lib/dimensions";
+import { COUNTRY_CODES } from "@/lib/dimensions";
+import {
+  BROWSER_FILTER_KEYS, OS_FILTER_KEYS, DEVICE_FILTER_KEYS,
+  BROWSER_REVERSE, OS_REVERSE, DEVICE_REVERSE,
+  expandFilter, mapRawToGroup, OTHER_KEY,
+  BROWSER_FILTER_MAP, OS_FILTER_MAP, DEVICE_FILTER_MAP,
+} from "@/lib/statFilters";
 import { api } from "@/api";
 import type { StatsGroupBy, StatsFilterBy } from "@/api/types";
 
 type GroupBy = "dates" | "hours" | "browsers" | "siteid" | "devices" | "os" | "country";
-type SortKey = "label" | "impressions" | "clicks" | "spent" | "conversions" | "income";
+type SortKey = "label" | "impressions" | "clicks" | "spent" | "cpm" | "cpc" | "conversions" | "income";
 type SortDir = "asc" | "desc";
 
-interface UiRow { label: string; impressions: number; clicks: number; spent: number; conversions: number; income: number; }
+interface UiRow { label: string; impressions: number; clicks: number; spent: number; conversions: number; income: number; confirmedConversions: number; confirmedIncome: number; }
 
 // UI groupBy → ClickHouse group_by + bucket key in the response row.
 const GROUP_MAP: Record<GroupBy, { api: StatsGroupBy }> = {
@@ -48,13 +54,20 @@ function formatHourLabel(raw: string): string {
   const [day, hour] = raw.split(" ");
   return `${formatDateLabel(day)} ${hour}`;
 }
+// "Today" in UTC 0. Returns a local Date whose Y/M/D fields equal the current
+// UTC calendar day, so fmtUtcDay() (which reads getFullYear/Month/Date) emits
+// the correct UTC date string regardless of the user's timezone.
+function utcToday(): Date {
+  const n = new Date();
+  return new Date(n.getUTCFullYear(), n.getUTCMonth(), n.getUTCDate());
+}
 
 // Dictionaries used purely for filter UI options.
 const DIMENSION_MAP: Record<string, string[]> = {
   country: COUNTRY_CODES,
-  browsers: BROWSERS,
-  devices: DEVICE_TYPES,
-  os: OPERATING_SYSTEMS,
+  browsers: BROWSER_FILTER_KEYS,
+  devices: DEVICE_FILTER_KEYS,
+  os: OS_FILTER_KEYS,
 };
 
 // Multi-select filter component (supports plain string options or {value,label} pairs)
@@ -64,7 +77,14 @@ function MultiSelectFilter({ label, options, selected, onChange }: {
   onChange: React.Dispatch<React.SetStateAction<Set<string>>>;
 }) {
   const { t } = useLanguage();
-  const normalized = options.map(o => typeof o === "string" ? { value: o, label: o } : o);
+  const normalized = options
+    .map(o => typeof o === "string" ? { value: o, label: o } : o)
+    .slice()
+    .sort((a, b) => {
+      if (a.value === OTHER_KEY) return 1;
+      if (b.value === OTHER_KEY) return -1;
+      return a.label.localeCompare(b.label);
+    });
   const toggle = (val: string) => {
     onChange(prev => {
       const next = new Set(prev);
@@ -127,6 +147,18 @@ export default function DashboardStatistics() {
     appliedFilterDevice, setAppliedFilterDevice,
     appliedFilterOS, setAppliedFilterOS,
     showConversions, setShowConversions,
+    showImpressions, setShowImpressions,
+    showClicks, setShowClicks,
+    showCtr, setShowCtr,
+    showSpent, setShowSpent,
+    showCpm, setShowCpm,
+    showCpc, setShowCpc,
+    showConversionsCol, setShowConversionsCol,
+    showConfirmedConversions, setShowConfirmedConversions,
+    showCr, setShowCr,
+    showIncome, setShowIncome,
+    showConfirmedIncome, setShowConfirmedIncome,
+    showRoi, setShowRoi,
   } = useStatistics();
 
   const appliedGroupBy = groupBy;
@@ -169,7 +201,7 @@ export default function DashboardStatistics() {
   // On mount: if nothing applied yet, auto-apply "all active campaigns" + last 7 days.
   useEffect(() => {
     if (appliedCampaignIds.size === 0 && activeCampaigns.length > 0) {
-      const defaultRange: DateRange = { from: subDays(new Date(), 6), to: new Date() };
+      const defaultRange: DateRange = { from: subDays(utcToday(), 6), to: utcToday() };
       setAppliedCampaignIds(new Set(activeCampaigns.map(c => c.id)));
       // Reflect defaults in the UI controls so the user sees what's applied
       if (!dateRange?.from) setDateRange(defaultRange);
@@ -182,16 +214,30 @@ export default function DashboardStatistics() {
 
   const [data, setData] = useState<UiRow[]>([]);
   const [slowLoading, setSlowLoading] = useState(false);
+  type PageSize = 50 | 100 | "all";
+  const [pageSize, setPageSize] = useState<PageSize>(50);
+  useEffect(() => { setPageSize(50); }, [appliedGroupBy]);
+
+  // Preserve scroll position when the user switches grouping or page size.
+  // Without this, clearing rows synchronously shrinks the page and the browser
+  // jumps up to the widgets. We snapshot scrollY on the intent (button click)
+  // and restore it in a layout effect once new rows have laid out.
+  const pendingScrollRef = useRef<number | null>(null);
+  useLayoutEffect(() => {
+    if (pendingScrollRef.current != null) {
+      window.scrollTo({ top: pendingScrollRef.current });
+      pendingScrollRef.current = null;
+    }
+  }, [data, appliedGroupBy, pageSize]);
 
   useEffect(() => {
     if (!hasSelection) { setData([]); return; }
     let cancelled = false;
     const apiGroup = GROUP_MAP[appliedGroupBy].api;
-    // All statistics are queried in UTC 0. The calendar visually represents
-    // calendar days (no time-of-day component), so we serialize the picked
-    // day as a UTC date string (YYYY-MM-DD) using its Y/M/D fields directly.
-    // We deliberately do NOT use toISOString(), which would shift the day
-    // for users in positive timezones (local midnight → previous UTC day).
+    // Do NOT clear rows synchronously — keeping the previous table visible
+    // until new data arrives prevents the page from collapsing and the
+    // browser from scrolling up. `slowLoading` still shows a spinner overlay
+    // for long queries.
     const fmtUtcDay = (d: Date) => {
       const y = d.getFullYear();
       const m = String(d.getMonth() + 1).padStart(2, "0");
@@ -200,41 +246,87 @@ export default function DashboardStatistics() {
     };
     const from = appliedDateRange?.from ? fmtUtcDay(appliedDateRange.from) : "";
     const to = appliedDateRange?.to ? fmtUtcDay(appliedDateRange.to) : from;
+
+    // Build the base filter set. For dimensions where "other" is selected we
+    // can't just enumerate values, so we resolve them via a preliminary query
+    // (see below) and inject the resulting raw list here.
     const filters: Partial<Record<StatsFilterBy, string[]>> = {};
     if (appliedFilterCountry.size) filters.country = Array.from(appliedFilterCountry);
-    if (appliedFilterBrowser.size) filters.browser = Array.from(appliedFilterBrowser);
-    if (appliedFilterDevice.size)  filters.device_type = Array.from(appliedFilterDevice);
-    if (appliedFilterOS.size)      filters.os = Array.from(appliedFilterOS);
+    const browserRaw = expandFilter(appliedFilterBrowser, BROWSER_FILTER_MAP);
+    if (browserRaw && browserRaw.length) filters.browser = browserRaw;
+    const deviceRaw = expandFilter(appliedFilterDevice, DEVICE_FILTER_MAP);
+    if (deviceRaw && deviceRaw.length) filters.device_type = deviceRaw;
+    const osRaw = expandFilter(appliedFilterOS, OS_FILTER_MAP);
+    if (osRaw && osRaw.length) filters.os = osRaw;
 
-    // If the request takes longer than 1s, surface a centered overlay so the
-    // user knows the stats are still loading (slow network etc.). The overlay
-    // disappears immediately when the response arrives.
+    // Dimensions where the user picked "other" — we need to discover the raw
+    // values actually present and keep the subset whose group ∈ filterSet.
+    type OtherDim = {
+      field: StatsFilterBy;
+      group: StatsGroupBy;
+      filterSet: Set<string>;
+      reverse: Map<string, string>;
+    };
+    const otherDims: OtherDim[] = [];
+    if (appliedFilterBrowser.has(OTHER_KEY))
+      otherDims.push({ field: "browser", group: "browser", filterSet: appliedFilterBrowser, reverse: BROWSER_REVERSE });
+    if (appliedFilterOS.has(OTHER_KEY))
+      otherDims.push({ field: "os", group: "os", filterSet: appliedFilterOS, reverse: OS_REVERSE });
+    if (appliedFilterDevice.has(OTHER_KEY))
+      otherDims.push({ field: "device_type", group: "device_type", filterSet: appliedFilterDevice, reverse: DEVICE_REVERSE });
+
     const slowTimer = window.setTimeout(() => { if (!cancelled) setSlowLoading(true); }, 1000);
 
-    api.statsQuery({
+    const baseReq = {
       from, to,
       campaign_ids: Array.from(appliedCampaignIds),
       creative_ids: appliedCreativeIds.size ? Array.from(appliedCreativeIds) : undefined,
-      group_by: apiGroup,
-      filters,
-    }).then(res => {
-      if (cancelled) return;
-      const byKey = new Map<string, { impressions: number; clicks: number; spent: number; conversions: number; income: number }>();
+    };
+
+    const resolveOthers = async () => {
+      if (otherDims.length === 0) return;
+      // For each "other" dimension, query grouped by that dimension using the
+      // other (already resolved) filters, to enumerate the raw values present.
+      const results = await Promise.all(otherDims.map(dim => {
+        const preFilters: Partial<Record<StatsFilterBy, string[]>> = { ...filters };
+        delete preFilters[dim.field];
+        return api.statsQuery({
+          ...baseReq,
+          group_by: dim.group,
+          filters: preFilters,
+        }).then(res => ({ dim, rawKeys: Object.keys(res.rows) }));
+      }));
+      for (const { dim, rawKeys } of results) {
+        const kept = rawKeys.filter(raw => dim.filterSet.has(mapRawToGroup(raw, dim.reverse)));
+        // If the user selected only "other" and there are no unknown values,
+        // send an impossible filter so the main query returns empty.
+        filters[dim.field] = kept.length ? kept : ["__none__"];
+      }
+    };
+
+    resolveOthers()
+      .then(() => {
+        if (cancelled) return null;
+        return api.statsQuery({ ...baseReq, group_by: apiGroup, filters });
+      })
+      .then(res => {
+      if (cancelled || !res) return;
+      const byKey = new Map<string, { impressions: number; clicks: number; spent: number; conversions: number; income: number; confirmedConversions: number; confirmedIncome: number }>();
       for (const [key, m] of Object.entries(res.rows)) {
-        const extra = m as unknown as { conversions?: number; income?: number; revenue?: number };
+        const extra = m as unknown as { conversions?: number; income?: number; conversions_approved?: number; income_approved?: number };
         byKey.set(key, {
           impressions: Number(m.impressions) || 0,
           clicks: Number(m.clicks) || 0,
           spent: Number(m.spent) || 0,
           conversions: Number(extra.conversions) || 0,
-          income: Number(extra.income ?? extra.revenue) || 0,
+          income: Number(extra.income) || 0,
+          confirmedConversions: Number(extra.conversions_approved) || 0,
+          confirmedIncome: Number(extra.income_approved) || 0,
         });
       }
-      const empty = { impressions: 0, clicks: 0, spent: 0, conversions: 0, income: 0 };
+      const empty = { impressions: 0, clicks: 0, spent: 0, conversions: 0, income: 0, confirmedConversions: 0, confirmedIncome: 0 };
       let rows: UiRow[];
       if (apiGroup === "hour") {
-        // Fill every hour in the selected range with zeros for missing buckets,
-        // so both the table and the chart show a continuous timeline.
         const keys: string[] = [];
         const start = new Date(`${from}T00:00:00Z`);
         const end = new Date(`${to}T00:00:00Z`);
@@ -265,7 +357,35 @@ export default function DashboardStatistics() {
           return { label: formatDateLabel(k), ...m };
         });
       } else {
-        rows = Array.from(byKey.entries()).map(([key, m]) => ({ label: key, ...m }));
+        const reverse =
+          apiGroup === "browser" ? BROWSER_REVERSE :
+          apiGroup === "os"      ? OS_REVERSE :
+          apiGroup === "device_type" ? DEVICE_REVERSE : null;
+        const filterSet =
+          apiGroup === "browser" ? appliedFilterBrowser :
+          apiGroup === "os"      ? appliedFilterOS :
+          apiGroup === "device_type" ? appliedFilterDevice : null;
+
+        if (reverse) {
+          const grouped = new Map<string, typeof empty>();
+          for (const [rawKey, m] of byKey.entries()) {
+            const groupKey = mapRawToGroup(rawKey, reverse);
+            const acc = grouped.get(groupKey) ?? { ...empty };
+            acc.impressions += m.impressions;
+            acc.clicks += m.clicks;
+            acc.spent += m.spent;
+            acc.conversions += m.conversions;
+            acc.income += m.income;
+            acc.confirmedConversions += m.confirmedConversions;
+            acc.confirmedIncome += m.confirmedIncome;
+            grouped.set(groupKey, acc);
+          }
+          rows = Array.from(grouped.entries())
+            .filter(([key]) => !filterSet || filterSet.size === 0 || filterSet.has(key))
+            .map(([key, m]) => ({ label: key, ...m }));
+        } else {
+          rows = Array.from(byKey.entries()).map(([key, m]) => ({ label: key, ...m }));
+        }
       }
       setData(rows);
     }).catch(e => { if (!cancelled) console.error("Stats query error:", e); })
@@ -290,7 +410,8 @@ export default function DashboardStatistics() {
     const totalIncome = data.reduce((s, r) => s + r.income, 0);
     const ctr = totalImpressions > 0 ? ((totalClicks / totalImpressions) * 100).toFixed(2) : "0.00";
     const cr = totalClicks > 0 ? ((totalConversions / totalClicks) * 100).toFixed(2) : "0.00";
-    const roi = totalSpent > 0 ? (((totalIncome - totalSpent) / totalSpent) * 100).toFixed(2) : "0.00";
+    const totalConfirmedIncome = data.reduce((s, r) => s + r.confirmedIncome, 0);
+    const roi = totalSpent > 0 ? (((totalConfirmedIncome - totalSpent) / totalSpent) * 100).toFixed(2) : "0.00";
     const base = [
       { label: t("stats.impressions"), value: totalImpressions.toLocaleString(), icon: Eye },
       { label: t("stats.clicks"), value: totalClicks.toLocaleString(), icon: MousePointer },
@@ -339,13 +460,21 @@ export default function DashboardStatistics() {
     setSelectedCreativeIds(new Set());
   };
 
-  const handleDateChange = (range: DateRange | undefined) => {
-    if (!range) return;
-    if (clickCount === 0) { setDateRange({ from: range.from, to: undefined }); setClickCount(1); }
-    else if (clickCount === 1) {
-      if (range.from && range.to) { setDateRange(range); } else if (range.from) { setDateRange({ from: dateRange?.from, to: range.from }); }
-      setClickCount(2);
-    } else { setDateRange({ from: range.from || range.to, to: undefined }); setClickCount(1); }
+  const handleDayClick = (day: Date) => {
+    const from = dateRange?.from;
+    const to = dateRange?.to;
+    // Start new range if nothing selected, or a complete range already exists
+    if (!from || (from && to)) {
+      setDateRange({ from: day, to: undefined });
+      return;
+    }
+    // Only "from" is selected — second click sets "to"
+    if (day.getTime() < from.getTime()) {
+      // Earlier date becomes the new start
+      setDateRange({ from: day, to: undefined });
+    } else {
+      setDateRange({ from, to: day });
+    }
   };
 
   const chartData = useMemo(() => {
@@ -355,11 +484,25 @@ export default function DashboardStatistics() {
   }, [data, appliedGroupBy]);
 
   const sortedData = useMemo(() => {
+    if (sortKey === "label") {
+      return [...data].sort((a, b) => sortDir === "asc" ? a.label.localeCompare(b.label) : b.label.localeCompare(a.label));
+    }
+    const valueOf = (r: UiRow): number => {
+      if (sortKey === "cpm") return r.impressions > 0 ? r.spent / r.impressions * 1000 : 0;
+      if (sortKey === "cpc") return r.clicks > 0 ? r.spent / r.clicks : 0;
+      return r[sortKey];
+    };
     return [...data].sort((a, b) => {
-      if (sortKey === "label") return sortDir === "asc" ? a.label.localeCompare(b.label) : b.label.localeCompare(a.label);
-      return sortDir === "desc" ? b[sortKey] - a[sortKey] : a[sortKey] - b[sortKey];
+      const av = valueOf(a);
+      const bv = valueOf(b);
+      return sortDir === "desc" ? bv - av : av - bv;
     });
   }, [data, sortKey, sortDir]);
+
+  const visibleRows = useMemo(
+    () => pageSize === "all" ? sortedData : sortedData.slice(0, pageSize),
+    [sortedData, pageSize],
+  );
 
   const toggleSort = (key: SortKey) => {
     if (sortKey === key) setSortDir(d => d === "desc" ? "asc" : "desc");
@@ -376,6 +519,8 @@ export default function DashboardStatistics() {
     spent: sortedData.reduce((s, r) => s + r.spent, 0),
     conversions: sortedData.reduce((s, r) => s + r.conversions, 0),
     income: sortedData.reduce((s, r) => s + r.income, 0),
+    confirmedConversions: sortedData.reduce((s, r) => s + r.confirmedConversions, 0),
+    confirmedIncome: sortedData.reduce((s, r) => s + r.confirmedIncome, 0),
   }), [sortedData]);
 
   const labelHeader = appliedGroupBy === "dates" ? t("stats.date") : appliedGroupBy === "hours" ? t("stats.dateAndHour") : appliedGroupBy === "browsers" ? t("stats.browser") : appliedGroupBy === "siteid" ? "SiteID" : appliedGroupBy === "os" ? t("stats.os") : appliedGroupBy === "country" ? t("stats.country") : t("stats.device");
@@ -384,27 +529,57 @@ export default function DashboardStatistics() {
   const handleDownloadCsv = useCallback(() => {
     if (!sortedData.length) return;
     const baseHeaders = [labelHeader, t("stats.impressions"), t("stats.clicks"), t("stats.ctr"), t("stats.spent")];
-    const convHeaders = [t("stats.conversions"), t("stats.cr"), t("stats.income"), t("stats.roi")];
+    if (showCpm) baseHeaders.push(t("stats.cpm"));
+    if (showCpc) baseHeaders.push(t("stats.cpc"));
+    const convHeaders: string[] = [t("stats.conversions")];
+    if (showConfirmedConversions) convHeaders.push(t("stats.confirmedConversions"));
+    convHeaders.push(t("stats.cr"), t("stats.income"));
+    if (showConfirmedIncome) convHeaders.push(t("stats.confirmedIncome"));
+    convHeaders.push(t("stats.roi"));
     const headers = showConversions ? [...baseHeaders, ...convHeaders] : baseHeaders;
     const escape = (v: string | number) => {
       const s = String(v);
       return /[",\n;]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
     };
+    const cpmOf = (r: { spent: number; impressions: number }) => {
+      if (r.impressions === 0) return "0.00";
+      const v = r.spent / r.impressions * 1000;
+      return (Math.floor(v * 100) / 100).toFixed(2);
+    };
+    const cpcOf = (r: { spent: number; clicks: number }) => {
+      if (r.clicks === 0) return "0.00000";
+      const v = r.spent / r.clicks;
+      return (Math.floor(v * 100000) / 100000).toFixed(5);
+    };
     const rows = sortedData.map(r => {
       const label = appliedGroupBy === "country" ? formatCountryLabel(r.label, lang) : r.label;
       const ctr = r.impressions > 0 ? ((r.clicks / r.impressions) * 100).toFixed(2) + "%" : "0.00%";
-      const base = [label, r.impressions, r.clicks, ctr, r.spent.toFixed(2)];
+      const base: (string | number)[] = [label, r.impressions, r.clicks, ctr, r.spent.toFixed(2)];
+      if (showCpm) base.push(cpmOf(r));
+      if (showCpc) base.push(cpcOf(r));
       if (!showConversions) return base.map(escape).join(",");
       const cr = r.clicks > 0 ? ((r.conversions / r.clicks) * 100).toFixed(2) + "%" : "0.00%";
-      const roi = r.spent > 0 ? (((r.income - r.spent) / r.spent) * 100).toFixed(2) + "%" : "0.00%";
-      return [...base, r.conversions, cr, r.income.toFixed(2), roi].map(escape).join(",");
+      const roi = r.spent > 0 ? (((r.confirmedIncome - r.spent) / r.spent) * 100).toFixed(2) + "%" : "0.00%";
+      const conv: (string | number)[] = [r.conversions];
+      if (showConfirmedConversions) conv.push(r.confirmedConversions);
+      conv.push(cr, r.income.toFixed(2));
+      if (showConfirmedIncome) conv.push(r.confirmedIncome.toFixed(2));
+      conv.push(roi);
+      return [...base, ...conv].map(escape).join(",");
     });
     const ctrTotal = totals.impressions > 0 ? ((totals.clicks / totals.impressions) * 100).toFixed(2) + "%" : "0.00%";
-    const baseTotal = [t("stats.total"), totals.impressions, totals.clicks, ctrTotal, totals.spent.toFixed(2)];
+    const baseTotal: (string | number)[] = [t("stats.total"), totals.impressions, totals.clicks, ctrTotal, totals.spent.toFixed(2)];
+    if (showCpm) baseTotal.push(cpmOf(totals));
+    if (showCpc) baseTotal.push(cpcOf(totals));
     const crTotal = totals.clicks > 0 ? ((totals.conversions / totals.clicks) * 100).toFixed(2) + "%" : "0.00%";
-    const roiTotal = totals.spent > 0 ? (((totals.income - totals.spent) / totals.spent) * 100).toFixed(2) + "%" : "0.00%";
+    const roiTotal = totals.spent > 0 ? (((totals.confirmedIncome - totals.spent) / totals.spent) * 100).toFixed(2) + "%" : "0.00%";
+    const convTotal: (string | number)[] = [totals.conversions];
+    if (showConfirmedConversions) convTotal.push(totals.confirmedConversions);
+    convTotal.push(crTotal, totals.income.toFixed(2));
+    if (showConfirmedIncome) convTotal.push(totals.confirmedIncome.toFixed(2));
+    convTotal.push(roiTotal);
     const totalsRow = (showConversions
-      ? [...baseTotal, totals.conversions, crTotal, totals.income.toFixed(2), roiTotal]
+      ? [...baseTotal, ...convTotal]
       : baseTotal
     ).map(escape).join(",");
     const csv = "\uFEFF" + [headers.map(escape).join(","), ...rows, totalsRow].join("\n");
@@ -418,7 +593,7 @@ export default function DashboardStatistics() {
     a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
-  }, [sortedData, totals, labelHeader, appliedGroupBy, lang, t, showConversions]);
+  }, [sortedData, totals, labelHeader, appliedGroupBy, lang, t, showConversions, showCpm, showCpc, showConfirmedConversions, showConfirmedIncome]);
 
   // Custom tooltip for hours chart
   const HoursTooltip = ({ active, payload, label }: { active?: boolean; payload?: Array<{ value?: number }>; label?: string }) => {
@@ -531,14 +706,41 @@ export default function DashboardStatistics() {
                 </Button>
               </PopoverTrigger>
               <PopoverContent className="w-auto p-0" align="start">
-                <Calendar mode="range" selected={dateRange} onSelect={handleDateChange} numberOfMonths={2} className="p-3 pointer-events-auto" />
+                <Calendar
+                  mode="single"
+                  onDayClick={handleDayClick}
+                  selected={dateRange?.from}
+                  modifiers={{
+                    selected: (() => {
+                      const from = dateRange?.from;
+                      const to = dateRange?.to;
+                      if (!from) return [];
+                      if (!to) return [from];
+                      const days: Date[] = [];
+                      const start = new Date(from);
+                      start.setHours(0, 0, 0, 0);
+                      const end = new Date(to);
+                      end.setHours(0, 0, 0, 0);
+                      for (let d = new Date(start); d.getTime() <= end.getTime(); d.setDate(d.getDate() + 1)) {
+                        days.push(new Date(d));
+                      }
+                      return days;
+                    })(),
+                  }}
+                  numberOfMonths={2}
+                  className="p-3 pointer-events-auto"
+                  classNames={{
+                    cell: "h-9 w-9 text-center text-sm p-0 relative focus-within:relative focus-within:z-20",
+                  }}
+                />
+
               </PopoverContent>
             </Popover>
             {[
-              { label: t("stats.today"), getRange: () => { const d = new Date(); return { from: d, to: d }; } },
-              { label: t("stats.yesterday"), getRange: () => { const d = subDays(new Date(), 1); return { from: d, to: d }; } },
-              { label: t("stats.week"), getRange: () => ({ from: subDays(new Date(), 6), to: new Date() }) },
-              { label: t("stats.month"), getRange: () => ({ from: subDays(new Date(), 29), to: new Date() }) },
+              { label: t("stats.today"), getRange: () => { const d = utcToday(); return { from: d, to: d }; } },
+              { label: t("stats.yesterday"), getRange: () => { const d = subDays(utcToday(), 1); return { from: d, to: d }; } },
+              { label: t("stats.week"), getRange: () => ({ from: subDays(utcToday(), 6), to: utcToday() }) },
+              { label: t("stats.month"), getRange: () => ({ from: subDays(utcToday(), 29), to: utcToday() }) },
             ].map((preset) => (
               <Button key={preset.label} variant="outline" size="sm" className="border-border text-xs"
                 onClick={() => setDateRange(preset.getRange())}>
@@ -547,7 +749,10 @@ export default function DashboardStatistics() {
             ))}
           </div>
         </div>
+      </div>
 
+      {/* Actions row — fixed placement so Show conversions never shifts on toggle */}
+      <div className="flex flex-wrap items-center gap-3">
         <label
           className={cn(
             "inline-flex items-center gap-2 px-3 h-10 rounded-md border cursor-pointer transition-colors select-none shrink-0 whitespace-nowrap",
@@ -679,14 +884,111 @@ export default function DashboardStatistics() {
 
           <Card className="bg-card border-border">
             <CardHeader>
-              <div className="flex flex-wrap items-center gap-2">
-                {(Object.keys(groupLabels) as GroupBy[]).map((g) => (
-                  <Button key={g} variant={groupBy === g ? "default" : "outline"} size="sm"
-                    onClick={() => setGroupBy(g)}
-                    className={cn("min-w-[100px]", groupBy === g ? "bg-primary text-primary-foreground" : "border-border")}>
-                    {groupLabels[g]}
-                  </Button>
-                ))}
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div className="flex flex-wrap items-center gap-2">
+                  {(Object.keys(groupLabels) as GroupBy[]).map((g) => (
+                    <Button key={g} variant={groupBy === g ? "default" : "outline"} size="sm"
+                      onClick={() => {
+                        if (groupBy === g) return;
+                        pendingScrollRef.current = window.scrollY;
+                        setGroupBy(g);
+                      }}
+                      className={cn("min-w-[100px]", groupBy === g ? "bg-primary text-primary-foreground" : "border-border")}>
+                      {groupLabels[g]}
+                    </Button>
+                  ))}
+                </div>
+                <div className="flex items-center gap-3">
+                  <Popover>
+                    <PopoverTrigger asChild>
+                      <Button variant="outline" size="sm" className="border-border gap-2">
+                        <Filter className="h-3.5 w-3.5" /> {t("stats.columns")}
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-64 p-3 max-h-[70vh] overflow-y-auto" align="end">
+                      <div className="space-y-3">
+                        <div>
+                          <div className="text-[11px] uppercase tracking-wide text-muted-foreground/80 px-1 mb-1">{t("stats.groupTraffic")}</div>
+                          <div className="space-y-0.5">
+                            <label className="flex items-center gap-2 px-2 py-1.5 rounded hover:bg-muted/50 cursor-pointer text-sm">
+                              <Checkbox checked={showImpressions} onCheckedChange={(c) => setShowImpressions(!!c)} />
+                              {t("stats.impressions")}
+                            </label>
+                            <label className="flex items-center gap-2 px-2 py-1.5 rounded hover:bg-muted/50 cursor-pointer text-sm">
+                              <Checkbox checked={showClicks} onCheckedChange={(c) => setShowClicks(!!c)} />
+                              {t("stats.clicks")}
+                            </label>
+                            <label className="flex items-center gap-2 px-2 py-1.5 rounded hover:bg-muted/50 cursor-pointer text-sm">
+                              <Checkbox checked={showCtr} onCheckedChange={(c) => setShowCtr(!!c)} />
+                              {t("stats.ctr")}
+                            </label>
+                          </div>
+                        </div>
+                        <div>
+                          <div className="text-[11px] uppercase tracking-wide text-muted-foreground/80 px-1 mb-1">{t("stats.groupCost")}</div>
+                          <div className="space-y-0.5">
+                            <label className="flex items-center gap-2 px-2 py-1.5 rounded hover:bg-muted/50 cursor-pointer text-sm">
+                              <Checkbox checked={showSpent} onCheckedChange={(c) => setShowSpent(!!c)} />
+                              {t("stats.spent")}
+                            </label>
+                            <label className="flex items-center gap-2 px-2 py-1.5 rounded hover:bg-muted/50 cursor-pointer text-sm">
+                              <Checkbox checked={showCpm} onCheckedChange={(c) => setShowCpm(!!c)} />
+                              {t("stats.cpm")}
+                            </label>
+                            <label className="flex items-center gap-2 px-2 py-1.5 rounded hover:bg-muted/50 cursor-pointer text-sm">
+                              <Checkbox checked={showCpc} onCheckedChange={(c) => setShowCpc(!!c)} />
+                              {t("stats.cpc")}
+                            </label>
+                          </div>
+                        </div>
+                        <div>
+                          <div className={cn("text-[11px] uppercase tracking-wide px-1 mb-1", showConversions ? "text-muted-foreground/80" : "text-muted-foreground/40")}>{t("stats.groupConversions")}</div>
+                          <div className={cn("space-y-0.5", !showConversions && "opacity-50")}>
+                            <label className={cn("flex items-center gap-2 px-2 py-1.5 rounded text-sm", showConversions ? "hover:bg-muted/50 cursor-pointer" : "")}>
+                              <Checkbox checked={showConversionsCol} disabled={!showConversions} onCheckedChange={(c) => setShowConversionsCol(!!c)} />
+                              {t("stats.conversions")}
+                            </label>
+                            <label className={cn("flex items-center gap-2 px-2 py-1.5 rounded text-sm", showConversions ? "hover:bg-muted/50 cursor-pointer" : "")}>
+                              <Checkbox checked={showConfirmedConversions} disabled={!showConversions} onCheckedChange={(c) => setShowConfirmedConversions(!!c)} />
+                              {t("stats.confirmedConversions")}
+                            </label>
+                            <label className={cn("flex items-center gap-2 px-2 py-1.5 rounded text-sm", showConversions ? "hover:bg-muted/50 cursor-pointer" : "")}>
+                              <Checkbox checked={showCr} disabled={!showConversions} onCheckedChange={(c) => setShowCr(!!c)} />
+                              {t("stats.cr")}
+                            </label>
+                            <label className={cn("flex items-center gap-2 px-2 py-1.5 rounded text-sm", showConversions ? "hover:bg-muted/50 cursor-pointer" : "")}>
+                              <Checkbox checked={showIncome} disabled={!showConversions} onCheckedChange={(c) => setShowIncome(!!c)} />
+                              {t("stats.income")}
+                            </label>
+                            <label className={cn("flex items-center gap-2 px-2 py-1.5 rounded text-sm", showConversions ? "hover:bg-muted/50 cursor-pointer" : "")}>
+                              <Checkbox checked={showConfirmedIncome} disabled={!showConversions} onCheckedChange={(c) => setShowConfirmedIncome(!!c)} />
+                              {t("stats.confirmedIncome")}
+                            </label>
+                            <label className={cn("flex items-center gap-2 px-2 py-1.5 rounded text-sm", showConversions ? "hover:bg-muted/50 cursor-pointer" : "")}>
+                              <Checkbox checked={showRoi} disabled={!showConversions} onCheckedChange={(c) => setShowRoi(!!c)} />
+                              {t("stats.roi")}
+                            </label>
+                          </div>
+                        </div>
+                      </div>
+                    </PopoverContent>
+                  </Popover>
+                  <div className="flex items-center gap-1">
+                    <span className="text-xs text-muted-foreground mr-1">{t("stats.rows")}</span>
+                    {([50, 100, "all"] as PageSize[]).map(sz => (
+                      <Button key={String(sz)} size="sm"
+                        variant={pageSize === sz ? "default" : "outline"}
+                        onClick={() => {
+                          if (pageSize === sz) return;
+                          pendingScrollRef.current = window.scrollY;
+                          setPageSize(sz);
+                        }}
+                        className={cn("min-w-[52px]", pageSize === sz ? "bg-primary text-primary-foreground" : "border-border")}>
+                        {sz === "all" ? t("stats.rowsAll") : sz}
+                      </Button>
+                    ))}
+                  </div>
+                </div>
               </div>
             </CardHeader>
             <CardContent className="p-0">
@@ -694,84 +996,169 @@ export default function DashboardStatistics() {
                 <div className="py-16 text-center text-muted-foreground"><p>{t("stats.noData")}</p></div>
               ) : (
                 <div className="overflow-x-auto overflow-y-hidden">
-                  <table className="w-full table-fixed">
+                  {(() => {
+                    const trafficCols = (showImpressions ? 1 : 0) + (showClicks ? 1 : 0) + (showCtr ? 1 : 0);
+                    const costCols = (showSpent ? 1 : 0) + (showCpm ? 1 : 0) + (showCpc ? 1 : 0);
+                    const convCols = showConversions
+                      ? (showConversionsCol ? 1 : 0) + (showConfirmedConversions ? 1 : 0) + (showCr ? 1 : 0) + (showIncome ? 1 : 0) + (showConfirmedIncome ? 1 : 0) + (showRoi ? 1 : 0)
+                      : 0;
+                    const stickyCell = "sticky left-0 z-10";
+                    const stickyHead = `${stickyCell} bg-card`;
+                    const stickyBody = `${stickyCell} bg-card`;
+                    const stickyAlt  = `${stickyCell} bg-[hsl(var(--muted)/0.3)]`;
+                    // subtle vertical separator between column groups
+                    const sep = "border-l border-border/60";
+                    // First-visible-in-group helpers so the vertical separator lands on the right cell.
+                    const firstCost: "spent" | "cpm" | "cpc" | null = showSpent ? "spent" : showCpm ? "cpm" : showCpc ? "cpc" : null;
+                    const firstConv: "conversions" | "confirmedConv" | "cr" | "income" | "confirmedIncome" | "roi" | null =
+                      showConversions
+                        ? (showConversionsCol ? "conversions"
+                          : showConfirmedConversions ? "confirmedConv"
+                          : showCr ? "cr"
+                          : showIncome ? "income"
+                          : showConfirmedIncome ? "confirmedIncome"
+                          : showRoi ? "roi"
+                          : null)
+                        : null;
+                    const fmtMoney = (n: number) => `$${n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+                    const fmtMoney2 = (n: number) => `$${(Math.floor(n * 100) / 100).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+                    const fmtMoney5 = (n: number) => `$${(Math.floor(n * 100000) / 100000).toLocaleString(undefined, { minimumFractionDigits: 5, maximumFractionDigits: 5 })}`;
+                    const cpmOf = (r: { spent: number; impressions: number }) => r.impressions > 0 ? r.spent / r.impressions * 1000 : 0;
+                    const cpcOf = (r: { spent: number; clicks: number }) => r.clicks > 0 ? r.spent / r.clicks : 0;
+                    return (
+                  <table className="w-full border-collapse">
                     <thead>
+                      {/* Group header row */}
+                      <tr className="border-b border-border/60 text-[11px] uppercase tracking-wide text-muted-foreground/70">
+                        <th className={cn("py-1.5 px-2 text-left", stickyHead)}></th>
+                        {trafficCols > 0 && (
+                          <th colSpan={trafficCols} className="py-1.5 px-2 text-left">{t("stats.groupTraffic")}</th>
+                        )}
+                        {costCols > 0 && (
+                          <th colSpan={costCols} className={cn("py-1.5 px-2 text-left", trafficCols > 0 && sep)}>{t("stats.groupCost")}</th>
+                        )}
+                        {showConversions && convCols > 0 && (
+                          <th colSpan={convCols} className={cn("py-1.5 px-2 text-left", (trafficCols + costCols) > 0 && sep)}>{t("stats.groupConversions")}</th>
+                        )}
+                      </tr>
                       <tr className="border-b border-border">
-                        <th className={cn("text-left py-3 px-4 text-sm font-medium text-muted-foreground w-[200px]", canSortByLabel && "cursor-pointer select-none")}
+                        <th className={cn("text-left py-2 px-2 text-sm font-medium text-muted-foreground whitespace-nowrap", stickyHead, canSortByLabel && "cursor-pointer select-none")}
                           onClick={() => canSortByLabel && toggleSort("label")}>
                           {labelHeader} {canSortByLabel && <SortIcon col="label" />}
                         </th>
-                        <th className="text-left py-3 px-4 text-sm font-medium text-muted-foreground cursor-pointer select-none w-[140px]" onClick={() => toggleSort("impressions")}>
-                          {t("stats.impressions")} <SortIcon col="impressions" />
-                        </th>
-                        <th className="text-left py-3 px-4 text-sm font-medium text-muted-foreground cursor-pointer select-none w-[120px]" onClick={() => toggleSort("clicks")}>
-                          {t("stats.clicks")} <SortIcon col="clicks" />
-                        </th>
-                        <th className="text-left py-3 px-4 text-sm font-medium text-muted-foreground w-[100px]">{t("stats.ctr")}</th>
-                        <th className="text-left py-3 px-4 text-sm font-medium text-muted-foreground cursor-pointer select-none w-[140px]" onClick={() => toggleSort("spent")}>
-                          {t("stats.spent")} <SortIcon col="spent" />
-                        </th>
+                        {showImpressions && (
+                          <th className="text-left py-2 px-2 text-sm font-medium text-muted-foreground cursor-pointer select-none whitespace-nowrap" onClick={() => toggleSort("impressions")}>
+                            {t("stats.impressions")} <SortIcon col="impressions" />
+                          </th>
+                        )}
+                        {showClicks && (
+                          <th className="text-left py-2 px-2 text-sm font-medium text-muted-foreground cursor-pointer select-none whitespace-nowrap" onClick={() => toggleSort("clicks")}>
+                            {t("stats.clicks")} <SortIcon col="clicks" />
+                          </th>
+                        )}
+                        {showCtr && (
+                          <th className="text-left py-2 px-2 text-sm font-medium text-muted-foreground whitespace-nowrap">{t("stats.ctr")}</th>
+                        )}
+                        {showSpent && (
+                          <th className={cn("text-left py-2 px-2 text-sm font-medium text-muted-foreground cursor-pointer select-none whitespace-nowrap", firstCost === "spent" && trafficCols > 0 && sep)} onClick={() => toggleSort("spent")}>
+                            {t("stats.spent")} <SortIcon col="spent" />
+                          </th>
+                        )}
+                        {showCpm && (
+                          <th className={cn("text-left py-2 px-2 text-sm font-medium text-muted-foreground cursor-pointer select-none whitespace-nowrap", firstCost === "cpm" && trafficCols > 0 && sep)} onClick={() => toggleSort("cpm")}>
+                            {t("stats.cpm")} <SortIcon col="cpm" />
+                          </th>
+                        )}
+                        {showCpc && (
+                          <th className={cn("text-left py-2 px-2 text-sm font-medium text-muted-foreground cursor-pointer select-none whitespace-nowrap", firstCost === "cpc" && trafficCols > 0 && sep)} onClick={() => toggleSort("cpc")}>
+                            {t("stats.cpc")} <SortIcon col="cpc" />
+                          </th>
+                        )}
                         {showConversions && (
                           <>
-                            <th className="text-left py-3 px-4 text-sm font-medium text-muted-foreground cursor-pointer select-none w-[130px]" onClick={() => toggleSort("conversions")}>
-                              {t("stats.conversions")} <SortIcon col="conversions" />
-                            </th>
-                            <th className="text-left py-3 px-4 text-sm font-medium text-muted-foreground w-[100px]">{t("stats.cr")}</th>
-                            <th className="text-left py-3 px-4 text-sm font-medium text-muted-foreground cursor-pointer select-none w-[140px]" onClick={() => toggleSort("income")}>
-                              {t("stats.income")} <SortIcon col="income" />
-                            </th>
-                            <th className="text-left py-3 px-4 text-sm font-medium text-muted-foreground w-[110px]">{t("stats.roi")}</th>
+                            {showConversionsCol && (
+                              <th className={cn("text-left py-2 px-2 text-sm font-medium text-muted-foreground cursor-pointer select-none whitespace-nowrap", firstConv === "conversions" && (trafficCols + costCols) > 0 && sep)} onClick={() => toggleSort("conversions")}>
+                                {t("stats.conversions")} <SortIcon col="conversions" />
+                              </th>
+                            )}
+                            {showConfirmedConversions && (
+                              <th className={cn("text-left py-2 px-2 text-sm font-medium text-muted-foreground whitespace-nowrap", firstConv === "confirmedConv" && (trafficCols + costCols) > 0 && sep)}>{t("stats.confirmed")}</th>
+                            )}
+                            {showCr && (
+                              <th className={cn("text-left py-2 px-2 text-sm font-medium text-muted-foreground whitespace-nowrap", firstConv === "cr" && (trafficCols + costCols) > 0 && sep)}>{t("stats.cr")}</th>
+                            )}
+                            {showIncome && (
+                              <th className={cn("text-left py-2 px-2 text-sm font-medium text-muted-foreground cursor-pointer select-none whitespace-nowrap", firstConv === "income" && (trafficCols + costCols) > 0 && sep)} onClick={() => toggleSort("income")}>
+                                {t("stats.income")} <SortIcon col="income" />
+                              </th>
+                            )}
+                            {showConfirmedIncome && (
+                              <th className={cn("text-left py-2 px-2 text-sm font-medium text-muted-foreground whitespace-nowrap", firstConv === "confirmedIncome" && (trafficCols + costCols) > 0 && sep)}>{t("stats.confirmed")}</th>
+                            )}
+                            {showRoi && (
+                              <th className={cn("text-left py-2 px-2 text-sm font-medium text-muted-foreground whitespace-nowrap", firstConv === "roi" && (trafficCols + costCols) > 0 && sep)}>{t("stats.roi")}</th>
+                            )}
                           </>
                         )}
                       </tr>
                     </thead>
                     <tbody>
-                      {sortedData.map((row) => {
+                      {visibleRows.map((row) => {
                         const cr = row.clicks > 0 ? ((row.conversions / row.clicks) * 100).toFixed(2) : "0.00";
-                        const roiNum = row.spent > 0 ? ((row.income - row.spent) / row.spent) * 100 : 0;
+                        const roiNum = row.spent > 0 ? ((row.confirmedIncome - row.spent) / row.spent) * 100 : 0;
                         const roi = row.spent > 0 ? roiNum.toFixed(2) : "0.00";
                         return (
-                        <tr key={row.label} className="border-b border-border/50 hover:bg-muted/50 transition-colors">
-                          <td className="py-3 px-4 font-medium truncate">
+                        <tr key={row.label} className="group border-b border-border/50 hover:bg-muted/50 transition-colors">
+                          <td className={cn("py-2 px-2 font-medium whitespace-nowrap", stickyBody, "group-hover:bg-muted/50")}>
                             {appliedGroupBy === "country" ? formatCountryLabel(row.label, lang) : row.label}
                           </td>
-                          <td className="py-3 px-4">{row.impressions.toLocaleString()}</td>
-                          <td className="py-3 px-4">{row.clicks.toLocaleString()}</td>
-                          <td className="py-3 px-4">{row.impressions > 0 ? ((row.clicks / row.impressions) * 100).toFixed(2) : "0.00"}%</td>
-                          <td className="py-3 px-4">${row.spent.toLocaleString()}</td>
+                          {showImpressions && <td className="py-2 px-2 whitespace-nowrap">{row.impressions.toLocaleString()}</td>}
+                          {showClicks && <td className="py-2 px-2 whitespace-nowrap">{row.clicks.toLocaleString()}</td>}
+                          {showCtr && <td className="py-2 px-2 whitespace-nowrap">{row.impressions > 0 ? ((row.clicks / row.impressions) * 100).toFixed(2) : "0.00"}%</td>}
+                          {showSpent && <td className={cn("py-2 px-2 whitespace-nowrap", firstCost === "spent" && trafficCols > 0 && sep)}>{fmtMoney(row.spent)}</td>}
+                          {showCpm && <td className={cn("py-2 px-2 whitespace-nowrap", firstCost === "cpm" && trafficCols > 0 && sep)}>{fmtMoney2(cpmOf(row))}</td>}
+                          {showCpc && <td className={cn("py-2 px-2 whitespace-nowrap", firstCost === "cpc" && trafficCols > 0 && sep)}>{fmtMoney5(cpcOf(row))}</td>}
                           {showConversions && (
                             <>
-                              <td className="py-3 px-4">{row.conversions.toLocaleString()}</td>
-                              <td className="py-3 px-4">{cr}%</td>
-                              <td className="py-3 px-4">${row.income.toLocaleString()}</td>
-                              <td className={cn("py-3 px-4 font-medium", roiNum > 0 ? "text-emerald-500" : roiNum < 0 ? "text-red-500" : "")}>{roi}%</td>
+                              {showConversionsCol && <td className={cn("py-2 px-2 whitespace-nowrap", firstConv === "conversions" && (trafficCols + costCols) > 0 && sep)}>{row.conversions.toLocaleString()}</td>}
+                              {showConfirmedConversions && <td className={cn("py-2 px-2 whitespace-nowrap", firstConv === "confirmedConv" && (trafficCols + costCols) > 0 && sep)}>{row.confirmedConversions.toLocaleString()}</td>}
+                              {showCr && <td className={cn("py-2 px-2 whitespace-nowrap", firstConv === "cr" && (trafficCols + costCols) > 0 && sep)}>{cr}%</td>}
+                              {showIncome && <td className={cn("py-2 px-2 whitespace-nowrap", firstConv === "income" && (trafficCols + costCols) > 0 && sep)}>{fmtMoney(row.income)}</td>}
+                              {showConfirmedIncome && <td className={cn("py-2 px-2 whitespace-nowrap", firstConv === "confirmedIncome" && (trafficCols + costCols) > 0 && sep)}>{fmtMoney(row.confirmedIncome)}</td>}
+                              {showRoi && <td className={cn("py-2 px-2 whitespace-nowrap font-medium", firstConv === "roi" && (trafficCols + costCols) > 0 && sep, roiNum > 0 ? "text-emerald-500" : roiNum < 0 ? "text-red-500" : "")}>{roi}%</td>}
                             </>
                           )}
                         </tr>
                         );
                       })}
                       <tr className="bg-muted/30 font-semibold">
-                        <td className="py-3 px-4">{t("stats.total")}</td>
-                        <td className="py-3 px-4">{totals.impressions.toLocaleString()}</td>
-                        <td className="py-3 px-4">{totals.clicks.toLocaleString()}</td>
-                        <td className="py-3 px-4">{totals.impressions > 0 ? ((totals.clicks / totals.impressions) * 100).toFixed(2) : "0.00"}%</td>
-                        <td className="py-3 px-4">${totals.spent.toLocaleString()}</td>
+                        <td className={cn("py-2 px-2 whitespace-nowrap", stickyAlt)}>{t("stats.total")}</td>
+                        {showImpressions && <td className="py-2 px-2 whitespace-nowrap">{totals.impressions.toLocaleString()}</td>}
+                        {showClicks && <td className="py-2 px-2 whitespace-nowrap">{totals.clicks.toLocaleString()}</td>}
+                        {showCtr && <td className="py-2 px-2 whitespace-nowrap">{totals.impressions > 0 ? ((totals.clicks / totals.impressions) * 100).toFixed(2) : "0.00"}%</td>}
+                        {showSpent && <td className={cn("py-2 px-2 whitespace-nowrap", firstCost === "spent" && trafficCols > 0 && sep)}>{fmtMoney(totals.spent)}</td>}
+                        {showCpm && <td className={cn("py-2 px-2 whitespace-nowrap", firstCost === "cpm" && trafficCols > 0 && sep)}>{fmtMoney2(cpmOf(totals))}</td>}
+                        {showCpc && <td className={cn("py-2 px-2 whitespace-nowrap", firstCost === "cpc" && trafficCols > 0 && sep)}>{fmtMoney5(cpcOf(totals))}</td>}
                         {showConversions && (() => {
                           const cr = totals.clicks > 0 ? ((totals.conversions / totals.clicks) * 100).toFixed(2) : "0.00";
-                          const roiNum = totals.spent > 0 ? ((totals.income - totals.spent) / totals.spent) * 100 : 0;
+                          const roiNum = totals.spent > 0 ? ((totals.confirmedIncome - totals.spent) / totals.spent) * 100 : 0;
                           const roi = totals.spent > 0 ? roiNum.toFixed(2) : "0.00";
                           return (
                             <>
-                              <td className="py-3 px-4">{totals.conversions.toLocaleString()}</td>
-                              <td className="py-3 px-4">{cr}%</td>
-                              <td className="py-3 px-4">${totals.income.toLocaleString()}</td>
-                              <td className={cn("py-3 px-4", roiNum > 0 ? "text-emerald-500" : roiNum < 0 ? "text-red-500" : "")}>{roi}%</td>
+                              {showConversionsCol && <td className={cn("py-2 px-2 whitespace-nowrap", firstConv === "conversions" && (trafficCols + costCols) > 0 && sep)}>{totals.conversions.toLocaleString()}</td>}
+                              {showConfirmedConversions && <td className={cn("py-2 px-2 whitespace-nowrap", firstConv === "confirmedConv" && (trafficCols + costCols) > 0 && sep)}>{totals.confirmedConversions.toLocaleString()}</td>}
+                              {showCr && <td className={cn("py-2 px-2 whitespace-nowrap", firstConv === "cr" && (trafficCols + costCols) > 0 && sep)}>{cr}%</td>}
+                              {showIncome && <td className={cn("py-2 px-2 whitespace-nowrap", firstConv === "income" && (trafficCols + costCols) > 0 && sep)}>{fmtMoney(totals.income)}</td>}
+                              {showConfirmedIncome && <td className={cn("py-2 px-2 whitespace-nowrap", firstConv === "confirmedIncome" && (trafficCols + costCols) > 0 && sep)}>{fmtMoney(totals.confirmedIncome)}</td>}
+                              {showRoi && <td className={cn("py-2 px-2 whitespace-nowrap", firstConv === "roi" && (trafficCols + costCols) > 0 && sep, roiNum > 0 ? "text-emerald-500" : roiNum < 0 ? "text-red-500" : "")}>{roi}%</td>}
                             </>
                           );
                         })()}
                       </tr>
                     </tbody>
                   </table>
+                    );
+                  })()}
                 </div>
               )}
             </CardContent>

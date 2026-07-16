@@ -16,6 +16,13 @@ export function isErrorShown(): boolean {
   return w.error_showed !== false;
 }
 
+// Optional server-error translator installed by the LanguageProvider so
+// backend messages can be shown in the user's interface language.
+let errorTranslator: ((raw: string) => string) | null = null;
+export function setErrorTranslator(fn: ((raw: string) => string) | null) {
+  errorTranslator = fn;
+}
+
 function extractMessage(e: unknown): string {
   if (!e) return "Unknown error";
   if (e instanceof ApiError) {
@@ -39,7 +46,8 @@ export function notifyError(prefix: string, e: unknown) {
     console.error(prefix, e);
     return;
   }
-  const msg = extractMessage(e);
+  const raw = extractMessage(e);
+  const msg = errorTranslator ? errorTranslator(raw) : raw;
   toast.error(prefix ? `${prefix}: ${msg}` : msg);
   console.error(prefix, e);
 }

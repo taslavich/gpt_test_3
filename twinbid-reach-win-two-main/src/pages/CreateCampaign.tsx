@@ -5,13 +5,15 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { AutoCropConfirmDialog } from "@/components/dashboard/AutoCropConfirmDialog";
+import { getTargetDims } from "@/lib/creativeTarget";
 import { ArrowLeft } from "lucide-react";
 import { toast } from "sonner";
 import { useCampaigns, type TargetingState, type PricingModel, type TrafficQuality, type TrafficType, type ListMode, type Creative, type Vertical, VERTICALS } from "@/contexts/CampaignContext";
 import { useNotifications } from "@/contexts/NotificationContext";
 import { TargetingSection, targetingConfigs } from "@/components/dashboard/TargetingSection";
 import { BudgetSection } from "@/components/dashboard/BudgetSection";
-import { CreativesEditor } from "@/components/dashboard/CreativesEditor";
+import { CreativesEditor, type CreativesEditorHandle } from "@/components/dashboard/CreativesEditor";
 import { PostbackSection } from "@/components/dashboard/PostbackSection";
 import { Loader2 } from "lucide-react";
 import { useLanguage } from "@/contexts/LanguageContext";
@@ -60,9 +62,11 @@ export default function CreateCampaign() {
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
   const [evenSpend, setEvenSpend] = useState(false);
-  const [conversionPayout, setConversionPayout] = useState("");
+  
   const savedAsDraft = useRef(false);
   const [isCreating, setIsCreating] = useState(false);
+  const [confirmMismatchOpen, setConfirmMismatchOpen] = useState(false);
+  const creativesEditorRef = useRef<CreativesEditorHandle>(null);
 
   const clearError = (...keys: string[]) => setErrors(prev => {
     const next = { ...prev };
@@ -86,7 +90,8 @@ export default function CreateCampaign() {
       const mins = formatMins[adFormat] || formatMins.banner;
       const minCpm = mins[trafficQuality];
       const min = pricingModel === "cpc" ? +(minCpm * 1.7 / 1000).toFixed(5) : minCpm;
-      if (pv >= min) clearError("priceValue");
+      const max = pricingModel === "cpm" ? 1000 : 1;
+      if (pv >= min && pv <= max) clearError("priceValue");
     }
   }, [priceValue, pricingModel, trafficQuality, adFormat]);
 
@@ -106,15 +111,61 @@ export default function CreateCampaign() {
     // Validate creatives
     creatives.forEach(c => {
       if (!c.name?.trim()) e[`creative_${c.id}_name`] = t("create.required");
-      if (!c.url.trim()) e[`creative_${c.id}_url`] = t("create.required");
-      if (adFormat !== "popunder" && !c.imageUrl) e[`creative_${c.id}_image`] = t("create.required");
+      const type = adFormat === "banner" ? (c.creativeType || "image") : "image";
+      if (adFormat === "banner" && type === "html") {
+        if (!c.htmlCode?.trim()) e[`creative_${c.id}_html`] = t("create.required");
+      } else if (adFormat === "banner" && type === "iframe") {
+        const mode = c.iframeMode || "url";
+        let u = "";
+        if (mode === "code") {
+          const snippet = (c.iframeCode || "").trim();
+          if (!snippet) { e[`creative_${c.id}_iframe`] = t("create.required"); }
+          else {
+            const m = snippet.match(/<iframe[^>]*\ssrc\s*=\s*["']([^"']+)["']/i);
+            u = m ? m[1] : "";
+            if (!u) e[`creative_${c.id}_iframe`] = t("create.iframeCodeNoSrc");
+          }
+        } else {
+          u = (c.iframeUrl || "").trim();
+          if (!u) e[`creative_${c.id}_iframe`] = t("create.required");
+        }
+        if (u && !e[`creative_${c.id}_iframe`]) {
+          try { const p = new URL(u); if (p.protocol !== "https:") throw new Error(); }
+          catch { e[`creative_${c.id}_iframe`] = t("create.iframeUrlInvalid"); }
+        }
+      } else {
+        if (!c.url.trim()) e[`creative_${c.id}_url`] = t("create.required");
+        if (adFormat !== "popunder" && !c.imageUrl) e[`creative_${c.id}_image`] = t("create.required");
+      }
       if ((adFormat === "native" || adFormat === "push") && !c.title?.trim()) e[`creative_${c.id}_title`] = t("create.required");
       if ((adFormat === "native" || adFormat === "push") && !c.description?.trim()) e[`creative_${c.id}_description`] = t("create.required");
     });
 
+    // Block advancing when a banner html/iframe creative has a size mismatch.
+    // (Image creatives keep their existing auto-crop confirm flow on the final step.)
+    if (adFormat === "banner") {
+      const badHtmlOrIframe = creatives.find(c => {
+        const type = c.creativeType || "image";
+        return (type === "html" || type === "iframe") && c.sizeMismatch;
+      });
+      if (badHtmlOrIframe) {
+        const key = (badHtmlOrIframe.creativeType === "iframe") ? "iframe" : "html";
+        e[`creative_${badHtmlOrIframe.id}_${key}`] = t("create.required");
+        toast.error(
+          (badHtmlOrIframe.creativeType === "iframe"
+            ? t("create.iframeSizeMismatch")
+            : t("create.htmlSizeMismatch"))
+            .replace("{actualW}", "?").replace("{actualH}", "?")
+            .replace("{w}", String(bannerSize.split("x")[0] || "?"))
+            .replace("{h}", String(bannerSize.split("x")[1] || "?"))
+        );
+      }
+    }
+
     setErrors(e);
     return Object.keys(e).length === 0;
   };
+
 
   const parseNum = (v: string) => parseFloat(v.replace(",", ".")) || 0;
 
@@ -124,7 +175,9 @@ export default function CreateCampaign() {
     if (!totalBudget || isNaN(tb) || tb < 1) e.totalBudget = t("edit.errorBudgetMin");
     const pv = parseNum(priceValue);
     const { min } = getMinPrice();
+    const max = pricingModel === "cpm" ? 1000 : 1;
     if (!priceValue || isNaN(pv) || pv < min) e.priceValue = `${t("budget.belowMin")} ($${min})`;
+    else if (pv > max) e.priceValue = t("budget.aboveMaxError").replace("{max}", String(max));
     if (!startDate) e.startDate = t("create.required");
     if (!endDate) e.endDate = t("create.required");
     if (endDate) {
@@ -152,12 +205,18 @@ export default function CreateCampaign() {
   const handleNext = async () => {
     if (step === 1 && !validateStep1()) return;
     if (step === 3) { if (!validateStep3()) return; setStep(4); setErrors({}); return; }
-    if (step === 4) { await handleCreate(); return; }
+    if (step === 4) {
+      if (creatives.some(c => (c.creativeType || "image") === "image" && c.sizeMismatch)) { setConfirmMismatchOpen(true); return; }
+      await handleCreate();
+      return;
+    }
     setStep(step + 1);
     setErrors({});
   };
 
-  const handleCreate = async () => {
+  const handleCreate = () => handleCreateWith(creatives);
+
+  const handleCreateWith = async (crvs: Creative[]) => {
     if (isCreating) return;
     setIsCreating(true);
     try {
@@ -166,11 +225,10 @@ export default function CreateCampaign() {
         name: name.trim(), status: "draft", format: formatLabels[adFormat] || adFormat,
         formatKey: adFormat, trafficType, verticals, budget: parseNum(totalBudget), dailyBudget: null,
         spent: 0, impressions: 0, clicks: 0, ctr: 0, pricingModel, priceValue: parseNum(priceValue),
-        trafficQuality, startDate, endDate, creatives,
+        trafficQuality, startDate, endDate, creatives: crvs,
         targeting: Object.fromEntries(Object.entries(lists).map(([k, v]) => [k, { mode: v.mode, items: v.items }])),
         evenSpend, bannerSize: adFormat === "banner" ? bannerSize : undefined,
         brandName: showBrandName ? brandName : undefined,
-        conversionPayout: conversionPayout ? parseNum(conversionPayout) : null,
       });
       if (!id) {
         toast.error(t("create.failed") || "Failed to create campaign");
@@ -208,7 +266,6 @@ export default function CreateCampaign() {
         targeting: Object.fromEntries(Object.entries(lists).map(([k, v]) => [k, { mode: v.mode, items: v.items }])),
         evenSpend, bannerSize: adFormat === "banner" ? bannerSize : undefined,
         brandName: showBrandName ? brandName : undefined,
-        conversionPayout: conversionPayout ? parseNum(conversionPayout) : null,
       });
     } catch (e: any) {
       toast.error(`${t("create.failed") || "Failed to save draft"}: ${e?.message || e}`);
@@ -339,7 +396,7 @@ export default function CreateCampaign() {
                 <>
                   <div className="pt-2">
                     <p className="text-sm font-medium text-muted-foreground mb-3">{t("create.creatives")}</p>
-                    <CreativesEditor formatKey={adFormat} creatives={creatives} onChange={setCreatives} errors={errors} onClearError={clearError} />
+                    <CreativesEditor ref={creativesEditorRef} formatKey={adFormat} bannerSize={bannerSize} creatives={creatives} onChange={setCreatives} errors={errors} onClearError={clearError} />
                   </div>
                 </>
               )}
@@ -362,7 +419,7 @@ export default function CreateCampaign() {
             />
           )}
 
-          {step === 4 && <PostbackSection payout={conversionPayout} onPayoutChange={setConversionPayout} />}
+          {step === 4 && <PostbackSection />}
         </CardContent>
       </Card>
 
@@ -385,6 +442,25 @@ export default function CreateCampaign() {
           </div>
         </div>
       )}
+
+      <AutoCropConfirmDialog
+        open={confirmMismatchOpen}
+        creatives={creatives}
+        target={getTargetDims(adFormat, bannerSize)}
+        onCancel={() => {
+          setConfirmMismatchOpen(false);
+          // Jump to step 1 (creatives) and open cropper for the first mismatched image
+          setStep(1);
+          setTimeout(() => { void creativesEditorRef.current?.openCropperFor(); }, 50);
+        }}
+        onConfirm={async (next) => {
+          setCreatives(next);
+          setConfirmMismatchOpen(false);
+          // Defer so state updates before we submit; handleCreate reads from `creatives`
+          // via closure, but we pass explicit next to avoid stale state.
+          await handleCreateWith(next);
+        }}
+      />
     </div>
   );
 }

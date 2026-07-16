@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Bell, User, X, Send } from "lucide-react";
+import { Bell, User, X, Send, Wallet, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
@@ -15,10 +15,12 @@ export function DashboardHeader() {
   const { notifications, removeNotification } = useNotifications();
   const { t } = useLanguage();
   const { user } = useAuth();
-  const { profile } = useProfile();
+  const { profile, loading } = useProfile();
   const [open, setOpen] = useState(false);
   const navigate = useNavigate();
   const [confirmDismiss, setConfirmDismiss] = useState<Notification | null>(null);
+
+  const balance = profile?.balance ?? 0;
 
   const handleDismissClick = (n: Notification) => {
     if (n.onDismiss) {
@@ -50,6 +52,16 @@ export function DashboardHeader() {
           )}
         </div>
         <div className="flex items-center gap-4">
+          <button
+            onClick={() => navigate("/dashboard/balance")}
+            className="flex items-center gap-2 rounded-full bg-muted/40 border border-border/60 px-3.5 py-1.5 text-base font-semibold text-foreground hover:bg-muted/60 transition-colors cursor-pointer"
+          >
+            <Wallet className="h-5 w-5 text-muted-foreground" />
+            <span className="tabular-nums">
+              {loading ? "..." : `$${balance.toLocaleString()}`}
+            </span>
+            <Plus className="h-4 w-4 text-muted-foreground" />
+          </button>
           <LanguageSelector />
           <Popover open={open} onOpenChange={setOpen}>
             <PopoverTrigger asChild>

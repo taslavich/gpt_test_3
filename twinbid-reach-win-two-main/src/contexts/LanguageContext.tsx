@@ -1,4 +1,6 @@
-import { createContext, useContext, useState, useCallback, type ReactNode } from "react";
+import { createContext, useContext, useState, useCallback, useEffect, type ReactNode } from "react";
+import { setErrorTranslator } from "@/lib/apiStatus";
+import { translateServerError } from "@/lib/serverErrors";
 
 export type Lang = "en" | "ru" | "es";
 
@@ -170,16 +172,17 @@ const translations: Record<string, Record<"ru" | "en", string>> = {
 
   // Dashboard Overview
   "overview.recentCampaigns": { ru: "Кампании", en: "Campaigns" },
+  "overview.activeCampaignsTitle": { ru: "Активные кампании", en: "Active campaigns" },
   "overview.id": { ru: "ID", en: "ID" },
   "overview.name": { ru: "Название", en: "Name" },
   "overview.status": { ru: "Статус", en: "Status" },
   "overview.impressions": { ru: "Показы", en: "Impressions" },
   "overview.spent": { ru: "Расход", en: "Spent" },
 
-  // StatsCards (overview)
-  "statsCards.impressions": { ru: "Показы", en: "Impressions" },
-  "statsCards.clicks": { ru: "Клики", en: "Clicks" },
-  "statsCards.ctr": { ru: "CTR", en: "CTR" },
+  // StatsCards (overview) — labels reflect that widgets aggregate active campaigns only
+  "statsCards.impressions": { ru: "Показы по активным кампаниям", en: "Impressions on active campaigns" },
+  "statsCards.clicks": { ru: "Клики по активным кампаниям", en: "Clicks on active campaigns" },
+  "statsCards.ctr": { ru: "CTR по активным кампаниям", en: "CTR of active campaigns" },
 
   // BalanceCard (overview)
   "balanceCard.title": { ru: "Баланс", en: "Balance" },
@@ -294,6 +297,8 @@ const translations: Record<string, Record<"ru" | "en", string>> = {
   "stats.country": { ru: "Страна", en: "Country" },
   "stats.total": { ru: "Итого", en: "Total" },
   "stats.noData": { ru: "Нет данных для выбранных фильтров", en: "No data for selected filters" },
+  "stats.rows": { ru: "Строк", en: "Rows" },
+  "stats.rowsAll": { ru: "Все", en: "All" },
   "stats.selectCampaignAndPeriod": { ru: "Выберите кампанию и период для просмотра статистики", en: "Select a campaign and period to view statistics" },
   "stats.filters": { ru: "Фильтры", en: "Filters" },
   "stats.filterCountry": { ru: "Страна", en: "Country" },
@@ -415,10 +420,68 @@ const translations: Record<string, Record<"ru" | "en", string>> = {
   "create.draftSavedDesc": { ru: "Создание кампании не завершено. Вы можете продолжить редактирование в любое время.", en: "Campaign creation is not finished. You can continue editing at any time." },
   "create.uploadImage": { ru: "Загрузить изображение", en: "Upload image" },
   "create.imageUploaded": { ru: "Изображение загружено", en: "Image uploaded" },
-  "create.imageFormatError": { ru: "Неверный формат. Поддерживаются: PNG, JPG, JPEG", en: "Invalid format. Supported: PNG, JPG, JPEG" },
-  "create.imageFormatHint": { ru: "Поддерживаемые форматы: PNG, JPG, JPEG", en: "Supported formats: PNG, JPG, JPEG" },
-  "create.imageSizeError": { ru: "Картинка должна весить не более 5 МБ", en: "Image must be 5 MB or less" },
+  "create.imageFormatError": { ru: "Неверный формат. Поддерживаются: PNG, JPG, JPEG, GIF", en: "Invalid format. Supported: PNG, JPG, JPEG, GIF" },
+  "create.imageFormatHint": { ru: "PNG, JPG или GIF, до 1 МБ", en: "PNG, JPG or GIF, up to 1 MB" },
+  "create.imageSizeError": { ru: "Размер файла не должен превышать 1 МБ", en: "File size must not exceed 1 MB" },
   "create.creativeLimit": { ru: "Можно добавить не более {max} креативов на кампанию", en: "You can add up to {max} creatives per campaign" },
+  "create.imageWrongSize": { ru: "Размер не соответствует требуемому ({w}×{h}). Если не обрежете вручную, картинка будет автоматически подогнана под формат при сохранении.", en: "Size doesn't match required ({w}×{h}). If you don't crop it manually, the image will be auto-fit to the format on save." },
+  "create.editImage": { ru: "Редактировать", en: "Edit" },
+  "create.previewCreative": { ru: "Предпросмотр", en: "Preview" },
+
+  // Banner creative type selector (image / html / iframe) — banner format only
+  "create.creativeType": { ru: "Тип креатива", en: "Creative type" },
+  "create.creativeTypeImage": { ru: "Изображение", en: "Image" },
+  "create.creativeTypeHtml": { ru: "HTML-код", en: "HTML code" },
+  "create.creativeTypeIframe": { ru: "iframe", en: "iframe" },
+  "create.htmlCode": { ru: "HTML-код баннера *", en: "Banner HTML code *" },
+  "create.htmlCodePlaceholder": { ru: "<html>...</html>", en: "<html>...</html>" },
+  "create.htmlCodeHint": { ru: "Вставьте полный HTML-код баннера. Убедитесь, что размер содержимого совпадает с {w}×{h}px.", en: "Paste the full banner HTML. Make sure the content size matches {w}×{h}px." },
+  "create.iframeUrl": { ru: "URL iframe *", en: "iframe URL *" },
+  "create.iframeUrlPlaceholder": { ru: "https://example.com/banner", en: "https://example.com/banner" },
+  "create.iframeUrlHint": { ru: "URL должен начинаться с https:// и отдавать содержимое размера {w}×{h}px.", en: "URL must start with https:// and serve content of size {w}×{h}px." },
+  "create.iframeUrlInvalid": { ru: "Введите корректный https:// URL", en: "Enter a valid https:// URL" },
+  "create.iframeTrackingWarning": {
+    ru: "Клики внутри iframe не отслеживаются TwinBid и не будут отображаться в статистике кампании. Для настройки отслеживания через редиректы на нашу ссылку обратитесь к менеджеру.",
+    en: "Clicks inside the iframe are not tracked by TwinBid and won't appear in campaign statistics. To set up tracking via redirects to our link, contact your manager.",
+  },
+  "create.iframeSizeConfirm": { ru: "Подтверждаю, что содержимое iframe имеет размер {w}×{h}px", en: "I confirm the iframe content is {w}×{h}px" },
+  "create.htmlSizeMismatch": { ru: "Размер содержимого HTML ({actualW}×{actualH}) не совпадает с требуемым {w}×{h}. Исправьте перед продолжением.", en: "HTML content size ({actualW}×{actualH}) doesn't match the required {w}×{h}. Fix before continuing." },
+  "create.iframeSizeMismatch": { ru: "Размер содержимого iframe ({actualW}×{actualH}) не совпадает с требуемым {w}×{h}. Исправьте перед продолжением.", en: "iframe content size ({actualW}×{actualH}) doesn't match the required {w}×{h}. Fix before continuing." },
+  "create.iframeSizeUnknown": { ru: "Не удалось автоматически определить размер iframe (cross-origin). Подтвердите вручную ниже.", en: "Couldn't automatically detect iframe size (cross-origin). Please confirm manually below." },
+  "create.iframeModeUrl": { ru: "Ссылка", en: "URL" },
+  "create.iframeModeCode": { ru: "Код iframe", en: "iframe code" },
+  "create.iframeCode": { ru: "Код iframe *", en: "iframe code *" },
+  "create.iframeCodePlaceholder": { ru: '<iframe src="https://example.com/banner" width="300" height="250"></iframe>', en: '<iframe src="https://example.com/banner" width="300" height="250"></iframe>' },
+  "create.iframeCodeNoSrc": { ru: "Не удалось найти атрибут src в коде iframe.", en: "Couldn't find a src attribute in the iframe code." },
+  "create.uploadHtmlFile": { ru: "Загрузить HTML-файл", en: "Upload HTML file" },
+  "create.htmlFileUploaded": { ru: "HTML-файл загружен", en: "HTML file uploaded" },
+  "create.htmlFileFormatError": { ru: "Неверный формат. Поддерживается .html / .htm", en: "Invalid format. Supported: .html / .htm" },
+  "create.htmlFileSizeError": { ru: "Размер HTML-файла не должен превышать 1 МБ", en: "HTML file size must not exceed 1 MB" },
+  "create.previewTitle": { ru: "Как креатив будет показан на сайте", en: "How the creative will look on a site" },
+  "create.previewDesktop": { ru: "Десктоп", en: "Desktop" },
+  "create.previewAndroid": { ru: "Android", en: "Android" },
+  "create.previewDisclaimer": { ru: "Примерный вид. На разных площадках оформление может отличаться.", en: "Approximate look. Rendering may differ across sites." },
+  "create.previewPopunderNote": { ru: "Popunder открывается как отдельная вкладка с вашим URL — предпросмотр не требуется.", en: "Popunder opens as a new tab with your URL — no preview needed." },
+  "create.cropTitle": { ru: "Редактор изображения", en: "Image editor" },
+  "create.cropSave": { ru: "Сохранить", en: "Save" },
+  "create.cropCancel": { ru: "Отмена", en: "Cancel" },
+  "create.cropZoom": { ru: "Масштаб", en: "Zoom" },
+  "create.cropHintFixed": { ru: "Перетащите картинку под рамку", en: "Drag the image under the frame" },
+  "create.cropHintSquare": { ru: "Перетащите картинку и растяните рамку", en: "Drag the image and resize the frame" },
+  "create.cropTooLarge": { ru: "Итоговое изображение больше 1 МБ, уменьшите область/зум", en: "Output image exceeds 1 MB, reduce area/zoom" },
+  "create.gifExactSize": { ru: "GIF должен быть точно {w}×{h} пикселей", en: "GIF must be exactly {w}×{h} pixels" },
+  "create.mismatchConfirmTitle": { ru: "Размер картинки не соответствует", en: "Image size doesn't match" },
+  "create.mismatchConfirmBody": { ru: "У некоторых креативов размер картинки не совпадает с требуемым.", en: "Some creatives have images that don't match the required size." },
+  "create.mismatchSaveAnyway": { ru: "Обрезать и сохранить", en: "Auto-crop and save" },
+  "create.mismatchGoEdit": { ru: "Отредактировать вручную", en: "Edit manually" },
+  "create.autoCropBody": { ru: "Ниже показано, как картинки будут автоматически обрезаны под требуемый формат. Подтвердите, чтобы сохранить, или вернитесь и обрежьте вручную.", en: "Below is how images will be auto-cropped to fit the required format. Confirm to save, or go back to edit manually." },
+  "create.autoCropPreparing": { ru: "Готовим превью…", en: "Preparing preview…" },
+  "create.autoCropBefore": { ru: "Оригинал", en: "Original" },
+  "create.autoCropAfter": { ru: "После обрезки", en: "After crop" },
+  "create.autoCropConfirm": { ru: "Обрезать и сохранить", en: "Auto-crop and save" },
+  "create.autoCropGifSkip": { ru: "GIF не может быть автоматически обрезан. Отредактируйте его вручную.", en: "GIF can't be auto-cropped. Please edit it manually." },
+  "create.autoCropGifNote": { ru: "Сохранение заблокировано: размер GIF не соответствует требуемому размеру баннера. GIF нельзя автоматически обрезать — замените файл на GIF нужного размера.", en: "Saving is blocked: GIF size doesn't match the required banner size. GIFs can't be auto-cropped — replace the file with a GIF of the correct size." },
+  "create.autoCropError": { ru: "Не удалось подготовить превью. Отредактируйте вручную.", en: "Failed to prepare preview. Please edit manually." },
   "create.creativeTitle": { ru: "Заголовок", en: "Title" },
   "create.creativeDescription": { ru: "Описание", en: "Description" },
   "create.creativeUrl": { ru: "Ссылка", en: "URL" },
@@ -462,6 +525,15 @@ const translations: Record<string, Record<"ru" | "en", string>> = {
   "stats.cr": { ru: "CR", en: "CR" },
   "stats.income": { ru: "Доход", en: "Income" },
   "stats.roi": { ru: "ROI", en: "ROI" },
+  "stats.cpm": { ru: "CPM", en: "CPM" },
+  "stats.cpc": { ru: "CPC", en: "CPC" },
+  "stats.confirmed": { ru: "Подтв.", en: "Confirmed" },
+  "stats.confirmedConversions": { ru: "Подтв. конверсии", en: "Confirmed conversions" },
+  "stats.confirmedIncome": { ru: "Подтв. доход", en: "Confirmed income" },
+  "stats.columns": { ru: "Колонки", en: "Columns" },
+  "stats.groupTraffic": { ru: "Трафик", en: "Traffic" },
+  "stats.groupCost": { ru: "Стоимость", en: "Cost" },
+  "stats.groupConversions": { ru: "Конверсии", en: "Conversions" },
 
   // Edit Campaign
   "edit.title": { ru: "Редактирование кампании", en: "Edit campaign" },
@@ -527,6 +599,8 @@ const translations: Record<string, Record<"ru" | "en", string>> = {
   "view.bid": { ru: "Ставка", en: "Bid" },
   "budget.belowMin": { ru: "Ставка ниже минимальной", en: "Bid is below minimum" },
   "budget.belowRec": { ru: "Ставка ниже рекомендованной — может быть мало показов", en: "Bid is below recommended — may result in few impressions" },
+  "budget.aboveMax": { ru: "Максимум: ${max}", en: "Maximum: ${max}" },
+  "budget.aboveMaxError": { ru: "Ставка не может превышать ${max}", en: "Bid cannot exceed ${max}" },
   "budget.startDate": { ru: "Дата начала", en: "Start date" },
   "budget.endDate": { ru: "Дата окончания", en: "End date" },
   "budget.endDateError": { ru: "Дата окончания не может быть раньше сегодняшнего дня", en: "End date cannot be earlier than today" },
@@ -618,6 +692,19 @@ const translations: Record<string, Record<"ru" | "en", string>> = {
   // Budget notification
   "notif.campaignBudgetLow": { ru: "Бюджет кампании заканчивается", en: "Campaign budget running low" },
   "notif.budgetRemaining": { ru: "бюджета осталось", en: "budget remaining" },
+
+  // Server error translations (shown as toast bodies)
+  "balance.toast.submitError": { ru: "Ошибка пополнения", en: "Top-up error" },
+  "errors.generic": { ru: "Не удалось выполнить операцию. Попробуйте позже.", en: "Something went wrong. Please try again later." },
+  "errors.promoAlreadyUsed": { ru: "Вы уже использовали этот промокод.", en: "You have already used this promo code." },
+  "errors.promoNotFound": { ru: "Промокод не найден.", en: "Promo code not found." },
+  "errors.insufficientFunds": { ru: "Недостаточно средств.", en: "Insufficient funds." },
+  "errors.unauthorized": { ru: "Сессия истекла. Войдите заново.", en: "Session expired. Please sign in again." },
+  "errors.forbidden": { ru: "Действие запрещено.", en: "Action not allowed." },
+  "errors.notFound": { ru: "Данные не найдены.", en: "Not found." },
+  "errors.network": { ru: "Проблемы с сетью. Проверьте соединение.", en: "Network problem. Please check your connection." },
+  "errors.rateLimit": { ru: "Слишком много запросов. Попробуйте позже.", en: "Too many requests. Please try again later." },
+  "errors.invalidHash": { ru: "Неверный хэш транзакции.", en: "Invalid transaction hash." },
 };
 
 
@@ -657,6 +744,11 @@ export function LanguageProvider({ children }: { children: ReactNode }) {
     if (lang === "ru") return entry.ru || entry.en || key;
     return entry.en || entry.ru || key;
   }, [lang]);
+
+  useEffect(() => {
+    setErrorTranslator((raw) => translateServerError(raw, t));
+    return () => setErrorTranslator(null);
+  }, [t]);
 
   return (
     <LanguageContext.Provider value={{ lang, setLang: handleSetLang, t }}>

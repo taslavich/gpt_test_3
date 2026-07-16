@@ -1,7 +1,6 @@
 import { ArrowRight } from "lucide-react";
 import { AuthDialog } from "./AuthDialog";
 import { useLanguage } from "@/contexts/LanguageContext";
-import { CircularBadge } from "./CinematicReveal";
 
 export function HeroSection() {
   const { t } = useLanguage();
@@ -52,18 +51,6 @@ export function HeroSection() {
           <a href="#benefits" className="pill pill-ghost px-7 py-3.5 text-[14px]">
             {t("hero.learnMore")}
           </a>
-        </div>
-      </div>
-
-      <div className="hidden md:block absolute bottom-10 left-10 z-20">
-        <CircularBadge text="SCROLL TO EXPLORE" />
-      </div>
-
-      <div className="hidden md:flex absolute bottom-12 right-10 z-20 flex-col items-end gap-2">
-        <div className="eyebrow !text-[10px]">N° 001 / SELF-SERVE DSP</div>
-        <div className="flex items-center gap-2.5">
-          <span className="w-1.5 h-1.5 rounded-full bg-primary glow-primary" />
-          <span className="text-[12px] text-muted-foreground font-mono-eyebrow">LIVE · {new Date().getUTCFullYear()}</span>
         </div>
       </div>
     </section>

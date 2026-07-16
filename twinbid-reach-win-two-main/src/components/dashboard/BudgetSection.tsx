@@ -36,6 +36,9 @@ const formatCpmLimits: Record<string, Record<TrafficQuality, { min: number; rec:
 
 const CPC_MULTIPLIER = 1.7 / 1000;
 
+const MAX_CPM = 1000;
+const MAX_CPC = 1;
+
 function getPriceLimits(formatKey: string, quality: TrafficQuality, model: PricingModel) {
   const limits = formatCpmLimits[formatKey] || formatCpmLimits.banner;
   const vals = limits[quality];
@@ -85,8 +88,10 @@ export function BudgetSection({
   const availableModels = getAvailableModels(formatKey);
   const limits = getPriceLimits(formatKey, trafficQuality, pricingModel);
   const priceNum = parseNumericValue(priceValue);
+  const maxPrice = pricingModel === "cpm" ? MAX_CPM : MAX_CPC;
   const isBelowMin = priceValue !== "" && priceNum < limits.min;
   const isBelowRec = priceValue !== "" && priceNum >= limits.min && priceNum < limits.rec;
+  const isAboveMax = priceValue !== "" && priceNum > maxPrice;
 
   // End date validation
   const endDateInvalid = endDate ? (() => {
@@ -174,7 +179,7 @@ export function BudgetSection({
         <div className="relative max-w-xs">
           <Input value={priceValue} onChange={(e) => setPriceValue(e.target.value)}
             placeholder={String(limits.rec)}
-            className={cn("bg-background border-border pr-8", (isBelowMin || errors.priceValue) && "border-destructive")} />
+            className={cn("bg-background border-border pr-8", (isBelowMin || isAboveMax || errors.priceValue) && "border-destructive")} />
           <span className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground">$</span>
         </div>
         <div className="space-y-1">
@@ -185,6 +190,12 @@ export function BudgetSection({
             <div className="flex items-center gap-1 text-destructive">
               <AlertTriangle className="h-3 w-3" />
               <p className="text-xs">{t("budget.belowMin")} (${limits.min})</p>
+            </div>
+          )}
+          {isAboveMax && (
+            <div className="flex items-center gap-1 text-destructive">
+              <AlertTriangle className="h-3 w-3" />
+              <p className="text-xs">{t("budget.aboveMax").replace("{max}", String(maxPrice))}</p>
             </div>
           )}
           {isBelowRec && (

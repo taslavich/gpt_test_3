@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Wallet, Plus, Receipt, Tag } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
+import { notifyError } from "@/lib/apiStatus";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { useProfile } from "@/contexts/ProfileContext";
 import { useAuth } from "@/contexts/AuthContext";
@@ -174,7 +175,7 @@ export default function DashboardBalance() {
       const created = await api.createTransaction(body);
       txId = created.id;
     } catch (e: any) {
-      toast.error(`${t("balance.toast.submitError") || "Error"}: ${e?.message || e}`);
+      notifyError(t("balance.toast.submitError"), e);
       return;
     }
     // Cache promo code text by tx id for history display (backend returns UUID).
