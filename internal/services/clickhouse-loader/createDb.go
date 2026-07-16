@@ -862,24 +862,37 @@ SELECT
     site_id,
     format,
     typic,
+
     toUInt64(0) AS impressions,
     toUInt64(0) AS clicks,
 
-    countIf(approved != 1) AS conversions,
-    sumIf(
-        payout,
-        approved != 1
-    ) AS payout,
+    toUInt64(countIf(approved != 1)) AS conversions,
+    toFloat64(sumIf(conversion_payout, approved != 1)) AS payout,
 
-    countIf(approved = 1) AS conversions_approved,
-    sumIf(
-        payout,
-        approved = 1
-    ) AS payout_approved,
+    toUInt64(countIf(approved = 1)) AS conversions_approved,
+    toFloat64(sumIf(conversion_payout, approved = 1)) AS payout_approved,
 
     toFloat64(0) AS spend_clicks_table,
     toFloat64(0) AS spend_views_table
-FROM {db}.fact_conversions
+FROM
+(
+    SELECT
+        win_user_id,
+        win_cid,
+        win_crid,
+        event_date,
+        device_type,
+        os,
+        event_hour,
+        browser,
+        geo,
+        site_id,
+        format,
+        typic,
+        approved,
+        payout AS conversion_payout
+    FROM {db}.fact_conversions
+) AS source
 GROUP BY
     win_user_id,
     win_cid,
