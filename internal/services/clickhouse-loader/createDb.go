@@ -653,7 +653,7 @@ WHERE a.clicks_uuid NOT IN (
 AND a.created_at >= now() - INTERVAL 60 MINUTE;
 
 CREATE MATERIALIZED VIEW IF NOT EXISTS {db}.mv_conversions_to_fact
-REFRESH EVERY 10 MINUTE
+REFRESH EVERY 1 MINUTE
 APPEND TO {db}.fact_conversions
 AS
 SELECT
