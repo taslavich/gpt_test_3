@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strconv"
+	"time"
 
 	"github.com/ClickHouse/clickhouse-go/v2"
 	"github.com/google/uuid"
@@ -55,7 +56,7 @@ func hasDataConversionProtoCH(record *eventspb.ConversionEvent) bool {
 		return false
 	}
 
-	return record.ConversionsUuid != ""
+	return record.ConversionsUuid != "" || record.ClicksUuid != ""
 }
 
 func insertBatchConversions(
@@ -71,10 +72,13 @@ func insertBatchConversions(
 	}
 
 	query := fmt.Sprintf(`
-		INSERT INTO %s (
-			clicks_uuid,
-			payout
-		)
+	INSERT INTO %s (
+		conversions_uuid,
+		clicks_uuid,
+		payout,
+		status,
+		conversion_event_time
+	)
 	`, table)
 
 	batch, err := ch.PrepareBatch(ctx, query)
@@ -85,10 +89,16 @@ func insertBatchConversions(
 	for i := range records {
 		r := &records[i]
 
-		conversions_u, err := uuid.Parse(r.ConversionsUuid)
+		conversionsUUID, err := uuid.Parse(r.ConversionsUuid)
 		if err != nil {
 			stats.BadUUIDCount++
-			conversions_u = uuid.Nil
+			conversionsUUID = uuid.Nil
+		}
+
+		clicksUUID, err := uuid.Parse(r.ClicksUuid)
+		if err != nil {
+			stats.BadUUIDCount++
+			clicksUUID = uuid.Nil
 		}
 
 		payout, err := parseFloat64WithError(r.Payout)
@@ -97,9 +107,26 @@ func insertBatchConversions(
 			payout = 0
 		}
 
-		if err := batch.Append(conversions_u, payout); err != nil {
+		conversionEventTime := time.Now().UTC()
+		if r.ConversionEventTimeMs > 0 {
+			conversionEventTime = time.UnixMilli(
+				r.ConversionEventTimeMs,
+			).UTC()
+		}
+
+		if err := batch.Append(
+			conversionsUUID,
+			clicksUUID,
+			payout,
+			r.Status,
+			conversionEventTime,
+		); err != nil {
 			stats.AppendErrors++
-			return stats, fmt.Errorf("Record %d: batch.Append: %w", i, err)
+			return stats, fmt.Errorf(
+				"Record %d: batch.Append: %w",
+				i,
+				err,
+			)
 		}
 	}
 

@@ -94,6 +94,7 @@ type burlRequest struct {
 type curlRequest struct {
 	ClickUuid string `in:"query=click_id" required:"true"`
 	Payout    string `in:"query=payout" required:"true"`
+	Status    string `in:"query=status"`
 }
 
 type putWorkStatusRequest struct {

@@ -46,7 +46,10 @@ const (
 )
 
 const (
-	PAYOUT = "PAYOUT"
+	CLICKS_UUID                  = "CLICKS_UUID"
+	PAYOUT                       = "PAYOUT"
+	STATUS                       = "STATUS"
+	CONVERSION_EVENT_TIME_COLUMN = "CONVERSION_EVENT_TIME"
 )
 
 const (

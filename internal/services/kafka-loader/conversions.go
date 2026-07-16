@@ -34,7 +34,10 @@ func ProcessBatchConversions(
 			WriteMessagesName:    "conversions",
 			SuccessLogName:       "Conversions",
 			HMGetFields: []string{
+				constants.CLICKS_UUID,
 				constants.PAYOUT,
+				constants.STATUS,
+				constants.CONVERSION_EVENT_TIME_COLUMN,
 			},
 			BuildMessage: buildConversionKafkaMessage,
 		},
@@ -45,14 +48,20 @@ func ProcessBatchConversions(
 
 func buildConversionKafkaMessage(
 	shardID int,
-	conversion_uuid string,
+	conversionsUUID string,
 	values []interface{},
 ) (kafka.Message, bool, error) {
-	payout := valueAsString(values, 0)
+	clicksUuid := valueAsString(values, 0)
+	payout := valueAsString(values, 1)
+	status := valueAsString(values, 2)
+	conversionEventTime := valueAsString(values, 3)
 
 	rawRecord := types.Conversions{
-		CONVERSIONS_UUID: conversion_uuid,
-		PAYOUT:           payout,
+		CONVERSIONS_UUID:      conversionsUUID,
+		CLICKS_UUID:           clicksUuid,
+		PAYOUT:                payout,
+		STATUS:                status,
+		CONVERSION_EVENT_TIME: conversionEventTime,
 	}
 
 	if !HasDataConversions(rawRecord) {
@@ -61,16 +70,26 @@ func buildConversionKafkaMessage(
 
 	record := &eventspb.ConversionEvent{
 		ConversionsUuid: rawRecord.CONVERSIONS_UUID,
+		ClicksUuid:      rawRecord.CLICKS_UUID,
 		Payout:          rawRecord.PAYOUT,
+		Status:          rawRecord.STATUS,
+		ConversionEventTimeMs: parseUnixMsSafe(
+			rawRecord.CONVERSION_EVENT_TIME,
+		),
 	}
 
 	protoData, err := proto.Marshal(record)
 	if err != nil {
-		return kafka.Message{}, false, fmt.Errorf("❌ shard %d: failed to marshal conversion protobuf for UUID %s: %v", shardID, conversion_uuid, err)
+		return kafka.Message{}, false, fmt.Errorf(
+			"❌ shard %d: failed to marshal conversion protobuf for UUID %s: %v",
+			shardID,
+			conversionsUUID,
+			err,
+		)
 	}
 
 	return kafka.Message{
-		Key:   []byte(conversion_uuid),
+		Key:   []byte(conversionsUUID),
 		Value: protoData,
 	}, true, nil
 }

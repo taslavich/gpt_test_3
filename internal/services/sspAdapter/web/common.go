@@ -332,12 +332,26 @@ func getCurl(
 		http.Error(w, "invalid conversion callback request", http.StatusBadRequest)
 		return
 	}
-	if err := utils.WriteConversionStats(ctx, redisClients, input.ClickUuid, input.Payout, true); err != nil {
+	status := strings.TrimSpace(input.Status)
+	conversionEventTime := time.Now().UTC()
+
+	conversionsUuid := uuid.NewString()
+
+	if err := utils.WriteConversionStats(
+		ctx,
+		redisClients,
+		conversionsUuid,
+		input.ClickUuid,
+		input.Payout,
+		status,
+		conversionEventTime,
+		true,
+	); err != nil {
 		recordRedisError(redisWriteErrorMonitor, err, sspAdapterWorkStatusURL)
 		w.WriteHeader(http.StatusServiceUnavailable)
 		return
 	}
-	if err := utils.AddUUIDToRedisSet(ctx, redisClients, redisSetConversions, input.ClickUuid, true); err != nil {
+	if err := utils.AddUUIDToRedisSet(ctx, redisClients, redisSetConversions, conversionsUuid, true); err != nil {
 		recordRedisError(redisWriteErrorMonitor, err, sspAdapterWorkStatusURL)
 		w.WriteHeader(http.StatusServiceUnavailable)
 		return

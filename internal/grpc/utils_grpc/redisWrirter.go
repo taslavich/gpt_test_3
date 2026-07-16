@@ -262,29 +262,46 @@ func WriteImpressionStats(
 func WriteConversionStats(
 	ctx context.Context,
 	redisClients []*redis.Client,
+	conversionsUuid string,
 	clickUuid string,
 	payout string,
+	status string,
+	conversionEventTime time.Time,
 	logged bool,
 ) error {
 	if !logged {
 		return nil
 	}
 
-	client, idx, err := redis_service.SelectShard(redisClients, clickUuid)
+	client, idx, err := redis_service.SelectShard(redisClients, conversionsUuid)
 	if err != nil {
-		return fmt.Errorf("failed to select shard for uuid %s: %w", clickUuid, err)
+		return fmt.Errorf(
+			"failed to select shard for uuid %s: %w",
+			conversionsUuid,
+			err,
+		)
 	}
 
 	fields := map[string]interface{}{
-		constants.PAYOUT: payout,
+		constants.CLICKS_UUID: clickUuid,
+		constants.PAYOUT:      payout,
+		constants.STATUS:      status,
+		constants.CONVERSION_EVENT_TIME_COLUMN: conversionEventTime.
+			UTC().
+			Format("2006-01-02 15:04:05.000"),
 	}
 
 	pipe := client.Pipeline()
-	pipe.HSet(ctx, clickUuid, fields)
-	pipe.Expire(ctx, clickUuid, RedisKeyTTL)
+	pipe.HSet(ctx, conversionsUuid, fields)
+	pipe.Expire(ctx, conversionsUuid, RedisKeyTTL)
 
 	if _, err := pipe.Exec(ctx); err != nil {
-		return fmt.Errorf("failed to write conversion stats to Redis (uuid=%s, shard=%d): %w", clickUuid, idx, err)
+		return fmt.Errorf(
+			"failed to write conversion stats to Redis (uuid=%s, shard=%d): %w",
+			conversionsUuid,
+			idx,
+			err,
+		)
 	}
 
 	return nil

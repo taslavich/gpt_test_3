@@ -19,6 +19,23 @@ func CreateDB(ctx context.Context, ch clickhouse.Conn, database string) error {
 CREATE DATABASE IF NOT EXISTS {db};
 
 -- ============================================================
+-- DROP MATERIALIZED VIEWS BEFORE RECREATION
+-- ============================================================
+
+DROP VIEW IF EXISTS {db}.mv_fact_conversions_to_agg_stats SYNC;
+DROP VIEW IF EXISTS {db}.mv_fact_clicks_to_agg_stats SYNC;
+DROP VIEW IF EXISTS {db}.mv_fact_impressions_to_agg_stats SYNC;
+
+DROP VIEW IF EXISTS {db}.mv_conversions_to_fact SYNC;
+DROP VIEW IF EXISTS {db}.mv_clicks_to_fact SYNC;
+DROP VIEW IF EXISTS {db}.mv_impressions_to_fact SYNC;
+
+DROP VIEW IF EXISTS {db}.mv_ortb_minute_metrics SYNC;
+
+DROP VIEW IF EXISTS {db}.mv_ip_limit_ipv6 SYNC;
+DROP VIEW IF EXISTS {db}.mv_ip_limit_ipv4 SYNC;
+
+-- ============================================================
 -- ORTB TABLE
 -- ============================================================
 
@@ -191,8 +208,10 @@ TTL created_at + INTERVAL 1 HOUR DELETE;
 CREATE TABLE IF NOT EXISTS {db}.conversions_in
 (
     created_at        DateTime64(3, 'UTC') DEFAULT now64(3),
+    conversion_event_time DateTime64(3, 'UTC') DEFAULT now64(3),
     clicks_uuid UUID,
     payout Float64 DEFAULT 0,
+    status LowCardinality(String) DEFAULT '',
 
     INDEX idx_conversions_in_clicks_uuid clicks_uuid TYPE bloom_filter(0.01) GRANULARITY 1
 )
@@ -211,6 +230,16 @@ ALTER TABLE {db}.impressions_in
 
 ALTER TABLE {db}.clicks_in
     ADD INDEX IF NOT EXISTS idx_clicks_in_clicks_uuid clicks_uuid TYPE bloom_filter(0.01) GRANULARITY 1;
+
+ALTER TABLE {db}.conversions_in
+    ADD COLUMN IF NOT EXISTS conversion_event_time DateTime64(3, 'UTC')
+    DEFAULT now64(3)
+    AFTER created_at;
+
+ALTER TABLE {db}.conversions_in
+    ADD COLUMN IF NOT EXISTS status LowCardinality(String)
+    DEFAULT ''
+    AFTER payout;
 
 
 -- ============================================================
@@ -329,6 +358,7 @@ SETTINGS index_granularity = 8192;
 
 CREATE TABLE IF NOT EXISTS {db}.fact_conversions
 (
+    conversion_event_time DateTime64(3, 'UTC'),
     event_time        DateTime64(3, 'UTC'),
     event_date        Date,
     event_hour        DateTime('UTC'),
@@ -371,6 +401,8 @@ CREATE TABLE IF NOT EXISTS {db}.fact_conversions
     win_user_id       String DEFAULT '',
 
     payout            Float64 DEFAULT 0,
+    status            LowCardinality(String) DEFAULT '',
+    approved          UInt8 DEFAULT 0,
     created_at        DateTime64(3, 'UTC') DEFAULT now64(3)
 )
 ENGINE = MergeTree
@@ -384,6 +416,20 @@ ALTER TABLE {db}.fact_impressions
 
 ALTER TABLE {db}.fact_clicks
     ADD COLUMN IF NOT EXISTS clicks_uuid UUID AFTER uuid;
+
+ALTER TABLE {db}.fact_conversions
+    ADD COLUMN IF NOT EXISTS conversion_event_time DateTime64(3, 'UTC')
+    DEFAULT now64(3);
+
+ALTER TABLE {db}.fact_conversions
+    ADD COLUMN IF NOT EXISTS status LowCardinality(String)
+    DEFAULT ''
+    AFTER payout;
+
+ALTER TABLE {db}.fact_conversions
+    ADD COLUMN IF NOT EXISTS approved UInt8
+    DEFAULT 0
+    AFTER status;
 
 
 -- ============================================================
@@ -414,10 +460,13 @@ CREATE TABLE IF NOT EXISTS {db}.agg_stats
     impressions         UInt64,
     clicks              UInt64,
     conversions         UInt64,
+    payout Float64,
+
+    conversions_approved UInt64,
+    payout_approved Float64,
 
     spend_clicks_table  Float64,
-    spend_views_table   Float64,
-    spend_payout_table  Float64
+    spend_views_table   Float64
 )
 ENGINE = SummingMergeTree
 PARTITION BY toYYYYMMDD(event_date)
@@ -438,8 +487,11 @@ ORDER BY
 )
 SETTINGS index_granularity = 8192;
 
-ALTER TABLE ads.agg_stats ADD COLUMN IF NOT EXISTS conversions UInt64 DEFAULT 0;
-ALTER TABLE ads.agg_stats ADD COLUMN IF NOT EXISTS spend_payout_table Float64 DEFAULT 0;
+ALTER TABLE {db}.agg_stats
+    ADD COLUMN IF NOT EXISTS conversions UInt64 DEFAULT 0,
+    ADD COLUMN IF NOT EXISTS payout Float64 DEFAULT 0,
+    ADD COLUMN IF NOT EXISTS conversions_approved UInt64 DEFAULT 0,
+    ADD COLUMN IF NOT EXISTS payout_approved Float64 DEFAULT 0;
 
 -- ============================================================
 -- ORTB MINUTE METRICS
@@ -601,6 +653,7 @@ REFRESH EVERY 10 MINUTE
 APPEND TO {db}.fact_conversions
 AS
 SELECT
+    a.conversion_event_time AS conversion_event_time,
     o.event_time AS event_time,
     toDate(o.event_time) AS event_date,
     toStartOfHour(toDateTime(o.event_time, 'UTC')) AS event_hour,
@@ -642,16 +695,42 @@ SELECT
     o.win_cid AS win_cid,
     o.win_crid AS win_crid,
     o.win_user_id AS win_user_id,
-    a.payout AS payout
-FROM {db}.conversions_in AS a
+    a.payout AS payout,
+    a.status AS status,
+    a.approved AS approved
+FROM
+(
+    SELECT
+        created_at,
+        conversion_event_time,
+        clicks_uuid,
+        payout,
+
+        upperUTF8(ifNull(status, '')) AS status,
+
+        toUInt8(
+            upperUTF8(ifNull(status, '')) = 'APPROVED'
+        ) AS approved
+
+    FROM {db}.conversions_in
+) AS a
 ANY INNER JOIN {db}.fact_clicks AS o
     ON a.clicks_uuid = o.clicks_uuid
-WHERE a.clicks_uuid NOT IN (
-    SELECT clicks_uuid
-    FROM {db}.fact_conversions
-    WHERE created_at >= now() - INTERVAL 1445 MINUTE
-)
-AND a.created_at >= now() - INTERVAL 1440 MINUTE;
+WHERE a.status IN ('', 'PENDING', 'APPROVED')
+  AND a.created_at >= now() - toIntervalMinute(1440)
+  AND (
+      a.clicks_uuid,
+      a.conversion_event_time,
+      a.approved
+  ) NOT IN
+  (
+      SELECT
+          clicks_uuid,
+          conversion_event_time,
+          approved
+      FROM {db}.fact_conversions
+      WHERE created_at >= now() - toIntervalMinute(1445)
+  );
 -- ============================================================
 -- MV: FACT IMPRESSIONS -> AGG STATS
 -- browser_version здесь специально НЕ группируется
@@ -680,10 +759,13 @@ SELECT
 
     count() AS impressions,
     toUInt64(0) AS clicks,
+
     toUInt64(0)  as conversions,
+    toFloat64(0) AS payout,
+    toUInt64(0) AS conversions_approved,
+    toFloat64(0) AS payout_approved,
 
     toFloat64(0) AS spend_clicks_table,
-    toFloat64(0) AS spend_payout_table,
 
     sum(win_dsp_price / 1000) AS spend_views_table
 FROM {db}.fact_impressions
@@ -734,14 +816,17 @@ SELECT
 
     toUInt64(0) AS impressions,
     count() AS clicks,
+
     toUInt64(0)  as conversions,
+    toFloat64(0) AS payout,
+    toUInt64(0) AS conversions_approved,
+    toFloat64(0) AS payout_approved,
 
     CASE 
         WHEN format = 'POP' THEN sum(win_dsp_price) / 1000
         ELSE sum(win_dsp_price)
     END AS spend_clicks_table,
-    toFloat64(0) AS spend_views_table,
-    toFloat64(0) AS spend_payout_table
+    toFloat64(0) AS spend_views_table
 FROM {db}.fact_clicks
 GROUP BY
     win_user_id,
@@ -779,11 +864,22 @@ SELECT
     typic,
     toUInt64(0) AS impressions,
     toUInt64(0) AS clicks,
-    count() AS conversions,
+
+    countIf(approved != 1) AS conversions,
+    sumIf(
+        payout,
+        approved != 1
+    ) AS payout,
+
+    countIf(approved = 1) AS conversions_approved,
+    sumIf(
+        payout,
+        approved = 1
+    ) AS payout_approved,
+
     toFloat64(0) AS spend_clicks_table,
-    toFloat64(0) AS spend_views_table,
-    sum(win_final_price) AS spend_payout_table
-FROM ads.fact_conversions
+    toFloat64(0) AS spend_views_table
+FROM {db}.fact_conversions
 GROUP BY
     win_user_id,
     win_cid,
