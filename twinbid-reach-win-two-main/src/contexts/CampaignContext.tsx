@@ -294,7 +294,11 @@ function readApiTargeting(c: ApiCampaign): Record<string, TargetingState> {
 
 // ---- Mapping --------------------------------------------------------------
 function mapApiCampaignToUi(c: ApiCampaign, creatives: Creative[]): Campaign {
-  const priceValue = Number(c.base_price) || 0;
+  let priceValue = Number(c.base_price) || 0;
+  // Popunder CPC is stored as CPM-equivalent (value * 1000). Convert back for display.
+  if (c.format_type === "popunder" && c.pricing_model === "cpc") {
+    priceValue = priceValue / 1000;
+  }
   return {
     id: c.campaign_id,
     name: c.campaign_name,
@@ -405,9 +409,9 @@ function buildApiCampaignBody(c: Omit<Campaign, "id">): Omit<ApiCampaign, "campa
   // so the backend can apply its own default / nullability handling.
   if (c.brandName) body.brand_name = c.brandName;
   // For popunder, the backend only stores CPM. If the user selected CPC,
-  // convert the value to an equivalent CPM and send CPM as the model.
+  // send the value as its CPM-equivalent (×1000), but keep pricing_model = "cpc"
+  // so the user's choice is preserved and displayed back correctly.
   if (c.formatKey === "popunder" && c.pricingModel === "cpc") {
-    body.pricing_model = "cpm";
     body.base_price = c.priceValue * 1000;
   }
   return body;
@@ -542,16 +546,13 @@ export function CampaignProvider({ children }: { children: ReactNode }) {
 
   const updateCampaign = useCallback(async (id: string, updates: Partial<Campaign>) => {
     if (!user) throw new Error("Not authenticated");
-    // If the user selected CPC for popunder, convert to CPM before sending.
+    // For popunder CPC, keep pricing_model = "cpc" but store the value as CPM-equivalent (×1000).
     const current = campaigns.find(c => c.id === id);
     const effectiveUpdates: Partial<Campaign> = { ...updates };
     const fmt = effectiveUpdates.formatKey ?? current?.formatKey;
     const pm = effectiveUpdates.pricingModel ?? current?.pricingModel;
-    if (fmt === "popunder" && pm === "cpc") {
-      effectiveUpdates.pricingModel = "cpm";
-      if (effectiveUpdates.priceValue !== undefined) {
-        effectiveUpdates.priceValue = (effectiveUpdates.priceValue as number) * 1000;
-      }
+    if (fmt === "popunder" && pm === "cpc" && effectiveUpdates.priceValue !== undefined) {
+      effectiveUpdates.priceValue = (effectiveUpdates.priceValue as number) * 1000;
     }
     // Sync creatives BEFORE patching the campaign. Some status transitions
     // (draft → moderation) are rejected by the backend when the campaign has

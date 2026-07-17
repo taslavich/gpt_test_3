@@ -356,32 +356,34 @@ function ListItem({ config, list: rawList, onUpdate }: {
     onUpdate({ items: list.items.filter(i => i !== item) });
   };
 
-  // For schedule, only show white/black (not "none" label, use "Off")
+  // For schedule, the picker is always active (no off switch).
   const modeButtons = isSchedule
-    ? (["none", "white"] as const)
+    ? ([] as const)
     : (["none", "white", "black"] as const);
 
   return (
     <div className="space-y-3 p-4 rounded-lg bg-background/50 border border-border/50">
       <div className="flex items-center justify-between">
         <Label className="font-medium">{t(config.labelKey)}</Label>
-        <div className="flex gap-1.5">
-          {modeButtons.map((m) => (
-            <Button key={m} type="button" size="sm" variant="outline"
-              onClick={() => onUpdate({ mode: m })}
-              className={
-                list.mode === m
-                  ? m === "white" ? "bg-green-600 text-white border-green-600 hover:bg-green-700 hover:text-white"
-                    : m === "black" ? "bg-red-600 text-white border-red-600 hover:bg-red-700 hover:text-white"
-                    : "bg-primary text-primary-foreground border-primary"
-                  : "border-border"
-              }>
-              {m === "none" ? t("targeting.off") : isSchedule ? t("targeting.on") : m === "white" ? "White" : "Black"}
-            </Button>
-          ))}
-        </div>
+        {modeButtons.length > 0 && (
+          <div className="flex gap-1.5">
+            {modeButtons.map((m) => (
+              <Button key={m} type="button" size="sm" variant="outline"
+                onClick={() => onUpdate({ mode: m })}
+                className={
+                  list.mode === m
+                    ? m === "white" ? "bg-green-600 text-white border-green-600 hover:bg-green-700 hover:text-white"
+                      : m === "black" ? "bg-red-600 text-white border-red-600 hover:bg-red-700 hover:text-white"
+                      : "bg-primary text-primary-foreground border-primary"
+                    : "border-border"
+                }>
+                {m === "none" ? t("targeting.off") : m === "white" ? "White" : "Black"}
+              </Button>
+            ))}
+          </div>
+        )}
       </div>
-      {list.mode !== "none" && (
+      {(isSchedule || list.mode !== "none") && (
         <div className="space-y-2">
           {isSchedule ? (
             <SchedulePicker items={list.items} onUpdate={(items) => onUpdate({ items })} t={t} />
@@ -415,7 +417,7 @@ function ListItem({ config, list: rawList, onUpdate }: {
 export function TargetingSection({ lists, onUpdate }: TargetingSectionProps) {
   const { t } = useLanguage();
 
-  // Migrate old dayOfWeek/hour data to schedule format
+  // Migrate old dayOfWeek/hour data to schedule format and force schedule always on.
   const effectiveLists = { ...lists };
   if ((lists.dayOfWeek?.mode !== "none" && lists.dayOfWeek?.items?.length) || (lists.hour?.mode !== "none" && lists.hour?.items?.length)) {
     if (!lists.schedule || lists.schedule.mode === "none") {
@@ -429,6 +431,12 @@ export function TargetingSection({ lists, onUpdate }: TargetingSectionProps) {
       }
       effectiveLists.schedule = { mode: "white", items: scheduleItems };
     }
+  }
+  // Schedule cannot be turned off; default to all days/hours if missing or disabled.
+  if (!effectiveLists.schedule || effectiveLists.schedule.mode === "none" || !effectiveLists.schedule.items?.length) {
+    const allItems: string[] = [];
+    for (const d of DAYS) for (let h = 0; h < 24; h++) allItems.push(`${d}:${h}`);
+    effectiveLists.schedule = { mode: "white", items: allItems };
   }
 
   return (

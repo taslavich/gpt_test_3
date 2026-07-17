@@ -240,7 +240,7 @@ export default function DashboardCampaigns() {
                       <span className="inline-flex items-center">{t("overview.impressions")}<SortIcon col="impressions" /></span>
                     </th>
                     <th className="text-left py-3 px-4 text-sm font-medium text-muted-foreground cursor-pointer select-none hover:text-foreground transition-colors" onClick={() => handleSort("clicks")}>
-                      <span className="inline-flex items-center">{t("statsCards.clicks")}<SortIcon col="clicks" /></span>
+                      <span className="inline-flex items-center">{t("campaigns.clicks")}<SortIcon col="clicks" /></span>
                     </th>
                     <th className="text-left py-3 px-4 text-sm font-medium text-muted-foreground cursor-pointer select-none hover:text-foreground transition-colors" onClick={() => handleSort("ctr")}>
                       <span className="inline-flex items-center">CTR<SortIcon col="ctr" /></span>

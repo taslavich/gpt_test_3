@@ -157,6 +157,7 @@ export const ES_TRANSLATIONS: Record<string, string> = {
   "overview.name": "Nombre",
   "overview.status": "Estado",
   "overview.impressions": "Impresiones",
+  "overview.clicks": "Clics",
   "overview.spent": "Gasto",
 
   // StatsCards refer to active campaigns
@@ -301,6 +302,7 @@ export const ES_TRANSLATIONS: Record<string, string> = {
 
   // Campaigns page
   "campaigns.title": "Campañas",
+  "campaigns.clicks": "Clics",
   "campaigns.subtitle": "Gestiona tus campañas publicitarias",
   "campaigns.create": "Crear campaña",
   "campaigns.searchPlaceholder": "Buscar por nombre o ID...",

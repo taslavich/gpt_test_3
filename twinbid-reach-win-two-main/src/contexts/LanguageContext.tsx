@@ -189,6 +189,7 @@ const translations: Record<string, Record<"ru" | "en", string>> = {
   "overview.name": { ru: "Название", en: "Name" },
   "overview.status": { ru: "Статус", en: "Status" },
   "overview.impressions": { ru: "Показы", en: "Impressions" },
+  "overview.clicks": { ru: "Клики", en: "Clicks" },
   "overview.spent": { ru: "Расход", en: "Spent" },
 
   // StatsCards (overview) — labels reflect that widgets aggregate active campaigns only
@@ -330,6 +331,7 @@ const translations: Record<string, Record<"ru" | "en", string>> = {
 
   // Campaigns page
   "campaigns.title": { ru: "Кампании", en: "Campaigns" },
+  "campaigns.clicks": { ru: "Клики", en: "Clicks" },
   "campaigns.subtitle": { ru: "Управляйте вашими рекламными кампаниями", en: "Manage your ad campaigns" },
   "campaigns.create": { ru: "Создать кампанию", en: "Create campaign" },
   "campaigns.searchPlaceholder": { ru: "Поиск по названию или ID...", en: "Search by name or ID..." },
