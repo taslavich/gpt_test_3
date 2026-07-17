@@ -210,3 +210,12 @@ func optimizeGoRuntimeSafe(serviceType string) {
 		runtime.GOMAXPROCS(0),
 		debug.SetGCPercent(-1))
 }
+
+func ShouldSSPDomain(value string) bool {
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case "adl_test", "mc_test", "1":
+		return true
+	default:
+		return false
+	}
+}

@@ -6,12 +6,12 @@ import (
 	"fmt"
 	"log"
 	"runtime/debug"
-	"strings"
 	"sync/atomic"
 	"time"
 
 	advGrpc "gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/proto/services/adv"
 	ortb "gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/proto/types/ortb_V2_5"
+	utils "gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/utils_grpc"
 	auction "gitlab.com/twinbid-exchange/RTB-exchange/internal/services/adv/service"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -51,15 +51,6 @@ func NewServer(auctionService *auction.AuctionService, work *WorkController) *Se
 	return &Server{auctionService: auctionService, work: work}
 }
 
-func shouldSSPDomain(value string) bool {
-	switch strings.ToLower(strings.TrimSpace(value)) {
-	case "adl_test", "mc_test", "1":
-		return true
-	default:
-		return false
-	}
-}
-
 func (s *Server) DoAuction(ctx context.Context, req *advGrpc.DoAuctionRequest) (resp *advGrpc.DoAuctionResponse, funcErr error) {
 	defer func() {
 		if recovered := recover(); recovered != nil {
@@ -68,7 +59,7 @@ func (s *Server) DoAuction(ctx context.Context, req *advGrpc.DoAuctionRequest) (
 		}
 	}()
 
-	if shouldSSPDomain(req.SspDomain) {
+	if utils.ShouldSSPDomain(req.SspDomain) {
 		return nil, status.Error(codes.Unavailable, disabledMessage)
 	}
 
