@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"runtime/debug"
+	"strings"
 	"sync/atomic"
 	"time"
 
@@ -50,6 +51,15 @@ func NewServer(auctionService *auction.AuctionService, work *WorkController) *Se
 	return &Server{auctionService: auctionService, work: work}
 }
 
+func shouldSSPDomain(value string) bool {
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case "adl_test", "mc_test", "1":
+		return true
+	default:
+		return false
+	}
+}
+
 func (s *Server) DoAuction(ctx context.Context, req *advGrpc.DoAuctionRequest) (resp *advGrpc.DoAuctionResponse, funcErr error) {
 	defer func() {
 		if recovered := recover(); recovered != nil {
@@ -57,6 +67,10 @@ func (s *Server) DoAuction(ctx context.Context, req *advGrpc.DoAuctionRequest) (
 			funcErr = status.Error(codes.Internal, fmt.Sprintf("ADV auction panic: %v\n%s", recovered, debug.Stack()))
 		}
 	}()
+
+	if shouldSSPDomain(req.SspDomain) {
+		return nil, status.Error(codes.Unavailable, disabledMessage)
+	}
 
 	log.Println("[INFO] ADV auction: request received")
 
