@@ -104,59 +104,6 @@ func maxTime(a, b time.Time) time.Time {
 	return b
 }
 
-// MigrateADVSchema performs all ADV schema changes atomically. The DO blocks
-// keep compatibility with installations that still have a legacy balance or
-// budget column.
-func MigrateADVSchema(ctx context.Context, db *sql.DB) error {
-	if db == nil {
-		return errors.New("postgres db is nil")
-	}
-	tx, err := db.BeginTx(ctx, nil)
-	if err != nil {
-		return fmt.Errorf("begin ADV schema migration: %w", err)
-	}
-	defer func() { _ = tx.Rollback() }()
-
-	statements := []string{
-		`DO $$
-		BEGIN
-			IF NOT EXISTS (
-				SELECT 1 FROM information_schema.columns
-				WHERE table_schema = current_schema() AND table_name = 'users' AND column_name = 'goal'
-			) THEN
-				ALTER TABLE users ADD COLUMN goal NUMERIC NOT NULL DEFAULT 0;
-				IF EXISTS (
-					SELECT 1 FROM information_schema.columns
-					WHERE table_schema = current_schema() AND table_name = 'users' AND column_name = 'balance'
-				) THEN
-					EXECUTE 'UPDATE users SET goal = balance WHERE balance IS NOT NULL';
-				END IF;
-			END IF;
-		END $$`,
-		`ALTER TABLE users ADD COLUMN IF NOT EXISTS spent NUMERIC NOT NULL DEFAULT 0`,
-		`ALTER TABLE campaigns ADD COLUMN IF NOT EXISTS spent NUMERIC NOT NULL DEFAULT 0`,
-		`DO $$
-		BEGIN
-			IF NOT EXISTS (
-				SELECT 1 FROM information_schema.columns
-				WHERE table_schema = current_schema() AND table_name = 'campaigns'
-				AND column_name IN ('goal_total', 'goal', 'budget')
-			) THEN
-				ALTER TABLE campaigns ADD COLUMN goal_total NUMERIC NOT NULL DEFAULT 0;
-			END IF;
-		END $$`,
-	}
-	for _, statement := range statements {
-		if _, err := tx.ExecContext(ctx, statement); err != nil {
-			return fmt.Errorf("ADV schema migration failed: %w", err)
-		}
-	}
-	if err := tx.Commit(); err != nil {
-		return fmt.Errorf("commit ADV schema migration: %w", err)
-	}
-	return nil
-}
-
 func (s *AuctionService) RefreshFromPostgres(ctx context.Context, db *sql.DB) error {
 	snapshot, err := LoadSnapshotFromPostgres(ctx, db)
 	if err != nil {
@@ -189,20 +136,31 @@ func LoadSnapshotFromPostgres(ctx context.Context, db *sql.DB) (*Snapshot, error
 	if db == nil {
 		return nil, errors.New("postgres db is nil")
 	}
-	goalColumn, err := campaignGoalColumn(ctx, db)
-	if err != nil {
-		return nil, err
-	}
-
-	query := fmt.Sprintf(`
-		SELECT
-			user_id::text, campaign_id::text, base_price::text,
-			evenness_by_slot_mode, start_ts, end_ts, active_intervals,
-			country, language, device_type, os, browser, site_id, ip,
-			format_type, quality_type, pricing_model, status, traffic_type,
-			%s::text
-		FROM campaigns
-		WHERE status = 'active'`, goalColumn)
+	query := `
+	SELECT
+		user_id::text,
+		campaign_id::text,
+		base_price::text,
+		evenness_by_slot_mode,
+		start_ts,
+		end_ts,
+		active_intervals,
+		country,
+		language,
+		device_type,
+		os,
+		browser,
+		site_id,
+		ip,
+		format_type,
+		quality_type,
+		pricing_model,
+		status,
+		traffic_type,
+		goal_total_dollars::text
+	FROM campaigns
+	WHERE status = 'active'
+`
 	rows, err := db.QueryContext(ctx, query)
 	if err != nil {
 		return nil, fmt.Errorf("query active campaigns: %w", err)
@@ -221,7 +179,7 @@ func LoadSnapshotFromPostgres(ctx context.Context, db *sql.DB) (*Snapshot, error
 			&row.Evenness, &row.StartTS, &row.EndTS, &row.ActiveIntervals,
 			&row.Country, &row.Language, &row.DeviceType, &row.OS, &row.Browser, &row.SiteID, &row.IP,
 			&row.Format, &row.Quality, &row.PricingModel, &row.Status, &row.TrafficType,
-			&row.GoalTotal,
+			&row.GoalTotalDollars,
 		); err != nil {
 			return nil, fmt.Errorf("scan active campaign: %w", err)
 		}
@@ -264,7 +222,11 @@ func LoadSnapshotFromPostgres(ctx context.Context, db *sql.DB) (*Snapshot, error
 			continue
 		}
 		if _, ok := userGoals[campaign.UserID]; !ok {
-			log.Printf("ADV snapshot: skipping campaign %s because users.goal is missing or invalid for owner %s", campaign.ID, campaign.UserID)
+			log.Printf(
+				"ADV snapshot: skipping campaign %s because users.goal_total_dollars is missing or invalid for owner %s",
+				campaign.ID,
+				campaign.UserID,
+			)
 			continue
 		}
 		validCampaigns = append(validCampaigns, campaign)
@@ -275,43 +237,31 @@ func LoadSnapshotFromPostgres(ctx context.Context, db *sql.DB) (*Snapshot, error
 	return &Snapshot{Campaigns: validCampaigns, UserGoals: userGoals}, nil
 }
 
-func campaignGoalColumn(ctx context.Context, db *sql.DB) (string, error) {
-	rows, err := db.QueryContext(ctx, `
-		SELECT column_name
-		FROM information_schema.columns
-		WHERE table_schema = current_schema()
-		  AND table_name = 'campaigns'
-		  AND column_name IN ('goal_total', 'goal', 'budget')`)
-	if err != nil {
-		return "", fmt.Errorf("discover campaign goal column: %w", err)
-	}
-	defer rows.Close()
-	available := make(map[string]bool)
-	for rows.Next() {
-		var name string
-		if err := rows.Scan(&name); err != nil {
-			return "", err
-		}
-		available[name] = true
-	}
-	if err := rows.Err(); err != nil {
-		return "", fmt.Errorf("iterate campaign goal columns: %w", err)
-	}
-	for _, preferred := range []string{"goal_total", "goal", "budget"} {
-		if available[preferred] {
-			return preferred, nil
-		}
-	}
-	return "", errors.New("campaign goal column is missing")
-}
-
 type campaignDBRow struct {
-	UserID, CampaignID, BasePrice, GoalTotal           sql.NullString
-	Format, Quality, PricingModel, Status, TrafficType sql.NullString
-	Evenness                                           sql.NullBool
-	StartTS, EndTS                                     sql.NullTime
-	ActiveIntervals, Country, Language, DeviceType, OS []byte
-	Browser, SiteID, IP                                []byte
+	UserID           sql.NullString
+	CampaignID       sql.NullString
+	BasePrice        sql.NullString
+	GoalTotalDollars sql.NullString
+
+	Format       sql.NullString
+	Quality      sql.NullString
+	PricingModel sql.NullString
+	Status       sql.NullString
+	TrafficType  sql.NullString
+
+	Evenness sql.NullBool
+
+	StartTS sql.NullTime
+	EndTS   sql.NullTime
+
+	ActiveIntervals []byte
+	Country         []byte
+	Language        []byte
+	DeviceType      []byte
+	OS              []byte
+	Browser         []byte
+	SiteID          []byte
+	IP              []byte
 }
 
 func (r campaignDBRow) campaign() (*Campaign, error) {
@@ -324,10 +274,17 @@ func (r campaignDBRow) campaign() (*Campaign, error) {
 	if err != nil {
 		return nil, fmt.Errorf("campaign %s base_price: %w", id, err)
 	}
-	goal, err := parseFiniteNonNegative(r.GoalTotal.String)
+	goalTotalDollars, err := parseFiniteNonNegative(
+		r.GoalTotalDollars.String,
+	)
 	if err != nil {
-		return nil, fmt.Errorf("campaign %s goal: %w", id, err)
+		return nil, fmt.Errorf(
+			"campaign %s goal_total_dollars: %w",
+			id,
+			err,
+		)
 	}
+
 	if basePrice <= 0 {
 		return nil, fmt.Errorf("campaign %s base_price must be positive", id)
 	}
@@ -396,7 +353,7 @@ func (r campaignDBRow) campaign() (*Campaign, error) {
 		PricingModel: pricingModel,
 		Format:       format, TrafficType: trafficType,
 		QualitySegment: quality,
-		BasePrice:      basePrice, GoalTotalDollars: goal, EvennessBySlotMode: r.Evenness.Valid && r.Evenness.Bool,
+		BasePrice:      basePrice, GoalTotalDollars: goalTotalDollars, EvennessBySlotMode: r.Evenness.Valid && r.Evenness.Bool,
 		StartTS: r.StartTS.Time.UTC(), EndTS: r.EndTS.Time.UTC(), ActiveIntervals: activeIntervals,
 		CountryFilter: country, LanguageFilter: language, DeviceTypeFilter: deviceType,
 		OSFilter: osFilter, BrowserFilter: browser, SiteIDFilter: siteID, IPFilter: ip,
@@ -475,20 +432,40 @@ func loadUserGoalsBatch(ctx context.Context, db *sql.DB, userIDs []string) (map[
 	if len(userIDs) == 0 {
 		return goals, nil
 	}
-	rows, err := db.QueryContext(ctx, `SELECT id::text, goal::text FROM users WHERE id::text = ANY($1)`, pq.Array(userIDs))
+	rows, err := db.QueryContext(
+		ctx,
+		`
+		SELECT
+			id::text,
+			goal_total_dollars::text
+		FROM users
+		WHERE id::text = ANY($1)
+	`,
+		pq.Array(userIDs),
+	)
 	if err != nil {
-		return nil, fmt.Errorf("batch query user goals: %w", err)
+		return nil, fmt.Errorf(
+			"batch query users.goal_total_dollars: %w",
+			err,
+		)
 	}
 	defer rows.Close()
 	for rows.Next() {
 		var id, rawGoal string
 		if err := rows.Scan(&id, &rawGoal); err != nil {
-			return nil, fmt.Errorf("scan user goal: %w", err)
+			return nil, fmt.Errorf(
+				"scan users.goal_total_dollars: %w",
+				err,
+			)
 		}
 		id = strings.TrimSpace(id)
 		goal, err := parseFiniteNonNegative(rawGoal)
 		if id == "" || err != nil {
-			log.Printf("ADV snapshot: skipping invalid users.goal row for user %q: %v", id, err)
+			log.Printf(
+				"ADV snapshot: skipping invalid users.goal_total_dollars row for user %q: %v",
+				id,
+				err,
+			)
 			continue
 		}
 		goals[id] = goal

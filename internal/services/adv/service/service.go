@@ -730,7 +730,7 @@ func (s *AuctionService) evaluateCampaign(
 	campaignRemaining := campaign.GoalTotalDollars - campaignSpent
 	if campaignRemaining < chargePrice {
 		logf(
-			"[ADV][CAMPAIGN_REJECT] request_id=%q imp_id=%q campaign_id=%q user_id=%q reason=campaign_balance_insufficient campaign_goal=%.12f campaign_spent=%.12f campaign_remaining=%.12f charge_price=%.12f",
+			"[ADV][CAMPAIGN_REJECT] request_id=%q imp_id=%q campaign_id=%q user_id=%q reason=campaign_balance_insufficient campaign_goal_total_dollars=%.12f campaign_spent=%.12f campaign_remaining=%.12f charge_price=%.12f",
 			requestID,
 			impID,
 			campaignID,
@@ -766,7 +766,7 @@ func (s *AuctionService) evaluateCampaign(
 	userGoal, ok := snapshot.UserGoals[campaign.UserID]
 	if !ok || userGoal < 0 || math.IsNaN(userGoal) || math.IsInf(userGoal, 0) {
 		logf(
-			"[ADV][CAMPAIGN_REJECT] request_id=%q imp_id=%q campaign_id=%q user_id=%q reason=user_goal_missing_or_invalid user_goal_exists=%t user_goal=%.12f",
+			"[ADV][CAMPAIGN_REJECT] request_id=%q imp_id=%q campaign_id=%q user_id=%q reason=user_goal_total_dollars_missing_or_invalid user_goal_exists=%t user_goal_total_dollars=%.12f",
 			requestID,
 			impID,
 			campaignID,
@@ -791,7 +791,7 @@ func (s *AuctionService) evaluateCampaign(
 	userRemaining := userGoal - userSpent
 	if userRemaining < chargePrice {
 		logf(
-			"[ADV][CAMPAIGN_REJECT] request_id=%q imp_id=%q campaign_id=%q user_id=%q reason=user_balance_insufficient user_goal=%.12f user_spent=%.12f user_remaining=%.12f charge_price=%.12f",
+			"[ADV][CAMPAIGN_REJECT] request_id=%q imp_id=%q campaign_id=%q user_id=%q reason=user_balance_insufficient user_goal_total_dollars=%.12f user_spent=%.12f user_remaining=%.12f charge_price=%.12f",
 			requestID,
 			impID,
 			campaignID,

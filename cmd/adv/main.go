@@ -75,9 +75,6 @@ func main() {
 	if err := db.PingContext(ctx); err != nil {
 		log.Fatalf("ADV PostgreSQL unavailable: %v", err)
 	}
-	if err := auction.MigrateADVSchema(ctx, db); err != nil {
-		log.Fatalf("ADV schema migration failed: %v", err)
-	}
 
 	runtimeStore := auction.NewRuntimeStore(runtimeRedis, cfg.AdvPacingCurrentTTL, cfg.AdvPacingSlotTTL)
 	winnerStore := auction.NewWinnerStore(winnerRedis, cfg.AdvWinnerTTL)

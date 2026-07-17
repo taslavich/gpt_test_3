@@ -22,7 +22,6 @@ import (
 	"github.com/segmentio/kafka-go"
 	"gitlab.com/twinbid-exchange/RTB-exchange/internal/config"
 	utils "gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/utils_grpc"
-	auction "gitlab.com/twinbid-exchange/RTB-exchange/internal/services/adv/service"
 	kafkaService "gitlab.com/twinbid-exchange/RTB-exchange/internal/services/kafka"
 	redisService "gitlab.com/twinbid-exchange/RTB-exchange/internal/services/redis"
 )
@@ -72,9 +71,6 @@ func main() {
 	defer db.Close()
 	if err := db.PingContext(ctx); err != nil {
 		log.Fatalf("PostgreSQL unavailable: %v", err)
-	}
-	if err := auction.MigrateADVSchema(ctx, db); err != nil {
-		log.Fatalf("ADV schema migration failed: %v", err)
 	}
 
 	writer, err := kafkaService.CreateKafkaWriter(cfg.KafkaBrokers, cfg.KafkaTopicSpentTotals)
