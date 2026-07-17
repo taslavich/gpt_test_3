@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log"
 	"math"
 	"math/rand"
 	"net/url"
@@ -291,39 +292,55 @@ func cloneBoolMap(src map[string]bool) map[string]bool {
 }
 
 func (s *AuctionService) Auction(ctx context.Context, req *ortb.BidRequest, now time.Time, options AuctionRequestOptions) (*AuctionOutcome, error) {
+	log.Println("[INFO] ADV auction: starting auction process")
+
 	if s == nil || !validAuctionInput(req, options.ImpIDUUID) {
+		log.Println("[INFO] ADV auction: invalid input")
 		return nil, ErrInvalidAuctionRequest
 	}
 	if s.runtime == nil || s.winners == nil || s.percents == nil || s.quality == nil {
+		log.Println("[INFO] ADV auction: dependencies not initialized")
 		return nil, errors.New("auction dependencies are not initialized")
 	}
+
 	requestedFormat := normalizeFormat(options.Format)
 	trafficType := normalizeTraffic(options.TrafficType)
 	sspDomain := normalizeDomain(options.SSPDomain)
+
 	if requestedFormat == "" || trafficType == "" || sspDomain == "" {
+		log.Println("[INFO] ADV auction: invalid format/traffic/domain")
 		return nil, ErrInvalidAuctionRequest
 	}
+
 	if !s.quality.ContainsAny(sspDomain) {
+		log.Printf("[INFO] ADV auction: no quality match for domain %s", sspDomain)
 		return &AuctionOutcome{WinnerUserIDs: map[string]string{}}, nil
 	}
+
 	snapshot := s.currentSnapshot()
 	if snapshot == nil {
+		log.Println("[INFO] ADV auction: campaign snapshot unavailable")
 		return nil, errors.New("campaign snapshot is unavailable")
 	}
+
+	log.Printf("[INFO] ADV auction: processing %d impressions", len(req.GetImp()))
 
 	seat := &ortb.SeatBid{Bid: make([]*ortb.Bid, 0, len(req.GetImp()))}
 	winnerUsers := make(map[string]string)
 	infrastructureErrors := 0
 
-	for _, imp := range req.GetImp() {
+	for idx, imp := range req.GetImp() {
 		if imp == nil || strings.TrimSpace(imp.GetId()) == "" || !impressionMatchesFormat(imp, requestedFormat) {
+			log.Printf("[INFO] ADV auction: skipping impression %d (invalid or format mismatch)", idx)
 			continue
 		}
 		impID := imp.GetId()
 		winnerUUID := strings.TrimSpace(options.ImpIDUUID[impID])
 		if winnerUUID == "" {
+			log.Printf("[INFO] ADV auction: imp_id %s has no UUID mapping", impID)
 			continue
 		}
+
 		candidates := make([]candidate, 0, len(snapshot.Campaigns))
 		for _, campaign := range snapshot.Campaigns {
 			cand, eligible, infraErr := s.evaluateCampaign(ctx, snapshot, campaign, req, imp, now, requestedFormat, trafficType, sspDomain)
@@ -335,6 +352,8 @@ func (s *AuctionService) Auction(ctx context.Context, req *ortb.BidRequest, now 
 				candidates = append(candidates, cand)
 			}
 		}
+
+		log.Printf("[INFO] ADV auction: imp_id %s -> %d eligible candidates", impID, len(candidates))
 		sort.SliceStable(candidates, func(i, j int) bool { return candidates[i].effectivePrice > candidates[j].effectivePrice })
 
 		for _, cand := range candidates {
@@ -349,25 +368,38 @@ func (s *AuctionService) Auction(ctx context.Context, req *ortb.BidRequest, now 
 			if bid == nil {
 				continue
 			}
-			winner := WinnerRecord{Price: cand.chargePrice, UserID: cand.campaign.UserID, CampaignID: cand.campaign.ID, Format: requestedFormat}
+
+			winner := WinnerRecord{
+				Price:      cand.chargePrice,
+				UserID:     cand.campaign.UserID,
+				CampaignID: cand.campaign.ID,
+				Format:     requestedFormat,
+			}
 			if err := s.winners.Put(ctx, winnerUUID, winner); err != nil {
+				log.Printf("[WARN] ADV auction: failed to store winner for imp %s: %v", impID, err)
 				infrastructureErrors++
 				continue
 			}
+
 			seat.Bid = append(seat.Bid, bid)
 			winnerUsers[impID] = cand.campaign.UserID
+			log.Printf("[INFO] ADV auction: imp_id %s -> winner campaign %s (price %.4f)", impID, cand.campaign.ID, cand.chargePrice)
 			break
 		}
 	}
 
 	if len(seat.Bid) == 0 {
 		if infrastructureErrors > 0 {
+			log.Printf("[ERROR] ADV auction: Redis operations failed for %d candidates", infrastructureErrors)
 			return nil, fmt.Errorf("ADV Redis operations failed for %d candidates", infrastructureErrors)
 		}
+		log.Println("[INFO] ADV auction: completed - no bids")
 		return &AuctionOutcome{WinnerUserIDs: winnerUsers}, nil
 	}
+
 	responseID := uuid.NewString()
 	currency := "USD"
+	log.Printf("[INFO] ADV auction: completed successfully - %d bids", len(seat.Bid))
 	return &AuctionOutcome{
 		BidResponse:   &ortb.BidResponse{Id: &responseID, Cur: &currency, Seatbid: []*ortb.SeatBid{seat}},
 		WinnerUserIDs: winnerUsers,

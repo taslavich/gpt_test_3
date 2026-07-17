@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log"
 	"runtime/debug"
 	"sync/atomic"
 	"time"
@@ -56,15 +57,26 @@ func (s *Server) DoAuction(ctx context.Context, req *advGrpc.DoAuctionRequest) (
 			funcErr = status.Error(codes.Internal, fmt.Sprintf("ADV auction panic: %v\n%s", recovered, debug.Stack()))
 		}
 	}()
+
+	log.Println("[INFO] ADV auction: request received")
+
 	if s == nil || s.work == nil || !s.work.Enabled() {
+		log.Println("[INFO] ADV auction: service disabled")
 		return nil, status.Error(codes.Unavailable, disabledMessage)
 	}
+
 	if req == nil || req.GetBidRequest() == nil || len(req.GetBidRequest().GetImp()) == 0 {
+		log.Println("[INFO] ADV auction: invalid request - no impressions")
 		return nil, status.Error(codes.InvalidArgument, "ADV auction request must contain at least one impression")
 	}
+
 	if s.auctionService == nil {
+		log.Println("[INFO] ADV auction: auction service unavailable")
 		return nil, status.Error(codes.Unavailable, "ADV auction service is unavailable")
 	}
+
+	log.Printf("[INFO] ADV auction: processing request with format=%s, traffic_type=%s, ssp_domain=%s, impressions=%d",
+		req.GetFormat(), req.GetTrafficType(), req.GetSspDomain(), len(req.GetBidRequest().GetImp()))
 
 	outcome, err := s.auctionService.Auction(ctx, req.GetBidRequest(), time.Now().UTC(), auction.AuctionRequestOptions{
 		Format:      req.GetFormat(),
@@ -72,17 +84,24 @@ func (s *Server) DoAuction(ctx context.Context, req *advGrpc.DoAuctionRequest) (
 		SSPDomain:   req.GetSspDomain(),
 		ImpIDUUID:   req.GetImpIdUuid(),
 	})
+
 	if errors.Is(err, auction.ErrInvalidAuctionRequest) {
+		log.Printf("[INFO] ADV auction: invalid request: %v", err)
 		return nil, status.Error(codes.InvalidArgument, err.Error())
 	}
 	if err != nil {
+		log.Printf("[INFO] ADV auction: failed: %v", err)
 		return nil, status.Error(codes.Unavailable, fmt.Sprintf("ADV auction failed: %v", err))
 	}
+
 	if outcome == nil || !hasBids(outcome.BidResponse) {
+		log.Println("[INFO] ADV auction: completed - no bids")
 		return &advGrpc.DoAuctionResponse{
 			WinnerUserIds: map[string]string{},
 		}, nil
 	}
+
+	log.Printf("[INFO] ADV auction: completed successfully - %d bids", len(outcome.BidResponse.GetSeatbid()))
 	return &advGrpc.DoAuctionResponse{
 		BidResponse:   outcome.BidResponse,
 		WinnerUserIds: outcome.WinnerUserIDs,
