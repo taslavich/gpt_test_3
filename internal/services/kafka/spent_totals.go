@@ -292,53 +292,59 @@ func ApplySpentTotalsBatch(ctx context.Context, db *sql.DB, events []SpentTotal)
 
 	if len(userIDs) > 0 {
 		const updateUsers = `
-			WITH incoming(id, spent) AS (
+			WITH incoming(id, cum_done_dollars) AS (
 				SELECT * FROM unnest($1::uuid[], $2::numeric[])
 			), aggregated AS (
-				SELECT id, MAX(spent) AS spent
+				SELECT id, MAX(cum_done_dollars) AS cum_done_dollars
 				FROM incoming
 				GROUP BY id
 			)
 			UPDATE users AS u
-			SET spent = GREATEST(u.spent, aggregated.spent)
+			SET cum_done_dollars = GREATEST(
+				u.cum_done_dollars,
+				aggregated.cum_done_dollars
+			)
 			FROM aggregated
 			WHERE u.id = aggregated.id`
 		result, err := tx.ExecContext(ctx, updateUsers, pq.Array(userIDs), pq.Array(userTotals))
 		if err != nil {
-			return fmt.Errorf("bulk update users spent: %w", err)
+			return fmt.Errorf("bulk update users cum_done_dollars: %w", err)
 		}
 		rows, err := result.RowsAffected()
 		if err != nil {
-			return fmt.Errorf("users spent rows affected: %w", err)
+			return fmt.Errorf("users cum_done_dollars rows affected: %w", err)
 		}
 		if rows != int64(len(userUnique)) {
-			return fmt.Errorf("users spent targets mismatch: updated=%d expected=%d", rows, len(userUnique))
+			return fmt.Errorf("users cum_done_dollars targets mismatch: updated=%d expected=%d", rows, len(userUnique))
 		}
 	}
 
 	if len(campaignIDs) > 0 {
 		const updateCampaigns = `
-			WITH incoming(id, spent) AS (
+			WITH incoming(id, cum_done_dollars) AS (
 				SELECT * FROM unnest($1::uuid[], $2::numeric[])
 			), aggregated AS (
-				SELECT id, MAX(spent) AS spent
+				SELECT id, MAX(cum_done_dollars) AS cum_done_dollars
 				FROM incoming
 				GROUP BY id
 			)
 			UPDATE campaigns AS c
-			SET spent = GREATEST(c.spent, aggregated.spent)
+			SET cum_done_dollars = GREATEST(
+				c.cum_done_dollars,
+				aggregated.cum_done_dollars
+			)
 			FROM aggregated
 			WHERE c.campaign_id = aggregated.id`
 		result, err := tx.ExecContext(ctx, updateCampaigns, pq.Array(campaignIDs), pq.Array(campaignTotals))
 		if err != nil {
-			return fmt.Errorf("bulk update campaigns spent: %w", err)
+			return fmt.Errorf("bulk update campaigns cum_done_dollars: %w", err)
 		}
 		rows, err := result.RowsAffected()
 		if err != nil {
-			return fmt.Errorf("campaigns spent rows affected: %w", err)
+			return fmt.Errorf("campaigns cum_done_dollars rows affected: %w", err)
 		}
 		if rows != int64(len(campaignUnique)) {
-			return fmt.Errorf("campaigns spent targets mismatch: updated=%d expected=%d", rows, len(campaignUnique))
+			return fmt.Errorf("campaigns cum_done_dollars targets mismatch: updated=%d expected=%d", rows, len(campaignUnique))
 		}
 	}
 
