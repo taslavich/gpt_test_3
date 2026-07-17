@@ -214,8 +214,8 @@ func optimizeGoRuntimeSafe(serviceType string) {
 func ShouldSSPDomain(value string) bool {
 	switch strings.ToLower(strings.TrimSpace(value)) {
 	case "adl_test", "mc_test", "1":
-		return true
-	default:
 		return false
+	default:
+		return true
 	}
 }

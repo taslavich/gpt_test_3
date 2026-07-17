@@ -59,7 +59,7 @@ func (s *Server) DoAuction(ctx context.Context, req *advGrpc.DoAuctionRequest) (
 		}
 	}()
 
-	if !utils.ShouldSSPDomain(req.SspDomain) {
+	if utils.ShouldSSPDomain(req.SspDomain) {
 		return nil, status.Error(codes.Unavailable, disabledMessage)
 	}
 
