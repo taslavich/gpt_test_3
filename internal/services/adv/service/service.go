@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/redis/go-redis/v9"
 	"gitlab.com/twinbid-exchange/RTB-exchange/internal/constants"
 	filterV2 "gitlab.com/twinbid-exchange/RTB-exchange/internal/filterV2"
 	ortb "gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/proto/types/ortb_V2_5"
@@ -30,6 +31,17 @@ const (
 	TrafficMainstream    = "MAINSTREAM"
 	unknownTrackerValue  = "unknown"
 )
+
+type debugLogFunc func(format string, args ...any)
+
+func shouldLogSSPDomain(value string) bool {
+	switch normalizeDomain(value) {
+	case "adl_test", "mc_test", "1":
+		return true
+	default:
+		return false
+	}
+}
 
 type TimeRange struct {
 	Start time.Time `json:"start"`
@@ -292,60 +304,177 @@ func cloneBoolMap(src map[string]bool) map[string]bool {
 }
 
 func (s *AuctionService) Auction(ctx context.Context, req *ortb.BidRequest, now time.Time, options AuctionRequestOptions) (*AuctionOutcome, error) {
-	log.Println("[INFO] ADV auction: starting auction process")
-
-	if s == nil || !validAuctionInput(req, options.ImpIDUUID) {
-		log.Println("[INFO] ADV auction: invalid input")
-		return nil, ErrInvalidAuctionRequest
-	}
-	if s.runtime == nil || s.winners == nil || s.percents == nil || s.quality == nil {
-		log.Println("[INFO] ADV auction: dependencies not initialized")
-		return nil, errors.New("auction dependencies are not initialized")
-	}
-
 	requestedFormat := normalizeFormat(options.Format)
 	trafficType := normalizeTraffic(options.TrafficType)
 	sspDomain := normalizeDomain(options.SSPDomain)
+	requestID := ""
+	if req != nil {
+		requestID = strings.TrimSpace(req.GetId())
+	}
+
+	logEnabled := shouldLogSSPDomain(sspDomain)
+	logf := debugLogFunc(func(format string, args ...any) {
+		if logEnabled {
+			log.Printf(format, args...)
+		}
+	})
+
+	logf(
+		"[ADV][AUCTION_START] request_id=%q format=%q traffic_type=%q ssp_domain=%q impressions=%d imp_uuid_count=%d",
+		requestID,
+		requestedFormat,
+		trafficType,
+		sspDomain,
+		len(req.GetImp()),
+		len(options.ImpIDUUID),
+	)
+
+	if s == nil || !validAuctionInput(req, options.ImpIDUUID) {
+		logf(
+			"[ADV][AUCTION_REJECT] request_id=%q reason=invalid_input request_nil=%t impressions=%d imp_uuid_count=%d",
+			requestID,
+			req == nil,
+			len(req.GetImp()),
+			len(options.ImpIDUUID),
+		)
+		return nil, ErrInvalidAuctionRequest
+	}
+	if s.runtime == nil || s.winners == nil || s.percents == nil || s.quality == nil {
+		logf(
+			"[ADV][AUCTION_ERROR] request_id=%q reason=dependencies_not_initialized runtime_nil=%t winners_nil=%t percents_nil=%t quality_nil=%t",
+			requestID,
+			s.runtime == nil,
+			s.winners == nil,
+			s.percents == nil,
+			s.quality == nil,
+		)
+		return nil, errors.New("auction dependencies are not initialized")
+	}
 
 	if requestedFormat == "" || trafficType == "" || sspDomain == "" {
-		log.Println("[INFO] ADV auction: invalid format/traffic/domain")
+		logf(
+			"[ADV][AUCTION_REJECT] request_id=%q reason=invalid_format_traffic_or_domain raw_format=%q raw_traffic_type=%q raw_ssp_domain=%q normalized_format=%q normalized_traffic_type=%q normalized_ssp_domain=%q",
+			requestID,
+			options.Format,
+			options.TrafficType,
+			options.SSPDomain,
+			requestedFormat,
+			trafficType,
+			sspDomain,
+		)
 		return nil, ErrInvalidAuctionRequest
 	}
 
 	if !s.quality.ContainsAny(sspDomain) {
-		log.Printf("[INFO] ADV auction: no quality match for domain %s", sspDomain)
+		logf(
+			"[ADV][AUCTION_NO_BID] request_id=%q reason=ssp_not_in_any_quality_map ssp_domain=%q",
+			requestID,
+			sspDomain,
+		)
 		return &AuctionOutcome{WinnerUserIDs: map[string]string{}}, nil
 	}
 
 	snapshot := s.currentSnapshot()
 	if snapshot == nil {
-		log.Println("[INFO] ADV auction: campaign snapshot unavailable")
+		logf(
+			"[ADV][AUCTION_ERROR] request_id=%q reason=campaign_snapshot_unavailable",
+			requestID,
+		)
 		return nil, errors.New("campaign snapshot is unavailable")
 	}
 
-	log.Printf("[INFO] ADV auction: processing %d impressions", len(req.GetImp()))
+	logf(
+		"[ADV][SNAPSHOT] request_id=%q campaigns=%d user_goals=%d",
+		requestID,
+		len(snapshot.Campaigns),
+		len(snapshot.UserGoals),
+	)
 
 	seat := &ortb.SeatBid{Bid: make([]*ortb.Bid, 0, len(req.GetImp()))}
 	winnerUsers := make(map[string]string)
 	infrastructureErrors := 0
 
 	for idx, imp := range req.GetImp() {
-		if imp == nil || strings.TrimSpace(imp.GetId()) == "" || !impressionMatchesFormat(imp, requestedFormat) {
-			log.Printf("[INFO] ADV auction: skipping impression %d (invalid or format mismatch)", idx)
-			continue
-		}
-		impID := imp.GetId()
-		winnerUUID := strings.TrimSpace(options.ImpIDUUID[impID])
-		if winnerUUID == "" {
-			log.Printf("[INFO] ADV auction: imp_id %s has no UUID mapping", impID)
+		if imp == nil {
+			logf(
+				"[ADV][IMP_REJECT] request_id=%q imp_index=%d reason=impression_nil",
+				requestID,
+				idx,
+			)
 			continue
 		}
 
+		impID := strings.TrimSpace(imp.GetId())
+		if impID == "" {
+			logf(
+				"[ADV][IMP_REJECT] request_id=%q imp_index=%d reason=imp_id_empty",
+				requestID,
+				idx,
+			)
+			continue
+		}
+
+		if !impressionMatchesFormat(imp, requestedFormat) {
+			logf(
+				"[ADV][IMP_REJECT] request_id=%q imp_id=%q reason=impression_format_mismatch requested_format=%q has_banner=%t has_native=%t banner_ext=%q",
+				requestID,
+				impID,
+				requestedFormat,
+				imp.GetBanner() != nil,
+				imp.GetNative() != nil,
+				bannerExtValues(imp),
+			)
+			continue
+		}
+
+		winnerUUID := strings.TrimSpace(options.ImpIDUUID[impID])
+		if winnerUUID == "" {
+			logf(
+				"[ADV][IMP_REJECT] request_id=%q imp_id=%q reason=winner_uuid_missing",
+				requestID,
+				impID,
+			)
+			continue
+		}
+
+		logf(
+			"[ADV][IMP_START] request_id=%q imp_id=%q winner_uuid=%q campaigns_to_check=%d",
+			requestID,
+			impID,
+			winnerUUID,
+			len(snapshot.Campaigns),
+		)
+
 		candidates := make([]candidate, 0, len(snapshot.Campaigns))
 		for _, campaign := range snapshot.Campaigns {
-			cand, eligible, infraErr := s.evaluateCampaign(ctx, snapshot, campaign, req, imp, now, requestedFormat, trafficType, sspDomain)
+			cand, eligible, infraErr := s.evaluateCampaign(
+				ctx,
+				snapshot,
+				campaign,
+				req,
+				imp,
+				now,
+				requestedFormat,
+				trafficType,
+				sspDomain,
+				logf,
+			)
 			if infraErr != nil {
 				infrastructureErrors++
+				campaignID := ""
+				userID := ""
+				if campaign != nil {
+					campaignID = campaign.ID
+					userID = campaign.UserID
+				}
+				logf(
+					"[ADV][CAMPAIGN_ERROR] request_id=%q imp_id=%q campaign_id=%q user_id=%q error=%v",
+					requestID,
+					impID,
+					campaignID,
+					userID,
+					infraErr,
+				)
 				continue
 			}
 			if eligible {
@@ -353,19 +482,47 @@ func (s *AuctionService) Auction(ctx context.Context, req *ortb.BidRequest, now 
 			}
 		}
 
-		log.Printf("[INFO] ADV auction: imp_id %s -> %d eligible candidates", impID, len(candidates))
+		logf(
+			"[ADV][IMP_CANDIDATES] request_id=%q imp_id=%q eligible=%d checked=%d infrastructure_errors=%d",
+			requestID,
+			impID,
+			len(candidates),
+			len(snapshot.Campaigns),
+			infrastructureErrors,
+		)
 		sort.SliceStable(candidates, func(i, j int) bool { return candidates[i].effectivePrice > candidates[j].effectivePrice })
 
 		for _, cand := range candidates {
 			if len(cand.creatives) == 0 {
+				logf(
+					"[ADV][CANDIDATE_SKIP] request_id=%q imp_id=%q campaign_id=%q reason=eligible_candidate_has_no_creatives",
+					requestID,
+					impID,
+					cand.campaign.ID,
+				)
 				continue
 			}
 			creative := cand.creatives[rand.Intn(len(cand.creatives))]
 			if creative == nil {
+				logf(
+					"[ADV][CANDIDATE_SKIP] request_id=%q imp_id=%q campaign_id=%q reason=random_creative_nil matched_creatives=%d",
+					requestID,
+					impID,
+					cand.campaign.ID,
+					len(cand.creatives),
+				)
 				continue
 			}
 			bid := s.buildBid(req, imp, cand.campaign, creative)
 			if bid == nil {
+				logf(
+					"[ADV][CANDIDATE_SKIP] request_id=%q imp_id=%q campaign_id=%q creative_id=%q reason=bid_build_failed adm_url_empty=%t",
+					requestID,
+					impID,
+					cand.campaign.ID,
+					creative.ID,
+					strings.TrimSpace(creative.ADMURL) == "",
+				)
 				continue
 			}
 
@@ -376,30 +533,65 @@ func (s *AuctionService) Auction(ctx context.Context, req *ortb.BidRequest, now 
 				Format:     requestedFormat,
 			}
 			if err := s.winners.Put(ctx, winnerUUID, winner); err != nil {
-				log.Printf("[WARN] ADV auction: failed to store winner for imp %s: %v", impID, err)
+				logf(
+					"[ADV][WINNER_REDIS_ERROR] request_id=%q imp_id=%q winner_uuid=%q campaign_id=%q creative_id=%q user_id=%q error=%v",
+					requestID,
+					impID,
+					winnerUUID,
+					cand.campaign.ID,
+					creative.ID,
+					cand.campaign.UserID,
+					err,
+				)
 				infrastructureErrors++
 				continue
 			}
 
 			seat.Bid = append(seat.Bid, bid)
 			winnerUsers[impID] = cand.campaign.UserID
-			log.Printf("[INFO] ADV auction: imp_id %s -> winner campaign %s (price %.4f)", impID, cand.campaign.ID, cand.chargePrice)
+			logf(
+				"[ADV][WINNER] request_id=%q imp_id=%q winner_uuid=%q campaign_id=%q creative_id=%q user_id=%q charge_price=%.12f effective_price=%.12f matched_creatives=%d",
+				requestID,
+				impID,
+				winnerUUID,
+				cand.campaign.ID,
+				creative.ID,
+				cand.campaign.UserID,
+				cand.chargePrice,
+				cand.effectivePrice,
+				len(cand.creatives),
+			)
 			break
 		}
 	}
 
 	if len(seat.Bid) == 0 {
 		if infrastructureErrors > 0 {
-			log.Printf("[ERROR] ADV auction: Redis operations failed for %d candidates", infrastructureErrors)
+			logf(
+				"[ADV][AUCTION_ERROR] request_id=%q reason=redis_operations_failed errors=%d",
+				requestID,
+				infrastructureErrors,
+			)
 			return nil, fmt.Errorf("ADV Redis operations failed for %d candidates", infrastructureErrors)
 		}
-		log.Println("[INFO] ADV auction: completed - no bids")
+		logf(
+			"[ADV][AUCTION_NO_BID] request_id=%q impressions=%d winner_user_ids=%d",
+			requestID,
+			len(req.GetImp()),
+			len(winnerUsers),
+		)
 		return &AuctionOutcome{WinnerUserIDs: winnerUsers}, nil
 	}
 
 	responseID := uuid.NewString()
 	currency := "USD"
-	log.Printf("[INFO] ADV auction: completed successfully - %d bids", len(seat.Bid))
+	logf(
+		"[ADV][AUCTION_SUCCESS] request_id=%q response_id=%q bids=%d winner_user_ids=%d",
+		requestID,
+		responseID,
+		len(seat.Bid),
+		len(winnerUsers),
+	)
 	return &AuctionOutcome{
 		BidResponse:   &ortb.BidResponse{Id: &responseID, Cur: &currency, Seatbid: []*ortb.SeatBid{seat}},
 		WinnerUserIDs: winnerUsers,
@@ -435,66 +627,483 @@ func validAuctionInput(req *ortb.BidRequest, impIDUUID map[string]string) bool {
 	return len(seen) > 0
 }
 
-func (s *AuctionService) evaluateCampaign(ctx context.Context, snapshot *Snapshot, campaign *Campaign, req *ortb.BidRequest, imp *ortb.Imp, now time.Time, requestedFormat, trafficType, sspDomain string) (candidate, bool, error) {
+func (s *AuctionService) evaluateCampaign(
+	ctx context.Context,
+	snapshot *Snapshot,
+	campaign *Campaign,
+	req *ortb.BidRequest,
+	imp *ortb.Imp,
+	now time.Time,
+	requestedFormat, trafficType, sspDomain string,
+	logf debugLogFunc,
+) (candidate, bool, error) {
+	requestID := ""
+	if req != nil {
+		requestID = strings.TrimSpace(req.GetId())
+	}
+	impID := ""
+	if imp != nil {
+		impID = strings.TrimSpace(imp.GetId())
+	}
+
 	if campaign == nil {
+		logf(
+			"[ADV][CAMPAIGN_REJECT] request_id=%q imp_id=%q reason=campaign_nil",
+			requestID,
+			impID,
+		)
 		return candidate{}, false, nil
 	}
+
+	campaignID := strings.TrimSpace(campaign.ID)
+	userID := strings.TrimSpace(campaign.UserID)
+
 	if !s.quality.Contains(campaign.QualitySegment, sspDomain) {
+		logf(
+			"[ADV][CAMPAIGN_REJECT] request_id=%q imp_id=%q campaign_id=%q user_id=%q reason=quality_mismatch campaign_quality=%q ssp_domain=%q",
+			requestID,
+			impID,
+			campaignID,
+			userID,
+			campaign.QualitySegment,
+			sspDomain,
+		)
 		return candidate{}, false, nil
 	}
 	if normalizeFormat(campaign.Format) != requestedFormat {
+		logf(
+			"[ADV][CAMPAIGN_REJECT] request_id=%q imp_id=%q campaign_id=%q user_id=%q reason=format_mismatch campaign_format=%q requested_format=%q",
+			requestID,
+			impID,
+			campaignID,
+			userID,
+			normalizeFormat(campaign.Format),
+			requestedFormat,
+		)
 		return candidate{}, false, nil
 	}
 	if normalizeTraffic(campaign.TrafficType) != trafficType {
+		logf(
+			"[ADV][CAMPAIGN_REJECT] request_id=%q imp_id=%q campaign_id=%q user_id=%q reason=traffic_type_mismatch campaign_traffic_type=%q requested_traffic_type=%q",
+			requestID,
+			impID,
+			campaignID,
+			userID,
+			normalizeTraffic(campaign.TrafficType),
+			trafficType,
+		)
 		return candidate{}, false, nil
 	}
 	if !campaignActiveAt(campaign, now) {
+		logCampaignActivityRejection(logf, requestID, impID, campaign, now)
 		return candidate{}, false, nil
 	}
+
 	chargePrice := CalculateChargePrice(campaign.BasePrice, campaign.PricingModel, requestedFormat)
 	if chargePrice <= 0 || math.IsNaN(chargePrice) || math.IsInf(chargePrice, 0) {
+		logf(
+			"[ADV][CAMPAIGN_REJECT] request_id=%q imp_id=%q campaign_id=%q user_id=%q reason=invalid_charge_price base_price=%.12f pricing_model=%q requested_format=%q charge_price=%.12f",
+			requestID,
+			impID,
+			campaignID,
+			userID,
+			campaign.BasePrice,
+			campaign.PricingModel,
+			requestedFormat,
+			chargePrice,
+		)
 		return candidate{}, false, nil
 	}
+
 	campaignSpent, err := s.runtime.CampaignSpent(ctx, campaign.ID)
 	if err != nil {
+		logf(
+			"[ADV][CAMPAIGN_ERROR] request_id=%q imp_id=%q campaign_id=%q user_id=%q reason=campaign_spent_read_failed error=%v",
+			requestID,
+			impID,
+			campaignID,
+			userID,
+			err,
+		)
 		return candidate{}, false, err
 	}
-	if campaign.GoalTotalDollars-campaignSpent < chargePrice {
+	campaignRemaining := campaign.GoalTotalDollars - campaignSpent
+	if campaignRemaining < chargePrice {
+		logf(
+			"[ADV][CAMPAIGN_REJECT] request_id=%q imp_id=%q campaign_id=%q user_id=%q reason=campaign_balance_insufficient campaign_goal=%.12f campaign_spent=%.12f campaign_remaining=%.12f charge_price=%.12f",
+			requestID,
+			impID,
+			campaignID,
+			userID,
+			campaign.GoalTotalDollars,
+			campaignSpent,
+			campaignRemaining,
+			chargePrice,
+		)
 		return candidate{}, false, nil
 	}
+
 	if campaign.EvennessBySlotMode {
 		eligible, err := s.runtime.PacingEligible(ctx, campaign, now, campaignSpent)
 		if err != nil {
+			logf(
+				"[ADV][CAMPAIGN_ERROR] request_id=%q imp_id=%q campaign_id=%q user_id=%q reason=pacing_check_failed campaign_spent=%.12f error=%v",
+				requestID,
+				impID,
+				campaignID,
+				userID,
+				campaignSpent,
+				err,
+			)
 			return candidate{}, false, err
 		}
 		if !eligible {
+			s.logPacingRejection(ctx, campaign, now, campaignSpent, requestID, impID, logf)
 			return candidate{}, false, nil
 		}
 	}
+
 	userGoal, ok := snapshot.UserGoals[campaign.UserID]
 	if !ok || userGoal < 0 || math.IsNaN(userGoal) || math.IsInf(userGoal, 0) {
+		logf(
+			"[ADV][CAMPAIGN_REJECT] request_id=%q imp_id=%q campaign_id=%q user_id=%q reason=user_goal_missing_or_invalid user_goal_exists=%t user_goal=%.12f",
+			requestID,
+			impID,
+			campaignID,
+			userID,
+			ok,
+			userGoal,
+		)
 		return candidate{}, false, nil
 	}
 	userSpent, err := s.runtime.UserSpent(ctx, campaign.UserID)
 	if err != nil {
+		logf(
+			"[ADV][CAMPAIGN_ERROR] request_id=%q imp_id=%q campaign_id=%q user_id=%q reason=user_spent_read_failed error=%v",
+			requestID,
+			impID,
+			campaignID,
+			userID,
+			err,
+		)
 		return candidate{}, false, err
 	}
-	if userGoal-userSpent < chargePrice {
+	userRemaining := userGoal - userSpent
+	if userRemaining < chargePrice {
+		logf(
+			"[ADV][CAMPAIGN_REJECT] request_id=%q imp_id=%q campaign_id=%q user_id=%q reason=user_balance_insufficient user_goal=%.12f user_spent=%.12f user_remaining=%.12f charge_price=%.12f",
+			requestID,
+			impID,
+			campaignID,
+			userID,
+			userGoal,
+			userSpent,
+			userRemaining,
+			chargePrice,
+		)
 		return candidate{}, false, nil
 	}
+
 	creatives := matchingCreatives(campaign.Creatives, imp, requestedFormat)
 	if len(creatives) == 0 {
+		logCreativeRejections(logf, requestID, impID, campaign, imp, requestedFormat)
 		return candidate{}, false, nil
 	}
-	if !campaignPassesFilters(campaign, req) {
+
+	if !campaignPassesFiltersWithDebug(campaign, req, requestID, impID, logf) {
 		return candidate{}, false, nil
 	}
+
 	deduction := s.percents.Lookup(campaign.UserID)
 	effective := CalculateEffectiveAuctionPrice(chargePrice, deduction)
-	if effective <= 0 {
+	if effective <= 0 || math.IsNaN(effective) || math.IsInf(effective, 0) {
+		logf(
+			"[ADV][CAMPAIGN_REJECT] request_id=%q imp_id=%q campaign_id=%q user_id=%q reason=effective_price_non_positive charge_price=%.12f deduction=%.12f effective_price=%.12f",
+			requestID,
+			impID,
+			campaignID,
+			userID,
+			chargePrice,
+			deduction,
+			effective,
+		)
 		return candidate{}, false, nil
 	}
+
+	logf(
+		"[ADV][CAMPAIGN_ELIGIBLE] request_id=%q imp_id=%q campaign_id=%q user_id=%q creatives=%d charge_price=%.12f deduction=%.12f effective_price=%.12f campaign_remaining=%.12f user_remaining=%.12f",
+		requestID,
+		impID,
+		campaignID,
+		userID,
+		len(creatives),
+		chargePrice,
+		deduction,
+		effective,
+		campaignRemaining,
+		userRemaining,
+	)
 	return candidate{campaign: campaign, creatives: creatives, chargePrice: chargePrice, effectivePrice: effective}, true, nil
+}
+
+func logCampaignActivityRejection(logf debugLogFunc, requestID, impID string, campaign *Campaign, now time.Time) {
+	if campaign == nil {
+		return
+	}
+
+	reason := "outside_active_intervals"
+	switch {
+	case !strings.EqualFold(strings.TrimSpace(campaign.Status), CampaignStatusActive):
+		reason = "campaign_status_not_active"
+	case campaign.StartTS.IsZero() || campaign.EndTS.IsZero() || !campaign.StartTS.Before(campaign.EndTS):
+		reason = "campaign_time_window_invalid"
+	case now.Before(campaign.StartTS):
+		reason = "campaign_not_started"
+	case !now.Before(campaign.EndTS):
+		reason = "campaign_ended"
+	}
+
+	logf(
+		"[ADV][CAMPAIGN_REJECT] request_id=%q imp_id=%q campaign_id=%q user_id=%q reason=%s status=%q now=%q start=%q end=%q active_intervals=%d",
+		requestID,
+		impID,
+		campaign.ID,
+		campaign.UserID,
+		reason,
+		campaign.Status,
+		now.UTC().Format(time.RFC3339Nano),
+		campaign.StartTS.UTC().Format(time.RFC3339Nano),
+		campaign.EndTS.UTC().Format(time.RFC3339Nano),
+		len(campaign.ActiveIntervals),
+	)
+
+	if reason == "outside_active_intervals" {
+		for index, interval := range campaign.ActiveIntervals {
+			logf(
+				"[ADV][ACTIVE_INTERVAL] request_id=%q imp_id=%q campaign_id=%q index=%d start=%q end=%q now_inside=%t",
+				requestID,
+				impID,
+				campaign.ID,
+				index,
+				interval.Start.UTC().Format(time.RFC3339Nano),
+				interval.End.UTC().Format(time.RFC3339Nano),
+				!now.Before(interval.Start) && now.Before(interval.End),
+			)
+		}
+	}
+}
+
+func (s *AuctionService) logPacingRejection(
+	ctx context.Context,
+	campaign *Campaign,
+	now time.Time,
+	campaignSpent float64,
+	requestID, impID string,
+	logf debugLogFunc,
+) {
+	if s == nil || s.runtime == nil || s.runtime.client == nil || campaign == nil {
+		logf(
+			"[ADV][CAMPAIGN_REJECT] request_id=%q imp_id=%q campaign_id=%q reason=pacing_runtime_unavailable",
+			requestID,
+			impID,
+			campaignID(campaign),
+		)
+		return
+	}
+
+	currentKey := pacingCurrentPrefix + campaign.ID
+	slotKey, err := s.runtime.client.Get(ctx, currentKey).Result()
+	if errors.Is(err, redis.Nil) {
+		logf(
+			"[ADV][CAMPAIGN_REJECT] request_id=%q imp_id=%q campaign_id=%q user_id=%q reason=pacing_current_slot_key_missing current_key=%q",
+			requestID,
+			impID,
+			campaign.ID,
+			campaign.UserID,
+			currentKey,
+		)
+		return
+	}
+	if err != nil {
+		logf(
+			"[ADV][CAMPAIGN_REJECT] request_id=%q imp_id=%q campaign_id=%q user_id=%q reason=pacing_current_slot_read_failed current_key=%q error=%v",
+			requestID,
+			impID,
+			campaign.ID,
+			campaign.UserID,
+			currentKey,
+			err,
+		)
+		return
+	}
+	if !strings.HasPrefix(slotKey, pacingSpentPrefix+campaign.ID+":") {
+		logf(
+			"[ADV][CAMPAIGN_REJECT] request_id=%q imp_id=%q campaign_id=%q user_id=%q reason=pacing_current_slot_key_invalid current_key=%q slot_key=%q expected_prefix=%q",
+			requestID,
+			impID,
+			campaign.ID,
+			campaign.UserID,
+			currentKey,
+			slotKey,
+			pacingSpentPrefix+campaign.ID+":",
+		)
+		return
+	}
+
+	slotSpent, err := s.runtime.floatValue(ctx, slotKey)
+	if err != nil {
+		logf(
+			"[ADV][CAMPAIGN_REJECT] request_id=%q imp_id=%q campaign_id=%q user_id=%q reason=pacing_slot_spent_read_failed slot_key=%q error=%v",
+			requestID,
+			impID,
+			campaign.ID,
+			campaign.UserID,
+			slotKey,
+			err,
+		)
+		return
+	}
+	slotTarget, err := pacingSlotTarget(campaign, now, campaignSpent, slotSpent)
+	if err != nil {
+		logf(
+			"[ADV][CAMPAIGN_REJECT] request_id=%q imp_id=%q campaign_id=%q user_id=%q reason=pacing_slot_target_failed campaign_spent=%.12f slot_spent=%.12f error=%v",
+			requestID,
+			impID,
+			campaign.ID,
+			campaign.UserID,
+			campaignSpent,
+			slotSpent,
+			err,
+		)
+		return
+	}
+
+	reason := "pacing_slot_limit_reached"
+	if slotTarget <= 0 {
+		reason = "pacing_slot_target_non_positive"
+	}
+	logf(
+		"[ADV][CAMPAIGN_REJECT] request_id=%q imp_id=%q campaign_id=%q user_id=%q reason=%s campaign_spent=%.12f slot_spent=%.12f slot_target=%.12f remaining_to_slot_target=%.12f current_slot_fraction=%.12f active_slots_left=%.12f slot_key=%q",
+		requestID,
+		impID,
+		campaign.ID,
+		campaign.UserID,
+		reason,
+		campaignSpent,
+		slotSpent,
+		slotTarget,
+		slotTarget-slotSpent,
+		CurrentSlotActiveFraction(campaign, now),
+		ActiveSlotsLeft(campaign, now.UTC().Truncate(SlotDuration)),
+		slotKey,
+	)
+}
+
+func campaignID(campaign *Campaign) string {
+	if campaign == nil {
+		return ""
+	}
+	return campaign.ID
+}
+
+func logCreativeRejections(
+	logf debugLogFunc,
+	requestID, impID string,
+	campaign *Campaign,
+	imp *ortb.Imp,
+	format string,
+) {
+	if campaign == nil {
+		return
+	}
+	logf(
+		"[ADV][CAMPAIGN_REJECT] request_id=%q imp_id=%q campaign_id=%q user_id=%q reason=no_matching_creatives format=%q creatives_total=%d requested_banner_sizes=%q",
+		requestID,
+		impID,
+		campaign.ID,
+		campaign.UserID,
+		format,
+		len(campaign.Creatives),
+		formatBannerSizes(bannerSizes(imp)),
+	)
+
+	for index, creative := range campaign.Creatives {
+		if creative == nil {
+			logf(
+				"[ADV][CREATIVE_REJECT] request_id=%q imp_id=%q campaign_id=%q creative_index=%d reason=creative_nil",
+				requestID,
+				impID,
+				campaign.ID,
+				index,
+			)
+			continue
+		}
+		if strings.TrimSpace(creative.ID) == "" {
+			logf(
+				"[ADV][CREATIVE_REJECT] request_id=%q imp_id=%q campaign_id=%q creative_index=%d reason=creative_id_empty",
+				requestID,
+				impID,
+				campaign.ID,
+				index,
+			)
+			continue
+		}
+		if strings.TrimSpace(creative.ADMURL) == "" {
+			logf(
+				"[ADV][CREATIVE_REJECT] request_id=%q imp_id=%q campaign_id=%q creative_id=%q reason=adm_url_empty",
+				requestID,
+				impID,
+				campaign.ID,
+				creative.ID,
+			)
+			continue
+		}
+		if normalizeFormat(format) == "BAN" {
+			if creative.W <= 0 || creative.H <= 0 {
+				logf(
+					"[ADV][CREATIVE_REJECT] request_id=%q imp_id=%q campaign_id=%q creative_id=%q reason=creative_dimensions_invalid width=%d height=%d",
+					requestID,
+					impID,
+					campaign.ID,
+					creative.ID,
+					creative.W,
+					creative.H,
+				)
+				continue
+			}
+			if !bannerSizes(imp)[[2]int{creative.W, creative.H}] {
+				logf(
+					"[ADV][CREATIVE_REJECT] request_id=%q imp_id=%q campaign_id=%q creative_id=%q reason=banner_size_mismatch creative_width=%d creative_height=%d requested_banner_sizes=%q",
+					requestID,
+					impID,
+					campaign.ID,
+					creative.ID,
+					creative.W,
+					creative.H,
+					formatBannerSizes(bannerSizes(imp)),
+				)
+			}
+		}
+	}
+}
+
+func formatBannerSizes(sizes map[[2]int]bool) string {
+	if len(sizes) == 0 {
+		return ""
+	}
+	items := make([]string, 0, len(sizes))
+	for size := range sizes {
+		items = append(items, fmt.Sprintf("%dx%d", size[0], size[1]))
+	}
+	sort.Strings(items)
+	return strings.Join(items, ",")
+}
+
+func bannerExtValues(imp *ortb.Imp) string {
+	if imp == nil || imp.GetBanner() == nil {
+		return ""
+	}
+	return strings.Join(imp.GetBanner().GetExt(), ",")
 }
 
 func (s *AuctionService) buildBid(req *ortb.BidRequest, imp *ortb.Imp, campaign *Campaign, creative *Creative) *ortb.Bid {
@@ -627,40 +1236,123 @@ func normalizeTraffic(value string) string {
 	}
 }
 
+type requestFilterValues struct {
+	country    *string
+	language   *string
+	deviceType *string
+	osName     *string
+	browser    *string
+	siteID     *string
+	ip         *string
+}
+
+func extractRequestFilterValues(req *ortb.BidRequest) requestFilterValues {
+	values := requestFilterValues{}
+	if req == nil {
+		return values
+	}
+	if device := req.GetDevice(); device != nil {
+		if geo := device.GetGeo(); geo != nil {
+			values.country = nonEmptyStringPtr(geo.GetCountry())
+		}
+		values.language = nonEmptyStringPtr(device.GetLanguage())
+		if device.DeviceType != nil {
+			value := strconv.Itoa(int(device.GetDeviceType()))
+			values.deviceType = &value
+		}
+		values.osName = nonEmptyStringPtr(device.GetOs())
+		values.ip = nonEmptyStringPtr(device.GetIp())
+		parsed := ua.ParseUA(device.GetUa())
+		values.browser = nonEmptyStringPtr(parsed.Browser)
+		if values.osName == nil {
+			values.osName = nonEmptyStringPtr(parsed.OS)
+		}
+	}
+	if site := req.GetSite(); site != nil {
+		values.siteID = nonEmptyStringPtr(site.GetId())
+	}
+	return values
+}
+
+type campaignFilterCheck struct {
+	name   string
+	filter *filterV2.Filters
+	value  *string
+}
+
 func campaignPassesFilters(c *Campaign, req *ortb.BidRequest) bool {
+	return campaignPassesFiltersWithDebug(c, req, "", "", func(string, ...any) {})
+}
+
+func campaignPassesFiltersWithDebug(
+	c *Campaign,
+	req *ortb.BidRequest,
+	requestID, impID string,
+	logf debugLogFunc,
+) bool {
 	if c == nil {
 		return false
 	}
-	var country, language, deviceType, osName, browser, siteID, ip *string
-	if req != nil {
-		if device := req.GetDevice(); device != nil {
-			if geo := device.GetGeo(); geo != nil {
-				country = nonEmptyStringPtr(geo.GetCountry())
-			}
-			language = nonEmptyStringPtr(device.GetLanguage())
-			if device.DeviceType != nil {
-				value := strconv.Itoa(int(device.GetDeviceType()))
-				deviceType = &value
-			}
-			osName = nonEmptyStringPtr(device.GetOs())
-			ip = nonEmptyStringPtr(device.GetIp())
-			parsed := ua.ParseUA(device.GetUa())
-			browser = nonEmptyStringPtr(parsed.Browser)
-			if osName == nil {
-				osName = nonEmptyStringPtr(parsed.OS)
-			}
-		}
-		if site := req.GetSite(); site != nil {
-			siteID = nonEmptyStringPtr(site.GetId())
-		}
+	values := extractRequestFilterValues(req)
+	checks := []campaignFilterCheck{
+		{name: "country", filter: c.CountryFilter, value: values.country},
+		{name: "language", filter: c.LanguageFilter, value: values.language},
+		{name: "device_type", filter: c.DeviceTypeFilter, value: values.deviceType},
+		{name: "os", filter: c.OSFilter, value: values.osName},
+		{name: "browser", filter: c.BrowserFilter, value: values.browser},
+		{name: "site_id", filter: c.SiteIDFilter, value: values.siteID},
+		{name: "ip", filter: c.IPFilter, value: values.ip},
 	}
-	return allowed(c.CountryFilter, country) &&
-		allowed(c.LanguageFilter, language) &&
-		allowed(c.DeviceTypeFilter, deviceType) &&
-		allowed(c.OSFilter, osName) &&
-		allowed(c.BrowserFilter, browser) &&
-		allowed(c.SiteIDFilter, siteID) &&
-		allowed(c.IPFilter, ip)
+
+	allAllowed := true
+	for _, check := range checks {
+		if allowed(check.filter, check.value) {
+			continue
+		}
+		allAllowed = false
+
+		value := "<nil>"
+		listed := false
+		if check.value != nil {
+			value = *check.value
+			if check.filter != nil {
+				listed = check.filter.Objects[value]
+			}
+		}
+		mode := "disabled"
+		configuredObjects := 0
+		if check.filter != nil {
+			configuredObjects = len(check.filter.Objects)
+			if check.filter.IsWhiteList {
+				mode = "whitelist"
+			} else {
+				mode = "blacklist"
+			}
+		}
+		logf(
+			"[ADV][FILTER_REJECT] request_id=%q imp_id=%q campaign_id=%q user_id=%q filter=%q value=%q mode=%q listed=%t configured_objects=%d",
+			requestID,
+			impID,
+			c.ID,
+			c.UserID,
+			check.name,
+			value,
+			mode,
+			listed,
+			configuredObjects,
+		)
+	}
+
+	if !allAllowed {
+		logf(
+			"[ADV][CAMPAIGN_REJECT] request_id=%q imp_id=%q campaign_id=%q user_id=%q reason=filter_rejected",
+			requestID,
+			impID,
+			c.ID,
+			c.UserID,
+		)
+	}
+	return allAllowed
 }
 
 func allowed(filter *filterV2.Filters, value *string) bool {

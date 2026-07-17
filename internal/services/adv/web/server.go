@@ -63,25 +63,35 @@ func (s *Server) DoAuction(ctx context.Context, req *advGrpc.DoAuctionRequest) (
 		return nil, status.Error(codes.Unavailable, disabledMessage)
 	}
 
-	log.Println("[INFO] ADV auction: request received")
+	requestID := ""
+	if req != nil && req.GetBidRequest() != nil {
+		requestID = req.GetBidRequest().GetId()
+	}
+
+	log.Printf(
+		"[ADV][REQUEST] request_id=%q format=%q traffic_type=%q ssp_domain=%q impressions=%d imp_uuid_count=%d",
+		requestID,
+		req.GetFormat(),
+		req.GetTrafficType(),
+		req.GetSspDomain(),
+		len(req.GetBidRequest().GetImp()),
+		len(req.GetImpIdUuid()),
+	)
 
 	if s == nil || s.work == nil || !s.work.Enabled() {
-		log.Println("[INFO] ADV auction: service disabled")
+		log.Printf("[ADV][REQUEST_REJECT] request_id=%q reason=service_disabled", requestID)
 		return nil, status.Error(codes.Unavailable, disabledMessage)
 	}
 
 	if req == nil || req.GetBidRequest() == nil || len(req.GetBidRequest().GetImp()) == 0 {
-		log.Println("[INFO] ADV auction: invalid request - no impressions")
+		log.Printf("[ADV][REQUEST_REJECT] request_id=%q reason=no_impressions", requestID)
 		return nil, status.Error(codes.InvalidArgument, "ADV auction request must contain at least one impression")
 	}
 
 	if s.auctionService == nil {
-		log.Println("[INFO] ADV auction: auction service unavailable")
+		log.Printf("[ADV][REQUEST_ERROR] request_id=%q reason=auction_service_unavailable", requestID)
 		return nil, status.Error(codes.Unavailable, "ADV auction service is unavailable")
 	}
-
-	log.Printf("[INFO] ADV auction: processing request with format=%s, traffic_type=%s, ssp_domain=%s, impressions=%d",
-		req.GetFormat(), req.GetTrafficType(), req.GetSspDomain(), len(req.GetBidRequest().GetImp()))
 
 	outcome, err := s.auctionService.Auction(ctx, req.GetBidRequest(), time.Now().UTC(), auction.AuctionRequestOptions{
 		Format:      req.GetFormat(),
@@ -91,22 +101,36 @@ func (s *Server) DoAuction(ctx context.Context, req *advGrpc.DoAuctionRequest) (
 	})
 
 	if errors.Is(err, auction.ErrInvalidAuctionRequest) {
-		log.Printf("[INFO] ADV auction: invalid request: %v", err)
+		log.Printf("[ADV][REQUEST_REJECT] request_id=%q reason=invalid_auction_request error=%v", requestID, err)
 		return nil, status.Error(codes.InvalidArgument, err.Error())
 	}
 	if err != nil {
-		log.Printf("[INFO] ADV auction: failed: %v", err)
+		log.Printf("[ADV][REQUEST_ERROR] request_id=%q reason=auction_failed error=%v", requestID, err)
 		return nil, status.Error(codes.Unavailable, fmt.Sprintf("ADV auction failed: %v", err))
 	}
 
 	if outcome == nil || !hasBids(outcome.BidResponse) {
-		log.Println("[INFO] ADV auction: completed - no bids")
+		winnerUsers := 0
+		if outcome != nil {
+			winnerUsers = len(outcome.WinnerUserIDs)
+		}
+		log.Printf(
+			"[ADV][RESPONSE_NO_BID] request_id=%q winner_user_ids=%d",
+			requestID,
+			winnerUsers,
+		)
 		return &advGrpc.DoAuctionResponse{
 			WinnerUserIds: map[string]string{},
 		}, nil
 	}
 
-	log.Printf("[INFO] ADV auction: completed successfully - %d bids", len(outcome.BidResponse.GetSeatbid()))
+	log.Printf(
+		"[ADV][RESPONSE_SUCCESS] request_id=%q seatbids=%d bids=%d winner_user_ids=%d",
+		requestID,
+		len(outcome.BidResponse.GetSeatbid()),
+		countBids(outcome.BidResponse),
+		len(outcome.WinnerUserIDs),
+	)
 	return &advGrpc.DoAuctionResponse{
 		BidResponse:   outcome.BidResponse,
 		WinnerUserIds: outcome.WinnerUserIDs,
@@ -123,4 +147,17 @@ func hasBids(response *ortb.BidResponse) bool {
 		}
 	}
 	return false
+}
+
+func countBids(response *ortb.BidResponse) int {
+	if response == nil {
+		return 0
+	}
+	count := 0
+	for _, seat := range response.GetSeatbid() {
+		if seat != nil {
+			count += len(seat.GetBid())
+		}
+	}
+	return count
 }
