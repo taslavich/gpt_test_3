@@ -513,7 +513,7 @@ func (s *AuctionService) Auction(ctx context.Context, req *ortb.BidRequest, now 
 				)
 				continue
 			}
-			bid := s.buildBid(req, imp, cand.campaign, creative)
+			bid := s.buildBid(req, imp, cand.campaign, creative, cand.effectivePrice)
 			if bid == nil {
 				logf(
 					"[ADV][CANDIDATE_SKIP] request_id=%q imp_id=%q campaign_id=%q creative_id=%q reason=bid_build_failed adm_url_empty=%t",
@@ -1106,8 +1106,8 @@ func bannerExtValues(imp *ortb.Imp) string {
 	return strings.Join(imp.GetBanner().GetExt(), ",")
 }
 
-func (s *AuctionService) buildBid(req *ortb.BidRequest, imp *ortb.Imp, campaign *Campaign, creative *Creative) *ortb.Bid {
-	if s == nil || imp == nil || campaign == nil || creative == nil {
+func (s *AuctionService) buildBid(req *ortb.BidRequest, imp *ortb.Imp, campaign *Campaign, creative *Creative, bidPrice float64) *ortb.Bid {
+	if s == nil || imp == nil || campaign == nil || creative == nil || bidPrice <= 0 || math.IsNaN(bidPrice) || math.IsInf(bidPrice, 0) {
 		return nil
 	}
 	originalADM := appendTrackerMacros(creative.ADMURL, creative.TrackersMacros, campaign.ID, creative.ID, req)
@@ -1115,7 +1115,7 @@ func (s *AuctionService) buildBid(req *ortb.BidRequest, imp *ortb.Imp, campaign 
 		return nil
 	}
 	id, impID, cid, crid := creative.ID, imp.GetId(), campaign.ID, creative.ID
-	price := float32(campaign.BasePrice)
+	price := float32(bidPrice)
 	w, h := int32(creative.W), int32(creative.H)
 	return &ortb.Bid{Id: &id, Impid: &impID, Price: &price, Adm: &originalADM, Cid: &cid, Crid: &crid, W: &w, H: &h}
 }
@@ -1255,17 +1255,20 @@ func extractRequestFilterValues(req *ortb.BidRequest) requestFilterValues {
 		if geo := device.GetGeo(); geo != nil {
 			values.country = nonEmptyStringPtr(geo.GetCountry())
 		}
-		values.language = nonEmptyStringPtr(device.GetLanguage())
-		if device.DeviceType != nil {
-			value := strconv.Itoa(int(device.GetDeviceType()))
-			values.deviceType = &value
-		}
+		values.language = nonEmptyStringPtr(normalizeLanguage(device.GetLanguage()))
 		values.osName = nonEmptyStringPtr(device.GetOs())
 		values.ip = nonEmptyStringPtr(device.GetIp())
-		parsed := ua.ParseUA(device.GetUa())
-		values.browser = nonEmptyStringPtr(parsed.Browser)
-		if values.osName == nil {
-			values.osName = nonEmptyStringPtr(parsed.OS)
+
+		rawUA := strings.TrimSpace(device.GetUa())
+		if rawUA != "" {
+			parsed := ua.ParseUA(rawUA)
+			values.deviceType = nonEmptyStringPtr(normalizeDeviceType(parsed.Device))
+			values.browser = nonEmptyStringPtr(parsed.Browser)
+			if values.osName == nil {
+				values.osName = nonEmptyStringPtr(parsed.OS)
+			}
+		} else if device.DeviceType != nil {
+			values.deviceType = nonEmptyStringPtr(normalizeDeviceType(strconv.Itoa(int(device.GetDeviceType()))))
 		}
 	}
 	if site := req.GetSite(); site != nil {
@@ -1360,6 +1363,27 @@ func allowed(filter *filterV2.Filters, value *string) bool {
 		return true
 	}
 	return filter.Allowed(value)
+}
+
+func normalizeLanguage(value string) string {
+	return strings.ToLower(strings.TrimSpace(value))
+}
+
+func normalizeDeviceType(value string) string {
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case "1", "4", "mobile", "phone", "smartphone":
+		return "mobile"
+	case "5", "tablet":
+		return "tablet"
+	case "2", "desktop", "pc":
+		return "desktop"
+	case "bot":
+		return "bot"
+	case "3", "6", "7", "other", "connected_tv", "connected device", "set_top_box":
+		return "other"
+	default:
+		return strings.ToLower(strings.TrimSpace(value))
+	}
 }
 
 func nonEmptyStringPtr(value string) *string {

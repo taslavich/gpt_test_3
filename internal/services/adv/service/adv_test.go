@@ -339,14 +339,32 @@ func TestBuildBidLeavesCallbackFinalizationToBidEngine(t *testing.T) {
 	campaign := &Campaign{ID: "campaign-1", BasePrice: 2.5}
 	creative := &Creative{ID: "creative-1", ADMURL: "https://creative.example/render", W: 300, H: 250}
 
-	bid := service.buildBid(req, imp, campaign, creative)
+	bidPrice := 0.001875
+	bid := service.buildBid(req, imp, campaign, creative, bidPrice)
 	if bid == nil {
 		t.Fatal("buildBid returned nil")
 	}
 	if got := bid.GetAdm(); got != creative.ADMURL {
 		t.Fatalf("ADV must return raw creative ADM for BidEngine finalization: got %q want %q", got, creative.ADMURL)
 	}
+	if got := float64(bid.GetPrice()); math.Abs(got-bidPrice) > 1e-9 {
+		t.Fatalf("ADV bid price must use effective auction price: got %.12f want %.12f", got, bidPrice)
+	}
 	if bid.GetNurl() != "" || bid.GetBurl() != "" {
 		t.Fatalf("ADV must not form callbacks: nurl=%q burl=%q", bid.GetNurl(), bid.GetBurl())
+	}
+}
+
+func TestExtractRequestFilterValuesUsesLanguageAndUADevice(t *testing.T) {
+	language := " RU "
+	userAgent := "Mozilla/5.0 (Linux; Android 13; SM-S918B) AppleWebKit/537.36 Chrome/120.0 Mobile Safari/537.36"
+	req := &ortb.BidRequest{Device: &ortb.Device{Language: &language, Ua: &userAgent}}
+
+	values := extractRequestFilterValues(req)
+	if values.language == nil || *values.language != "ru" {
+		t.Fatalf("language must be normalized and preserved: got %v", values.language)
+	}
+	if values.deviceType == nil || *values.deviceType != "mobile" {
+		t.Fatalf("device type must be derived from UA: got %v", values.deviceType)
 	}
 }

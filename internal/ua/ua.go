@@ -14,10 +14,10 @@ func normalizeDevice(ua useragent.UserAgent) string {
 	switch {
 	case ua.Bot:
 		return "bot"
-	case ua.Mobile:
-		return "mobile"
 	case ua.Tablet:
 		return "tablet"
+	case ua.Mobile:
+		return "mobile"
 	case ua.Desktop:
 		return "desktop"
 	default:

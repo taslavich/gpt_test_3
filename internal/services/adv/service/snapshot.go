@@ -327,10 +327,13 @@ func (r campaignDBRow) campaign() (*Campaign, error) {
 	if err != nil {
 		return nil, err
 	}
+	normalizeFilterObjects(language, normalizeLanguage)
+
 	deviceType, err := parseFilter(r.DeviceType, "device_type")
 	if err != nil {
 		return nil, err
 	}
+	normalizeFilterObjects(deviceType, normalizeDeviceType)
 	osFilter, err := parseFilter(r.OS, "os")
 	if err != nil {
 		return nil, err
@@ -359,6 +362,22 @@ func (r campaignDBRow) campaign() (*Campaign, error) {
 		OSFilter: osFilter, BrowserFilter: browser, SiteIDFilter: siteID, IPFilter: ip,
 		Creatives: []*Creative{},
 	}, nil
+}
+
+func normalizeFilterObjects(filters *filterV2.Filters, normalize func(string) string) {
+	if filters == nil || len(filters.Objects) == 0 || normalize == nil {
+		return
+	}
+
+	normalized := make(map[string]bool, len(filters.Objects))
+	for value := range filters.Objects {
+		value = normalize(value)
+		if value != "" {
+			normalized[value] = true
+		}
+	}
+	filters.Objects = normalized
+	filters.Apply = len(normalized) > 0
 }
 
 func loadCreativesBatch(ctx context.Context, db *sql.DB, campaignIDs []string, campaigns map[string]*Campaign) error {

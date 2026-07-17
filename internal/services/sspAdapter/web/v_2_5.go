@@ -7,6 +7,7 @@ import (
 	"log"
 	"net/http"
 	"runtime/debug"
+	"strings"
 	"time"
 
 	"github.com/ggicci/httpin"
@@ -448,13 +449,18 @@ func postBid_V2_5(
 		}
 	}
 
-	var lang string
-	countryForLanguage := ""
-	if input.Payload.BidRequest.Device.Geo != nil {
-		countryForLanguage = input.Payload.BidRequest.Device.Geo.GetCountry()
-	}
-	if lang, ok = geoToLang[countryForLanguage]; !ok {
-		lang = geoToLang["DEFAULT"]
+	lang := strings.ToLower(strings.TrimSpace(input.Payload.BidRequest.Device.GetLanguage()))
+	if lang == "" {
+		countryForLanguage := ""
+		if input.Payload.BidRequest.Device.Geo != nil {
+			countryForLanguage = input.Payload.BidRequest.Device.Geo.GetCountry()
+		}
+		mappedLang, found := geoToLang[countryForLanguage]
+		if !found {
+			mappedLang = geoToLang["DEFAULT"]
+		}
+		lang = mappedLang
+		lang = strings.ToLower(strings.TrimSpace(lang))
 	}
 
 	input.Payload.BidRequest.Device.Language = &lang
