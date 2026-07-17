@@ -16,13 +16,13 @@ export function StepsSection() {
   }));
 
   return (
-    <section id="steps" className="py-[140px] relative">
-      <div className="container mx-auto px-8">
+    <section id="steps" className="landing-section relative">
+      <div className="container mx-auto px-5 md:px-8">
         <div className="max-w-[1280px] mx-auto">
-          <div className="grid md:grid-cols-12 gap-8 mb-24 items-end">
+          <div className="mb-14 grid items-end gap-8 md:grid-cols-12 md:mb-20">
             <div className="md:col-span-7">
               <LineReveal>
-                <div className="eyebrow mb-8">— 05 / GET STARTED</div>
+                <div className="landing-kicker mb-7">05 / GET STARTED</div>
               </LineReveal>
               <WordsReveal
                 as="h2"
@@ -38,9 +38,7 @@ export function StepsSection() {
             </div>
           </div>
 
-          <div className="rule mb-0" />
-
-          <div className="divide-y divide-border">
+          <div className="relative grid gap-4 md:grid-cols-2">
             {steps.map((step, index) => (
               <motion.div
                 key={index}
@@ -48,20 +46,20 @@ export function StepsSection() {
                 whileInView={{ opacity: 1, y: 0 }}
                 viewport={{ once: true, margin: "-80px" }}
                 transition={{ duration: 0.8, delay: index * 0.08, ease: [0.22, 1, 0.36, 1] }}
-                className="grid md:grid-cols-12 gap-8 py-14 items-center group"
+                className="landing-card group relative min-h-[310px] overflow-hidden p-7 md:p-9"
               >
-                <div className="md:col-span-3">
-                  <div className="font-display text-7xl md:text-8xl font-extralight text-foreground group-hover:text-primary transition-colors duration-500 leading-none tracking-tight">
+                <div className="mb-14 flex items-start justify-between">
+                  <div className="font-display text-7xl font-extralight leading-none tracking-tight text-white/[0.12] transition-colors duration-500 group-hover:text-primary/50 md:text-8xl">
                     {step.number}
                   </div>
+                  <div className="flex h-12 w-12 items-center justify-center rounded-full border border-white/10 bg-white/[0.025]">
+                    <step.icon className="h-5 w-5 text-primary" strokeWidth={1.4} />
+                  </div>
                 </div>
-                <h3 className="md:col-span-5 font-display text-3xl md:text-4xl font-light text-foreground leading-[1.1] tracking-tight">
+                <h3 className="font-display text-3xl font-light leading-[1.1] tracking-tight text-foreground md:text-4xl">
                   {step.title}
                 </h3>
-                <div className="md:col-span-4 flex items-start gap-4">
-                  <step.icon className="w-5 h-5 text-primary mt-1 shrink-0" strokeWidth={1.4} />
-                  <p className="text-muted-foreground text-[15px] leading-relaxed">{step.description}</p>
-                </div>
+                <p className="mt-5 max-w-lg text-[15px] leading-relaxed text-muted-foreground">{step.description}</p>
               </motion.div>
             ))}
           </div>

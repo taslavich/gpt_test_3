@@ -162,14 +162,27 @@ export const CreativesEditor = forwardRef<CreativesEditorHandle, CreativesEditor
   const target = getTargetDims(formatKey, bannerSize);
   const isBanner = formatKey === "banner";
 
-  // Recompute image sizeMismatch when format/bannerSize changes
+  // Refs to always read the latest props/state from within effects and async
+  // handlers — prevents stale-closure writes that could clobber sibling
+  // creatives' flags (e.g. flipping sizeMismatch on unrelated valid images).
+  const creativesRef = useRef(creatives);
+  useEffect(() => { creativesRef.current = creatives; }, [creatives]);
+  const origSourcesRef = useRef(origSources);
+  useEffect(() => { origSourcesRef.current = origSources; }, [origSources]);
+
+  // Recompute image sizeMismatch ONLY when format/bannerSize changes.
+  // Per-creative mismatch on upload is set inside handleImageUpload; we must
+  // not re-touch other creatives when an unrelated one is uploaded (otherwise
+  // a stale-closure onChange could clobber sibling flags and surface warnings
+  // on creatives whose own images are perfectly valid).
   useEffect(() => {
-    if (!creatives.some(c => c.imageUrl)) return;
+    const list = creativesRef.current;
+    if (!list.some(c => c.imageUrl)) return;
     let changed = false;
-    const next = creatives.map(c => {
+    const next = list.map(c => {
       if ((c.creativeType || "image") !== "image") return c;
       if (!c.imageUrl) return c;
-      const src = origSources[c.id];
+      const src = origSourcesRef.current[c.id];
       if (!src) return c;
       const mismatch = target ? (target.mode === "fixed"
         ? src.naturalWidth !== target.w || src.naturalHeight !== target.h
@@ -183,30 +196,36 @@ export const CreativesEditor = forwardRef<CreativesEditorHandle, CreativesEditor
     });
     if (changed) onChange(next);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [formatKey, bannerSize, origSources]);
+  }, [formatKey, bannerSize]);
 
   const showTitle = formatKey === "native" || formatKey === "push";
   const showDescription = formatKey === "native" || formatKey === "push";
   const showImage = formatKey !== "popunder";
 
   const updateCreative = (id: string, updates: Partial<Creative>) => {
-    onChange(creatives.map(c => c.id === id ? { ...c, ...updates } : c));
+    // Read from ref so async handlers (image uploads etc.) can't overwrite
+    // recent sibling edits with a stale creatives snapshot.
+    const list = creativesRef.current;
+    onChange(list.map(c => c.id === id ? { ...c, ...updates } : c));
   };
 
   const addCreative = () => {
-    if (creatives.length >= MAX_CREATIVES) {
+    const list = creativesRef.current;
+    if (list.length >= MAX_CREATIVES) {
       toast.error(t("create.creativeLimit").replace("{max}", String(MAX_CREATIVES)));
       return;
     }
-    onChange([...creatives, { id: generateId(), url: "", creativeType: isBanner ? "image" : undefined }]);
+    onChange([...list, { id: generateId(), url: "", creativeType: isBanner ? "image" : undefined, sizeMismatch: false }]);
   };
 
   const removeCreative = (id: string) => {
-    if (creatives.length <= 1) return;
-    onChange(creatives.filter(c => c.id !== id));
+    const list = creativesRef.current;
+    if (list.length <= 1) return;
+    onChange(list.filter(c => c.id !== id));
     setOrigSources(prev => { const n = { ...prev }; delete n[id]; return n; });
     setMeasured(prev => { const n = { ...prev }; delete n[id]; return n; });
   };
+
 
   const ALLOWED_IMAGE_TYPES = ["image/png", "image/jpeg", "image/jpg", "image/gif"];
   const ALLOWED_EXTENSIONS = [".png", ".jpg", ".jpeg", ".gif"];

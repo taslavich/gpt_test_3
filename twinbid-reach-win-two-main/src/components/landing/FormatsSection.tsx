@@ -151,27 +151,28 @@ export function FormatsSection() {
   const { t } = useLanguage();
 
   return (
-    <section id="formats" className="relative py-[140px] frame-immersive">
-      <div className="container mx-auto px-8">
+    <section id="formats" className="landing-section landing-section-grid relative">
+      <div className="container mx-auto px-5 md:px-8">
         <div className="max-w-[1280px] mx-auto">
-          <div className="text-center mb-24">
+          <div className="grid gap-12 lg:grid-cols-12">
+          <div className="lg:col-span-4 lg:sticky lg:top-32 lg:self-start">
             <LineReveal>
-              <div className="eyebrow mb-8 inline-block">— 04 / AD INVENTORY</div>
+              <div className="landing-kicker mb-7">04 / AD INVENTORY</div>
             </LineReveal>
             <WordsReveal
               as="h2"
               text={`${t("formats.title").trim()} ${t("formats.title2").trim()}`}
-              className="text-display block text-foreground"
+              className="text-display block text-foreground lg:!text-[64px]"
               brandWord={t("formats.title2").trim()}
               brandClass="gradient-text"
               stagger={0.06}
             />
-            <LineReveal delay={0.5} className="mt-8 max-w-xl mx-auto">
+            <LineReveal delay={0.5} className="mt-7 max-w-xl">
               <p className="text-muted-foreground text-lg">{t("formats.subtitle")}</p>
             </LineReveal>
           </div>
 
-          <div className="grid sm:grid-cols-2 gap-px bg-border">
+          <div className="grid gap-5 sm:grid-cols-2 lg:col-span-8">
             {formatIcons.map((Icon, index) => {
               const Mock = mockups[index];
               return (
@@ -181,7 +182,7 @@ export function FormatsSection() {
                   whileInView={{ opacity: 1, y: 0 }}
                   viewport={{ once: true, margin: "-60px" }}
                   transition={{ duration: 0.8, delay: index * 0.08, ease: [0.22, 1, 0.36, 1] }}
-                  className="bg-background p-10 md:p-14 group relative overflow-hidden hover:bg-secondary/30 transition-colors duration-500"
+                  className={`landing-card group relative overflow-hidden p-6 transition-transform duration-500 hover:-translate-y-1 md:p-8 ${index % 2 === 1 ? "sm:translate-y-10" : ""}`}
                 >
                   <div className="flex items-start justify-between mb-8">
                     <span className="font-mono-eyebrow text-[11px] tracking-[0.22em] text-muted-foreground">
@@ -190,7 +191,7 @@ export function FormatsSection() {
                     <Icon className="w-5 h-5 text-primary opacity-70 group-hover:opacity-100 transition-opacity" strokeWidth={1.3} />
                   </div>
                   <Mock />
-                  <h3 className="font-display text-4xl md:text-5xl font-light text-foreground mb-5 tracking-tight leading-[1.05]">
+                  <h3 className="mb-5 font-display text-4xl font-light leading-[1.05] tracking-tight text-foreground">
                     {formatNames[index]}
                   </h3>
                   <p className="text-muted-foreground text-[15px] leading-relaxed max-w-md">
@@ -199,6 +200,7 @@ export function FormatsSection() {
                 </motion.div>
               );
             })}
+          </div>
           </div>
         </div>
       </div>

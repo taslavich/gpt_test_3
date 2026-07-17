@@ -7,11 +7,11 @@ export function CTASection() {
   const { t } = useLanguage();
 
   return (
-    <section className="relative py-[180px] frame-immersive">
-      <div className="container mx-auto px-8">
-        <div className="max-w-[1280px] mx-auto text-center">
+    <section className="landing-section relative pb-8">
+      <div className="container mx-auto px-5 md:px-8">
+        <div className="landing-cta mx-auto max-w-[1280px] overflow-hidden rounded-[38px] border border-white/10 px-6 py-24 text-center md:px-12 md:py-32">
           <LineReveal>
-            <div className="eyebrow eyebrow-rule inline-flex mb-10">
+            <div className="landing-kicker mb-10 inline-flex">
               <span>{t("cta.badge")}</span>
             </div>
           </LineReveal>
@@ -32,7 +32,7 @@ export function CTASection() {
             <AuthDialog
               defaultTab="register"
               trigger={
-                <button className="pill pill-primary px-8 py-4 text-[14px]">
+                <button className="landing-button landing-button-primary px-8 py-4 text-[14px]">
                   {t("cta.register")} <ArrowRight className="w-4 h-4" />
                 </button>
               }
@@ -41,7 +41,7 @@ export function CTASection() {
               href="https://t.me/GregTwinbid"
               target="_blank"
               rel="noopener noreferrer"
-              className="pill pill-ghost px-8 py-4 text-[14px]"
+              className="landing-button landing-button-ghost px-8 py-4 text-[14px]"
             >
               {t("cta.contact")}
             </a>

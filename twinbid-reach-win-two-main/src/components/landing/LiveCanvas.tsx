@@ -65,17 +65,17 @@ export function Marquee({ items }: { items: string[] }) {
   const group = Array.from({ length: 3 }, () => items).flat();
 
   return (
-    <div className="relative overflow-hidden border-y border-border/60 bg-background/80 py-6">
+    <div className="relative overflow-hidden border-y border-white/[0.07] bg-white/[0.018] py-4 backdrop-blur-sm">
       <div className="marquee-track flex w-max whitespace-nowrap will-change-transform">
         {[0, 1].map((copyIndex) => (
           <div key={copyIndex} className="flex shrink-0" aria-hidden={copyIndex === 1}>
             {group.map((t, i) => (
               <span
                 key={`${copyIndex}-${i}`}
-                className="flex items-center gap-10 pr-10 font-mono text-[13px] tracking-[0.18em] uppercase shrink-0 text-muted-foreground"
+                className="flex shrink-0 items-center gap-5 pr-5 font-mono text-[11px] uppercase tracking-[0.16em] text-muted-foreground"
               >
-                <span>{t}</span>
-                <span className="w-1 h-1 rounded-full bg-primary shrink-0" />
+                <span className="rounded-full border border-white/[0.08] bg-white/[0.025] px-4 py-2">{t}</span>
+                <span className="h-1 w-1 shrink-0 rounded-full bg-primary" />
               </span>
             ))}
           </div>

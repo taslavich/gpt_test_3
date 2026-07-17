@@ -55,6 +55,18 @@ const translations: Record<string, Record<"ru" | "en", string>> = {
   "benefits.5.title": { ru: "AI-оптимизация кампаний: больше эффективности при том же бюджете", en: "AI campaign optimization: more efficiency with the same budget" },
   "benefits.5.desc": { ru: "Алгоритмы оптимизации перераспределяют показы в пользу сегментов и источников с лучшей отдачей, чтобы реклама попадала к максимально релевантной аудитории.", en: "Optimization algorithms redistribute impressions to segments and sources with the best returns, so ads reach the most relevant audience." },
 
+  // Creative tools landing section
+  "creativeTools.title": { ru: "Подготовьте креатив без лишних итераций", en: "Prepare your creative without extra iterations" },
+  "creativeTools.subtitle": { ru: "Отредактируйте изображение под нужный формат и заранее проверьте, как реклама будет выглядеть на странице — всё прямо в кабинете TwinBid.", en: "Adjust the image to the required format and see how the ad will look on the page before launch — all inside TwinBid." },
+  "creativeTools.edit.badge": { ru: "Встроенный редактор", en: "Built-in editor" },
+  "creativeTools.edit.title": { ru: "Адаптируйте изображение прямо в кабинете", en: "Adjust the image right in the dashboard" },
+  "creativeTools.edit.desc": { ru: "Загрузите изображение, выберите нужную область и приведите креатив к размеру рекламного формата. Если пропорции не подходят, TwinBid предложит обрезать изображение перед запуском.", en: "Upload an image, select the right area and fit the creative to the ad format. If the proportions do not match, TwinBid will offer to crop it before launch." },
+  "creativeTools.preview.badge": { ru: "Предпросмотр размещения", en: "Placement preview" },
+  "creativeTools.preview.title": { ru: "Увидьте рекламу глазами пользователя", en: "See the ad through the user's eyes" },
+  "creativeTools.preview.desc": { ru: "Откройте предпросмотр и оцените изображение, текст, кнопку и общий вид объявления на странице. Исправьте детали до отправки кампании на модерацию.", en: "Open the preview to check the image, copy, button and the overall appearance of the ad on a page. Fix the details before submitting the campaign for moderation." },
+  "creativeTools.note.fit": { ru: "Подгонка под формат", en: "Format-ready creative" },
+  "creativeTools.note.preview": { ru: "Проверка до запуска", en: "Pre-launch preview" },
+
   // Formats
   "formats.title": { ru: "Форматы ", en: "Ad " },
   "formats.title2": { ru: "рекламы", en: "formats" },
@@ -762,4 +774,3 @@ export function useLanguage() {
   if (!ctx) throw new Error("useLanguage must be used within LanguageProvider");
   return ctx;
 }
-

@@ -1,20 +1,20 @@
 import { motion } from "framer-motion";
 
-/* Minimal blueprint backdrop: one soft cool aurora at top.
-   Hidden on mobile to remove the expensive blur(40px) compositing. */
 export function AnimatedBackground() {
   return (
-    <div className="fixed inset-0 -z-10 overflow-hidden pointer-events-none hidden md:block">
+    <div className="pointer-events-none fixed inset-0 -z-10 overflow-hidden" aria-hidden>
+      <div className="landing-global-grid absolute inset-0 opacity-70" />
       <motion.div
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         transition={{ duration: 1.2 }}
-        className="absolute top-0 left-1/2 -translate-x-1/2 w-[80vw] h-[60vh] rounded-full"
-        style={{
-          background:
-            "radial-gradient(ellipse at center, hsla(168, 70%, 55%, 0.08) 0%, transparent 60%)",
-          filter: "blur(40px)",
-        }}
+        className="absolute -left-[18vw] top-[8vh] h-[58vw] w-[58vw] rounded-full bg-primary/[0.07] blur-[120px]"
+      />
+      <motion.div
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        transition={{ duration: 1.5, delay: 0.2 }}
+        className="absolute -right-[18vw] top-[46vh] h-[52vw] w-[52vw] rounded-full bg-accent/[0.055] blur-[130px]"
       />
     </div>
   );

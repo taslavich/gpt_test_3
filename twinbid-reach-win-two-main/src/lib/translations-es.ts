@@ -43,6 +43,18 @@ export const ES_TRANSLATIONS: Record<string, string> = {
   "benefits.5.title": "Optimización de campañas con IA: más eficacia con el mismo presupuesto",
   "benefits.5.desc": "Los algoritmos redistribuyen las impresiones hacia los segmentos y fuentes con mejor rendimiento para que la publicidad llegue a la audiencia más relevante.",
 
+  // Creative tools landing section
+  "creativeTools.title": "Prepara tu creatividad sin iteraciones innecesarias",
+  "creativeTools.subtitle": "Adapta la imagen al formato necesario y comprueba de antemano cómo se verá el anuncio en la página, todo dentro de TwinBid.",
+  "creativeTools.edit.badge": "Editor integrado",
+  "creativeTools.edit.title": "Adapta la imagen directamente en el panel",
+  "creativeTools.edit.desc": "Sube una imagen, selecciona el área adecuada y ajusta la creatividad al formato publicitario. Si las proporciones no coinciden, TwinBid te ofrecerá recortarla antes del lanzamiento.",
+  "creativeTools.preview.badge": "Vista previa de la ubicación",
+  "creativeTools.preview.title": "Mira el anuncio como lo verá el usuario",
+  "creativeTools.preview.desc": "Abre la vista previa para comprobar la imagen, el texto, el botón y el aspecto general del anuncio en una página. Corrige los detalles antes de enviar la campaña a moderación.",
+  "creativeTools.note.fit": "Creatividad adaptada al formato",
+  "creativeTools.note.preview": "Comprobación antes del lanzamiento",
+
   // Formats
   "formats.title": "Formatos ",
   "formats.title2": "publicitarios",
