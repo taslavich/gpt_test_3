@@ -192,7 +192,40 @@ func (x *DoAuctionResponse) GetWinnerBasePrices() map[string]float64 {
 
 var File_services_adv_proto protoreflect.FileDescriptor
 
-const file_services_adv_proto_rawDesc = "\n\x12services/adv.proto\x12\x03adv\x1a\x1atypes/ortb_V2_5/ortb.proto\"\xb1\x02\n\x10DoAuctionRequest\x125\n\nbidRequest\x18\x01 \x01(\x0b2\x15.ortb_V2_5.BidRequestR\nbidRequest\x12\x16\n\x06format\x18\x02 \x01(\tR\x06format\x12!\n\x0ctraffic_type\x18\x03 \x01(\tR\x0btrafficType\x12\x1d\n\nssp_domain\x18\x04 \x01(\tR\tsspDomain\x12B\n\timpIdUuid\x18\x05 \x03(\x0b2$.adv.DoAuctionRequest.ImpIdUuidEntryR\timpIdUuid\x1a<\n\x0eImpIdUuidEntry\x12\x10\n\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n\x05value\x18\x02 \x01(\tR\x05value:\x028\x01J\x04\x08\x06\x10\x07R\x04feed\"\x95\x04\n\x11DoAuctionResponse\x12\x1f\n\x0bcampaign_id\x18\x02 \x01(\tR\ncampaignId\x12\x1f\n\x0bcreative_id\x18\x03 \x01(\tR\ncreativeId\x12\x10\n\x03adm\x18\x04 \x01(\tR\x03adm\x12#\n\rauction_price\x18\x05 \x01(\x01R\x0cauctionPrice\x129\n\x0cbid_response\x18\x07 \x01(\x0b2\x16.ortb_V2_5.BidResponseR\x0bbidResponse\x12O\n\rwinnerUserIds\x18\x08 \x03(\x0b2).adv.DoAuctionResponse.WinnerUserIdsEntryR\rwinnerUserIds\x12X\n\x10winnerBasePrices\x18\t \x03(\x0b2,.adv.DoAuctionResponse.WinnerBasePricesEntryR\x10winnerBasePrices\x1a@\n\x12WinnerUserIdsEntry\x12\x10\n\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\x1aC\n\x15WinnerBasePricesEntry\x12\x10\n\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n\x05value\x18\x02 \x01(\x01R\x05value:\x028\x01J\x04\x08\x01\x10\x02J\x04\x08\x06\x10\x07R\x08selectedR\x04code2J\n\nAdvService\x12<\n\tDoAuction\x12\x15.adv.DoAuctionRequest\x1a\x16.adv.DoAuctionResponse\"\x00BSZQgitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/proto/services/adv;advGrpcb\x06proto3"
+const file_services_adv_proto_rawDesc = "" +
+	"\n" +
+	"\x12services/adv.proto\x12\x03adv\x1a\x1atypes/ortb_V2_5/ortb.proto\"\xb1\x02\n" +
+	"\x10DoAuctionRequest\x125\n" +
+	"\n" +
+	"bidRequest\x18\x01 \x01(\v2\x15.ortb_V2_5.BidRequestR\n" +
+	"bidRequest\x12\x16\n" +
+	"\x06format\x18\x02 \x01(\tR\x06format\x12!\n" +
+	"\ftraffic_type\x18\x03 \x01(\tR\vtrafficType\x12\x1d\n" +
+	"\n" +
+	"ssp_domain\x18\x04 \x01(\tR\tsspDomain\x12B\n" +
+	"\timpIdUuid\x18\x05 \x03(\v2$.adv.DoAuctionRequest.ImpIdUuidEntryR\timpIdUuid\x1a<\n" +
+	"\x0eImpIdUuidEntry\x12\x10\n" +
+	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01J\x04\b\x06\x10\aR\x04feed\"\x95\x04\n" +
+	"\x11DoAuctionResponse\x12\x1f\n" +
+	"\vcampaign_id\x18\x02 \x01(\tR\n" +
+	"campaignId\x12\x1f\n" +
+	"\vcreative_id\x18\x03 \x01(\tR\n" +
+	"creativeId\x12\x10\n" +
+	"\x03adm\x18\x04 \x01(\tR\x03adm\x12#\n" +
+	"\rauction_price\x18\x05 \x01(\x01R\fauctionPrice\x129\n" +
+	"\fbid_response\x18\a \x01(\v2\x16.ortb_V2_5.BidResponseR\vbidResponse\x12O\n" +
+	"\rwinnerUserIds\x18\b \x03(\v2).adv.DoAuctionResponse.WinnerUserIdsEntryR\rwinnerUserIds\x12X\n" +
+	"\x10winnerBasePrices\x18\t \x03(\v2,.adv.DoAuctionResponse.WinnerBasePricesEntryR\x10winnerBasePrices\x1a@\n" +
+	"\x12WinnerUserIdsEntry\x12\x10\n" +
+	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\x1aC\n" +
+	"\x15WinnerBasePricesEntry\x12\x10\n" +
+	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
+	"\x05value\x18\x02 \x01(\x01R\x05value:\x028\x01J\x04\b\x01\x10\x02J\x04\b\x06\x10\aR\bselectedR\x04code2J\n" +
+	"\n" +
+	"AdvService\x12<\n" +
+	"\tDoAuction\x12\x15.adv.DoAuctionRequest\x1a\x16.adv.DoAuctionResponse\"\x00BSZQgitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/proto/services/adv;advGrpcb\x06proto3"
 
 var (
 	file_services_adv_proto_rawDescOnce sync.Once

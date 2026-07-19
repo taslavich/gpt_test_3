@@ -248,7 +248,54 @@ func (x *BidEngineResponse_V2_5) GetWinnerUserIds() map[string]string {
 
 var File_services_bidEngine_proto protoreflect.FileDescriptor
 
-const file_services_bidEngine_proto_rawDesc = "\n\x18services/bidEngine.proto\x12\tbidEngine\x1a\x1atypes/ortb_V2_5/ortb.proto\"\xa7\x07\n\x15BidEngineRequest_V2_5\x125\n\nbidRequest\x18\x01 \x01(\x0b2\x15.ortb_V2_5.BidRequestR\nbidRequest\x12V\n\x0cbidResponses\x18\x02 \x03(\x0b22.bidEngine.BidEngineRequest_V2_5.BidResponsesEntryR\x0cbidResponses\x12M\n\timpIdUuid\x18\x03 \x03(\x0b2/.bidEngine.BidEngineRequest_V2_5.ImpIdUuidEntryR\timpIdUuid\x12\x1d\n\nssp_domain\x18\x04 \x01(\tR\tsspDomain\x12\x16\n\x06logged\x18\x05 \x01(\x08R\x06logged\x12\x14\n\x05typic\x18\x06 \x01(\tR\x05typic\x12\x16\n\x06format\x18\x07 \x01(\tR\x06format\x12\x16\n\x06sspUrl\x18\x08 \x01(\tR\x06sspUrl\x12\x12\n\x04rekl\x18\t \x01(\x08R\x04rekl\x12B\n\x10readyBidResponse\x18\n \x01(\x0b2\x16.ortb_V2_5.BidResponseR\x10readyBidResponse\x12Y\n\rwinnerUserIds\x18\x0b \x03(\x0b23.bidEngine.BidEngineRequest_V2_5.WinnerUserIdsEntryR\rwinnerUserIds\x12b\n\x10winnerBasePrices\x18\x0c \x03(\x0b26.bidEngine.BidEngineRequest_V2_5.WinnerBasePricesEntryR\x10winnerBasePrices\x1aW\n\x11BidResponsesEntry\x12\x10\n\x03key\x18\x01 \x01(\tR\x03key\x12,\n\x05value\x18\x02 \x01(\x0b2\x16.ortb_V2_5.BidResponseR\x05value:\x028\x01\x1a<\n\x0eImpIdUuidEntry\x12\x10\n\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\x1a@\n\x12WinnerUserIdsEntry\x12\x10\n\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\x1aC\n\x15WinnerBasePricesEntry\x12\x10\n\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n\x05value\x18\x02 \x01(\x01R\x05value:\x028\x01\"\xfa\x03\n\x16BidEngineResponse_V2_5\x128\n\x0bbidResponse\x18\x01 \x01(\x0b2\x16.ortb_V2_5.BidResponseR\x0bbidResponse\x12\x1a\n\x08globalId\x18\x02 \x01(\tR\x08globalId\x12\x12\n\x04code\x18\x03 \x01(\x05R\x04code\x12\"\n\x0cfailedImpIds\x18\x04 \x03(\tR\x0cfailedImpIds\x12]\n\x0eimpIdUuidClone\x18\x05 \x03(\x0b25.bidEngine.BidEngineResponse_V2_5.ImpIdUuidCloneEntryR\x0eimpIdUuidClone\x12\x12\n\x04rekl\x18\x06 \x01(\x08R\x04rekl\x12Z\n\rwinnerUserIds\x18\x07 \x03(\x0b24.bidEngine.BidEngineResponse_V2_5.WinnerUserIdsEntryR\rwinnerUserIds\x1aA\n\x13ImpIdUuidCloneEntry\x12\x10\n\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\x1a@\n\x12WinnerUserIdsEntry\x12\x10\n\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n\x05value\x18\x02 \x01(\tR\x05value:\x028\x012n\n\x10BidEngineService\x12Z\n\x11getWinnerBid_V2_5\x12 .bidEngine.BidEngineRequest_V2_5\x1a!.bidEngine.BidEngineResponse_V2_5\"\x00B_Z]gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/proto/services/bidEngine;bidEngineGrpcb\x06proto3"
+const file_services_bidEngine_proto_rawDesc = "" +
+	"\n" +
+	"\x18services/bidEngine.proto\x12\tbidEngine\x1a\x1atypes/ortb_V2_5/ortb.proto\"\xa7\a\n" +
+	"\x15BidEngineRequest_V2_5\x125\n" +
+	"\n" +
+	"bidRequest\x18\x01 \x01(\v2\x15.ortb_V2_5.BidRequestR\n" +
+	"bidRequest\x12V\n" +
+	"\fbidResponses\x18\x02 \x03(\v22.bidEngine.BidEngineRequest_V2_5.BidResponsesEntryR\fbidResponses\x12M\n" +
+	"\timpIdUuid\x18\x03 \x03(\v2/.bidEngine.BidEngineRequest_V2_5.ImpIdUuidEntryR\timpIdUuid\x12\x1d\n" +
+	"\n" +
+	"ssp_domain\x18\x04 \x01(\tR\tsspDomain\x12\x16\n" +
+	"\x06logged\x18\x05 \x01(\bR\x06logged\x12\x14\n" +
+	"\x05typic\x18\x06 \x01(\tR\x05typic\x12\x16\n" +
+	"\x06format\x18\a \x01(\tR\x06format\x12\x16\n" +
+	"\x06sspUrl\x18\b \x01(\tR\x06sspUrl\x12\x12\n" +
+	"\x04rekl\x18\t \x01(\bR\x04rekl\x12B\n" +
+	"\x10readyBidResponse\x18\n" +
+	" \x01(\v2\x16.ortb_V2_5.BidResponseR\x10readyBidResponse\x12Y\n" +
+	"\rwinnerUserIds\x18\v \x03(\v23.bidEngine.BidEngineRequest_V2_5.WinnerUserIdsEntryR\rwinnerUserIds\x12b\n" +
+	"\x10winnerBasePrices\x18\f \x03(\v26.bidEngine.BidEngineRequest_V2_5.WinnerBasePricesEntryR\x10winnerBasePrices\x1aW\n" +
+	"\x11BidResponsesEntry\x12\x10\n" +
+	"\x03key\x18\x01 \x01(\tR\x03key\x12,\n" +
+	"\x05value\x18\x02 \x01(\v2\x16.ortb_V2_5.BidResponseR\x05value:\x028\x01\x1a<\n" +
+	"\x0eImpIdUuidEntry\x12\x10\n" +
+	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\x1a@\n" +
+	"\x12WinnerUserIdsEntry\x12\x10\n" +
+	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\x1aC\n" +
+	"\x15WinnerBasePricesEntry\x12\x10\n" +
+	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
+	"\x05value\x18\x02 \x01(\x01R\x05value:\x028\x01\"\xfa\x03\n" +
+	"\x16BidEngineResponse_V2_5\x128\n" +
+	"\vbidResponse\x18\x01 \x01(\v2\x16.ortb_V2_5.BidResponseR\vbidResponse\x12\x1a\n" +
+	"\bglobalId\x18\x02 \x01(\tR\bglobalId\x12\x12\n" +
+	"\x04code\x18\x03 \x01(\x05R\x04code\x12\"\n" +
+	"\ffailedImpIds\x18\x04 \x03(\tR\ffailedImpIds\x12]\n" +
+	"\x0eimpIdUuidClone\x18\x05 \x03(\v25.bidEngine.BidEngineResponse_V2_5.ImpIdUuidCloneEntryR\x0eimpIdUuidClone\x12\x12\n" +
+	"\x04rekl\x18\x06 \x01(\bR\x04rekl\x12Z\n" +
+	"\rwinnerUserIds\x18\a \x03(\v24.bidEngine.BidEngineResponse_V2_5.WinnerUserIdsEntryR\rwinnerUserIds\x1aA\n" +
+	"\x13ImpIdUuidCloneEntry\x12\x10\n" +
+	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\x1a@\n" +
+	"\x12WinnerUserIdsEntry\x12\x10\n" +
+	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x012n\n" +
+	"\x10BidEngineService\x12Z\n" +
+	"\x11getWinnerBid_V2_5\x12 .bidEngine.BidEngineRequest_V2_5\x1a!.bidEngine.BidEngineResponse_V2_5\"\x00B_Z]gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/proto/services/bidEngine;bidEngineGrpcb\x06proto3"
 
 var (
 	file_services_bidEngine_proto_rawDescOnce sync.Once
