@@ -28,4 +28,5 @@ message DoAuctionResponse {
   double auction_price = 5;
   ortb_V2_5.BidResponse bid_response = 7;
   map<string, string> winnerUserIds = 8;
+  map<string, double> winnerChargePrices = 9;
 }

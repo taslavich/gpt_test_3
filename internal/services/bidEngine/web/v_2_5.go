@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"math"
 	"net/http"
 	"runtime/debug"
 	"time"
@@ -238,12 +239,18 @@ func (s *Server) handleReadyADVResponse(ctx context.Context, req *bidEngineGrpc.
 				failed = append(failed, impID)
 				continue
 			}
-			price := finalBid.GetPrice()
+			effectivePrice := finalBid.GetPrice()
+			chargePriceValue, chargePriceExists := req.GetWinnerChargePrices()[impID]
+			if !chargePriceExists || chargePriceValue <= 0 || math.IsNaN(chargePriceValue) || math.IsInf(chargePriceValue, 0) {
+				failed = append(failed, impID)
+				continue
+			}
+			chargePrice := float32(chargePriceValue)
 			cid, crid := finalBid.GetCid(), finalBid.GetCrid()
 			clickhouseBid := &clickhouse_types.Bid{
 				WinDspDomain: &advDomain,
-				WinPrice:     &price,
-				WinDspPrice:  &price,
+				WinPrice:     &effectivePrice,
+				WinDspPrice:  &chargePrice,
 				WinCid:       &cid,
 				WinCrid:      &crid,
 				WinUserId:    &userID,

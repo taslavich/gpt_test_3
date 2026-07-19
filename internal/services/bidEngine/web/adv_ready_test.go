@@ -28,14 +28,15 @@ func TestReadyADVResponseSkipsAuctionButFinalizesCallbacks(t *testing.T) {
 		},
 	}
 	request := &bidEngineGrpc.BidEngineRequest_V2_5{
-		BidRequest:       &ortb.BidRequest{},
-		ReadyBidResponse: readyResponse,
-		ImpIdUuid:        map[string]string{impID: "winner-uuid"},
-		WinnerUserIds:    map[string]string{impID: "user-1"},
-		SspDomain:        "ssp.example",
-		Format:           constants.BAN,
-		Logged:           false,
-		Rekl:             true,
+		BidRequest:         &ortb.BidRequest{},
+		ReadyBidResponse:   readyResponse,
+		ImpIdUuid:          map[string]string{impID: "winner-uuid"},
+		WinnerUserIds:      map[string]string{impID: "user-1"},
+		WinnerChargePrices: map[string]float64{impID: 2.5},
+		SspDomain:          "ssp.example",
+		Format:             constants.BAN,
+		Logged:             false,
+		Rekl:               true,
 	}
 
 	server := &Server{admDomain: "callbacks.example"}

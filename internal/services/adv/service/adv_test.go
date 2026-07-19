@@ -11,6 +11,28 @@ import (
 	ortb "gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/proto/types/ortb_V2_5"
 )
 
+func TestTrafficMatches(t *testing.T) {
+	tests := []struct {
+		campaign string
+		request  string
+		want     bool
+	}{
+		{TrafficAdult, TrafficAdult, true},
+		{TrafficAdult, TrafficMainstream, false},
+		{TrafficMainstream, TrafficMainstream, true},
+		{TrafficMainstream, TrafficAdult, false},
+		{TrafficMixed, TrafficAdult, true},
+		{TrafficMixed, TrafficMainstream, true},
+		{TrafficMixed, TrafficMixed, false},
+	}
+
+	for _, test := range tests {
+		if got := trafficMatches(test.campaign, test.request); got != test.want {
+			t.Fatalf("trafficMatches(%q, %q)=%t want %t", test.campaign, test.request, got, test.want)
+		}
+	}
+}
+
 func TestChargePriceRules(t *testing.T) {
 	tests := []struct {
 		model, format string

@@ -120,7 +120,8 @@ func (s *Server) DoAuction(ctx context.Context, req *advGrpc.DoAuctionRequest) (
 			winnerUsers,
 		)
 		return &advGrpc.DoAuctionResponse{
-			WinnerUserIds: map[string]string{},
+			WinnerUserIds:      map[string]string{},
+			WinnerChargePrices: map[string]float64{},
 		}, nil
 	}
 
@@ -132,8 +133,9 @@ func (s *Server) DoAuction(ctx context.Context, req *advGrpc.DoAuctionRequest) (
 		len(outcome.WinnerUserIDs),
 	)
 	return &advGrpc.DoAuctionResponse{
-		BidResponse:   outcome.BidResponse,
-		WinnerUserIds: outcome.WinnerUserIDs,
+		BidResponse:        outcome.BidResponse,
+		WinnerUserIds:      outcome.WinnerUserIDs,
+		WinnerChargePrices: outcome.WinnerChargePrices,
 	}, nil
 }
 

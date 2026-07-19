@@ -29,6 +29,7 @@ const (
 	PricingModelCPC      = "CPC"
 	TrafficAdult         = "ADULT"
 	TrafficMainstream    = "MAINSTREAM"
+	TrafficMixed         = "MIXED"
 	unknownTrackerValue  = "unknown"
 )
 
@@ -100,8 +101,9 @@ type AuctionRequestOptions struct {
 }
 
 type AuctionOutcome struct {
-	BidResponse   *ortb.BidResponse
-	WinnerUserIDs map[string]string
+	BidResponse        *ortb.BidResponse
+	WinnerUserIDs      map[string]string
+	WinnerChargePrices map[string]float64
 }
 
 type candidate struct {
@@ -392,6 +394,7 @@ func (s *AuctionService) Auction(ctx context.Context, req *ortb.BidRequest, now 
 
 	seat := &ortb.SeatBid{Bid: make([]*ortb.Bid, 0, len(req.GetImp()))}
 	winnerUsers := make(map[string]string)
+	winnerChargePrices := make(map[string]float64)
 	infrastructureErrors := 0
 
 	for idx, imp := range req.GetImp() {
@@ -549,6 +552,7 @@ func (s *AuctionService) Auction(ctx context.Context, req *ortb.BidRequest, now 
 
 			seat.Bid = append(seat.Bid, bid)
 			winnerUsers[impID] = cand.campaign.UserID
+			winnerChargePrices[impID] = cand.chargePrice
 			logf(
 				"[ADV][WINNER] request_id=%q imp_id=%q winner_uuid=%q campaign_id=%q creative_id=%q user_id=%q charge_price=%.12f effective_price=%.12f matched_creatives=%d",
 				requestID,
@@ -580,7 +584,7 @@ func (s *AuctionService) Auction(ctx context.Context, req *ortb.BidRequest, now 
 			len(req.GetImp()),
 			len(winnerUsers),
 		)
-		return &AuctionOutcome{WinnerUserIDs: winnerUsers}, nil
+		return &AuctionOutcome{WinnerUserIDs: winnerUsers, WinnerChargePrices: winnerChargePrices}, nil
 	}
 
 	responseID := uuid.NewString()
@@ -593,8 +597,9 @@ func (s *AuctionService) Auction(ctx context.Context, req *ortb.BidRequest, now 
 		len(winnerUsers),
 	)
 	return &AuctionOutcome{
-		BidResponse:   &ortb.BidResponse{Id: &responseID, Cur: &currency, Seatbid: []*ortb.SeatBid{seat}},
-		WinnerUserIDs: winnerUsers,
+		BidResponse:        &ortb.BidResponse{Id: &responseID, Cur: &currency, Seatbid: []*ortb.SeatBid{seat}},
+		WinnerUserIDs:      winnerUsers,
+		WinnerChargePrices: winnerChargePrices,
 	}, nil
 }
 
@@ -682,7 +687,7 @@ func (s *AuctionService) evaluateCampaign(
 		)
 		return candidate{}, false, nil
 	}
-	if normalizeTraffic(campaign.TrafficType) != trafficType {
+	if !trafficMatches(campaign.TrafficType, trafficType) {
 		logf(
 			"[ADV][CAMPAIGN_REJECT] request_id=%q imp_id=%q campaign_id=%q user_id=%q reason=traffic_type_mismatch campaign_traffic_type=%q requested_traffic_type=%q",
 			requestID,
@@ -1231,9 +1236,22 @@ func normalizeTraffic(value string) string {
 		return TrafficAdult
 	case TrafficMainstream:
 		return TrafficMainstream
+	case TrafficMixed:
+		return TrafficMixed
 	default:
 		return ""
 	}
+}
+
+func trafficMatches(campaignTraffic, requestTraffic string) bool {
+	campaignTraffic = normalizeTraffic(campaignTraffic)
+	requestTraffic = normalizeTraffic(requestTraffic)
+
+	if campaignTraffic == TrafficMixed {
+		return requestTraffic == TrafficAdult || requestTraffic == TrafficMainstream
+	}
+
+	return campaignTraffic == requestTraffic
 }
 
 type requestFilterValues struct {
