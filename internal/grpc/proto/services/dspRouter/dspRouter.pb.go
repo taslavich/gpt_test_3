@@ -123,18 +123,18 @@ func (x *DspRouterRequest_V2_5) GetTrafficType() string {
 }
 
 type DspRouterResponse_V2_5 struct {
-	state              protoimpl.MessageState            `protogen:"open.v1"`
-	BidRequest         *ortb_V2_5.BidRequest             `protobuf:"bytes,1,opt,name=bidRequest,proto3" json:"bidRequest,omitempty"`
-	BidResponses       map[string]*ortb_V2_5.BidResponse `protobuf:"bytes,2,rep,name=bidResponses,proto3" json:"bidResponses,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
-	SspDomain          string                            `protobuf:"bytes,3,opt,name=ssp_domain,json=sspDomain,proto3" json:"ssp_domain,omitempty"`
-	Code               int32                             `protobuf:"varint,4,opt,name=code,proto3" json:"code,omitempty"`
-	Rekl               bool                              `protobuf:"varint,5,opt,name=rekl,proto3" json:"rekl,omitempty"`
-	ReadyBidResponse   *ortb_V2_5.BidResponse            `protobuf:"bytes,6,opt,name=readyBidResponse,proto3" json:"readyBidResponse,omitempty"`
-	WinnerUserIds      map[string]string                 `protobuf:"bytes,7,rep,name=winnerUserIds,proto3" json:"winnerUserIds,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
-	ImpIdUuid          map[string]string                 `protobuf:"bytes,8,rep,name=impIdUuid,proto3" json:"impIdUuid,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
-	WinnerChargePrices map[string]float64                `protobuf:"bytes,9,rep,name=winnerChargePrices,proto3" json:"winnerChargePrices,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"fixed64,2,opt,name=value"`
-	unknownFields      protoimpl.UnknownFields
-	sizeCache          protoimpl.SizeCache
+	state            protoimpl.MessageState            `protogen:"open.v1"`
+	BidRequest       *ortb_V2_5.BidRequest             `protobuf:"bytes,1,opt,name=bidRequest,proto3" json:"bidRequest,omitempty"`
+	BidResponses     map[string]*ortb_V2_5.BidResponse `protobuf:"bytes,2,rep,name=bidResponses,proto3" json:"bidResponses,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
+	SspDomain        string                            `protobuf:"bytes,3,opt,name=ssp_domain,json=sspDomain,proto3" json:"ssp_domain,omitempty"`
+	Code             int32                             `protobuf:"varint,4,opt,name=code,proto3" json:"code,omitempty"`
+	Rekl             bool                              `protobuf:"varint,5,opt,name=rekl,proto3" json:"rekl,omitempty"`
+	ReadyBidResponse *ortb_V2_5.BidResponse            `protobuf:"bytes,6,opt,name=readyBidResponse,proto3" json:"readyBidResponse,omitempty"`
+	WinnerUserIds    map[string]string                 `protobuf:"bytes,7,rep,name=winnerUserIds,proto3" json:"winnerUserIds,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
+	ImpIdUuid        map[string]string                 `protobuf:"bytes,8,rep,name=impIdUuid,proto3" json:"impIdUuid,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
+	WinnerBasePrices map[string]float64                `protobuf:"bytes,9,rep,name=winnerBasePrices,proto3" json:"winnerBasePrices,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"fixed64,2,opt,name=value"`
+	unknownFields    protoimpl.UnknownFields
+	sizeCache        protoimpl.SizeCache
 }
 
 func (x *DspRouterResponse_V2_5) Reset() {
@@ -223,61 +223,16 @@ func (x *DspRouterResponse_V2_5) GetImpIdUuid() map[string]string {
 	return nil
 }
 
-func (x *DspRouterResponse_V2_5) GetWinnerChargePrices() map[string]float64 {
+func (x *DspRouterResponse_V2_5) GetWinnerBasePrices() map[string]float64 {
 	if x != nil {
-		return x.WinnerChargePrices
+		return x.WinnerBasePrices
 	}
 	return nil
 }
 
 var File_services_dspRouter_proto protoreflect.FileDescriptor
 
-const file_services_dspRouter_proto_rawDesc = "" +
-	"\n" +
-	"\x18services/dspRouter.proto\x12\tdspRouter\x1a\x1atypes/ortb_V2_5/ortb.proto\"\x87\x03\n" +
-	"\x15DspRouterRequest_V2_5\x125\n" +
-	"\n" +
-	"bidRequest\x18\x01 \x01(\v2\x15.ortb_V2_5.BidRequestR\n" +
-	"bidRequest\x12M\n" +
-	"\timpIdUuid\x18\x02 \x03(\v2/.dspRouter.DspRouterRequest_V2_5.ImpIdUuidEntryR\timpIdUuid\x12\x1d\n" +
-	"\n" +
-	"ssp_domain\x18\x03 \x01(\tR\tsspDomain\x12\x16\n" +
-	"\x06logged\x18\x04 \x01(\bR\x06logged\x12\x14\n" +
-	"\x05typic\x18\x05 \x01(\tR\x05typic\x12\x16\n" +
-	"\x06format\x18\x06 \x01(\tR\x06format\x12\x16\n" +
-	"\x06sspUrl\x18\a \x01(\tR\x06sspUrl\x12!\n" +
-	"\ftraffic_type\x18\b \x01(\tR\vtrafficType\x1a<\n" +
-	"\x0eImpIdUuidEntry\x12\x10\n" +
-	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01J\x04\b\t\x10\n" +
-	"R\x04feed\"\xea\x06\n" +
-	"\x16DspRouterResponse_V2_5\x125\n" +
-	"\n" +
-	"bidRequest\x18\x01 \x01(\v2\x15.ortb_V2_5.BidRequestR\n" +
-	"bidRequest\x12W\n" +
-	"\fbidResponses\x18\x02 \x03(\v23.dspRouter.DspRouterResponse_V2_5.BidResponsesEntryR\fbidResponses\x12\x1d\n" +
-	"\n" +
-	"ssp_domain\x18\x03 \x01(\tR\tsspDomain\x12\x12\n" +
-	"\x04code\x18\x04 \x01(\x05R\x04code\x12\x12\n" +
-	"\x04rekl\x18\x05 \x01(\bR\x04rekl\x12B\n" +
-	"\x10readyBidResponse\x18\x06 \x01(\v2\x16.ortb_V2_5.BidResponseR\x10readyBidResponse\x12Z\n" +
-	"\rwinnerUserIds\x18\a \x03(\v24.dspRouter.DspRouterResponse_V2_5.WinnerUserIdsEntryR\rwinnerUserIds\x12N\n" +
-	"\timpIdUuid\x18\b \x03(\v20.dspRouter.DspRouterResponse_V2_5.ImpIdUuidEntryR\timpIdUuid\x12i\n" +
-	"\x12winnerChargePrices\x18\t \x03(\v29.dspRouter.DspRouterResponse_V2_5.WinnerChargePricesEntryR\x12winnerChargePrices\x1aW\n" +
-	"\x11BidResponsesEntry\x12\x10\n" +
-	"\x03key\x18\x01 \x01(\tR\x03key\x12,\n" +
-	"\x05value\x18\x02 \x01(\v2\x16.ortb_V2_5.BidResponseR\x05value:\x028\x01\x1a@\n" +
-	"\x12WinnerUserIdsEntry\x12\x10\n" +
-	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\x1a<\n" +
-	"\x0eImpIdUuidEntry\x12\x10\n" +
-	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\x1aE\n" +
-	"\x17WinnerChargePricesEntry\x12\x10\n" +
-	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\x01R\x05value:\x028\x012g\n" +
-	"\x10DspRouterService\x12S\n" +
-	"\fGetBids_V2_5\x12 .dspRouter.DspRouterRequest_V2_5\x1a!.dspRouter.DspRouterResponse_V2_5B_Z]gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/proto/services/dspRouter;dspRouterGrpcb\x06proto3"
+const file_services_dspRouter_proto_rawDesc = "\n\x18services/dspRouter.proto\x12\tdspRouter\x1a\x1atypes/ortb_V2_5/ortb.proto\"\x87\x03\n\x15DspRouterRequest_V2_5\x125\n\nbidRequest\x18\x01 \x01(\x0b2\x15.ortb_V2_5.BidRequestR\nbidRequest\x12M\n\timpIdUuid\x18\x02 \x03(\x0b2/.dspRouter.DspRouterRequest_V2_5.ImpIdUuidEntryR\timpIdUuid\x12\x1d\n\nssp_domain\x18\x03 \x01(\tR\tsspDomain\x12\x16\n\x06logged\x18\x04 \x01(\x08R\x06logged\x12\x14\n\x05typic\x18\x05 \x01(\tR\x05typic\x12\x16\n\x06format\x18\x06 \x01(\tR\x06format\x12\x16\n\x06sspUrl\x18\x07 \x01(\tR\x06sspUrl\x12!\n\x0ctraffic_type\x18\x08 \x01(\tR\x0btrafficType\x1a<\n\x0eImpIdUuidEntry\x12\x10\n\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n\x05value\x18\x02 \x01(\tR\x05value:\x028\x01J\x04\x08\t\x10\nR\x04feed\"\xe2\x06\n\x16DspRouterResponse_V2_5\x125\n\nbidRequest\x18\x01 \x01(\x0b2\x15.ortb_V2_5.BidRequestR\nbidRequest\x12W\n\x0cbidResponses\x18\x02 \x03(\x0b23.dspRouter.DspRouterResponse_V2_5.BidResponsesEntryR\x0cbidResponses\x12\x1d\n\nssp_domain\x18\x03 \x01(\tR\tsspDomain\x12\x12\n\x04code\x18\x04 \x01(\x05R\x04code\x12\x12\n\x04rekl\x18\x05 \x01(\x08R\x04rekl\x12B\n\x10readyBidResponse\x18\x06 \x01(\x0b2\x16.ortb_V2_5.BidResponseR\x10readyBidResponse\x12Z\n\rwinnerUserIds\x18\x07 \x03(\x0b24.dspRouter.DspRouterResponse_V2_5.WinnerUserIdsEntryR\rwinnerUserIds\x12N\n\timpIdUuid\x18\x08 \x03(\x0b20.dspRouter.DspRouterResponse_V2_5.ImpIdUuidEntryR\timpIdUuid\x12c\n\x10winnerBasePrices\x18\t \x03(\x0b27.dspRouter.DspRouterResponse_V2_5.WinnerBasePricesEntryR\x10winnerBasePrices\x1aW\n\x11BidResponsesEntry\x12\x10\n\x03key\x18\x01 \x01(\tR\x03key\x12,\n\x05value\x18\x02 \x01(\x0b2\x16.ortb_V2_5.BidResponseR\x05value:\x028\x01\x1a@\n\x12WinnerUserIdsEntry\x12\x10\n\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\x1a<\n\x0eImpIdUuidEntry\x12\x10\n\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\x1aC\n\x15WinnerBasePricesEntry\x12\x10\n\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n\x05value\x18\x02 \x01(\x01R\x05value:\x028\x012g\n\x10DspRouterService\x12S\n\x0cGetBids_V2_5\x12 .dspRouter.DspRouterRequest_V2_5\x1a!.dspRouter.DspRouterResponse_V2_5B_Z]gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/proto/services/dspRouter;dspRouterGrpcb\x06proto3"
 
 var (
 	file_services_dspRouter_proto_rawDescOnce sync.Once
@@ -299,7 +254,7 @@ var file_services_dspRouter_proto_goTypes = []any{
 	nil,                            // 3: dspRouter.DspRouterResponse_V2_5.BidResponsesEntry
 	nil,                            // 4: dspRouter.DspRouterResponse_V2_5.WinnerUserIdsEntry
 	nil,                            // 5: dspRouter.DspRouterResponse_V2_5.ImpIdUuidEntry
-	nil,                            // 6: dspRouter.DspRouterResponse_V2_5.WinnerChargePricesEntry
+	nil,                            // 6: dspRouter.DspRouterResponse_V2_5.WinnerBasePricesEntry
 	(*ortb_V2_5.BidRequest)(nil),   // 7: ortb_V2_5.BidRequest
 	(*ortb_V2_5.BidResponse)(nil),  // 8: ortb_V2_5.BidResponse
 }
@@ -311,7 +266,7 @@ var file_services_dspRouter_proto_depIdxs = []int32{
 	8,  // 4: dspRouter.DspRouterResponse_V2_5.readyBidResponse:type_name -> ortb_V2_5.BidResponse
 	4,  // 5: dspRouter.DspRouterResponse_V2_5.winnerUserIds:type_name -> dspRouter.DspRouterResponse_V2_5.WinnerUserIdsEntry
 	5,  // 6: dspRouter.DspRouterResponse_V2_5.impIdUuid:type_name -> dspRouter.DspRouterResponse_V2_5.ImpIdUuidEntry
-	6,  // 7: dspRouter.DspRouterResponse_V2_5.winnerChargePrices:type_name -> dspRouter.DspRouterResponse_V2_5.WinnerChargePricesEntry
+	6,  // 7: dspRouter.DspRouterResponse_V2_5.winnerBasePrices:type_name -> dspRouter.DspRouterResponse_V2_5.WinnerBasePricesEntry
 	8,  // 8: dspRouter.DspRouterResponse_V2_5.BidResponsesEntry.value:type_name -> ortb_V2_5.BidResponse
 	0,  // 9: dspRouter.DspRouterService.GetBids_V2_5:input_type -> dspRouter.DspRouterRequest_V2_5
 	1,  // 10: dspRouter.DspRouterService.GetBids_V2_5:output_type -> dspRouter.DspRouterResponse_V2_5

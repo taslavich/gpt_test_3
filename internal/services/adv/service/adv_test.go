@@ -33,6 +33,21 @@ func TestTrafficMatches(t *testing.T) {
 	}
 }
 
+func TestAuctionPriceUsesBasePriceWhileChargePriceUsesBillingRules(t *testing.T) {
+	basePrice := 300.0
+	deduction := 0.5
+
+	chargePrice := CalculateChargePrice(basePrice, PricingModelCPM, "POP")
+	if math.Abs(chargePrice-0.3) > 1e-12 {
+		t.Fatalf("charge price got %v want 0.3", chargePrice)
+	}
+
+	auctionPrice := CalculateEffectiveAuctionPrice(basePrice, deduction)
+	if math.Abs(auctionPrice-150) > 1e-12 {
+		t.Fatalf("auction price got %v want 150", auctionPrice)
+	}
+}
+
 func TestChargePriceRules(t *testing.T) {
 	tests := []struct {
 		model, format string

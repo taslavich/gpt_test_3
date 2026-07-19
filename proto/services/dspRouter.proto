@@ -30,5 +30,5 @@ message DspRouterResponse_V2_5 {
   ortb_V2_5.BidResponse readyBidResponse = 6;
   map<string, string> winnerUserIds = 7;
   map<string, string> impIdUuid = 8;
-  map<string, double> winnerChargePrices = 9;
+  map<string, double> winnerBasePrices = 9;
 }

@@ -101,9 +101,9 @@ type AuctionRequestOptions struct {
 }
 
 type AuctionOutcome struct {
-	BidResponse        *ortb.BidResponse
-	WinnerUserIDs      map[string]string
-	WinnerChargePrices map[string]float64
+	BidResponse      *ortb.BidResponse
+	WinnerUserIDs    map[string]string
+	WinnerBasePrices map[string]float64
 }
 
 type candidate struct {
@@ -394,7 +394,7 @@ func (s *AuctionService) Auction(ctx context.Context, req *ortb.BidRequest, now 
 
 	seat := &ortb.SeatBid{Bid: make([]*ortb.Bid, 0, len(req.GetImp()))}
 	winnerUsers := make(map[string]string)
-	winnerChargePrices := make(map[string]float64)
+	winnerBasePrices := make(map[string]float64)
 	infrastructureErrors := 0
 
 	for idx, imp := range req.GetImp() {
@@ -552,15 +552,16 @@ func (s *AuctionService) Auction(ctx context.Context, req *ortb.BidRequest, now 
 
 			seat.Bid = append(seat.Bid, bid)
 			winnerUsers[impID] = cand.campaign.UserID
-			winnerChargePrices[impID] = cand.chargePrice
+			winnerBasePrices[impID] = cand.campaign.BasePrice
 			logf(
-				"[ADV][WINNER] request_id=%q imp_id=%q winner_uuid=%q campaign_id=%q creative_id=%q user_id=%q charge_price=%.12f effective_price=%.12f matched_creatives=%d",
+				"[ADV][WINNER] request_id=%q imp_id=%q winner_uuid=%q campaign_id=%q creative_id=%q user_id=%q base_price=%.12f charge_price=%.12f effective_price=%.12f matched_creatives=%d",
 				requestID,
 				impID,
 				winnerUUID,
 				cand.campaign.ID,
 				creative.ID,
 				cand.campaign.UserID,
+				cand.campaign.BasePrice,
 				cand.chargePrice,
 				cand.effectivePrice,
 				len(cand.creatives),
@@ -584,7 +585,7 @@ func (s *AuctionService) Auction(ctx context.Context, req *ortb.BidRequest, now 
 			len(req.GetImp()),
 			len(winnerUsers),
 		)
-		return &AuctionOutcome{WinnerUserIDs: winnerUsers, WinnerChargePrices: winnerChargePrices}, nil
+		return &AuctionOutcome{WinnerUserIDs: winnerUsers, WinnerBasePrices: winnerBasePrices}, nil
 	}
 
 	responseID := uuid.NewString()
@@ -597,9 +598,9 @@ func (s *AuctionService) Auction(ctx context.Context, req *ortb.BidRequest, now 
 		len(winnerUsers),
 	)
 	return &AuctionOutcome{
-		BidResponse:        &ortb.BidResponse{Id: &responseID, Cur: &currency, Seatbid: []*ortb.SeatBid{seat}},
-		WinnerUserIDs:      winnerUsers,
-		WinnerChargePrices: winnerChargePrices,
+		BidResponse:      &ortb.BidResponse{Id: &responseID, Cur: &currency, Seatbid: []*ortb.SeatBid{seat}},
+		WinnerUserIDs:    winnerUsers,
+		WinnerBasePrices: winnerBasePrices,
 	}, nil
 }
 
@@ -820,15 +821,15 @@ func (s *AuctionService) evaluateCampaign(
 	}
 
 	deduction := s.percents.Lookup(campaign.UserID)
-	effective := CalculateEffectiveAuctionPrice(chargePrice, deduction)
+	effective := CalculateEffectiveAuctionPrice(campaign.BasePrice, deduction)
 	if effective <= 0 || math.IsNaN(effective) || math.IsInf(effective, 0) {
 		logf(
-			"[ADV][CAMPAIGN_REJECT] request_id=%q imp_id=%q campaign_id=%q user_id=%q reason=effective_price_non_positive charge_price=%.12f deduction=%.12f effective_price=%.12f",
+			"[ADV][CAMPAIGN_REJECT] request_id=%q imp_id=%q campaign_id=%q user_id=%q reason=effective_price_non_positive base_price=%.12f deduction=%.12f effective_price=%.12f",
 			requestID,
 			impID,
 			campaignID,
 			userID,
-			chargePrice,
+			campaign.BasePrice,
 			deduction,
 			effective,
 		)
@@ -836,12 +837,13 @@ func (s *AuctionService) evaluateCampaign(
 	}
 
 	logf(
-		"[ADV][CAMPAIGN_ELIGIBLE] request_id=%q imp_id=%q campaign_id=%q user_id=%q creatives=%d charge_price=%.12f deduction=%.12f effective_price=%.12f campaign_remaining=%.12f user_remaining=%.12f",
+		"[ADV][CAMPAIGN_ELIGIBLE] request_id=%q imp_id=%q campaign_id=%q user_id=%q creatives=%d base_price=%.12f charge_price=%.12f deduction=%.12f effective_price=%.12f campaign_remaining=%.12f user_remaining=%.12f",
 		requestID,
 		impID,
 		campaignID,
 		userID,
 		len(creatives),
+		campaign.BasePrice,
 		chargePrice,
 		deduction,
 		effective,

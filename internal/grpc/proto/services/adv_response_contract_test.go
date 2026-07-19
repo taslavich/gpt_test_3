@@ -24,8 +24,8 @@ func TestADVResponseContractDoesNotExposeSelectedOrCode(t *testing.T) {
 	if fields.ByName("winnerUserIds") == nil {
 		t.Fatal("ADV response must expose winnerUserIds")
 	}
-	if fields.ByName("winnerChargePrices") == nil {
-		t.Fatal("ADV response must expose winnerChargePrices")
+	if fields.ByName("winnerBasePrices") == nil {
+		t.Fatal("ADV response must expose winnerBasePrices")
 	}
 }
 
@@ -36,7 +36,7 @@ func TestADVReadyBidResponseRoundTrip(t *testing.T) {
 		WinnerUserIds: map[string]string{
 			"imp-1": "user-1",
 		},
-		WinnerChargePrices: map[string]float64{
+		WinnerBasePrices: map[string]float64{
 			"imp-1": 2.5,
 		},
 	}
@@ -55,12 +55,12 @@ func TestADVReadyBidResponseRoundTrip(t *testing.T) {
 	if got := output.GetWinnerUserIds()["imp-1"]; got != "user-1" {
 		t.Fatalf("winner user id got %q want %q", got, "user-1")
 	}
-	if got := output.GetWinnerChargePrices()["imp-1"]; got != 2.5 {
-		t.Fatalf("winner charge price got %v want %v", got, 2.5)
+	if got := output.GetWinnerBasePrices()["imp-1"]; got != 2.5 {
+		t.Fatalf("winner base price got %v want %v", got, 2.5)
 	}
 }
 
-func TestWinnerChargePriceMapsRoundTripAcrossADVChain(t *testing.T) {
+func TestWinnerBasePriceMapsRoundTripAcrossADVChain(t *testing.T) {
 	tests := []struct {
 		name    string
 		input   proto.Message
@@ -69,18 +69,18 @@ func TestWinnerChargePriceMapsRoundTripAcrossADVChain(t *testing.T) {
 	}{
 		{
 			name:   "router response",
-			input:  &dspRouterGrpc.DspRouterResponse_V2_5{WinnerChargePrices: map[string]float64{"imp-1": 3.5}},
+			input:  &dspRouterGrpc.DspRouterResponse_V2_5{WinnerBasePrices: map[string]float64{"imp-1": 3.5}},
 			output: &dspRouterGrpc.DspRouterResponse_V2_5{},
 			readMap: func(message proto.Message) map[string]float64 {
-				return message.(*dspRouterGrpc.DspRouterResponse_V2_5).GetWinnerChargePrices()
+				return message.(*dspRouterGrpc.DspRouterResponse_V2_5).GetWinnerBasePrices()
 			},
 		},
 		{
 			name:   "bid engine request",
-			input:  &bidEngineGrpc.BidEngineRequest_V2_5{WinnerChargePrices: map[string]float64{"imp-1": 3.5}},
+			input:  &bidEngineGrpc.BidEngineRequest_V2_5{WinnerBasePrices: map[string]float64{"imp-1": 3.5}},
 			output: &bidEngineGrpc.BidEngineRequest_V2_5{},
 			readMap: func(message proto.Message) map[string]float64 {
-				return message.(*bidEngineGrpc.BidEngineRequest_V2_5).GetWinnerChargePrices()
+				return message.(*bidEngineGrpc.BidEngineRequest_V2_5).GetWinnerBasePrices()
 			},
 		},
 	}
@@ -95,7 +95,7 @@ func TestWinnerChargePriceMapsRoundTripAcrossADVChain(t *testing.T) {
 				t.Fatal(err)
 			}
 			if got := test.readMap(test.output)["imp-1"]; got != 3.5 {
-				t.Fatalf("winner charge price got %v want %v", got, 3.5)
+				t.Fatalf("winner base price got %v want %v", got, 3.5)
 			}
 		})
 	}

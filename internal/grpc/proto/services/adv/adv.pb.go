@@ -99,16 +99,16 @@ func (x *DoAuctionRequest) GetImpIdUuid() map[string]string {
 }
 
 type DoAuctionResponse struct {
-	state              protoimpl.MessageState `protogen:"open.v1"`
-	CampaignId         string                 `protobuf:"bytes,2,opt,name=campaign_id,json=campaignId,proto3" json:"campaign_id,omitempty"`
-	CreativeId         string                 `protobuf:"bytes,3,opt,name=creative_id,json=creativeId,proto3" json:"creative_id,omitempty"`
-	Adm                string                 `protobuf:"bytes,4,opt,name=adm,proto3" json:"adm,omitempty"`
-	AuctionPrice       float64                `protobuf:"fixed64,5,opt,name=auction_price,json=auctionPrice,proto3" json:"auction_price,omitempty"`
-	BidResponse        *ortb_V2_5.BidResponse `protobuf:"bytes,7,opt,name=bid_response,json=bidResponse,proto3" json:"bid_response,omitempty"`
-	WinnerUserIds      map[string]string      `protobuf:"bytes,8,rep,name=winnerUserIds,proto3" json:"winnerUserIds,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
-	WinnerChargePrices map[string]float64     `protobuf:"bytes,9,rep,name=winnerChargePrices,proto3" json:"winnerChargePrices,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"fixed64,2,opt,name=value"`
-	unknownFields      protoimpl.UnknownFields
-	sizeCache          protoimpl.SizeCache
+	state            protoimpl.MessageState `protogen:"open.v1"`
+	CampaignId       string                 `protobuf:"bytes,2,opt,name=campaign_id,json=campaignId,proto3" json:"campaign_id,omitempty"`
+	CreativeId       string                 `protobuf:"bytes,3,opt,name=creative_id,json=creativeId,proto3" json:"creative_id,omitempty"`
+	Adm              string                 `protobuf:"bytes,4,opt,name=adm,proto3" json:"adm,omitempty"`
+	AuctionPrice     float64                `protobuf:"fixed64,5,opt,name=auction_price,json=auctionPrice,proto3" json:"auction_price,omitempty"`
+	BidResponse      *ortb_V2_5.BidResponse `protobuf:"bytes,7,opt,name=bid_response,json=bidResponse,proto3" json:"bid_response,omitempty"`
+	WinnerUserIds    map[string]string      `protobuf:"bytes,8,rep,name=winnerUserIds,proto3" json:"winnerUserIds,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
+	WinnerBasePrices map[string]float64     `protobuf:"bytes,9,rep,name=winnerBasePrices,proto3" json:"winnerBasePrices,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"fixed64,2,opt,name=value"`
+	unknownFields    protoimpl.UnknownFields
+	sizeCache        protoimpl.SizeCache
 }
 
 func (x *DoAuctionResponse) Reset() {
@@ -183,49 +183,16 @@ func (x *DoAuctionResponse) GetWinnerUserIds() map[string]string {
 	return nil
 }
 
-func (x *DoAuctionResponse) GetWinnerChargePrices() map[string]float64 {
+func (x *DoAuctionResponse) GetWinnerBasePrices() map[string]float64 {
 	if x != nil {
-		return x.WinnerChargePrices
+		return x.WinnerBasePrices
 	}
 	return nil
 }
 
 var File_services_adv_proto protoreflect.FileDescriptor
 
-const file_services_adv_proto_rawDesc = "" +
-	"\n" +
-	"\x12services/adv.proto\x12\x03adv\x1a\x1atypes/ortb_V2_5/ortb.proto\"\xb1\x02\n" +
-	"\x10DoAuctionRequest\x125\n" +
-	"\n" +
-	"bidRequest\x18\x01 \x01(\v2\x15.ortb_V2_5.BidRequestR\n" +
-	"bidRequest\x12\x16\n" +
-	"\x06format\x18\x02 \x01(\tR\x06format\x12!\n" +
-	"\ftraffic_type\x18\x03 \x01(\tR\vtrafficType\x12\x1d\n" +
-	"\n" +
-	"ssp_domain\x18\x04 \x01(\tR\tsspDomain\x12B\n" +
-	"\timpIdUuid\x18\x05 \x03(\v2$.adv.DoAuctionRequest.ImpIdUuidEntryR\timpIdUuid\x1a<\n" +
-	"\x0eImpIdUuidEntry\x12\x10\n" +
-	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01J\x04\b\x06\x10\aR\x04feed\"\x9d\x04\n" +
-	"\x11DoAuctionResponse\x12\x1f\n" +
-	"\vcampaign_id\x18\x02 \x01(\tR\n" +
-	"campaignId\x12\x1f\n" +
-	"\vcreative_id\x18\x03 \x01(\tR\n" +
-	"creativeId\x12\x10\n" +
-	"\x03adm\x18\x04 \x01(\tR\x03adm\x12#\n" +
-	"\rauction_price\x18\x05 \x01(\x01R\fauctionPrice\x129\n" +
-	"\fbid_response\x18\a \x01(\v2\x16.ortb_V2_5.BidResponseR\vbidResponse\x12O\n" +
-	"\rwinnerUserIds\x18\b \x03(\v2).adv.DoAuctionResponse.WinnerUserIdsEntryR\rwinnerUserIds\x12^\n" +
-	"\x12winnerChargePrices\x18\t \x03(\v2..adv.DoAuctionResponse.WinnerChargePricesEntryR\x12winnerChargePrices\x1a@\n" +
-	"\x12WinnerUserIdsEntry\x12\x10\n" +
-	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\x1aE\n" +
-	"\x17WinnerChargePricesEntry\x12\x10\n" +
-	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\x01R\x05value:\x028\x01J\x04\b\x01\x10\x02J\x04\b\x06\x10\aR\bselectedR\x04code2J\n" +
-	"\n" +
-	"AdvService\x12<\n" +
-	"\tDoAuction\x12\x15.adv.DoAuctionRequest\x1a\x16.adv.DoAuctionResponse\"\x00BSZQgitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/proto/services/adv;advGrpcb\x06proto3"
+const file_services_adv_proto_rawDesc = "\n\x12services/adv.proto\x12\x03adv\x1a\x1atypes/ortb_V2_5/ortb.proto\"\xb1\x02\n\x10DoAuctionRequest\x125\n\nbidRequest\x18\x01 \x01(\x0b2\x15.ortb_V2_5.BidRequestR\nbidRequest\x12\x16\n\x06format\x18\x02 \x01(\tR\x06format\x12!\n\x0ctraffic_type\x18\x03 \x01(\tR\x0btrafficType\x12\x1d\n\nssp_domain\x18\x04 \x01(\tR\tsspDomain\x12B\n\timpIdUuid\x18\x05 \x03(\x0b2$.adv.DoAuctionRequest.ImpIdUuidEntryR\timpIdUuid\x1a<\n\x0eImpIdUuidEntry\x12\x10\n\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n\x05value\x18\x02 \x01(\tR\x05value:\x028\x01J\x04\x08\x06\x10\x07R\x04feed\"\x95\x04\n\x11DoAuctionResponse\x12\x1f\n\x0bcampaign_id\x18\x02 \x01(\tR\ncampaignId\x12\x1f\n\x0bcreative_id\x18\x03 \x01(\tR\ncreativeId\x12\x10\n\x03adm\x18\x04 \x01(\tR\x03adm\x12#\n\rauction_price\x18\x05 \x01(\x01R\x0cauctionPrice\x129\n\x0cbid_response\x18\x07 \x01(\x0b2\x16.ortb_V2_5.BidResponseR\x0bbidResponse\x12O\n\rwinnerUserIds\x18\x08 \x03(\x0b2).adv.DoAuctionResponse.WinnerUserIdsEntryR\rwinnerUserIds\x12X\n\x10winnerBasePrices\x18\t \x03(\x0b2,.adv.DoAuctionResponse.WinnerBasePricesEntryR\x10winnerBasePrices\x1a@\n\x12WinnerUserIdsEntry\x12\x10\n\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\x1aC\n\x15WinnerBasePricesEntry\x12\x10\n\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n\x05value\x18\x02 \x01(\x01R\x05value:\x028\x01J\x04\x08\x01\x10\x02J\x04\x08\x06\x10\x07R\x08selectedR\x04code2J\n\nAdvService\x12<\n\tDoAuction\x12\x15.adv.DoAuctionRequest\x1a\x16.adv.DoAuctionResponse\"\x00BSZQgitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/proto/services/adv;advGrpcb\x06proto3"
 
 var (
 	file_services_adv_proto_rawDescOnce sync.Once
@@ -245,7 +212,7 @@ var file_services_adv_proto_goTypes = []any{
 	(*DoAuctionResponse)(nil),     // 1: adv.DoAuctionResponse
 	nil,                           // 2: adv.DoAuctionRequest.ImpIdUuidEntry
 	nil,                           // 3: adv.DoAuctionResponse.WinnerUserIdsEntry
-	nil,                           // 4: adv.DoAuctionResponse.WinnerChargePricesEntry
+	nil,                           // 4: adv.DoAuctionResponse.WinnerBasePricesEntry
 	(*ortb_V2_5.BidRequest)(nil),  // 5: ortb_V2_5.BidRequest
 	(*ortb_V2_5.BidResponse)(nil), // 6: ortb_V2_5.BidResponse
 }
@@ -254,7 +221,7 @@ var file_services_adv_proto_depIdxs = []int32{
 	2, // 1: adv.DoAuctionRequest.impIdUuid:type_name -> adv.DoAuctionRequest.ImpIdUuidEntry
 	6, // 2: adv.DoAuctionResponse.bid_response:type_name -> ortb_V2_5.BidResponse
 	3, // 3: adv.DoAuctionResponse.winnerUserIds:type_name -> adv.DoAuctionResponse.WinnerUserIdsEntry
-	4, // 4: adv.DoAuctionResponse.winnerChargePrices:type_name -> adv.DoAuctionResponse.WinnerChargePricesEntry
+	4, // 4: adv.DoAuctionResponse.winnerBasePrices:type_name -> adv.DoAuctionResponse.WinnerBasePricesEntry
 	0, // 5: adv.AdvService.DoAuction:input_type -> adv.DoAuctionRequest
 	1, // 6: adv.AdvService.DoAuction:output_type -> adv.DoAuctionResponse
 	6, // [6:7] is the sub-list for method output_type

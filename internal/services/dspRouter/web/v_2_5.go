@@ -328,15 +328,15 @@ func (s *Server) GetBids_V2_5(
 		log.Printf("ADV auction failed, falling back to DSP: %v", advErr)
 	} else if readyADVResponse != nil {
 		return &dspRouterGrpc.DspRouterResponse_V2_5{
-			BidRequest:         req.GetBidRequest(),
-			BidResponses:       map[string]*ortb_V2_5.BidResponse{},
-			SspDomain:          req.GetSspDomain(),
-			Code:               http.StatusOK,
-			Rekl:               true,
-			ReadyBidResponse:   readyADVResponse,
-			WinnerUserIds:      cloneStringMap(advResponse.GetWinnerUserIds()),
-			ImpIdUuid:          cloneStringMap(req.GetImpIdUuid()),
-			WinnerChargePrices: cloneFloat64Map(advResponse.GetWinnerChargePrices()),
+			BidRequest:       req.GetBidRequest(),
+			BidResponses:     map[string]*ortb_V2_5.BidResponse{},
+			SspDomain:        req.GetSspDomain(),
+			Code:             http.StatusOK,
+			Rekl:             true,
+			ReadyBidResponse: readyADVResponse,
+			WinnerUserIds:    cloneStringMap(advResponse.GetWinnerUserIds()),
+			ImpIdUuid:        cloneStringMap(req.GetImpIdUuid()),
+			WinnerBasePrices: cloneFloat64Map(advResponse.GetWinnerBasePrices()),
 		}, nil
 	}
 

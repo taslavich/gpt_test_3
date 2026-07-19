@@ -20,7 +20,7 @@ message BidEngineRequest_V2_5 {
   bool rekl = 9;
   ortb_V2_5.BidResponse readyBidResponse = 10;
   map<string, string> winnerUserIds = 11;
-  map<string, double> winnerChargePrices = 12;
+  map<string, double> winnerBasePrices = 12;
 }
 
 message BidEngineResponse_V2_5 {

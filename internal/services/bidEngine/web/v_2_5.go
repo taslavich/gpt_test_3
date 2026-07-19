@@ -240,17 +240,17 @@ func (s *Server) handleReadyADVResponse(ctx context.Context, req *bidEngineGrpc.
 				continue
 			}
 			effectivePrice := finalBid.GetPrice()
-			chargePriceValue, chargePriceExists := req.GetWinnerChargePrices()[impID]
-			if !chargePriceExists || chargePriceValue <= 0 || math.IsNaN(chargePriceValue) || math.IsInf(chargePriceValue, 0) {
+			basePriceValue, basePriceExists := req.GetWinnerBasePrices()[impID]
+			if !basePriceExists || basePriceValue <= 0 || math.IsNaN(basePriceValue) || math.IsInf(basePriceValue, 0) {
 				failed = append(failed, impID)
 				continue
 			}
-			chargePrice := float32(chargePriceValue)
+			basePrice := float32(basePriceValue)
 			cid, crid := finalBid.GetCid(), finalBid.GetCrid()
 			clickhouseBid := &clickhouse_types.Bid{
 				WinDspDomain: &advDomain,
 				WinPrice:     &effectivePrice,
-				WinDspPrice:  &chargePrice,
+				WinDspPrice:  &basePrice,
 				WinCid:       &cid,
 				WinCrid:      &crid,
 				WinUserId:    &userID,
