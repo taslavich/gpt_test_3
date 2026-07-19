@@ -56,7 +56,7 @@ func ParseActiveIntervalSchedule(schedule [][]string, windowStart, windowEnd tim
 		}
 		endOffset += time.Hour // schedule endpoint is an inclusive hour
 
-		for base := weekStart; base.Before(expandedUntil); base = base.Add(7 * 24 * time.Hour) {
+		for base := weekStart.Add(-7 * 24 * time.Hour); base.Before(expandedUntil); base = base.Add(7 * 24 * time.Hour) {
 			start := maxTime(base.Add(startOffset), windowStart)
 			end := minTime(base.Add(endOffset), windowEnd)
 			if start.Before(end) {

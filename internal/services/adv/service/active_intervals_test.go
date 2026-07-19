@@ -42,3 +42,35 @@ func TestParseActiveIntervalScheduleInclusiveHourBounds(t *testing.T) {
 		}
 	}
 }
+
+func TestParseActiveIntervalScheduleIncludesIntervalStartedBeforeCampaignWindow(t *testing.T) {
+	windowStart := time.Date(2026, time.July, 19, 0, 0, 0, 0, time.UTC) // Sunday
+	windowEnd := time.Date(2026, time.August, 19, 23, 59, 59, 0, time.UTC)
+
+	intervals, err := ParseActiveIntervalSchedule([][]string{
+		{"mon,1", "sun,23"},
+	}, windowStart, windowEnd)
+	if err != nil {
+		t.Fatalf("ParseActiveIntervalSchedule returned error: %v", err)
+	}
+	if len(intervals) == 0 {
+		t.Fatal("expected an interval covering campaign start, got none")
+	}
+
+	wantStart := windowStart
+	wantEnd := time.Date(2026, time.July, 20, 0, 0, 0, 0, time.UTC)
+	if !intervals[0].Start.Equal(wantStart) || !intervals[0].End.Equal(wantEnd) {
+		t.Fatalf(
+			"first interval mismatch: got [%s, %s), want [%s, %s)",
+			intervals[0].Start,
+			intervals[0].End,
+			wantStart,
+			wantEnd,
+		)
+	}
+
+	now := time.Date(2026, time.July, 19, 21, 31, 31, 0, time.UTC)
+	if now.Before(intervals[0].Start) || !now.Before(intervals[0].End) {
+		t.Fatalf("expected %s to be inside first interval [%s, %s)", now, intervals[0].Start, intervals[0].End)
+	}
+}
