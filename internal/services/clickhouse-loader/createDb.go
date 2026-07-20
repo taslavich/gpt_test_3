@@ -589,6 +589,101 @@ ORDER BY minute
 TTL minute + INTERVAL 32 DAY DELETE
 SETTINGS index_granularity = 8192;
 
+CREATE TABLE {db}.traffic_volume_hourly
+(
+    event_hour DateTime('UTC'),
+
+    format LowCardinality(String),
+    typic LowCardinality(String),
+    geo LowCardinality(String),
+    lang LowCardinality(String),
+    device LowCardinality(String),
+    os LowCardinality(String),
+    browser LowCardinality(String),
+
+    requests UInt64,
+
+    nonzero_win_dsp_price_sum Float64,
+    nonzero_win_dsp_price_count UInt64
+)
+ENGINE = MergeTree
+PARTITION BY toYYYYMM(event_hour)
+ORDER BY
+(
+    event_hour,
+    format,
+    typic,
+    geo,
+    lang,
+    device,
+    os,
+    browser
+)
+TTL event_hour + INTERVAL 10 DAY DELETE
+SETTINGS index_granularity = 8192;
+
+
+CREATE MATERIALIZED VIEW {db}.mv_ortb_traffic_hourly
+REFRESH EVERY 1 HOUR OFFSET 1 MINUTE
+APPEND TO {db}.traffic_volume_hourly
+EMPTY
+AS
+WITH
+    toStartOfHour(now('UTC')) AS current_hour,
+    current_hour - INTERVAL 1 HOUR AS previous_hour
+SELECT
+    event_hour,
+
+    format,
+    typic,
+    geo,
+    lang,
+    device,
+    os,
+    browser,
+
+    count() AS requests,
+
+    sumIf(
+        win_dsp_price,
+        win_dsp_price > 0
+    ) AS nonzero_win_dsp_price_sum,
+
+    countIf(
+        win_dsp_price > 0
+    ) AS nonzero_win_dsp_price_count
+
+FROM
+(
+    SELECT
+        toStartOfHour(toDateTime(event_time, 'UTC')) AS event_hour,
+
+        format,
+        typic,
+
+        ifNull(geo, '') AS geo,
+        ifNull(lang, '') AS lang,
+        ifNull(device, '') AS device,
+        ifNull(os, '') AS os,
+        ifNull(browser, '') AS browser,
+
+        toFloat64(ifNull(win_dsp_price, 0)) AS win_dsp_price
+
+    FROM {db}.ortb
+
+    WHERE
+        toStartOfHour(toDateTime(event_time, 'UTC')) = previous_hour
+)
+GROUP BY
+    event_hour,
+    format,
+    typic,
+    geo,
+    lang,
+    device,
+    os,
+    browser;
+
 
 -- ============================================================
 -- MV: IMPRESSIONS INPUT -> FACT IMPRESSIONS
