@@ -245,6 +245,7 @@ type AdvConfig struct {
 	HttpServer HttpServer
 	GrpcServer GrpcServer
 	RedisConfig
+	ClickhouseConfig
 
 	AdvPercentMapFilePath   string        `yaml:"ADV_PERCENT_MAP_FILE_PATH" env:"ADV_PERCENT_MAP_FILE_PATH"`
 	AdvQualityMapFilePath   string        `yaml:"ADV_QUALITY_MAP_FILE_PATH" env:"ADV_QUALITY_MAP_FILE_PATH"`

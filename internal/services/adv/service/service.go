@@ -14,6 +14,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/ClickHouse/clickhouse-go/v2"
 	"github.com/google/uuid"
 	"github.com/redis/go-redis/v9"
 	"gitlab.com/twinbid-exchange/RTB-exchange/internal/constants"
@@ -119,12 +120,146 @@ type AuctionService struct {
 	winners  *WinnerStore
 	percents *PercentStore
 	quality  *QualityStore
+
+	userDSPPrices atomic.Value
 }
 
 func NewAuctionService(runtime *RuntimeStore, winners *WinnerStore, percents *PercentStore, quality *QualityStore) *AuctionService {
 	s := &AuctionService{runtime: runtime, winners: winners, percents: percents, quality: quality}
 	s.snapshot.Store(&Snapshot{Campaigns: []*Campaign{}, UserGoals: map[string]float64{}})
+	s.userDSPPrices.Store(map[string]float64{})
 	return s
+}
+
+func (s *AuctionService) recentDSPPriceSum(userID string) float64 {
+	if s == nil {
+		return 0
+	}
+
+	current := s.userDSPPrices.Load()
+	if current == nil {
+		return 0
+	}
+
+	values := current.(map[string]float64)
+
+	return values[strings.TrimSpace(userID)]
+}
+
+func (s *AuctionService) StartUserDSPPriceTicker(
+	ctx context.Context,
+	ch clickhouse.Conn,
+	database string,
+	onError func(error),
+) {
+	refresh := func() {
+		if err := s.refreshUserDSPPrices(
+			ctx,
+			ch,
+			database,
+		); err != nil {
+			if onError != nil {
+				onError(err)
+			}
+		}
+	}
+
+	// Первая загрузка сразу после запуска ADV.
+	refresh()
+
+	go func() {
+		ticker := time.NewTicker(time.Minute)
+		defer ticker.Stop()
+
+		for {
+			select {
+			case <-ctx.Done():
+				return
+
+			case <-ticker.C:
+				refresh()
+			}
+		}
+	}()
+}
+
+func (s *AuctionService) refreshUserDSPPrices(
+	ctx context.Context,
+	ch clickhouse.Conn,
+	database string,
+) error {
+	emptyMap := map[string]float64{}
+
+	qualifiedTable := fmt.Sprintf(
+		"`%s`.`user_dsp_price_sum`",
+		strings.TrimSpace(database),
+	)
+
+	query := fmt.Sprintf(`
+SELECT
+    user_id,
+    sum_cum_per_period
+FROM %s FINAL
+WHERE
+    created_at = (
+        SELECT max(created_at)
+        FROM %s
+    )
+    AND notEmpty(trimBoth(user_id))
+`,
+		qualifiedTable,
+		qualifiedTable,
+	)
+
+	rows, err := ch.Query(ctx, query)
+	if err != nil {
+		s.userDSPPrices.Store(emptyMap)
+		return fmt.Errorf(
+			"query latest user DSP price batch: %w",
+			err,
+		)
+	}
+	defer rows.Close()
+
+	newValues := make(map[string]float64)
+
+	for rows.Next() {
+		var (
+			userID string
+			value  float64
+		)
+
+		if err := rows.Scan(&userID, &value); err != nil {
+			s.userDSPPrices.Store(emptyMap)
+			return fmt.Errorf(
+				"scan user DSP price row: %w",
+				err,
+			)
+		}
+
+		userID = strings.TrimSpace(userID)
+		if userID == "" {
+			continue
+		}
+
+		newValues[userID] = value
+	}
+
+	if err := rows.Err(); err != nil {
+		s.userDSPPrices.Store(emptyMap)
+		return fmt.Errorf(
+			"iterate user DSP price rows: %w",
+			err,
+		)
+	}
+
+	/*
+		До этой строки новая map собиралась отдельно.
+		Теперь она целиком атомарно заменяет старую.
+	*/
+	s.userDSPPrices.Store(newValues)
+
+	return nil
 }
 
 func (s *AuctionService) Snapshot() *Snapshot {
@@ -794,10 +929,16 @@ func (s *AuctionService) evaluateCampaign(
 		)
 		return candidate{}, false, err
 	}
+
 	userRemaining := userGoal - userSpent
-	if userRemaining < chargePrice {
+
+	recentDSPPriceSum := s.recentDSPPriceSum(
+		campaign.UserID,
+	)
+
+	if userRemaining <= recentDSPPriceSum {
 		logf(
-			"[ADV][CAMPAIGN_REJECT] request_id=%q imp_id=%q campaign_id=%q user_id=%q reason=user_balance_insufficient user_goal_total_dollars=%.12f user_spent=%.12f user_remaining=%.12f charge_price=%.12f",
+			"[ADV][CAMPAIGN_REJECT] request_id=%q imp_id=%q campaign_id=%q user_id=%q reason=user_balance_not_above_recent_dsp_sum user_goal_total_dollars=%.12f user_spent=%.12f user_remaining=%.12f recent_dsp_price_sum=%.12f",
 			requestID,
 			impID,
 			campaignID,
@@ -805,8 +946,9 @@ func (s *AuctionService) evaluateCampaign(
 			userGoal,
 			userSpent,
 			userRemaining,
-			chargePrice,
+			recentDSPPriceSum,
 		)
+
 		return candidate{}, false, nil
 	}
 

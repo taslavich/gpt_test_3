@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"crypto/tls"
 	"database/sql"
 	"fmt"
 	"log"
@@ -11,6 +12,7 @@ import (
 	"strings"
 	"syscall"
 
+	"github.com/ClickHouse/clickhouse-go/v2"
 	"github.com/go-chi/chi/v5"
 	_ "github.com/lib/pq"
 	"gitlab.com/twinbid-exchange/RTB-exchange/internal/config"
@@ -76,12 +78,64 @@ func main() {
 		log.Fatalf("ADV PostgreSQL unavailable: %v", err)
 	}
 
+	clickhouseAddr := net.JoinHostPort(
+		cfg.ClickhouseConfig.Host,
+		cfg.ClickhouseConfig.Port,
+	)
+
+	clickhouseConn, err := clickhouse.Open(
+		&clickhouse.Options{
+			Addr: []string{
+				clickhouseAddr,
+			},
+			Protocol: clickhouse.Native,
+			TLS: &tls.Config{
+				MinVersion: tls.VersionTLS12,
+			},
+			Auth: clickhouse.Auth{
+				Username: cfg.ClickhouseConfig.Username,
+				Password: cfg.ClickhouseConfig.Password,
+				Database: cfg.ClickhouseConfig.Database,
+			},
+			MaxOpenConns: 2,
+			MaxIdleConns: 2,
+		},
+	)
+	if err != nil {
+		log.Fatalf(
+			"cannot initialize ADV ClickHouse client: %v",
+			err,
+		)
+	}
+
+	defer func() {
+		if err := clickhouseConn.Close(); err != nil {
+			log.Printf(
+				"ADV ClickHouse close failed: %v",
+				err,
+			)
+		}
+	}()
+
 	runtimeStore := auction.NewRuntimeStore(runtimeRedis, cfg.AdvPacingCurrentTTL, cfg.AdvPacingSlotTTL)
 	winnerStore := auction.NewWinnerStore(winnerRedis, cfg.AdvWinnerTTL)
 	auctionService := auction.NewAuctionService(runtimeStore, winnerStore, percentStore, qualityStore)
 	if err := auctionService.RefreshFromPostgres(ctx, db); err != nil {
 		log.Fatalf("initial ADV snapshot failed: %v", err)
 	}
+
+	auctionService.StartUserDSPPriceTicker(
+		ctx,
+		clickhouseConn,
+		cfg.ClickhouseConfig.Database,
+		func(err error) {
+			log.Printf(
+				"[ADV][USER_DSP_PRICE_MAP_ERROR] ClickHouse refresh failed; empty map published: %v",
+				err,
+			)
+		},
+	)
+
 	auctionService.StartPostgresRefreshTicker(ctx, db, cfg.CampaignRefreshInterval, func(err error) {
 		log.Printf("ADV snapshot refresh failed; previous snapshot retained: %v", err)
 	})

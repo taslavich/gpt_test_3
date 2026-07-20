@@ -34,6 +34,7 @@ DROP VIEW IF EXISTS {db}.mv_ortb_minute_metrics SYNC;
 
 DROP VIEW IF EXISTS {db}.mv_ip_limit_ipv6 SYNC;
 DROP VIEW IF EXISTS {db}.mv_ip_limit_ipv4 SYNC;
+DROP VIEW IF EXISTS {db}.mv_user_dsp_price_sum SYNC;
 
 -- ============================================================
 -- ORTB TABLE
@@ -496,6 +497,68 @@ ALTER TABLE {db}.agg_stats
     ADD COLUMN IF NOT EXISTS payout Float64 DEFAULT 0,
     ADD COLUMN IF NOT EXISTS conversions_approved UInt64 DEFAULT 0,
     ADD COLUMN IF NOT EXISTS payout_approved Float64 DEFAULT 0;
+
+
+CREATE TABLE IF NOT EXISTS {db}.user_dsp_price_sum
+(
+    created_at DateTime DEFAULT now(),
+    user_id String,
+    sum_cum_per_period Float64
+)
+ENGINE = ReplacingMergeTree(created_at)
+PARTITION BY toYYYYMMDD(created_at)
+ORDER BY (created_at, user_id)
+TTL created_at + INTERVAL 24 HOUR DELETE
+SETTINGS index_granularity = 8192;
+
+CREATE MATERIALIZED VIEW {db}.mv_user_dsp_price_sum
+REFRESH EVERY 1 MINUTE
+APPEND TO {db}.user_dsp_price_sum
+AS
+WITH now('UTC') AS batch_created_at
+SELECT
+    batch_created_at AS created_at,
+    user_id,
+    sum(spend) AS sum_cum_per_period
+FROM
+(
+    /* NAT, BAN, POP оплачиваются по показам: CPM / 1000 */
+    SELECT
+        argMax(win_user_id, created_at) AS user_id,
+        argMax(win_dsp_price, created_at) / 1000 AS spend
+    FROM {db}.fact_impressions
+    WHERE
+        created_at >= batch_created_at - INTERVAL 5 MINUTE
+        AND created_at < batch_created_at
+        AND format IN ('NAT', 'BAN', 'POP')
+        AND notEmpty(trimBoth(win_user_id))
+    GROUP BY impressions_uuid
+
+    UNION ALL
+
+    /* IPP оплачивается по кликам: CPC без деления */
+    SELECT
+        argMax(win_user_id, created_at) AS user_id,
+        argMax(win_dsp_price, created_at) AS spend
+    FROM {db}.fact_clicks
+    WHERE
+        created_at >= batch_created_at - INTERVAL 5 MINUTE
+        AND created_at < batch_created_at
+        AND format = 'IPP'
+        AND notEmpty(trimBoth(win_user_id))
+    GROUP BY clicks_uuid
+
+    UNION ALL
+
+    /*
+       Техническая строка нужна, чтобы новый batch создавался,
+       даже если за последние 5 минут вообще не было событий.
+    */
+    SELECT
+        '' AS user_id,
+        toFloat64(0) AS spend
+)
+GROUP BY user_id;
 
 -- ============================================================
 -- ORTB MINUTE METRICS
