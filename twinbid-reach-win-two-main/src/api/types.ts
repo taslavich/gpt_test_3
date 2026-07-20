@@ -172,6 +172,34 @@ export interface StatsQueryResponse {
   totals: StatsSummary;
 }
 
+// ---- Historical traffic calculator --------------------------------------
+// The backend uses the latest fully closed day from the ad-request statistics
+// table. Bid and pricing model are intentionally absent: this query describes
+// traffic that matched the targeting, not traffic won by a particular bid.
+export interface CalculatorRequest {
+  format_type?: FormatType;
+  traffic_type?: TrafficType;
+  verticals?: string[];
+  verticals_mode?: "include" | "exclude";
+  country?: string[];
+  country_mode?: "include" | "exclude";
+  language?: string[];
+  language_mode?: "include" | "exclude";
+  device_type?: string[];
+  device_type_mode?: "include" | "exclude";
+  os?: string[];
+  os_mode?: "include" | "exclude";
+  browser?: string[];
+  browser_mode?: "include" | "exclude";
+}
+
+export interface CalculatorResponse {
+  /** Latest fully closed date used by the backend, YYYY-MM-DD. */
+  date: string;
+  /** Historical number of potential clicks matching the request. */
+  potential_clicks: number;
+}
+
 // ---- Auth ----
 export interface AuthTokens {
   access_token: string;

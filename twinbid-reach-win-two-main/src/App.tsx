@@ -18,6 +18,7 @@ import Dashboard from "./pages/Dashboard";
 import DashboardOverview from "./pages/DashboardOverview";
 import DashboardCampaigns from "./pages/DashboardCampaigns";
 import DashboardStatistics from "./pages/DashboardStatistics";
+import TrafficCalculator from "./pages/TrafficCalculator";
 import DashboardBalance from "./pages/DashboardBalance";
 import DashboardSettings from "./pages/DashboardSettings";
 import CreateCampaign from "./pages/CreateCampaign";
@@ -50,6 +51,7 @@ const App = () => (
                         <Route path="campaigns/create" element={<CreateCampaign />} />
                         <Route path="campaigns/:id/edit" element={<EditCampaign />} />
                         <Route path="statistics" element={<DashboardStatistics />} />
+                        <Route path="traffic-calculator" element={<TrafficCalculator />} />
                         <Route path="balance" element={<DashboardBalance />} />
                         <Route path="settings" element={<DashboardSettings />} />
                       </Route>

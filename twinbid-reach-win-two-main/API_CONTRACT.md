@@ -351,6 +351,61 @@ Resp: `User`.
 
 ---
 
+### 7.3 POST `/api/calculator` — доступный объём по таргетингам
+
+Используется страницей `/dashboard/traffic-calculator`. Ручка не делает
+прогнозов и не использует модель оплаты или ставку. Она берёт последнюю
+полностью закрытую дату из таблицы статистики запросов на показ рекламы,
+применяет переданные таргетинги и возвращает историческое количество
+потенциальных кликов за эту дату.
+
+SQL целиком остаётся на бэкенде. Фронт передаёт только параметры фильтрации:
+
+```json
+{
+  "format_type": "banner",
+  "traffic_type": "mainstream",
+  "verticals": ["Gaming"],
+  "verticals_mode": "include",
+  "country": ["DE", "FR"],
+  "country_mode": "include",
+  "language": ["de"],
+  "language_mode": "include",
+  "device_type": ["desktop"],
+  "device_type_mode": "include",
+  "os": ["Windows"],
+  "os_mode": "include",
+  "browser": ["Chrome"],
+  "browser_mode": "include"
+}
+```
+
+Поле `*_mode` равно `include` для белого списка и `exclude` для чёрного.
+Пустой массив означает «все значения» независимо от режима. Поля
+`pricing_model`, `bid` и `campaign_id` в эту ручку не отправляются.
+
+Бэк сам определяет последнюю полностью закрытую дату. Текущие неполные сутки
+не используются.
+
+**Response:**
+
+```json
+{
+  "date": "2026-07-17",
+  "potential_clicks": 128400
+}
+```
+
+Если выбрана кампания, фронт после этого ответа вызывает существующий
+`POST /api/stats/query` с `from = to = date`, `campaign_ids` выбранной кампании
+и `group_by: "campaign"`. Он выводит `totals.clicks`, `totals.impressions` и
+считает полученную долю как `totals.clicks / potential_clicks * 100`.
+
+Размер ставки меняется существующим `PATCH /api/campaigns/:id` с body
+`{ "base_price": 1.25 }`. `pricing_model` не отправляется и остаётся прежним.
+
+---
+
 ## 8. Маппинг фронт-экранов на ручки
 
 | Экран | Источник |
@@ -358,6 +413,7 @@ Resp: `User`.
 | `/dashboard` overview cards | `POST /api/stats/query` с `group_by: "campaign"` (totals идут в `totals`) + `GET /api/profile` |
 | Список кампаний на overview/campaigns | `GET /api/campaigns` (Postgres) + `POST /api/stats/query` с `group_by: "campaign"` (одним запросом на все строки) |
 | `/dashboard/statistics` | `POST /api/stats/query` (ClickHouse) |
+| `/dashboard/traffic-calculator` | `POST /api/calculator` + `POST /api/stats/query` для выбранной кампании + `PATCH /api/campaigns/:id` для изменения только размера ставки |
 | `/dashboard/balance` баланс/история | `GET /api/profile`, `GET /api/transactions`, `POST /api/transactions`, `PATCH /api/transactions/:id`, `POST /api/transactions/:id/cancel` |
 | Создание/редактирование кампании | `POST/PATCH /api/campaigns`, `POST /api/creatives/upload-url`, CRUD `/api/creatives` |
 | Уведомления (колокольчик) | `GET/POST/PATCH /api/notifications` |

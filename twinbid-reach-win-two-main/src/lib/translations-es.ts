@@ -139,6 +139,7 @@ export const ES_TRANSLATIONS: Record<string, string> = {
   "sidebar.overview": "Resumen",
   "sidebar.campaigns": "Campañas",
   "sidebar.statistics": "Estadísticas",
+  "sidebar.trafficCalculator": "Calculadora de tráfico",
   "sidebar.balance": "Saldo",
   "sidebar.settings": "Ajustes",
   "sidebar.logout": "Cerrar sesión",

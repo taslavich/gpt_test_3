@@ -22,7 +22,7 @@ export function StepsSection() {
           <div className="mb-14 grid items-end gap-8 md:grid-cols-12 md:mb-20">
             <div className="md:col-span-7">
               <LineReveal>
-                <div className="landing-kicker mb-7">05 / GET STARTED</div>
+                <div className="landing-kicker mb-7">04 / GET STARTED</div>
               </LineReveal>
               <WordsReveal
                 as="h2"

@@ -200,54 +200,66 @@ function SchedulePicker({ items, onUpdate, t }: { items: string[]; onUpdate: (it
   return (
     <div className="space-y-1.5">
       <p className="text-xs text-muted-foreground">{t("targeting.scheduleHint")}</p>
-      <div className="overflow-x-auto">
-        <table className="border-collapse select-none" style={{ tableLayout: "fixed" }}>
-          <thead>
-            <tr>
-              <th className="p-0">
-                <button type="button" onClick={toggleAll}
-                  className="w-8 h-5 text-[9px] font-medium text-muted-foreground hover:bg-muted rounded transition-colors">
-                  {t("targeting.selectAll")}
-                </button>
-              </th>
-              {Array.from({ length: 24 }, (_, h) => (
-                <th key={h} className="p-0">
-                  <button type="button" onClick={() => toggleHour(h)}
-                    className="w-5 h-5 text-[9px] font-medium text-muted-foreground hover:bg-muted rounded transition-colors">
-                    {h}
+      <div className="flex items-start gap-4">
+        <div className="overflow-x-auto">
+          <table className="border-collapse select-none" style={{ tableLayout: "fixed" }}>
+            <thead>
+              <tr>
+                <th className="p-0">
+                  <button type="button" onClick={toggleAll}
+                    className="w-8 h-5 text-[9px] font-medium text-muted-foreground hover:bg-muted rounded transition-colors">
+                    {t("targeting.selectAll")}
                   </button>
                 </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {DAYS.map(day => (
-              <tr key={day}>
-                <td className="p-0">
-                  <button type="button" onClick={() => toggleDay(day)}
-                    className="w-8 h-5 text-[9px] font-medium text-muted-foreground hover:bg-muted rounded transition-colors text-left pl-0.5">
-                    {shorts[day]}
-                  </button>
-                </td>
-                {Array.from({ length: 24 }, (_, h) => {
-                  const key = `${day}:${h}`;
-                  const active = itemSet.has(key);
-                  return (
-                    <td key={h} className="p-px">
-                      <button type="button"
-                        onMouseDown={(e) => { e.preventDefault(); handleMouseDown(key); }}
-                        onMouseEnter={() => handleMouseEnter(key)}
-                        className={cn(
-                          "w-5 h-5 rounded-sm transition-colors cursor-pointer",
-                          active ? "bg-green-500" : "bg-muted/40 hover:bg-muted"
-                        )} />
-                    </td>
-                  );
-                })}
+                {Array.from({ length: 24 }, (_, h) => (
+                  <th key={h} className="p-0">
+                    <button type="button" onClick={() => toggleHour(h)}
+                      className="w-5 h-5 text-[9px] font-medium text-muted-foreground hover:bg-muted rounded transition-colors">
+                      {h}
+                    </button>
+                  </th>
+                ))}
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {DAYS.map(day => (
+                <tr key={day}>
+                  <td className="p-0">
+                    <button type="button" onClick={() => toggleDay(day)}
+                      className="w-8 h-5 text-[9px] font-medium text-muted-foreground hover:bg-muted rounded transition-colors text-left pl-0.5">
+                      {shorts[day]}
+                    </button>
+                  </td>
+                  {Array.from({ length: 24 }, (_, h) => {
+                    const key = `${day}:${h}`;
+                    const active = itemSet.has(key);
+                    return (
+                      <td key={h} className="p-px">
+                        <button type="button"
+                          onMouseDown={(e) => { e.preventDefault(); handleMouseDown(key); }}
+                          onMouseEnter={() => handleMouseEnter(key)}
+                          className={cn(
+                            "w-5 h-5 rounded-sm transition-colors cursor-pointer",
+                            active ? "bg-green-500" : "bg-muted/40 hover:bg-muted"
+                          )} />
+                      </td>
+                    );
+                  })}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        <div className="flex flex-col gap-2 pt-5">
+          <div className="flex items-center gap-2">
+            <div className="w-4 h-4 rounded-sm bg-green-500" />
+            <span className="text-xs font-medium text-muted-foreground">ON</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <div className="w-4 h-4 rounded-sm bg-muted/40" />
+            <span className="text-xs font-medium text-muted-foreground">OFF</span>
+          </div>
+        </div>
       </div>
     </div>
   );

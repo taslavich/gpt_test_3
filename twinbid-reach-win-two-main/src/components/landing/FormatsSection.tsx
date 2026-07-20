@@ -157,7 +157,7 @@ export function FormatsSection() {
           <div className="grid gap-12 lg:grid-cols-12">
           <div className="lg:col-span-4 lg:sticky lg:top-32 lg:self-start">
             <LineReveal>
-              <div className="landing-kicker mb-7">04 / AD INVENTORY</div>
+              <div className="landing-kicker mb-7">03 / AD INVENTORY</div>
             </LineReveal>
             <WordsReveal
               as="h2"

@@ -3,7 +3,8 @@ import { HeroSection } from "@/components/landing/HeroSection";
 import { StartConditions } from "@/components/landing/StartConditions";
 import { BenefitsSection } from "@/components/landing/BenefitsSection";
 import { CreativeToolsSection } from "@/components/landing/CreativeToolsSection";
-import { CashbackSection } from "@/components/landing/CashbackSection";
+import { TrafficCalculatorSection } from "@/components/landing/TrafficCalculatorSection";
+
 import { FormatsSection } from "@/components/landing/FormatsSection";
 import { StepsSection } from "@/components/landing/StepsSection";
 import { CTASection } from "@/components/landing/CTASection";
@@ -28,9 +29,9 @@ const Index = () => {
           <Marquee items={marquee1Items} />
           <StartConditions />
           <BenefitsSection />
+          <TrafficCalculatorSection />
           <CreativeToolsSection />
           <Marquee items={["Popunder", "Native", "Banner", "In-Page Push", "1M+ Sites", "Antifraud", "24/7 Support", "Real-Time Bidding"]} />
-          <CashbackSection />
           <FormatsSection />
           <StepsSection />
           <CTASection />

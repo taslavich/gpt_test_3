@@ -171,6 +171,7 @@ const translations: Record<string, Record<"ru" | "en", string>> = {
   "sidebar.overview": { ru: "Обзор", en: "Overview" },
   "sidebar.campaigns": { ru: "Кампании", en: "Campaigns" },
   "sidebar.statistics": { ru: "Статистика", en: "Statistics" },
+  "sidebar.trafficCalculator": { ru: "Калькулятор трафика", en: "Traffic calculator" },
   "sidebar.balance": { ru: "Баланс", en: "Balance" },
   "sidebar.settings": { ru: "Настройки", en: "Settings" },
   "sidebar.logout": { ru: "Выйти", en: "Log out" },

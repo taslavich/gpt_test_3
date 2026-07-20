@@ -2,6 +2,7 @@ import { http } from "./http";
 import type {
   ApiUser, ApiCampaign, ApiCreative, ApiUserTransaction, ApiPromocode,
   ApiNotification, StatsQueryRequest, StatsQueryResponse,
+  CalculatorResponse,
   AuthResponse, AuthTokens, ApiEnvelope,
 } from "./types";
 import type { RawApiProvider } from "./mockProvider";
@@ -92,4 +93,7 @@ export const httpProvider: RawApiProvider = {
 
   // ClickHouse stats — single universal endpoint for Overview / Campaigns / Statistics.
   statsQuery: (req) => http<ApiEnvelope<StatsQueryResponse>>("/api/stats/query", { method: "POST", body: req }),
+
+  // Historical potential traffic for the latest fully closed day.
+  calculator: (req) => http<ApiEnvelope<CalculatorResponse>>("/api/calculator", { method: "POST", body: req }),
 };
