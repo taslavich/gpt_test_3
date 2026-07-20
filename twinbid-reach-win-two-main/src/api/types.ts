@@ -176,11 +176,9 @@ export interface StatsQueryResponse {
 // The backend uses the latest fully closed day from the ad-request statistics
 // table. Bid and pricing model are intentionally absent: this query describes
 // traffic that matched the targeting, not traffic won by a particular bid.
-export interface CalculatorRequest {
+export interface TrafficSegmentRequest {
   format_type?: FormatType;
   traffic_type?: TrafficType;
-  verticals?: string[];
-  verticals_mode?: "include" | "exclude";
   country?: string[];
   country_mode?: "include" | "exclude";
   language?: string[];
@@ -193,11 +191,21 @@ export interface CalculatorRequest {
   browser_mode?: "include" | "exclude";
 }
 
+export interface CalculatorRequest extends TrafficSegmentRequest {}
+
 export interface CalculatorResponse {
-  /** Latest fully closed date used by the backend, YYYY-MM-DD. */
-  date: string;
-  /** Historical number of potential clicks matching the request. */
-  potential_clicks: number;
+  /** Historical number of available impressions matching the request. */
+  potential_impressions: number;
+}
+
+// ---- Historical bid recommendation -------------------------------------
+// Uses the same segment filters as the calculator. The backend returns the
+// average non-zero winning bid for the latest fully closed day.
+export interface RecommendBidRequest extends TrafficSegmentRequest {}
+
+export interface RecommendBidResponse {
+  /** Average non-zero bid for the requested segment. */
+  average_bid: number;
 }
 
 // ---- Auth ----

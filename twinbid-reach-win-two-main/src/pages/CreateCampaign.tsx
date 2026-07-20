@@ -17,6 +17,8 @@ import { CreativesEditor, type CreativesEditorHandle } from "@/components/dashbo
 import { PostbackSection } from "@/components/dashboard/PostbackSection";
 import { Loader2 } from "lucide-react";
 import { useLanguage } from "@/contexts/LanguageContext";
+import { api } from "@/api";
+import { buildRecommendBidRequest, makeBidRecommendation, type BidRecommendation } from "@/lib/bidRecommendation";
 
 const formatLabels: Record<string, string> = {
   banner: "Banner", popunder: "Popunder", native: "Native", push: "In-page Push",
@@ -67,6 +69,7 @@ export default function CreateCampaign() {
   const [isCreating, setIsCreating] = useState(false);
   const [confirmMismatchOpen, setConfirmMismatchOpen] = useState(false);
   const creativesEditorRef = useRef<CreativesEditorHandle>(null);
+  const [bidRecommendation, setBidRecommendation] = useState<BidRecommendation | null>(null);
 
   const clearError = (...keys: string[]) => setErrors(prev => {
     const next = { ...prev };
@@ -90,7 +93,7 @@ export default function CreateCampaign() {
       const mins = formatMins[adFormat] || formatMins.banner;
       const minCpm = mins[trafficQuality];
       const min = pricingModel === "cpc" ? +(minCpm * 1.7 / 1000).toFixed(5) : minCpm;
-      const max = pricingModel === "cpm" ? 1000 : 1;
+      const max = pricingModel === "cpm" ? (adFormat === "popunder" ? 50 : 1000) : 1;
       if (pv >= min && pv <= max) clearError("priceValue");
     }
   }, [priceValue, pricingModel, trafficQuality, adFormat]);
@@ -175,7 +178,7 @@ export default function CreateCampaign() {
     if (!totalBudget || isNaN(tb) || tb < 1) e.totalBudget = t("edit.errorBudgetMin");
     const pv = parseNum(priceValue);
     const { min } = getMinPrice();
-    const max = pricingModel === "cpm" ? 1000 : 1;
+    const max = pricingModel === "cpm" ? (adFormat === "popunder" ? 50 : 1000) : 1;
     if (!priceValue || isNaN(pv) || pv < min) e.priceValue = `${t("budget.belowMin")} ($${min})`;
     else if (pv > max) e.priceValue = t("budget.aboveMaxError").replace("{max}", String(max));
     if (!startDate) e.startDate = t("create.required");
@@ -202,8 +205,27 @@ export default function CreateCampaign() {
     return { min: minCpm };
   };
 
+  const loadBidRecommendation = async () => {
+    setBidRecommendation(null);
+    try {
+      const response = await api.recommendBid(buildRecommendBidRequest(adFormat, trafficType, lists));
+      setBidRecommendation(makeBidRecommendation(Number(response?.average_bid)));
+    } catch (error) {
+      // Recommendation is optional. Keep the existing static limits when the
+      // endpoint is unavailable or returns an invalid value.
+      console.warn("recommend_bid is unavailable", error);
+      setBidRecommendation(null);
+    }
+  };
+
   const handleNext = async () => {
     if (step === 1 && !validateStep1()) return;
+    if (step === 2) {
+      setStep(3);
+      setErrors({});
+      void loadBidRecommendation();
+      return;
+    }
     if (step === 3) { if (!validateStep3()) return; setStep(4); setErrors({}); return; }
     if (step === 4) {
       if (creatives.some(c => (c.creativeType || "image") === "image" && c.sizeMismatch)) { setConfirmMismatchOpen(true); return; }
@@ -415,6 +437,7 @@ export default function CreateCampaign() {
               startDate={startDate} setStartDate={setStartDate}
               endDate={endDate} setEndDate={setEndDate}
               evenSpend={evenSpend} setEvenSpend={setEvenSpend}
+              bidRecommendation={bidRecommendation}
               errors={errors}
             />
           )}

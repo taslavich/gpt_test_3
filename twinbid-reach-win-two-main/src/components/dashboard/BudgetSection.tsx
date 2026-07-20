@@ -2,7 +2,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
-import { HelpCircle, AlertTriangle, Info, CalendarIcon } from "lucide-react";
+import { HelpCircle, AlertTriangle, Info, CalendarIcon, CheckCircle2, Circle } from "lucide-react";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -10,6 +10,7 @@ import { cn } from "@/lib/utils";
 import { format } from "date-fns";
 import type { PricingModel, TrafficQuality } from "@/contexts/CampaignContext";
 import { useLanguage } from "@/contexts/LanguageContext";
+import type { BidRecommendation } from "@/lib/bidRecommendation";
 
 const formatCpmLimits: Record<string, Record<TrafficQuality, { min: number; rec: number }>> = {
   banner: {
@@ -37,6 +38,7 @@ const formatCpmLimits: Record<string, Record<TrafficQuality, { min: number; rec:
 const CPC_MULTIPLIER = 1.7 / 1000;
 
 const MAX_CPM = 1000;
+const MAX_POPUNDER_CPM = 50;
 const MAX_CPC = 1;
 
 function getPriceLimits(formatKey: string, quality: TrafficQuality, model: PricingModel) {
@@ -58,6 +60,15 @@ function parseNumericValue(val: string): number {
   return parseFloat(val.replace(",", ".")) || 0;
 }
 
+function formatBid(value: number, model: PricingModel): string {
+  return Number(value.toFixed(model === "cpc" ? 5 : 4)).toString();
+}
+
+function recommendationForModel(value: number, formatKey: string, model: PricingModel): number {
+  if (model === "cpm" || formatKey === "push") return value;
+  return value * CPC_MULTIPLIER;
+}
+
 interface BudgetSectionProps {
   formatKey: string;
   totalBudget: string;
@@ -74,6 +85,7 @@ interface BudgetSectionProps {
   setEndDate: (v: string) => void;
   evenSpend: boolean;
   setEvenSpend: (v: boolean) => void;
+  bidRecommendation?: BidRecommendation | null;
   errors?: Record<string, string>;
 }
 
@@ -82,15 +94,25 @@ export function BudgetSection({
   priceValue, setPriceValue, pricingModel, setPricingModel,
   trafficQuality, setTrafficQuality, startDate, setStartDate, endDate, setEndDate,
   evenSpend, setEvenSpend,
+  bidRecommendation = null,
   errors = {},
 }: BudgetSectionProps) {
   const { t } = useLanguage();
   const availableModels = getAvailableModels(formatKey);
   const limits = getPriceLimits(formatKey, trafficQuality, pricingModel);
   const priceNum = parseNumericValue(priceValue);
-  const maxPrice = pricingModel === "cpm" ? MAX_CPM : MAX_CPC;
+  const maxPrice = pricingModel === "cpm"
+    ? (formatKey === "popunder" ? MAX_POPUNDER_CPM : MAX_CPM)
+    : MAX_CPC;
+  const minimumRecommended = bidRecommendation
+    ? Math.max(limits.min, recommendationForModel(bidRecommendation.minimumRecommended, formatKey, pricingModel))
+    : null;
+  const optimalRecommended = bidRecommendation && minimumRecommended !== null
+    ? Math.max(minimumRecommended, recommendationForModel(bidRecommendation.optimalRecommended, formatKey, pricingModel))
+    : null;
   const isBelowMin = priceValue !== "" && priceNum < limits.min;
-  const isBelowRec = priceValue !== "" && priceNum >= limits.min && priceNum < limits.rec;
+  const activeRecommended = minimumRecommended ?? limits.rec;
+  const isBelowRec = priceValue !== "" && priceNum >= limits.min && priceNum < activeRecommended;
   const isAboveMax = priceValue !== "" && priceNum > maxPrice;
 
   // End date validation
@@ -178,14 +200,40 @@ export function BudgetSection({
         <Label>{pricingModel === "cpm" ? t("budget.cpmLabel") : t("budget.cpcLabel")} *</Label>
         <div className="relative max-w-xs">
           <Input value={priceValue} onChange={(e) => setPriceValue(e.target.value)}
-            placeholder={String(limits.rec)}
+            placeholder={String(optimalRecommended ?? limits.rec)}
             className={cn("bg-background border-border pr-8", (isBelowMin || isAboveMax || errors.priceValue) && "border-destructive")} />
           <span className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground">$</span>
         </div>
         <div className="space-y-1">
-          <p className="text-xs text-muted-foreground">
-            {t("budget.min")}: ${limits.min} · {t("budget.recommended")}: ${limits.rec}
-          </p>
+          {minimumRecommended !== null && optimalRecommended !== null ? (
+            <div className="grid gap-2 rounded-lg border border-border bg-background/40 p-3 sm:grid-cols-3">
+              {[
+                { label: t("budget.minimumBid"), value: limits.min, reached: priceNum >= limits.min },
+                { label: t("budget.minimumRecommended"), value: minimumRecommended, reached: priceNum >= minimumRecommended },
+                { label: t("budget.optimalRecommended"), value: optimalRecommended, reached: priceNum >= optimalRecommended },
+              ].map((checkpoint) => (
+                <div
+                  key={checkpoint.label}
+                  className={cn(
+                    "flex items-start gap-2 rounded-md px-2 py-1.5 transition-colors",
+                    checkpoint.reached ? "bg-primary/10 text-primary" : "text-muted-foreground",
+                  )}
+                >
+                  {checkpoint.reached
+                    ? <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" />
+                    : <Circle className="mt-0.5 h-4 w-4 shrink-0" />}
+                  <div>
+                    <p className="text-[11px] leading-tight">{checkpoint.label}</p>
+                    <p className="mt-1 text-sm font-semibold">${formatBid(checkpoint.value, pricingModel)}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="text-xs text-muted-foreground">
+              {t("budget.min")}: ${limits.min} · {t("budget.recommended")}: ${limits.rec}
+            </p>
+          )}
           {isBelowMin && (
             <div className="flex items-center gap-1 text-destructive">
               <AlertTriangle className="h-3 w-3" />

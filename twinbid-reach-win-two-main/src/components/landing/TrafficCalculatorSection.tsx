@@ -1,4 +1,4 @@
-import { ArrowRight, BarChart3, CircleDollarSign, MousePointerClick, Percent, Target } from "lucide-react";
+import { ArrowRight, BarChart3, CircleDollarSign, Percent, Target } from "lucide-react";
 import { motion } from "framer-motion";
 import { AuthDialog } from "./AuthDialog";
 import { LineReveal, WordsReveal } from "./CinematicReveal";
@@ -8,41 +8,41 @@ const copy = {
   ru: {
     title: "Узнайте, сколько трафика проходит мимо",
     subtitle: "TwinBid показывает доступный объём за последние полностью закрытые сутки, сравнивает его с результатами кампании и помогает понять потенциал масштабирования.",
-    potential: "Потенциальные клики",
-    received: "Клики кампании",
+    potential: "Доступные показы",
+    received: "Показы кампании",
     share: "Полученная доля",
     bid: "Текущая ставка",
     insight: "Видите не только купленный трафик",
-    description: "Выберите кампанию или задайте таргетинги вручную. Калькулятор покажет, сколько потенциальных кликов соответствовало этим параметрам, какую долю получила кампания и позволит сразу изменить ставку.",
+    description: "Выберите кампанию или задайте таргетинги вручную. Калькулятор покажет доступный объём показов, какую его долю получила кампания и позволит сразу изменить ставку.",
     cta: "Открыть калькулятор",
   },
   en: {
     title: "See how much traffic you are missing",
     subtitle: "TwinBid shows the available volume from the latest complete day, compares it with campaign results and reveals the room for scaling.",
-    potential: "Potential clicks",
-    received: "Campaign clicks",
+    potential: "Available impressions",
+    received: "Campaign impressions",
     share: "Share received",
     bid: "Current bid",
     insight: "See more than the traffic you bought",
-    description: "Select a campaign or set targeting manually. The calculator shows how many potential clicks matched the parameters, what share the campaign received and lets you update the bid immediately.",
+    description: "Select a campaign or set targeting manually. The calculator shows the available impression volume, what share the campaign received, and lets you update the bid immediately.",
     cta: "Open calculator",
   },
   es: {
     title: "Descubre cuánto tráfico estás perdiendo",
     subtitle: "TwinBid muestra el volumen disponible del último día completo, lo compara con los resultados de la campaña y revela el potencial de crecimiento.",
-    potential: "Clics potenciales",
-    received: "Clics de campaña",
+    potential: "Impresiones disponibles",
+    received: "Impresiones de campaña",
     share: "Cuota obtenida",
     bid: "Puja actual",
     insight: "Ve más que el tráfico comprado",
-    description: "Selecciona una campaña o configura la segmentación. La calculadora muestra cuántos clics potenciales coincidían, qué cuota recibió la campaña y permite actualizar la puja al instante.",
+    description: "Selecciona una campaña o configura la segmentación. La calculadora muestra el volumen de impresiones disponible, qué cuota recibió la campaña y permite actualizar la puja al instante.",
     cta: "Abrir calculadora",
   },
 };
 
 const metrics = [
   { key: "potential" as const, value: "128 400", icon: Target },
-  { key: "received" as const, value: "31 250", icon: MousePointerClick },
+  { key: "received" as const, value: "31 250", icon: BarChart3 },
   { key: "share" as const, value: "24,3%", icon: Percent },
   { key: "bid" as const, value: "$0.034", icon: CircleDollarSign },
 ];

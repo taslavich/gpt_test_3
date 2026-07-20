@@ -356,8 +356,8 @@ Resp: `User`.
 Используется страницей `/dashboard/traffic-calculator`. Ручка не делает
 прогнозов и не использует модель оплаты или ставку. Она берёт последнюю
 полностью закрытую дату из таблицы статистики запросов на показ рекламы,
-применяет переданные таргетинги и возвращает историческое количество
-потенциальных кликов за эту дату.
+применяет переданные таргетинги и возвращает исторический объём доступных
+показов за эту дату.
 
 SQL целиком остаётся на бэкенде. Фронт передаёт только параметры фильтрации:
 
@@ -365,8 +365,6 @@ SQL целиком остаётся на бэкенде. Фронт переда
 {
   "format_type": "banner",
   "traffic_type": "mainstream",
-  "verticals": ["Gaming"],
-  "verticals_mode": "include",
   "country": ["DE", "FR"],
   "country_mode": "include",
   "language": ["de"],
@@ -382,7 +380,8 @@ SQL целиком остаётся на бэкенде. Фронт переда
 
 Поле `*_mode` равно `include` для белого списка и `exclude` для чёрного.
 Пустой массив означает «все значения» независимо от режима. Поля
-`pricing_model`, `bid` и `campaign_id` в эту ручку не отправляются.
+`verticals`, `verticals_mode`, `pricing_model`, `bid` и `campaign_id` в эту
+ручку не отправляются.
 
 Бэк сам определяет последнюю полностью закрытую дату. Текущие неполные сутки
 не используются.
@@ -391,18 +390,93 @@ SQL целиком остаётся на бэкенде. Фронт переда
 
 ```json
 {
-  "date": "2026-07-17",
-  "potential_clicks": 128400
+  "potential_impressions": 128400
 }
 ```
 
 Если выбрана кампания, фронт после этого ответа вызывает существующий
-`POST /api/stats/query` с `from = to = date`, `campaign_ids` выбранной кампании
-и `group_by: "campaign"`. Он выводит `totals.clicks`, `totals.impressions` и
-считает полученную долю как `totals.clicks / potential_clicks * 100`.
+`POST /api/stats/query` за предыдущую полную UTC-дату с `campaign_ids`
+выбранной кампании и `group_by: "campaign"`. Он выводит `totals.clicks`,
+`totals.impressions` и считает полученную долю показов как
+`totals.impressions / potential_impressions * 100`.
 
 Размер ставки меняется существующим `PATCH /api/campaigns/:id` с body
 `{ "base_price": 1.25 }`. `pricing_model` не отправляется и остаётся прежним.
+
+---
+
+### 7.4 POST `/api/recommend_bid` — средняя ставка по сегменту
+
+Ручка вызывается при переходе с таргетингов на шаг бюджета и ставки:
+
+- при создании кампании — переход с шага 2 на шаг 3;
+- при редактировании кампании — переход со вкладки «Таргетинг» на вкладку
+  «Бюджет» кнопкой «Далее».
+
+Ручка использует последнюю полностью закрытую дату и возвращает среднюю
+**ненулевую** выигравшую ставку по выбранному сегменту. Прогнозная модель не
+используется.
+
+Фронт отправляет тот же набор параметров сегмента, что и в `/api/calculator`:
+
+```json
+{
+  "format_type": "popunder",
+  "traffic_type": "mixed",
+  "country": ["DE", "FR"],
+  "country_mode": "include",
+  "language": ["de"],
+  "language_mode": "include",
+  "device_type": ["desktop"],
+  "device_type_mode": "include",
+  "os": ["Windows"],
+  "os_mode": "include",
+  "browser": ["Chrome"],
+  "browser_mode": "include"
+}
+```
+
+Допустимые значения:
+
+- `format_type`: `banner | popunder | native | push`;
+- `traffic_type`: `mainstream | adult | mixed`;
+- `*_mode`: `include | exclude`;
+- пустой массив означает отсутствие ограничения по измерению.
+
+В запрос не передаются `verticals`, `verticals_mode`, `pricing_model`, текущая
+ставка, качество трафика и `campaign_id`.
+
+**Response:**
+
+```json
+{
+  "average_bid": 1.24
+}
+```
+
+- `average_bid` — средняя ненулевая выигравшая ставка сегмента.
+
+Единица `average_bid` определяется форматом: для `push` это CPC, для `banner`,
+`native` и `popunder` — CPM. Если у `popunder` пользователь переключает модель
+на CPC, фронт переводит рекомендацию тем же коэффициентом, который уже
+используется для пересчёта минимальной CPM-ставки в CPC.
+
+Фронт показывает:
+
+1. существующую обязательную минимальную ставку;
+2. `average_bid` как минимально рекомендованную;
+3. `average_bid × random(1.9, 2.3)` как оптимальную рекомендованную.
+
+Случайный коэффициент генерируется на фронте один раз для каждого успешного
+ответа. Ниже существующей минимальной ставки сохранить кампанию нельзя.
+Максимум для `popunder` в модели CPM — `$50`; остальные текущие ограничения
+остаются без изменений.
+
+`recommend_bid` является необязательным улучшением интерфейса. При сетевой
+ошибке, неуспешном ответе, отсутствующем или неположительном `average_bid`
+фронт не показывает динамические чекпоинты и продолжает использовать прежние
+статические минимальные и рекомендованные значения. Ошибка ручки не блокирует
+создание или редактирование кампании.
 
 ---
 
@@ -415,7 +489,7 @@ SQL целиком остаётся на бэкенде. Фронт переда
 | `/dashboard/statistics` | `POST /api/stats/query` (ClickHouse) |
 | `/dashboard/traffic-calculator` | `POST /api/calculator` + `POST /api/stats/query` для выбранной кампании + `PATCH /api/campaigns/:id` для изменения только размера ставки |
 | `/dashboard/balance` баланс/история | `GET /api/profile`, `GET /api/transactions`, `POST /api/transactions`, `PATCH /api/transactions/:id`, `POST /api/transactions/:id/cancel` |
-| Создание/редактирование кампании | `POST/PATCH /api/campaigns`, `POST /api/creatives/upload-url`, CRUD `/api/creatives` |
+| Создание/редактирование кампании | `POST /api/recommend_bid` при переходе от таргетингов к ставке + `POST/PATCH /api/campaigns`, `POST /api/creatives/upload-url`, CRUD `/api/creatives` |
 | Уведомления (колокольчик) | `GET/POST/PATCH /api/notifications` |
 | Настройки | `GET/PATCH /api/profile` |
 | Auth | `/api/auth/*` |

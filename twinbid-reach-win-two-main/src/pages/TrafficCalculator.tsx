@@ -38,7 +38,7 @@ import { toast } from "sonner";
 const copy = {
   ru: {
     title: "Калькулятор трафика",
-    subtitle: "Узнайте, сколько потенциальных кликов было доступно по выбранным таргетингам за последние полностью закрытые сутки.",
+    subtitle: "Узнайте, сколько показов было доступно по выбранным таргетингам за последние полностью закрытые сутки.",
     selectCampaign: "Выберите кампанию",
     selectCampaignDesc: "Таргетинги кампании подставятся автоматически. Без кампании можно проверить любой набор параметров.",
     free: "Свободный расчёт",
@@ -56,10 +56,10 @@ const copy = {
     verticals: "Вертикали",
     getData: "Получить данные",
     placeholderTitle: "Здесь появится доступный объём",
-    placeholderDesc: "Выберите таргетинги и получите количество потенциальных кликов за последние полностью закрытые сутки.",
+    placeholderDesc: "Выберите таргетинги и получите доступный объём показов за последние полностью закрытые сутки.",
     unavailable: "Данные недоступны",
     unavailableDesc: "Не удалось получить данные. Проверьте подключение ручки POST /api/calculator.",
-    potentialClicks: "Потенциальные клики",
+    potentialImpressions: "Доступные показы",
     targetingHint: "по выбранным таргетингам",
     actualClicks: "Фактические клики",
     actualImpressions: "Фактические показы",
@@ -67,7 +67,7 @@ const copy = {
     statsHint: "по данным статистики",
     noData: "за эту дату данных нет",
     share: "Полученная доля",
-    shareHint: "от доступных кликов",
+    shareHint: "от доступных показов",
     currentBid: "Текущая ставка",
     moreTraffic: "Хотите получать больше трафика?",
     bidDesc: "Увеличьте ставку выбранной кампании. Здесь меняется только её размер — модель оплаты остаётся прежней.",
@@ -85,7 +85,7 @@ const copy = {
   },
   en: {
     title: "Traffic calculator",
-    subtitle: "See how many potential clicks were available for the selected targeting during the latest complete day.",
+    subtitle: "See how many impressions were available for the selected targeting during the latest complete day.",
     selectCampaign: "Select a campaign",
     selectCampaignDesc: "The campaign targeting will be filled automatically. Without a campaign, you can check any set of parameters.",
     free: "Free calculation",
@@ -103,10 +103,10 @@ const copy = {
     verticals: "Verticals",
     getData: "Get data",
     placeholderTitle: "Available volume will appear here",
-    placeholderDesc: "Choose targeting to get the number of potential clicks for the latest complete day.",
+    placeholderDesc: "Choose targeting to get the available impression volume for the latest complete day.",
     unavailable: "Data unavailable",
     unavailableDesc: "Could not load the data. Check the POST /api/calculator integration.",
-    potentialClicks: "Potential clicks",
+    potentialImpressions: "Available impressions",
     targetingHint: "for selected targeting",
     actualClicks: "Actual clicks",
     actualImpressions: "Actual impressions",
@@ -114,7 +114,7 @@ const copy = {
     statsHint: "from campaign statistics",
     noData: "no data for this date",
     share: "Share received",
-    shareHint: "of available clicks",
+    shareHint: "of available impressions",
     currentBid: "Current bid",
     moreTraffic: "Want to receive more traffic?",
     bidDesc: "Increase the selected campaign bid. Only its amount can be changed here; the pricing model stays the same.",
@@ -132,7 +132,7 @@ const copy = {
   },
   es: {
     title: "Calculadora de tráfico",
-    subtitle: "Consulta cuántos clics potenciales estuvieron disponibles para la segmentación elegida durante el último día completo.",
+    subtitle: "Consulta cuántas impresiones estuvieron disponibles para la segmentación elegida durante el último día completo.",
     selectCampaign: "Selecciona una campaña",
     selectCampaignDesc: "La segmentación se cargará automáticamente. Sin campaña puedes comprobar cualquier conjunto de parámetros.",
     free: "Cálculo libre",
@@ -150,10 +150,10 @@ const copy = {
     verticals: "Verticales",
     getData: "Obtener datos",
     placeholderTitle: "Aquí aparecerá el volumen disponible",
-    placeholderDesc: "Elige la segmentación para obtener los clics potenciales del último día completo.",
+    placeholderDesc: "Elige la segmentación para obtener el volumen de impresiones disponible del último día completo.",
     unavailable: "Datos no disponibles",
     unavailableDesc: "No se pudieron obtener los datos. Comprueba la integración POST /api/calculator.",
-    potentialClicks: "Clics potenciales",
+    potentialImpressions: "Impresiones disponibles",
     targetingHint: "según la segmentación elegida",
     actualClicks: "Clics reales",
     actualImpressions: "Impresiones reales",
@@ -161,7 +161,7 @@ const copy = {
     statsHint: "según las estadísticas",
     noData: "sin datos para esta fecha",
     share: "Cuota obtenida",
-    shareHint: "de los clics disponibles",
+    shareHint: "de las impresiones disponibles",
     currentBid: "Puja actual",
     moreTraffic: "¿Quieres recibir más tráfico?",
     bidDesc: "Aumenta la puja de la campaña. Aquí solo cambia el importe; el modelo de pago permanece igual.",
@@ -238,6 +238,11 @@ function fromCampaign(campaign: Campaign): FilterState {
 type CampaignDayStats = { clicks: number; impressions: number; hasData: boolean };
 
 const number = (value: number, lang: Lang) => value.toLocaleString(lang === "ru" ? "ru-RU" : lang === "es" ? "es-ES" : "en-US");
+const previousCompleteUtcDate = () => {
+  const date = new Date();
+  date.setUTCDate(date.getUTCDate() - 1);
+  return date.toISOString().slice(0, 10);
+};
 const money = (value: number, model: PricingModel) => `$${value.toLocaleString("en-US", {
   minimumFractionDigits: model === "cpc" ? 4 : 2,
   maximumFractionDigits: model === "cpc" ? 4 : 2,
@@ -304,9 +309,10 @@ export default function TrafficCalculator() {
       setResult(calculation);
 
       if (selected) {
+        const statsDate = previousCompleteUtcDate();
         const stats = await api.statsQuery({
-          from: calculation.date,
-          to: calculation.date,
+          from: statsDate,
+          to: statsDate,
           campaign_ids: [selected.id],
           group_by: "campaign",
         });
@@ -344,8 +350,8 @@ export default function TrafficCalculator() {
     }
   };
 
-  const share = result && actual?.hasData && result.potential_clicks > 0
-    ? (actual.clicks / result.potential_clicks) * 100
+  const share = result && actual?.hasData && result.potential_impressions > 0
+    ? (actual.impressions / result.potential_impressions) * 100
     : null;
 
   const locale = lang === "ru" ? "ru-RU" : lang === "es" ? "es-ES" : "en-US";
@@ -411,7 +417,7 @@ export default function TrafficCalculator() {
           {result && (
             <>
               <div className={cn("grid gap-3", selected ? "sm:grid-cols-2 xl:grid-cols-5" : "sm:grid-cols-1")}>
-                <Metric icon={Target} label={text.potentialClicks} value={number(result.potential_clicks, lang)} hint={text.targetingHint} />
+                <Metric icon={Target} label={text.potentialImpressions} value={number(result.potential_impressions, lang)} hint={text.targetingHint} />
                 {selected && (
                   <>
                     <Metric icon={MousePointerClick} label={text.actualClicks} value={actual?.hasData ? number(actual.clicks, lang) : "—"} hint={actual?.hasData ? text.sameDay : text.noData} />

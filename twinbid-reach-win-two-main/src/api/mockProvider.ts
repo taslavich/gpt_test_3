@@ -1,7 +1,7 @@
 import type {
   ApiUser, ApiCampaign, ApiCreative, ApiUserTransaction, ApiPromocode,
   ApiNotification, StatsQueryRequest, StatsQueryResponse, StatsSummary,
-  CalculatorRequest, CalculatorResponse,
+  CalculatorRequest, CalculatorResponse, RecommendBidRequest, RecommendBidResponse,
   AuthResponse, AuthTokens, ApiEnvelope,
 } from "./types";
 
@@ -345,8 +345,6 @@ export const mockProvider = {
     const seed = JSON.stringify({
       format: req.format_type,
       traffic: req.traffic_type,
-      verticals: req.verticals,
-      verticalsMode: req.verticals_mode,
       country: req.country,
       countryMode: req.country_mode,
       language: req.language,
@@ -361,16 +359,30 @@ export const mockProvider = {
     let hash = 2166136261;
     for (let i = 0; i < seed.length; i += 1) hash = Math.imul(hash ^ seed.charCodeAt(i), 16777619);
     const normalized = ((hash >>> 0) % 10000) / 10000;
-    const restrictions = [req.country, req.language, req.device_type, req.os, req.browser, req.verticals]
+    const restrictions = [req.country, req.language, req.device_type, req.os, req.browser]
       .filter((items) => Array.isArray(items) && items.length > 0).length;
     const formatFactor: Record<string, number> = { banner: 1, native: 0.66, push: 0.48, popunder: 0.82 };
     const basePotential = Math.round((42_000 + normalized * 118_000) * (formatFactor[req.format_type || "banner"] || 0.7));
-    const date = new Date();
-    date.setUTCDate(date.getUTCDate() - 1);
     return ok({
-      date: date.toISOString().slice(0, 10),
-      potential_clicks: Math.max(20, Math.round(basePotential * Math.pow(0.62, restrictions))),
+      potential_impressions: Math.max(20, Math.round(basePotential * Math.pow(0.62, restrictions))),
     });
+  },
+
+  // -- Historical bid recommendation ------------------------------------
+  async recommendBid(req: RecommendBidRequest): Promise<ApiEnvelope<RecommendBidResponse>> {
+    const seed = JSON.stringify(req);
+    let hash = 2166136261;
+    for (let i = 0; i < seed.length; i += 1) hash = Math.imul(hash ^ seed.charCodeAt(i), 16777619);
+    const normalized = ((hash >>> 0) % 10000) / 10000;
+    const ranges: Record<string, [number, number, number]> = {
+      banner: [0.04, 1.2, 4],
+      native: [0.04, 1.0, 4],
+      push: [0.006, 0.04, 5],
+      popunder: [0.5, 8, 3],
+    };
+    const [from, to, precision] = ranges[req.format_type || "banner"] || ranges.banner;
+    const averageBid = Number((from + normalized * (to - from)).toFixed(precision));
+    return ok({ average_bid: averageBid });
   },
 };
 

@@ -2,7 +2,7 @@ import { http } from "./http";
 import type {
   ApiUser, ApiCampaign, ApiCreative, ApiUserTransaction, ApiPromocode,
   ApiNotification, StatsQueryRequest, StatsQueryResponse,
-  CalculatorResponse,
+  CalculatorResponse, RecommendBidResponse,
   AuthResponse, AuthTokens, ApiEnvelope,
 } from "./types";
 import type { RawApiProvider } from "./mockProvider";
@@ -96,4 +96,7 @@ export const httpProvider: RawApiProvider = {
 
   // Historical potential traffic for the latest fully closed day.
   calculator: (req) => http<ApiEnvelope<CalculatorResponse>>("/api/calculator", { method: "POST", body: req }),
+
+  // Average historical bid for the selected segment and latest fully closed day.
+  recommendBid: (req) => http<ApiEnvelope<RecommendBidResponse>>("/api/recommend_bid", { method: "POST", body: req }),
 };

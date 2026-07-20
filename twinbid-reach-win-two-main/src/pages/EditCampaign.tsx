@@ -16,6 +16,8 @@ import { BudgetSection } from "@/components/dashboard/BudgetSection";
 import { CreativesEditor, type CreativesEditorHandle } from "@/components/dashboard/CreativesEditor";
 import { PostbackSection } from "@/components/dashboard/PostbackSection";
 import { useLanguage } from "@/contexts/LanguageContext";
+import { api } from "@/api";
+import { buildRecommendBidRequest, makeBidRecommendation, type BidRecommendation } from "@/lib/bidRecommendation";
 
 const bannerSizes = ["300x100", "300x250", "300x600", "728x90"];
 
@@ -49,6 +51,7 @@ export default function EditCampaign() {
   const [activeTab, setActiveTab] = useState(defaultTab);
   const [confirmMismatchOpen, setConfirmMismatchOpen] = useState(false);
   const creativesEditorRef = useRef<CreativesEditorHandle>(null);
+  const [bidRecommendation, setBidRecommendation] = useState<BidRecommendation | null>(null);
 
   useEffect(() => {
     if (campaign) {
@@ -117,13 +120,34 @@ export default function EditCampaign() {
       const mins = formatMins[campaign.formatKey] || formatMins.banner;
       const minCpm = mins[trafficQuality];
       const min = pricingModel === "cpc" ? +(minCpm * 1.7 / 1000).toFixed(5) : minCpm;
-      const max = pricingModel === "cpm" ? 1000 : 1;
+      const max = pricingModel === "cpm" ? (campaign.formatKey === "popunder" ? 50 : 1000) : 1;
       if (pv >= min && pv <= max) clearError("priceValue");
     }
   }, [priceValue, pricingModel, trafficQuality, campaign]);
 
   const updateList = (key: string, updates: Partial<TargetingState>) => {
     setLists(prev => ({ ...prev, [key]: { ...prev[key], ...updates } }));
+  };
+
+  const loadBidRecommendation = async () => {
+    if (!campaign) return;
+    setBidRecommendation(null);
+    try {
+      const response = await api.recommendBid(buildRecommendBidRequest(campaign.formatKey, trafficType, lists));
+      setBidRecommendation(makeBidRecommendation(Number(response?.average_bid)));
+    } catch (error) {
+      // Recommendation is optional. Editing must keep working exactly as
+      // before when the endpoint is unavailable or returns no usable value.
+      console.warn("recommend_bid is unavailable", error);
+      setBidRecommendation(null);
+    }
+  };
+
+  const changeTab = (nextTab: string) => {
+    if (activeTab === "targeting" && nextTab === "budget") {
+      void loadBidRecommendation();
+    }
+    setActiveTab(nextTab);
   };
 
   if (!campaign) {
@@ -156,7 +180,7 @@ export default function EditCampaign() {
     const minCpm = mins[trafficQuality];
     const min = pricingModel === "cpc" ? +(minCpm * 1.7 / 1000).toFixed(5) : minCpm;
     const pv = parseNum(priceValue);
-    const max = pricingModel === "cpm" ? 1000 : 1;
+    const max = pricingModel === "cpm" ? (campaign.formatKey === "popunder" ? 50 : 1000) : 1;
     if (!priceValue || isNaN(pv) || pv < min) e.priceValue = `${t("budget.belowMin")} ($${min})`;
     else if (pv > max) e.priceValue = t("budget.aboveMaxError").replace("{max}", String(max));
 
@@ -292,7 +316,7 @@ export default function EditCampaign() {
         </div>
       )}
 
-      <Tabs value={activeTab} onValueChange={setActiveTab}>
+      <Tabs value={activeTab} onValueChange={changeTab}>
         <TabsList className="bg-card border border-border">
           <TabsTrigger value="general">{t("edit.general")}</TabsTrigger>
           <TabsTrigger value="targeting">{t("edit.targeting")}</TabsTrigger>
@@ -400,6 +424,7 @@ export default function EditCampaign() {
                 startDate={startDate} setStartDate={setStartDate}
                 endDate={endDate} setEndDate={setEndDate}
                 evenSpend={evenSpend} setEvenSpend={setEvenSpend}
+                bidRecommendation={bidRecommendation}
                 errors={errors}
               />
             </CardContent>
@@ -436,13 +461,14 @@ export default function EditCampaign() {
 
         const handleNextTab = () => {
           if (activeTab === "general" && !validateGeneral()) return;
-          setActiveTab(tabs[idx + 1]);
+          const nextTab = tabs[idx + 1];
+          changeTab(nextTab);
         };
 
         return (
           <div className="flex justify-between">
             {idx > 0 ? (
-              <Button variant="outline" onClick={() => setActiveTab(tabs[idx - 1])} className="border-border">
+              <Button variant="outline" onClick={() => changeTab(tabs[idx - 1])} className="border-border">
                 {t("create.back")}
               </Button>
             ) : <div />}
