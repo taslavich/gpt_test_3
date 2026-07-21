@@ -600,6 +600,7 @@ CREATE TABLE {db}.traffic_volume_hourly
     device LowCardinality(String),
     os LowCardinality(String),
     browser LowCardinality(String),
+    site_id LowCardinality(String),
 
     requests UInt64,
 
@@ -617,7 +618,8 @@ ORDER BY
     lang,
     device,
     os,
-    browser
+    browser,
+    site_id
 )
 TTL event_hour + INTERVAL 10 DAY DELETE
 SETTINGS index_granularity = 8192;
@@ -641,7 +643,7 @@ SELECT
     device,
     os,
     browser,
-
+    site_id
     count() AS requests,
 
     sumIf(
@@ -666,6 +668,7 @@ FROM
         ifNull(device, '') AS device,
         ifNull(os, '') AS os,
         ifNull(browser, '') AS browser,
+        ifNull(toString(site_id), '') AS site_id,
 
         toFloat64(ifNull(win_dsp_price, 0)) AS win_dsp_price
 
@@ -682,7 +685,8 @@ GROUP BY
     lang,
     device,
     os,
-    browser;
+    browser,
+    site_id;
 
 
 -- ============================================================
