@@ -32,7 +32,30 @@ const (
 	TrafficMainstream    = "MAINSTREAM"
 	TrafficMixed         = "MIXED"
 	unknownTrackerValue  = "unknown"
+	topBidPoolRatio      = 0.80
+	auctionPriceEpsilon  = 1e-12
 )
+
+type auctionMode uint8
+
+const (
+	auctionModeMaxBid auctionMode = iota
+	auctionModeWeightedTop
+	auctionModeWeightedAll
+)
+
+func (m auctionMode) String() string {
+	switch m {
+	case auctionModeMaxBid:
+		return "max_bid"
+	case auctionModeWeightedTop:
+		return "weighted_top"
+	case auctionModeWeightedAll:
+		return "weighted_all"
+	default:
+		return "unknown"
+	}
+}
 
 type debugLogFunc func(format string, args ...any)
 
@@ -115,6 +138,10 @@ type candidate struct {
 }
 
 type AuctionService struct {
+	// Keep the uint64 counter first to preserve 64-bit alignment for atomic
+	// operations even if the service is ever built for a 32-bit architecture.
+	requestCounter uint64
+
 	snapshot atomic.Pointer[Snapshot]
 	runtime  *RuntimeStore
 	winners  *WinnerStore
@@ -129,6 +156,19 @@ func NewAuctionService(runtime *RuntimeStore, winners *WinnerStore, percents *Pe
 	s.snapshot.Store(&Snapshot{Campaigns: []*Campaign{}, UserGoals: map[string]float64{}})
 	s.userDSPPrices.Store(map[string]float64{})
 	return s
+}
+
+func (s *AuctionService) nextAuctionMode() (auctionMode, uint64) {
+	position := atomic.AddUint64(&s.requestCounter, 1) % 100
+
+	switch {
+	case position == 0:
+		return auctionModeWeightedAll, 100
+	case position <= 95:
+		return auctionModeMaxBid, position
+	default:
+		return auctionModeWeightedTop, position
+	}
 }
 
 func (s *AuctionService) recentDSPPriceSum(userID string) float64 {
@@ -502,6 +542,14 @@ func (s *AuctionService) Auction(ctx context.Context, req *ortb.BidRequest, now 
 		return nil, ErrInvalidAuctionRequest
 	}
 
+	mode, auctionPosition := s.nextAuctionMode()
+	logf(
+		"[ADV][AUCTION_MODE] request_id=%q auction_position=%d auction_mode=%q",
+		requestID,
+		auctionPosition,
+		mode.String(),
+	)
+
 	if !s.quality.ContainsAny(sspDomain) {
 		logf(
 			"[ADV][AUCTION_NO_BID] request_id=%q reason=ssp_not_in_any_quality_map ssp_domain=%q",
@@ -621,16 +669,29 @@ func (s *AuctionService) Auction(ctx context.Context, req *ortb.BidRequest, now 
 		}
 
 		logf(
-			"[ADV][IMP_CANDIDATES] request_id=%q imp_id=%q eligible=%d checked=%d infrastructure_errors=%d",
+			"[ADV][IMP_CANDIDATES] request_id=%q imp_id=%q auction_position=%d auction_mode=%q eligible=%d checked=%d infrastructure_errors=%d",
 			requestID,
 			impID,
+			auctionPosition,
+			mode.String(),
 			len(candidates),
 			len(snapshot.Campaigns),
 			infrastructureErrors,
 		)
-		sort.SliceStable(candidates, func(i, j int) bool { return candidates[i].effectivePrice > candidates[j].effectivePrice })
 
-		for _, cand := range candidates {
+		candidatePool := prepareCandidatePool(candidates, mode, rand.Shuffle)
+		for len(candidatePool) > 0 {
+			candidateIndex := 0
+			if mode != auctionModeMaxBid {
+				candidateIndex = weightedCandidateIndex(candidatePool, rand.Float64())
+				if candidateIndex < 0 {
+					break
+				}
+			}
+
+			cand := candidatePool[candidateIndex]
+			candidatePool = removeCandidate(candidatePool, candidateIndex)
+
 			if len(cand.creatives) == 0 {
 				logf(
 					"[ADV][CANDIDATE_SKIP] request_id=%q imp_id=%q campaign_id=%q reason=eligible_candidate_has_no_creatives",
@@ -689,10 +750,12 @@ func (s *AuctionService) Auction(ctx context.Context, req *ortb.BidRequest, now 
 			winnerUsers[impID] = cand.campaign.UserID
 			winnerBasePrices[impID] = cand.campaign.BasePrice
 			logf(
-				"[ADV][WINNER] request_id=%q imp_id=%q winner_uuid=%q campaign_id=%q creative_id=%q user_id=%q base_price=%.12f charge_price=%.12f effective_price=%.12f matched_creatives=%d",
+				"[ADV][WINNER] request_id=%q imp_id=%q winner_uuid=%q auction_position=%d auction_mode=%q campaign_id=%q creative_id=%q user_id=%q base_price=%.12f charge_price=%.12f effective_price=%.12f matched_creatives=%d",
 				requestID,
 				impID,
 				winnerUUID,
+				auctionPosition,
+				mode.String(),
 				cand.campaign.ID,
 				creative.ID,
 				cand.campaign.UserID,
@@ -766,6 +829,105 @@ func validAuctionInput(req *ortb.BidRequest, impIDUUID map[string]string) bool {
 		}
 	}
 	return len(seen) > 0
+}
+
+type shuffleCandidatesFunc func(n int, swap func(i, j int))
+
+func prepareCandidatePool(candidates []candidate, mode auctionMode, shuffle shuffleCandidatesFunc) []candidate {
+	if len(candidates) == 0 {
+		return nil
+	}
+
+	pool := append([]candidate(nil), candidates...)
+
+	switch mode {
+	case auctionModeMaxBid:
+		sort.SliceStable(pool, func(i, j int) bool {
+			return pool[i].effectivePrice > pool[j].effectivePrice
+		})
+
+		topCount := 1
+		for topCount < len(pool) && auctionPricesEqual(pool[topCount].effectivePrice, pool[0].effectivePrice) {
+			topCount++
+		}
+		if topCount > 1 && shuffle != nil {
+			shuffle(topCount, func(i, j int) {
+				pool[i], pool[j] = pool[j], pool[i]
+			})
+		}
+
+		return pool
+
+	case auctionModeWeightedTop:
+		maxPrice := pool[0].effectivePrice
+		for _, cand := range pool[1:] {
+			if cand.effectivePrice > maxPrice {
+				maxPrice = cand.effectivePrice
+			}
+		}
+
+		threshold := maxPrice * topBidPoolRatio
+		filtered := pool[:0]
+		for _, cand := range pool {
+			if cand.effectivePrice >= threshold {
+				filtered = append(filtered, cand)
+			}
+		}
+		return filtered
+
+	case auctionModeWeightedAll:
+		return pool
+
+	default:
+		return nil
+	}
+}
+
+func auctionPricesEqual(left, right float64) bool {
+	difference := math.Abs(left - right)
+	scale := math.Max(1, math.Max(math.Abs(left), math.Abs(right)))
+	return difference <= auctionPriceEpsilon*scale
+}
+
+func weightedCandidateIndex(candidates []candidate, randomUnit float64) int {
+	if len(candidates) == 0 || math.IsNaN(randomUnit) || randomUnit < 0 || randomUnit >= 1 {
+		return -1
+	}
+
+	totalWeight := 0.0
+	for _, cand := range candidates {
+		if !finitePositive(cand.effectivePrice) {
+			continue
+		}
+		totalWeight += cand.effectivePrice
+	}
+	if !finitePositive(totalWeight) {
+		return -1
+	}
+
+	target := randomUnit * totalWeight
+	cumulative := 0.0
+	lastValidIndex := -1
+	for index, cand := range candidates {
+		if !finitePositive(cand.effectivePrice) {
+			continue
+		}
+		lastValidIndex = index
+		cumulative += cand.effectivePrice
+		if target < cumulative {
+			return index
+		}
+	}
+
+	return lastValidIndex
+}
+
+func removeCandidate(candidates []candidate, index int) []candidate {
+	if index < 0 || index >= len(candidates) {
+		return candidates
+	}
+	copy(candidates[index:], candidates[index+1:])
+	return candidates[:len(candidates)-1]
 }
 
 func (s *AuctionService) evaluateCampaign(

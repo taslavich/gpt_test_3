@@ -3,6 +3,7 @@ package auction
 import (
 	"math"
 	"net/url"
+	"sync"
 	"testing"
 	"time"
 
@@ -10,6 +11,149 @@ import (
 	filterV2 "gitlab.com/twinbid-exchange/RTB-exchange/internal/filterV2"
 	ortb "gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/proto/types/ortb_V2_5"
 )
+
+func TestNextAuctionModeUsesExactNinetyFiveFourOneCycle(t *testing.T) {
+	service := &AuctionService{}
+	wantModeByPosition := func(position int) auctionMode {
+		switch {
+		case position <= 95:
+			return auctionModeMaxBid
+		case position <= 99:
+			return auctionModeWeightedTop
+		default:
+			return auctionModeWeightedAll
+		}
+	}
+
+	for cycle := 0; cycle < 2; cycle++ {
+		for position := 1; position <= 100; position++ {
+			mode, gotPosition := service.nextAuctionMode()
+			if gotPosition != uint64(position) {
+				t.Fatalf("cycle %d: position=%d want %d", cycle+1, gotPosition, position)
+			}
+			if want := wantModeByPosition(position); mode != want {
+				t.Fatalf("cycle %d position %d: mode=%s want %s", cycle+1, position, mode, want)
+			}
+		}
+	}
+}
+
+func TestNextAuctionModeIsAtomic(t *testing.T) {
+	service := &AuctionService{}
+	const requests = 100
+
+	positions := make(chan uint64, requests)
+	var wg sync.WaitGroup
+	wg.Add(requests)
+	for range requests {
+		go func() {
+			defer wg.Done()
+			_, position := service.nextAuctionMode()
+			positions <- position
+		}()
+	}
+	wg.Wait()
+	close(positions)
+
+	seen := make(map[uint64]int, requests)
+	for position := range positions {
+		seen[position]++
+	}
+	for position := uint64(1); position <= requests; position++ {
+		if seen[position] != 1 {
+			t.Fatalf("position %d occurred %d times, want exactly once", position, seen[position])
+		}
+	}
+}
+
+func TestPrepareCandidatePoolMaxBidShufflesOnlyEqualTopPrices(t *testing.T) {
+	candidates := []candidate{
+		{campaign: &Campaign{ID: "low"}, effectivePrice: 5},
+		{campaign: &Campaign{ID: "top-a"}, effectivePrice: 10},
+		{campaign: &Campaign{ID: "middle"}, effectivePrice: 8},
+		{campaign: &Campaign{ID: "top-b"}, effectivePrice: 10},
+		{campaign: &Campaign{ID: "top-c"}, effectivePrice: 10},
+	}
+
+	reverseShuffle := func(n int, swap func(i, j int)) {
+		for left, right := 0, n-1; left < right; left, right = left+1, right-1 {
+			swap(left, right)
+		}
+	}
+	pool := prepareCandidatePool(candidates, auctionModeMaxBid, reverseShuffle)
+
+	gotIDs := make([]string, 0, len(pool))
+	for _, cand := range pool {
+		gotIDs = append(gotIDs, cand.campaign.ID)
+	}
+	wantIDs := []string{"top-c", "top-b", "top-a", "middle", "low"}
+	for index := range wantIDs {
+		if gotIDs[index] != wantIDs[index] {
+			t.Fatalf("pool order=%v want %v", gotIDs, wantIDs)
+		}
+	}
+
+	if candidates[0].campaign.ID != "low" {
+		t.Fatal("prepareCandidatePool mutated the original candidate slice")
+	}
+}
+
+func TestPrepareCandidatePoolWeightedTopDropsPricesBelowEightyPercent(t *testing.T) {
+	candidates := []candidate{
+		{campaign: &Campaign{ID: "100"}, effectivePrice: 100},
+		{campaign: &Campaign{ID: "95"}, effectivePrice: 95},
+		{campaign: &Campaign{ID: "80"}, effectivePrice: 80},
+		{campaign: &Campaign{ID: "79"}, effectivePrice: 79},
+	}
+
+	pool := prepareCandidatePool(candidates, auctionModeWeightedTop, nil)
+	if len(pool) != 3 {
+		t.Fatalf("weighted top pool has %d candidates, want 3", len(pool))
+	}
+	for _, cand := range pool {
+		if cand.campaign.ID == "79" {
+			t.Fatal("candidate below 80% of the maximum remained in the pool")
+		}
+	}
+}
+
+func TestPrepareCandidatePoolWeightedAllKeepsEveryCandidate(t *testing.T) {
+	candidates := []candidate{
+		{campaign: &Campaign{ID: "a"}, effectivePrice: 100},
+		{campaign: &Campaign{ID: "b"}, effectivePrice: 1},
+	}
+
+	pool := prepareCandidatePool(candidates, auctionModeWeightedAll, nil)
+	if len(pool) != len(candidates) {
+		t.Fatalf("weighted all pool has %d candidates, want %d", len(pool), len(candidates))
+	}
+}
+
+func TestWeightedCandidateIndexUsesEffectivePriceAsWeight(t *testing.T) {
+	candidates := []candidate{
+		{campaign: &Campaign{ID: "a"}, effectivePrice: 50},
+		{campaign: &Campaign{ID: "b"}, effectivePrice: 40},
+		{campaign: &Campaign{ID: "c"}, effectivePrice: 10},
+	}
+
+	tests := []struct {
+		randomUnit float64
+		wantIndex  int
+	}{
+		{randomUnit: 0, wantIndex: 0},
+		{randomUnit: 0.499999, wantIndex: 0},
+		{randomUnit: 0.50, wantIndex: 1},
+		{randomUnit: 0.899999, wantIndex: 1},
+		{randomUnit: 0.90, wantIndex: 2},
+		{randomUnit: math.Nextafter(1, 0), wantIndex: 2},
+	}
+
+	for _, test := range tests {
+		if got := weightedCandidateIndex(candidates, test.randomUnit); got != test.wantIndex {
+			t.Fatalf("randomUnit=%v: index=%d want %d", test.randomUnit, got, test.wantIndex)
+		}
+	}
+}
 
 func TestTrafficMatches(t *testing.T) {
 	tests := []struct {
