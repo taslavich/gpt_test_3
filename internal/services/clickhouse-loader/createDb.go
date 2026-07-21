@@ -643,7 +643,7 @@ SELECT
     device,
     os,
     browser,
-    site_id
+    site_id,
     count() AS requests,
 
     sumIf(
