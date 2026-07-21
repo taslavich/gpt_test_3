@@ -35,6 +35,7 @@ DROP VIEW IF EXISTS {db}.mv_ortb_minute_metrics SYNC;
 DROP VIEW IF EXISTS {db}.mv_ip_limit_ipv6 SYNC;
 DROP VIEW IF EXISTS {db}.mv_ip_limit_ipv4 SYNC;
 DROP VIEW IF EXISTS {db}.mv_user_dsp_price_sum SYNC;
+DROP VIEW IF EXISTS ads.mv_ortb_traffic_hourly SYNC;
 
 -- ============================================================
 -- ORTB TABLE
