@@ -589,7 +589,7 @@ ORDER BY minute
 TTL minute + INTERVAL 32 DAY DELETE
 SETTINGS index_granularity = 8192;
 
-CREATE TABLE {db}.traffic_volume_hourly
+CREATE TABLE IF NOT EXISTS {db}.traffic_volume_hourly
 (
     event_hour DateTime('UTC'),
 
