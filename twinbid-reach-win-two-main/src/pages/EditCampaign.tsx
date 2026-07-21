@@ -18,6 +18,7 @@ import { PostbackSection } from "@/components/dashboard/PostbackSection";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { api } from "@/api";
 import { buildRecommendBidRequest, makeBidRecommendation, type BidRecommendation } from "@/lib/bidRecommendation";
+import { getBidLimits, getMaximumBid } from "@/lib/bidLimits";
 
 const bannerSizes = ["300x100", "300x250", "300x600", "728x90"];
 
@@ -111,16 +112,8 @@ export default function EditCampaign() {
   useEffect(() => {
     if (priceValue && campaign) {
       const pv = parseFloat(priceValue.replace(",", ".")) || 0;
-      const formatMins: Record<string, Record<TrafficQuality, number>> = {
-        banner: { common: 0.01, high: 0.01, ultra: 0.01 },
-        native: { common: 0.01, high: 0.01, ultra: 0.01 },
-        push: { common: 0.005, high: 0.005, ultra: 0.005 },
-        popunder: { common: 0.3, high: 0.7, ultra: 0.9 },
-      };
-      const mins = formatMins[campaign.formatKey] || formatMins.banner;
-      const minCpm = mins[trafficQuality];
-      const min = pricingModel === "cpc" ? +(minCpm * 1.7 / 1000).toFixed(5) : minCpm;
-      const max = pricingModel === "cpm" ? (campaign.formatKey === "popunder" ? 50 : 1000) : 1;
+      const { min } = getBidLimits(campaign.formatKey, trafficQuality, pricingModel);
+      const max = getMaximumBid(campaign.formatKey, pricingModel);
       if (pv >= min && pv <= max) clearError("priceValue");
     }
   }, [priceValue, pricingModel, trafficQuality, campaign]);
@@ -170,17 +163,9 @@ export default function EditCampaign() {
       e.totalBudget = t("edit.errorBudgetMustIncrease");
     }
 
-    const formatMins: Record<string, Record<TrafficQuality, number>> = {
-      banner: { common: 0.01, high: 0.01, ultra: 0.01 },
-      native: { common: 0.01, high: 0.01, ultra: 0.01 },
-      push: { common: 0.005, high: 0.005, ultra: 0.005 },
-      popunder: { common: 0.3, high: 0.7, ultra: 0.9 },
-    };
-    const mins = formatMins[campaign.formatKey] || formatMins.banner;
-    const minCpm = mins[trafficQuality];
-    const min = pricingModel === "cpc" ? +(minCpm * 1.7 / 1000).toFixed(5) : minCpm;
+    const { min } = getBidLimits(campaign.formatKey, trafficQuality, pricingModel);
     const pv = parseNum(priceValue);
-    const max = pricingModel === "cpm" ? (campaign.formatKey === "popunder" ? 50 : 1000) : 1;
+    const max = getMaximumBid(campaign.formatKey, pricingModel);
     if (!priceValue || isNaN(pv) || pv < min) e.priceValue = `${t("budget.belowMin")} ($${min})`;
     else if (pv > max) e.priceValue = t("budget.aboveMaxError").replace("{max}", String(max));
 

@@ -189,6 +189,8 @@ export interface TrafficSegmentRequest {
   os_mode?: "include" | "exclude";
   browser?: string[];
   browser_mode?: "include" | "exclude";
+  site_id?: string[];
+  site_id_mode?: "include" | "exclude";
 }
 
 export interface CalculatorRequest extends TrafficSegmentRequest {}

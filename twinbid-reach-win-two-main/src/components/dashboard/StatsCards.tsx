@@ -4,6 +4,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { useCampaigns } from "@/contexts/CampaignContext";
 import { useCampaignStats } from "@/hooks/use-campaign-stats";
+import { formatStatisticInteger } from "@/lib/numberFormat";
 
 export function StatsCards() {
   const { t } = useLanguage();
@@ -14,8 +15,8 @@ export function StatsCards() {
   const ctr = totals.impressions > 0 ? ((totals.clicks / totals.impressions) * 100).toFixed(2) : "0.00";
 
   const stats = [
-    { label: t("statsCards.impressions"), value: totals.impressions.toLocaleString(), icon: Eye, color: "text-primary" },
-    { label: t("statsCards.clicks"), value: totals.clicks.toLocaleString(), icon: MousePointer, color: "text-primary" },
+    { label: t("statsCards.impressions"), value: formatStatisticInteger(totals.impressions), icon: Eye, color: "text-primary" },
+    { label: t("statsCards.clicks"), value: formatStatisticInteger(totals.clicks), icon: MousePointer, color: "text-primary" },
     { label: t("statsCards.ctr"), value: `${ctr}%`, icon: Target, color: "text-primary" },
   ];
 

@@ -18,6 +18,7 @@ import { toast } from "sonner";
 import { useCampaigns, type Campaign } from "@/contexts/CampaignContext";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { useCampaignStats, statOf } from "@/hooks/use-campaign-stats";
+import { formatNumberWithDot, formatStatisticInteger } from "@/lib/numberFormat";
 
 function isDraftComplete(c: Campaign): boolean {
   if (!c.name.trim()) return false;
@@ -210,8 +211,8 @@ export default function DashboardCampaigns() {
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           <Card className="bg-card border-border"><CardContent className="p-4"><p className="text-sm text-muted-foreground">{t("campaigns.total")}</p><p className="text-2xl font-bold">{totalCount}</p></CardContent></Card>
           <Card className="bg-card border-border"><CardContent className="p-4"><p className="text-sm text-muted-foreground">{t("campaigns.activeCount")}</p><p className="text-2xl font-bold text-green-500">{activeCount}</p></CardContent></Card>
-          <Card className="bg-card border-border"><CardContent className="p-4"><p className="text-sm text-muted-foreground">{t("campaigns.budget")}</p><p className="text-2xl font-bold">${totalBudget.toLocaleString()}</p></CardContent></Card>
-          <Card className="bg-card border-border"><CardContent className="p-4"><p className="text-sm text-muted-foreground">{t("overview.spent")}</p><p className="text-2xl font-bold">${totalSpent.toLocaleString()}</p></CardContent></Card>
+          <Card className="bg-card border-border"><CardContent className="p-4"><p className="text-sm text-muted-foreground">{t("campaigns.budget")}</p><p className="text-2xl font-bold">${formatNumberWithDot(totalBudget)}</p></CardContent></Card>
+          <Card className="bg-card border-border"><CardContent className="p-4"><p className="text-sm text-muted-foreground">{t("overview.spent")}</p><p className="text-2xl font-bold">${formatNumberWithDot(totalSpent)}</p></CardContent></Card>
         </div>
 
         <Card className="bg-card border-border">
@@ -257,10 +258,10 @@ export default function DashboardCampaigns() {
                       <td className="py-4 px-4 font-medium">{campaign.name}</td>
                       <td className="py-4 px-4"><Badge variant="outline" className={cn("font-normal", statusConfig[campaign.status]?.className)}>{statusConfig[campaign.status]?.label}</Badge></td>
                       <td className="py-4 px-4 text-muted-foreground">{campaign.format}</td>
-                      <td className="py-4 px-4">${campaign.budget.toLocaleString()}</td>
-                      <td className="py-4 px-4">${cs.spent.toLocaleString()}</td>
-                      <td className="py-4 px-4">{cs.impressions.toLocaleString()}</td>
-                      <td className="py-4 px-4">{cs.clicks.toLocaleString()}</td>
+                      <td className="py-4 px-4">${formatNumberWithDot(campaign.budget)}</td>
+                      <td className="py-4 px-4">${formatNumberWithDot(cs.spent)}</td>
+                      <td className="py-4 px-4">{formatStatisticInteger(cs.impressions)}</td>
+                      <td className="py-4 px-4">{formatStatisticInteger(cs.clicks)}</td>
                       <td className="py-4 px-4">{cs.ctr}%</td>
                       <td className="py-4 px-4 text-right">
                         <DropdownMenu>
@@ -334,10 +335,10 @@ export default function DashboardCampaigns() {
               {[
                 [t("overview.status"), <Badge variant="outline" className={cn("font-normal", statusConfig[viewCampaign.status]?.className)}>{statusConfig[viewCampaign.status]?.label}</Badge>],
                 [t("campaigns.format"), viewCampaign.format],
-                [t("campaigns.budget"), `$${viewCampaign.budget.toLocaleString()}`],
-                [t("overview.spent"), `$${vs.spent.toLocaleString()}`],
-                [t("overview.impressions"), vs.impressions.toLocaleString()],
-                [t("stats.clicks"), vs.clicks.toLocaleString()],
+                [t("campaigns.budget"), `$${formatNumberWithDot(viewCampaign.budget)}`],
+                [t("overview.spent"), `$${formatNumberWithDot(vs.spent)}`],
+                [t("overview.impressions"), formatStatisticInteger(vs.impressions)],
+                [t("stats.clicks"), formatStatisticInteger(vs.clicks)],
                 ["CTR", `${vs.ctr}%`],
                 [t("view.bid"), `$${viewCampaign.priceValue} (${viewCampaign.pricingModel.toUpperCase()})`],
               ].map(([label, val], i) => (

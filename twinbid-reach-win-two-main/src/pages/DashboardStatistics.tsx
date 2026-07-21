@@ -26,6 +26,7 @@ import {
 } from "@/lib/statFilters";
 import { api } from "@/api";
 import type { StatsGroupBy, StatsFilterBy } from "@/api/types";
+import { formatNumberWithDot, formatStatisticInteger } from "@/lib/numberFormat";
 
 type GroupBy = "dates" | "hours" | "browsers" | "siteid" | "devices" | "os" | "country";
 type SortKey = "label" | "impressions" | "clicks" | "spent" | "cpm" | "cpc" | "conversions" | "income";
@@ -413,17 +414,17 @@ export default function DashboardStatistics() {
     const totalConfirmedIncome = data.reduce((s, r) => s + r.confirmedIncome, 0);
     const roi = totalSpent > 0 ? (((totalConfirmedIncome - totalSpent) / totalSpent) * 100).toFixed(2) : "0.00";
     const base = [
-      { label: t("stats.impressions"), value: totalImpressions.toLocaleString(), icon: Eye },
-      { label: t("stats.clicks"), value: totalClicks.toLocaleString(), icon: MousePointer },
+      { label: t("stats.impressions"), value: formatStatisticInteger(totalImpressions), icon: Eye },
+      { label: t("stats.clicks"), value: formatStatisticInteger(totalClicks), icon: MousePointer },
       { label: t("stats.ctr"), value: `${ctr}%`, icon: Target },
-      { label: t("stats.spent"), value: `$${totalSpent.toLocaleString()}`, icon: TrendingUp },
+      { label: t("stats.spent"), value: `$${formatNumberWithDot(totalSpent)}`, icon: TrendingUp },
     ];
     if (!showConversions) return base;
     return [
       ...base,
-      { label: t("stats.conversions"), value: totalConversions.toLocaleString(), icon: Zap },
+      { label: t("stats.conversions"), value: formatStatisticInteger(totalConversions), icon: Zap },
       { label: t("stats.cr"), value: `${cr}%`, icon: Percent },
-      { label: t("stats.income"), value: `$${totalIncome.toLocaleString()}`, icon: DollarSign },
+      { label: t("stats.income"), value: `$${formatNumberWithDot(totalIncome)}`, icon: DollarSign },
       { label: t("stats.roi"), value: `${roi}%`, icon: TrendingUp },
     ];
   }, [data, t, showConversions]);
@@ -603,7 +604,7 @@ export default function DashboardStatistics() {
     return (
       <div className="rounded-lg border bg-card px-3 py-2 text-sm shadow-md" style={{ borderColor: "hsl(var(--border))" }}>
         <p className="font-medium text-foreground">{label}</p>
-        <p className="text-muted-foreground">{metricLabel}: <span className="font-semibold text-foreground">{chartMetric === "spent" ? `$${value?.toLocaleString()}` : value?.toLocaleString()}</span></p>
+        <p className="text-muted-foreground">{metricLabel}: <span className="font-semibold text-foreground">{chartMetric === "spent" ? `$${formatNumberWithDot(Number(value) || 0)}` : formatNumberWithDot(Number(value) || 0)}</span></p>
       </div>
     );
   };
@@ -1020,9 +1021,9 @@ export default function DashboardStatistics() {
                           : showRoi ? "roi"
                           : null)
                         : null;
-                    const fmtMoney = (n: number) => `$${n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-                    const fmtMoney2 = (n: number) => `$${(Math.floor(n * 100) / 100).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-                    const fmtMoney5 = (n: number) => `$${(Math.floor(n * 100000) / 100000).toLocaleString(undefined, { minimumFractionDigits: 5, maximumFractionDigits: 5 })}`;
+                    const fmtMoney = (n: number) => `$${formatNumberWithDot(n, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+                    const fmtMoney2 = (n: number) => `$${formatNumberWithDot(Math.floor(n * 100) / 100, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+                    const fmtMoney5 = (n: number) => `$${formatNumberWithDot(Math.floor(n * 100000) / 100000, { minimumFractionDigits: 5, maximumFractionDigits: 5 })}`;
                     const cpmOf = (r: { spent: number; impressions: number }) => r.impressions > 0 ? r.spent / r.impressions * 1000 : 0;
                     const cpcOf = (r: { spent: number; clicks: number }) => r.clicks > 0 ? r.spent / r.clicks : 0;
                     return (
@@ -1112,16 +1113,16 @@ export default function DashboardStatistics() {
                           <td className={cn("py-2 px-2 font-medium whitespace-nowrap", stickyBody, "group-hover:bg-muted/50")}>
                             {appliedGroupBy === "country" ? formatCountryLabel(row.label, lang) : row.label}
                           </td>
-                          {showImpressions && <td className="py-2 px-2 whitespace-nowrap">{row.impressions.toLocaleString()}</td>}
-                          {showClicks && <td className="py-2 px-2 whitespace-nowrap">{row.clicks.toLocaleString()}</td>}
+                          {showImpressions && <td className="py-2 px-2 whitespace-nowrap">{formatStatisticInteger(row.impressions)}</td>}
+                          {showClicks && <td className="py-2 px-2 whitespace-nowrap">{formatStatisticInteger(row.clicks)}</td>}
                           {showCtr && <td className="py-2 px-2 whitespace-nowrap">{row.impressions > 0 ? ((row.clicks / row.impressions) * 100).toFixed(2) : "0.00"}%</td>}
                           {showSpent && <td className={cn("py-2 px-2 whitespace-nowrap", firstCost === "spent" && trafficCols > 0 && sep)}>{fmtMoney(row.spent)}</td>}
                           {showCpm && <td className={cn("py-2 px-2 whitespace-nowrap", firstCost === "cpm" && trafficCols > 0 && sep)}>{fmtMoney2(cpmOf(row))}</td>}
                           {showCpc && <td className={cn("py-2 px-2 whitespace-nowrap", firstCost === "cpc" && trafficCols > 0 && sep)}>{fmtMoney5(cpcOf(row))}</td>}
                           {showConversions && (
                             <>
-                              {showConversionsCol && <td className={cn("py-2 px-2 whitespace-nowrap", firstConv === "conversions" && (trafficCols + costCols) > 0 && sep)}>{row.conversions.toLocaleString()}</td>}
-                              {showConfirmedConversions && <td className={cn("py-2 px-2 whitespace-nowrap", firstConv === "confirmedConv" && (trafficCols + costCols) > 0 && sep)}>{row.confirmedConversions.toLocaleString()}</td>}
+                              {showConversionsCol && <td className={cn("py-2 px-2 whitespace-nowrap", firstConv === "conversions" && (trafficCols + costCols) > 0 && sep)}>{formatStatisticInteger(row.conversions)}</td>}
+                              {showConfirmedConversions && <td className={cn("py-2 px-2 whitespace-nowrap", firstConv === "confirmedConv" && (trafficCols + costCols) > 0 && sep)}>{formatStatisticInteger(row.confirmedConversions)}</td>}
                               {showCr && <td className={cn("py-2 px-2 whitespace-nowrap", firstConv === "cr" && (trafficCols + costCols) > 0 && sep)}>{cr}%</td>}
                               {showIncome && <td className={cn("py-2 px-2 whitespace-nowrap", firstConv === "income" && (trafficCols + costCols) > 0 && sep)}>{fmtMoney(row.income)}</td>}
                               {showConfirmedIncome && <td className={cn("py-2 px-2 whitespace-nowrap", firstConv === "confirmedIncome" && (trafficCols + costCols) > 0 && sep)}>{fmtMoney(row.confirmedIncome)}</td>}
@@ -1133,8 +1134,8 @@ export default function DashboardStatistics() {
                       })}
                       <tr className="bg-muted/30 font-semibold">
                         <td className={cn("py-2 px-2 whitespace-nowrap", stickyAlt)}>{t("stats.total")}</td>
-                        {showImpressions && <td className="py-2 px-2 whitespace-nowrap">{totals.impressions.toLocaleString()}</td>}
-                        {showClicks && <td className="py-2 px-2 whitespace-nowrap">{totals.clicks.toLocaleString()}</td>}
+                        {showImpressions && <td className="py-2 px-2 whitespace-nowrap">{formatStatisticInteger(totals.impressions)}</td>}
+                        {showClicks && <td className="py-2 px-2 whitespace-nowrap">{formatStatisticInteger(totals.clicks)}</td>}
                         {showCtr && <td className="py-2 px-2 whitespace-nowrap">{totals.impressions > 0 ? ((totals.clicks / totals.impressions) * 100).toFixed(2) : "0.00"}%</td>}
                         {showSpent && <td className={cn("py-2 px-2 whitespace-nowrap", firstCost === "spent" && trafficCols > 0 && sep)}>{fmtMoney(totals.spent)}</td>}
                         {showCpm && <td className={cn("py-2 px-2 whitespace-nowrap", firstCost === "cpm" && trafficCols > 0 && sep)}>{fmtMoney2(cpmOf(totals))}</td>}
@@ -1145,8 +1146,8 @@ export default function DashboardStatistics() {
                           const roi = totals.spent > 0 ? roiNum.toFixed(2) : "0.00";
                           return (
                             <>
-                              {showConversionsCol && <td className={cn("py-2 px-2 whitespace-nowrap", firstConv === "conversions" && (trafficCols + costCols) > 0 && sep)}>{totals.conversions.toLocaleString()}</td>}
-                              {showConfirmedConversions && <td className={cn("py-2 px-2 whitespace-nowrap", firstConv === "confirmedConv" && (trafficCols + costCols) > 0 && sep)}>{totals.confirmedConversions.toLocaleString()}</td>}
+                              {showConversionsCol && <td className={cn("py-2 px-2 whitespace-nowrap", firstConv === "conversions" && (trafficCols + costCols) > 0 && sep)}>{formatStatisticInteger(totals.conversions)}</td>}
+                              {showConfirmedConversions && <td className={cn("py-2 px-2 whitespace-nowrap", firstConv === "confirmedConv" && (trafficCols + costCols) > 0 && sep)}>{formatStatisticInteger(totals.confirmedConversions)}</td>}
                               {showCr && <td className={cn("py-2 px-2 whitespace-nowrap", firstConv === "cr" && (trafficCols + costCols) > 0 && sep)}>{cr}%</td>}
                               {showIncome && <td className={cn("py-2 px-2 whitespace-nowrap", firstConv === "income" && (trafficCols + costCols) > 0 && sep)}>{fmtMoney(totals.income)}</td>}
                               {showConfirmedIncome && <td className={cn("py-2 px-2 whitespace-nowrap", firstConv === "confirmedIncome" && (trafficCols + costCols) > 0 && sep)}>{fmtMoney(totals.confirmedIncome)}</td>}

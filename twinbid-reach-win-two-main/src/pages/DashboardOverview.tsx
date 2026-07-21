@@ -6,6 +6,7 @@ import { useLanguage } from "@/contexts/LanguageContext";
 import { useCampaigns } from "@/contexts/CampaignContext";
 import { Eye, MousePointer, Target } from "lucide-react";
 import { useCampaignStats, statOf } from "@/hooks/use-campaign-stats";
+import { formatNumberWithDot, formatStatisticInteger } from "@/lib/numberFormat";
 
 export default function DashboardOverview() {
   const { t } = useLanguage();
@@ -24,8 +25,8 @@ export default function DashboardOverview() {
   const ctr = totals.impressions > 0 ? ((totals.clicks / totals.impressions) * 100).toFixed(2) : "0.00";
 
   const stats = [
-    { label: t("statsCards.impressions"), value: totals.impressions.toLocaleString(), icon: Eye, color: "text-primary" },
-    { label: t("statsCards.clicks"), value: totals.clicks.toLocaleString(), icon: MousePointer, color: "text-primary" },
+    { label: t("statsCards.impressions"), value: formatStatisticInteger(totals.impressions), icon: Eye, color: "text-primary" },
+    { label: t("statsCards.clicks"), value: formatStatisticInteger(totals.clicks), icon: MousePointer, color: "text-primary" },
     { label: t("statsCards.ctr"), value: `${ctr}%`, icon: Target, color: "text-primary" },
   ];
 
@@ -85,9 +86,9 @@ export default function DashboardOverview() {
                           {statusConfig[c.status]?.label}
                         </Badge>
                       </td>
-                      <td className="py-3 px-4">{s.impressions.toLocaleString()}</td>
-                      <td className="py-3 px-4">{s.clicks.toLocaleString()}</td>
-                      <td className="py-3 px-4">${s.spent.toLocaleString()}</td>
+                      <td className="py-3 px-4">{formatStatisticInteger(s.impressions)}</td>
+                      <td className="py-3 px-4">{formatStatisticInteger(s.clicks)}</td>
+                      <td className="py-3 px-4">${formatNumberWithDot(s.spent)}</td>
                     </tr>
                   );
                 })}

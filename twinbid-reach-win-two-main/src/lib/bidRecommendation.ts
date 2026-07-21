@@ -8,6 +8,18 @@ export interface BidRecommendation {
   optimalRecommended: number;
 }
 
+interface DisplayedBidRecommendationParams {
+  apiMinimumRecommended: number;
+  apiOptimalRecommended: number;
+  hardcodedMinimum: number;
+  hardcodedRecommended: number;
+}
+
+export interface DisplayedBidRecommendation {
+  minimumRecommended: number;
+  optimalRecommended: number;
+}
+
 const readList = (lists: Record<string, TargetingState>, key: string) => {
   const list = lists[key];
   return {
@@ -26,6 +38,7 @@ export function buildRecommendBidRequest(
   const deviceType = readList(lists, "deviceType");
   const os = readList(lists, "os");
   const browser = readList(lists, "browser");
+  const sites = readList(lists, "sites");
 
   return {
     format_type: formatType as RecommendBidRequest["format_type"],
@@ -40,6 +53,8 @@ export function buildRecommendBidRequest(
     os_mode: os.mode,
     browser: browser.items,
     browser_mode: browser.mode,
+    site_id: sites.items,
+    site_id_mode: sites.mode,
   };
 }
 
@@ -49,5 +64,24 @@ export function makeBidRecommendation(averageBid: number): BidRecommendation | n
   return {
     minimumRecommended: averageBid,
     optimalRecommended: averageBid * optimalMultiplier,
+  };
+}
+
+export function resolveDisplayedBidRecommendation({
+  apiMinimumRecommended,
+  apiOptimalRecommended,
+  hardcodedMinimum,
+  hardcodedRecommended,
+}: DisplayedBidRecommendationParams): DisplayedBidRecommendation {
+  if (apiMinimumRecommended < hardcodedMinimum) {
+    return {
+      minimumRecommended: (hardcodedMinimum + hardcodedRecommended) / 2,
+      optimalRecommended: hardcodedRecommended,
+    };
+  }
+
+  return {
+    minimumRecommended: apiMinimumRecommended,
+    optimalRecommended: Math.max(apiMinimumRecommended, apiOptimalRecommended),
   };
 }

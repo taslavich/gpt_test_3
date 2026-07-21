@@ -19,6 +19,7 @@ import { Loader2 } from "lucide-react";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { api } from "@/api";
 import { buildRecommendBidRequest, makeBidRecommendation, type BidRecommendation } from "@/lib/bidRecommendation";
+import { getBidLimits, getMaximumBid } from "@/lib/bidLimits";
 
 const formatLabels: Record<string, string> = {
   banner: "Banner", popunder: "Popunder", native: "Native", push: "In-page Push",
@@ -84,16 +85,8 @@ export default function CreateCampaign() {
   useEffect(() => {
     if (priceValue) {
       const pv = parseNum(priceValue);
-      const formatMins: Record<string, Record<TrafficQuality, number>> = {
-        banner: { common: 0.01, high: 0.01, ultra: 0.01 },
-        native: { common: 0.01, high: 0.01, ultra: 0.01 },
-        push: { common: 0.005, high: 0.005, ultra: 0.005 },
-        popunder: { common: 0.3, high: 0.7, ultra: 0.9 },
-      };
-      const mins = formatMins[adFormat] || formatMins.banner;
-      const minCpm = mins[trafficQuality];
-      const min = pricingModel === "cpc" ? +(minCpm * 1.7 / 1000).toFixed(5) : minCpm;
-      const max = pricingModel === "cpm" ? (adFormat === "popunder" ? 50 : 1000) : 1;
+      const { min } = getBidLimits(adFormat, trafficQuality, pricingModel);
+      const max = getMaximumBid(adFormat, pricingModel);
       if (pv >= min && pv <= max) clearError("priceValue");
     }
   }, [priceValue, pricingModel, trafficQuality, adFormat]);
@@ -178,7 +171,7 @@ export default function CreateCampaign() {
     if (!totalBudget || isNaN(tb) || tb < 1) e.totalBudget = t("edit.errorBudgetMin");
     const pv = parseNum(priceValue);
     const { min } = getMinPrice();
-    const max = pricingModel === "cpm" ? (adFormat === "popunder" ? 50 : 1000) : 1;
+    const max = getMaximumBid(adFormat, pricingModel);
     if (!priceValue || isNaN(pv) || pv < min) e.priceValue = `${t("budget.belowMin")} ($${min})`;
     else if (pv > max) e.priceValue = t("budget.aboveMaxError").replace("{max}", String(max));
     if (!startDate) e.startDate = t("create.required");
@@ -193,16 +186,8 @@ export default function CreateCampaign() {
   };
 
   const getMinPrice = () => {
-    const formatMins: Record<string, Record<TrafficQuality, number>> = {
-      banner: { common: 0.01, high: 0.01, ultra: 0.01 },
-      native: { common: 0.01, high: 0.01, ultra: 0.01 },
-      push: { common: 0.005, high: 0.005, ultra: 0.005 },
-      popunder: { common: 0.3, high: 0.7, ultra: 0.9 },
-    };
-    const mins = formatMins[adFormat] || formatMins.banner;
-    const minCpm = mins[trafficQuality];
-    if (pricingModel === "cpc") return { min: +(minCpm * 1.7 / 1000).toFixed(5) };
-    return { min: minCpm };
+    const { min } = getBidLimits(adFormat, trafficQuality, pricingModel);
+    return { min };
   };
 
   const loadBidRecommendation = async () => {

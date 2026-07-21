@@ -10,45 +10,11 @@ import { cn } from "@/lib/utils";
 import { format } from "date-fns";
 import type { PricingModel, TrafficQuality } from "@/contexts/CampaignContext";
 import { useLanguage } from "@/contexts/LanguageContext";
-import type { BidRecommendation } from "@/lib/bidRecommendation";
-
-const formatCpmLimits: Record<string, Record<TrafficQuality, { min: number; rec: number }>> = {
-  banner: {
-    common: { min: 0.01, rec: 0.05 },
-    high: { min: 0.01, rec: 0.07 },
-    ultra: { min: 0.01, rec: 0.14 },
-  },
-  native: {
-    common: { min: 0.01, rec: 0.05 },
-    high: { min: 0.01, rec: 0.07 },
-    ultra: { min: 0.01, rec: 0.14 },
-  },
-  push: {
-    common: { min: 0.005, rec: 0.01 },
-    high: { min: 0.005, rec: 0.017 },
-    ultra: { min: 0.005, rec: 0.035 },
-  },
-  popunder: {
-    common: { min: 0.3, rec: 1.8 },
-    high: { min: 0.7, rec: 3.0 },
-    ultra: { min: 0.9, rec: 4.7 },
-  },
-};
-
-const CPC_MULTIPLIER = 1.7 / 1000;
-
-const MAX_CPM = 1000;
-const MAX_POPUNDER_CPM = 50;
-const MAX_CPC = 1;
-
-function getPriceLimits(formatKey: string, quality: TrafficQuality, model: PricingModel) {
-  const limits = formatCpmLimits[formatKey] || formatCpmLimits.banner;
-  const vals = limits[quality];
-  if (model === "cpm") return vals;
-  // Push values are already in CPC; only popunder needs conversion
-  if (formatKey === "push") return vals;
-  return { min: +(vals.min * CPC_MULTIPLIER).toFixed(5), rec: +(vals.rec * CPC_MULTIPLIER).toFixed(5) };
-}
+import {
+  resolveDisplayedBidRecommendation,
+  type BidRecommendation,
+} from "@/lib/bidRecommendation";
+import { convertRecommendationToModel, getBidLimits, getMaximumBid } from "@/lib/bidLimits";
 
 function getAvailableModels(formatKey: string): PricingModel[] {
   if (formatKey === "popunder") return ["cpm", "cpc"];
@@ -62,11 +28,6 @@ function parseNumericValue(val: string): number {
 
 function formatBid(value: number, model: PricingModel): string {
   return Number(value.toFixed(model === "cpc" ? 5 : 4)).toString();
-}
-
-function recommendationForModel(value: number, formatKey: string, model: PricingModel): number {
-  if (model === "cpm" || formatKey === "push") return value;
-  return value * CPC_MULTIPLIER;
 }
 
 interface BudgetSectionProps {
@@ -99,17 +60,28 @@ export function BudgetSection({
 }: BudgetSectionProps) {
   const { t } = useLanguage();
   const availableModels = getAvailableModels(formatKey);
-  const limits = getPriceLimits(formatKey, trafficQuality, pricingModel);
+  const bidLimits = getBidLimits(formatKey, trafficQuality, pricingModel);
+  const limits = { min: bidLimits.min, rec: bidLimits.recommended };
   const priceNum = parseNumericValue(priceValue);
-  const maxPrice = pricingModel === "cpm"
-    ? (formatKey === "popunder" ? MAX_POPUNDER_CPM : MAX_CPM)
-    : MAX_CPC;
-  const minimumRecommended = bidRecommendation
-    ? Math.max(limits.min, recommendationForModel(bidRecommendation.minimumRecommended, formatKey, pricingModel))
+  const maxPrice = getMaximumBid(formatKey, pricingModel);
+  const displayedRecommendation = bidRecommendation
+    ? resolveDisplayedBidRecommendation({
+        apiMinimumRecommended: convertRecommendationToModel(
+          bidRecommendation.minimumRecommended,
+          formatKey,
+          pricingModel,
+        ),
+        apiOptimalRecommended: convertRecommendationToModel(
+          bidRecommendation.optimalRecommended,
+          formatKey,
+          pricingModel,
+        ),
+        hardcodedMinimum: limits.min,
+        hardcodedRecommended: limits.rec,
+      })
     : null;
-  const optimalRecommended = bidRecommendation && minimumRecommended !== null
-    ? Math.max(minimumRecommended, recommendationForModel(bidRecommendation.optimalRecommended, formatKey, pricingModel))
-    : null;
+  const minimumRecommended = displayedRecommendation?.minimumRecommended ?? null;
+  const optimalRecommended = displayedRecommendation?.optimalRecommended ?? null;
   const isBelowMin = priceValue !== "" && priceNum < limits.min;
   const activeRecommended = minimumRecommended ?? limits.rec;
   const isBelowRec = priceValue !== "" && priceNum >= limits.min && priceNum < activeRecommended;

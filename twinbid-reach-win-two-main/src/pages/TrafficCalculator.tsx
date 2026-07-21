@@ -6,12 +6,13 @@ import {
   CircleDollarSign,
   Gauge,
   Loader2,
-  MousePointerClick,
   Percent,
+  Plus,
   RefreshCw,
   Save,
   Sparkles,
   Target,
+  X,
 } from "lucide-react";
 import { api, type CalculatorResponse } from "@/api";
 import { Badge } from "@/components/ui/badge";
@@ -29,8 +30,10 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useCampaigns, type Campaign, type PricingModel } from "@/contexts/CampaignContext";
-import { useLanguage, type Lang } from "@/contexts/LanguageContext";
+import { useLanguage } from "@/contexts/LanguageContext";
+import { getBidLimits, getMaximumBid } from "@/lib/bidLimits";
 import { COUNTRIES, LANGUAGES } from "@/lib/dimensions";
+import { formatNumberWithDot, formatStatisticInteger } from "@/lib/numberFormat";
 import { BROWSER_FILTER_KEYS, DEVICE_FILTER_KEYS, OS_FILTER_KEYS, OTHER_KEY } from "@/lib/statFilters";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
@@ -53,7 +56,10 @@ const copy = {
     languages: "Языки",
     devices: "Устройства",
     browsers: "Браузеры",
-    verticals: "Вертикали",
+    sites: "ID сайтов",
+    sitesHint: "Введите один или несколько ID через запятую.",
+    sitesPlaceholder: "12345,abdjhx",
+    sitesFormatError: "ID сайтов вводятся без пробелов, через запятую",
     getData: "Получить данные",
     placeholderTitle: "Здесь появится доступный объём",
     placeholderDesc: "Выберите таргетинги и получите доступный объём показов за последние полностью закрытые сутки.",
@@ -61,7 +67,6 @@ const copy = {
     unavailableDesc: "Не удалось получить данные. Проверьте подключение ручки POST /api/calculator.",
     potentialImpressions: "Доступные показы",
     targetingHint: "по выбранным таргетингам",
-    actualClicks: "Фактические клики",
     actualImpressions: "Фактические показы",
     sameDay: "за те же полные сутки",
     statsHint: "по данным статистики",
@@ -75,6 +80,8 @@ const copy = {
     fixedType: "тип зафиксирован",
     save: "Сохранить",
     bidPositive: "Укажите ставку больше нуля",
+    bidBelowMin: "Ставка не может быть ниже {value}",
+    bidAboveMax: "Ставка не может быть выше {value}",
     bidSaved: "Ставка кампании обновлена",
     bidError: "Не удалось изменить ставку",
     all: "Все",
@@ -100,7 +107,10 @@ const copy = {
     languages: "Languages",
     devices: "Devices",
     browsers: "Browsers",
-    verticals: "Verticals",
+    sites: "Site IDs",
+    sitesHint: "Enter one or more IDs separated by commas.",
+    sitesPlaceholder: "12345,abdjhx",
+    sitesFormatError: "Enter site IDs without spaces, separated by commas",
     getData: "Get data",
     placeholderTitle: "Available volume will appear here",
     placeholderDesc: "Choose targeting to get the available impression volume for the latest complete day.",
@@ -108,7 +118,6 @@ const copy = {
     unavailableDesc: "Could not load the data. Check the POST /api/calculator integration.",
     potentialImpressions: "Available impressions",
     targetingHint: "for selected targeting",
-    actualClicks: "Actual clicks",
     actualImpressions: "Actual impressions",
     sameDay: "for the same complete day",
     statsHint: "from campaign statistics",
@@ -122,6 +131,8 @@ const copy = {
     fixedType: "type is fixed",
     save: "Save",
     bidPositive: "Enter a bid above zero",
+    bidBelowMin: "The bid cannot be lower than {value}",
+    bidAboveMax: "The bid cannot be higher than {value}",
     bidSaved: "Campaign bid updated",
     bidError: "Could not update bid",
     all: "All",
@@ -147,7 +158,10 @@ const copy = {
     languages: "Idiomas",
     devices: "Dispositivos",
     browsers: "Navegadores",
-    verticals: "Verticales",
+    sites: "ID de sitios",
+    sitesHint: "Introduce uno o varios ID separados por comas.",
+    sitesPlaceholder: "12345,abdjhx",
+    sitesFormatError: "Introduce los ID sin espacios y separados por comas",
     getData: "Obtener datos",
     placeholderTitle: "Aquí aparecerá el volumen disponible",
     placeholderDesc: "Elige la segmentación para obtener el volumen de impresiones disponible del último día completo.",
@@ -155,7 +169,6 @@ const copy = {
     unavailableDesc: "No se pudieron obtener los datos. Comprueba la integración POST /api/calculator.",
     potentialImpressions: "Impresiones disponibles",
     targetingHint: "según la segmentación elegida",
-    actualClicks: "Clics reales",
     actualImpressions: "Impresiones reales",
     sameDay: "durante el mismo día completo",
     statsHint: "según las estadísticas",
@@ -169,6 +182,8 @@ const copy = {
     fixedType: "tipo fijo",
     save: "Guardar",
     bidPositive: "Introduce una puja superior a cero",
+    bidBelowMin: "La puja no puede ser inferior a {value}",
+    bidAboveMax: "La puja no puede ser superior a {value}",
     bidSaved: "Puja actualizada",
     bidError: "No se pudo actualizar la puja",
     all: "Todos",
@@ -199,6 +214,8 @@ type FilterState = {
   osMode: "include" | "exclude";
   browser: string[];
   browserMode: "include" | "exclude";
+  sites: string[];
+  sitesMode: "include" | "exclude";
 };
 
 const defaults: FilterState = {
@@ -214,6 +231,8 @@ const defaults: FilterState = {
   osMode: "include",
   browser: [],
   browserMode: "include",
+  sites: [],
+  sitesMode: "include",
 };
 
 function fromCampaign(campaign: Campaign): FilterState {
@@ -232,21 +251,22 @@ function fromCampaign(campaign: Campaign): FilterState {
     osMode: mode("os"),
     browser: items("browser"),
     browserMode: mode("browser"),
+    sites: items("sites"),
+    sitesMode: mode("sites"),
   };
 }
 
-type CampaignDayStats = { clicks: number; impressions: number; hasData: boolean };
+type CampaignDayStats = { impressions: number; hasData: boolean };
 
-const number = (value: number, lang: Lang) => value.toLocaleString(lang === "ru" ? "ru-RU" : lang === "es" ? "es-ES" : "en-US");
 const previousCompleteUtcDate = () => {
   const date = new Date();
   date.setUTCDate(date.getUTCDate() - 1);
   return date.toISOString().slice(0, 10);
 };
 const money = (value: number, model: PricingModel) => `$${value.toLocaleString("en-US", {
-  minimumFractionDigits: model === "cpc" ? 4 : 2,
-  maximumFractionDigits: model === "cpc" ? 4 : 2,
-})}`;
+  minimumFractionDigits: model === "cpc" ? 5 : 2,
+  maximumFractionDigits: model === "cpc" ? 5 : 2,
+}).replace(/,/g, "\u00a0")}`;
 
 export default function TrafficCalculator() {
   const { lang } = useLanguage();
@@ -305,6 +325,8 @@ export default function TrafficCalculator() {
         os_mode: filters.osMode,
         browser: filters.browser,
         browser_mode: filters.browserMode,
+        site_id: filters.sites,
+        site_id_mode: filters.sitesMode,
       });
       setResult(calculation);
 
@@ -317,7 +339,6 @@ export default function TrafficCalculator() {
           group_by: "campaign",
         });
         setActual({
-          clicks: Number(stats.totals.clicks) || 0,
           impressions: Number(stats.totals.impressions) || 0,
           hasData: Boolean(stats.rows[selected.id]),
         });
@@ -335,8 +356,8 @@ export default function TrafficCalculator() {
   const saveBid = async () => {
     if (!selected) return;
     const bid = Number(bidDraft.replace(",", "."));
-    if (!Number.isFinite(bid) || bid <= 0) {
-      toast.error(text.bidPositive);
+    if (bidValidationError) {
+      toast.error(bidValidationError);
       return;
     }
     setSaving(true);
@@ -354,7 +375,18 @@ export default function TrafficCalculator() {
     ? (actual.impressions / result.potential_impressions) * 100
     : null;
 
-  const locale = lang === "ru" ? "ru-RU" : lang === "es" ? "es-ES" : "en-US";
+  const parsedBid = Number(bidDraft.replace(",", "."));
+  const selectedBidLimits = selected
+    ? getBidLimits(selected.formatKey, selected.trafficQuality, selected.pricingModel)
+    : null;
+  const selectedMaxBid = selected ? getMaximumBid(selected.formatKey, selected.pricingModel) : null;
+  const bidValidationError = !Number.isFinite(parsedBid) || parsedBid <= 0
+    ? text.bidPositive
+    : selectedBidLimits && parsedBid < selectedBidLimits.min
+      ? text.bidBelowMin.replace("{value}", money(selectedBidLimits.min, selected!.pricingModel))
+      : selectedMaxBid !== null && parsedBid > selectedMaxBid
+        ? text.bidAboveMax.replace("{value}", money(selectedMaxBid, selected!.pricingModel))
+        : "";
 
   return (
     <div className="mx-auto max-w-[1440px] space-y-6">
@@ -404,7 +436,14 @@ export default function TrafficCalculator() {
             <MultiChoice label={text.devices} text={text} mode={filters.deviceTypeMode} values={filters.deviceType} options={DEVICE_FILTER_KEYS.filter((item) => item !== OTHER_KEY).map(simpleOption)} onModeChange={(deviceTypeMode) => updateFilters({ deviceTypeMode })} onChange={(deviceType) => updateFilters({ deviceType })} />
             <MultiChoice label="OS" text={text} mode={filters.osMode} values={filters.os} options={OS_FILTER_KEYS.filter((item) => item !== OTHER_KEY).map(simpleOption)} onModeChange={(osMode) => updateFilters({ osMode })} onChange={(os) => updateFilters({ os })} />
             <MultiChoice label={text.browsers} text={text} mode={filters.browserMode} values={filters.browser} options={BROWSER_FILTER_KEYS.filter((item) => item !== OTHER_KEY).map(simpleOption)} onModeChange={(browserMode) => updateFilters({ browserMode })} onChange={(browser) => updateFilters({ browser })} />
-            
+            <SiteChoice
+              label={text.sites}
+              text={text}
+              mode={filters.sitesMode}
+              values={filters.sites}
+              onModeChange={(sitesMode) => updateFilters({ sitesMode })}
+              onChange={(sites) => updateFilters({ sites })}
+            />
           </div>
           <Button className="mt-5 w-full" onClick={calculate} disabled={loading}>{loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <RefreshCw className="mr-2 h-4 w-4" />}{text.getData}</Button>
         </Card>
@@ -416,19 +455,18 @@ export default function TrafficCalculator() {
           {error && <Card className="border-destructive/30 p-6"><p className="font-medium text-destructive">{text.unavailable}</p><p className="mt-2 text-sm text-muted-foreground">{error}</p></Card>}
           {result && (
             <>
-              <div className={cn("grid gap-3", selected ? "sm:grid-cols-2 xl:grid-cols-5" : "sm:grid-cols-1")}>
-                <Metric icon={Target} label={text.potentialImpressions} value={number(result.potential_impressions, lang)} hint={text.targetingHint} />
+              <div className={cn("grid gap-3", selected ? "md:grid-cols-2 xl:grid-cols-5" : "grid-cols-1")}>
+                <Metric featured={Boolean(selected)} icon={Target} label={text.potentialImpressions} value={formatStatisticInteger(result.potential_impressions)} hint={text.targetingHint} />
                 {selected && (
                   <>
-                    <Metric icon={MousePointerClick} label={text.actualClicks} value={actual?.hasData ? number(actual.clicks, lang) : "—"} hint={actual?.hasData ? text.sameDay : text.noData} />
-                    <Metric icon={BarChart3} label={text.actualImpressions} value={actual?.hasData ? number(actual.impressions, lang) : "—"} hint={actual?.hasData ? text.statsHint : text.noData} />
-                    <Metric icon={Percent} label={text.share} value={share === null ? "—" : `${share.toLocaleString(locale, { maximumFractionDigits: 1 })}%`} hint={text.shareHint} />
+                    <Metric icon={BarChart3} label={text.actualImpressions} value={actual?.hasData ? formatStatisticInteger(actual.impressions) : "—"} hint={actual?.hasData ? text.statsHint : text.noData} />
+                    <Metric icon={Percent} label={text.share} value={share === null ? "—" : `${formatNumberWithDot(share, { maximumFractionDigits: 1 })}%`} hint={text.shareHint} />
                     <Metric icon={CircleDollarSign} label={text.currentBid} value={money(selected.priceValue, selected.pricingModel)} hint={selected.pricingModel.toUpperCase()} />
                   </>
                 )}
               </div>
               {selected && (
-                <Card className="border-primary/20 p-5"><div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between"><div className="max-w-xl"><span className="inline-flex rounded-xl bg-primary/10 p-2.5"><CircleDollarSign className="h-5 w-5 text-primary" /></span><h3 className="mt-4 font-semibold">{text.moreTraffic}</h3><p className="mt-1 text-sm text-muted-foreground">{text.bidDesc}</p></div><div className="w-full lg:max-w-sm"><div className="mb-2 flex items-center justify-between gap-3 text-xs text-muted-foreground"><span>{text.newBid}</span><span>{selected.pricingModel.toUpperCase()} · {text.fixedType}</span></div><div className="flex gap-2"><Input inputMode="decimal" value={bidDraft} onChange={(event) => setBidDraft(event.target.value)} /><Button disabled={saving || Number(bidDraft.replace(",", ".")) === selected.priceValue} onClick={saveBid}>{saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}{text.save}</Button></div></div></div></Card>
+                <Card className="border-primary/20 p-5"><div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between"><div className="max-w-xl"><span className="inline-flex rounded-xl bg-primary/10 p-2.5"><CircleDollarSign className="h-5 w-5 text-primary" /></span><h3 className="mt-4 font-semibold">{text.moreTraffic}</h3><p className="mt-1 text-sm text-muted-foreground">{text.bidDesc}</p></div><div className="w-full lg:max-w-sm"><div className="mb-2 flex items-center justify-between gap-3 text-xs text-muted-foreground"><span>{text.newBid}</span><span>{selected.pricingModel.toUpperCase()} · {text.fixedType}</span></div><div className="flex gap-2"><Input inputMode="decimal" aria-invalid={Boolean(bidValidationError)} className={cn(bidValidationError && "border-destructive")} value={bidDraft} onChange={(event) => setBidDraft(event.target.value)} /><Button disabled={saving || Boolean(bidValidationError) || parsedBid === selected.priceValue} onClick={saveBid}>{saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}{text.save}</Button></div>{bidValidationError && <p className="mt-2 text-xs text-destructive">{bidValidationError}</p>}</div></div></Card>
               )}
             </>
           )}
@@ -463,8 +501,47 @@ function MultiChoice({ label, text, mode, values, options, onModeChange, onChang
   );
 }
 
-function Metric({ icon: Icon, label, value, hint }: { icon: typeof Target; label: string; value: string; hint: string }) {
-  return <Card className="p-4"><span className="inline-flex rounded-lg bg-primary/10 p-2"><Icon className="h-4 w-4 text-primary" /></span><p className="mt-4 text-xs text-muted-foreground">{label}</p><p className="mt-1 text-2xl font-bold tabular-nums">{value}</p><p className="mt-1 text-[11px] text-muted-foreground">{hint}</p></Card>;
+function SiteChoice({ label, text, mode, values, onModeChange, onChange }: {
+  label: string;
+  text: TextCopy;
+  mode: "include" | "exclude";
+  values: string[];
+  onModeChange: (mode: "include" | "exclude") => void;
+  onChange: (values: string[]) => void;
+}) {
+  const [value, setValue] = useState("");
+  const addSites = () => {
+    const raw = value.trim();
+    if (!raw) return;
+    if (/\s/.test(raw)) {
+      toast.error(text.sitesFormatError);
+      return;
+    }
+    const additions = raw.split(",").map((item) => item.trim()).filter(Boolean);
+    onChange([...values, ...additions.filter((item) => !values.includes(item))]);
+    setValue("");
+  };
+
+  return (
+    <div className="space-y-3 rounded-lg border border-border/60 p-3 sm:col-span-2">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div><Label>{label}</Label><p className="mt-1 text-xs text-muted-foreground">{text.sitesHint}</p></div>
+        <div className="flex gap-1">
+          <Button type="button" size="sm" variant="outline" onClick={() => onModeChange("include")} className={cn(mode === "include" && "border-primary bg-primary/15 text-primary")}>{text.include}</Button>
+          <Button type="button" size="sm" variant="outline" onClick={() => onModeChange("exclude")} className={cn(mode === "exclude" && "border-primary bg-primary/15 text-primary")}>{text.exclude}</Button>
+        </div>
+      </div>
+      <div className="flex gap-2">
+        <Input value={value} onChange={(event) => setValue(event.target.value)} placeholder={text.sitesPlaceholder} onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); addSites(); } }} />
+        <Button type="button" size="icon" variant="outline" onClick={addSites} className="shrink-0"><Plus className="h-4 w-4" /></Button>
+      </div>
+      {values.length > 0 && <div className="flex flex-wrap gap-1.5">{values.map((site) => <Badge key={site} variant="outline" className={cn("gap-1", mode === "include" ? "border-green-500/30 text-green-400" : "border-red-500/30 text-red-400")}>{site}<button type="button" aria-label={`Remove ${site}`} onClick={() => onChange(values.filter((item) => item !== site))}><X className="h-3 w-3" /></button></Badge>)}</div>}
+    </div>
+  );
+}
+
+function Metric({ icon: Icon, label, value, hint, featured = false }: { icon: typeof Target; label: string; value: string; hint: string; featured?: boolean }) {
+  return <Card className={cn("min-w-0 p-4", featured && "md:col-span-2")}><span className="inline-flex rounded-lg bg-primary/10 p-2"><Icon className="h-4 w-4 text-primary" /></span><p className="mt-4 text-xs text-muted-foreground">{label}</p><p className={cn("mt-1 min-w-0 font-bold tabular-nums tracking-tight", featured ? "whitespace-nowrap text-[clamp(1.75rem,3.4vw,3rem)]" : "text-2xl")}>{value}</p><p className="mt-1 text-[11px] text-muted-foreground">{hint}</p></Card>;
 }
 
 function FormatMark({ format }: { format: string }) {

@@ -9,6 +9,7 @@ import { useState } from "react";
 import { CreateCampaignDialog } from "./CreateCampaignDialog";
 import { cn } from "@/lib/utils";
 import { useLanguage } from "@/contexts/LanguageContext";
+import { formatNumberWithDot, formatStatisticInteger } from "@/lib/numberFormat";
 
 interface Campaign {
   id: string;
@@ -73,10 +74,10 @@ export function CampaignsList() {
                       </Badge>
                     </td>
                     <td className="py-4 px-4 text-muted-foreground">{campaign.format}</td>
-                    <td className="py-4 px-4 text-right">${campaign.budget.toLocaleString()}</td>
-                    <td className="py-4 px-4 text-right">${campaign.spent.toLocaleString()}</td>
-                    <td className="py-4 px-4 text-right">{campaign.impressions.toLocaleString()}</td>
-                    <td className="py-4 px-4 text-right">{campaign.clicks.toLocaleString()}</td>
+                    <td className="py-4 px-4 text-right">${formatNumberWithDot(campaign.budget)}</td>
+                    <td className="py-4 px-4 text-right">${formatNumberWithDot(campaign.spent)}</td>
+                    <td className="py-4 px-4 text-right">{formatStatisticInteger(campaign.impressions)}</td>
+                    <td className="py-4 px-4 text-right">{formatStatisticInteger(campaign.clicks)}</td>
                     <td className="py-4 px-4 text-right">
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild>
