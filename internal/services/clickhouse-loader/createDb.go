@@ -575,7 +575,7 @@ TTL created_at + INTERVAL 14 DAY DELETE
 SETTINGS index_granularity = 8192;
 
 CREATE MATERIALIZED VIEW {db}.mv_campaign_dsp_price_sum
-REFRESH EVERY 1 MINUTE
+REFRESH EVERY 1 MINUTE OFFSET 5 SECOND
 APPEND TO {db}.campaign_dsp_price_sum
 AS
 WITH now('UTC') AS batch_created_at
