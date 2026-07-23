@@ -90,7 +90,37 @@ func getAdm(
 		w.WriteHeader(http.StatusServiceUnavailable)
 		return
 	}
-	http.Redirect(w, r, decodedURL, http.StatusFound)
+	redirectURL := decodedURL
+	if isADV {
+		redirectURL = appendClickID(decodedURL, clickUUID)
+	}
+
+	http.Redirect(w, r, redirectURL, http.StatusFound)
+}
+
+func appendClickID(rawURL, clickID string) string {
+	rawURL = strings.TrimSpace(rawURL)
+	clickID = strings.TrimSpace(clickID)
+
+	if rawURL == "" || clickID == "" {
+		return rawURL
+	}
+
+	parsed, err := url.Parse(rawURL)
+	if err != nil {
+		// Не получилось разобрать ссылку — проксируем исходную.
+		return rawURL
+	}
+
+	clickIDParameter := "click_id=" + url.QueryEscape(clickID)
+
+	if parsed.RawQuery == "" {
+		parsed.RawQuery = clickIDParameter
+	} else {
+		parsed.RawQuery += "&" + clickIDParameter
+	}
+
+	return parsed.String()
 }
 
 func getNurl(

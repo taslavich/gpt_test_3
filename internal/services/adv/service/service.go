@@ -1427,8 +1427,23 @@ func (s *AuctionService) buildBid(req *ortb.BidRequest, imp *ortb.Imp, campaign 
 	}
 	id, impID, cid, crid := creative.ID, imp.GetId(), campaign.ID, creative.ID
 	price := float32(bidPrice)
-	w, h := int32(creative.W), int32(creative.H)
-	return &ortb.Bid{Id: &id, Impid: &impID, Price: &price, Adm: &originalADM, Cid: &cid, Crid: &crid, W: &w, H: &h}
+
+	bid := &ortb.Bid{
+		Id:    &id,
+		Impid: &impID,
+		Price: &price,
+		Adm:   &originalADM,
+		Cid:   &cid,
+		Crid:  &crid,
+	}
+
+	if normalizeFormat(campaign.Format) == constants.BAN {
+		w, h := int32(creative.W), int32(creative.H)
+		bid.W = &w
+		bid.H = &h
+	}
+
+	return bid
 }
 
 func campaignActiveAt(campaign *Campaign, now time.Time) bool {

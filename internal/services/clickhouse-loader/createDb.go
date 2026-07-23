@@ -36,6 +36,7 @@ DROP VIEW IF EXISTS {db}.mv_ip_limit_ipv6 SYNC;
 DROP VIEW IF EXISTS {db}.mv_ip_limit_ipv4 SYNC;
 DROP VIEW IF EXISTS {db}.mv_user_dsp_price_sum SYNC;
 DROP VIEW IF EXISTS ads.mv_ortb_traffic_hourly SYNC;
+DROP VIEW IF EXISTS {db}.mv_campaign_dsp_price_sum SYNC;
 
 -- ============================================================
 -- ORTB TABLE
@@ -560,6 +561,67 @@ FROM
         toFloat64(0) AS spend
 )
 GROUP BY user_id;
+
+CREATE TABLE IF NOT EXISTS {db}.campaign_dsp_price_sum
+(
+    created_at        DateTime('UTC') DEFAULT now('UTC'),
+    cid               String,
+    sum_cum_per_period Float64
+)
+ENGINE = ReplacingMergeTree(created_at)
+PARTITION BY toYYYYMMDD(created_at)
+ORDER BY (created_at, cid)
+TTL created_at + INTERVAL 14 DAY DELETE
+SETTINGS index_granularity = 8192;
+
+CREATE MATERIALIZED VIEW {db}.mv_campaign_dsp_price_sum
+REFRESH EVERY 1 MINUTE
+APPEND TO {db}.campaign_dsp_price_sum
+AS
+WITH now('UTC') AS batch_created_at
+SELECT
+    batch_created_at AS created_at,
+    cid,
+    sum(spend) AS sum_cum_per_period
+FROM
+(
+    /* NAT, BAN, POP оплачиваются по показам: CPM / 1000 */
+    SELECT
+        argMax(win_cid, event_time) AS cid,
+        argMax(win_dsp_price, event_time) / 1000 AS spend
+    FROM {db}.fact_impressions
+    WHERE
+        event_time >= batch_created_at - INTERVAL 1 MINUTE
+        AND event_time < batch_created_at
+        AND format IN ('NAT', 'BAN', 'POP')
+        AND notEmpty(trimBoth(win_cid))
+    GROUP BY impressions_uuid
+
+    UNION ALL
+
+    /* IPP оплачивается по кликам: CPC без деления */
+    SELECT
+        argMax(win_cid, event_time) AS cid,
+        argMax(win_dsp_price, event_time) AS spend
+    FROM {db}.fact_clicks
+    WHERE
+        event_time >= batch_created_at - INTERVAL 1 MINUTE
+        AND event_time < batch_created_at
+        AND format = 'IPP'
+        AND notEmpty(trimBoth(win_cid))
+    GROUP BY clicks_uuid
+
+    UNION ALL
+
+    /*
+       Техническая строка создаёт новый batch,
+       даже если за последнюю минуту событий не было.
+    */
+    SELECT
+        '' AS cid,
+        toFloat64(0) AS spend
+)
+GROUP BY cid;
 
 -- ============================================================
 -- ORTB MINUTE METRICS
