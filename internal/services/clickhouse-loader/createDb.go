@@ -589,10 +589,10 @@ FROM
     SELECT
         argMax(win_cid, event_time) AS cid,
         argMax(win_dsp_price, event_time) / 1000 AS spend
-    FROM {db}.fact_impressions
+    FROM ads.fact_impressions
     WHERE
-        event_time >= batch_created_at - INTERVAL 1 MINUTE
-        AND event_time < batch_created_at
+        event_time >= toStartOfMinute(batch_created_at - INTERVAL 1 MINUTE)
+        AND event_time < toStartOfMinute(batch_created_at)
         AND format IN ('NAT', 'BAN', 'POP')
         AND notEmpty(trimBoth(win_cid))
     GROUP BY impressions_uuid
@@ -603,20 +603,17 @@ FROM
     SELECT
         argMax(win_cid, event_time) AS cid,
         argMax(win_dsp_price, event_time) AS spend
-    FROM {db}.fact_clicks
+    FROM ads.fact_clicks
     WHERE
-        event_time >= batch_created_at - INTERVAL 1 MINUTE
-        AND event_time < batch_created_at
+        event_time >= toStartOfMinute(batch_created_at - INTERVAL 1 MINUTE)
+        AND event_time < toStartOfMinute(batch_created_at)
         AND format = 'IPP'
         AND notEmpty(trimBoth(win_cid))
     GROUP BY clicks_uuid
 
     UNION ALL
 
-    /*
-       Техническая строка создаёт новый batch,
-       даже если за последнюю минуту событий не было.
-    */
+    /* Создаёт batch, даже если за минуту событий не было */
     SELECT
         '' AS cid,
         toFloat64(0) AS spend
