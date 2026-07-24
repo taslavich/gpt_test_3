@@ -864,7 +864,6 @@ func (s *AuctionService) evaluateCampaign(
 
 	campaignID := strings.TrimSpace(campaign.ID)
 	userID := strings.TrimSpace(campaign.UserID)
-	var userGoal, userSpent, userRemaining float64
 
 	if normalizeFormat(campaign.Format) != requestedFormat {
 		logf(
@@ -903,7 +902,7 @@ func (s *AuctionService) evaluateCampaign(
 		}
 		return candidate{}, false, balance.err
 	}
-	userGoal, userSpent, userRemaining = balance.goal, balance.spent, balance.remaining
+	userRemaining := balance.remaining
 	recent := 0.0
 	if antiState != nil {
 		recent = antiState.UserSpend[userID].Spend
