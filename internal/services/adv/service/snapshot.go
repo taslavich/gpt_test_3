@@ -157,7 +157,9 @@ func LoadSnapshotFromPostgres(ctx context.Context, db *sql.DB) (*Snapshot, error
 		pricing_model,
 		status,
 		traffic_type,
-		goal_total_dollars::text
+		goal_total_dollars::text,
+		traffic_reset_version,
+		updated_at
 	FROM campaigns
 	WHERE status = 'active'
 `
@@ -180,6 +182,7 @@ func LoadSnapshotFromPostgres(ctx context.Context, db *sql.DB) (*Snapshot, error
 			&row.Country, &row.Language, &row.DeviceType, &row.OS, &row.Browser, &row.SiteID, &row.IP,
 			&row.Format, &row.Quality, &row.PricingModel, &row.Status, &row.TrafficType,
 			&row.GoalTotalDollars,
+			&row.TrafficResetVersion, &row.UpdatedAt,
 		); err != nil {
 			return nil, fmt.Errorf("scan active campaign: %w", err)
 		}
@@ -238,10 +241,12 @@ func LoadSnapshotFromPostgres(ctx context.Context, db *sql.DB) (*Snapshot, error
 }
 
 type campaignDBRow struct {
-	UserID           sql.NullString
-	CampaignID       sql.NullString
-	BasePrice        sql.NullString
-	GoalTotalDollars sql.NullString
+	UserID              sql.NullString
+	CampaignID          sql.NullString
+	BasePrice           sql.NullString
+	GoalTotalDollars    sql.NullString
+	TrafficResetVersion sql.NullInt64
+	UpdatedAt           sql.NullTime
 
 	Format       sql.NullString
 	Quality      sql.NullString
@@ -360,7 +365,14 @@ func (r campaignDBRow) campaign() (*Campaign, error) {
 		StartTS: r.StartTS.Time.UTC(), EndTS: r.EndTS.Time.UTC(), ActiveIntervals: activeIntervals,
 		CountryFilter: country, LanguageFilter: language, DeviceTypeFilter: deviceType,
 		OSFilter: osFilter, BrowserFilter: browser, SiteIDFilter: siteID, IPFilter: ip,
-		Creatives: []*Creative{},
+		Creatives:           []*Creative{},
+		TrafficResetVersion: r.TrafficResetVersion.Int64,
+		UpdatedAt: func() time.Time {
+			if r.UpdatedAt.Valid {
+				return r.UpdatedAt.Time.UTC()
+			}
+			return time.Time{}
+		}(),
 	}, nil
 }
 

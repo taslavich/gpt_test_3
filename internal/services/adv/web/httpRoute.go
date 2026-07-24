@@ -1,6 +1,7 @@
 package web
 
 import (
+	"crypto/subtle"
 	"encoding/json"
 	"errors"
 	"io"
@@ -23,10 +24,11 @@ const (
 	PutSspGeoDspPercentsMapURL      = "/filter/ssp_geo_dsp_percents_map"
 	GetDebugSspGeoDspPercentsMapURL = "/filter/debug_ssp_geo_dsp_percents_map"
 
-	GetQualityMapURL      = "/filter/quality_map"
-	PutQualityMapURL      = "/filter/quality_map"
-	GetDebugQualityMapURL = "/filter/debug_quality_map"
-	WorkStatusURL         = "/work_status"
+	GetQualityMapURL       = "/filter/quality_map"
+	PutQualityMapURL       = "/filter/quality_map"
+	GetDebugQualityMapURL  = "/filter/debug_quality_map"
+	WorkStatusURL          = "/work_status"
+	AntiPerekrutRestartURL = "/internal/antiperekrut/restart"
 )
 
 // Backward-compatible aliases for callers that used the previous Go constant spelling.
@@ -36,7 +38,19 @@ const (
 	GetDebugSspGeoDspPercentsMapUrl = GetDebugSspGeoDspPercentsMapURL
 )
 
-func InitHttpRoutes(httpRouter *chi.Mux, percentStore *auction.PercentStore, qualityStore *auction.QualityStore, work *WorkController) {
+type AntiPerekrutHTTPConfig struct {
+	Manager *auction.AntiPerekrutManager
+	Secret  string
+}
+
+type antiPerekrutRestartRequest struct {
+	EventID        string `json:"event_id"`
+	SourceService  string `json:"source_service"`
+	SourceInstance string `json:"source_instance"`
+	Reason         string `json:"reason"`
+}
+
+func InitHttpRoutes(httpRouter *chi.Mux, percentStore *auction.PercentStore, qualityStore *auction.QualityStore, work *WorkController, antiConfig ...AntiPerekrutHTTPConfig) {
 	getPercentMap := func(w http.ResponseWriter, _ *http.Request) {
 		if percentStore == nil {
 			http.Error(w, "percent store is unavailable", http.StatusServiceUnavailable)
@@ -197,6 +211,50 @@ func InitHttpRoutes(httpRouter *chi.Mux, percentStore *auction.PercentStore, qua
 		}
 		writeJSON(w, http.StatusOK, map[string]bool{"work": enabled})
 	})
+
+	if len(antiConfig) > 0 && antiConfig[0].Manager != nil {
+		cfg := antiConfig[0]
+		httpRouter.Post(AntiPerekrutRestartURL, func(w http.ResponseWriter, r *http.Request) {
+			provided := []byte(strings.TrimSpace(r.Header.Get("X-Antiperekrut-Secret")))
+			expected := []byte(strings.TrimSpace(cfg.Secret))
+			if len(expected) == 0 || len(provided) != len(expected) || subtle.ConstantTimeCompare(provided, expected) != 1 {
+				http.Error(w, "unauthorized", http.StatusUnauthorized)
+				return
+			}
+			defer r.Body.Close()
+			decoder := json.NewDecoder(http.MaxBytesReader(w, r.Body, 64<<10))
+			decoder.DisallowUnknownFields()
+			var input antiPerekrutRestartRequest
+			if err := decoder.Decode(&input); err != nil {
+				http.Error(w, err.Error(), http.StatusBadRequest)
+				return
+			}
+			if err := ensureJSONEOF(decoder); err != nil {
+				http.Error(w, err.Error(), http.StatusBadRequest)
+				return
+			}
+			if strings.TrimSpace(input.Reason) != "startup" {
+				http.Error(w, "reason must be startup", http.StatusBadRequest)
+				return
+			}
+			switch strings.TrimSpace(input.SourceService) {
+			case "adm-adapter", "spp-adapter", "orchestrator", "router", "bid-engine", "adv":
+			default:
+				http.Error(w, "unsupported source_service", http.StatusBadRequest)
+				return
+			}
+			if strings.TrimSpace(input.SourceInstance) == "" {
+				http.Error(w, "source_instance is required", http.StatusBadRequest)
+				return
+			}
+			generation, err := cfg.Manager.RegisterStartupEvent(r.Context(), input.EventID, input.SourceService, input.SourceInstance)
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
+			}
+			writeJSON(w, http.StatusOK, map[string]int64{"generation": generation})
+		})
+	}
 }
 
 func ensureJSONEOF(decoder *json.Decoder) error {

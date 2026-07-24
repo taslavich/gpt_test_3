@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"os"
 	"strings"
 
 	"github.com/go-chi/chi/v5"
@@ -12,6 +13,7 @@ import (
 	utils "gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/utils_grpc"
 	httpServer "gitlab.com/twinbid-exchange/RTB-exchange/internal/http"
 	services "gitlab.com/twinbid-exchange/RTB-exchange/internal/services"
+	antiControl "gitlab.com/twinbid-exchange/RTB-exchange/internal/services/antiperekrut"
 	redis_service "gitlab.com/twinbid-exchange/RTB-exchange/internal/services/redis"
 	billing "gitlab.com/twinbid-exchange/RTB-exchange/internal/services/sspAdapter/billing"
 	outbox "gitlab.com/twinbid-exchange/RTB-exchange/internal/services/sspAdapter/outbox"
@@ -203,6 +205,27 @@ func main() {
 	log.Println("NURL/BURL HTTP routes initialized")
 
 	go httpServer.RunHttpServer(ctx, nurlBurlRouter, cfg.HttpServer.Host, 80)*/
+	if strings.TrimSpace(cfg.AntiperekrutInternalSecret) == "" || len(cfg.AdvServiceControlURLs) == 0 {
+		log.Fatal("antiperekrut startup reset requires ANTIPEREKRUT_INTERNAL_SECRET and ADV_SERVICE_CONTROL_URLS")
+	}
+	if strings.TrimSpace(cfg.BotBaseURL) == "" || strings.TrimSpace(cfg.BotInternalSecret) == "" {
+		log.Fatal("antiperekrut startup reset requires BOT_BASE_URL and BOT_INTERNAL_SECRET")
+	}
+	startupHost, _ := os.Hostname()
+	startupNotifier := utils.NewBotMessageWithTimeout(cfg.BotBaseURL, cfg.BotInternalSecret, cfg.AntiperekrutControlTimeout)
+	startupEvent := antiControl.NewStartupEvent("adm-adapter", startupHost)
+	if err := antiControl.FanoutStartupEvent(ctx, antiControl.ClientConfig{
+		Enabled:        true,
+		URLs:           []string(cfg.AdvServiceControlURLs),
+		Secret:         cfg.AntiperekrutInternalSecret,
+		RequestTimeout: cfg.AntiperekrutControlTimeout,
+		RetryInitial:   cfg.AntiperekrutRetryInitial,
+		RetryMax:       cfg.AntiperekrutRetryMax,
+	}, startupEvent, startupNotifier.SendTextMessageToBot); err != nil {
+		_ = startupNotifier.SendTextMessageToBot(ctx, fmt.Sprintf("[adm-adapter][ANTIPEREKRUT_STARTUP_ERROR] %v", err))
+		log.Fatalf("cannot deliver antiperekrut startup event: %v", err)
+	}
+
 	httpServer.RunHttpsServerOptimized(ctx, admRouter, cfg.HttpServer.Host, cfg.HttpServer.Port, cfg.FullChain, cfg.PrivKey, cfg.RsaFullChain, cfg.RsaPrivKey)
 }
 

@@ -7,10 +7,13 @@ import (
 	"net"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 
 	"gitlab.com/twinbid-exchange/RTB-exchange/internal/config"
 	orchestratorGrpc "gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/proto/services/orchestrator"
+	utils "gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/utils_grpc"
+	antiControl "gitlab.com/twinbid-exchange/RTB-exchange/internal/services/antiperekrut"
 	orchestrator "gitlab.com/twinbid-exchange/RTB-exchange/internal/services/orchestrator/service"
 	orchestratorWeb "gitlab.com/twinbid-exchange/RTB-exchange/internal/services/orchestrator/web"
 
@@ -69,6 +72,27 @@ func main() {
 	)
 	if err != nil {
 		log.Fatalf("failed to listen: %v", err)
+	}
+
+	if strings.TrimSpace(cfg.AntiperekrutInternalSecret) == "" || len(cfg.AdvServiceControlURLs) == 0 {
+		log.Fatal("antiperekrut startup reset requires ANTIPEREKRUT_INTERNAL_SECRET and ADV_SERVICE_CONTROL_URLS")
+	}
+	if strings.TrimSpace(cfg.BotBaseURL) == "" || strings.TrimSpace(cfg.BotInternalSecret) == "" {
+		log.Fatal("antiperekrut startup reset requires BOT_BASE_URL and BOT_INTERNAL_SECRET")
+	}
+	startupHost, _ := os.Hostname()
+	startupNotifier := utils.NewBotMessageWithTimeout(cfg.BotBaseURL, cfg.BotInternalSecret, cfg.AntiperekrutControlTimeout)
+	startupEvent := antiControl.NewStartupEvent("orchestrator", startupHost)
+	if err := antiControl.FanoutStartupEvent(ctx, antiControl.ClientConfig{
+		Enabled:        true,
+		URLs:           []string(cfg.AdvServiceControlURLs),
+		Secret:         cfg.AntiperekrutInternalSecret,
+		RequestTimeout: cfg.AntiperekrutControlTimeout,
+		RetryInitial:   cfg.AntiperekrutRetryInitial,
+		RetryMax:       cfg.AntiperekrutRetryMax,
+	}, startupEvent, startupNotifier.SendTextMessageToBot); err != nil {
+		_ = startupNotifier.SendTextMessageToBot(ctx, fmt.Sprintf("[orchestrator][ANTIPEREKRUT_STARTUP_ERROR] %v", err))
+		log.Fatalf("cannot deliver antiperekrut startup event: %v", err)
 	}
 
 	log.Printf("Server started on %s:%d", cfg.GrpcServer.Host, cfg.GrpcServer.Port)

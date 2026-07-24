@@ -212,3 +212,55 @@ func (s *WinnerStore) Put(ctx context.Context, winnerUUID string, record WinnerR
 	}
 	return nil
 }
+
+// UserSpentBatch reads current user spends with one Redis MGET. Missing keys are
+// returned as zero. The result is published by the caller only after the whole
+// batch has been parsed successfully.
+func (s *RuntimeStore) UserSpentBatch(ctx context.Context, userIDs []string) (map[string]float64, error) {
+	if s == nil || s.client == nil {
+		return nil, errors.New("ADV runtime Redis client is nil")
+	}
+	result := make(map[string]float64, len(userIDs))
+	keys := make([]string, 0, len(userIDs))
+	normalizedIDs := make([]string, 0, len(userIDs))
+	seen := make(map[string]struct{}, len(userIDs))
+	for _, rawID := range userIDs {
+		id := strings.TrimSpace(rawID)
+		if id == "" {
+			continue
+		}
+		if _, ok := seen[id]; ok {
+			continue
+		}
+		seen[id] = struct{}{}
+		normalizedIDs = append(normalizedIDs, id)
+		keys = append(keys, spentUserPrefix+id)
+	}
+	if len(keys) == 0 {
+		return result, nil
+	}
+	values, err := s.client.MGet(ctx, keys...).Result()
+	if err != nil {
+		return nil, fmt.Errorf("redis MGET user spends: %w", err)
+	}
+	if len(values) != len(normalizedIDs) {
+		return nil, fmt.Errorf("redis MGET user spends returned %d values for %d keys", len(values), len(normalizedIDs))
+	}
+	for i, raw := range values {
+		id := normalizedIDs[i]
+		if raw == nil {
+			result[id] = 0
+			continue
+		}
+		text, ok := raw.(string)
+		if !ok {
+			text = fmt.Sprint(raw)
+		}
+		value, parseErr := strconv.ParseFloat(text, 64)
+		if parseErr != nil || math.IsNaN(value) || math.IsInf(value, 0) || value < 0 {
+			return nil, fmt.Errorf("invalid Redis numeric value for %s: %q", spentUserPrefix+id, text)
+		}
+		result[id] = value
+	}
+	return result, nil
+}
