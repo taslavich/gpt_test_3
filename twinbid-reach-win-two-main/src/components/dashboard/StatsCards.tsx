@@ -24,7 +24,7 @@ export function StatsCards() {
     <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
       {stats.map((stat) => (
         <Card key={stat.label} className="bg-card border-border">
-          <CardContent className="p-6">
+          <CardContent className="p-4 sm:p-6">
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-muted-foreground">{stat.label}</p>

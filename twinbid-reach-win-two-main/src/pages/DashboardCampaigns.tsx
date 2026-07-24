@@ -185,14 +185,14 @@ export default function DashboardCampaigns() {
             <h2 className="text-2xl font-bold">{t("campaigns.title")}</h2>
             <p className="text-muted-foreground text-sm">{t("campaigns.subtitle")}</p>
           </div>
-          <Button onClick={() => navigate("/dashboard/campaigns/create")} className="bg-primary hover:bg-primary/90">
+          <Button onClick={() => navigate("/dashboard/campaigns/create")} className="w-full bg-primary hover:bg-primary/90 sm:w-auto">
             <Plus className="h-4 w-4 mr-2" /> {t("campaigns.create")}
           </Button>
         </div>
 
         <div className="flex flex-col sm:flex-row gap-3">
           <Select value={statusFilter} onValueChange={setStatusFilter}>
-            <SelectTrigger className="w-[180px] bg-background border-border">
+            <SelectTrigger className="w-full bg-background border-border sm:w-[180px]">
               <Filter className="h-4 w-4 mr-2" /><SelectValue placeholder={t("campaigns.allStatuses")} />
             </SelectTrigger>
             <SelectContent className="bg-card border-border">
@@ -208,17 +208,17 @@ export default function DashboardCampaigns() {
           </Select>
         </div>
 
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          <Card className="bg-card border-border"><CardContent className="p-4"><p className="text-sm text-muted-foreground">{t("campaigns.total")}</p><p className="text-2xl font-bold">{totalCount}</p></CardContent></Card>
-          <Card className="bg-card border-border"><CardContent className="p-4"><p className="text-sm text-muted-foreground">{t("campaigns.activeCount")}</p><p className="text-2xl font-bold text-green-500">{activeCount}</p></CardContent></Card>
-          <Card className="bg-card border-border"><CardContent className="p-4"><p className="text-sm text-muted-foreground">{t("campaigns.budget")}</p><p className="text-2xl font-bold">${formatNumberWithDot(totalBudget)}</p></CardContent></Card>
-          <Card className="bg-card border-border"><CardContent className="p-4"><p className="text-sm text-muted-foreground">{t("overview.spent")}</p><p className="text-2xl font-bold">${formatNumberWithDot(totalSpent)}</p></CardContent></Card>
+        <div className="grid grid-cols-1 gap-4 min-[480px]:grid-cols-2 md:grid-cols-4">
+          <Card className="min-w-0 bg-card border-border"><CardContent className="p-4"><p className="text-sm text-muted-foreground">{t("campaigns.total")}</p><p className="mt-1 truncate text-2xl font-bold">{totalCount}</p></CardContent></Card>
+          <Card className="min-w-0 bg-card border-border"><CardContent className="p-4"><p className="text-sm text-muted-foreground">{t("campaigns.activeCount")}</p><p className="mt-1 truncate text-2xl font-bold text-green-500">{activeCount}</p></CardContent></Card>
+          <Card className="min-w-0 bg-card border-border"><CardContent className="p-4"><p className="text-sm text-muted-foreground">{t("campaigns.budget")}</p><p className="mt-1 truncate text-2xl font-bold">${formatNumberWithDot(totalBudget)}</p></CardContent></Card>
+          <Card className="min-w-0 bg-card border-border"><CardContent className="p-4"><p className="text-sm text-muted-foreground">{t("overview.spent")}</p><p className="mt-1 truncate text-2xl font-bold">${formatNumberWithDot(totalSpent)}</p></CardContent></Card>
         </div>
 
         <Card className="bg-card border-border">
           <CardContent className="p-0">
-            <div className="overflow-x-auto">
-              <table className="w-full">
+            <div className="max-w-full overflow-x-auto overscroll-x-contain">
+              <table className="w-full min-w-[1080px]">
                 <thead className="sticky top-0 bg-card z-10">
                   <tr className="border-b border-border">
                     <th className="text-left py-3 px-4 text-sm font-medium text-muted-foreground">{t("overview.id")}</th>
@@ -331,7 +331,7 @@ export default function DashboardCampaigns() {
           {viewCampaign && (() => {
             const vs = statOf(statsById, viewCampaign.id);
             return (
-            <div className="grid grid-cols-2 gap-4 mt-4">
+            <div className="mt-4 grid grid-cols-1 gap-4 min-[420px]:grid-cols-2">
               {[
                 [t("overview.status"), <Badge variant="outline" className={cn("font-normal", statusConfig[viewCampaign.status]?.className)}>{statusConfig[viewCampaign.status]?.label}</Badge>],
                 [t("campaigns.format"), viewCampaign.format],

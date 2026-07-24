@@ -177,6 +177,12 @@ export default function EditCampaign() {
     }
     if (!name.trim()) e.name = t("create.required");
 
+    const sched = lists.schedule;
+    if (!sched || !sched.items || sched.items.length === 0) {
+      toast.error(t("targeting.scheduleRequired"));
+      return;
+    }
+
     crvs.forEach(c => {
       if (!c.name?.trim()) e[`creative_${c.id}_name`] = t("create.required");
       const type = campaign.formatKey === "banner" ? (c.creativeType || "image") : "image";
@@ -285,7 +291,7 @@ export default function EditCampaign() {
   };
 
   return (
-    <div className="space-y-6 max-w-3xl">
+    <div className="max-w-3xl min-w-0 space-y-6">
       <div className="flex items-center gap-4">
         <Button variant="ghost" size="icon" onClick={() => navigate("/dashboard/campaigns")}><ArrowLeft className="h-5 w-5" /></Button>
         <div>
@@ -302,7 +308,7 @@ export default function EditCampaign() {
       )}
 
       <Tabs value={activeTab} onValueChange={changeTab}>
-        <TabsList className="bg-card border border-border">
+        <TabsList className="w-full justify-start overflow-x-auto border border-border bg-card sm:w-auto">
           <TabsTrigger value="general">{t("edit.general")}</TabsTrigger>
           <TabsTrigger value="targeting">{t("edit.targeting")}</TabsTrigger>
           <TabsTrigger value="budget">{t("edit.budget")}</TabsTrigger>
@@ -451,7 +457,7 @@ export default function EditCampaign() {
         };
 
         return (
-          <div className="flex justify-between">
+          <div className="flex items-center justify-between gap-3">
             {idx > 0 ? (
               <Button variant="outline" onClick={() => changeTab(tabs[idx - 1])} className="border-border">
                 {t("create.back")}

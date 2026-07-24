@@ -27,6 +27,7 @@ import {
 import { api } from "@/api";
 import type { StatsGroupBy, StatsFilterBy } from "@/api/types";
 import { formatNumberWithDot, formatStatisticInteger } from "@/lib/numberFormat";
+import { useIsMobile } from "@/hooks/use-mobile";
 
 type GroupBy = "dates" | "hours" | "browsers" | "siteid" | "devices" | "os" | "country";
 type SortKey = "label" | "impressions" | "clicks" | "spent" | "cpm" | "cpc" | "conversions" | "income";
@@ -96,15 +97,15 @@ function MultiSelectFilter({ label, options, selected, onChange }: {
   const displayText = selected.size === 0 ? t("stats.allValues") : `${selected.size} ${t("stats.selected")}`;
 
   return (
-    <div className="flex flex-col gap-1">
+    <div className="flex min-w-0 flex-col gap-1">
       <Label className="text-xs text-muted-foreground">{label}</Label>
       <Popover>
         <PopoverTrigger asChild>
-          <Button variant="outline" className="w-[220px] justify-start bg-background border-border h-8 text-sm font-normal text-left truncate">
+          <Button variant="outline" className="h-8 w-full min-w-0 justify-start truncate bg-background border-border text-left text-sm font-normal sm:w-[220px]">
             {displayText}
           </Button>
         </PopoverTrigger>
-        <PopoverContent className="w-[260px] p-2" align="start">
+        <PopoverContent className="w-[min(260px,calc(100vw-1rem))] p-2" align="start">
           <div className="space-y-1 max-h-56 overflow-y-auto">
             <label className="flex items-center gap-2 px-2 py-1.5 rounded hover:bg-muted/50 cursor-pointer text-sm font-medium border-b border-border pb-2 mb-1">
               <Checkbox checked={selected.size === 0} onCheckedChange={(checked) => { if (checked) onChange(new Set()); }} />
@@ -124,6 +125,7 @@ function MultiSelectFilter({ label, options, selected, onChange }: {
 }
 
 export default function DashboardStatistics() {
+  const isMobile = useIsMobile();
   const { campaigns } = useCampaigns();
   const { t, lang } = useLanguage();
   
@@ -624,12 +626,12 @@ export default function DashboardStatistics() {
         <p className="text-muted-foreground text-sm">{t("stats.subtitle")}</p>
       </div>
 
-      <div className="flex flex-wrap items-end gap-6">
-        <div className="flex flex-col gap-2">
+      <div className="flex min-w-0 flex-col gap-4 sm:flex-row sm:flex-wrap sm:items-end sm:gap-6">
+        <div className="flex min-w-0 flex-col gap-2">
           <Label className="text-sm text-muted-foreground font-medium">{t("stats.campaigns")}</Label>
           <Popover>
             <PopoverTrigger asChild>
-              <Button variant="outline" className="w-[280px] justify-start bg-background border-border text-left font-normal truncate">
+              <Button variant="outline" className="w-full min-w-0 justify-start truncate bg-background border-border text-left font-normal sm:w-[280px]">
                 {selectedCampaignIds.size === 0
                   ? t("stats.allCampaigns")
                   : selectedCampaignIds.size === 1
@@ -637,7 +639,7 @@ export default function DashboardStatistics() {
                     : `${t("stats.selected")} ${selectedCampaignIds.size}`}
               </Button>
             </PopoverTrigger>
-            <PopoverContent className="w-[320px] p-2" align="start">
+            <PopoverContent className="w-[min(320px,calc(100vw-1rem))] p-2" align="start">
               <div className="space-y-1 max-h-64 overflow-y-auto">
                 <label className="flex items-center gap-2 px-2 py-1.5 rounded hover:bg-muted/50 cursor-pointer text-sm font-medium border-b border-border pb-2 mb-1">
                   <Checkbox checked={selectedCampaignIds.size === 0} onCheckedChange={(checked) => {
@@ -657,11 +659,11 @@ export default function DashboardStatistics() {
           </Popover>
         </div>
 
-        <div className="flex flex-col gap-2">
+        <div className="flex min-w-0 flex-col gap-2">
           <Label className="text-sm text-muted-foreground font-medium">{t("stats.creatives")}</Label>
           <Popover>
             <PopoverTrigger asChild>
-              <Button variant="outline" className="w-[260px] justify-start bg-background border-border text-left font-normal" disabled={!selectedCampaignId}>
+              <Button variant="outline" className="w-full min-w-0 justify-start bg-background border-border text-left font-normal sm:w-[260px]" disabled={!selectedCampaignId}>
                 {!selectedCampaignId
                   ? t("stats.selectCreative")
                   : selectedCreativeIds.size === 0
@@ -669,7 +671,7 @@ export default function DashboardStatistics() {
                     : `${t("stats.selected")} ${selectedCreativeIds.size}`}
               </Button>
             </PopoverTrigger>
-            <PopoverContent className="w-[320px] p-2" align="start">
+            <PopoverContent className="w-[min(320px,calc(100vw-1rem))] p-2" align="start">
               <div className="space-y-1 max-h-64 overflow-y-auto">
                 <label className="flex items-center gap-2 px-2 py-1.5 rounded hover:bg-muted/50 cursor-pointer text-sm font-medium border-b border-border pb-2 mb-1">
                   <Checkbox checked={selectedCreativeIds.size === 0} onCheckedChange={(checked) => { if (checked) setSelectedCreativeIds(new Set()); }} />
@@ -692,12 +694,12 @@ export default function DashboardStatistics() {
           </Popover>
         </div>
 
-        <div className="flex flex-col gap-2">
+        <div className="flex min-w-0 flex-col gap-2">
           <Label className="text-sm text-muted-foreground font-medium">{t("stats.period")}</Label>
-          <div className="flex items-center gap-2">
+          <div className="flex min-w-0 flex-wrap items-center gap-2">
             <Popover>
               <PopoverTrigger asChild>
-                <Button variant="outline" className="w-[220px] justify-start bg-background border-border text-left font-normal">
+                <Button variant="outline" className="w-full min-w-0 justify-start bg-background border-border text-left font-normal min-[420px]:w-[220px]">
                   <CalendarIcon className="mr-2 h-4 w-4" />
                   {dateRange?.from ? (
                     dateRange.to && dateRange.from.getTime() !== dateRange.to.getTime() ? (
@@ -728,7 +730,7 @@ export default function DashboardStatistics() {
                       return days;
                     })(),
                   }}
-                  numberOfMonths={2}
+                  numberOfMonths={isMobile ? 1 : 2}
                   className="p-3 pointer-events-auto"
                   classNames={{
                     cell: "h-9 w-9 text-center text-sm p-0 relative focus-within:relative focus-within:z-20",
@@ -756,14 +758,14 @@ export default function DashboardStatistics() {
       <div className="flex flex-wrap items-center gap-3">
         <label
           className={cn(
-            "inline-flex items-center gap-2 px-3 h-10 rounded-md border cursor-pointer transition-colors select-none shrink-0 whitespace-nowrap",
+            "inline-flex min-h-10 max-w-full items-center gap-2 rounded-md border px-3 cursor-pointer transition-colors select-none",
             showConversions
               ? "border-primary/60 bg-primary/10 text-primary"
               : "border-border bg-card text-muted-foreground hover:text-foreground"
           )}
         >
           <Zap className="h-4 w-4" />
-          <span className="text-sm font-medium">{t("stats.showConversions")}</span>
+          <span className="min-w-0 text-sm font-medium">{t("stats.showConversions")}</span>
           <Switch checked={showConversions} onCheckedChange={setShowConversions} />
         </label>
 
@@ -791,7 +793,7 @@ export default function DashboardStatistics() {
               </Button>
             )}
           </div>
-          <div className="flex flex-wrap gap-4">
+          <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:gap-4">
             <MultiSelectFilter label={t("stats.filterCountry")} options={countryOptions} selected={filterCountry} onChange={setFilterCountry} />
             <MultiSelectFilter label={t("stats.filterBrowser")} options={DIMENSION_MAP.browsers} selected={filterBrowser} onChange={setFilterBrowser} />
             <MultiSelectFilter label={t("stats.filterDevice")} options={DIMENSION_MAP.devices} selected={filterDevice} onChange={setFilterDevice} />
@@ -808,14 +810,14 @@ export default function DashboardStatistics() {
         </Card>
       ) : (
         <>
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+          <div className="grid grid-cols-1 gap-4 min-[480px]:grid-cols-2 lg:grid-cols-4">
             {metricCards.map((m) => (
               <Card key={m.label} className="bg-card border-border">
-                <CardContent className="p-6">
-                  <div className="flex items-center justify-between">
-                    <div>
+                <CardContent className="p-4 sm:p-6">
+                  <div className="flex min-w-0 items-center justify-between gap-3">
+                    <div className="min-w-0">
                       <p className="text-sm text-muted-foreground">{m.label}</p>
-                      <p className="text-2xl font-bold mt-1">{m.value}</p>
+                      <p className="mt-1 break-words text-2xl font-bold">{m.value}</p>
                     </div>
                     <div className="h-12 w-12 rounded-lg bg-muted flex items-center justify-center text-primary">
                       <m.icon className="h-6 w-6" />
@@ -830,11 +832,11 @@ export default function DashboardStatistics() {
           {(appliedGroupBy === "dates" || appliedGroupBy === "hours") && chartData.length > 0 && (
             <Card className="bg-card border-border">
               <CardHeader>
-                <div className="flex items-center justify-between">
+                <div className="flex flex-col items-start gap-3 sm:flex-row sm:items-center sm:justify-between">
                   <CardTitle className="text-lg">
                     {appliedGroupBy === "hours" ? t("stats.chartTitleHours") : t("stats.chartTitle")}
                   </CardTitle>
-                  <div className="flex gap-1">
+                  <div className="flex max-w-full flex-wrap gap-1">
                     {(["impressions", "clicks", "spent"] as const).map(m => (
                       <Button key={m} variant={chartMetric === m ? "default" : "outline"} size="sm"
                         onClick={() => setChartMetric(m)}
@@ -885,8 +887,8 @@ export default function DashboardStatistics() {
 
           <Card className="bg-card border-border">
             <CardHeader>
-              <div className="flex flex-wrap items-center justify-between gap-3">
-                <div className="flex flex-wrap items-center gap-2">
+                <div className="flex min-w-0 flex-col gap-4 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
+                <div className="grid min-w-0 grid-cols-2 gap-2 sm:flex sm:flex-wrap sm:items-center">
                   {(Object.keys(groupLabels) as GroupBy[]).map((g) => (
                     <Button key={g} variant={groupBy === g ? "default" : "outline"} size="sm"
                       onClick={() => {
@@ -894,12 +896,12 @@ export default function DashboardStatistics() {
                         pendingScrollRef.current = window.scrollY;
                         setGroupBy(g);
                       }}
-                      className={cn("min-w-[100px]", groupBy === g ? "bg-primary text-primary-foreground" : "border-border")}>
+                      className={cn("h-auto min-h-9 min-w-0 whitespace-normal py-2 sm:min-w-[100px]", groupBy === g ? "bg-primary text-primary-foreground" : "border-border")}>
                       {groupLabels[g]}
                     </Button>
                   ))}
                 </div>
-                <div className="flex items-center gap-3">
+                <div className="flex min-w-0 flex-wrap items-center gap-3">
                   <Popover>
                     <PopoverTrigger asChild>
                       <Button variant="outline" size="sm" className="border-border gap-2">
@@ -974,7 +976,7 @@ export default function DashboardStatistics() {
                       </div>
                     </PopoverContent>
                   </Popover>
-                  <div className="flex items-center gap-1">
+                  <div className="flex min-w-0 flex-wrap items-center gap-1">
                     <span className="text-xs text-muted-foreground mr-1">{t("stats.rows")}</span>
                     {([50, 100, "all"] as PageSize[]).map(sz => (
                       <Button key={String(sz)} size="sm"
@@ -1027,7 +1029,7 @@ export default function DashboardStatistics() {
                     const cpmOf = (r: { spent: number; impressions: number }) => r.impressions > 0 ? r.spent / r.impressions * 1000 : 0;
                     const cpcOf = (r: { spent: number; clicks: number }) => r.clicks > 0 ? r.spent / r.clicks : 0;
                     return (
-                  <table className="w-full border-collapse">
+                  <table className="w-full min-w-[640px] border-collapse">
                     <thead>
                       {/* Group header row */}
                       <tr className="border-b border-border/60 text-[11px] uppercase tracking-wide text-muted-foreground/70">

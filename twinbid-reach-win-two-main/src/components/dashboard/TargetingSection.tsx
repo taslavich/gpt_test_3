@@ -185,8 +185,7 @@ function SchedulePicker({ items, onUpdate, t }: { items: string[]; onUpdate: (it
   };
 
   const toggleAll = () => {
-    const total = DAYS.length * 24;
-    if (itemSet.size >= total) {
+    if (itemSet.size > 0) {
       onUpdate([]);
     } else {
       const all: string[] = [];
@@ -200,8 +199,8 @@ function SchedulePicker({ items, onUpdate, t }: { items: string[]; onUpdate: (it
   return (
     <div className="space-y-1.5">
       <p className="text-xs text-muted-foreground">{t("targeting.scheduleHint")}</p>
-      <div className="flex items-start gap-4">
-        <div className="overflow-x-auto">
+      <div className="flex min-w-0 flex-col gap-3 sm:flex-row sm:items-start sm:gap-4">
+        <div className="max-w-full overflow-x-auto overscroll-x-contain">
           <table className="border-collapse select-none" style={{ tableLayout: "fixed" }}>
             <thead>
               <tr>
@@ -250,7 +249,7 @@ function SchedulePicker({ items, onUpdate, t }: { items: string[]; onUpdate: (it
             </tbody>
           </table>
         </div>
-        <div className="flex flex-col gap-2 pt-5">
+        <div className="flex gap-4 sm:flex-col sm:gap-2 sm:pt-5">
           <div className="flex items-center gap-2">
             <div className="w-4 h-4 rounded-sm bg-green-500" />
             <span className="text-xs font-medium text-muted-foreground">ON</span>
@@ -374,11 +373,11 @@ function ListItem({ config, list: rawList, onUpdate }: {
     : (["none", "white", "black"] as const);
 
   return (
-    <div className="space-y-3 p-4 rounded-lg bg-background/50 border border-border/50">
-      <div className="flex items-center justify-between">
+    <div className="min-w-0 space-y-3 rounded-lg bg-background/50 p-3 border border-border/50 sm:p-4">
+      <div className="flex flex-col gap-2 min-[440px]:flex-row min-[440px]:items-center min-[440px]:justify-between">
         <Label className="font-medium">{t(config.labelKey)}</Label>
         {modeButtons.length > 0 && (
-          <div className="flex gap-1.5">
+          <div className="flex flex-wrap gap-1.5">
             {modeButtons.map((m) => (
               <Button key={m} type="button" size="sm" variant="outline"
                 onClick={() => onUpdate({ mode: m })}
@@ -444,11 +443,9 @@ export function TargetingSection({ lists, onUpdate }: TargetingSectionProps) {
       effectiveLists.schedule = { mode: "white", items: scheduleItems };
     }
   }
-  // Schedule cannot be turned off; default to all days/hours if missing or disabled.
-  if (!effectiveLists.schedule || effectiveLists.schedule.mode === "none" || !effectiveLists.schedule.items?.length) {
-    const allItems: string[] = [];
-    for (const d of DAYS) for (let h = 0; h < 24; h++) allItems.push(`${d}:${h}`);
-    effectiveLists.schedule = { mode: "white", items: allItems };
+  // Ensure schedule entry exists (mode always "white"); don't refill when user cleared it.
+  if (!effectiveLists.schedule || effectiveLists.schedule.mode === "none") {
+    effectiveLists.schedule = { mode: "white", items: effectiveLists.schedule?.items ?? [] };
   }
 
   return (

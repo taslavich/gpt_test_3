@@ -206,6 +206,11 @@ export default function CreateCampaign() {
   const handleNext = async () => {
     if (step === 1 && !validateStep1()) return;
     if (step === 2) {
+      const sched = lists.schedule;
+      if (!sched || !sched.items || sched.items.length === 0) {
+        toast.error(t("targeting.scheduleRequired"));
+        return;
+      }
       setStep(3);
       setErrors({});
       void loadBidRecommendation();
@@ -291,7 +296,7 @@ export default function CreateCampaign() {
   useEffect(() => { return () => {}; }, []);
 
   return (
-    <div className="space-y-6 max-w-3xl relative">
+    <div className="relative max-w-3xl min-w-0 space-y-6">
       <div className="flex items-center gap-4">
         <Button variant="ghost" size="icon" onClick={handleBack} disabled={isCreating}><ArrowLeft className="h-5 w-5" /></Button>
         <div>
@@ -307,7 +312,7 @@ export default function CreateCampaign() {
       </div>
 
       <Card className="bg-card border-border">
-        <CardHeader>
+        <CardHeader className="p-4 sm:p-6">
           <CardTitle>
             {step === 1 && t("create.step1")}
             {step === 2 && t("create.step2")}
@@ -315,7 +320,7 @@ export default function CreateCampaign() {
             {step === 4 && t("create.step4")}
           </CardTitle>
         </CardHeader>
-        <CardContent className="space-y-5">
+        <CardContent className="space-y-5 p-4 pt-0 sm:p-6 sm:pt-0">
           {step === 1 && (
             <>
               <div className="space-y-2">
@@ -431,7 +436,7 @@ export default function CreateCampaign() {
         </CardContent>
       </Card>
 
-      <div className="flex justify-between">
+      <div className="flex items-center justify-between gap-3">
         {step > 1 ? (
           <Button variant="outline" disabled={isCreating} onClick={() => { setStep(step - 1); setErrors({}); }} className="border-border">{t("create.back")}</Button>
         ) : <div />}

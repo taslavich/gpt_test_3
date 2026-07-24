@@ -435,7 +435,7 @@ export const CreativesEditor = forwardRef<CreativesEditorHandle, CreativesEditor
         const meas = measured[creative.id];
 
         return (
-          <div key={creative.id} className="p-4 rounded-lg border border-border bg-background/30 space-y-4">
+          <div key={creative.id} className="min-w-0 space-y-4 rounded-lg border border-border bg-background/30 p-3 sm:p-4">
             <div className="flex items-center justify-between">
               <p className="text-sm font-medium text-muted-foreground">
                 {t("create.creative")} #{idx + 1}
@@ -461,7 +461,7 @@ export const CreativesEditor = forwardRef<CreativesEditorHandle, CreativesEditor
               <div className="space-y-2">
                 <Label>{t("create.creativeType")}</Label>
                 <Tabs value={type} onValueChange={(v) => setCreativeType(creative.id, v as CreativeType)}>
-                  <TabsList className="bg-background border border-border">
+                  <TabsList className="w-full justify-start overflow-x-auto bg-background border border-border sm:w-auto">
                     <TabsTrigger value="image">{t("create.creativeTypeImage")}</TabsTrigger>
                     <TabsTrigger value="html">{t("create.creativeTypeHtml")}</TabsTrigger>
                     <TabsTrigger value="iframe">{t("create.creativeTypeIframe")}</TabsTrigger>
@@ -562,7 +562,7 @@ export const CreativesEditor = forwardRef<CreativesEditorHandle, CreativesEditor
                       {t("create.previewCreative")}
                     </Button>
                   )}
-                  {creative.imageFileName && <span className="text-sm text-muted-foreground">{creative.imageFileName}</span>}
+                  {creative.imageFileName && <span className="min-w-0 break-all text-sm text-muted-foreground">{creative.imageFileName}</span>}
                 </div>
                 {creative.sizeMismatch && target && (
                   <div className="flex items-start gap-2 p-2 rounded border border-yellow-500/30 bg-yellow-500/10">
@@ -657,7 +657,7 @@ export const CreativesEditor = forwardRef<CreativesEditorHandle, CreativesEditor
                     setMeasured(prev => { const n = { ...prev }; delete n[creative.id]; return n; });
                   }}
                 >
-                  <TabsList className="bg-background border border-border">
+                  <TabsList className="w-full justify-start overflow-x-auto bg-background border border-border sm:w-auto">
                     <TabsTrigger value="url">{t("create.iframeModeUrl")}</TabsTrigger>
                     <TabsTrigger value="code">{t("create.iframeModeCode")}</TabsTrigger>
                   </TabsList>
@@ -836,7 +836,7 @@ export const CreativesEditor = forwardRef<CreativesEditorHandle, CreativesEditor
                       {t("create.previewCreative")}
                     </Button>
                   )}
-                  {creative.imageFileName && <span className="text-sm text-muted-foreground">{creative.imageFileName}</span>}
+                  {creative.imageFileName && <span className="min-w-0 break-all text-sm text-muted-foreground">{creative.imageFileName}</span>}
                 </div>
                 {creative.sizeMismatch && target && (
                   <div className="flex items-start gap-2 p-2 rounded border border-yellow-500/30 bg-yellow-500/10">

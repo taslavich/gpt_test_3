@@ -7,8 +7,8 @@ import { toast } from "sonner";
 import { useLanguage } from "@/contexts/LanguageContext";
 
 const MAX_BYTES = 1 * 1024 * 1024;
-const STAGE_W = 560;
-const STAGE_H = 420;
+const MAX_STAGE_W = 560;
+const STAGE_ASPECT = 4 / 3;
 
 export interface CropperTarget {
   w: number;
@@ -39,6 +39,19 @@ export function ImageCropperDialog({ open, source, target, fileNameHint, onSave,
   const [offset, setOffset] = useState({ x: 0, y: 0 });
   const [frameSide, setFrameSide] = useState(240); // used only for square-resizable
   const [saving, setSaving] = useState(false);
+  const [stageW, setStageW] = useState(MAX_STAGE_W);
+  const stageH = stageW / STAGE_ASPECT;
+
+  useEffect(() => {
+    if (!open) return;
+    const updateStageSize = () => {
+      const available = Math.max(200, window.innerWidth - 48);
+      setStageW(Math.min(MAX_STAGE_W, available));
+    };
+    updateStageSize();
+    window.addEventListener("resize", updateStageSize);
+    return () => window.removeEventListener("resize", updateStageSize);
+  }, [open]);
 
   const targetAspect = target ? target.w / target.h : 1;
 
@@ -47,13 +60,13 @@ export function ImageCropperDialog({ open, source, target, fileNameHint, onSave,
     if (!target) return { frameW: 0, frameH: 0 };
     if (target.mode === "square-resizable") return { frameW: frameSide, frameH: frameSide };
     // Fit target aspect into 80% of stage
-    const maxW = STAGE_W * 0.85;
-    const maxH = STAGE_H * 0.85;
+    const maxW = stageW * 0.85;
+    const maxH = stageH * 0.85;
     let w = maxW;
     let h = w / targetAspect;
     if (h > maxH) { h = maxH; w = h * targetAspect; }
     return { frameW: w, frameH: h };
-  }, [target, targetAspect, frameSide]);
+  }, [target, targetAspect, frameSide, stageW, stageH]);
 
   // Initial fit when source changes
   useEffect(() => {
@@ -62,9 +75,9 @@ export function ImageCropperDialog({ open, source, target, fileNameHint, onSave,
     setScale(initScale);
     setOffset({ x: 0, y: 0 });
     if (target.mode === "square-resizable") {
-      setFrameSide(Math.min(STAGE_W, STAGE_H) * 0.6);
+      setFrameSide(Math.min(stageW, stageH) * 0.6);
     }
-  }, [open, source, target]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [open, source, target, stageW, stageH]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Drag image
   const dragRef = useRef<{ x: number; y: number; ox: number; oy: number } | null>(null);
@@ -92,7 +105,7 @@ export function ImageCropperDialog({ open, source, target, fileNameHint, onSave,
     if (!resizeRef.current) return;
     const delta = Math.max(e.clientX - resizeRef.current.x, e.clientY - resizeRef.current.y);
     const next = Math.min(
-      Math.min(STAGE_W, STAGE_H) - 20,
+      Math.min(stageW, stageH) - 20,
       Math.max(80, resizeRef.current.side + delta * 2),
     );
     setFrameSide(next);
@@ -103,14 +116,14 @@ export function ImageCropperDialog({ open, source, target, fileNameHint, onSave,
     if (!source || !target) return;
     setSaving(true);
     try {
-      // Frame center in stage = (STAGE_W/2, STAGE_H/2). Frame top-left:
-      const frameLeft = STAGE_W / 2 - frameW / 2;
-      const frameTop = STAGE_H / 2 - frameH / 2;
+      // Frame center in stage = (stageW/2, stageH/2). Frame top-left:
+      const frameLeft = stageW / 2 - frameW / 2;
+      const frameTop = stageH / 2 - frameH / 2;
       // Image top-left in stage:
       const imgW = source.naturalWidth * scale;
       const imgH = source.naturalHeight * scale;
-      const imgLeft = STAGE_W / 2 + offset.x - imgW / 2;
-      const imgTop = STAGE_H / 2 + offset.y - imgH / 2;
+      const imgLeft = stageW / 2 + offset.x - imgW / 2;
+      const imgTop = stageH / 2 + offset.y - imgH / 2;
       // Crop rect relative to image, then convert to natural pixels.
       const sx = Math.max(0, (frameLeft - imgLeft) / scale);
       const sy = Math.max(0, (frameTop - imgTop) / scale);
@@ -169,7 +182,7 @@ export function ImageCropperDialog({ open, source, target, fileNameHint, onSave,
       toast.error("Failed to crop image");
       setSaving(false);
     }
-  }, [source, target, scale, offset, frameW, frameH, fileNameHint, onSave, t]);
+  }, [source, target, scale, offset, frameW, frameH, stageW, stageH, fileNameHint, onSave, t]);
 
   if (!source || !target) return null;
 
@@ -182,7 +195,7 @@ export function ImageCropperDialog({ open, source, target, fileNameHint, onSave,
 
         <div
           className="relative mx-auto overflow-hidden rounded border border-border bg-black/40 touch-none select-none"
-          style={{ width: STAGE_W, height: STAGE_H }}
+          style={{ width: stageW, height: stageH }}
           onPointerDown={onImgPointerDown}
           onPointerMove={onImgPointerMove}
           onPointerUp={onImgPointerUp}
@@ -195,8 +208,8 @@ export function ImageCropperDialog({ open, source, target, fileNameHint, onSave,
             draggable={false}
             style={{
               position: "absolute",
-              left: STAGE_W / 2 + offset.x,
-              top: STAGE_H / 2 + offset.y,
+              left: stageW / 2 + offset.x,
+              top: stageH / 2 + offset.y,
               width: source.naturalWidth * scale,
               height: source.naturalHeight * scale,
               transform: "translate(-50%, -50%)",
@@ -205,13 +218,13 @@ export function ImageCropperDialog({ open, source, target, fileNameHint, onSave,
             }}
           />
           {/* Dark overlay with cutout via 4 rects */}
-          <div className="pointer-events-none absolute inset-0" style={{ boxShadow: `0 0 0 9999px rgba(0,0,0,0.55) inset`, clipPath: `polygon(0 0, 100% 0, 100% 100%, 0 100%, 0 ${(STAGE_H/2 - frameH/2)}px, ${(STAGE_W/2 - frameW/2)}px ${(STAGE_H/2 - frameH/2)}px, ${(STAGE_W/2 - frameW/2)}px ${(STAGE_H/2 + frameH/2)}px, ${(STAGE_W/2 + frameW/2)}px ${(STAGE_H/2 + frameH/2)}px, ${(STAGE_W/2 + frameW/2)}px ${(STAGE_H/2 - frameH/2)}px, 0 ${(STAGE_H/2 - frameH/2)}px)` }} />
+          <div className="pointer-events-none absolute inset-0" style={{ boxShadow: `0 0 0 9999px rgba(0,0,0,0.55) inset`, clipPath: `polygon(0 0, 100% 0, 100% 100%, 0 100%, 0 ${(stageH/2 - frameH/2)}px, ${(stageW/2 - frameW/2)}px ${(stageH/2 - frameH/2)}px, ${(stageW/2 - frameW/2)}px ${(stageH/2 + frameH/2)}px, ${(stageW/2 + frameW/2)}px ${(stageH/2 + frameH/2)}px, ${(stageW/2 + frameW/2)}px ${(stageH/2 - frameH/2)}px, 0 ${(stageH/2 - frameH/2)}px)` }} />
           {/* Frame */}
           <div
             className="pointer-events-none absolute border-2 border-primary"
             style={{
-              left: STAGE_W / 2 - frameW / 2,
-              top: STAGE_H / 2 - frameH / 2,
+              left: stageW / 2 - frameW / 2,
+              top: stageH / 2 - frameH / 2,
               width: frameW,
               height: frameH,
             }}
@@ -221,8 +234,8 @@ export function ImageCropperDialog({ open, source, target, fileNameHint, onSave,
             <div
               className="absolute bg-primary rounded-sm cursor-nwse-resize"
               style={{
-                left: STAGE_W / 2 + frameW / 2 - 8,
-                top: STAGE_H / 2 + frameH / 2 - 8,
+                left: stageW / 2 + frameW / 2 - 8,
+                top: stageH / 2 + frameH / 2 - 8,
                 width: 16,
                 height: 16,
               }}
@@ -238,8 +251,8 @@ export function ImageCropperDialog({ open, source, target, fileNameHint, onSave,
           {target.mode === "square-resizable" ? t("create.cropHintSquare") : t("create.cropHintFixed")}
         </p>
 
-        <div className="flex items-center gap-3 px-2">
-          <span className="text-xs text-muted-foreground w-16">{t("create.cropZoom")}</span>
+        <div className="flex min-w-0 flex-wrap items-center gap-2 px-0 sm:flex-nowrap sm:gap-3 sm:px-2">
+          <span className="w-full text-xs text-muted-foreground sm:w-16">{t("create.cropZoom")}</span>
           <Button type="button" variant="outline" size="icon" className="h-8 w-8" onClick={() => setScale(s => Math.max(0.1, +(s * 0.9).toFixed(3)))}>
             <Minus className="h-4 w-4" />
           </Button>
@@ -249,7 +262,7 @@ export function ImageCropperDialog({ open, source, target, fileNameHint, onSave,
             max={400}
             step={1}
             onValueChange={(v) => setScale(v[0] / 100)}
-            className="flex-1"
+            className="min-w-[100px] flex-1"
           />
           <Button type="button" variant="outline" size="icon" className="h-8 w-8" onClick={() => setScale(s => Math.min(6, +(s * 1.1).toFixed(3)))}>
             <Plus className="h-4 w-4" />

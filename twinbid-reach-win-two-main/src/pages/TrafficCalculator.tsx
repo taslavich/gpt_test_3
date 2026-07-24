@@ -396,13 +396,13 @@ export default function TrafficCalculator() {
       </div>
 
       <Card className="overflow-hidden">
-        <div className="border-b border-border p-5">
+        <div className="border-b border-border p-4 sm:p-5">
           <div className="flex items-start gap-3">
             <span className="rounded-xl bg-primary/10 p-2.5"><Target className="h-5 w-5 text-primary" /></span>
             <div><h2 className="font-semibold">{text.selectCampaign}</h2><p className="mt-0.5 text-sm text-muted-foreground">{text.selectCampaignDesc}</p></div>
           </div>
         </div>
-        <div className="p-4">
+        <div className="p-3 sm:p-4">
           <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
             <button type="button" onClick={selectFreeCalculation} className={cn("rounded-xl border p-4 text-left transition-colors", !selectedId ? "border-primary bg-primary/10" : "border-border hover:border-primary/40")}>
               <div className="flex items-center justify-between"><span className="rounded-lg bg-muted p-2"><Sparkles className="h-4 w-4" /></span>{!selectedId && <Check className="h-4 w-4 text-primary" />}</div>
@@ -418,13 +418,13 @@ export default function TrafficCalculator() {
             ))}
           </div>
           {campaigns.length > 7 && (
-            <div className="mt-3"><Select value={selectedId} onValueChange={(id) => { const campaign = campaigns.find((item) => item.id === id); if (campaign) selectCampaign(campaign); }}><SelectTrigger className="max-w-md"><SelectValue placeholder={text.otherCampaign} /></SelectTrigger><SelectContent>{campaigns.map((campaign) => <SelectItem key={campaign.id} value={campaign.id}>{campaign.name} · {campaign.formatKey}</SelectItem>)}</SelectContent></Select></div>
+            <div className="mt-3"><Select value={selectedId} onValueChange={(id) => { const campaign = campaigns.find((item) => item.id === id); if (campaign) selectCampaign(campaign); }}><SelectTrigger className="w-full max-w-md"><SelectValue placeholder={text.otherCampaign} /></SelectTrigger><SelectContent>{campaigns.map((campaign) => <SelectItem key={campaign.id} value={campaign.id}>{campaign.name} · {campaign.formatKey}</SelectItem>)}</SelectContent></Select></div>
           )}
         </div>
       </Card>
 
       <div className="grid gap-6 xl:grid-cols-[minmax(0,0.9fr)_minmax(0,1.35fr)]">
-        <Card className="p-5">
+        <Card className="min-w-0 p-4 sm:p-5">
           <div className="mb-5"><h2 className="font-semibold">{text.parameters}</h2><p className="mt-1 text-xs text-muted-foreground">{selected ? text.campaignParameters : text.allTraffic}</p></div>
           <div className="grid gap-4 sm:grid-cols-2">
             <Field label={text.format}><Select value={filters.format} onValueChange={(format) => updateFilters({ format })}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{formats.map((format) => <SelectItem key={format.value} value={format.value}>{format.label}</SelectItem>)}</SelectContent></Select></Field>
@@ -450,7 +450,7 @@ export default function TrafficCalculator() {
 
         <div className="space-y-6">
           {!result && !error && (
-            <Card className="flex min-h-[420px] flex-col items-center justify-center border-dashed p-8 text-center"><span className="rounded-2xl bg-primary/10 p-4"><Gauge className="h-8 w-8 text-primary" /></span><h3 className="mt-4 font-semibold">{text.placeholderTitle}</h3><p className="mt-2 max-w-md text-sm text-muted-foreground">{text.placeholderDesc}</p></Card>
+            <Card className="flex min-h-[320px] flex-col items-center justify-center border-dashed p-5 text-center sm:min-h-[420px] sm:p-8"><span className="rounded-2xl bg-primary/10 p-4"><Gauge className="h-8 w-8 text-primary" /></span><h3 className="mt-4 font-semibold">{text.placeholderTitle}</h3><p className="mt-2 max-w-md text-sm text-muted-foreground">{text.placeholderDesc}</p></Card>
           )}
           {error && <Card className="border-destructive/30 p-6"><p className="font-medium text-destructive">{text.unavailable}</p><p className="mt-2 text-sm text-muted-foreground">{error}</p></Card>}
           {result && (
@@ -466,7 +466,7 @@ export default function TrafficCalculator() {
                 )}
               </div>
               {selected && (
-                <Card className="border-primary/20 p-5"><div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between"><div className="max-w-xl"><span className="inline-flex rounded-xl bg-primary/10 p-2.5"><CircleDollarSign className="h-5 w-5 text-primary" /></span><h3 className="mt-4 font-semibold">{text.moreTraffic}</h3><p className="mt-1 text-sm text-muted-foreground">{text.bidDesc}</p></div><div className="w-full lg:max-w-sm"><div className="mb-2 flex items-center justify-between gap-3 text-xs text-muted-foreground"><span>{text.newBid}</span><span>{selected.pricingModel.toUpperCase()} · {text.fixedType}</span></div><div className="flex gap-2"><Input inputMode="decimal" aria-invalid={Boolean(bidValidationError)} className={cn(bidValidationError && "border-destructive")} value={bidDraft} onChange={(event) => setBidDraft(event.target.value)} /><Button disabled={saving || Boolean(bidValidationError) || parsedBid === selected.priceValue} onClick={saveBid}>{saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}{text.save}</Button></div>{bidValidationError && <p className="mt-2 text-xs text-destructive">{bidValidationError}</p>}</div></div></Card>
+                <Card className="border-primary/20 p-4 sm:p-5"><div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between"><div className="max-w-xl"><span className="inline-flex rounded-xl bg-primary/10 p-2.5"><CircleDollarSign className="h-5 w-5 text-primary" /></span><h3 className="mt-4 font-semibold">{text.moreTraffic}</h3><p className="mt-1 text-sm text-muted-foreground">{text.bidDesc}</p></div><div className="w-full lg:max-w-sm"><div className="mb-2 flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground"><span>{text.newBid}</span><span>{selected.pricingModel.toUpperCase()} · {text.fixedType}</span></div><div className="flex flex-col gap-2 min-[400px]:flex-row"><Input inputMode="decimal" aria-invalid={Boolean(bidValidationError)} className={cn("min-w-0", bidValidationError && "border-destructive")} value={bidDraft} onChange={(event) => setBidDraft(event.target.value)} /><Button className="shrink-0" disabled={saving || Boolean(bidValidationError) || parsedBid === selected.priceValue} onClick={saveBid}>{saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}{text.save}</Button></div>{bidValidationError && <p className="mt-2 text-xs text-destructive">{bidValidationError}</p>}</div></div></Card>
               )}
             </>
           )}
@@ -495,8 +495,8 @@ function MultiChoice({ label, text, mode, values, options, onModeChange, onChang
     : text.all;
   return (
     <DropdownMenu>
-      <DropdownMenuTrigger asChild><Button variant="outline" className="h-auto min-h-10 justify-between px-3 font-normal"><span className="min-w-0 truncate text-left"><span className="text-muted-foreground">{label}:</span> {summary}</span><ChevronDown className="ml-2 h-4 w-4 shrink-0 text-muted-foreground" /></Button></DropdownMenuTrigger>
-      <DropdownMenuContent className="max-h-72 w-64 overflow-y-auto"><DropdownMenuLabel>{label}</DropdownMenuLabel><div className="flex gap-1 px-2 pb-2"><button type="button" onClick={(event) => { event.preventDefault(); onModeChange("include"); }} className={cn("flex-1 rounded-md px-2 py-1.5 text-xs", mode === "include" ? "bg-primary/15 text-primary" : "bg-muted text-muted-foreground")}>{text.include}</button><button type="button" onClick={(event) => { event.preventDefault(); onModeChange("exclude"); }} className={cn("flex-1 rounded-md px-2 py-1.5 text-xs", mode === "exclude" ? "bg-primary/15 text-primary" : "bg-muted text-muted-foreground")}>{text.exclude}</button></div>{values.length > 0 && <><DropdownMenuCheckboxItem checked={false} onCheckedChange={() => onChange([])}>{text.clear}</DropdownMenuCheckboxItem><DropdownMenuSeparator /></>}{options.map((option) => <DropdownMenuCheckboxItem key={option.value} checked={values.includes(option.value)} onCheckedChange={(checked) => onChange(checked ? [...values, option.value] : values.filter((value) => value !== option.value))}>{option.label}</DropdownMenuCheckboxItem>)}</DropdownMenuContent>
+      <DropdownMenuTrigger asChild><Button variant="outline" className="h-auto min-h-10 w-full min-w-0 justify-between px-3 font-normal"><span className="min-w-0 truncate text-left"><span className="text-muted-foreground">{label}:</span> {summary}</span><ChevronDown className="ml-2 h-4 w-4 shrink-0 text-muted-foreground" /></Button></DropdownMenuTrigger>
+      <DropdownMenuContent className="max-h-72 w-[min(16rem,calc(100vw-1rem))] overflow-y-auto"><DropdownMenuLabel>{label}</DropdownMenuLabel><div className="flex gap-1 px-2 pb-2"><button type="button" onClick={(event) => { event.preventDefault(); onModeChange("include"); }} className={cn("flex-1 rounded-md px-2 py-1.5 text-xs", mode === "include" ? "bg-primary/15 text-primary" : "bg-muted text-muted-foreground")}>{text.include}</button><button type="button" onClick={(event) => { event.preventDefault(); onModeChange("exclude"); }} className={cn("flex-1 rounded-md px-2 py-1.5 text-xs", mode === "exclude" ? "bg-primary/15 text-primary" : "bg-muted text-muted-foreground")}>{text.exclude}</button></div>{values.length > 0 && <><DropdownMenuCheckboxItem checked={false} onCheckedChange={() => onChange([])}>{text.clear}</DropdownMenuCheckboxItem><DropdownMenuSeparator /></>}{options.map((option) => <DropdownMenuCheckboxItem key={option.value} checked={values.includes(option.value)} onCheckedChange={(checked) => onChange(checked ? [...values, option.value] : values.filter((value) => value !== option.value))}>{option.label}</DropdownMenuCheckboxItem>)}</DropdownMenuContent>
     </DropdownMenu>
   );
 }
@@ -541,7 +541,7 @@ function SiteChoice({ label, text, mode, values, onModeChange, onChange }: {
 }
 
 function Metric({ icon: Icon, label, value, hint, featured = false }: { icon: typeof Target; label: string; value: string; hint: string; featured?: boolean }) {
-  return <Card className={cn("min-w-0 p-4", featured && "md:col-span-2")}><span className="inline-flex rounded-lg bg-primary/10 p-2"><Icon className="h-4 w-4 text-primary" /></span><p className="mt-4 text-xs text-muted-foreground">{label}</p><p className={cn("mt-1 min-w-0 font-bold tabular-nums tracking-tight", featured ? "whitespace-nowrap text-[clamp(1.75rem,3.4vw,3rem)]" : "text-2xl")}>{value}</p><p className="mt-1 text-[11px] text-muted-foreground">{hint}</p></Card>;
+  return <Card className={cn("min-w-0 overflow-hidden p-4", featured && "md:col-span-2")}><span className="inline-flex rounded-lg bg-primary/10 p-2"><Icon className="h-4 w-4 text-primary" /></span><p className="mt-4 text-xs text-muted-foreground">{label}</p><p className={cn("mt-1 min-w-0 font-bold tabular-nums tracking-tight", featured ? "break-words text-[clamp(1.35rem,7vw,3rem)] sm:whitespace-nowrap sm:text-[clamp(1.75rem,3.4vw,3rem)]" : "break-words text-2xl")}>{value}</p><p className="mt-1 text-[11px] text-muted-foreground">{hint}</p></Card>;
 }
 
 function FormatMark({ format }: { format: string }) {

@@ -101,7 +101,7 @@ export function AutoCropConfirmDialog({ open, creatives, target, onCancel, onCon
             </div>
           )}
           {!loading && previews.map(p => (
-            <div key={p.creativeId} className="rounded-lg border border-border bg-background/40 p-4">
+            <div key={p.creativeId} className="rounded-lg border border-border bg-background/40 p-3 sm:p-4">
               <div className="text-xs font-medium text-foreground mb-3 text-center">{p.label}</div>
               {p.isGif ? (
                 <div className="flex flex-col items-center gap-2">
@@ -111,14 +111,14 @@ export function AutoCropConfirmDialog({ open, creatives, target, onCancel, onCon
               ) : p.error ? (
                 <p className="text-xs text-destructive text-center">{t("create.autoCropError")}</p>
               ) : (
-                <div className="flex items-center justify-center gap-4">
+                <div className="flex flex-col items-center justify-center gap-3 min-[460px]:flex-row min-[460px]:gap-4">
                   <div className="flex flex-col items-center flex-1 min-w-0">
                     <div className="w-full aspect-square max-w-[220px] flex items-center justify-center rounded border border-border bg-black/30 overflow-hidden">
                       <img src={p.beforeUrl} alt="" className="max-h-full max-w-full object-contain" />
                     </div>
                     <div className="text-[11px] text-muted-foreground mt-2">{t("create.autoCropBefore")}</div>
                   </div>
-                  <ArrowRight className="h-5 w-5 text-muted-foreground shrink-0" />
+                  <ArrowRight className="h-5 w-5 shrink-0 rotate-90 text-muted-foreground min-[460px]:rotate-0" />
                   <div className="flex flex-col items-center flex-1 min-w-0">
                     <div className="w-full aspect-square max-w-[220px] flex items-center justify-center rounded border border-primary/60 bg-black/30 overflow-hidden">
                       {p.afterUrl && <img src={p.afterUrl} alt="" className="max-h-full max-w-full object-contain" />}

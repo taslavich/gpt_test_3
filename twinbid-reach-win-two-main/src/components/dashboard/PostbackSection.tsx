@@ -33,13 +33,13 @@ export function PostbackSection({ payout, onPayoutChange }: PostbackSectionProps
     <div className="space-y-4">
       <div className="space-y-2">
         <Label>{t("postback.urlLabel")}</Label>
-        <div className="flex gap-2">
-          <Input value={POSTBACK_URL} readOnly className="bg-background border-border font-mono text-sm" />
+        <div className="flex min-w-0 flex-col gap-2 min-[440px]:flex-row">
+          <Input value={POSTBACK_URL} readOnly className="min-w-0 bg-background border-border font-mono text-sm" />
           <Button
             type="button"
             variant="outline"
             onClick={handleCopy}
-            className="border-border shrink-0 gap-2"
+            className="shrink-0 gap-2 border-border"
           >
             {copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
             {copied ? t("postback.copied") : t("postback.copy")}
@@ -77,4 +77,3 @@ export function PostbackSection({ payout, onPayoutChange }: PostbackSectionProps
     </div>
   );
 }
-

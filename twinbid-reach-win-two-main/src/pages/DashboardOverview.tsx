@@ -43,7 +43,7 @@ export default function DashboardOverview() {
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         {stats.map((stat) => (
           <Card key={stat.label} className="bg-card border-border">
-            <CardContent className="p-6">
+            <CardContent className="p-4 sm:p-6">
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-sm text-muted-foreground">{stat.label}</p>
@@ -59,9 +59,9 @@ export default function DashboardOverview() {
       </div>
       <Card className="bg-card border-border">
         <CardHeader><CardTitle>{t("overview.activeCampaignsTitle")}</CardTitle></CardHeader>
-        <CardContent>
-          <div className="overflow-x-auto">
-            <table className="w-full">
+        <CardContent className="px-0 sm:px-6">
+          <div className="max-w-full overflow-x-auto overscroll-x-contain">
+            <table className="w-full min-w-[720px]">
               <thead>
                 <tr className="border-b border-border">
                   <th className="text-left py-3 px-4 text-sm font-medium text-muted-foreground">{t("overview.id")}</th>

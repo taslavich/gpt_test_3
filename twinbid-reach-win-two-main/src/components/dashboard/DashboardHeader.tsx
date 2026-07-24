@@ -10,6 +10,7 @@ import { useProfile } from "@/contexts/ProfileContext";
 import { LanguageSelector } from "@/components/LanguageSelector";
 import { cn } from "@/lib/utils";
 import { useNavigate } from "react-router-dom";
+import { DashboardMobileNavigation } from "@/components/dashboard/DashboardSidebar";
 
 export function DashboardHeader() {
   const { notifications, removeNotification } = useNotifications();
@@ -41,8 +42,10 @@ export function DashboardHeader() {
 
   return (
     <>
-      <header className="h-16 border-b border-border bg-card px-6 flex items-center justify-between">
-        <div className="flex items-center gap-2 text-sm text-muted-foreground">
+      <header className="sticky top-0 z-30 flex h-16 min-w-0 items-center justify-between gap-2 border-b border-border bg-card/95 px-2 backdrop-blur sm:px-4 lg:static lg:bg-card lg:px-6 lg:backdrop-blur-0">
+        <div className="flex min-w-0 items-center gap-2 text-sm text-muted-foreground">
+          <DashboardMobileNavigation />
+          <div className="hidden min-w-0 items-center gap-2 md:flex">
           <span>{t("header.manager")}:</span>
           {profile?.managerTelegram && (
             <a href={`https://t.me/${profile.managerTelegram}`} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 text-primary hover:text-primary/80 transition-colors font-medium">
@@ -50,17 +53,18 @@ export function DashboardHeader() {
               @{profile.managerTelegram}
             </a>
           )}
+          </div>
         </div>
-        <div className="flex items-center gap-4">
+        <div className="flex min-w-0 items-center gap-1 sm:gap-2 lg:gap-4">
           <button
             onClick={() => navigate("/dashboard/balance")}
-            className="flex items-center gap-2 rounded-full bg-muted/40 border border-border/60 px-3.5 py-1.5 text-base font-semibold text-foreground hover:bg-muted/60 transition-colors cursor-pointer"
+            className="flex min-w-0 items-center gap-1.5 rounded-full border border-border/60 bg-muted/40 px-2 py-1.5 text-sm font-semibold text-foreground transition-colors hover:bg-muted/60 sm:gap-2 sm:px-3.5 sm:text-base"
           >
-            <Wallet className="h-5 w-5 text-muted-foreground" />
-            <span className="tabular-nums">
+            <Wallet className="hidden h-5 w-5 shrink-0 text-muted-foreground min-[390px]:block" />
+            <span className="max-w-[92px] truncate tabular-nums sm:max-w-none">
               {loading ? "..." : `$${balance.toLocaleString()}`}
             </span>
-            <Plus className="h-4 w-4 text-muted-foreground" />
+            <Plus className="hidden h-4 w-4 shrink-0 text-muted-foreground sm:block" />
           </button>
           <LanguageSelector />
           <Popover open={open} onOpenChange={setOpen}>
@@ -74,7 +78,7 @@ export function DashboardHeader() {
                 )}
               </Button>
             </PopoverTrigger>
-            <PopoverContent className="w-[340px] p-0" align="end">
+            <PopoverContent className="w-[min(340px,calc(100vw-1rem))] p-0" align="end">
               <div className="p-3 border-b border-border">
                 <p className="text-sm font-medium">{t("header.notifications")}</p>
               </div>
@@ -113,7 +117,7 @@ export function DashboardHeader() {
           </Popover>
           <button
             onClick={() => navigate("/dashboard/settings")}
-            className="flex items-center gap-3 hover:opacity-80 transition-opacity cursor-pointer"
+            className="hidden items-center gap-3 transition-opacity hover:opacity-80 sm:flex"
           >
             <div className="h-9 w-9 rounded-full bg-primary/20 flex items-center justify-center">
               <User className="h-5 w-5 text-primary" />

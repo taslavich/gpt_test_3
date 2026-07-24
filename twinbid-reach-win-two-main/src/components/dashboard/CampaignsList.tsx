@@ -50,8 +50,8 @@ export function CampaignsList() {
           </Button>
         </CardHeader>
         <CardContent>
-          <div className="overflow-x-auto">
-            <table className="w-full">
+          <div className="max-w-full overflow-x-auto overscroll-x-contain">
+            <table className="w-full min-w-[860px]">
               <thead>
                 <tr className="border-b border-border">
                   <th className="text-left py-3 px-4 text-sm font-medium text-muted-foreground">{t("legacy.campaignName")}</th>

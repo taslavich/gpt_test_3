@@ -113,7 +113,7 @@ export function BudgetSection({
     <div className="space-y-5">
       <div className="space-y-2">
         <Label>{t("budget.totalBudget")}</Label>
-        <div className="relative max-w-xs">
+        <div className="relative w-full max-w-xs">
           <Input value={totalBudget} onChange={(e) => setTotalBudget(e.target.value)}
             placeholder="1000" className={cn("bg-background border-border pr-8", (errors.totalBudget) && "border-destructive")} />
           <span className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground">$</span>
@@ -170,7 +170,7 @@ export function BudgetSection({
 
       <div className="space-y-2">
         <Label>{pricingModel === "cpm" ? t("budget.cpmLabel") : t("budget.cpcLabel")} *</Label>
-        <div className="relative max-w-xs">
+        <div className="relative w-full max-w-xs">
           <Input value={priceValue} onChange={(e) => setPriceValue(e.target.value)}
             placeholder={String(optimalRecommended ?? limits.rec)}
             className={cn("bg-background border-border pr-8", (isBelowMin || isAboveMax || errors.priceValue) && "border-destructive")} />
@@ -228,7 +228,7 @@ export function BudgetSection({
         {errors.priceValue && <p className="text-xs text-destructive">{errors.priceValue}</p>}
       </div>
 
-      <div className="grid grid-cols-2 gap-4 max-w-sm">
+      <div className="grid max-w-sm grid-cols-1 gap-4 min-[420px]:grid-cols-2">
         <div className="space-y-2">
           <Label>{t("budget.startDate")} *</Label>
           <Popover>
@@ -278,12 +278,12 @@ export function BudgetSection({
           </Popover>
           {(endDateInvalid || errors.endDate) && <p className="text-xs text-destructive">{errors.endDate || t("budget.endDateError")}</p>}
         </div>
-        {errors.dates && <p className="text-xs text-destructive col-span-2">{errors.dates}</p>}
+        {errors.dates && <p className="text-xs text-destructive min-[420px]:col-span-2">{errors.dates}</p>}
       </div>
 
-      <div className="flex items-center gap-3">
+      <div className="flex items-start gap-3">
         <Switch checked={evenSpend} onCheckedChange={setEvenSpend} />
-        <Label className="cursor-pointer" onClick={() => setEvenSpend(!evenSpend)}>{t("budget.evenSpend")}</Label>
+        <Label className="cursor-pointer leading-5" onClick={() => setEvenSpend(!evenSpend)}>{t("budget.evenSpend")}</Label>
         <Tooltip>
           <TooltipTrigger asChild>
             <HelpCircle className="h-4 w-4 text-muted-foreground cursor-help" />

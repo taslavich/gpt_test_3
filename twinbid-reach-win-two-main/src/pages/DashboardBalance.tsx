@@ -222,14 +222,14 @@ export default function DashboardBalance() {
 
       <div className="grid lg:grid-cols-3 gap-6">
         <Card className="bg-card border-border">
-          <CardContent className="p-6">
+          <CardContent className="p-4 sm:p-6">
             <div className="flex items-center gap-3 mb-4">
               <div className="h-12 w-12 rounded-xl bg-primary/20 flex items-center justify-center">
                 <Wallet className="h-6 w-6 text-primary" />
               </div>
               <div>
                 <p className="text-sm text-muted-foreground">{t("balance.current")}</p>
-                <p className="text-3xl font-bold bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
+                <p className="break-all text-2xl font-bold bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent sm:text-3xl">
                   {profileLoading ? "..." : `$${fmtMoney(balance)}`}
                 </p>
               </div>
@@ -285,7 +285,7 @@ export default function DashboardBalance() {
                 <Tag className="h-4 w-4" />
                 {t("balance.promo.label")}
               </Label>
-              <div className="flex gap-2 max-w-sm">
+              <div className="flex max-w-sm flex-col gap-2 min-[420px]:flex-row">
                 <Input
                   placeholder={t("balance.promo.placeholder")}
                   value={promoCode}
@@ -294,11 +294,11 @@ export default function DashboardBalance() {
                   disabled={!!appliedPromo}
                 />
                 {appliedPromo ? (
-                  <Button variant="outline" onClick={handleRemovePromo} className="border-border shrink-0">
+                  <Button variant="outline" onClick={handleRemovePromo} className="shrink-0 border-border">
                     {t("balance.promo.remove")}
                   </Button>
                 ) : (
-                  <Button variant="outline" onClick={handleApplyPromo} className="border-border shrink-0" disabled={!promoCode.trim()}>
+                  <Button variant="outline" onClick={handleApplyPromo} className="shrink-0 border-border" disabled={!promoCode.trim()}>
                     {t("balance.promo.apply")}
                   </Button>
                 )}
@@ -311,7 +311,7 @@ export default function DashboardBalance() {
             </div>
 
             <div className="flex flex-col sm:flex-row sm:items-center gap-3">
-              <Button onClick={handleTopUp} className="bg-accent hover:bg-accent/90 text-accent-foreground"
+              <Button onClick={handleTopUp} className="h-auto min-h-10 w-full whitespace-normal bg-accent py-2 hover:bg-accent/90 text-accent-foreground sm:w-auto"
                 disabled={!finalAmount || finalAmount < 100 || !!pendingPayment || hasDraft}>
                 {t("balance.topUpBtn")} {finalAmount ? `$${finalAmount.toLocaleString()}` : ""}
                 {appliedPromo && finalAmount ? ` (+${Math.floor(finalAmount * appliedPromo.bonus / 100)}$ ${t("balance.promo.bonusShort")})` : ""}
@@ -333,7 +333,7 @@ export default function DashboardBalance() {
           </CardTitle>
         </CardHeader>
         <CardContent className="p-0">
-          <div className="overflow-x-auto">
+          <div className="max-w-full overflow-x-auto overscroll-x-contain">
             {(() => {
               // `draft` and `cancelled` are internal-only states (incomplete or
               // abandoned attempts) — never shown in the user-facing history.
@@ -347,7 +347,7 @@ export default function DashboardBalance() {
                 return <div className="py-12 text-center text-muted-foreground">{t("balance.noTransactions")}</div>;
               }
               return (
-              <table className="w-full">
+              <table className="w-full min-w-[680px]">
                 <thead>
                   <tr className="border-b border-border">
                     <th className="text-left py-3 px-4 text-sm font-medium text-muted-foreground">{t("balance.date")}</th>

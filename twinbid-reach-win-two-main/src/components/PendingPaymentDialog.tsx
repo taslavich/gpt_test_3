@@ -398,7 +398,7 @@ export function PendingPaymentDialog() {
 
           <div className="space-y-2">
             <Label>{t("balance.walletAddress")} ({currentMethod?.label})</Label>
-            <div className="flex gap-2">
+            <div className="flex flex-col gap-2 min-[420px]:flex-row">
               <Input value={currentMethod?.address || ""} readOnly className="bg-background border-border font-mono text-xs" />
               <Button variant="outline" size="icon" onClick={() => copyAddress(currentMethod?.address || "")} className="border-border shrink-0">
                 <Copy className="h-4 w-4" />

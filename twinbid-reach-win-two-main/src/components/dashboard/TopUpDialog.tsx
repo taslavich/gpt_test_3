@@ -38,7 +38,7 @@ export function TopUpDialog({ open, onOpenChange }: TopUpDialogProps) {
         <div className="space-y-6 mt-4">
           <div className="space-y-3">
             <Label>{t("legacy.topUpAmount")}</Label>
-            <div className="grid grid-cols-4 gap-2">
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
               {amounts.map((amount) => (
                 <button key={amount} onClick={() => { setSelectedAmount(amount); setCustomAmount(""); }}
                   className={cn("py-2 px-3 rounded-lg border text-sm font-medium transition-colors",

@@ -33,7 +33,7 @@ export function CreateCampaignDialog({ open, onOpenChange }: CreateCampaignDialo
           </DialogDescription>
         </DialogHeader>
 
-        <div className="flex gap-2 mb-6">
+        <div className="mb-6 flex max-w-full gap-2 overflow-x-auto">
           {[1, 2, 3].map((s) => (
             <div key={s} className={`h-1 flex-1 rounded-full ${s <= step ? "bg-primary" : "bg-muted"}`} />
           ))}
@@ -80,7 +80,7 @@ export function CreateCampaignDialog({ open, onOpenChange }: CreateCampaignDialo
             </div>
             <div className="space-y-2">
               <Label>{t("legacy.audienceAge")}</Label>
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <div>
                   <Label className="text-xs text-muted-foreground">{t("legacy.from")}</Label>
                   <Select>
@@ -138,7 +138,7 @@ export function CreateCampaignDialog({ open, onOpenChange }: CreateCampaignDialo
                 <span className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground">₽</span>
               </div>
             </div>
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <div className="space-y-2">
                 <Label>{t("legacy.startDate")}</Label>
                 <Input type="date" className="bg-background border-border" />

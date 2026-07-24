@@ -26,13 +26,13 @@ function FakeSite({ children, withSidebar = true, sidebar }: { children: React.R
         </div>
       </div>
       {/* Nav */}
-      <div className="px-4 py-2 border-b border-slate-200 flex items-center gap-4 text-[11px] text-slate-600">
+      <div className="flex items-center gap-3 overflow-hidden border-b border-slate-200 px-3 py-2 text-[11px] text-slate-600 sm:gap-4 sm:px-4">
         <div className="font-bold text-slate-900">Example News</div>
-        <span>Home</span><span>World</span><span>Tech</span><span>Sport</span>
+        <span>Home</span><span>World</span><span className="hidden min-[420px]:inline">Tech</span><span className="hidden sm:inline">Sport</span>
       </div>
-      <div className={`p-4 grid gap-4 ${withSidebar ? "grid-cols-[1fr_320px]" : "grid-cols-1"}`}>
+      <div className={`grid gap-4 p-3 sm:p-4 ${withSidebar ? "grid-cols-1 md:grid-cols-[minmax(0,1fr)_320px]" : "grid-cols-1"}`}>
         <div className="min-w-0">{children}</div>
-        {withSidebar && <div className="space-y-3">{sidebar}</div>}
+        {withSidebar && <div className="min-w-0 space-y-3">{sidebar}</div>}
       </div>
     </div>
   );
@@ -98,9 +98,9 @@ function BannerSlot({ size, creative }: { size: string; creative: Creative }) {
   }
 
   return (
-    <div className="my-3 flex justify-center">
+    <div className="my-3 flex max-w-full justify-center overflow-x-auto overscroll-x-contain">
       <div
-        className="relative border border-slate-300 bg-slate-100 flex items-center justify-center text-[10px] text-slate-500 overflow-hidden"
+        className="relative shrink-0 border border-slate-300 bg-slate-100 flex items-center justify-center text-[10px] text-slate-500 overflow-hidden"
         style={{ width: displayW, height: displayH }}
       >
         {content}
@@ -136,7 +136,7 @@ function PushPreview({ title, description, imageUrl, variant }: { title?: string
   if (variant === "desktop") {
     return (
       <div className="relative rounded-md border border-slate-300 bg-gradient-to-br from-slate-200 to-slate-300 p-6 min-h-[320px]">
-        <div className="absolute bottom-4 right-4 w-[360px] rounded-lg bg-white shadow-xl border border-slate-200 p-3 flex gap-3">
+        <div className="absolute bottom-4 left-4 right-4 flex max-w-[360px] gap-3 rounded-lg border border-slate-200 bg-white p-3 shadow-xl sm:left-auto">
           {imageUrl
             ? <img src={imageUrl} alt="" className="h-12 w-12 rounded object-cover shrink-0" />
             : <div className="h-12 w-12 rounded bg-slate-200 shrink-0" />}
@@ -153,7 +153,7 @@ function PushPreview({ title, description, imageUrl, variant }: { title?: string
   }
   // Android
   return (
-    <div className="mx-auto w-[300px] rounded-[28px] bg-slate-900 p-2 shadow-xl">
+    <div className="mx-auto w-full max-w-[300px] rounded-[28px] bg-slate-900 p-2 shadow-xl">
       <div className="rounded-[22px] bg-gradient-to-b from-indigo-500 to-purple-600 h-[420px] p-3 relative overflow-hidden">
         <div className="flex justify-between text-[10px] text-white/90 mb-3">
           <span>9:41</span>
@@ -200,7 +200,7 @@ function NativePreview({ title, description, imageUrl }: { title?: string; descr
       <div className="mt-4 mb-1 text-[11px] font-semibold text-slate-700 border-b border-slate-200 pb-1">
         Recommended for you
       </div>
-      <div className="grid grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 sm:gap-3">
         <NativeCard title="10 travel destinations to visit this summer" description="Explore hidden gems and popular spots" />
         <NativeCard
           title={title || "Your ad title here"}
@@ -234,7 +234,7 @@ export function CreativePreviewDialog({ open, onClose, formatKey, bannerSize, cr
 
         {formatKey === "push" && (
           <Tabs defaultValue="desktop">
-            <TabsList className="bg-background border border-border">
+            <TabsList className="w-full justify-start overflow-x-auto bg-background border border-border sm:w-auto">
               <TabsTrigger value="desktop">{t("create.previewDesktop")}</TabsTrigger>
               <TabsTrigger value="android">{t("create.previewAndroid")}</TabsTrigger>
             </TabsList>
