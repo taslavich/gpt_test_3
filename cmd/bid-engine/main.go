@@ -16,6 +16,7 @@ import (
 	utils "gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/utils_grpc"
 	httpServer "gitlab.com/twinbid-exchange/RTB-exchange/internal/http"
 	services "gitlab.com/twinbid-exchange/RTB-exchange/internal/services"
+	antiControl "gitlab.com/twinbid-exchange/RTB-exchange/internal/services/antiperekrut"
 	bidEngine "gitlab.com/twinbid-exchange/RTB-exchange/internal/services/bidEngine/service"
 	bidEngineWeb "gitlab.com/twinbid-exchange/RTB-exchange/internal/services/bidEngine/web"
 	redis_service "gitlab.com/twinbid-exchange/RTB-exchange/internal/services/redis"
@@ -33,6 +34,7 @@ func main() {
 		log.Fatalf("Cannot load config: %v", err)
 	}
 	log.Println("Config initialized!")
+
 	if strings.TrimSpace(cfg.AdmDomain) == "" {
 		log.Fatal("ADM_DOMAIN is required for BidEngine callback finalization")
 	}
@@ -171,6 +173,26 @@ func main() {
 	)
 	log.Println("HTTP routes initialized")
 
+	if strings.TrimSpace(cfg.AntiperekrutInternalSecret) == "" || len(cfg.AdvServiceControlURLs) == 0 {
+		log.Fatal("antiperekrut startup reset requires ANTIPEREKRUT_INTERNAL_SECRET and ADV_SERVICE_CONTROL_URLS")
+	}
+	if strings.TrimSpace(cfg.BotBaseURL) == "" || strings.TrimSpace(cfg.BotInternalSecret) == "" {
+		log.Fatal("antiperekrut startup reset requires BOT_BASE_URL and BOT_INTERNAL_SECRET")
+	}
+	startupHost, _ := os.Hostname()
+	startupNotifier := utils.NewBotMessageWithTimeout(cfg.BotBaseURL, cfg.BotInternalSecret, cfg.AntiperekrutControlTimeout)
+	startupEvent := antiControl.NewStartupEvent("bid-engine", startupHost)
+	if err := antiControl.FanoutStartupEvent(ctx, antiControl.ClientConfig{
+		Enabled:        true,
+		URLs:           []string(cfg.AdvServiceControlURLs),
+		Secret:         cfg.AntiperekrutInternalSecret,
+		RequestTimeout: cfg.AntiperekrutControlTimeout,
+		RetryInitial:   cfg.AntiperekrutRetryInitial,
+		RetryMax:       cfg.AntiperekrutRetryMax,
+	}, startupEvent, startupNotifier.SendTextMessageToBot); err != nil {
+		_ = startupNotifier.SendTextMessageToBot(ctx, fmt.Sprintf("[bid-engine][ANTIPEREKRUT_STARTUP_ERROR] %v", err))
+		log.Fatalf("cannot deliver antiperekrut startup event: %v", err)
+	}
 	errChan := make(chan error)
 
 	go func() {

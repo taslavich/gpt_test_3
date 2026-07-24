@@ -14,7 +14,6 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/ClickHouse/clickhouse-go/v2"
 	"github.com/google/uuid"
 	"github.com/redis/go-redis/v9"
 	"gitlab.com/twinbid-exchange/RTB-exchange/internal/constants"
@@ -110,6 +109,9 @@ type Campaign struct {
 	IPFilter         *filterV2.Filters
 
 	Creatives []*Creative
+
+	TrafficResetVersion int64
+	UpdatedAt           time.Time
 }
 
 type Snapshot struct {
@@ -137,6 +139,13 @@ type candidate struct {
 	effectivePrice float64
 }
 
+type cachedUserBalance struct {
+	goal      float64
+	spent     float64
+	remaining float64
+	err       error
+}
+
 type AuctionService struct {
 	// Keep the uint64 counter first to preserve 64-bit alignment for atomic
 	// operations even if the service is ever built for a 32-bit architecture.
@@ -148,14 +157,19 @@ type AuctionService struct {
 	percents *PercentStore
 	quality  *QualityStore
 
-	userDSPPrices atomic.Value
+	antiperekrut *AntiPerekrutManager
 }
 
 func NewAuctionService(runtime *RuntimeStore, winners *WinnerStore, percents *PercentStore, quality *QualityStore) *AuctionService {
 	s := &AuctionService{runtime: runtime, winners: winners, percents: percents, quality: quality}
 	s.snapshot.Store(&Snapshot{Campaigns: []*Campaign{}, UserGoals: map[string]float64{}})
-	s.userDSPPrices.Store(map[string]float64{})
 	return s
+}
+
+func (s *AuctionService) SetAntiPerekrutManager(manager *AntiPerekrutManager) {
+	if s != nil {
+		s.antiperekrut = manager
+	}
 }
 
 func (s *AuctionService) nextAuctionMode() (auctionMode, uint64) {
@@ -171,137 +185,6 @@ func (s *AuctionService) nextAuctionMode() (auctionMode, uint64) {
 	}
 }
 
-func (s *AuctionService) recentDSPPriceSum(userID string) float64 {
-	if s == nil {
-		return 0
-	}
-
-	current := s.userDSPPrices.Load()
-	if current == nil {
-		return 0
-	}
-
-	values := current.(map[string]float64)
-
-	return values[strings.TrimSpace(userID)]
-}
-
-func (s *AuctionService) StartUserDSPPriceTicker(
-	ctx context.Context,
-	ch clickhouse.Conn,
-	database string,
-	onError func(error),
-) {
-	refresh := func() {
-		if err := s.refreshUserDSPPrices(
-			ctx,
-			ch,
-			database,
-		); err != nil {
-			if onError != nil {
-				onError(err)
-			}
-		}
-	}
-
-	// Первая загрузка сразу после запуска ADV.
-	refresh()
-
-	go func() {
-		ticker := time.NewTicker(time.Minute)
-		defer ticker.Stop()
-
-		for {
-			select {
-			case <-ctx.Done():
-				return
-
-			case <-ticker.C:
-				refresh()
-			}
-		}
-	}()
-}
-
-func (s *AuctionService) refreshUserDSPPrices(
-	ctx context.Context,
-	ch clickhouse.Conn,
-	database string,
-) error {
-	emptyMap := map[string]float64{}
-
-	qualifiedTable := fmt.Sprintf(
-		"`%s`.`user_dsp_price_sum`",
-		strings.TrimSpace(database),
-	)
-
-	query := fmt.Sprintf(`
-SELECT
-    user_id,
-    sum_cum_per_period
-FROM %s FINAL
-WHERE
-    created_at = (
-        SELECT max(created_at)
-        FROM %s
-    )
-    AND notEmpty(trimBoth(user_id))
-`,
-		qualifiedTable,
-		qualifiedTable,
-	)
-
-	rows, err := ch.Query(ctx, query)
-	if err != nil {
-		s.userDSPPrices.Store(emptyMap)
-		return fmt.Errorf(
-			"query latest user DSP price batch: %w",
-			err,
-		)
-	}
-	defer rows.Close()
-
-	newValues := make(map[string]float64)
-
-	for rows.Next() {
-		var (
-			userID string
-			value  float64
-		)
-
-		if err := rows.Scan(&userID, &value); err != nil {
-			s.userDSPPrices.Store(emptyMap)
-			return fmt.Errorf(
-				"scan user DSP price row: %w",
-				err,
-			)
-		}
-
-		userID = strings.TrimSpace(userID)
-		if userID == "" {
-			continue
-		}
-
-		newValues[userID] = value
-	}
-
-	if err := rows.Err(); err != nil {
-		s.userDSPPrices.Store(emptyMap)
-		return fmt.Errorf(
-			"iterate user DSP price rows: %w",
-			err,
-		)
-	}
-
-	/*
-		До этой строки новая map собиралась отдельно.
-		Теперь она целиком атомарно заменяет старую.
-	*/
-	s.userDSPPrices.Store(newValues)
-
-	return nil
-}
-
 func (s *AuctionService) Snapshot() *Snapshot {
 	if s == nil {
 		return nil
@@ -315,6 +198,10 @@ func (s *AuctionService) Snapshot() *Snapshot {
 		return nil
 	}
 	return cloned
+}
+
+func (s *AuctionService) CurrentSnapshot() *Snapshot {
+	return s.currentSnapshot()
 }
 
 func (s *AuctionService) currentSnapshot() *Snapshot {
@@ -575,6 +462,17 @@ func (s *AuctionService) Auction(ctx context.Context, req *ortb.BidRequest, now 
 		len(snapshot.UserGoals),
 	)
 
+	if s.antiperekrut == nil {
+		logf("[ADV][AUCTION_ERROR] request_id=%q reason=antiperekrut_manager_unavailable", requestID)
+		return nil, errors.New("antiperekrut manager is unavailable")
+	}
+	antiState := s.antiperekrut.State()
+	if antiState == nil || antiState.LoadedAt.IsZero() {
+		logf("[ADV][AUCTION_ERROR] request_id=%q reason=antiperekrut_state_unavailable", requestID)
+		return nil, errors.New("antiperekrut state is unavailable")
+	}
+	userBalanceCache := make(map[string]cachedUserBalance)
+
 	seat := &ortb.SeatBid{Bid: make([]*ortb.Bid, 0, len(req.GetImp()))}
 	winnerUsers := make(map[string]string)
 	winnerBasePrices := make(map[string]float64)
@@ -643,6 +541,9 @@ func (s *AuctionService) Auction(ctx context.Context, req *ortb.BidRequest, now 
 				requestedFormat,
 				trafficType,
 				sspDomain,
+				winnerUUID,
+				antiState,
+				userBalanceCache,
 				logf,
 			)
 			if infraErr != nil {
@@ -938,6 +839,9 @@ func (s *AuctionService) evaluateCampaign(
 	imp *ortb.Imp,
 	now time.Time,
 	requestedFormat, trafficType, sspDomain string,
+	hashFallback string,
+	antiState *AntiPerekrutState,
+	userBalanceCache map[string]cachedUserBalance,
 	logf debugLogFunc,
 ) (candidate, bool, error) {
 	requestID := ""
@@ -960,19 +864,8 @@ func (s *AuctionService) evaluateCampaign(
 
 	campaignID := strings.TrimSpace(campaign.ID)
 	userID := strings.TrimSpace(campaign.UserID)
+	var userGoal, userSpent, userRemaining float64
 
-	if !s.quality.Contains(campaign.QualitySegment, sspDomain) {
-		logf(
-			"[ADV][CAMPAIGN_REJECT] request_id=%q imp_id=%q campaign_id=%q user_id=%q reason=quality_mismatch campaign_quality=%q ssp_domain=%q",
-			requestID,
-			impID,
-			campaignID,
-			userID,
-			campaign.QualitySegment,
-			sspDomain,
-		)
-		return candidate{}, false, nil
-	}
 	if normalizeFormat(campaign.Format) != requestedFormat {
 		logf(
 			"[ADV][CAMPAIGN_REJECT] request_id=%q imp_id=%q campaign_id=%q user_id=%q reason=format_mismatch campaign_format=%q requested_format=%q",
@@ -999,6 +892,42 @@ func (s *AuctionService) evaluateCampaign(
 	}
 	if !campaignActiveAt(campaign, now) {
 		logCampaignActivityRejection(logf, requestID, impID, campaign, now)
+		return candidate{}, false, nil
+	}
+
+	balance := s.cachedUserBalance(ctx, snapshot, userID, userBalanceCache)
+	if balance.err != nil {
+		logf("[ADV][CAMPAIGN_ERROR] request_id=%q imp_id=%q campaign_id=%q user_id=%q reason=antiperekrut_user_balance_read_failed error=%v", requestID, impID, campaignID, userID, balance.err)
+		if s.antiperekrut != nil {
+			s.antiperekrut.NotifyAuctionError("user_balance_read", balance.err)
+		}
+		return candidate{}, false, balance.err
+	}
+	userGoal, userSpent, userRemaining = balance.goal, balance.spent, balance.remaining
+	recent := 0.0
+	if antiState != nil {
+		recent = antiState.UserSpend[userID].Spend
+	}
+	guardReject := recent*2 > userRemaining
+	if guardReject {
+		logf("[ADV][ANTIPEREKRUT_USER_GUARD] request_id=%q imp_id=%q campaign_id=%q user_id=%q user_spend=%.12f user_remaining=%.12f would_reject=true", requestID, impID, campaignID, userID, recent, userRemaining)
+		return candidate{}, false, nil
+	}
+	hashID := requestID
+	if strings.TrimSpace(hashID) == "" {
+		hashID = hashFallback
+	}
+	limit := TrafficLimitFull
+	if s.antiperekrut != nil {
+		limit = s.antiperekrut.EffectiveTrafficLimit(antiState, campaign)
+	}
+	hashPass := trafficHashPass(hashID, campaignID, limit)
+	if !hashPass {
+		logf("[ADV][ANTIPEREKRUT_HASH_GATE] request_id=%q imp_id=%q campaign_id=%q user_id=%q traffic_limit=%d would_reject=true", requestID, impID, campaignID, userID, limit)
+		return candidate{}, false, nil
+	}
+	if !s.quality.Contains(campaign.QualitySegment, sspDomain) {
+		logf("[ADV][CAMPAIGN_REJECT] request_id=%q imp_id=%q campaign_id=%q user_id=%q reason=quality_mismatch campaign_quality=%q ssp_domain=%q", requestID, impID, campaignID, userID, campaign.QualitySegment, sspDomain)
 		return candidate{}, false, nil
 	}
 
@@ -1066,54 +995,6 @@ func (s *AuctionService) evaluateCampaign(
 		}
 	}
 
-	userGoal, ok := snapshot.UserGoals[campaign.UserID]
-	if !ok || userGoal < 0 || math.IsNaN(userGoal) || math.IsInf(userGoal, 0) {
-		logf(
-			"[ADV][CAMPAIGN_REJECT] request_id=%q imp_id=%q campaign_id=%q user_id=%q reason=user_goal_total_dollars_missing_or_invalid user_goal_exists=%t user_goal_total_dollars=%.12f",
-			requestID,
-			impID,
-			campaignID,
-			userID,
-			ok,
-			userGoal,
-		)
-		return candidate{}, false, nil
-	}
-	userSpent, err := s.runtime.UserSpent(ctx, campaign.UserID)
-	if err != nil {
-		logf(
-			"[ADV][CAMPAIGN_ERROR] request_id=%q imp_id=%q campaign_id=%q user_id=%q reason=user_spent_read_failed error=%v",
-			requestID,
-			impID,
-			campaignID,
-			userID,
-			err,
-		)
-		return candidate{}, false, err
-	}
-
-	userRemaining := userGoal - userSpent
-
-	recentDSPPriceSum := s.recentDSPPriceSum(
-		campaign.UserID,
-	)
-
-	if userRemaining <= recentDSPPriceSum {
-		logf(
-			"[ADV][CAMPAIGN_REJECT] request_id=%q imp_id=%q campaign_id=%q user_id=%q reason=user_balance_not_above_recent_dsp_sum user_goal_total_dollars=%.12f user_spent=%.12f user_remaining=%.12f recent_dsp_price_sum=%.12f",
-			requestID,
-			impID,
-			campaignID,
-			userID,
-			userGoal,
-			userSpent,
-			userRemaining,
-			recentDSPPriceSum,
-		)
-
-		return candidate{}, false, nil
-	}
-
 	creatives := matchingCreatives(campaign.Creatives, imp, requestedFormat)
 	if len(creatives) == 0 {
 		logCreativeRejections(logf, requestID, impID, campaign, imp, requestedFormat)
@@ -1155,6 +1036,31 @@ func (s *AuctionService) evaluateCampaign(
 		userRemaining,
 	)
 	return candidate{campaign: campaign, creatives: creatives, chargePrice: chargePrice, effectivePrice: effective}, true, nil
+}
+
+func (s *AuctionService) cachedUserBalance(ctx context.Context, snapshot *Snapshot, userID string, cache map[string]cachedUserBalance) cachedUserBalance {
+	userID = strings.TrimSpace(userID)
+	if cached, ok := cache[userID]; ok {
+		return cached
+	}
+	value := cachedUserBalance{}
+	goal, ok := snapshot.UserGoals[userID]
+	if !ok || goal < 0 || math.IsNaN(goal) || math.IsInf(goal, 0) {
+		value.err = fmt.Errorf("user goal is missing or invalid for %s", userID)
+		cache[userID] = value
+		return value
+	}
+	spent, err := s.runtime.UserSpent(ctx, userID)
+	if err != nil {
+		value.err = err
+		cache[userID] = value
+		return value
+	}
+	value.goal = goal
+	value.spent = spent
+	value.remaining = goal - spent
+	cache[userID] = value
+	return value
 }
 
 func logCampaignActivityRejection(logf debugLogFunc, requestID, impID string, campaign *Campaign, now time.Time) {

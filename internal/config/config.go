@@ -114,6 +114,14 @@ func (l *ListString) SetValue(value string) error {
 	return nil
 }
 
+type AntiperekrutControlConfig struct {
+	AntiperekrutInternalSecret string        `yaml:"ANTIPEREKRUT_INTERNAL_SECRET" env:"ANTIPEREKRUT_INTERNAL_SECRET"`
+	AdvServiceControlURLs      ListString    `yaml:"ADV_SERVICE_CONTROL_URLS" env:"ADV_SERVICE_CONTROL_URLS"`
+	AntiperekrutControlTimeout time.Duration `yaml:"ANTIPEREKRUT_CONTROL_TIMEOUT" env:"ANTIPEREKRUT_CONTROL_TIMEOUT" env-default:"3s"`
+	AntiperekrutRetryInitial   time.Duration `yaml:"ANTIPEREKRUT_RETRY_INITIAL" env:"ANTIPEREKRUT_RETRY_INITIAL" env-default:"1s"`
+	AntiperekrutRetryMax       time.Duration `yaml:"ANTIPEREKRUT_RETRY_MAX" env:"ANTIPEREKRUT_RETRY_MAX" env-default:"1m"`
+}
+
 type RedisWriteErrorMonitorConfig struct {
 	RedisWriteErrorLogThresholdPerSec    uint64        `yaml:"REDIS_WRITE_ERROR_LOG_THRESHOLD_PER_SEC" env:"REDIS_WRITE_ERROR_LOG_THRESHOLD_PER_SEC"`
 	RedisWriteErrorStopThresholdPerSec   uint64        `yaml:"REDIS_WRITE_ERROR_STOP_THRESHOLD_PER_SEC" env:"REDIS_WRITE_ERROR_STOP_THRESHOLD_PER_SEC"`
@@ -121,6 +129,7 @@ type RedisWriteErrorMonitorConfig struct {
 }
 
 type BiddingEngineConfig struct {
+	AntiperekrutControlConfig
 	HttpServer                          HttpServer
 	GrpcServer                          GrpcServer
 	ProfitPercent                       float32 `yaml:"PROFIT_PERCENT" env:"PROFIT_PERCENT" env-default:"0.2"`
@@ -135,6 +144,7 @@ type BiddingEngineConfig struct {
 }
 
 type RouterConfig struct {
+	AntiperekrutControlConfig
 	GrpcServer                   GrpcServer
 	HttpServer                   HttpServer
 	DSPEndpointsAdult_v_2_5      MapStringToString `yaml:"DSP_ENDPOINTS_ADULT_V_2_5" env:"DSP_ENDPOINTS_ADULT_V_2_5"`
@@ -171,16 +181,20 @@ type RouterConfig struct {
 }
 
 type OrchestratorConfig struct {
-	GrpcServer     GrpcServer
-	UriOfBidEngine string        `yaml:"URI_OF_BID_ENGINE" env:"URI_OF_BID_ENGINE"`
-	UriOfDspRouter string        `yaml:"URI_OF_DSP_ROUTER" env:"URI_OF_DSP_ROUTER"`
-	AuctionTimeout time.Duration `yaml:"AUCTION_TIMEOUT" env:"AUCTION_TIMEOUT"`
-	GetBidsTimeout time.Duration `yaml:"GET_BIDS_TIMEOUT" env:"GET_BIDS_TIMEOUT"`
+	AntiperekrutControlConfig
+	GrpcServer        GrpcServer
+	UriOfBidEngine    string        `yaml:"URI_OF_BID_ENGINE" env:"URI_OF_BID_ENGINE"`
+	UriOfDspRouter    string        `yaml:"URI_OF_DSP_ROUTER" env:"URI_OF_DSP_ROUTER"`
+	AuctionTimeout    time.Duration `yaml:"AUCTION_TIMEOUT" env:"AUCTION_TIMEOUT"`
+	GetBidsTimeout    time.Duration `yaml:"GET_BIDS_TIMEOUT" env:"GET_BIDS_TIMEOUT"`
+	BotBaseURL        string        `yaml:"BOT_BASE_URL" env:"BOT_BASE_URL"`
+	BotInternalSecret string        `yaml:"BOT_INTERNAL_SECRET" env:"BOT_INTERNAL_SECRET"`
 
 	RedisConfig
 }
 
 type SppAdapterConfig struct {
+	AntiperekrutControlConfig
 	HttpServer HttpServer
 	ClickhouseConfig
 	UriOfOrchestrator   string        `yaml:"URI_OF_ORCHESTRATOR" env:"URI_OF_ORCHESTRATOR"`
@@ -221,6 +235,7 @@ type SppAdapterConfig struct {
 }
 
 type AdmAdapterConfig struct {
+	AntiperekrutControlConfig
 	HttpServer              HttpServer
 	AdmTimeout              time.Duration `yaml:"ADM_TIMEOUT" env:"ADM_TIMEOUT"`
 	BurlTimeout             time.Duration `yaml:"BURL_TIMEOUT" env:"BURL_TIMEOUT"`
@@ -229,7 +244,6 @@ type AdmAdapterConfig struct {
 	RsaFullChain            string        `yaml:"RSA_FULLCHAIN_PEM" env:"RSA_FULLCHAIN_PEM"`
 	RsaPrivKey              string        `yaml:"RSA_PRIVKEY_PEM" env:"RSA_PRIVKEY_PEM"`
 	SspAdapterWorkStatusURL string        `yaml:"SSP_ADAPTER_WORK_STATUS_URL" env:"SSP_ADAPTER_WORK_STATUS_URL"`
-	AdvServiceControlURLs   ListString    `yaml:"ADV_SERVICE_CONTROL_URLS" env:"ADV_SERVICE_CONTROL_URLS"`
 	AdvOutboxPath           string        `yaml:"ADV_OUTBOX_PATH" env:"ADV_OUTBOX_PATH" env-default:"./data/adv-billing-outbox.db"`
 	AdvOutboxRetryInterval  time.Duration `yaml:"ADV_OUTBOX_RETRY_INTERVAL" env:"ADV_OUTBOX_RETRY_INTERVAL" env-default:"2s"`
 	AdvOutboxMaxBackoff     time.Duration `yaml:"ADV_OUTBOX_MAX_BACKOFF" env:"ADV_OUTBOX_MAX_BACKOFF" env-default:"1m"`
@@ -242,6 +256,7 @@ type AdmAdapterConfig struct {
 }
 
 type AdvConfig struct {
+	AntiperekrutControlConfig
 	HttpServer HttpServer
 	GrpcServer GrpcServer
 	RedisConfig
@@ -255,7 +270,10 @@ type AdvConfig struct {
 	AdvPacingTickInterval   time.Duration `yaml:"ADV_PACING_TICK_INTERVAL" env:"ADV_PACING_TICK_INTERVAL" env-default:"5s"`
 	AdvPacingCurrentTTL     time.Duration `yaml:"ADV_PACING_CURRENT_TTL" env:"ADV_PACING_CURRENT_TTL" env-default:"10m"`
 	AdvPacingSlotTTL        time.Duration `yaml:"ADV_PACING_SLOT_TTL" env:"ADV_PACING_SLOT_TTL" env-default:"48h"`
-	AdvServiceControlURLs   ListString    `yaml:"ADV_SERVICE_CONTROL_URLS" env:"ADV_SERVICE_CONTROL_URLS"`
+	AntiperekrutTickOffset  time.Duration `yaml:"ANTIPEREKRUT_TICK_OFFSET" env:"ANTIPEREKRUT_TICK_OFFSET" env-default:"3s"`
+	AntiperekrutAutoMigrate bool          `yaml:"ANTIPEREKRUT_AUTO_MIGRATE" env:"ANTIPEREKRUT_AUTO_MIGRATE" env-default:"false"`
+	BotBaseURL              string        `yaml:"BOT_BASE_URL" env:"BOT_BASE_URL"`
+	BotInternalSecret       string        `yaml:"BOT_INTERNAL_SECRET" env:"BOT_INTERNAL_SECRET"`
 }
 
 type KafkaredisConfig struct {

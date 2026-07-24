@@ -11,15 +11,18 @@ import (
 	"os/signal"
 	"strings"
 	"syscall"
+	"time"
 
 	"github.com/ClickHouse/clickhouse-go/v2"
 	"github.com/go-chi/chi/v5"
 	_ "github.com/lib/pq"
 	"gitlab.com/twinbid-exchange/RTB-exchange/internal/config"
 	advGrpc "gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/proto/services/adv"
+	utils "gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/utils_grpc"
 	httpServer "gitlab.com/twinbid-exchange/RTB-exchange/internal/http"
 	auction "gitlab.com/twinbid-exchange/RTB-exchange/internal/services/adv/service"
 	advWeb "gitlab.com/twinbid-exchange/RTB-exchange/internal/services/adv/web"
+	antiControl "gitlab.com/twinbid-exchange/RTB-exchange/internal/services/antiperekrut"
 	redisService "gitlab.com/twinbid-exchange/RTB-exchange/internal/services/redis"
 	"google.golang.org/grpc"
 )
@@ -77,6 +80,14 @@ func main() {
 	if err := db.PingContext(ctx); err != nil {
 		log.Fatalf("ADV PostgreSQL unavailable: %v", err)
 	}
+	// Production rollout applies the additive migration from the cabinet first.
+	// Automatic DDL is opt-in because the ADV database role may intentionally
+	// have DML permissions without ALTER TABLE privileges.
+	if cfg.AntiperekrutAutoMigrate {
+		if err := auction.EnsureAntiPerekrutSchema(ctx, db); err != nil {
+			log.Fatalf("cannot migrate antiperekrut schema: %v", err)
+		}
+	}
 
 	clickhouseAddr := net.JoinHostPort(
 		cfg.ClickhouseConfig.Host,
@@ -124,19 +135,33 @@ func main() {
 		log.Fatalf("initial ADV snapshot failed: %v", err)
 	}
 
-	auctionService.StartUserDSPPriceTicker(
-		ctx,
-		clickhouseConn,
-		cfg.ClickhouseConfig.Database,
-		func(err error) {
-			log.Printf(
-				"[ADV][USER_DSP_PRICE_MAP_ERROR] ClickHouse refresh failed; empty map published: %v",
-				err,
-			)
-		},
+	botNotifier := utils.NewBotMessageWithTimeout(cfg.BotBaseURL, cfg.BotInternalSecret, cfg.AntiperekrutControlTimeout)
+	antiManager, err := auction.NewAntiPerekrutManager(
+		db, clickhouseConn, cfg.ClickhouseConfig.Database, runtimeStore,
+		auctionService.CurrentSnapshot, cfg.AntiperekrutTickOffset, botNotifier.SendTextMessageToBot,
 	)
+	if err != nil {
+		log.Fatalf("cannot initialize antiperekrut: %v", err)
+	}
+	auctionService.SetAntiPerekrutManager(antiManager)
+
+	hostname, _ := os.Hostname()
+	startupEvent := antiControl.NewStartupEvent("adv", hostname)
+	if _, err := antiManager.RegisterStartupEvent(ctx, startupEvent.EventID, startupEvent.SourceService, startupEvent.SourceInstance); err != nil {
+		_ = botNotifier.SendTextMessageToBot(ctx, fmt.Sprintf("[ADV][ANTIPEREKRUT_STARTUP_ERROR] %v", err))
+		log.Fatalf("cannot register ADV startup reset: %v", err)
+	}
+	if err := antiManager.Refresh(ctx); err != nil {
+		_ = botNotifier.SendTextMessageToBot(ctx, fmt.Sprintf("[ADV][ANTIPEREKRUT_INITIAL_REFRESH_ERROR] %v", err))
+		log.Fatalf("initial antiperekrut state failed: %v", err)
+	}
+	if state := antiManager.State(); state == nil || state.LoadedAt.IsZero() {
+		log.Fatal("initial antiperekrut state has not completed ClickHouse/Redis loading")
+	}
+	antiManager.Start(ctx)
 
 	auctionService.StartPostgresRefreshTicker(ctx, db, cfg.CampaignRefreshInterval, func(err error) {
+		_ = botNotifier.SendTextMessageToBot(ctx, fmt.Sprintf("[ADV][SNAPSHOT_REFRESH_ERROR] %v", err))
 		log.Printf("ADV snapshot refresh failed; previous snapshot retained: %v", err)
 	})
 	auctionService.StartPacingTicker(ctx, cfg.AdvPacingTickInterval, func(err error) {
@@ -148,14 +173,27 @@ func main() {
 	advGrpc.RegisterAdvServiceServer(grpcServer, advWeb.NewServer(auctionService, workController))
 
 	router := httpServer.InitHttpRouter(chi.NewRouter())
-	advWeb.InitHttpRoutes(router, percentStore, qualityStore, workController)
+	advWeb.InitHttpRoutes(router, percentStore, qualityStore, workController, advWeb.AntiPerekrutHTTPConfig{
+		Manager: antiManager, Secret: cfg.AntiperekrutInternalSecret,
+	})
 
 	listener, err := net.Listen("tcp", fmt.Sprintf("%s:%d", cfg.GrpcServer.Host, cfg.GrpcServer.Port))
 	if err != nil {
 		log.Fatalf("ADV gRPC listen failed: %v", err)
 	}
 	errChan := make(chan error, 1)
+	// The control endpoint must be reachable before startup fan-out, while the
+	// auction gRPC server must not become ready until the initial attempt has
+	// addressed every configured ADV URL and at least one durable ACK exists.
 	go httpServer.RunHttpServer(ctx, router, cfg.HttpServer.Host, cfg.HttpServer.Port)
+	err = antiControl.FanoutStartupEvent(ctx, antiControl.ClientConfig{
+		Enabled: true, URLs: []string(cfg.AdvServiceControlURLs), Secret: cfg.AntiperekrutInternalSecret,
+		RequestTimeout: cfg.AntiperekrutControlTimeout, RetryInitial: cfg.AntiperekrutRetryInitial, RetryMax: cfg.AntiperekrutRetryMax,
+	}, startupEvent, botNotifier.SendTextMessageToBot)
+	if err != nil {
+		_ = botNotifier.SendTextMessageToBot(ctx, fmt.Sprintf("[ADV][ANTIPEREKRUT_FANOUT_ERROR] %v", err))
+		log.Fatalf("ADV startup reset fan-out failed: %v", err)
+	}
 	go func() {
 		errChan <- grpcServer.Serve(listener)
 	}()
@@ -195,6 +233,15 @@ func validateConfig(cfg *config.AdvConfig) error {
 	}
 	if cfg.CampaignRefreshInterval <= 0 || cfg.AdvWinnerTTL <= 0 || cfg.AdvPacingTickInterval <= 0 || cfg.AdvPacingCurrentTTL <= 0 || cfg.AdvPacingSlotTTL <= 0 {
 		return fmt.Errorf("ADV durations must be positive")
+	}
+	if cfg.AntiperekrutTickOffset < 0 || cfg.AntiperekrutTickOffset >= time.Minute {
+		return fmt.Errorf("ANTIPEREKRUT_TICK_OFFSET must be in [0,1m)")
+	}
+	if strings.TrimSpace(cfg.AntiperekrutInternalSecret) == "" || len(cfg.AdvServiceControlURLs) == 0 {
+		return fmt.Errorf("antiperekrut requires ANTIPEREKRUT_INTERNAL_SECRET and ADV_SERVICE_CONTROL_URLS")
+	}
+	if strings.TrimSpace(cfg.BotBaseURL) == "" || strings.TrimSpace(cfg.BotInternalSecret) == "" {
+		return fmt.Errorf("antiperekrut requires BOT_BASE_URL and BOT_INTERNAL_SECRET")
 	}
 	return nil
 }
