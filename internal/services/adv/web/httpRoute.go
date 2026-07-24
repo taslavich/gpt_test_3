@@ -1,7 +1,6 @@
 package web
 
 import (
-	"crypto/subtle"
 	"encoding/json"
 	"errors"
 	"io"
@@ -40,7 +39,6 @@ const (
 
 type AntiPerekrutHTTPConfig struct {
 	Manager *auction.AntiPerekrutManager
-	Secret  string
 }
 
 type antiPerekrutRestartRequest struct {
@@ -215,12 +213,6 @@ func InitHttpRoutes(httpRouter *chi.Mux, percentStore *auction.PercentStore, qua
 	if len(antiConfig) > 0 && antiConfig[0].Manager != nil {
 		cfg := antiConfig[0]
 		httpRouter.Post(AntiPerekrutRestartURL, func(w http.ResponseWriter, r *http.Request) {
-			provided := []byte(strings.TrimSpace(r.Header.Get("X-Antiperekrut-Secret")))
-			expected := []byte(strings.TrimSpace(cfg.Secret))
-			if len(expected) == 0 || len(provided) != len(expected) || subtle.ConstantTimeCompare(provided, expected) != 1 {
-				http.Error(w, "unauthorized", http.StatusUnauthorized)
-				return
-			}
 			defer r.Body.Close()
 			decoder := json.NewDecoder(http.MaxBytesReader(w, r.Body, 64<<10))
 			decoder.DisallowUnknownFields()

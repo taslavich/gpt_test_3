@@ -74,8 +74,8 @@ func main() {
 		log.Fatalf("failed to listen: %v", err)
 	}
 
-	if strings.TrimSpace(cfg.AntiperekrutInternalSecret) == "" || len(cfg.AdvServiceControlURLs) == 0 {
-		log.Fatal("antiperekrut startup reset requires ANTIPEREKRUT_INTERNAL_SECRET and ADV_SERVICE_CONTROL_URLS")
+	if len(cfg.AdvServiceControlURLs) == 0 {
+		log.Fatal("antiperekrut startup reset requires ADV_SERVICE_CONTROL_URLS")
 	}
 	if strings.TrimSpace(cfg.BotBaseURL) == "" || strings.TrimSpace(cfg.BotInternalSecret) == "" {
 		log.Fatal("antiperekrut startup reset requires BOT_BASE_URL and BOT_INTERNAL_SECRET")
@@ -86,7 +86,6 @@ func main() {
 	if err := antiControl.FanoutStartupEvent(ctx, antiControl.ClientConfig{
 		Enabled:        true,
 		URLs:           []string(cfg.AdvServiceControlURLs),
-		Secret:         cfg.AntiperekrutInternalSecret,
 		RequestTimeout: cfg.AntiperekrutControlTimeout,
 		RetryInitial:   cfg.AntiperekrutRetryInitial,
 		RetryMax:       cfg.AntiperekrutRetryMax,

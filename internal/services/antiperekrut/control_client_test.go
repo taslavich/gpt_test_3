@@ -11,17 +11,12 @@ import (
 )
 
 func TestFanoutStartupEventCallsEveryADV(t *testing.T) {
-	const secret = "test-secret"
 	var calls1 atomic.Int32
 	var calls2 atomic.Int32
 	newServer := func(calls *atomic.Int32) *httptest.Server {
 		return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			if r.URL.Path != "/internal/antiperekrut/restart" {
 				http.NotFound(w, r)
-				return
-			}
-			if r.Header.Get("X-Antiperekrut-Secret") != secret {
-				http.Error(w, "unauthorized", http.StatusUnauthorized)
 				return
 			}
 			var event StartupEvent
@@ -41,7 +36,7 @@ func TestFanoutStartupEventCallsEveryADV(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
 	err := FanoutStartupEvent(ctx, ClientConfig{
-		Enabled: true, URLs: []string{s1.URL, s2.URL}, Secret: secret,
+		Enabled: true, URLs: []string{s1.URL, s2.URL},
 		RequestTimeout: time.Second, RetryInitial: 10 * time.Millisecond, RetryMax: 20 * time.Millisecond,
 	}, NewStartupEvent("router", "router-1"), nil)
 	if err != nil {

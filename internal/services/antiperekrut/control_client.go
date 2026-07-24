@@ -22,7 +22,6 @@ type NotifyFunc func(context.Context, string) error
 type ClientConfig struct {
 	Enabled        bool
 	URLs           []string
-	Secret         string
 	RequestTimeout time.Duration
 	RetryInitial   time.Duration
 	RetryMax       time.Duration
@@ -73,9 +72,6 @@ func FanoutStartupEvent(ctx context.Context, cfg ClientConfig, event StartupEven
 	}
 	if len(urls) == 0 {
 		return errors.New("ADV_SERVICE_CONTROL_URLS is empty while startup reset is enabled")
-	}
-	if strings.TrimSpace(cfg.Secret) == "" {
-		return errors.New("ANTIPEREKRUT_INTERNAL_SECRET is empty while startup reset is enabled")
 	}
 	if cfg.RequestTimeout <= 0 {
 		cfg.RequestTimeout = 3 * time.Second
@@ -186,7 +182,6 @@ func deliverOnce(parent context.Context, cfg ClientConfig, event StartupEvent, t
 		return 0, err
 	}
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("X-Antiperekrut-Secret", cfg.Secret)
 	client := &http.Client{Timeout: cfg.RequestTimeout}
 	resp, err := client.Do(req)
 	if err != nil {

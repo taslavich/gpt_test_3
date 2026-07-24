@@ -115,7 +115,6 @@ func (l *ListString) SetValue(value string) error {
 }
 
 type AntiperekrutControlConfig struct {
-	AntiperekrutInternalSecret string        `yaml:"ANTIPEREKRUT_INTERNAL_SECRET" env:"ANTIPEREKRUT_INTERNAL_SECRET"`
 	AdvServiceControlURLs      ListString    `yaml:"ADV_SERVICE_CONTROL_URLS" env:"ADV_SERVICE_CONTROL_URLS"`
 	AntiperekrutControlTimeout time.Duration `yaml:"ANTIPEREKRUT_CONTROL_TIMEOUT" env:"ANTIPEREKRUT_CONTROL_TIMEOUT" env-default:"3s"`
 	AntiperekrutRetryInitial   time.Duration `yaml:"ANTIPEREKRUT_RETRY_INITIAL" env:"ANTIPEREKRUT_RETRY_INITIAL" env-default:"1s"`

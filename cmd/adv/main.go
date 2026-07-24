@@ -174,7 +174,7 @@ func main() {
 
 	router := httpServer.InitHttpRouter(chi.NewRouter())
 	advWeb.InitHttpRoutes(router, percentStore, qualityStore, workController, advWeb.AntiPerekrutHTTPConfig{
-		Manager: antiManager, Secret: cfg.AntiperekrutInternalSecret,
+		Manager: antiManager,
 	})
 
 	listener, err := net.Listen("tcp", fmt.Sprintf("%s:%d", cfg.GrpcServer.Host, cfg.GrpcServer.Port))
@@ -187,7 +187,7 @@ func main() {
 	// addressed every configured ADV URL and at least one durable ACK exists.
 	go httpServer.RunHttpServer(ctx, router, cfg.HttpServer.Host, cfg.HttpServer.Port)
 	err = antiControl.FanoutStartupEvent(ctx, antiControl.ClientConfig{
-		Enabled: true, URLs: []string(cfg.AdvServiceControlURLs), Secret: cfg.AntiperekrutInternalSecret,
+		Enabled: true, URLs: []string(cfg.AdvServiceControlURLs),
 		RequestTimeout: cfg.AntiperekrutControlTimeout, RetryInitial: cfg.AntiperekrutRetryInitial, RetryMax: cfg.AntiperekrutRetryMax,
 	}, startupEvent, botNotifier.SendTextMessageToBot)
 	if err != nil {
@@ -237,8 +237,8 @@ func validateConfig(cfg *config.AdvConfig) error {
 	if cfg.AntiperekrutTickOffset < 0 || cfg.AntiperekrutTickOffset >= time.Minute {
 		return fmt.Errorf("ANTIPEREKRUT_TICK_OFFSET must be in [0,1m)")
 	}
-	if strings.TrimSpace(cfg.AntiperekrutInternalSecret) == "" || len(cfg.AdvServiceControlURLs) == 0 {
-		return fmt.Errorf("antiperekrut requires ANTIPEREKRUT_INTERNAL_SECRET and ADV_SERVICE_CONTROL_URLS")
+	if len(cfg.AdvServiceControlURLs) == 0 {
+		return fmt.Errorf("antiperekrut requires ADV_SERVICE_CONTROL_URLS")
 	}
 	if strings.TrimSpace(cfg.BotBaseURL) == "" || strings.TrimSpace(cfg.BotInternalSecret) == "" {
 		return fmt.Errorf("antiperekrut requires BOT_BASE_URL and BOT_INTERNAL_SECRET")
