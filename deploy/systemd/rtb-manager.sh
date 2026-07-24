@@ -23,19 +23,20 @@ DATA_PIPELINE_SERVICES=(
     "rtb-clickhouse-loader"
 )
 
-# BidEngine и ADV управляются вместе
-BIDDING_SERVICES=(
-    "rtb-bid-engine"
-    "rtb-adv"
-)
-
+# Порядок запуска Core: сначала внутренние зависимости, затем входные адаптеры.
 CORE_SERVICES=(
-    "${BIDDING_SERVICES[@]}"
-    "rtb-router"
+    "rtb-adv"
+    "rtb-bid-engine"
     "rtb-orchestrator"
+    "rtb-router"
     "rtb-spp-adapter"
     "rtb-adm-adapter"
 )
+
+# HTTP listener ADV. Любой HTTP-ответ, включая 404 на /, означает, что порт уже слушается.
+ADV_HTTP_URL="${ADV_HTTP_URL:-http://127.0.0.1:8101/}"
+ADV_WAIT_TIMEOUT_SECONDS="${ADV_WAIT_TIMEOUT_SECONDS:-120}"
+SERVICE_STOP_TIMEOUT_SECONDS="${SERVICE_STOP_TIMEOUT_SECONDS:-20}"
 
 ALL_SERVICES=(
     "${DATA_PIPELINE_SERVICES[@]}"
@@ -58,11 +59,50 @@ start_services() {
     done
 }
 
+stop_service() {
+    local service="$1"
+
+    echo "Stopping $service..."
+
+    if timeout "${SERVICE_STOP_TIMEOUT_SECONDS}s" systemctl stop "$service"; then
+        return 0
+    fi
+
+    echo "⚠️ $service did not stop within ${SERVICE_STOP_TIMEOUT_SECONDS}s; forcing SIGKILL..."
+    systemctl kill --kill-who=all --signal=SIGKILL "$service" 2>/dev/null || true
+    timeout 5s systemctl stop "$service" 2>/dev/null || true
+    systemctl reset-failed "$service" 2>/dev/null || true
+}
+
 stop_services() {
     for service in "$@"; do
-        echo "Stopping $service..."
-        systemctl stop "$service" || true
+        stop_service "$service"
     done
+}
+
+wait_for_adv() {
+    local deadline=$((SECONDS + ADV_WAIT_TIMEOUT_SECONDS))
+
+    echo "⏳ Waiting for ADV HTTP listener: $ADV_HTTP_URL"
+
+    while (( SECONDS < deadline )); do
+        if systemctl is-active --quiet rtb-adv; then
+            # Не используем --fail: 404 на корневом пути тоже подтверждает,
+            # что HTTP listener ADV уже поднялся и принимает соединения.
+            if curl --silent --show-error --max-time 2 \
+                --output /dev/null "$ADV_HTTP_URL" 2>/dev/null; then
+                echo "✅ ADV HTTP listener is ready"
+                return 0
+            fi
+        fi
+
+        sleep 1
+    done
+
+    echo "❌ ADV HTTP listener did not become ready within ${ADV_WAIT_TIMEOUT_SECONDS}s"
+    systemctl status rtb-adv --no-pager || true
+    journalctl -u rtb-adv -n 50 --no-pager || true
+    return 1
 }
 
 show_status() {
@@ -148,20 +188,40 @@ case "$1" in
         cd "$PROJECT_DIR"
         echo "📥 Updating Data Pipeline from git..."
         git pull
-        $0 restartD
+        "$0" restartD
         ;;
 
     # --- Core RTB Services (C) ---
     startC|start-core)
         check_project_dir
         echo "🚀 Starting Core RTB Services..."
-        start_services "${CORE_SERVICES[@]}"
+
+        # ADV должен первым поднять HTTP control endpoint :8101.
+        start_services "rtb-adv"
+        wait_for_adv
+
+        # После готовности ADV запускаем остальные сервисы по зависимостям.
+        start_services "rtb-bid-engine"
+        start_services "rtb-orchestrator"
+        start_services "rtb-router"
+        start_services "rtb-spp-adapter"
+        start_services "rtb-adm-adapter"
+
         echo "✅ Core services started"
         ;;
 
     stopC|stop-core)
         echo "🛑 Stopping Core RTB Services..."
-        stop_services "${CORE_SERVICES[@]}"
+
+        # Останавливаем в обратном порядке: сначала источники новых запросов,
+        # затем внутренние сервисы, ADV — последним.
+        stop_services "rtb-adm-adapter"
+        stop_services "rtb-spp-adapter"
+        stop_services "rtb-router"
+        stop_services "rtb-orchestrator"
+        stop_services "rtb-bid-engine"
+        stop_services "rtb-adv"
+
         echo "✅ Core services stopped"
         ;;
 
@@ -227,20 +287,20 @@ case "$1" in
             echo "⚠️ firehol_level1.netset not found"
         fi
 
-        $0 restartC
+        "$0" restartC
         ;;
 
     # --- Full System (всё вместе) ---
     start-all)
-        $0 startD
+        "$0" startD
         sleep 3
-        $0 startC
+        "$0" startC
         ;;
 
     stop-all)
-        $0 stopC
+        "$0" stopC
         sleep 2
-        $0 stopD
+        "$0" stopD
         ;;
 
     restart-all)
@@ -305,9 +365,9 @@ case "$1" in
         ;;
 
     deploy)
-        $0 build
-        $0 start-all
-        $0 status
+        "$0" build
+        "$0" start-all
+        "$0" status
         ;;
 
     update)
@@ -315,8 +375,8 @@ case "$1" in
         echo "📥 Updating all services from git..."
         cd "$PROJECT_DIR"
         git pull
-        $0 build
-        $0 restart-all
+        "$0" build
+        "$0" restart-all
         ;;
 
     # --- Help ---
