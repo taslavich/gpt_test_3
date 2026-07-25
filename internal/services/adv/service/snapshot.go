@@ -398,7 +398,7 @@ func loadCreativesBatch(ctx context.Context, db *sql.DB, campaignIDs []string, c
 	}
 	rows, err := db.QueryContext(ctx, `
 		SELECT id::text, campaign_id::text, trackers_macros, w, h,
-		       link, name, creative_name, title, description
+		       adm, file_format, banner_type, name, creative_name, title, description
 		FROM creatives
 		WHERE campaign_id::text = ANY($1)`, pq.Array(campaignIDs))
 	if err != nil {
@@ -407,10 +407,10 @@ func loadCreativesBatch(ctx context.Context, db *sql.DB, campaignIDs []string, c
 	defer rows.Close()
 	creativeIDs := make(map[string]map[string]struct{}, len(campaigns))
 	for rows.Next() {
-		var id, campaignID, adm, name, creativeName, title, description sql.NullString
+		var id, campaignID, adm, fileFormat, bannerType, name, creativeName, title, description sql.NullString
 		var trackers []byte
 		var w, h sql.NullInt64
-		if err := rows.Scan(&id, &campaignID, &trackers, &w, &h, &adm, &name, &creativeName, &title, &description); err != nil {
+		if err := rows.Scan(&id, &campaignID, &trackers, &w, &h, &adm, &fileFormat, &bannerType, &name, &creativeName, &title, &description); err != nil {
 			return fmt.Errorf("scan creative: %w", err)
 		}
 		campaign := campaigns[strings.TrimSpace(campaignID.String)]
@@ -451,6 +451,7 @@ func loadCreativesBatch(ctx context.Context, db *sql.DB, campaignIDs []string, c
 		}
 		campaign.Creatives = append(campaign.Creatives, &Creative{
 			ID: creativeID, CampaignID: campaign.ID, ADMURL: admURL,
+			FileFormat: strings.TrimSpace(fileFormat.String), BannerType: strings.TrimSpace(bannerType.String),
 			TrackersMacros: macros, W: creativeW, H: creativeH, Name: name.String,
 			CreativeName: creativeName.String, Title: title.String, Description: description.String,
 		})

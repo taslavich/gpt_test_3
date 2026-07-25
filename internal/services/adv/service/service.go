@@ -76,6 +76,8 @@ type Creative struct {
 	ID             string
 	CampaignID     string
 	ADMURL         string
+	FileFormat     string
+	BannerType     string
 	TrackersMacros map[string]bool
 	W              int
 	H              int
@@ -313,6 +315,8 @@ func cloneAndValidateSnapshot(src *Snapshot) (*Snapshot, error) {
 			cc.ID = strings.TrimSpace(cc.ID)
 			cc.CampaignID = strings.TrimSpace(cc.CampaignID)
 			cc.ADMURL = strings.TrimSpace(cc.ADMURL)
+			cc.FileFormat = strings.TrimSpace(cc.FileFormat)
+			cc.BannerType = strings.TrimSpace(cc.BannerType)
 			if cc.ID == "" || cc.ADMURL == "" {
 				return nil, fmt.Errorf("campaign %s has invalid creative", clone.ID)
 			}
@@ -1019,6 +1023,18 @@ func (s *AuctionService) evaluateCampaign(
 		)
 		return candidate{}, false, nil
 	}
+	if !effectivePriceMeetsBidFloor(effective, imp) {
+		logf(
+			"[ADV][CAMPAIGN_REJECT] request_id=%q imp_id=%q campaign_id=%q user_id=%q reason=effective_price_below_bidfloor effective_price=%.12f bidfloor=%.12f",
+			requestID,
+			impID,
+			campaignID,
+			userID,
+			effective,
+			float64(imp.GetBidfloor()),
+		)
+		return candidate{}, false, nil
+	}
 
 	logf(
 		"[ADV][CAMPAIGN_ELIGIBLE] request_id=%q imp_id=%q campaign_id=%q user_id=%q creatives=%d base_price=%.12f charge_price=%.12f deduction=%.12f effective_price=%.12f campaign_remaining=%.12f user_remaining=%.12f",
@@ -1035,6 +1051,10 @@ func (s *AuctionService) evaluateCampaign(
 		userRemaining,
 	)
 	return candidate{campaign: campaign, creatives: creatives, chargePrice: chargePrice, effectivePrice: effective}, true, nil
+}
+
+func effectivePriceMeetsBidFloor(effective float64, imp *ortb.Imp) bool {
+	return imp != nil && effective >= float64(imp.GetBidfloor())
 }
 
 func (s *AuctionService) cachedUserBalance(ctx context.Context, snapshot *Snapshot, userID string, cache map[string]cachedUserBalance) cachedUserBalance {
@@ -1298,6 +1318,19 @@ func logCreativeRejections(
 					creative.H,
 					formatBannerSizes(bannerSizes(imp)),
 				)
+				continue
+			}
+			if !bannerCreativeMatchesMimes(creative, imp) {
+				logf(
+					"[ADV][CREATIVE_REJECT] request_id=%q imp_id=%q campaign_id=%q creative_id=%q reason=banner_mime_mismatch banner_type=%q creative_file_format=%q requested_mimes=%q",
+					requestID,
+					impID,
+					campaign.ID,
+					creative.ID,
+					creative.BannerType,
+					creative.FileFormat,
+					strings.Join(imp.GetBanner().GetMimes(), ","),
+				)
 			}
 		}
 	}
@@ -1388,11 +1421,30 @@ func matchingCreatives(creatives []*Creative, imp *ortb.Imp, format string) []*C
 		if creative == nil || creative.W <= 0 || creative.H <= 0 {
 			continue
 		}
-		if sizes[[2]int{creative.W, creative.H}] {
+		if sizes[[2]int{creative.W, creative.H}] && bannerCreativeMatchesMimes(creative, imp) {
 			out = append(out, creative)
 		}
 	}
 	return out
+}
+
+func bannerCreativeMatchesMimes(creative *Creative, imp *ortb.Imp) bool {
+	if creative == nil || imp == nil || imp.GetBanner() == nil {
+		return false
+	}
+	if creative.BannerType == "iframe" {
+		return true
+	}
+	mimes := imp.GetBanner().GetMimes()
+	if len(mimes) == 0 {
+		return true
+	}
+	for _, mime := range mimes {
+		if creative.FileFormat == mime {
+			return true
+		}
+	}
+	return false
 }
 
 func bannerSizes(imp *ortb.Imp) map[[2]int]bool {

@@ -240,6 +240,45 @@ func TestMatchingCreativesDoesNotMutateCampaign(t *testing.T) {
 	}
 }
 
+func TestMatchingBannerCreativesFiltersImageMIMEAndAllowsIframe(t *testing.T) {
+	w, h := int32(300), int32(250)
+	imp := &ortb.Imp{Banner: &ortb.Banner{
+		W:     &w,
+		H:     &h,
+		Mimes: []string{"image/png"},
+	}}
+
+	png := &Creative{ID: "png", ADMURL: "png", W: 300, H: 250, BannerType: "img", FileFormat: "image/png"}
+	gif := &Creative{ID: "gif", ADMURL: "gif", W: 300, H: 250, BannerType: "img", FileFormat: "image/gif"}
+	iframe := &Creative{ID: "iframe", ADMURL: "iframe", W: 300, H: 250, BannerType: "iframe", FileFormat: "text/html"}
+
+	matched := matchingCreatives([]*Creative{png, gif, iframe}, imp, "BAN")
+	if len(matched) != 2 || matched[0] != png || matched[1] != iframe {
+		t.Fatalf("unexpected MIME-filtered creatives: %#v", matched)
+	}
+
+	imp.Banner.Mimes = nil
+	matched = matchingCreatives([]*Creative{png, gif}, imp, "BAN")
+	if len(matched) != 2 {
+		t.Fatalf("empty request mimes must not filter image creatives: %#v", matched)
+	}
+}
+
+func TestEffectivePriceMeetsBidFloor(t *testing.T) {
+	floor := float32(0.75)
+	imp := &ortb.Imp{Bidfloor: &floor}
+
+	if effectivePriceMeetsBidFloor(0.74, imp) {
+		t.Fatal("effective price below bidfloor must be rejected")
+	}
+	if !effectivePriceMeetsBidFloor(0.75, imp) {
+		t.Fatal("effective price equal to bidfloor must be accepted")
+	}
+	if !effectivePriceMeetsBidFloor(0.76, imp) {
+		t.Fatal("effective price above bidfloor must be accepted")
+	}
+}
+
 func TestWhitelistBlacklistMissingValue(t *testing.T) {
 	white := filterV2.NewFilters(true, true, []string{"SE"})
 	black := filterV2.NewFilters(true, false, []string{"SE"})
