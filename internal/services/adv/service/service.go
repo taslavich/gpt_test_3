@@ -4,10 +4,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"html"
 	"log"
 	"math"
 	"math/rand"
 	"net/url"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -1359,7 +1361,15 @@ func (s *AuctionService) buildBid(req *ortb.BidRequest, imp *ortb.Imp, campaign 
 	if s == nil || imp == nil || campaign == nil || creative == nil || bidPrice <= 0 || math.IsNaN(bidPrice) || math.IsInf(bidPrice, 0) {
 		return nil
 	}
-	originalADM := appendTrackerMacros(creative.ADMURL, creative.TrackersMacros, campaign.ID, creative.ID, req)
+	originalADM := applyTrackerMacrosToADM(
+		creative.ADMURL,
+		creative.TrackersMacros,
+		campaign.Format,
+		creative.BannerType,
+		campaign.ID,
+		creative.ID,
+		req,
+	)
 	if strings.TrimSpace(originalADM) == "" {
 		return nil
 	}
@@ -1688,6 +1698,64 @@ func nonEmptyStringPtr(value string) *string {
 		return nil
 	}
 	return &value
+}
+
+var bannerAnchorHrefPattern = regexp.MustCompile(`(?is)(<a\b[^>]*\bhref\s*=\s*)(?:"([^"]*)"|'([^']*)')`)
+
+func applyTrackerMacrosToADM(
+	adm string,
+	macros map[string]bool,
+	campaignFormat, bannerType, campaignID, creativeID string,
+	req *ortb.BidRequest,
+) string {
+	if len(macros) == 0 {
+		return adm
+	}
+	if normalizeFormat(campaignFormat) != "BAN" {
+		return appendTrackerMacros(adm, macros, campaignID, creativeID, req)
+	}
+
+	switch strings.ToLower(strings.TrimSpace(bannerType)) {
+	case "iframe":
+		return adm
+	case "img":
+		return appendTrackerMacrosToBannerHref(adm, macros, campaignID, creativeID, req)
+	default:
+		return adm
+	}
+}
+
+func appendTrackerMacrosToBannerHref(
+	adm string,
+	macros map[string]bool,
+	campaignID, creativeID string,
+	req *ortb.BidRequest,
+) string {
+	match := bannerAnchorHrefPattern.FindStringSubmatchIndex(adm)
+	if match == nil {
+		return adm
+	}
+
+	hrefStart, hrefEnd := match[4], match[5]
+	quote := byte('"')
+	if hrefStart < 0 || hrefEnd < 0 {
+		hrefStart, hrefEnd = match[6], match[7]
+		quote = '\''
+	}
+	if hrefStart < 0 || hrefEnd < 0 {
+		return adm
+	}
+
+	href := html.UnescapeString(adm[hrefStart:hrefEnd])
+	updatedHref := appendTrackerMacros(href, macros, campaignID, creativeID, req)
+	if updatedHref == href {
+		return adm
+	}
+	updatedHref = html.EscapeString(updatedHref)
+	if quote == '\'' {
+		updatedHref = strings.ReplaceAll(updatedHref, "&#39;", "&apos;")
+	}
+	return adm[:hrefStart] + updatedHref + adm[hrefEnd:]
 }
 
 func appendTrackerMacros(admURL string, macros map[string]bool, campaignID, creativeID string, req *ortb.BidRequest) string {

@@ -397,10 +397,12 @@ func loadCreativesBatch(ctx context.Context, db *sql.DB, campaignIDs []string, c
 		return nil
 	}
 	rows, err := db.QueryContext(ctx, `
-		SELECT id::text, campaign_id::text, trackers_macros, w, h,
-		       adm, file_format, banner_type, name, creative_name, title, description
-		FROM creatives
-		WHERE campaign_id::text = ANY($1)`, pq.Array(campaignIDs))
+		SELECT cr.id::text, cr.campaign_id::text, cr.trackers_macros, cr.w, cr.h,
+		       cr.adm, COALESCE(ci.mime_type, cr.file_format), cr.banner_type,
+		       cr.name, cr.creative_name, cr.title, cr.description
+		FROM creatives cr
+		LEFT JOIN creative_images ci ON ci.creative_id=cr.id
+		WHERE cr.campaign_id::text = ANY($1)`, pq.Array(campaignIDs))
 	if err != nil {
 		return fmt.Errorf("batch query creatives: %w", err)
 	}

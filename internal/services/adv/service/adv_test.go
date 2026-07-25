@@ -1,8 +1,10 @@
 package auction
 
 import (
+	"html"
 	"math"
 	"net/url"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -326,6 +328,82 @@ func TestPacingSlotTargetScalesPartialCurrentSlot(t *testing.T) {
 	want := 60.0 / 2.2 * 0.2
 	if math.Abs(got-want) > 1e-12 {
 		t.Fatalf("got slot target %v, want %v", got, want)
+	}
+}
+
+func TestBuildBidBannerImageAppendsTrackerMacrosOnlyToAnchorHref(t *testing.T) {
+	service := &AuctionService{}
+	impID := "imp-1"
+	reqID := "request-1"
+	siteID := "site id&1"
+	req := &ortb.BidRequest{Id: &reqID, Site: &ortb.Site{Id: &siteID}}
+	imp := &ortb.Imp{Id: &impID}
+	campaign := &Campaign{ID: "campaign-1", Format: "BAN", BasePrice: 2.5}
+	adm := `<a href="https://click.example/path?existing=1&amp;source=banner" target="_blank"><img src="https://media.example/image.png"></a>`
+	creative := &Creative{
+		ID:             "creative-1",
+		ADMURL:         adm,
+		BannerType:     "img",
+		TrackersMacros: map[string]bool{"site_id": true},
+		W:              300,
+		H:              250,
+	}
+
+	bid := service.buildBid(req, imp, campaign, creative, 1)
+	if bid == nil {
+		t.Fatal("buildBid returned nil")
+	}
+	result := bid.GetAdm()
+	match := bannerAnchorHrefPattern.FindStringSubmatch(result)
+	if len(match) != 4 {
+		t.Fatalf("banner anchor href not found in ADM: %q", result)
+	}
+	href := match[2]
+	if href == "" {
+		href = match[3]
+	}
+	parsed, err := url.Parse(html.UnescapeString(href))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := parsed.Query().Get("site_id"); got != siteID {
+		t.Fatalf("site_id macro not added to href: got %q in %q", got, result)
+	}
+	if got := parsed.Query().Get("existing"); got != "1" {
+		t.Fatalf("existing href query lost: got %q in %q", got, result)
+	}
+	if got := parsed.Query().Get("source"); got != "banner" {
+		t.Fatalf("HTML-escaped href query lost: got %q in %q", got, result)
+	}
+	if !strings.Contains(result, `src="https://media.example/image.png"`) {
+		t.Fatalf("image src or ADM markup was modified: %q", result)
+	}
+}
+
+func TestBuildBidBannerIframeDoesNotAppendTrackerMacros(t *testing.T) {
+	service := &AuctionService{}
+	impID := "imp-1"
+	reqID := "request-1"
+	siteID := "site-1"
+	req := &ortb.BidRequest{Id: &reqID, Site: &ortb.Site{Id: &siteID}}
+	imp := &ortb.Imp{Id: &impID}
+	campaign := &Campaign{ID: "campaign-1", Format: "BAN", BasePrice: 2.5}
+	adm := `<iframe src="https://iframe.example/render?existing=1" width="300" height="250"></iframe>`
+	creative := &Creative{
+		ID:             "creative-1",
+		ADMURL:         adm,
+		BannerType:     "iframe",
+		TrackersMacros: map[string]bool{"site_id": true},
+		W:              300,
+		H:              250,
+	}
+
+	bid := service.buildBid(req, imp, campaign, creative, 1)
+	if bid == nil {
+		t.Fatal("buildBid returned nil")
+	}
+	if got := bid.GetAdm(); got != adm {
+		t.Fatalf("iframe ADM must remain unchanged: got %q want %q", got, adm)
 	}
 }
 
