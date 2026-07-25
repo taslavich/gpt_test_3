@@ -78,6 +78,7 @@ type Creative struct {
 	ID             string
 	CampaignID     string
 	ADMURL         string
+	ImageURL       string
 	FileFormat     string
 	BannerType     string
 	TrackersMacros map[string]bool
@@ -92,6 +93,7 @@ type Creative struct {
 type Campaign struct {
 	ID                 string
 	UserID             string
+	BrandName          string
 	Status             string
 	PricingModel       string
 	Format             string
@@ -285,6 +287,7 @@ func cloneAndValidateSnapshot(src *Snapshot) (*Snapshot, error) {
 		if clone.StartTS.IsZero() || clone.EndTS.IsZero() || !clone.StartTS.Before(clone.EndTS) {
 			return nil, fmt.Errorf("campaign %s has invalid time window", clone.ID)
 		}
+		clone.BrandName = strings.TrimSpace(clone.BrandName)
 		clone.StartTS = clone.StartTS.UTC()
 		clone.EndTS = clone.EndTS.UTC()
 		clone.ActiveIntervals = make([]TimeRange, 0, len(campaign.ActiveIntervals))
@@ -317,6 +320,7 @@ func cloneAndValidateSnapshot(src *Snapshot) (*Snapshot, error) {
 			cc.ID = strings.TrimSpace(cc.ID)
 			cc.CampaignID = strings.TrimSpace(cc.CampaignID)
 			cc.ADMURL = strings.TrimSpace(cc.ADMURL)
+			cc.ImageURL = strings.TrimSpace(cc.ImageURL)
 			cc.FileFormat = strings.TrimSpace(cc.FileFormat)
 			cc.BannerType = strings.TrimSpace(cc.BannerType)
 			if cc.ID == "" || cc.ADMURL == "" {
@@ -693,7 +697,7 @@ func (s *AuctionService) Auction(ctx context.Context, req *ortb.BidRequest, now 
 		return &AuctionOutcome{WinnerUserIDs: winnerUsers, WinnerBasePrices: winnerBasePrices}, nil
 	}
 
-	responseID := uuid.NewString()
+	responseID := strings.TrimSpace(req.GetId())
 	currency := "USD"
 	logf(
 		"[ADV][AUCTION_SUCCESS] request_id=%q response_id=%q bids=%d winner_user_ids=%d",
@@ -710,7 +714,7 @@ func (s *AuctionService) Auction(ctx context.Context, req *ortb.BidRequest, now 
 }
 
 func validAuctionInput(req *ortb.BidRequest, impIDUUID map[string]string) bool {
-	if req == nil || len(req.GetImp()) == 0 || len(impIDUUID) == 0 {
+	if req == nil || strings.TrimSpace(req.GetId()) == "" || len(req.GetImp()) == 0 || len(impIDUUID) == 0 {
 		return false
 	}
 	seen := make(map[string]struct{}, len(req.GetImp()))
@@ -1000,7 +1004,7 @@ func (s *AuctionService) evaluateCampaign(
 		}
 	}
 
-	creatives := matchingCreatives(campaign.Creatives, imp, requestedFormat)
+	creatives := matchingCreatives(campaign, imp, requestedFormat)
 	if len(creatives) == 0 {
 		logCreativeRejections(logf, requestID, impID, campaign, imp, requestedFormat)
 		return candidate{}, false, nil
@@ -1361,7 +1365,7 @@ func (s *AuctionService) buildBid(req *ortb.BidRequest, imp *ortb.Imp, campaign 
 	if s == nil || imp == nil || campaign == nil || creative == nil || bidPrice <= 0 || math.IsNaN(bidPrice) || math.IsInf(bidPrice, 0) {
 		return nil
 	}
-	originalADM := applyTrackerMacrosToADM(
+	clickURL := applyTrackerMacrosToADM(
 		creative.ADMURL,
 		creative.TrackersMacros,
 		campaign.Format,
@@ -1370,22 +1374,33 @@ func (s *AuctionService) buildBid(req *ortb.BidRequest, imp *ortb.Imp, campaign 
 		creative.ID,
 		req,
 	)
-	if strings.TrimSpace(originalADM) == "" {
+	if strings.TrimSpace(clickURL) == "" {
 		return nil
 	}
-	id, impID, cid, crid := creative.ID, imp.GetId(), campaign.ID, creative.ID
+
+	adm := clickURL
+	format := normalizeFormat(campaign.Format)
+	if format == constants.NAT || format == constants.IPP {
+		nativeADM, ok := buildNativeADM(imp, campaign, creative, clickURL)
+		if !ok {
+			return nil
+		}
+		adm = nativeADM
+	}
+
+	id, impID, cid, crid := uuid.NewString(), imp.GetId(), campaign.ID, creative.ID
 	price := float32(bidPrice)
 
 	bid := &ortb.Bid{
 		Id:    &id,
 		Impid: &impID,
 		Price: &price,
-		Adm:   &originalADM,
+		Adm:   &adm,
 		Cid:   &cid,
 		Crid:  &crid,
 	}
 
-	if normalizeFormat(campaign.Format) == constants.BAN {
+	if format == constants.BAN {
 		w, h := int32(creative.W), int32(creative.H)
 		bid.W = &w
 		bid.H = &h
@@ -1412,8 +1427,28 @@ func campaignActiveAt(campaign *Campaign, now time.Time) bool {
 	return false
 }
 
-func matchingCreatives(creatives []*Creative, imp *ortb.Imp, format string) []*Creative {
-	if normalizeFormat(format) != "BAN" {
+func matchingCreatives(campaign *Campaign, imp *ortb.Imp, format string) []*Creative {
+	if campaign == nil {
+		return nil
+	}
+	creatives := campaign.Creatives
+	normalized := normalizeFormat(format)
+	if normalized == constants.NAT || normalized == constants.IPP {
+		if _, ok := parseNativeRequest(imp); !ok {
+			return nil
+		}
+		out := make([]*Creative, 0, len(creatives))
+		for _, creative := range creatives {
+			if creative == nil || strings.TrimSpace(creative.ID) == "" || strings.TrimSpace(creative.ADMURL) == "" {
+				continue
+			}
+			if _, ok := buildNativeADM(imp, campaign, creative, creative.ADMURL); ok {
+				out = append(out, creative)
+			}
+		}
+		return out
+	}
+	if normalized != constants.BAN {
 		out := make([]*Creative, 0, len(creatives))
 		for _, creative := range creatives {
 			if creative != nil && strings.TrimSpace(creative.ID) != "" && strings.TrimSpace(creative.ADMURL) != "" {
@@ -1480,7 +1515,7 @@ func impressionMatchesFormat(imp *ortb.Imp, format string) bool {
 	}
 	normalized := normalizeFormat(format)
 	switch normalized {
-	case "BAN", "IPP":
+	case "BAN":
 		banner := imp.GetBanner()
 		if banner == nil || imp.GetNative() != nil {
 			return false
@@ -1492,7 +1527,7 @@ func impressionMatchesFormat(imp *ortb.Imp, format string) bool {
 			}
 		}
 		return false
-	case "NAT":
+	case "NAT", "IPP":
 		return imp.GetNative() != nil && imp.GetBanner() == nil
 	case "POP":
 		// OpenRTB 2.5 has no dedicated popunder object. In this project POP is
@@ -1511,7 +1546,7 @@ func normalizeFormat(value string) string {
 		return "BAN"
 	case "NAT", "NATIVE":
 		return "NAT"
-	case "IPP", "IN-PAGE-PUSH", "IN_PAGE_PUSH":
+	case "IPP", "PUSH", "IN-PAGE-PUSH", "IN_PAGE_PUSH":
 		return "IPP"
 	default:
 		return ""

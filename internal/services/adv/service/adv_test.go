@@ -1,6 +1,7 @@
 package auction
 
 import (
+	"encoding/json"
 	"html"
 	"math"
 	"net/url"
@@ -9,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
 	"gitlab.com/twinbid-exchange/RTB-exchange/internal/constants"
 	filterV2 "gitlab.com/twinbid-exchange/RTB-exchange/internal/filterV2"
 	ortb "gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/proto/types/ortb_V2_5"
@@ -233,7 +235,7 @@ func TestMatchingCreativesDoesNotMutateCampaign(t *testing.T) {
 	first := &Creative{ID: "first", W: 300, H: 250}
 	second := &Creative{ID: "second", W: 728, H: 90}
 	original := []*Creative{first, second}
-	matched := matchingCreatives(original, &ortb.Imp{Banner: &ortb.Banner{W: &w, H: &h}}, "BAN")
+	matched := matchingCreatives(&Campaign{Creatives: original}, &ortb.Imp{Banner: &ortb.Banner{W: &w, H: &h}}, "BAN")
 	if len(matched) != 1 || matched[0] != first {
 		t.Fatalf("unexpected match: %#v", matched)
 	}
@@ -254,13 +256,13 @@ func TestMatchingBannerCreativesFiltersImageMIMEAndAllowsIframe(t *testing.T) {
 	gif := &Creative{ID: "gif", ADMURL: "gif", W: 300, H: 250, BannerType: "img", FileFormat: "image/gif"}
 	iframe := &Creative{ID: "iframe", ADMURL: "iframe", W: 300, H: 250, BannerType: "iframe", FileFormat: "text/html"}
 
-	matched := matchingCreatives([]*Creative{png, gif, iframe}, imp, "BAN")
+	matched := matchingCreatives(&Campaign{Creatives: []*Creative{png, gif, iframe}}, imp, "BAN")
 	if len(matched) != 2 || matched[0] != png || matched[1] != iframe {
 		t.Fatalf("unexpected MIME-filtered creatives: %#v", matched)
 	}
 
 	imp.Banner.Mimes = nil
-	matched = matchingCreatives([]*Creative{png, gif}, imp, "BAN")
+	matched = matchingCreatives(&Campaign{Creatives: []*Creative{png, gif}}, imp, "BAN")
 	if len(matched) != 2 {
 		t.Fatalf("empty request mimes must not filter image creatives: %#v", matched)
 	}
@@ -491,21 +493,14 @@ func TestSnapshotDeepClone(t *testing.T) {
 	}
 }
 
-func TestBannerAndIPPFormatsRequireDistinctRouterMarker(t *testing.T) {
+func TestBannerRequiresRouterMarkerAndDoesNotMatchNativeFormats(t *testing.T) {
 	banner := &ortb.Banner{Ext: []string{constants.ADVImpressionFormatMarkerPrefix + constants.BAN}}
 	imp := &ortb.Imp{Banner: banner}
 	if !impressionMatchesFormat(imp, constants.BAN) {
 		t.Fatal("BAN marker must match BAN")
 	}
-	if impressionMatchesFormat(imp, constants.IPP) {
-		t.Fatal("BAN marker must not match IPP")
-	}
-	banner.Ext = []string{constants.ADVImpressionFormatMarkerPrefix + constants.IPP}
-	if !impressionMatchesFormat(imp, constants.IPP) {
-		t.Fatal("IPP marker must match IPP")
-	}
-	if impressionMatchesFormat(imp, constants.BAN) {
-		t.Fatal("IPP marker must not match BAN")
+	if impressionMatchesFormat(imp, constants.IPP) || impressionMatchesFormat(imp, constants.NAT) {
+		t.Fatal("banner impression must not match native-response formats")
 	}
 }
 
@@ -618,13 +613,11 @@ func TestCreativeDimensionsRequiredOnlyForBanner(t *testing.T) {
 	}
 }
 
-func TestMatchingCreativesIgnoresDimensionsOutsideBanner(t *testing.T) {
+func TestPopCreativeIgnoresDimensions(t *testing.T) {
 	creative := &Creative{ID: "cr", ADMURL: "https://example.test/creative"}
-	for _, format := range []string{"NAT", "IPP", "POP"} {
-		matched := matchingCreatives([]*Creative{creative}, &ortb.Imp{}, format)
-		if len(matched) != 1 || matched[0] != creative {
-			t.Fatalf("%s creative without dimensions must remain eligible", format)
-		}
+	matched := matchingCreatives(&Campaign{Format: "POP", Creatives: []*Creative{creative}}, &ortb.Imp{}, "POP")
+	if len(matched) != 1 || matched[0] != creative {
+		t.Fatal("POP creative without dimensions must remain eligible")
 	}
 }
 
@@ -664,5 +657,140 @@ func TestExtractRequestFilterValuesUsesLanguageAndUADevice(t *testing.T) {
 	}
 	if values.deviceType == nil || *values.deviceType != "mobile" {
 		t.Fatalf("device type must be derived from UA: got %v", values.deviceType)
+	}
+}
+
+func TestBuildNativeADMUsesRequestedAssetIDsAndRules(t *testing.T) {
+	raw := `{"native":{"ver":"1.2","assets":[{"id":100,"required":1,"title":{"len":5}},{"id":101,"required":1,"data":{"type":1,"len":80}},{"id":103,"required":1,"data":{"type":2,"len":4}},{"id":102,"required":1,"img":{"type":3,"w":999,"h":999,"wmin":300,"hmin":250}}]}}`
+	imp := nativeTestImp(raw)
+	campaign := &Campaign{Format: "NAT", BrandName: "Brand"}
+	creative := &Creative{
+		ID: "creative", ADMURL: "https://click.example", ImageURL: "https://cdn.example/image.jpg",
+		FileFormat: "image/jpg", W: 300, H: 250, Title: "Long title", Description: "Description",
+	}
+
+	adm, ok := buildNativeADM(imp, campaign, creative, creative.ADMURL)
+	if !ok {
+		t.Fatal("native ADM was not built")
+	}
+	var response nativeResponseEnvelope
+	if err := json.Unmarshal([]byte(adm), &response); err != nil {
+		t.Fatal(err)
+	}
+	if response.Native.Ver != "1.2" || response.Native.Link.URL != creative.ADMURL {
+		t.Fatalf("unexpected native response header: %#v", response.Native)
+	}
+	if len(response.Native.Assets) != 4 {
+		t.Fatalf("assets=%d want 4", len(response.Native.Assets))
+	}
+	if string(response.Native.Assets[0].ID) != "100" || response.Native.Assets[0].Title.Text != "Long " {
+		t.Fatalf("title asset mismatch: %#v", response.Native.Assets[0])
+	}
+	if string(response.Native.Assets[1].ID) != "101" || response.Native.Assets[1].Data.Value != "Brand" {
+		t.Fatalf("brand asset mismatch: %#v", response.Native.Assets[1])
+	}
+	if string(response.Native.Assets[2].ID) != "103" || response.Native.Assets[2].Data.Value != "Desc" {
+		t.Fatalf("description asset mismatch: %#v", response.Native.Assets[2])
+	}
+	image := response.Native.Assets[3]
+	if string(image.ID) != "102" || image.Img.URL != creative.ImageURL || image.Img.W != 300 || image.Img.H != 250 {
+		t.Fatalf("image asset mismatch: %#v", image)
+	}
+}
+
+func TestNativeUnknownRequiredDataRejectsCreative(t *testing.T) {
+	imp := nativeTestImp(`{"native":{"assets":[{"id":7,"required":1,"data":{"type":7,"len":80}}]}}`)
+	campaign := &Campaign{Format: "NAT", BrandName: "Brand"}
+	creative := &Creative{ID: "creative", ADMURL: "https://click.example"}
+	if _, ok := buildNativeADM(imp, campaign, creative, creative.ADMURL); ok {
+		t.Fatal("unknown required data type must reject creative")
+	}
+}
+
+func TestNativeUnknownOptionalDataReturnsEmptyValue(t *testing.T) {
+	imp := nativeTestImp(`{"native":{"assets":[{"id":7,"required":0,"data":{"type":7,"len":80}}]}}`)
+	campaign := &Campaign{Format: "IPP"}
+	creative := &Creative{ID: "creative", ADMURL: "https://click.example"}
+	adm, ok := buildNativeADM(imp, campaign, creative, creative.ADMURL)
+	if !ok {
+		t.Fatal("optional unknown data must not reject creative")
+	}
+	var response nativeResponseEnvelope
+	if err := json.Unmarshal([]byte(adm), &response); err != nil {
+		t.Fatal(err)
+	}
+	if len(response.Native.Assets) != 1 || response.Native.Assets[0].Data == nil || response.Native.Assets[0].Data.Value != "" {
+		t.Fatalf("unexpected optional data response: %#v", response.Native.Assets)
+	}
+}
+
+func TestNativeImageUsesOnlyMinimumDimensionsAndAllowedFormats(t *testing.T) {
+	imp := nativeTestImp(`{"native":{"assets":[{"id":2,"required":1,"img":{"type":3,"w":1000,"h":1000,"wmin":300,"hmin":250}}]}}`)
+	campaign := &Campaign{Format: "NAT"}
+	creative := &Creative{
+		ID: "creative", ADMURL: "https://click.example", ImageURL: "https://cdn.example/image.png",
+		FileFormat: "image/png", W: 300, H: 250,
+	}
+	if _, ok := buildNativeADM(imp, campaign, creative, creative.ADMURL); !ok {
+		t.Fatal("dimensions equal to wmin/hmin must pass and exact w/h must be ignored")
+	}
+	creative.W = 299
+	if _, ok := buildNativeADM(imp, campaign, creative, creative.ADMURL); ok {
+		t.Fatal("width below wmin must reject required image")
+	}
+	creative.W = 300
+	creative.FileFormat = "video/mp4"
+	if _, ok := buildNativeADM(imp, campaign, creative, creative.ADMURL); ok {
+		t.Fatal("MP4 must not be eligible for native image asset")
+	}
+}
+
+func TestNativeAndIPPImpressionsUseNativeRequest(t *testing.T) {
+	imp := nativeTestImp(`{"native":{"assets":[{"id":1,"title":{"len":80}}]}}`)
+	if !impressionMatchesFormat(imp, constants.NAT) {
+		t.Fatal("native impression must match NAT")
+	}
+	if !impressionMatchesFormat(imp, constants.IPP) {
+		t.Fatal("native impression must match IPP endpoint format")
+	}
+	banner := &ortb.Imp{Banner: &ortb.Banner{Ext: []string{constants.ADVImpressionFormatMarkerPrefix + constants.IPP}}}
+	if impressionMatchesFormat(banner, constants.IPP) {
+		t.Fatal("IPP without native.request cannot build native JSON")
+	}
+}
+
+func TestBuildNativeBidUsesRandomUUID(t *testing.T) {
+	service := &AuctionService{}
+	impID := "imp-1"
+	reqID := "request-1"
+	imp := nativeTestImp(`{"native":{"assets":[{"id":1,"required":1,"title":{"len":80}}]}}`)
+	imp.Id = &impID
+	req := &ortb.BidRequest{Id: &reqID}
+	campaign := &Campaign{ID: "campaign", Format: "NAT"}
+	creative := &Creative{ID: "creative", ADMURL: "https://click.example", Title: "Title"}
+	bid := service.buildBid(req, imp, campaign, creative, 1)
+	if bid == nil {
+		t.Fatal("buildBid returned nil")
+	}
+	if _, err := uuid.Parse(bid.GetId()); err != nil {
+		t.Fatalf("bid.id is not UUID: %q", bid.GetId())
+	}
+	if bid.GetId() == creative.ID {
+		t.Fatal("bid.id must not reuse creative ID")
+	}
+	var response nativeResponseEnvelope
+	if err := json.Unmarshal([]byte(bid.GetAdm()), &response); err != nil {
+		t.Fatalf("bid.adm is not native JSON: %v", err)
+	}
+}
+
+func nativeTestImp(raw string) *ortb.Imp {
+	ver := "1.2"
+	return &ortb.Imp{Native: &ortb.Native{Request: &raw, Ver: &ver}}
+}
+
+func TestNormalizePushCampaignFormatToIPP(t *testing.T) {
+	if got := normalizeFormat("push"); got != constants.IPP {
+		t.Fatalf("push format normalized to %q want %q", got, constants.IPP)
 	}
 }

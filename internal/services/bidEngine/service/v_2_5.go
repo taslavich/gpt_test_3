@@ -287,6 +287,9 @@ func FinalizeADVCallbacks(
 	if source == nil {
 		return nil, false
 	}
+	if isADVNativeFormat(format) {
+		return finalizeADVNativeCallbacks(source, admDomain, globalID, format)
+	}
 
 	cleanSource, ok := proto.Clone(source).(*ortb_V2_5.Bid)
 	if !ok || cleanSource == nil {

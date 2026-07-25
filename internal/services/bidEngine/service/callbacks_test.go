@@ -1,6 +1,7 @@
 package bidEngine
 
 import (
+	"encoding/json"
 	"net/url"
 	"testing"
 
@@ -35,24 +36,47 @@ func TestFinalizeADVCallbacksDoNotEmbedDSPCallbacks(t *testing.T) {
 	}
 }
 
-func TestFinalizeADVCallbacksAlwaysAddExchangeNURLAndBURL(t *testing.T) {
-	adm := "https://creative.example/render"
-	bid := &ortb.Bid{Adm: &adm}
+func TestFinalizeADVNativeCallbacksWrapOnlyLinkAndAddBURL(t *testing.T) {
+	adm := `{"native":{"ver":"1.2","link":{"url":"https://creative.example/render?a=1"},"assets":[{"id":100,"title":{"text":"Title"}}]}}`
+	unexpectedNURL := "https://dsp.example/win"
+	unexpectedBURL := "https://dsp.example/bill"
+	bid := &ortb.Bid{Adm: &adm, Nurl: &unexpectedNURL, Burl: &unexpectedBURL}
 	got, ok := FinalizeADVCallbacks(bid, "callbacks.example", "winner-2", "ssp.example", constants.IPP)
 	if !ok || got == nil {
-		t.Fatal("ADV callback finalization failed")
+		t.Fatal("ADV native callback finalization failed")
 	}
-	assertCallbackQuery(t, got.GetAdm(), "/adm", map[string]string{
-		"id": "winner-2", "url": adm, "f": constants.FormatToCodes[constants.IPP],
-	})
-	assertCallbackQuery(t, got.GetNurl(), "/nurl", map[string]string{
-		"id": "winner-2", "s": "ssp.example", "f": constants.FormatToCodes[constants.IPP],
+	linkURL := nativeLinkURLFromADM(t, got.GetAdm())
+	assertCallbackQuery(t, linkURL, "/adm", map[string]string{
+		"id": "winner-2", "url": "https://creative.example/render?a=1", "f": constants.FormatToCodes[constants.IPP],
 	})
 	assertCallbackQuery(t, got.GetBurl(), "/burl", map[string]string{
 		"id": "winner-2", "f": constants.FormatToCodes[constants.IPP],
 	})
-	assertQueryMissing(t, got.GetNurl(), "url")
-	assertQueryMissing(t, got.GetBurl(), "url")
+	if got.GetNurl() != "" {
+		t.Fatalf("native ADV response must not contain nurl: %q", got.GetNurl())
+	}
+	if bid.GetAdm() != adm || bid.GetNurl() != unexpectedNURL || bid.GetBurl() != unexpectedBURL {
+		t.Fatal("source native bid was mutated")
+	}
+}
+
+func nativeLinkURLFromADM(t *testing.T, adm string) string {
+	t.Helper()
+	var payload struct {
+		Native struct {
+			Link struct {
+				URL string `json:"url"`
+			} `json:"link"`
+			Assets []json.RawMessage `json:"assets"`
+		} `json:"native"`
+	}
+	if err := json.Unmarshal([]byte(adm), &payload); err != nil {
+		t.Fatalf("parse native adm: %v", err)
+	}
+	if len(payload.Native.Assets) != 1 {
+		t.Fatalf("native assets were not preserved: %s", adm)
+	}
+	return payload.Native.Link.URL
 }
 
 func assertCallbackQuery(t *testing.T, raw, path string, expected map[string]string) {

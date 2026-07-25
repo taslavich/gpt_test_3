@@ -159,7 +159,8 @@ func LoadSnapshotFromPostgres(ctx context.Context, db *sql.DB) (*Snapshot, error
 		traffic_type,
 		goal_total_dollars::text,
 		traffic_reset_version,
-		updated_at
+		updated_at,
+		brand_name
 	FROM campaigns
 	WHERE status = 'active'
 `
@@ -182,7 +183,7 @@ func LoadSnapshotFromPostgres(ctx context.Context, db *sql.DB) (*Snapshot, error
 			&row.Country, &row.Language, &row.DeviceType, &row.OS, &row.Browser, &row.SiteID, &row.IP,
 			&row.Format, &row.Quality, &row.PricingModel, &row.Status, &row.TrafficType,
 			&row.GoalTotalDollars,
-			&row.TrafficResetVersion, &row.UpdatedAt,
+			&row.TrafficResetVersion, &row.UpdatedAt, &row.BrandName,
 		); err != nil {
 			return nil, fmt.Errorf("scan active campaign: %w", err)
 		}
@@ -247,6 +248,7 @@ type campaignDBRow struct {
 	GoalTotalDollars    sql.NullString
 	TrafficResetVersion sql.NullInt64
 	UpdatedAt           sql.NullTime
+	BrandName           sql.NullString
 
 	Format       sql.NullString
 	Quality      sql.NullString
@@ -357,7 +359,7 @@ func (r campaignDBRow) campaign() (*Campaign, error) {
 	}
 
 	return &Campaign{
-		ID: id, UserID: userID, Status: status,
+		ID: id, UserID: userID, BrandName: strings.TrimSpace(r.BrandName.String), Status: status,
 		PricingModel: pricingModel,
 		Format:       format, TrafficType: trafficType,
 		QualitySegment: quality,
@@ -398,7 +400,7 @@ func loadCreativesBatch(ctx context.Context, db *sql.DB, campaignIDs []string, c
 	}
 	rows, err := db.QueryContext(ctx, `
 		SELECT cr.id::text, cr.campaign_id::text, cr.trackers_macros, cr.w, cr.h,
-		       cr.adm, COALESCE(ci.mime_type, cr.file_format), cr.banner_type,
+		       cr.adm, ci.web_url, COALESCE(ci.mime_type, cr.file_format), cr.banner_type,
 		       cr.name, cr.creative_name, cr.title, cr.description
 		FROM creatives cr
 		LEFT JOIN creative_images ci ON ci.creative_id=cr.id
@@ -409,10 +411,10 @@ func loadCreativesBatch(ctx context.Context, db *sql.DB, campaignIDs []string, c
 	defer rows.Close()
 	creativeIDs := make(map[string]map[string]struct{}, len(campaigns))
 	for rows.Next() {
-		var id, campaignID, adm, fileFormat, bannerType, name, creativeName, title, description sql.NullString
+		var id, campaignID, adm, imageURL, fileFormat, bannerType, name, creativeName, title, description sql.NullString
 		var trackers []byte
 		var w, h sql.NullInt64
-		if err := rows.Scan(&id, &campaignID, &trackers, &w, &h, &adm, &fileFormat, &bannerType, &name, &creativeName, &title, &description); err != nil {
+		if err := rows.Scan(&id, &campaignID, &trackers, &w, &h, &adm, &imageURL, &fileFormat, &bannerType, &name, &creativeName, &title, &description); err != nil {
 			return fmt.Errorf("scan creative: %w", err)
 		}
 		campaign := campaigns[strings.TrimSpace(campaignID.String)]
@@ -452,7 +454,7 @@ func loadCreativesBatch(ctx context.Context, db *sql.DB, campaignIDs []string, c
 			creativeH = int(h.Int64)
 		}
 		campaign.Creatives = append(campaign.Creatives, &Creative{
-			ID: creativeID, CampaignID: campaign.ID, ADMURL: admURL,
+			ID: creativeID, CampaignID: campaign.ID, ADMURL: admURL, ImageURL: strings.TrimSpace(imageURL.String),
 			FileFormat: strings.TrimSpace(fileFormat.String), BannerType: strings.TrimSpace(bannerType.String),
 			TrackersMacros: macros, W: creativeW, H: creativeH, Name: name.String,
 			CreativeName: creativeName.String, Title: title.String, Description: description.String,
