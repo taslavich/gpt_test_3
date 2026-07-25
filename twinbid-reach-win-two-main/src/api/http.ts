@@ -21,7 +21,18 @@ interface RequestOptions {
   retryOnUnauthorized?: boolean;
 }
 
+interface AuthenticatedFetchOptions {
+  auth?: boolean;
+  retryOnUnauthorized?: boolean;
+}
+
 let refreshPromise: Promise<boolean> | null = null;
+
+function asRecord(value: unknown): Record<string, unknown> | null {
+  return value !== null && typeof value === "object"
+    ? value as Record<string, unknown>
+    : null;
+}
 
 function buildUrl(path: string, query?: RequestOptions["query"]): string {
   const url = new URL(path.startsWith("http") ? path : `${API_BASE_URL}${path}`);
@@ -48,17 +59,18 @@ async function refreshAccessToken(): Promise<boolean> {
         });
 
         const text = await res.text();
-        let data: any = null;
+        let data: unknown = null;
         if (text) {
           try { data = JSON.parse(text); } catch { data = text; }
         }
 
         if (!res.ok) return false;
 
-        const payload = data && typeof data === "object" && "data" in data ? data.data : data;
+        const parsed = asRecord(data);
+        const payload = asRecord(parsed?.data) || parsed;
         const access = payload?.access_token;
         const refresh = payload?.refresh_token;
-        if (!access || !refresh) return false;
+        if (typeof access !== "string" || typeof refresh !== "string") return false;
 
         localStorage.setItem(ACCESS_TOKEN_KEY, access);
         localStorage.setItem(REFRESH_TOKEN_KEY, refresh);
@@ -74,34 +86,57 @@ async function refreshAccessToken(): Promise<boolean> {
   return refreshPromise;
 }
 
-export async function http<T>(path: string, opts: RequestOptions = {}): Promise<T> {
-  const { method = "GET", body, query, auth = true, signal, retryOnUnauthorized = true } = opts;
-  const headers: Record<string, string> = { Accept: "application/json" };
-  if (body !== undefined) headers["Content-Type"] = "application/json";
+export async function authenticatedFetch(
+  input: string,
+  init: RequestInit = {},
+  options: AuthenticatedFetchOptions = {},
+): Promise<Response> {
+  const { auth = true, retryOnUnauthorized = true } = options;
+  const headers = new Headers(init.headers);
   if (auth) {
     const token = localStorage.getItem(ACCESS_TOKEN_KEY);
-    if (token) headers.Authorization = `Bearer ${token}`;
+    if (token) headers.set("Authorization", `Bearer ${token}`);
+    else headers.delete("Authorization");
+  } else {
+    headers.delete("Authorization");
   }
 
-  let res: Response;
+  let response: Response;
   try {
-    res = await fetch(buildUrl(path, query), {
-      method,
-      headers,
-      body: body !== undefined ? JSON.stringify(body) : undefined,
-      signal,
-    });
+    response = await fetch(input, { ...init, headers });
   } catch (error) {
     const message =
       error instanceof TypeError
-        ? "Network error: failed to reach API. Check VITE_API_BASE_URL, backend availability, CORS, and HTTPS certificate."
+        ? "Network error: failed to reach API. Check VITE_API_BASE_URL, backend availability, CORS, and network settings."
         : "Network error: request failed before receiving a response.";
     throw new ApiError(0, message, "NETWORK_ERROR");
   }
 
+  if (
+    response.status === 401
+    && auth
+    && retryOnUnauthorized
+    && await refreshAccessToken()
+  ) {
+    return authenticatedFetch(input, init, { auth, retryOnUnauthorized: false });
+  }
+  return response;
+}
+
+export async function http<T>(path: string, opts: RequestOptions = {}): Promise<T> {
+  const { method = "GET", body, query, auth = true, signal, retryOnUnauthorized = true } = opts;
+  const headers: Record<string, string> = { Accept: "application/json" };
+  if (body !== undefined) headers["Content-Type"] = "application/json";
+  const res = await authenticatedFetch(buildUrl(path, query), {
+    method,
+    headers,
+    body: body !== undefined ? JSON.stringify(body) : undefined,
+    signal,
+  }, { auth, retryOnUnauthorized });
+
   if (res.status === 204) return undefined as T;
 
-  let data: any = null;
+  let data: unknown = null;
   const text = await res.text();
   if (text) {
     try { data = JSON.parse(text); } catch { data = text; }
@@ -111,12 +146,9 @@ export async function http<T>(path: string, opts: RequestOptions = {}): Promise<
     // Backend may return either `{ error: { message, code, fields } }`
     // or a flat `{ success: false, errorMsg: "..." }` envelope. Surface
     // whichever is present.
-    const err = data?.error;
-    const flatMsg = data?.errorMsg;
-
-    if (res.status === 401 && auth && retryOnUnauthorized && await refreshAccessToken()) {
-      return http<T>(path, { method, body, query, auth, signal, retryOnUnauthorized: false });
-    }
+    const payload = asRecord(data);
+    const err = asRecord(payload?.error);
+    const flatMsg = payload?.errorMsg;
 
     // Localized message for expired/invalid sessions when refresh is unavailable or failed.
     if (res.status === 401 && auth) {
@@ -126,14 +158,30 @@ export async function http<T>(path: string, opts: RequestOptions = {}): Promise<
         lang === "ru" ? "Сессия устарела, пожалуйста, войдите заново"
         : lang === "es" ? "Tu sesión ha caducado, vuelve a iniciar sesión"
         : "Your session has expired, please sign in again";
-      throw new ApiError(res.status, message, err?.code || "SESSION_EXPIRED", err?.fields);
+      const code = typeof err?.code === "string" ? err.code : "SESSION_EXPIRED";
+      const fields = asRecord(err?.fields);
+      const normalizedFields = fields
+        ? Object.fromEntries(
+            Object.entries(fields).filter((entry): entry is [string, string] => typeof entry[1] === "string"),
+          )
+        : undefined;
+      throw new ApiError(res.status, message, code, normalizedFields);
     }
 
+    const errorMessage = typeof err?.message === "string" ? err.message : undefined;
+    const errorCode = typeof err?.code === "string" ? err.code : undefined;
+    const errorFields = asRecord(err?.fields);
     throw new ApiError(
       res.status,
-      err?.message || flatMsg || (typeof data === "string" ? data : `HTTP ${res.status}`),
-      err?.code,
-      err?.fields,
+      errorMessage
+        || (typeof flatMsg === "string" ? flatMsg : undefined)
+        || (typeof data === "string" ? data : `HTTP ${res.status}`),
+      errorCode,
+      errorFields
+        ? Object.fromEntries(
+            Object.entries(errorFields).filter((entry): entry is [string, string] => typeof entry[1] === "string"),
+          )
+        : undefined,
     );
   }
   // Return as-is. Envelope handling (`{ success, errorMsg, data }`) is done

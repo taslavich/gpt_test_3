@@ -1,5 +1,5 @@
 import type {
-  ApiUser, ApiCampaign, ApiCreative, ApiUserTransaction, ApiPromocode,
+  ApiUser, ApiCampaign, ApiCreative, ApiCreativeImage, ApiCreativeWrite, ApiUserTransaction, ApiPromocode,
   ApiNotification, StatsQueryRequest, StatsQueryResponse, StatsSummary,
   CalculatorRequest, CalculatorResponse, RecommendBidRequest, RecommendBidResponse,
   AuthResponse, AuthTokens, ApiEnvelope,
@@ -30,6 +30,7 @@ interface MockState {
   user: ApiUser;
   campaigns: ApiCampaign[];
   creatives: ApiCreative[];
+  creativeImages: ApiCreativeImage[];
   transactions: ApiUserTransaction[];
   notifications: ApiNotification[];
 }
@@ -43,10 +44,11 @@ function loadState(): MockState {
         parsed.transactions = parsed.topups;
         delete parsed.topups;
       }
+      if (!Array.isArray(parsed.creativeImages)) parsed.creativeImages = [];
       return parsed;
     }
   } catch { /* ignore */ }
-  return { user: { ...defaultUser }, campaigns: [], creatives: [], transactions: [], notifications: [] };
+  return { user: { ...defaultUser }, campaigns: [], creatives: [], creativeImages: [], transactions: [], notifications: [] };
 }
 function saveState() {
   try { localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); } catch { /* ignore */ }
@@ -165,6 +167,7 @@ export const mockProvider = {
   async deleteCampaign(id: string): Promise<ApiEnvelope<void>> {
     state.campaigns = state.campaigns.filter(c => c.campaign_id !== id);
     state.creatives = state.creatives.filter(cr => cr.campaign_id !== id);
+    state.creativeImages = state.creativeImages.filter(image => image.campaign_id !== id);
     saveState();
     return ok(undefined as unknown as void);
   },
@@ -173,51 +176,87 @@ export const mockProvider = {
   async readCreatives(campaignId: string): Promise<ApiEnvelope<ApiCreative[]>> {
     return ok(state.creatives.filter(c => c.campaign_id === campaignId));
   },
+  async uploadCreativeImage(
+    campaignId: string,
+    file: File,
+    filename?: string,
+  ): Promise<ApiEnvelope<ApiCreativeImage>> {
+    const dataUrl = await new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result));
+      reader.onerror = () => reject(reader.error);
+      reader.readAsDataURL(file);
+    });
+    const timestamp = now();
+    const image: ApiCreativeImage = {
+      image_id: uid(),
+      campaign_id: campaignId,
+      creative_id: null,
+      image_url: dataUrl,
+      filename: filename || file.name,
+      mime_type: file.type,
+      file_format: file.type,
+      size_bytes: file.size,
+      created_at: timestamp,
+      updated_at: timestamp,
+    };
+    state.creativeImages.push(image);
+    saveState();
+    return ok(image);
+  },
   async createCreative(
     campaignId: string,
-    body: Omit<ApiCreative, "id" | "campaign_id">,
-    file?: File,
-    filename?: string,
+    body: ApiCreativeWrite,
   ): Promise<ApiEnvelope<ApiCreative>> {
-    const c = { ...body, id: uid(), campaign_id: campaignId } as ApiCreative;
-    if (file) {
-      const dataUrl = await new Promise<string>((resolve, reject) => {
-        const r = new FileReader();
-        r.onload = () => resolve(String(r.result));
-        r.onerror = () => reject(r.error);
-        r.readAsDataURL(file);
-      });
-      (c as any).name = filename || file.name;
-      (c as any).presigned_s3_url = dataUrl;
-    }
+    const image = body.image_id
+      ? state.creativeImages.find(item => item.image_id === body.image_id && item.campaign_id === campaignId)
+      : undefined;
+    const c: ApiCreative = {
+      ...body,
+      id: uid(),
+      campaign_id: campaignId,
+      image_url: image?.image_url ?? null,
+      image_name: image?.filename ?? null,
+      mime_type: image?.mime_type ?? null,
+    };
+    if (image) image.creative_id = c.id;
     state.creatives.push(c);
     saveState();
     return ok(c);
   },
   async patchCreative(
     id: string,
-    patch: Partial<ApiCreative>,
-    file?: File,
-    filename?: string,
+    patch: Partial<ApiCreativeWrite>,
   ): Promise<ApiEnvelope<ApiCreative>> {
     const i = state.creatives.findIndex(c => c.id === id);
     if (i < 0) return fail("Creative not found");
-    state.creatives[i] = { ...state.creatives[i], ...patch } as ApiCreative;
-    if (file) {
-      const dataUrl = await new Promise<string>((resolve, reject) => {
-        const r = new FileReader();
-        r.onload = () => resolve(String(r.result));
-        r.onerror = () => reject(r.error);
-        r.readAsDataURL(file);
-      });
-      (state.creatives[i] as any).name = filename || file.name;
-      (state.creatives[i] as any).presigned_s3_url = dataUrl;
+    const previous = state.creatives[i];
+    const next: ApiCreative = { ...previous, ...patch } as ApiCreative;
+    if (patch.image_id === null) {
+      state.creativeImages = state.creativeImages.filter(image => image.image_id !== previous.image_id);
+      next.image_id = null;
+      next.image_url = null;
+      next.image_name = null;
+      next.mime_type = null;
+    } else if (patch.image_id !== undefined && patch.image_id !== previous.image_id) {
+      const image = state.creativeImages.find(item => item.image_id === patch.image_id);
+      if (!image) return fail("Creative image not found");
+      state.creativeImages = state.creativeImages.filter(item => item.image_id !== previous.image_id);
+      image.creative_id = id;
+      next.image_url = image.image_url;
+      next.image_name = image.filename;
+      next.mime_type = image.mime_type;
     }
+    state.creatives[i] = next;
     saveState();
     return ok(state.creatives[i]);
   },
   async deleteCreative(id: string): Promise<ApiEnvelope<void>> {
+    const creative = state.creatives.find(c => c.id === id);
     state.creatives = state.creatives.filter(c => c.id !== id);
+    if (creative?.image_id) {
+      state.creativeImages = state.creativeImages.filter(image => image.image_id !== creative.image_id);
+    }
     saveState();
     return ok(undefined as unknown as void);
   },

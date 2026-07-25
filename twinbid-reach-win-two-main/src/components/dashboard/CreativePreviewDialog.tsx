@@ -91,7 +91,12 @@ function BannerSlot({ size, creative }: { size: string; creative: Creative }) {
   }
   if (!content) {
     if (creative.imageUrl) {
-      content = <img src={creative.imageUrl} alt="ad" className="w-full h-full object-cover" />;
+      const video = creative.mediaType === "video"
+        || creative.imageMimeType === "video/mp4"
+        || /\.mp4$/i.test(creative.imageFileName || "");
+      content = video
+        ? <video src={creative.imageUrl} autoPlay muted loop playsInline className="h-full w-full object-cover" />
+        : <img src={creative.imageUrl} alt="ad" className="w-full h-full object-cover" />;
     } else {
       content = <span>Advertisement {w}×{h}</span>;
     }

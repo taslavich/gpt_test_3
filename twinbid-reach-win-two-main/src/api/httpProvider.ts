@@ -1,40 +1,50 @@
-import { http } from "./http";
+import { ApiError, authenticatedFetch, http } from "./http";
 import type {
-  ApiUser, ApiCampaign, ApiCreative, ApiUserTransaction, ApiPromocode,
+  ApiUser, ApiCampaign, ApiCreative, ApiCreativeImage, ApiUserTransaction, ApiPromocode,
   ApiNotification, StatsQueryRequest, StatsQueryResponse,
   CalculatorResponse, RecommendBidResponse,
   AuthResponse, AuthTokens, ApiEnvelope,
 } from "./types";
 import type { RawApiProvider } from "./mockProvider";
+import { API_BASE_URL } from "./config";
+import { normalizeCreativeUploadFile } from "@/lib/creativeApi";
 
-const API_BASE = import.meta.env.VITE_API_BASE_URL ?? "";
-
-/** Build a multipart body that carries JSON fields plus an optional file+filename. */
-function buildCreativeForm(body: Record<string, unknown>, file?: File, filename?: string): FormData {
+/** Only creative image upload uses multipart/form-data. */
+function buildCreativeImageForm(file: File, filename?: string): FormData {
   const fd = new FormData();
-  for (const [k, v] of Object.entries(body)) {
-    if (v === undefined || v === null) continue;
-    fd.append(k, typeof v === "string" ? v : JSON.stringify(v));
-  }
-  if (file) {
-    fd.append("file", file, filename || file.name);
-    fd.append("filename", filename || file.name);
-  }
+  const normalizedFile = normalizeCreativeUploadFile(file);
+  fd.append("file", normalizedFile, filename || normalizedFile.name);
+  if (filename) fd.append("filename", filename);
   return fd;
 }
 
-function authHeaders(): Record<string, string> {
-  const tok = localStorage.getItem("twinbid_access_token");
-  return tok ? { Authorization: `Bearer ${tok}` } : {};
+function asRecord(value: unknown): Record<string, unknown> | null {
+  return value !== null && typeof value === "object"
+    ? value as Record<string, unknown>
+    : null;
 }
 
-async function multipart<T>(url: string, method: "POST" | "PATCH", fd: FormData): Promise<ApiEnvelope<T>> {
-  const r = await fetch(`${API_BASE}${url}`, { method, headers: authHeaders(), body: fd });
-  let data: any = null;
+async function multipart<T>(url: string, fd: FormData): Promise<ApiEnvelope<T>> {
+  const r = await authenticatedFetch(`${API_BASE_URL}${url}`, { method: "POST", body: fd });
+  let data: unknown = null;
   const text = await r.text();
   if (text) { try { data = JSON.parse(text); } catch { data = text; } }
   if (!r.ok) {
-    return { success: false, errorMsg: data?.errorMsg || data?.error?.message || `HTTP ${r.status}` };
+    const payload = asRecord(data);
+    const error = asRecord(payload?.error);
+    const message =
+      (typeof payload?.errorMsg === "string" && payload.errorMsg)
+      || (typeof error?.message === "string" && error.message)
+      || (typeof data === "string" && data)
+      || `HTTP ${r.status}`;
+    const code = typeof error?.code === "string" ? error.code : undefined;
+    const fields = asRecord(error?.fields);
+    const normalizedFields = fields
+      ? Object.fromEntries(
+          Object.entries(fields).filter((entry): entry is [string, string] => typeof entry[1] === "string"),
+        )
+      : undefined;
+    throw new ApiError(r.status, message, code, normalizedFields);
   }
   // Backend may return an envelope already, or a bare payload.
   if (data && typeof data === "object" && "success" in data) {
@@ -69,12 +79,15 @@ export const httpProvider: RawApiProvider = {
 
   // creatives
   readCreatives:   (cid)         => http<ApiEnvelope<ApiCreative[]>>(`/api/campaigns/${cid}/creatives`),
-  createCreative:  (cid, body, file, filename) =>
-    multipart<ApiCreative>(`/api/campaigns/${cid}/creatives`, "POST",
-      buildCreativeForm(body as Record<string, unknown>, file, filename)),
-  patchCreative:   (id, p, file, filename) =>
-    multipart<ApiCreative>(`/api/creatives/${id}`, "PATCH",
-      buildCreativeForm(p as Record<string, unknown>, file, filename)),
+  uploadCreativeImage: (cid, file, filename) =>
+    multipart<ApiCreativeImage>(
+      `/api/campaigns/${cid}/creative-images`,
+      buildCreativeImageForm(file, filename),
+    ),
+  createCreative:  (cid, body) =>
+    http<ApiEnvelope<ApiCreative>>(`/api/campaigns/${cid}/creatives`, { method: "POST", body }),
+  patchCreative:   (id, p) =>
+    http<ApiEnvelope<ApiCreative>>(`/api/creatives/${id}`, { method: "PATCH", body: p }),
   deleteCreative:  (id)          => http<ApiEnvelope<void>>(`/api/creatives/${id}`, { method: "DELETE" }),
 
   // transactions

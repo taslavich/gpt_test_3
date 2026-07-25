@@ -63,39 +63,51 @@ export interface ApiCampaign {
   payout?: number | null;
 }
 
-export interface ApiCreativeBase {
+export type BannerType = "img" | "iframe";
+
+export interface ApiCreativeImage {
+  image_id: string;
+  campaign_id: string;
+  creative_id: string | null;
+  image_url: string;
+  filename: string;
+  mime_type: string;
+  file_format: string;
+  size_bytes: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ApiCreative {
   id: string;
   campaign_id: string;
   creative_name: string;
-  link: string;
-  trackers_macros: Record<string, 0 | 1>;
+  adm: string;
+  banner_type?: BannerType | null;
+  image_id?: string | null;
+  image_url?: string | null;
+  image_name?: string | null;
+  /** MIME type returned for the attached permanent media asset. */
+  mime_type?: string | null;
+  trackers_macros?: Record<string, boolean>;
+  w?: number | null;
+  h?: number | null;
+  title?: string | null;
+  description?: string | null;
 }
-export interface ApiPopCreative extends ApiCreativeBase {}
-export interface ApiBanCreative extends ApiCreativeBase {
-  w: number;
-  h: number;
-  /** File name of the uploaded creative image (set by backend on upload). */
-  name?: string;
-  /** Presigned read URL returned by the backend (GET creative). Not sent on write. */
-  presigned_s3_url?: string;
+
+/** JSON body accepted by creative POST/PATCH. File bytes are never included. */
+export interface ApiCreativeWrite {
+  creative_name: string;
+  adm: string;
+  banner_type?: BannerType | null;
+  image_id?: string | null;
+  trackers_macros?: Record<string, boolean>;
+  w?: number | null;
+  h?: number | null;
+  title?: string | null;
+  description?: string | null;
 }
-export interface ApiIppCreative extends ApiCreativeBase {
-  title: string;
-  description: string;
-  name?: string;
-  presigned_s3_url?: string;
-}
-export interface ApiNatCreative extends ApiCreativeBase {
-  title: string;
-  description: string;
-  name?: string;
-  presigned_s3_url?: string;
-}
-export type ApiCreative =
-  | ApiPopCreative
-  | ApiBanCreative
-  | ApiIppCreative
-  | ApiNatCreative;
 
 export interface ApiUserTransaction {
   id: string;

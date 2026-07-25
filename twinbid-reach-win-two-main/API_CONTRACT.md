@@ -115,7 +115,7 @@ Resp: `User`.
 
 ---
 
-## 4. Creatives (Postgres `pop_creatives` / `ban_creatives` / `ipp_creatives` / `nat_creatives`)
+## 4. Creatives
 
 Тип креатива выбирается по `format_type` кампании:
 - `popunder` → `pop_creatives`
@@ -123,45 +123,104 @@ Resp: `User`.
 - `push` → `ipp_creatives` (in-page push)
 - `native` → `nat_creatives`
 
-### Общая `Creative` форма (ответ бэка)
+### `Creative` (ответ бэка)
 ```json
 {
   "id": "uuid",
   "campaign_id": "uuid",
   "creative_name": "string",
-  "link": "https://target.example",
-  "trackers_macros": { "{CLICK_ID}": 1, "{ZONE_ID}": 0 },
-
-  // banner only:
-  "w": 300, "h": 250,
-  // banner / push / native (заполняются БЭКОМ после загрузки файла):
-  "name": "banner_300x250.png",
-  "presigned_s3_url": "https://s3.amazonaws.com/...&X-Amz-Signature=...",
-  // push / native:
-  "title": "string",
-  "description": "string"
+  "adm": "<a ...><img ...></a>",
+  "banner_type": "img",
+  "image_id": "uuid",
+  "image_url": "https://cdn.example/permanent-object-url",
+  "image_name": "banner_300x250.png",
+  "trackers_macros": {},
+  "w": 300,
+  "h": 250,
+  "title": null,
+  "description": null
 }
 ```
 
-> Поле `name` — это имя файла загруженной картинки. Его выставляет бэк при загрузке; фронт отображает его в кабинете как подпись к картинке.
-> `presigned_s3_url` — временный signed URL для чтения, который бэк добавляет в ответы GET. Фронт использует его в `<img src>`.
-> Фронт никогда не пишет ни `name`, ни `presigned_s3_url`. Никаких `s3_file_path` / `file_format` в контракте больше нет.
+`image_url` постоянный и не имеет TTL. Фронт использует его при каждом
+повторном открытии кампании независимо от её статуса. `image_name` используется
+как подпись файла.
 
-### GET `/api/campaigns/:id/creatives` → `Creative[]` (с `presigned_s3_url`, `name`)
-Внутренний клиентский метод фронта, который вызывает эту ручку, называется **`readCreatives`**.
+### POST `/api/campaigns/:campaignID/creative-images`
+
+Единственная multipart-ручка:
+
+- тело запроса — `FormData`; браузер сам выставляет `Content-Type:
+  multipart/form-data` вместе с boundary (фронт не задаёт этот заголовок вручную);
+- `file` - обязательный файл;
+- `filename` - необязательное имя.
+
+Формат multipart-файла передаётся через `Content-Type` части:
+`image/jpg`, `image/png`, `image/gif` или `video/mp4`.
+
+Текущие ограничения: PNG/JPG/GIF — не более 1 MiB; MP4 — не более
+10 MiB и только для banner-креатива. При ответе `401` загрузка использует тот же
+общий refresh токена, что и JSON-запросы, после чего ровно один раз повторяет
+multipart-запрос с новым access token.
+
+Ответ:
+
+```json
+{
+  "image_id": "uuid",
+  "campaign_id": "uuid",
+  "creative_id": null,
+  "image_url": "https://cdn.example/permanent-object-url",
+  "filename": "banner.png",
+  "mime_type": "image/png",
+  "file_format": "image/png",
+  "size_bytes": 12345,
+  "created_at": "iso",
+  "updated_at": "iso"
+}
+```
+
+### GET `/api/campaigns/:id/creatives` → `Creative[]`
 
 ### POST `/api/campaigns/:id/creatives`
-**Multipart form-data** (фронт всегда шлёт multipart, даже если файла нет):
-- JSON-поля: `creative_name`, `link`, `trackers_macros`, `w?`, `h?`, `title?`, `description?`;
-- `file` *(опционально)* — бинарь картинки;
-- `filename` *(опционально, обязательно если есть `file`)* — имя файла.
 
-Бэк сам кладёт файл в S3 **и записывает имя файла в поле `name` строки креатива.** Resp: `Creative` (с `presigned_s3_url` и `name`, если файл был).
+Обычный JSON. Файл не передаётся. Для креатива с изображением сначала
+вызывается `creative-images`, затем `image_id` передаётся в JSON.
+
+Для banner HTML:
+
+- `banner_type: "iframe"`;
+- `adm` содержит исходный полный HTML без обрезки пробелов и переносов;
+- достаточно непустого HTML; наличие `<img>` не обязательно, поэтому допустимы
+  HTML5-креативы на `canvas`, SVG, видео и другие варианты разметки;
+- отдельная загрузка изображения не выполняется, `image_id` не передаётся;
+- `trackers_macros: {}`.
+
+Для banner iframe URL также может использовать абсолютный адрес `http://` или
+`https://`. Фронт формирует iframe нужного размера. При передаче готового
+iframe-кода он сохраняется в `adm`; загрузка изображения не выполняется,
+`image_id` не передаётся, `trackers_macros: {}`.
+
+HTTP-ссылки не блокируют создание или сохранение креатива. Если обычная
+кликовая ссылка, URL iframe или содержимое HTML содержит `http://`, интерфейс
+показывает неблокирующее предупреждение о возможной блокировке показа на
+некоторых источниках.
 
 ### PATCH `/api/creatives/:id`
-То же самое: multipart form-data с любым подмножеством JSON-полей и опциональными `file` + `filename`. Если `file` пришёл — бэк перезаписывает картинку и обновляет `name`.
+
+Обычный частичный JSON:
+
+- без замены изображения `image_id` не передаётся;
+- при замене сначала загружается новый файл, затем передаётся новый `image_id`;
+- при переключении banner `img` → `iframe` передаётся `image_id: null`.
+
+Frontend синхронизирует креативы по ID: изменённый - PATCH, новый - POST,
+удалённый - DELETE, неизменённый повторно не отправляется.
 
 ### DELETE `/api/creatives/:id` → 204
+
+Отдельно изображение удалять не нужно: backend удаляет его вместе с креативом
+или кампанией.
 
 ---
 

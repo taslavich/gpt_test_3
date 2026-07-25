@@ -13,6 +13,13 @@ import { useLanguage } from "@/contexts/LanguageContext";
 import type { Creative, CreativeType } from "@/contexts/CampaignContext";
 import { ImageCropperDialog } from "@/components/dashboard/ImageCropperDialog";
 import { CreativePreviewDialog } from "@/components/dashboard/CreativePreviewDialog";
+import {
+  extractIframeSrc,
+  hasInsecureHttpReference,
+  isInsecureHttpUrl,
+  isValidCreativeUrl,
+  validateCreativeFile,
+} from "@/lib/creativeApi";
 
 function readFileAsDataUrl(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -29,6 +36,19 @@ function loadImageDims(dataUrl: string): Promise<{ w: number; h: number }> {
     img.onload = () => resolve({ w: img.naturalWidth, h: img.naturalHeight });
     img.onerror = () => reject(new Error("Failed to load image"));
     img.src = dataUrl;
+  });
+}
+
+function loadVideoDims(dataUrl: string): Promise<{ w: number; h: number }> {
+  return new Promise((resolve, reject) => {
+    const video = document.createElement("video");
+    video.preload = "metadata";
+    video.onloadedmetadata = () => {
+      resolve({ w: video.videoWidth, h: video.videoHeight });
+      video.src = "";
+    };
+    video.onerror = () => reject(new Error("Failed to load video"));
+    video.src = dataUrl;
   });
 }
 
@@ -54,7 +74,6 @@ export interface CreativesEditorHandle {
 const generateId = () => String(Date.now()) + Math.random().toString(36).slice(2, 6);
 
 const MAX_CREATIVES = 10;
-const MAX_IMAGE_BYTES = 1 * 1024 * 1024;
 
 import { getTargetDims } from "@/lib/creativeTarget";
 
@@ -141,7 +160,9 @@ export const CreativesEditor = forwardRef<CreativesEditorHandle, CreativesEditor
     try {
       const text = await file.text();
       updateCreative(creativeId, { htmlCode: text });
-      onClearError?.(`creative_${creativeId}_html`);
+      if (text.trim()) {
+        onClearError?.(`creative_${creativeId}_html`);
+      }
       toast.success(t("create.htmlFileUploaded"));
     } catch (err) {
       console.error("HTML upload error:", err);
@@ -151,9 +172,9 @@ export const CreativesEditor = forwardRef<CreativesEditorHandle, CreativesEditor
     }
   };
   const [uploadingId, setUploadingId] = useState<string | null>(null);
-  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [previewMedia, setPreviewMedia] = useState<{ url: string; video: boolean } | null>(null);
   // Original source per creative (for re-opening cropper)
-  const [origSources, setOrigSources] = useState<Record<string, { dataUrl: string; naturalWidth: number; naturalHeight: number; fileName: string; isGif: boolean }>>({});
+  const [origSources, setOrigSources] = useState<Record<string, { dataUrl: string; naturalWidth: number; naturalHeight: number; fileName: string; isGif: boolean; isVideo: boolean }>>({});
   const [cropperCreativeId, setCropperCreativeId] = useState<string | null>(null);
   const [previewCreativeId, setPreviewCreativeId] = useState<string | null>(null);
   // Measured content size per creative for html/iframe (for the human-readable mismatch message).
@@ -170,6 +191,47 @@ export const CreativesEditor = forwardRef<CreativesEditorHandle, CreativesEditor
   const origSourcesRef = useRef(origSources);
   useEffect(() => { origSourcesRef.current = origSources; }, [origSources]);
 
+  const mediaSourceSignature = creatives
+    .map(c => `${c.id}:${c.imageUrl}:${c.imageFileName}:${c.imageMimeType}:${c.mediaType}`)
+    .join("|");
+
+  // Permanent image_url values returned by the API are usable directly.
+  // Load their dimensions for the existing editor/crop checks without
+  // downloading and converting the asset back into a File.
+  useEffect(() => {
+    let cancelled = false;
+    creativesRef.current.forEach((creative) => {
+      if (!creative.imageUrl || origSourcesRef.current[creative.id]) return;
+      const video = creative.mediaType === "video"
+        || creative.imageMimeType === "video/mp4"
+        || /\.mp4$/i.test(creative.imageFileName || "");
+      const gif = !video && (
+        creative.imageUrl.startsWith("data:image/gif")
+        || /\.gif$/i.test(creative.imageFileName || "")
+      );
+      void (video ? loadVideoDims(creative.imageUrl) : loadImageDims(creative.imageUrl))
+        .then(({ w, h }) => {
+          if (cancelled) return;
+          setOrigSources((previous) => previous[creative.id] ? previous : {
+            ...previous,
+            [creative.id]: {
+              dataUrl: creative.imageUrl!,
+              naturalWidth: w,
+              naturalHeight: h,
+              fileName: creative.imageFileName || (video ? "video.mp4" : "image"),
+              isGif: gif,
+              isVideo: video,
+            },
+          });
+        })
+        .catch(() => {
+          // The media remains displayable even if its intrinsic dimensions
+          // cannot be read (for example because the remote server blocks it).
+        });
+    });
+    return () => { cancelled = true; };
+  }, [mediaSourceSignature]);
+
   // Recompute image sizeMismatch ONLY when format/bannerSize changes.
   // Per-creative mismatch on upload is set inside handleImageUpload; we must
   // not re-touch other creatives when an unrelated one is uploaded (otherwise
@@ -184,7 +246,7 @@ export const CreativesEditor = forwardRef<CreativesEditorHandle, CreativesEditor
       if (!c.imageUrl) return c;
       const src = origSourcesRef.current[c.id];
       if (!src) return c;
-      const mismatch = target ? (target.mode === "fixed"
+      const mismatch = target && !src.isVideo ? (target.mode === "fixed"
         ? src.naturalWidth !== target.w || src.naturalHeight !== target.h
         : src.naturalWidth !== src.naturalHeight || src.naturalWidth < (target.minSide ?? 200))
         : false;
@@ -227,9 +289,6 @@ export const CreativesEditor = forwardRef<CreativesEditorHandle, CreativesEditor
   };
 
 
-  const ALLOWED_IMAGE_TYPES = ["image/png", "image/jpeg", "image/jpg", "image/gif"];
-  const ALLOWED_EXTENSIONS = [".png", ".jpg", ".jpeg", ".gif"];
-
   const checkMismatch = (natW: number, natH: number): boolean => {
     if (!target) return false;
     if (target.mode === "fixed") return natW !== target.w || natH !== target.h;
@@ -240,34 +299,42 @@ export const CreativesEditor = forwardRef<CreativesEditorHandle, CreativesEditor
     const file = e.target.files?.[0];
     if (!file) return;
     const ext = file.name.toLowerCase().slice(file.name.lastIndexOf("."));
-    if (!ALLOWED_EXTENSIONS.includes(ext) && !ALLOWED_IMAGE_TYPES.includes(file.type)) {
-      toast.error(t("create.imageFormatError"));
+    const validation = validateCreativeFile(file, isBanner);
+    if (!validation.valid) {
+      const messageKey = validation.reason === "video-size"
+        ? "create.videoSizeError"
+        : validation.reason === "image-size"
+          ? "create.imageSizeError"
+          : isBanner
+            ? "create.bannerMediaFormatError"
+            : "create.imageFormatError";
+      toast.error(t(messageKey));
       e.target.value = "";
       return;
     }
-    if (file.size > MAX_IMAGE_BYTES) {
-      toast.error(t("create.imageSizeError"));
-      e.target.value = "";
-      return;
-    }
+    const video = validation.mediaType === "video";
     setUploadingId(creativeId);
     try {
       const dataUrl = await readFileAsDataUrl(file);
-      const { w, h } = await loadImageDims(dataUrl);
+      const { w, h } = video ? await loadVideoDims(dataUrl) : await loadImageDims(dataUrl);
       const isGif = file.type === "image/gif" || ext === ".gif";
-      const mismatch = checkMismatch(w, h);
+      // MP4 is rendered into the selected banner slot dimensions by ADM.
+      // Image creatives retain the existing crop/mismatch workflow.
+      const mismatch = video ? false : checkMismatch(w, h);
       setOrigSources(prev => ({
         ...prev,
-        [creativeId]: { dataUrl, naturalWidth: w, naturalHeight: h, fileName: file.name, isGif },
+        [creativeId]: { dataUrl, naturalWidth: w, naturalHeight: h, fileName: file.name, isGif, isVideo: video },
       }));
       updateCreative(creativeId, {
         imageUrl: dataUrl,
         pendingFile: file,
         imageFileName: file.name,
+        imageMimeType: video ? "video/mp4" : file.type,
+        mediaType: video ? "video" : "image",
         sizeMismatch: mismatch,
       });
       onClearError?.(`creative_${creativeId}_image`);
-      toast.success(t("create.imageUploaded"));
+      toast.success(t(video ? "create.videoUploaded" : "create.imageUploaded"));
     } catch (err) {
       console.error("Image upload error:", err);
       toast.error(t("create.imageFormatError"));
@@ -317,10 +384,15 @@ export const CreativesEditor = forwardRef<CreativesEditorHandle, CreativesEditor
   const ensureSource = async (creative: Creative) => {
     if (origSources[creative.id]) return origSources[creative.id];
     if (!creative.imageUrl) return null;
-    const isGif = creative.imageUrl.startsWith("data:image/gif") || /\.gif$/i.test(creative.imageFileName || "");
+    const isVideo = creative.mediaType === "video"
+      || creative.imageMimeType === "video/mp4"
+      || /\.mp4$/i.test(creative.imageFileName || "");
+    const isGif = !isVideo && (creative.imageUrl.startsWith("data:image/gif") || /\.gif$/i.test(creative.imageFileName || ""));
     try {
-      const { w, h } = await loadImageDims(creative.imageUrl);
-      const entry = { dataUrl: creative.imageUrl, naturalWidth: w, naturalHeight: h, fileName: creative.imageFileName || "image", isGif };
+      const { w, h } = isVideo
+        ? await loadVideoDims(creative.imageUrl)
+        : await loadImageDims(creative.imageUrl);
+      const entry = { dataUrl: creative.imageUrl, naturalWidth: w, naturalHeight: h, fileName: creative.imageFileName || "image", isGif, isVideo };
       setOrigSources(prev => ({ ...prev, [creative.id]: entry }));
       return entry;
     } catch {
@@ -336,7 +408,7 @@ export const CreativesEditor = forwardRef<CreativesEditorHandle, CreativesEditor
       if (!targetCreative) return;
       if ((targetCreative.creativeType || "image") !== "image") return;
       const src = await ensureSource(targetCreative);
-      if (!src || src.isGif) {
+      if (!src || src.isGif || src.isVideo) {
         toast.error(t("create.autoCropGifSkip"));
         return;
       }
@@ -345,20 +417,6 @@ export const CreativesEditor = forwardRef<CreativesEditorHandle, CreativesEditor
   }), [creatives, origSources, t]);
 
   const activeSource = cropperCreativeId ? origSources[cropperCreativeId] : null;
-
-  const isValidHttpsUrl = (u: string) => {
-    try {
-      const parsed = new URL(u);
-      return parsed.protocol === "https:";
-    } catch { return false; }
-  };
-
-  /** Extract the `src` attribute from a raw <iframe ...> snippet. Returns "" if not found. */
-  const extractIframeSrc = (snippet: string): string => {
-    if (!snippet) return "";
-    const m = snippet.match(/<iframe[^>]*\ssrc\s*=\s*["']([^"']+)["']/i);
-    return m ? m[1] : "";
-  };
 
   /** Effective iframe URL used for probe/preview, from either mode. */
   const getEffectiveIframeUrl = (c: Creative): string => {
@@ -403,7 +461,7 @@ export const CreativesEditor = forwardRef<CreativesEditorHandle, CreativesEditor
       }
       if (type === "iframe") {
         const eff = getEffectiveIframeUrl(c);
-        if (!eff || !isValidHttpsUrl(eff)) {
+        if (!eff || !isValidCreativeUrl(eff)) {
           if (c.sizeMismatch) { changed = true; return { ...c, sizeMismatch: false }; }
           return c;
         }
@@ -431,7 +489,7 @@ export const CreativesEditor = forwardRef<CreativesEditorHandle, CreativesEditor
         const activeMacros = new Set(URL_MACROS.filter(m => creative.url.includes(`{${m}}`)));
         const src = origSources[creative.id];
         const type: CreativeType = (isBanner ? (creative.creativeType || "image") : "image");
-        const canCrop = type === "image" && !!src && !src.isGif && !!target;
+        const canCrop = type === "image" && !!src && !src.isGif && !src.isVideo && !!target;
         const meas = measured[creative.id];
 
         return (
@@ -499,6 +557,12 @@ export const CreativesEditor = forwardRef<CreativesEditorHandle, CreativesEditor
                   placeholder="https://example.com/landing"
                   className={`bg-background border-border ${errors[`creative_${creative.id}_url`] ? "border-destructive" : ""}`} />
                 {errors[`creative_${creative.id}_url`] && <p className="text-xs text-destructive">{errors[`creative_${creative.id}_url`]}</p>}
+                {isInsecureHttpUrl(creative.url) && (
+                  <div className="flex items-start gap-2 rounded border border-yellow-500/30 bg-yellow-500/10 p-2">
+                    <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-yellow-500" />
+                    <p className="text-xs text-yellow-500">{t("create.httpUrlWarning")}</p>
+                  </div>
+                )}
                 <div className="space-y-1">
                   <p className="text-xs text-muted-foreground">{t("create.urlMacrosHint")}</p>
                   <div className="flex flex-wrap gap-1.5">
@@ -531,13 +595,13 @@ export const CreativesEditor = forwardRef<CreativesEditorHandle, CreativesEditor
             {/* Image upload for banner image type. Non-banner formats render their image block below. */}
             {showImage && isBanner && type === "image" && (
               <div className="space-y-2">
-                <Label>{t("create.uploadImage")} *</Label>
+                <Label>{t("create.uploadBannerMedia")} *</Label>
                 <input
                   ref={el => { fileInputRefs.current[creative.id] = el; }}
-                  type="file" accept=".png,.jpg,.jpeg,.gif" className="hidden"
+                  type="file" accept=".png,.jpg,.jpeg,.gif,.mp4,image/png,image/jpeg,image/gif,video/mp4" className="hidden"
                   onChange={e => handleImageUpload(creative.id, e)} />
                 <p className="text-xs text-muted-foreground">
-                  {t("create.imageFormatHint")}
+                  {t("create.bannerMediaFormatHint")}
                   {target && (target.mode === "fixed"
                     ? ` · ${target.w}×${target.h}px`
                     : ` · ≥ ${target.minSide ?? 200}×${target.minSide ?? 200}px (1:1)`)}
@@ -548,7 +612,7 @@ export const CreativesEditor = forwardRef<CreativesEditorHandle, CreativesEditor
                     {uploadingId === creative.id
                       ? <Loader2 className="h-4 w-4 animate-spin" />
                       : <Upload className="h-4 w-4" />}
-                    {t("create.uploadImage")}
+                    {t("create.uploadBannerMedia")}
                   </Button>
                   {canCrop && (
                     <Button type="button" variant="outline" onClick={() => openCropper(creative.id)} className="border-border gap-2">
@@ -575,8 +639,13 @@ export const CreativesEditor = forwardRef<CreativesEditorHandle, CreativesEditor
                   </div>
                 )}
                 {creative.imageUrl && (
-                  <button type="button" onClick={() => setPreviewUrl(creative.imageUrl!)} className="block">
-                    <img src={creative.imageUrl} alt="Preview" className="mt-2 max-h-32 rounded border border-border cursor-zoom-in hover:opacity-90 transition-opacity" />
+                  <button type="button" onClick={() => setPreviewMedia({
+                    url: creative.imageUrl!,
+                    video: creative.mediaType === "video" || creative.imageMimeType === "video/mp4" || /\.mp4$/i.test(creative.imageFileName || ""),
+                  })} className="block">
+                    {creative.mediaType === "video" || creative.imageMimeType === "video/mp4" || /\.mp4$/i.test(creative.imageFileName || "")
+                      ? <video src={creative.imageUrl} muted loop autoPlay playsInline className="mt-2 max-h-32 rounded border border-border cursor-zoom-in hover:opacity-90 transition-opacity" />
+                      : <img src={creative.imageUrl} alt="Preview" className="mt-2 max-h-32 rounded border border-border cursor-zoom-in hover:opacity-90 transition-opacity" />}
                   </button>
                 )}
                 {errors[`creative_${creative.id}_image`] && <p className="text-xs text-destructive">{errors[`creative_${creative.id}_image`]}</p>}
@@ -589,7 +658,13 @@ export const CreativesEditor = forwardRef<CreativesEditorHandle, CreativesEditor
                 <Label>{t("create.htmlCode")}</Label>
                 <Textarea
                   value={creative.htmlCode || ""}
-                  onChange={e => { updateCreative(creative.id, { htmlCode: e.target.value }); if (e.target.value.trim()) onClearError?.(`creative_${creative.id}_html`); }}
+                  onChange={e => {
+                    const htmlCode = e.target.value;
+                    updateCreative(creative.id, { htmlCode });
+                    if (htmlCode.trim()) {
+                      onClearError?.(`creative_${creative.id}_html`);
+                    }
+                  }}
                   placeholder={t("create.htmlCodePlaceholder")}
                   rows={10}
                   className={`bg-background border-border font-mono text-xs ${errors[`creative_${creative.id}_html`] ? "border-destructive" : ""}`}
@@ -618,6 +693,12 @@ export const CreativesEditor = forwardRef<CreativesEditorHandle, CreativesEditor
                     </Button>
                   )}
                 </div>
+                {hasInsecureHttpReference(creative.htmlCode) && (
+                  <div className="flex items-start gap-2 rounded border border-yellow-500/30 bg-yellow-500/10 p-2">
+                    <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-yellow-500" />
+                    <p className="text-xs text-yellow-500">{t("create.httpUrlWarning")}</p>
+                  </div>
+                )}
                 {creative.sizeMismatch && target && target.mode === "fixed" && meas && (
                   <div className="flex items-start gap-2 p-2 rounded border border-yellow-500/30 bg-yellow-500/10">
                     <AlertTriangle className="h-4 w-4 text-yellow-500 shrink-0 mt-0.5" />
@@ -646,9 +727,13 @@ export const CreativesEditor = forwardRef<CreativesEditorHandle, CreativesEditor
             {isBanner && type === "iframe" && (() => {
               const iframeMode = creative.iframeMode || "url";
               const effUrl = getEffectiveIframeUrl(creative);
-              const hasValidEff = effUrl && isValidHttpsUrl(effUrl);
+              const hasValidEff = effUrl && isValidCreativeUrl(effUrl);
               return (
               <div className="space-y-2">
+                <div className="flex items-start gap-2 rounded border border-border bg-muted/40 p-2">
+                  <Info className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
+                  <p className="text-xs text-muted-foreground">{t("create.iframeExplanation")}</p>
+                </div>
                 <Tabs
                   value={iframeMode}
                   onValueChange={(v) => {
@@ -670,7 +755,9 @@ export const CreativesEditor = forwardRef<CreativesEditorHandle, CreativesEditor
                       value={creative.iframeUrl || ""}
                       onChange={e => {
                         updateCreative(creative.id, { iframeUrl: e.target.value, iframeSizeConfirmed: false });
-                        if (e.target.value.trim()) onClearError?.(`creative_${creative.id}_iframe`);
+                        if (isValidCreativeUrl(e.target.value)) {
+                          onClearError?.(`creative_${creative.id}_iframe`);
+                        }
                         setMeasured(prev => { const n = { ...prev }; delete n[creative.id]; return n; });
                       }}
                       placeholder={t("create.iframeUrlPlaceholder")}
@@ -684,7 +771,9 @@ export const CreativesEditor = forwardRef<CreativesEditorHandle, CreativesEditor
                       value={creative.iframeCode || ""}
                       onChange={e => {
                         updateCreative(creative.id, { iframeCode: e.target.value, iframeSizeConfirmed: false });
-                        if (e.target.value.trim()) onClearError?.(`creative_${creative.id}_iframe`);
+                        if (isValidCreativeUrl(extractIframeSrc(e.target.value))) {
+                          onClearError?.(`creative_${creative.id}_iframe`);
+                        }
                         setMeasured(prev => { const n = { ...prev }; delete n[creative.id]; return n; });
                       }}
                       placeholder={t("create.iframeCodePlaceholder")}
@@ -702,12 +791,6 @@ export const CreativesEditor = forwardRef<CreativesEditorHandle, CreativesEditor
                     {t("create.iframeUrlHint").replace("{w}", String(target.w)).replace("{h}", String(target.h))}
                   </p>
                 )}
-                {/* Tracking warning */}
-                <div className="flex items-start gap-2 p-2 rounded border border-yellow-500/30 bg-yellow-500/10">
-                  <Info className="h-4 w-4 text-yellow-500 shrink-0 mt-0.5" />
-                  <p className="text-xs text-yellow-500">{t("create.iframeTrackingWarning")}</p>
-                </div>
-
                 {hasValidEff && (
                   <>
                     <div className="flex items-center gap-3 flex-wrap">
@@ -752,11 +835,17 @@ export const CreativesEditor = forwardRef<CreativesEditorHandle, CreativesEditor
                     )}
                   </>
                 )}
-                {iframeMode === "url" && creative.iframeUrl && !isValidHttpsUrl(creative.iframeUrl) && (
+                {iframeMode === "url" && creative.iframeUrl && !isValidCreativeUrl(creative.iframeUrl) && (
                   <p className="text-xs text-destructive">{t("create.iframeUrlInvalid")}</p>
                 )}
-                {iframeMode === "code" && effUrl && !isValidHttpsUrl(effUrl) && (
+                {iframeMode === "code" && effUrl && !isValidCreativeUrl(effUrl) && (
                   <p className="text-xs text-destructive">{t("create.iframeUrlInvalid")}</p>
+                )}
+                {isInsecureHttpUrl(effUrl) && (
+                  <div className="flex items-start gap-2 rounded border border-yellow-500/30 bg-yellow-500/10 p-2">
+                    <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-yellow-500" />
+                    <p className="text-xs text-yellow-500">{t("create.httpUrlWarning")}</p>
+                  </div>
                 )}
                 {errors[`creative_${creative.id}_iframe`] && <p className="text-xs text-destructive">{errors[`creative_${creative.id}_iframe`]}</p>}
               </div>
@@ -773,6 +862,12 @@ export const CreativesEditor = forwardRef<CreativesEditorHandle, CreativesEditor
                   placeholder="https://example.com/landing"
                   className={`bg-background border-border ${errors[`creative_${creative.id}_url`] ? "border-destructive" : ""}`} />
                 {errors[`creative_${creative.id}_url`] && <p className="text-xs text-destructive">{errors[`creative_${creative.id}_url`]}</p>}
+                {isInsecureHttpUrl(creative.url) && (
+                  <div className="flex items-start gap-2 rounded border border-yellow-500/30 bg-yellow-500/10 p-2">
+                    <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-yellow-500" />
+                    <p className="text-xs text-yellow-500">{t("create.httpUrlWarning")}</p>
+                  </div>
+                )}
                 <div className="space-y-1">
                   <p className="text-xs text-muted-foreground">{t("create.urlMacrosHint")}</p>
                   <div className="flex flex-wrap gap-1.5">
@@ -808,7 +903,7 @@ export const CreativesEditor = forwardRef<CreativesEditorHandle, CreativesEditor
                 <Label>{t("create.uploadImage")} *</Label>
                 <input
                   ref={el => { fileInputRefs.current[creative.id] = el; }}
-                  type="file" accept=".png,.jpg,.jpeg,.gif" className="hidden"
+                  type="file" accept=".png,.jpg,.jpeg,.gif,image/png,image/jpeg,image/gif" className="hidden"
                   onChange={e => handleImageUpload(creative.id, e)} />
                 <p className="text-xs text-muted-foreground">
                   {t("create.imageFormatHint")}
@@ -849,7 +944,7 @@ export const CreativesEditor = forwardRef<CreativesEditorHandle, CreativesEditor
                   </div>
                 )}
                 {creative.imageUrl && (
-                  <button type="button" onClick={() => setPreviewUrl(creative.imageUrl!)} className="block">
+                  <button type="button" onClick={() => setPreviewMedia({ url: creative.imageUrl!, video: false })} className="block">
                     <img src={creative.imageUrl} alt="Preview" className="mt-2 max-h-32 rounded border border-border cursor-zoom-in hover:opacity-90 transition-opacity" />
                   </button>
                 )}
@@ -868,10 +963,12 @@ export const CreativesEditor = forwardRef<CreativesEditorHandle, CreativesEditor
         </Button>
       )}
     </div>
-    <Dialog open={!!previewUrl} onOpenChange={(o) => { if (!o) setPreviewUrl(null); }}>
+    <Dialog open={!!previewMedia} onOpenChange={(o) => { if (!o) setPreviewMedia(null); }}>
       <DialogContent className="max-w-4xl p-2 bg-card border-border">
-        {previewUrl && (
-          <img src={previewUrl} alt="Preview" className="w-full h-auto max-h-[85vh] object-contain rounded" />
+        {previewMedia && (
+          previewMedia.video
+            ? <video src={previewMedia.url} controls autoPlay muted playsInline className="h-auto max-h-[85vh] w-full rounded object-contain" />
+            : <img src={previewMedia.url} alt="Preview" className="w-full h-auto max-h-[85vh] object-contain rounded" />
         )}
       </DialogContent>
     </Dialog>

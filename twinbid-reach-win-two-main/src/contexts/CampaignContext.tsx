@@ -10,6 +10,14 @@ import {
   BROWSER_FILTER_MAP, OS_FILTER_MAP, DEVICE_FILTER_MAP,
   BROWSER_REVERSE, OS_REVERSE, DEVICE_REVERSE,
 } from "@/lib/statFilters";
+import {
+  buildUrlWithMacros,
+  createCampaignCreatives,
+  extractBannerTargetUrl,
+  extractIframeSrc,
+  isVideoAsset,
+  syncCampaignCreatives,
+} from "@/lib/creativeApi";
 
 // Browser/OS/device_type items in the UI are group keys (e.g. "Chrome",
 // "iOS", "mobile") but the backend targeting expects raw values (e.g.
@@ -70,22 +78,26 @@ export interface Creative {
   id: string;
   name?: string;
   url: string;
-  /** Display URL: presigned read URL from backend, or local data URL preview after a fresh upload. */
+  /** Permanent backend image_url, or a local data URL preview before upload. */
   imageUrl?: string;
+  /** Permanent backend image identifier. Kept only for display/state; unchanged images are omitted from PATCH. */
+  imageId?: string;
   imageFileName?: string;
-  /** New file picked by the user. Uploaded to the backend after the creative row is created/updated. */
+  imageMimeType?: string;
+  mediaType?: "image" | "video";
+  /** New file picked by the user. Uploaded before the creative JSON POST/PATCH. */
   pendingFile?: File;
   title?: string;
   description?: string;
   /** UI-only flag: the uploaded image dimensions don't match the required size. Not sent to API. */
   sizeMismatch?: boolean;
-  /** UI-only: banner creative content type. Only "image" is persisted to the backend today. */
+  /** UI representation mapped to backend banner_type (`image` -> `img`, HTML/iframe -> `iframe`). */
   creativeType?: CreativeType;
-  /** UI-only: raw HTML markup (creativeType === "html"). Not sent to API. */
+  /** Raw HTML markup stored in backend `adm` with banner_type `iframe`. */
   htmlCode?: string;
-  /** UI-only: iframe URL (creativeType === "iframe", iframeMode === "url"). Not sent to API. */
+  /** iframe URL. The frontend turns it into complete iframe markup for backend `adm`. */
   iframeUrl?: string;
-  /** UI-only: raw <iframe ...> snippet (creativeType === "iframe", iframeMode === "code"). Not sent to API. */
+  /** Raw <iframe ...> snippet stored in backend `adm`. */
   iframeCode?: string;
   /** UI-only: sub-mode inside iframe creative type. Defaults to "url". Not sent to API. */
   iframeMode?: "url" | "code";
@@ -154,67 +166,6 @@ function targetingPayloadToState(m: TargetingListPayload | TargetingMap | undefi
 
 function verticalsToApiArray(verticals: readonly string[] | undefined): Record<string, 1> {
   return Object.fromEntries((verticals || []).map(v => [v, 1])) as Record<string, 1>;
-}
-
-// Backend tracker macros — booleans, no `click_id` (mandatory server-side).
-const TRACKER_MACRO_KEYS = [
-  "device", "browser", "site_id", "device_os", "ip_address",
-  "campaign_id", "creative_id", "country_code",
-] as const;
-function extractMacrosFromUrl(url: string | undefined): Record<string, boolean> {
-  return Object.fromEntries(
-    TRACKER_MACRO_KEYS.map(m => [m, !!(url && url.includes(`{${m}}`))])
-  ) as Record<string, boolean>;
-}
-function appendMacroToUrl(url: string, macro: string): string {
-  if (!url.trim()) return "";
-  if (url.includes(`{${macro}}`)) return url;
-  const separator = url.includes("?") ? "&" : "?";
-  return `${url}${separator}${macro}={${macro}}`;
-}
-// Rebuild the display URL from the bare backend `link` + `trackers_macros` map,
-// so the editor can highlight the active macro badges by looking at `{macro}`
-// substrings in `creative.url`.
-function buildUrlWithMacros(
-  cleanUrl: string | undefined,
-  macros: Record<string, boolean | 0 | 1> | undefined,
-): string {
-  let url = cleanUrl || "";
-  for (const macro of TRACKER_MACRO_KEYS) {
-    if (macros && (macros[macro] === true || macros[macro] === 1)) {
-      url = appendMacroToUrl(url, macro);
-    }
-  }
-  return url;
-}
-// URL tokens that may appear in the landing URL (includes click_id for stripping).
-const URL_MACRO_TOKENS = [
-  "click_id", "site_id", "country_code", "creative_id",
-  "campaign_id", "browser", "device", "device_os", "ip_address",
-] as const;
-
-// Strip macro query params (e.g. `click_id={click_id}`) so the backend
-// receives only the bare landing URL. Macros are sent separately via
-// `trackers_macros`.
-function stripMacrosFromUrl(url: string | undefined): string {
-  if (!url) return "";
-  let result = url;
-  for (const m of URL_MACRO_TOKENS) {
-    const re = new RegExp(`[?&]${m}=\\{${m}\\}`, "g");
-    result = result.replace(re, "");
-  }
-  // If we removed the first query param, the URL may now look like
-  // `https://x.com&foo=bar` — fix that by promoting the first `&` to `?`.
-  const qIdx = result.indexOf("?");
-  if (qIdx === -1) {
-    const ampIdx = result.indexOf("&");
-    if (ampIdx !== -1) {
-      result = result.slice(0, ampIdx) + "?" + result.slice(ampIdx + 1);
-    }
-  }
-  // Trim a trailing `?` or `&` left over from removals.
-  result = result.replace(/[?&]+$/, "");
-  return result;
 }
 
 const TARGET_KEY_MAP = [
@@ -332,38 +283,47 @@ function mapApiCampaignToUi(c: ApiCampaign, creatives: Creative[]): Campaign {
   };
 }
 
-function fileNameFromPath(p?: string): string | undefined {
-  if (!p) return undefined;
-  // For data URLs we can't derive a file name; show a generic label.
-  if (p.startsWith("data:")) return "image";
-  try {
-    // Strip query string and take last path segment.
-    const clean = p.split("?")[0];
-    const tail = clean.substring(clean.lastIndexOf("/") + 1);
-    return tail || undefined;
-  } catch { return undefined; }
-}
+export function mapApiCreativeToUi(cr: ApiCreative): Creative {
+  const adm = cr.adm || "";
+  const isBannerImage = cr.banner_type === "img";
+  const isBackendIframe = cr.banner_type === "iframe";
+  const isStandaloneIframe = isBackendIframe && /^\s*<iframe\b/i.test(adm);
+  const iframeSrc = isStandaloneIframe ? extractIframeSrc(adm) : "";
+  const creativeType: CreativeType | undefined = isBannerImage
+    ? "image"
+    : isBackendIframe
+      ? (isStandaloneIframe ? "iframe" : "html")
+      : undefined;
+  const cleanTargetUrl = isBannerImage ? extractBannerTargetUrl(adm) : adm;
+  const mimeType = cr.mime_type || undefined;
+  const imageName = cr.image_name || undefined;
 
-function mapApiCreativeToUi(cr: ApiCreative): Creative {
-  const anyCr = cr as any;
-  // Display URL = presigned read URL from the backend (image bytes).
-  // File label shown in the cabinet = the `name` field (file name).
-  return {
+  const mapped: Creative = {
     id: cr.id,
     name: cr.creative_name || undefined,
-    url: buildUrlWithMacros(cr.link, cr.trackers_macros as any),
-    imageUrl: anyCr.presigned_s3_url || undefined,
-    imageFileName: anyCr.name || undefined,
-    title: anyCr.title || undefined,
-    description: anyCr.description || undefined,
+    url: buildUrlWithMacros(cleanTargetUrl, cr.trackers_macros),
+    imageId: cr.image_id || undefined,
+    imageUrl: cr.image_url || undefined,
+    imageFileName: imageName,
+    imageMimeType: mimeType,
+    mediaType: isVideoAsset(mimeType, imageName) ? "video" : "image",
+    title: cr.title || undefined,
+    description: cr.description || undefined,
+    creativeType,
   };
-}
 
-async function downloadCreativeImage(imageUrl: string, filename: string): Promise<File> {
-  const resp = await fetch(imageUrl);
-  if (!resp.ok) throw new Error(`Failed to download creative image: HTTP ${resp.status}`);
-  const blob = await resp.blob();
-  return new File([blob], filename, { type: blob.type || "image/jpeg" });
+  if (creativeType === "html") {
+    mapped.htmlCode = adm;
+  } else if (creativeType === "iframe") {
+    // The backend intentionally stores HTML and iframe URL mode identically:
+    // banner_type=iframe + adm string. A complete iframe is reopened in code
+    // mode because the original frontend sub-mode is not part of the API.
+    mapped.iframeMode = "code";
+    mapped.iframeCode = adm;
+    mapped.iframeUrl = iframeSrc;
+    mapped.iframeSizeConfirmed = true;
+  }
+  return mapped;
 }
 
 /**
@@ -519,27 +479,21 @@ export function CampaignProvider({ children }: { children: ReactNode }) {
     // Errors here propagate to the caller so the UI can show the real
     // backend message instead of a fake success toast.
     const created = await api.createCampaign(buildApiCampaignBody(c));
-    // Banner creatives need w/h on the creative body itself (backend expectation).
     let cw: number | null = null, ch: number | null = null;
     if (c.formatKey === "banner" && c.bannerSize && /^\d+x\d+$/.test(c.bannerSize)) {
       const [ws, hs] = c.bannerSize.split("x");
       cw = Number(ws); ch = Number(hs);
     }
-    for (const cr of c.creatives) {
-      await api.createCreative(
-        created.campaign_id,
-        {
-          creative_name: cr.name || "",
-          link: stripMacrosFromUrl(cr.url),
-          trackers_macros: extractMacrosFromUrl(cr.url),
-          ...(cw && ch ? { w: cw, h: ch } : {}),
-          ...(cr.title ? { title: cr.title } : {}),
-          ...(cr.description ? { description: cr.description } : {}),
-        } as any,
-        cr.pendingFile,
-        cr.pendingFile ? (cr.imageFileName || cr.pendingFile.name) : undefined,
-      );
-    }
+    await createCampaignCreatives({
+      client: api,
+      campaignId: created.campaign_id,
+      format: c.formatKey,
+      dimensions: { w: cw, h: ch },
+      creatives: c.creatives,
+      // Incomplete auto-saved drafts may legitimately have no finished
+      // creative yet. Formal campaign creation is validated by the page.
+      skipIncomplete: c.status === "draft",
+    });
     await fetchCampaigns();
     return created.campaign_id;
   }, [user, fetchCampaigns]);
@@ -558,9 +512,10 @@ export function CampaignProvider({ children }: { children: ReactNode }) {
     // (draft → moderation) are rejected by the backend when the campaign has
     // no creatives, so we need the creatives to exist before the PATCH runs.
     if (updates.creatives !== undefined) {
-      const existingRaw = await api.readCreatives(id).catch(() => [] as ApiCreative[]);
+      // Never degrade a failed read to an empty list here: doing so would
+      // misclassify every existing creative as new and create duplicates.
+      const existingRaw = await api.readCreatives(id);
       const existing: ApiCreative[] = Array.isArray(existingRaw) ? existingRaw : [];
-      const existingById = new Map(existing.map(cr => [cr.id, cr]));
       // Resolve current banner size for w/h on creative body.
       const currentC = campaigns.find(c => c.id === id);
       const formatKey = updates.formatKey ?? currentC?.formatKey;
@@ -570,38 +525,14 @@ export function CampaignProvider({ children }: { children: ReactNode }) {
         const [ws, hs] = bannerSize.split("x");
         cw = Number(ws); ch = Number(hs);
       }
-      const preparedCreatives = await Promise.all(updates.creatives.map(async cr => {
-        let fileToSend: File | undefined = cr.pendingFile;
-        let filenameToSend: string | undefined = cr.pendingFile
-          ? (cr.imageFileName || cr.pendingFile.name)
-          : undefined;
-        const existingCreative = existingById.get(cr.id) as (ApiCreative & { name?: string; presigned_s3_url?: string }) | undefined;
-        const sourceImageUrl = existingCreative?.presigned_s3_url || cr.imageUrl;
-        if (!fileToSend && sourceImageUrl && /^https?:\/\//i.test(sourceImageUrl)) {
-          const fname = cr.imageFileName || existingCreative?.name || fileNameFromPath(sourceImageUrl) || "image.jpg";
-          fileToSend = await downloadCreativeImage(sourceImageUrl, fname);
-          filenameToSend = fname;
-        }
-        return { cr, fileToSend, filenameToSend };
-      }));
-
-      await Promise.all(existing.map(cr => api.deleteCreative(cr.id)));
-
-      for (const { cr, fileToSend, filenameToSend } of preparedCreatives) {
-        await api.createCreative(
-          id,
-          {
-            creative_name: cr.name || "",
-            link: stripMacrosFromUrl(cr.url),
-            trackers_macros: extractMacrosFromUrl(cr.url),
-            ...(cw && ch ? { w: cw, h: ch } : {}),
-            ...(cr.title ? { title: cr.title } : {}),
-            ...(cr.description ? { description: cr.description } : {}),
-          } as any,
-          fileToSend,
-          filenameToSend,
-        );
-      }
+      await syncCampaignCreatives({
+        client: api,
+        campaignId: id,
+        format: formatKey || "",
+        dimensions: { w: cw, h: ch },
+        creatives: updates.creatives,
+        existing,
+      });
     }
 
     // Build a *partial* patch so toggling a single field (status, budget,
