@@ -3,6 +3,7 @@ package auction
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"strings"
 	"unicode/utf8"
 
@@ -80,17 +81,25 @@ type nativeResponseImage struct {
 }
 
 func parseNativeRequest(imp *ortb.Imp) (nativeRequest, bool) {
-	if imp == nil || imp.GetNative() == nil {
-		return nativeRequest{}, false
+	request, reason := parseNativeRequestDetailed(imp)
+	return request, reason == ""
+}
+
+func parseNativeRequestDetailed(imp *ortb.Imp) (nativeRequest, string) {
+	if imp == nil {
+		return nativeRequest{}, "impression_nil"
+	}
+	if imp.GetNative() == nil {
+		return nativeRequest{}, "native_object_missing"
 	}
 	raw := strings.TrimSpace(imp.GetNative().GetRequest())
 	if raw == "" {
-		return nativeRequest{}, false
+		return nativeRequest{}, "native_request_empty"
 	}
 
 	var envelope nativeRequestEnvelope
 	if err := json.Unmarshal([]byte(raw), &envelope); err != nil {
-		return nativeRequest{}, false
+		return nativeRequest{}, "native_request_json_invalid"
 	}
 
 	payload := []byte(raw)
@@ -99,15 +108,18 @@ func parseNativeRequest(imp *ortb.Imp) (nativeRequest, bool) {
 	}
 
 	var request nativeRequest
-	if err := json.Unmarshal(payload, &request); err != nil || len(request.Assets) == 0 {
-		return nativeRequest{}, false
+	if err := json.Unmarshal(payload, &request); err != nil {
+		return nativeRequest{}, "native_payload_json_invalid"
 	}
-	for _, asset := range request.Assets {
+	if len(request.Assets) == 0 {
+		return nativeRequest{}, "native_assets_empty"
+	}
+	for index, asset := range request.Assets {
 		if !validNativeAssetID(asset.ID) {
-			return nativeRequest{}, false
+			return nativeRequest{}, fmt.Sprintf("native_asset_id_invalid_at_%d", index)
 		}
 	}
-	return request, true
+	return request, ""
 }
 
 func buildNativeADM(imp *ortb.Imp, campaign *Campaign, creative *Creative, clickURL string) (string, bool) {
@@ -196,6 +208,120 @@ func buildNativeAsset(requested nativeRequestAsset, campaign *Campaign, creative
 	default:
 		return response, false, !required
 	}
+}
+
+type nativeRejectionDiagnostic struct {
+	Reason        string
+	AssetIndex    int
+	AssetID       string
+	AssetKind     string
+	Required      bool
+	DataType      int
+	RequestedW    int
+	RequestedH    int
+	RequestedWMin int
+	RequestedHMin int
+}
+
+func diagnoseNativeCreativeRejection(imp *ortb.Imp, campaign *Campaign, creative *Creative) nativeRejectionDiagnostic {
+	diagnostic := nativeRejectionDiagnostic{AssetIndex: -1}
+	if campaign == nil {
+		diagnostic.Reason = "campaign_nil"
+		return diagnostic
+	}
+	if creative == nil {
+		diagnostic.Reason = "creative_nil"
+		return diagnostic
+	}
+	if strings.TrimSpace(creative.ID) == "" {
+		diagnostic.Reason = "creative_id_empty"
+		return diagnostic
+	}
+	if strings.TrimSpace(creative.ADMURL) == "" {
+		diagnostic.Reason = "adm_url_empty"
+		return diagnostic
+	}
+	format := normalizeFormat(campaign.Format)
+	if format != constants.NAT && format != constants.IPP {
+		diagnostic.Reason = "campaign_format_not_native_or_ipp"
+		return diagnostic
+	}
+
+	request, parseReason := parseNativeRequestDetailed(imp)
+	if parseReason != "" {
+		diagnostic.Reason = parseReason
+		return diagnostic
+	}
+
+	for index, requested := range request.Assets {
+		_, _, valid := buildNativeAsset(requested, campaign, creative)
+		if valid {
+			continue
+		}
+
+		diagnostic.AssetIndex = index
+		diagnostic.AssetID = nativeAssetIDText(requested.ID)
+		diagnostic.Required = requested.Required == 1
+
+		switch {
+		case requested.Title != nil:
+			diagnostic.AssetKind = "title"
+			diagnostic.Reason = "required_title_missing"
+
+		case requested.Data != nil:
+			diagnostic.AssetKind = "data"
+			diagnostic.DataType = requested.Data.Type
+			switch requested.Data.Type {
+			case 1:
+				diagnostic.Reason = "required_brand_name_missing"
+			case 2:
+				diagnostic.Reason = "required_description_missing"
+			default:
+				diagnostic.Reason = "required_data_type_unsupported"
+			}
+
+		case requested.Img != nil:
+			diagnostic.AssetKind = "img"
+			diagnostic.RequestedW = requested.Img.W
+			diagnostic.RequestedH = requested.Img.H
+			diagnostic.RequestedWMin = requested.Img.WMin
+			diagnostic.RequestedHMin = requested.Img.HMin
+			switch {
+			case strings.TrimSpace(creative.ImageURL) == "":
+				diagnostic.Reason = "required_image_url_missing"
+			case creative.W <= 0 || creative.H <= 0:
+				diagnostic.Reason = "required_image_dimensions_invalid"
+			case requested.Img.WMin > 0 && creative.W < requested.Img.WMin:
+				diagnostic.Reason = "required_image_width_below_wmin"
+			case requested.Img.HMin > 0 && creative.H < requested.Img.HMin:
+				diagnostic.Reason = "required_image_height_below_hmin"
+			case !allowedNativeImageFormat(creative.FileFormat):
+				diagnostic.Reason = "required_image_format_unsupported"
+			default:
+				diagnostic.Reason = "required_image_not_eligible"
+			}
+
+		default:
+			diagnostic.AssetKind = "unsupported"
+			diagnostic.Reason = "required_asset_type_unsupported"
+		}
+		return diagnostic
+	}
+
+	diagnostic.Reason = "native_adm_build_failed_unknown"
+	return diagnostic
+}
+
+func nativeAssetIDText(raw json.RawMessage) string {
+	raw = bytes.TrimSpace(raw)
+	if len(raw) == 0 {
+		return ""
+	}
+	var value any
+	if err := json.Unmarshal(raw, &value); err != nil {
+		return string(raw)
+	}
+	return fmt.Sprint(value)
 }
 
 func nativeImageEligible(creative *Creative, request *nativeRequestImage) bool {

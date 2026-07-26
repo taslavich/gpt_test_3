@@ -61,15 +61,6 @@ func (m auctionMode) String() string {
 
 type debugLogFunc func(format string, args ...any)
 
-func shouldLogSSPDomain(value string) bool {
-	switch normalizeDomain(value) {
-	case "adl_test", "mc_test", "1":
-		return true
-	default:
-		return false
-	}
-}
-
 type TimeRange struct {
 	Start time.Time `json:"start"`
 	End   time.Time `json:"end"`
@@ -394,21 +385,19 @@ func (s *AuctionService) Auction(ctx context.Context, req *ortb.BidRequest, now 
 		requestID = strings.TrimSpace(req.GetId())
 	}
 
-	logEnabled := shouldLogSSPDomain(sspDomain)
-	logf := debugLogFunc(func(format string, args ...any) {
-		if logEnabled {
-			log.Printf(format, args...)
-		}
-	})
+	// Detailed auction diagnostics are always enabled for every SSP domain and format.
+	logf := debugLogFunc(log.Printf)
 
+	antiPerekrutEnabled := s != nil && s.antiperekrutEnabled
 	logf(
-		"[ADV][AUCTION_START] request_id=%q format=%q traffic_type=%q ssp_domain=%q impressions=%d imp_uuid_count=%d",
+		"[ADV][AUCTION_START] request_id=%q format=%q traffic_type=%q ssp_domain=%q impressions=%d imp_uuid_count=%d antiperekrut_enabled=%t",
 		requestID,
 		requestedFormat,
 		trafficType,
 		sspDomain,
 		len(req.GetImp()),
 		len(options.ImpIDUUID),
+		antiPerekrutEnabled,
 	)
 
 	if s == nil || !validAuctionInput(req, options.ImpIDUUID) {
@@ -521,13 +510,16 @@ func (s *AuctionService) Auction(ctx context.Context, req *ortb.BidRequest, now 
 
 		if !impressionMatchesFormat(imp, requestedFormat) {
 			logf(
-				"[ADV][IMP_REJECT] request_id=%q imp_id=%q reason=impression_format_mismatch requested_format=%q has_banner=%t has_native=%t banner_ext=%q",
+				"[ADV][IMP_REJECT] request_id=%q imp_id=%q reason=impression_format_mismatch requested_format=%q has_banner=%t has_native=%t banner_ext=%q banner_sizes=%q banner_mimes=%q native_request_length=%d",
 				requestID,
 				impID,
 				requestedFormat,
 				imp.GetBanner() != nil,
 				imp.GetNative() != nil,
 				bannerExtValues(imp),
+				formatBannerSizes(bannerSizes(imp)),
+				bannerMimeValues(imp),
+				nativeRequestPayloadLength(imp),
 			)
 			continue
 		}
@@ -535,19 +527,28 @@ func (s *AuctionService) Auction(ctx context.Context, req *ortb.BidRequest, now 
 		winnerUUID := strings.TrimSpace(options.ImpIDUUID[impID])
 		if winnerUUID == "" {
 			logf(
-				"[ADV][IMP_REJECT] request_id=%q imp_id=%q reason=winner_uuid_missing",
+				"[ADV][IMP_REJECT] request_id=%q imp_id=%q format=%q reason=winner_uuid_missing",
 				requestID,
 				impID,
+				requestedFormat,
 			)
 			continue
 		}
 
 		logf(
-			"[ADV][IMP_START] request_id=%q imp_id=%q winner_uuid=%q campaigns_to_check=%d",
+			"[ADV][IMP_START] request_id=%q imp_id=%q format=%q winner_uuid=%q campaigns_to_check=%d has_banner=%t has_native=%t banner_ext=%q banner_sizes=%q banner_mimes=%q native_request_length=%d bidfloor=%.12f",
 			requestID,
 			impID,
+			requestedFormat,
 			winnerUUID,
 			len(snapshot.Campaigns),
+			imp.GetBanner() != nil,
+			imp.GetNative() != nil,
+			bannerExtValues(imp),
+			formatBannerSizes(bannerSizes(imp)),
+			bannerMimeValues(imp),
+			nativeRequestPayloadLength(imp),
+			float64(imp.GetBidfloor()),
 		)
 
 		candidates := make([]candidate, 0, len(snapshot.Campaigns))
@@ -571,16 +572,20 @@ func (s *AuctionService) Auction(ctx context.Context, req *ortb.BidRequest, now 
 				infrastructureErrors++
 				campaignID := ""
 				userID := ""
+				campaignFormat := ""
 				if campaign != nil {
 					campaignID = campaign.ID
 					userID = campaign.UserID
+					campaignFormat = normalizeFormat(campaign.Format)
 				}
 				logf(
-					"[ADV][CAMPAIGN_ERROR] request_id=%q imp_id=%q campaign_id=%q user_id=%q error=%v",
+					"[ADV][CAMPAIGN_ERROR] request_id=%q imp_id=%q format=%q campaign_id=%q user_id=%q campaign_format=%q error=%v",
 					requestID,
 					impID,
+					requestedFormat,
 					campaignID,
 					userID,
+					campaignFormat,
 					infraErr,
 				)
 				continue
@@ -591,9 +596,10 @@ func (s *AuctionService) Auction(ctx context.Context, req *ortb.BidRequest, now 
 		}
 
 		logf(
-			"[ADV][IMP_CANDIDATES] request_id=%q imp_id=%q auction_position=%d auction_mode=%q eligible=%d checked=%d infrastructure_errors=%d",
+			"[ADV][IMP_CANDIDATES] request_id=%q imp_id=%q format=%q auction_position=%d auction_mode=%q eligible=%d checked=%d infrastructure_errors=%d",
 			requestID,
 			impID,
+			requestedFormat,
 			auctionPosition,
 			mode.String(),
 			len(candidates),
@@ -602,45 +608,88 @@ func (s *AuctionService) Auction(ctx context.Context, req *ortb.BidRequest, now 
 		)
 
 		candidatePool := prepareCandidatePool(candidates, mode, rand.Shuffle)
+		selectionPool := append([]candidate(nil), candidatePool...)
+		logCandidatePool(logf, requestID, impID, requestedFormat, mode, candidates, selectionPool)
+
+		attemptResults := make(map[string]string, len(selectionPool))
+		winnerCampaignID := ""
+		winnerEffectivePrice := 0.0
 		for len(candidatePool) > 0 {
 			candidateIndex := 0
+			randomUnit := -1.0
 			if mode != auctionModeMaxBid {
-				candidateIndex = weightedCandidateIndex(candidatePool, rand.Float64())
+				randomUnit = rand.Float64()
+				candidateIndex = weightedCandidateIndex(candidatePool, randomUnit)
 				if candidateIndex < 0 {
+					logf(
+						"[ADV][CANDIDATE_SELECTION_ERROR] request_id=%q imp_id=%q format=%q auction_mode=%q reason=weighted_index_unavailable pool_size=%d random_unit=%.12f total_weight=%.12f",
+						requestID,
+						impID,
+						requestedFormat,
+						mode.String(),
+						len(candidatePool),
+						randomUnit,
+						candidateTotalWeight(candidatePool),
+					)
 					break
 				}
 			}
 
+			poolSizeBefore := len(candidatePool)
+			totalWeightBefore := candidateTotalWeight(candidatePool)
 			cand := candidatePool[candidateIndex]
 			candidatePool = removeCandidate(candidatePool, candidateIndex)
+			campaignID := candidateCampaignID(cand)
+			logf(
+				"[ADV][CANDIDATE_ATTEMPT] request_id=%q imp_id=%q format=%q auction_mode=%q campaign_id=%q user_id=%q selected_index=%d pool_size_before=%d random_unit=%.12f total_weight=%.12f effective_price=%.12f charge_price=%.12f matched_creatives=%d",
+				requestID,
+				impID,
+				requestedFormat,
+				mode.String(),
+				campaignID,
+				candidateUserID(cand),
+				candidateIndex,
+				poolSizeBefore,
+				randomUnit,
+				totalWeightBefore,
+				cand.effectivePrice,
+				cand.chargePrice,
+				len(cand.creatives),
+			)
 
 			if len(cand.creatives) == 0 {
+				attemptResults[campaignID] = "eligible_candidate_has_no_creatives"
 				logf(
-					"[ADV][CANDIDATE_SKIP] request_id=%q imp_id=%q campaign_id=%q reason=eligible_candidate_has_no_creatives",
+					"[ADV][CANDIDATE_SKIP] request_id=%q imp_id=%q format=%q campaign_id=%q reason=eligible_candidate_has_no_creatives",
 					requestID,
 					impID,
-					cand.campaign.ID,
+					requestedFormat,
+					campaignID,
 				)
 				continue
 			}
 			creative := cand.creatives[rand.Intn(len(cand.creatives))]
 			if creative == nil {
+				attemptResults[campaignID] = "random_creative_nil"
 				logf(
-					"[ADV][CANDIDATE_SKIP] request_id=%q imp_id=%q campaign_id=%q reason=random_creative_nil matched_creatives=%d",
+					"[ADV][CANDIDATE_SKIP] request_id=%q imp_id=%q format=%q campaign_id=%q reason=random_creative_nil matched_creatives=%d",
 					requestID,
 					impID,
-					cand.campaign.ID,
+					requestedFormat,
+					campaignID,
 					len(cand.creatives),
 				)
 				continue
 			}
 			bid := s.buildBid(req, imp, cand.campaign, creative, cand.effectivePrice)
 			if bid == nil {
+				attemptResults[campaignID] = "bid_build_failed"
 				logf(
-					"[ADV][CANDIDATE_SKIP] request_id=%q imp_id=%q campaign_id=%q creative_id=%q reason=bid_build_failed adm_url_empty=%t",
+					"[ADV][CANDIDATE_SKIP] request_id=%q imp_id=%q format=%q campaign_id=%q creative_id=%q reason=bid_build_failed adm_url_empty=%t",
 					requestID,
 					impID,
-					cand.campaign.ID,
+					requestedFormat,
+					campaignID,
 					creative.ID,
 					strings.TrimSpace(creative.ADMURL) == "",
 				)
@@ -654,12 +703,14 @@ func (s *AuctionService) Auction(ctx context.Context, req *ortb.BidRequest, now 
 				Format:     requestedFormat,
 			}
 			if err := s.winners.Put(ctx, winnerUUID, winner); err != nil {
+				attemptResults[campaignID] = "winner_redis_write_failed"
 				logf(
-					"[ADV][WINNER_REDIS_ERROR] request_id=%q imp_id=%q winner_uuid=%q campaign_id=%q creative_id=%q user_id=%q error=%v",
+					"[ADV][WINNER_REDIS_ERROR] request_id=%q imp_id=%q format=%q winner_uuid=%q campaign_id=%q creative_id=%q user_id=%q error=%v",
 					requestID,
 					impID,
+					requestedFormat,
 					winnerUUID,
-					cand.campaign.ID,
+					campaignID,
 					creative.ID,
 					cand.campaign.UserID,
 					err,
@@ -671,14 +722,18 @@ func (s *AuctionService) Auction(ctx context.Context, req *ortb.BidRequest, now 
 			seat.Bid = append(seat.Bid, bid)
 			winnerUsers[impID] = cand.campaign.UserID
 			winnerBasePrices[impID] = cand.campaign.BasePrice
+			winnerCampaignID = campaignID
+			winnerEffectivePrice = cand.effectivePrice
+			attemptResults[campaignID] = "winner"
 			logf(
-				"[ADV][WINNER] request_id=%q imp_id=%q winner_uuid=%q auction_position=%d auction_mode=%q campaign_id=%q creative_id=%q user_id=%q base_price=%.12f charge_price=%.12f effective_price=%.12f matched_creatives=%d",
+				"[ADV][WINNER] request_id=%q imp_id=%q format=%q winner_uuid=%q auction_position=%d auction_mode=%q campaign_id=%q creative_id=%q user_id=%q base_price=%.12f charge_price=%.12f effective_price=%.12f matched_creatives=%d",
 				requestID,
 				impID,
+				requestedFormat,
 				winnerUUID,
 				auctionPosition,
 				mode.String(),
-				cand.campaign.ID,
+				campaignID,
 				creative.ID,
 				cand.campaign.UserID,
 				cand.campaign.BasePrice,
@@ -688,6 +743,19 @@ func (s *AuctionService) Auction(ctx context.Context, req *ortb.BidRequest, now 
 			)
 			break
 		}
+
+		logCandidateSelectionOutcomes(
+			logf,
+			requestID,
+			impID,
+			requestedFormat,
+			mode,
+			candidates,
+			selectionPool,
+			attemptResults,
+			winnerCampaignID,
+			winnerEffectivePrice,
+		)
 	}
 
 	if len(seat.Bid) == 0 {
@@ -700,8 +768,9 @@ func (s *AuctionService) Auction(ctx context.Context, req *ortb.BidRequest, now 
 			return nil, fmt.Errorf("ADV Redis operations failed for %d candidates", infrastructureErrors)
 		}
 		logf(
-			"[ADV][AUCTION_NO_BID] request_id=%q impressions=%d winner_user_ids=%d",
+			"[ADV][AUCTION_NO_BID] request_id=%q format=%q impressions=%d winner_user_ids=%d",
 			requestID,
+			requestedFormat,
 			len(req.GetImp()),
 			len(winnerUsers),
 		)
@@ -711,8 +780,9 @@ func (s *AuctionService) Auction(ctx context.Context, req *ortb.BidRequest, now 
 	responseID := strings.TrimSpace(req.GetId())
 	currency := "USD"
 	logf(
-		"[ADV][AUCTION_SUCCESS] request_id=%q response_id=%q bids=%d winner_user_ids=%d",
+		"[ADV][AUCTION_SUCCESS] request_id=%q format=%q response_id=%q bids=%d winner_user_ids=%d",
 		requestID,
+		requestedFormat,
 		responseID,
 		len(seat.Bid),
 		len(winnerUsers),
@@ -852,6 +922,172 @@ func removeCandidate(candidates []candidate, index int) []candidate {
 	return candidates[:len(candidates)-1]
 }
 
+func candidateCampaignID(cand candidate) string {
+	if cand.campaign == nil {
+		return ""
+	}
+	return strings.TrimSpace(cand.campaign.ID)
+}
+
+func candidateUserID(cand candidate) string {
+	if cand.campaign == nil {
+		return ""
+	}
+	return strings.TrimSpace(cand.campaign.UserID)
+}
+
+func candidateTotalWeight(candidates []candidate) float64 {
+	total := 0.0
+	for _, cand := range candidates {
+		if finitePositive(cand.effectivePrice) {
+			total += cand.effectivePrice
+		}
+	}
+	return total
+}
+
+func candidatePoolRanks(pool []candidate) map[string]int {
+	ranks := make(map[string]int, len(pool))
+	for index, cand := range pool {
+		campaignID := candidateCampaignID(cand)
+		if campaignID != "" {
+			ranks[campaignID] = index + 1
+		}
+	}
+	return ranks
+}
+
+func logCandidatePool(
+	logf debugLogFunc,
+	requestID, impID, requestedFormat string,
+	mode auctionMode,
+	candidates, pool []candidate,
+) {
+	poolRanks := candidatePoolRanks(pool)
+	maxPrice := 0.0
+	for _, cand := range candidates {
+		if cand.effectivePrice > maxPrice {
+			maxPrice = cand.effectivePrice
+		}
+	}
+	threshold := 0.0
+	if mode == auctionModeWeightedTop {
+		threshold = maxPrice * topBidPoolRatio
+	}
+
+	logf(
+		"[ADV][CANDIDATE_POOL_SUMMARY] request_id=%q imp_id=%q format=%q auction_mode=%q eligible=%d pool_size=%d max_effective_price=%.12f weighted_top_threshold=%.12f total_weight=%.12f",
+		requestID,
+		impID,
+		requestedFormat,
+		mode.String(),
+		len(candidates),
+		len(pool),
+		maxPrice,
+		threshold,
+		candidateTotalWeight(pool),
+	)
+
+	for _, cand := range candidates {
+		campaignID := candidateCampaignID(cand)
+		poolRank, inPool := poolRanks[campaignID]
+		poolReason := "included"
+		if !inPool {
+			poolReason = "excluded_by_auction_mode"
+			if mode == auctionModeWeightedTop && cand.effectivePrice < threshold {
+				poolReason = "below_weighted_top_threshold"
+			}
+		}
+		logf(
+			"[ADV][CANDIDATE_POOL_ENTRY] request_id=%q imp_id=%q format=%q auction_mode=%q campaign_id=%q user_id=%q in_pool=%t pool_rank=%d pool_reason=%q base_price=%.12f charge_price=%.12f effective_price=%.12f matched_creatives=%d",
+			requestID,
+			impID,
+			requestedFormat,
+			mode.String(),
+			campaignID,
+			candidateUserID(cand),
+			inPool,
+			poolRank,
+			poolReason,
+			candidateBasePrice(cand),
+			cand.chargePrice,
+			cand.effectivePrice,
+			len(cand.creatives),
+		)
+	}
+}
+
+func candidateBasePrice(cand candidate) float64 {
+	if cand.campaign == nil {
+		return 0
+	}
+	return cand.campaign.BasePrice
+}
+
+func logCandidateSelectionOutcomes(
+	logf debugLogFunc,
+	requestID, impID, requestedFormat string,
+	mode auctionMode,
+	candidates, pool []candidate,
+	attemptResults map[string]string,
+	winnerCampaignID string,
+	winnerEffectivePrice float64,
+) {
+	poolRanks := candidatePoolRanks(pool)
+	for _, cand := range candidates {
+		campaignID := candidateCampaignID(cand)
+		if campaignID == "" || campaignID == winnerCampaignID {
+			continue
+		}
+
+		poolRank, inPool := poolRanks[campaignID]
+		reason := attemptResults[campaignID]
+		if reason != "" {
+			reason = "attempt_failed_" + reason
+		} else if !inPool {
+			reason = "excluded_from_candidate_pool"
+			if mode == auctionModeWeightedTop {
+				reason = "below_weighted_top_threshold"
+			}
+		} else if winnerCampaignID == "" {
+			reason = "not_attempted_no_winner_selected"
+		} else {
+			switch mode {
+			case auctionModeMaxBid:
+				if auctionPricesEqual(cand.effectivePrice, winnerEffectivePrice) {
+					reason = "equal_top_price_not_selected_after_shuffle"
+				} else if cand.effectivePrice < winnerEffectivePrice {
+					reason = "lower_effective_price_than_winner"
+				} else {
+					reason = "winner_selected_before_attempt"
+				}
+			case auctionModeWeightedTop, auctionModeWeightedAll:
+				reason = "not_selected_by_weighted_draw_before_winner"
+			default:
+				reason = "not_selected_unknown_auction_mode"
+			}
+		}
+
+		logf(
+			"[ADV][CAMPAIGN_NOT_SELECTED] request_id=%q imp_id=%q format=%q auction_mode=%q campaign_id=%q user_id=%q reason=%q in_pool=%t pool_rank=%d base_price=%.12f charge_price=%.12f effective_price=%.12f winner_campaign_id=%q winner_effective_price=%.12f",
+			requestID,
+			impID,
+			requestedFormat,
+			mode.String(),
+			campaignID,
+			candidateUserID(cand),
+			reason,
+			inPool,
+			poolRank,
+			candidateBasePrice(cand),
+			cand.chargePrice,
+			cand.effectivePrice,
+			winnerCampaignID,
+			winnerEffectivePrice,
+		)
+	}
+}
+
 func (s *AuctionService) evaluateCampaign(
 	ctx context.Context,
 	snapshot *Snapshot,
@@ -876,33 +1112,53 @@ func (s *AuctionService) evaluateCampaign(
 
 	if campaign == nil {
 		logf(
-			"[ADV][CAMPAIGN_REJECT] request_id=%q imp_id=%q reason=campaign_nil",
+			"[ADV][CAMPAIGN_REJECT] request_id=%q imp_id=%q format=%q reason=campaign_nil",
 			requestID,
 			impID,
+			requestedFormat,
 		)
 		return candidate{}, false, nil
 	}
 
 	campaignID := strings.TrimSpace(campaign.ID)
 	userID := strings.TrimSpace(campaign.UserID)
+	campaignFormat := normalizeFormat(campaign.Format)
 
-	if normalizeFormat(campaign.Format) != requestedFormat {
+	logf(
+		"[ADV][CAMPAIGN_CHECK] request_id=%q imp_id=%q format=%q campaign_id=%q user_id=%q campaign_format=%q campaign_traffic_type=%q pricing_model=%q base_price=%.12f goal_total_dollars=%.12f quality_segment=%q creatives_total=%d status=%q",
+		requestID,
+		impID,
+		requestedFormat,
+		campaignID,
+		userID,
+		campaignFormat,
+		normalizeTraffic(campaign.TrafficType),
+		campaign.PricingModel,
+		campaign.BasePrice,
+		campaign.GoalTotalDollars,
+		campaign.QualitySegment,
+		len(campaign.Creatives),
+		campaign.Status,
+	)
+
+	if campaignFormat != requestedFormat {
 		logf(
 			"[ADV][CAMPAIGN_REJECT] request_id=%q imp_id=%q campaign_id=%q user_id=%q reason=format_mismatch campaign_format=%q requested_format=%q",
 			requestID,
 			impID,
 			campaignID,
 			userID,
-			normalizeFormat(campaign.Format),
+			campaignFormat,
 			requestedFormat,
 		)
 		return candidate{}, false, nil
 	}
 	if !trafficMatches(campaign.TrafficType, trafficType) {
 		logf(
-			"[ADV][CAMPAIGN_REJECT] request_id=%q imp_id=%q campaign_id=%q user_id=%q reason=traffic_type_mismatch campaign_traffic_type=%q requested_traffic_type=%q",
+			"[ADV][CAMPAIGN_REJECT] request_id=%q imp_id=%q format=%q campaign_id=%q user_id=%q reason=traffic_type_mismatch campaign_traffic_type=%q requested_traffic_type=%q",
 			requestID,
 			impID,
+			requestedFormat,
 			campaignID,
 			userID,
 			normalizeTraffic(campaign.TrafficType),
@@ -919,7 +1175,7 @@ func (s *AuctionService) evaluateCampaign(
 	if s.antiperekrutEnabled {
 		balance := s.cachedUserBalance(ctx, snapshot, userID, userBalanceCache)
 		if balance.err != nil {
-			logf("[ADV][CAMPAIGN_ERROR] request_id=%q imp_id=%q campaign_id=%q user_id=%q reason=antiperekrut_user_balance_read_failed error=%v", requestID, impID, campaignID, userID, balance.err)
+			logf("[ADV][CAMPAIGN_ERROR] request_id=%q imp_id=%q format=%q campaign_id=%q user_id=%q reason=antiperekrut_user_balance_read_failed error=%v", requestID, impID, requestedFormat, campaignID, userID, balance.err)
 			if s.antiperekrut != nil {
 				s.antiperekrut.NotifyAuctionError("user_balance_read", balance.err)
 			}
@@ -932,7 +1188,7 @@ func (s *AuctionService) evaluateCampaign(
 		}
 		guardReject := recent*2 > userRemaining
 		if guardReject {
-			logf("[ADV][ANTIPEREKRUT_USER_GUARD] request_id=%q imp_id=%q campaign_id=%q user_id=%q user_spend=%.12f user_remaining=%.12f would_reject=true", requestID, impID, campaignID, userID, recent, userRemaining)
+			logf("[ADV][ANTIPEREKRUT_USER_GUARD] request_id=%q imp_id=%q format=%q campaign_id=%q user_id=%q user_spend=%.12f user_remaining=%.12f would_reject=true", requestID, impID, requestedFormat, campaignID, userID, recent, userRemaining)
 			return candidate{}, false, nil
 		}
 		hashID := requestID
@@ -945,12 +1201,12 @@ func (s *AuctionService) evaluateCampaign(
 		}
 		hashPass := trafficHashPass(hashID, campaignID, limit)
 		if !hashPass {
-			logf("[ADV][ANTIPEREKRUT_HASH_GATE] request_id=%q imp_id=%q campaign_id=%q user_id=%q traffic_limit=%d would_reject=true", requestID, impID, campaignID, userID, limit)
+			logf("[ADV][ANTIPEREKRUT_HASH_GATE] request_id=%q imp_id=%q format=%q campaign_id=%q user_id=%q traffic_limit=%d would_reject=true", requestID, impID, requestedFormat, campaignID, userID, limit)
 			return candidate{}, false, nil
 		}
 	}
 	if !s.quality.Contains(campaign.QualitySegment, sspDomain) {
-		logf("[ADV][CAMPAIGN_REJECT] request_id=%q imp_id=%q campaign_id=%q user_id=%q reason=quality_mismatch campaign_quality=%q ssp_domain=%q", requestID, impID, campaignID, userID, campaign.QualitySegment, sspDomain)
+		logf("[ADV][CAMPAIGN_REJECT] request_id=%q imp_id=%q format=%q campaign_id=%q user_id=%q reason=quality_mismatch campaign_quality=%q ssp_domain=%q", requestID, impID, requestedFormat, campaignID, userID, campaign.QualitySegment, sspDomain)
 		return candidate{}, false, nil
 	}
 
@@ -973,9 +1229,10 @@ func (s *AuctionService) evaluateCampaign(
 	campaignSpent, err := s.runtime.CampaignSpent(ctx, campaign.ID)
 	if err != nil {
 		logf(
-			"[ADV][CAMPAIGN_ERROR] request_id=%q imp_id=%q campaign_id=%q user_id=%q reason=campaign_spent_read_failed error=%v",
+			"[ADV][CAMPAIGN_ERROR] request_id=%q imp_id=%q format=%q campaign_id=%q user_id=%q reason=campaign_spent_read_failed error=%v",
 			requestID,
 			impID,
+			requestedFormat,
 			campaignID,
 			userID,
 			err,
@@ -985,9 +1242,10 @@ func (s *AuctionService) evaluateCampaign(
 	campaignRemaining := campaign.GoalTotalDollars - campaignSpent
 	if campaignRemaining < chargePrice {
 		logf(
-			"[ADV][CAMPAIGN_REJECT] request_id=%q imp_id=%q campaign_id=%q user_id=%q reason=campaign_balance_insufficient campaign_goal_total_dollars=%.12f campaign_spent=%.12f campaign_remaining=%.12f charge_price=%.12f",
+			"[ADV][CAMPAIGN_REJECT] request_id=%q imp_id=%q format=%q campaign_id=%q user_id=%q reason=campaign_balance_insufficient campaign_goal_total_dollars=%.12f campaign_spent=%.12f campaign_remaining=%.12f charge_price=%.12f",
 			requestID,
 			impID,
+			requestedFormat,
 			campaignID,
 			userID,
 			campaign.GoalTotalDollars,
@@ -1002,9 +1260,10 @@ func (s *AuctionService) evaluateCampaign(
 		eligible, err := s.runtime.PacingEligible(ctx, campaign, now, campaignSpent)
 		if err != nil {
 			logf(
-				"[ADV][CAMPAIGN_ERROR] request_id=%q imp_id=%q campaign_id=%q user_id=%q reason=pacing_check_failed campaign_spent=%.12f error=%v",
+				"[ADV][CAMPAIGN_ERROR] request_id=%q imp_id=%q format=%q campaign_id=%q user_id=%q reason=pacing_check_failed campaign_spent=%.12f error=%v",
 				requestID,
 				impID,
+				requestedFormat,
 				campaignID,
 				userID,
 				campaignSpent,
@@ -1023,6 +1282,28 @@ func (s *AuctionService) evaluateCampaign(
 		logCreativeRejections(logf, requestID, impID, campaign, imp, requestedFormat)
 		return candidate{}, false, nil
 	}
+	for _, creative := range creatives {
+		if creative == nil {
+			continue
+		}
+		logf(
+			"[ADV][CREATIVE_MATCH] request_id=%q imp_id=%q format=%q campaign_id=%q user_id=%q creative_id=%q banner_type=%q file_format=%q width=%d height=%d has_adm=%t has_image=%t has_title=%t has_description=%t",
+			requestID,
+			impID,
+			requestedFormat,
+			campaignID,
+			userID,
+			creative.ID,
+			creative.BannerType,
+			creative.FileFormat,
+			creative.W,
+			creative.H,
+			strings.TrimSpace(creative.ADMURL) != "",
+			strings.TrimSpace(creative.ImageURL) != "",
+			strings.TrimSpace(creative.Title) != "",
+			strings.TrimSpace(creative.Description) != "",
+		)
+	}
 
 	if !campaignPassesFiltersWithDebug(campaign, req, requestID, impID, logf) {
 		return candidate{}, false, nil
@@ -1032,9 +1313,10 @@ func (s *AuctionService) evaluateCampaign(
 	effective := CalculateEffectiveAuctionPrice(campaign.BasePrice, deduction)
 	if effective <= 0 || math.IsNaN(effective) || math.IsInf(effective, 0) {
 		logf(
-			"[ADV][CAMPAIGN_REJECT] request_id=%q imp_id=%q campaign_id=%q user_id=%q reason=effective_price_non_positive base_price=%.12f deduction=%.12f effective_price=%.12f",
+			"[ADV][CAMPAIGN_REJECT] request_id=%q imp_id=%q format=%q campaign_id=%q user_id=%q reason=effective_price_non_positive base_price=%.12f deduction=%.12f effective_price=%.12f",
 			requestID,
 			impID,
+			requestedFormat,
 			campaignID,
 			userID,
 			campaign.BasePrice,
@@ -1045,9 +1327,10 @@ func (s *AuctionService) evaluateCampaign(
 	}
 	if !effectivePriceMeetsBidFloor(effective, imp) {
 		logf(
-			"[ADV][CAMPAIGN_REJECT] request_id=%q imp_id=%q campaign_id=%q user_id=%q reason=effective_price_below_bidfloor effective_price=%.12f bidfloor=%.12f",
+			"[ADV][CAMPAIGN_REJECT] request_id=%q imp_id=%q format=%q campaign_id=%q user_id=%q reason=effective_price_below_bidfloor effective_price=%.12f bidfloor=%.12f",
 			requestID,
 			impID,
+			requestedFormat,
 			campaignID,
 			userID,
 			effective,
@@ -1057,11 +1340,13 @@ func (s *AuctionService) evaluateCampaign(
 	}
 
 	logf(
-		"[ADV][CAMPAIGN_ELIGIBLE] request_id=%q imp_id=%q campaign_id=%q user_id=%q creatives=%d base_price=%.12f charge_price=%.12f deduction=%.12f effective_price=%.12f campaign_remaining=%.12f user_remaining=%.12f",
+		"[ADV][CAMPAIGN_ELIGIBLE] request_id=%q imp_id=%q format=%q campaign_id=%q user_id=%q campaign_format=%q creatives=%d base_price=%.12f charge_price=%.12f deduction=%.12f effective_price=%.12f campaign_remaining=%.12f user_remaining=%.12f",
 		requestID,
 		impID,
+		requestedFormat,
 		campaignID,
 		userID,
+		campaignFormat,
 		len(creatives),
 		campaign.BasePrice,
 		chargePrice,
@@ -1120,9 +1405,10 @@ func logCampaignActivityRejection(logf debugLogFunc, requestID, impID string, ca
 	}
 
 	logf(
-		"[ADV][CAMPAIGN_REJECT] request_id=%q imp_id=%q campaign_id=%q user_id=%q reason=%s status=%q now=%q start=%q end=%q active_intervals=%d",
+		"[ADV][CAMPAIGN_REJECT] request_id=%q imp_id=%q format=%q campaign_id=%q user_id=%q reason=%s status=%q now=%q start=%q end=%q active_intervals=%d",
 		requestID,
 		impID,
+		normalizeFormat(campaign.Format),
 		campaign.ID,
 		campaign.UserID,
 		reason,
@@ -1136,9 +1422,10 @@ func logCampaignActivityRejection(logf debugLogFunc, requestID, impID string, ca
 	if reason == "outside_active_intervals" {
 		for index, interval := range campaign.ActiveIntervals {
 			logf(
-				"[ADV][ACTIVE_INTERVAL] request_id=%q imp_id=%q campaign_id=%q index=%d start=%q end=%q now_inside=%t",
+				"[ADV][ACTIVE_INTERVAL] request_id=%q imp_id=%q format=%q campaign_id=%q index=%d start=%q end=%q now_inside=%t",
 				requestID,
 				impID,
+				normalizeFormat(campaign.Format),
 				campaign.ID,
 				index,
 				interval.Start.UTC().Format(time.RFC3339Nano),
@@ -1159,9 +1446,10 @@ func (s *AuctionService) logPacingRejection(
 ) {
 	if s == nil || s.runtime == nil || s.runtime.client == nil || campaign == nil {
 		logf(
-			"[ADV][CAMPAIGN_REJECT] request_id=%q imp_id=%q campaign_id=%q reason=pacing_runtime_unavailable",
+			"[ADV][CAMPAIGN_REJECT] request_id=%q imp_id=%q format=%q campaign_id=%q reason=pacing_runtime_unavailable",
 			requestID,
 			impID,
+			normalizeFormat(campaignFormat(campaign)),
 			campaignID(campaign),
 		)
 		return
@@ -1171,9 +1459,10 @@ func (s *AuctionService) logPacingRejection(
 	slotKey, err := s.runtime.client.Get(ctx, currentKey).Result()
 	if errors.Is(err, redis.Nil) {
 		logf(
-			"[ADV][CAMPAIGN_REJECT] request_id=%q imp_id=%q campaign_id=%q user_id=%q reason=pacing_current_slot_key_missing current_key=%q",
+			"[ADV][CAMPAIGN_REJECT] request_id=%q imp_id=%q format=%q campaign_id=%q user_id=%q reason=pacing_current_slot_key_missing current_key=%q",
 			requestID,
 			impID,
+			normalizeFormat(campaign.Format),
 			campaign.ID,
 			campaign.UserID,
 			currentKey,
@@ -1182,9 +1471,10 @@ func (s *AuctionService) logPacingRejection(
 	}
 	if err != nil {
 		logf(
-			"[ADV][CAMPAIGN_REJECT] request_id=%q imp_id=%q campaign_id=%q user_id=%q reason=pacing_current_slot_read_failed current_key=%q error=%v",
+			"[ADV][CAMPAIGN_REJECT] request_id=%q imp_id=%q format=%q campaign_id=%q user_id=%q reason=pacing_current_slot_read_failed current_key=%q error=%v",
 			requestID,
 			impID,
+			normalizeFormat(campaign.Format),
 			campaign.ID,
 			campaign.UserID,
 			currentKey,
@@ -1194,9 +1484,10 @@ func (s *AuctionService) logPacingRejection(
 	}
 	if !strings.HasPrefix(slotKey, pacingSpentPrefix+campaign.ID+":") {
 		logf(
-			"[ADV][CAMPAIGN_REJECT] request_id=%q imp_id=%q campaign_id=%q user_id=%q reason=pacing_current_slot_key_invalid current_key=%q slot_key=%q expected_prefix=%q",
+			"[ADV][CAMPAIGN_REJECT] request_id=%q imp_id=%q format=%q campaign_id=%q user_id=%q reason=pacing_current_slot_key_invalid current_key=%q slot_key=%q expected_prefix=%q",
 			requestID,
 			impID,
+			normalizeFormat(campaign.Format),
 			campaign.ID,
 			campaign.UserID,
 			currentKey,
@@ -1209,9 +1500,10 @@ func (s *AuctionService) logPacingRejection(
 	slotSpent, err := s.runtime.floatValue(ctx, slotKey)
 	if err != nil {
 		logf(
-			"[ADV][CAMPAIGN_REJECT] request_id=%q imp_id=%q campaign_id=%q user_id=%q reason=pacing_slot_spent_read_failed slot_key=%q error=%v",
+			"[ADV][CAMPAIGN_REJECT] request_id=%q imp_id=%q format=%q campaign_id=%q user_id=%q reason=pacing_slot_spent_read_failed slot_key=%q error=%v",
 			requestID,
 			impID,
+			normalizeFormat(campaign.Format),
 			campaign.ID,
 			campaign.UserID,
 			slotKey,
@@ -1222,9 +1514,10 @@ func (s *AuctionService) logPacingRejection(
 	slotTarget, err := pacingSlotTarget(campaign, now, campaignSpent, slotSpent)
 	if err != nil {
 		logf(
-			"[ADV][CAMPAIGN_REJECT] request_id=%q imp_id=%q campaign_id=%q user_id=%q reason=pacing_slot_target_failed campaign_spent=%.12f slot_spent=%.12f error=%v",
+			"[ADV][CAMPAIGN_REJECT] request_id=%q imp_id=%q format=%q campaign_id=%q user_id=%q reason=pacing_slot_target_failed campaign_spent=%.12f slot_spent=%.12f error=%v",
 			requestID,
 			impID,
+			normalizeFormat(campaign.Format),
 			campaign.ID,
 			campaign.UserID,
 			campaignSpent,
@@ -1239,9 +1532,10 @@ func (s *AuctionService) logPacingRejection(
 		reason = "pacing_slot_target_non_positive"
 	}
 	logf(
-		"[ADV][CAMPAIGN_REJECT] request_id=%q imp_id=%q campaign_id=%q user_id=%q reason=%s campaign_spent=%.12f slot_spent=%.12f slot_target=%.12f remaining_to_slot_target=%.12f current_slot_fraction=%.12f active_slots_left=%.12f slot_key=%q",
+		"[ADV][CAMPAIGN_REJECT] request_id=%q imp_id=%q format=%q campaign_id=%q user_id=%q reason=%s campaign_spent=%.12f slot_spent=%.12f slot_target=%.12f remaining_to_slot_target=%.12f current_slot_fraction=%.12f active_slots_left=%.12f slot_key=%q",
 		requestID,
 		impID,
+		normalizeFormat(campaign.Format),
 		campaign.ID,
 		campaign.UserID,
 		reason,
@@ -1262,6 +1556,13 @@ func campaignID(campaign *Campaign) string {
 	return campaign.ID
 }
 
+func campaignFormat(campaign *Campaign) string {
+	if campaign == nil {
+		return ""
+	}
+	return campaign.Format
+}
+
 func logCreativeRejections(
 	logf debugLogFunc,
 	requestID, impID string,
@@ -1272,23 +1573,60 @@ func logCreativeRejections(
 	if campaign == nil {
 		return
 	}
+	normalizedFormat := normalizeFormat(format)
+	requestedMimes := ""
+	nativeRequestLength := 0
+	nativeAssets := 0
+	nativeRequestReason := ""
+	if imp != nil {
+		if imp.GetBanner() != nil {
+			requestedMimes = strings.Join(imp.GetBanner().GetMimes(), ",")
+		}
+		if imp.GetNative() != nil {
+			nativeRequestLength = len(strings.TrimSpace(imp.GetNative().GetRequest()))
+		}
+	}
+	if normalizedFormat == constants.NAT || normalizedFormat == constants.IPP {
+		request, reason := parseNativeRequestDetailed(imp)
+		nativeRequestReason = reason
+		if reason == "" {
+			nativeAssets = len(request.Assets)
+		} else {
+			logf(
+				"[ADV][NATIVE_REQUEST_REJECT] request_id=%q imp_id=%q format=%q campaign_id=%q user_id=%q reason=%q native_request_length=%d",
+				requestID,
+				impID,
+				normalizedFormat,
+				campaign.ID,
+				campaign.UserID,
+				reason,
+				nativeRequestLength,
+			)
+		}
+	}
+
 	logf(
-		"[ADV][CAMPAIGN_REJECT] request_id=%q imp_id=%q campaign_id=%q user_id=%q reason=no_matching_creatives format=%q creatives_total=%d requested_banner_sizes=%q",
+		"[ADV][CAMPAIGN_REJECT] request_id=%q imp_id=%q format=%q campaign_id=%q user_id=%q reason=no_matching_creatives creatives_total=%d requested_banner_sizes=%q requested_mimes=%q native_request_length=%d native_assets=%d native_request_reason=%q",
 		requestID,
 		impID,
+		normalizedFormat,
 		campaign.ID,
 		campaign.UserID,
-		format,
 		len(campaign.Creatives),
 		formatBannerSizes(bannerSizes(imp)),
+		requestedMimes,
+		nativeRequestLength,
+		nativeAssets,
+		nativeRequestReason,
 	)
 
 	for index, creative := range campaign.Creatives {
 		if creative == nil {
 			logf(
-				"[ADV][CREATIVE_REJECT] request_id=%q imp_id=%q campaign_id=%q creative_index=%d reason=creative_nil",
+				"[ADV][CREATIVE_REJECT] request_id=%q imp_id=%q format=%q campaign_id=%q creative_index=%d reason=creative_nil",
 				requestID,
 				impID,
+				normalizedFormat,
 				campaign.ID,
 				index,
 			)
@@ -1296,9 +1634,10 @@ func logCreativeRejections(
 		}
 		if strings.TrimSpace(creative.ID) == "" {
 			logf(
-				"[ADV][CREATIVE_REJECT] request_id=%q imp_id=%q campaign_id=%q creative_index=%d reason=creative_id_empty",
+				"[ADV][CREATIVE_REJECT] request_id=%q imp_id=%q format=%q campaign_id=%q creative_index=%d reason=creative_id_empty",
 				requestID,
 				impID,
+				normalizedFormat,
 				campaign.ID,
 				index,
 			)
@@ -1306,52 +1645,114 @@ func logCreativeRejections(
 		}
 		if strings.TrimSpace(creative.ADMURL) == "" {
 			logf(
-				"[ADV][CREATIVE_REJECT] request_id=%q imp_id=%q campaign_id=%q creative_id=%q reason=adm_url_empty",
+				"[ADV][CREATIVE_REJECT] request_id=%q imp_id=%q format=%q campaign_id=%q creative_id=%q reason=adm_url_empty",
 				requestID,
 				impID,
+				normalizedFormat,
 				campaign.ID,
 				creative.ID,
 			)
 			continue
 		}
-		if normalizeFormat(format) == "BAN" {
+
+		switch normalizedFormat {
+		case constants.BAN:
 			if creative.W <= 0 || creative.H <= 0 {
 				logf(
-					"[ADV][CREATIVE_REJECT] request_id=%q imp_id=%q campaign_id=%q creative_id=%q reason=creative_dimensions_invalid width=%d height=%d",
+					"[ADV][CREATIVE_REJECT] request_id=%q imp_id=%q format=%q campaign_id=%q creative_id=%q reason=creative_dimensions_invalid width=%d height=%d banner_type=%q file_format=%q",
 					requestID,
 					impID,
+					normalizedFormat,
 					campaign.ID,
 					creative.ID,
 					creative.W,
 					creative.H,
+					creative.BannerType,
+					creative.FileFormat,
 				)
 				continue
 			}
 			if !bannerSizes(imp)[[2]int{creative.W, creative.H}] {
 				logf(
-					"[ADV][CREATIVE_REJECT] request_id=%q imp_id=%q campaign_id=%q creative_id=%q reason=banner_size_mismatch creative_width=%d creative_height=%d requested_banner_sizes=%q",
+					"[ADV][CREATIVE_REJECT] request_id=%q imp_id=%q format=%q campaign_id=%q creative_id=%q reason=banner_size_mismatch creative_width=%d creative_height=%d requested_banner_sizes=%q banner_type=%q file_format=%q",
 					requestID,
 					impID,
+					normalizedFormat,
 					campaign.ID,
 					creative.ID,
 					creative.W,
 					creative.H,
 					formatBannerSizes(bannerSizes(imp)),
+					creative.BannerType,
+					creative.FileFormat,
 				)
 				continue
 			}
 			if !bannerCreativeMatchesMimes(creative, imp) {
 				logf(
-					"[ADV][CREATIVE_REJECT] request_id=%q imp_id=%q campaign_id=%q creative_id=%q reason=banner_mime_mismatch banner_type=%q creative_file_format=%q requested_mimes=%q",
+					"[ADV][CREATIVE_REJECT] request_id=%q imp_id=%q format=%q campaign_id=%q creative_id=%q reason=banner_mime_mismatch banner_type=%q creative_file_format=%q requested_mimes=%q",
 					requestID,
 					impID,
+					normalizedFormat,
 					campaign.ID,
 					creative.ID,
 					creative.BannerType,
 					creative.FileFormat,
-					strings.Join(imp.GetBanner().GetMimes(), ","),
+					requestedMimes,
 				)
+				continue
 			}
+			logf(
+				"[ADV][CREATIVE_REJECT] request_id=%q imp_id=%q format=%q campaign_id=%q creative_id=%q reason=banner_not_matched_unknown banner_type=%q creative_file_format=%q width=%d height=%d",
+				requestID,
+				impID,
+				normalizedFormat,
+				campaign.ID,
+				creative.ID,
+				creative.BannerType,
+				creative.FileFormat,
+				creative.W,
+				creative.H,
+			)
+
+		case constants.NAT, constants.IPP:
+			diagnostic := diagnoseNativeCreativeRejection(imp, campaign, creative)
+			logf(
+				"[ADV][CREATIVE_REJECT] request_id=%q imp_id=%q format=%q campaign_id=%q creative_id=%q reason=%q asset_index=%d asset_id=%q asset_kind=%q required=%t data_type=%d requested_w=%d requested_h=%d requested_wmin=%d requested_hmin=%d creative_width=%d creative_height=%d creative_file_format=%q has_image=%t has_title=%t has_description=%t has_brand_name=%t",
+				requestID,
+				impID,
+				normalizedFormat,
+				campaign.ID,
+				creative.ID,
+				diagnostic.Reason,
+				diagnostic.AssetIndex,
+				diagnostic.AssetID,
+				diagnostic.AssetKind,
+				diagnostic.Required,
+				diagnostic.DataType,
+				diagnostic.RequestedW,
+				diagnostic.RequestedH,
+				diagnostic.RequestedWMin,
+				diagnostic.RequestedHMin,
+				creative.W,
+				creative.H,
+				creative.FileFormat,
+				strings.TrimSpace(creative.ImageURL) != "",
+				strings.TrimSpace(creative.Title) != "",
+				strings.TrimSpace(creative.Description) != "",
+				strings.TrimSpace(campaign.BrandName) != "",
+			)
+
+		default:
+			logf(
+				"[ADV][CREATIVE_REJECT] request_id=%q imp_id=%q format=%q campaign_id=%q creative_id=%q reason=creative_not_matched_unknown has_adm=%t",
+				requestID,
+				impID,
+				normalizedFormat,
+				campaign.ID,
+				creative.ID,
+				strings.TrimSpace(creative.ADMURL) != "",
+			)
 		}
 	}
 }
@@ -1373,6 +1774,20 @@ func bannerExtValues(imp *ortb.Imp) string {
 		return ""
 	}
 	return strings.Join(imp.GetBanner().GetExt(), ",")
+}
+
+func bannerMimeValues(imp *ortb.Imp) string {
+	if imp == nil || imp.GetBanner() == nil {
+		return ""
+	}
+	return strings.Join(imp.GetBanner().GetMimes(), ",")
+}
+
+func nativeRequestPayloadLength(imp *ortb.Imp) int {
+	if imp == nil || imp.GetNative() == nil {
+		return 0
+	}
+	return len(strings.TrimSpace(imp.GetNative().GetRequest()))
 }
 
 func (s *AuctionService) buildBid(req *ortb.BidRequest, imp *ortb.Imp, campaign *Campaign, creative *Creative, bidPrice float64) *ortb.Bid {
@@ -1688,9 +2103,10 @@ func campaignPassesFiltersWithDebug(
 			}
 		}
 		logf(
-			"[ADV][FILTER_REJECT] request_id=%q imp_id=%q campaign_id=%q user_id=%q filter=%q value=%q mode=%q listed=%t configured_objects=%d",
+			"[ADV][FILTER_REJECT] request_id=%q imp_id=%q format=%q campaign_id=%q user_id=%q filter=%q value=%q mode=%q listed=%t configured_objects=%d",
 			requestID,
 			impID,
+			normalizeFormat(c.Format),
 			c.ID,
 			c.UserID,
 			check.name,
@@ -1703,9 +2119,10 @@ func campaignPassesFiltersWithDebug(
 
 	if !allAllowed {
 		logf(
-			"[ADV][CAMPAIGN_REJECT] request_id=%q imp_id=%q campaign_id=%q user_id=%q reason=filter_rejected",
+			"[ADV][CAMPAIGN_REJECT] request_id=%q imp_id=%q format=%q campaign_id=%q user_id=%q reason=filter_rejected",
 			requestID,
 			impID,
+			normalizeFormat(c.Format),
 			c.ID,
 			c.UserID,
 		)
