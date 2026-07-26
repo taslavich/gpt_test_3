@@ -179,6 +179,35 @@ export function normalizedUploadMimeType(file: File): "image/jpg" | "image/gif" 
   return "image/jpg";
 }
 
+export function sanitizeCreativeFilename(filename: string | undefined): string {
+  const leaf = (filename || "image")
+    .replace(/\\/g, "/")
+    .split("/")
+    .pop()
+    ?.trim() || "image";
+  const dotIndex = leaf.lastIndexOf(".");
+  const rawBase = dotIndex > 0 ? leaf.slice(0, dotIndex) : leaf;
+  const rawExtension = dotIndex > 0 ? leaf.slice(dotIndex + 1) : "";
+  const base = rawBase
+    .normalize("NFKD")
+    .replace(/[\s\-()[\]{}]+/g, "_")
+    .replace(/[^a-zA-Z0-9_]/g, "_")
+    .replace(/_+/g, "_")
+    .replace(/^_+|_+$/g, "") || "image";
+  const extension = rawExtension.toLowerCase().replace(/[^a-z0-9]/g, "");
+  return extension ? `${base}.${extension}` : base;
+}
+
+export function buildDerivedCreativeFilename(
+  filename: string | undefined,
+  suffix: "cropped" | "autocrop",
+  extension: string,
+): string {
+  const safeSource = sanitizeCreativeFilename(filename);
+  const base = safeSource.replace(/\.[^.]+$/, "");
+  return sanitizeCreativeFilename(`${base}_${suffix}.${extension}`);
+}
+
 /**
  * The multipart part Content-Type is the format consumed by the backend.
  * Re-wrap browser JPEG files because browsers normally expose `image/jpeg`
@@ -186,8 +215,9 @@ export function normalizedUploadMimeType(file: File): "image/jpg" | "image/gif" 
  */
 export function normalizeCreativeUploadFile(file: File): File {
   const mimeType = normalizedUploadMimeType(file);
-  if (file.type === mimeType) return file;
-  return new File([file], file.name, {
+  const filename = sanitizeCreativeFilename(file.name);
+  if (file.type === mimeType && file.name === filename) return file;
+  return new File([file], filename, {
     type: mimeType,
     lastModified: file.lastModified,
   });
@@ -331,7 +361,7 @@ async function uploadImage(
     return await client.uploadCreativeImage(
       campaignId,
       file,
-      creative.imageFileName || file.name,
+      sanitizeCreativeFilename(creative.imageFileName || file.name),
     );
   } catch (error) {
     const message = error instanceof Error ? error.message : "Failed to upload creative image";
@@ -353,7 +383,8 @@ export async function createCampaignCreatives({
   dimensions: CreativeDimensions;
   creatives: CreativeDraft[];
   skipIncomplete?: boolean;
-}): Promise<void> {
+}): Promise<ApiCreative[]> {
+  const created: ApiCreative[] = [];
   for (const creative of creatives) {
     if (skipIncomplete && !isCreativeReadyForCreate(format, creative)) continue;
     let uploaded: ApiCreativeImage | undefined;
@@ -368,8 +399,9 @@ export async function createCampaignCreatives({
       imageUrl: uploaded?.image_url,
       imageMimeType: uploaded?.mime_type || uploaded?.file_format,
     });
-    await client.createCreative(campaignId, body);
+    created.push(await client.createCreative(campaignId, body));
   }
+  return created;
 }
 
 export async function syncCampaignCreatives({

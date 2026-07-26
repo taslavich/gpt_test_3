@@ -152,6 +152,26 @@ describe("creative multipart authentication", () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
+  it("uses the same safe filename for the multipart file and filename field", async () => {
+    localStorage.setItem(ACCESS_TOKEN_KEY, "access");
+    const fetchMock = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+      const form = init?.body as FormData;
+      const file = form.get("file");
+      expect(file).toBeInstanceOf(File);
+      expect((file as File).name).toBe("image_13_cropped.png");
+      expect(form.get("filename")).toBe("image_13_cropped.png");
+      return jsonResponse(uploadSuccess());
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await httpProvider.uploadCreativeImage(
+      "campaign-1",
+      new File(["image"], "image (13)-cropped.png", { type: "image/png" }),
+      "image (13)-cropped.png",
+    );
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
   it("reports multipart network failures consistently as ApiError status 0", async () => {
     localStorage.setItem(ACCESS_TOKEN_KEY, "access");
     vi.stubGlobal("fetch", vi.fn(async () => {

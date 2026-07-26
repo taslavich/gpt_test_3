@@ -1,5 +1,6 @@
 import type { Creative } from "@/contexts/CampaignContext";
 import type { CropperTarget } from "@/components/dashboard/ImageCropperDialog";
+import { buildDerivedCreativeFilename } from "@/lib/creativeApi";
 
 const MAX_BYTES = 1 * 1024 * 1024;
 
@@ -77,8 +78,11 @@ export async function autoCropImage(
     blob = await toBlob("image/jpeg", 0.75);
     if (!blob || blob.size > MAX_BYTES) throw new Error("too large");
   }
-  const base = (fileNameHint || "image").replace(/\.[^.]+$/, "");
-  const file = new File([blob], `${base}-autocrop.${ext}`, { type: mime });
+  const file = new File(
+    [blob],
+    buildDerivedCreativeFilename(fileNameHint, "autocrop", ext),
+    { type: mime },
+  );
   const outUrl: string = await new Promise((res, rej) => {
     const r = new FileReader();
     r.onload = () => res(String(r.result));

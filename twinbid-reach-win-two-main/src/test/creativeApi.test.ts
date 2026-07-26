@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import type { ApiCreative, ApiCreativeImage, ApiCreativeWrite } from "@/api/types";
 import {
   CreativeImageUploadError,
+  buildDerivedCreativeFilename,
   buildUrlWithMacros,
   buildCreativeWriteBody,
   buildIframeAdm,
@@ -16,6 +17,7 @@ import {
   MAX_CREATIVE_IMAGE_BYTES,
   MAX_CREATIVE_VIDEO_BYTES,
   normalizeCreativeUploadFile,
+  sanitizeCreativeFilename,
   syncCampaignCreatives,
   validateCreativeFile,
   type CreativeApiClient,
@@ -126,6 +128,30 @@ describe("creative API migration", () => {
     expect(client.creates[0].body.adm).toContain('href="https://target.example"');
     expect(client.creates[0].body.adm).not.toContain("{site_id}");
     expect(client.creates[0].body.adm).toContain('src="https://cdn.example/banner.jpg"');
+  });
+
+  it("replaces unsafe filename separators before creative upload", async () => {
+    expect(sanitizeCreativeFilename("image (13)-cropped.png")).toBe("image_13_cropped.png");
+    expect(buildDerivedCreativeFilename("image (13).png", "cropped", "png"))
+      .toBe("image_13_cropped.png");
+    expect(buildDerivedCreativeFilename("banner-name.jpg", "autocrop", "jpg"))
+      .toBe("banner_name_autocrop.jpg");
+
+    const client = new FakeCreativeApi();
+    await createCampaignCreatives({
+      client,
+      campaignId: "campaign-1",
+      format: "banner",
+      dimensions,
+      creatives: [baseCreative({
+        pendingFile: imageFile("image (13)-cropped.png", "image/png"),
+        imageFileName: "image (13)-cropped.png",
+        imageMimeType: "image/png",
+      })],
+    });
+
+    expect(client.uploads[0].file.name).toBe("image_13_cropped.png");
+    expect(client.uploads[0].filename).toBe("image_13_cropped.png");
   });
 
   it("uses a boolean macro map and restores only explicitly enabled macros", () => {

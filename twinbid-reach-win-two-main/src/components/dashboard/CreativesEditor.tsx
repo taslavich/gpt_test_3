@@ -18,6 +18,7 @@ import {
   hasInsecureHttpReference,
   isInsecureHttpUrl,
   isValidCreativeUrl,
+  sanitizeCreativeFilename,
   validateCreativeFile,
 } from "@/lib/creativeApi";
 
@@ -328,7 +329,7 @@ export const CreativesEditor = forwardRef<CreativesEditorHandle, CreativesEditor
       updateCreative(creativeId, {
         imageUrl: dataUrl,
         pendingFile: file,
-        imageFileName: file.name,
+        imageFileName: sanitizeCreativeFilename(file.name),
         imageMimeType: video ? "video/mp4" : file.type,
         mediaType: video ? "video" : "image",
         sizeMismatch: mismatch,

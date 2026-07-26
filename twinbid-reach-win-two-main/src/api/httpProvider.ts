@@ -7,14 +7,15 @@ import type {
 } from "./types";
 import type { RawApiProvider } from "./mockProvider";
 import { API_BASE_URL } from "./config";
-import { normalizeCreativeUploadFile } from "@/lib/creativeApi";
+import { normalizeCreativeUploadFile, sanitizeCreativeFilename } from "@/lib/creativeApi";
 
 /** Only creative image upload uses multipart/form-data. */
 function buildCreativeImageForm(file: File, filename?: string): FormData {
   const fd = new FormData();
   const normalizedFile = normalizeCreativeUploadFile(file);
-  fd.append("file", normalizedFile, filename || normalizedFile.name);
-  if (filename) fd.append("filename", filename);
+  const safeFilename = sanitizeCreativeFilename(filename || normalizedFile.name);
+  fd.append("file", normalizedFile, safeFilename);
+  fd.append("filename", safeFilename);
   return fd;
 }
 

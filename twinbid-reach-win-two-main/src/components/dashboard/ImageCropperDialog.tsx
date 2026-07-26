@@ -5,6 +5,7 @@ import { Slider } from "@/components/ui/slider";
 import { Minus, Plus } from "lucide-react";
 import { toast } from "sonner";
 import { useLanguage } from "@/contexts/LanguageContext";
+import { buildDerivedCreativeFilename } from "@/lib/creativeApi";
 
 const MAX_BYTES = 1 * 1024 * 1024;
 const MAX_STAGE_W = 560;
@@ -171,8 +172,11 @@ export function ImageCropperDialog({ open, source, target, fileNameHint, onSave,
         setSaving(false);
         return;
       }
-      const base = (fileNameHint || "image").replace(/\.[^.]+$/, "");
-      const file = new File([blob], `${base}-cropped.${ext}`, { type: mime });
+      const file = new File(
+        [blob],
+        buildDerivedCreativeFilename(fileNameHint, "cropped", ext),
+        { type: mime },
+      );
       const reader = new FileReader();
       reader.onload = () => { onSave(file, String(reader.result)); setSaving(false); };
       reader.onerror = () => { toast.error("Failed to read output"); setSaving(false); };

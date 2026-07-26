@@ -484,7 +484,7 @@ export function CampaignProvider({ children }: { children: ReactNode }) {
       const [ws, hs] = c.bannerSize.split("x");
       cw = Number(ws); ch = Number(hs);
     }
-    await createCampaignCreatives({
+    const createdCreatives = await createCampaignCreatives({
       client: api,
       campaignId: created.campaign_id,
       format: c.formatKey,
@@ -494,9 +494,14 @@ export function CampaignProvider({ children }: { children: ReactNode }) {
       // creative yet. Formal campaign creation is validated by the page.
       skipIncomplete: c.status === "draft",
     });
-    await fetchCampaigns();
+    // Do not refetch the complete campaign list here. fetchCampaigns loads
+    // creatives separately for every campaign, so doing that after a single
+    // create caused one GET /creatives per existing campaign (and the
+    // following status PATCH repeated the whole fan-out once more).
+    const createdUi = mapApiCampaignToUi(created, createdCreatives.map(mapApiCreativeToUi));
+    setCampaigns(prev => [...prev.filter(item => item.id !== createdUi.id), createdUi]);
     return created.campaign_id;
-  }, [user, fetchCampaigns]);
+  }, [user]);
 
   const updateCampaign = useCallback(async (id: string, updates: Partial<Campaign>) => {
     if (!user) throw new Error("Not authenticated");
@@ -511,6 +516,7 @@ export function CampaignProvider({ children }: { children: ReactNode }) {
     // Sync creatives BEFORE patching the campaign. Some status transitions
     // (draft → moderation) are rejected by the backend when the campaign has
     // no creatives, so we need the creatives to exist before the PATCH runs.
+    let refreshedCreatives: Creative[] | undefined;
     if (updates.creatives !== undefined) {
       // Never degrade a failed read to an empty list here: doing so would
       // misclassify every existing creative as new and create duplicates.
@@ -533,23 +539,37 @@ export function CampaignProvider({ children }: { children: ReactNode }) {
         creatives: updates.creatives,
         existing,
       });
+      // Refresh only the campaign whose creatives were edited. This captures
+      // backend IDs and permanent image URLs without issuing requests for
+      // every other campaign in the account.
+      const refreshedRaw = await api.readCreatives(id);
+      refreshedCreatives = (Array.isArray(refreshedRaw) ? refreshedRaw : []).map(mapApiCreativeToUi);
     }
 
     // Build a *partial* patch so toggling a single field (status, budget,
     // ...) does not rewrite unrelated fields.
     const patch = buildApiCampaignPatch(effectiveUpdates);
+    let patchedCampaign: ApiCampaign | undefined;
     if (Object.keys(patch).length > 0) {
-      await api.patchCampaign(id, patch);
+      patchedCampaign = await api.patchCampaign(id, patch);
     }
 
-    await fetchCampaigns();
-  }, [user, fetchCampaigns, campaigns]);
+    // Keep the local cache in sync instead of reloading every campaign and
+    // every creative collection. A status-only update now performs exactly
+    // one PATCH and no creative-list requests.
+    setCampaigns(prev => prev.map(item => {
+      if (item.id !== id) return item;
+      const creatives = refreshedCreatives ?? item.creatives;
+      if (patchedCampaign) return mapApiCampaignToUi(patchedCampaign, creatives);
+      return { ...item, ...updates, creatives };
+    }));
+  }, [user, campaigns]);
 
   const deleteCampaign = useCallback(async (id: string) => {
     if (!user) throw new Error("Not authenticated");
     await api.deleteCampaign(id);
-    await fetchCampaigns();
-  }, [user, fetchCampaigns]);
+    setCampaigns(prev => prev.filter(campaign => campaign.id !== id));
+  }, [user]);
 
   const getCampaign = useCallback((id: string) => campaigns.find(c => c.id === id), [campaigns]);
 
