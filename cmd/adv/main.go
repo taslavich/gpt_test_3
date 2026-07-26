@@ -80,85 +80,85 @@ func main() {
 	if err := db.PingContext(ctx); err != nil {
 		log.Fatalf("ADV PostgreSQL unavailable: %v", err)
 	}
-	// Production rollout applies the additive migration from the cabinet first.
-	// Automatic DDL is opt-in because the ADV database role may intentionally
-	// have DML permissions without ALTER TABLE privileges.
-	if cfg.AntiperekrutAutoMigrate {
-		if err := auction.EnsureAntiPerekrutSchema(ctx, db); err != nil {
-			log.Fatalf("cannot migrate antiperekrut schema: %v", err)
-		}
-	}
-
-	clickhouseAddr := net.JoinHostPort(
-		cfg.ClickhouseConfig.Host,
-		cfg.ClickhouseConfig.Port,
-	)
-
-	clickhouseConn, err := clickhouse.Open(
-		&clickhouse.Options{
-			Addr: []string{
-				clickhouseAddr,
-			},
-			Protocol: clickhouse.Native,
-			TLS: &tls.Config{
-				MinVersion: tls.VersionTLS12,
-			},
-			Auth: clickhouse.Auth{
-				Username: cfg.ClickhouseConfig.Username,
-				Password: cfg.ClickhouseConfig.Password,
-				Database: cfg.ClickhouseConfig.Database,
-			},
-			MaxOpenConns: 2,
-			MaxIdleConns: 2,
-		},
-	)
-	if err != nil {
-		log.Fatalf(
-			"cannot initialize ADV ClickHouse client: %v",
-			err,
-		)
-	}
-
-	defer func() {
-		if err := clickhouseConn.Close(); err != nil {
-			log.Printf(
-				"ADV ClickHouse close failed: %v",
-				err,
-			)
-		}
-	}()
-
 	runtimeStore := auction.NewRuntimeStore(runtimeRedis, cfg.AdvPacingCurrentTTL, cfg.AdvPacingSlotTTL)
 	winnerStore := auction.NewWinnerStore(winnerRedis, cfg.AdvWinnerTTL)
 	auctionService := auction.NewAuctionService(runtimeStore, winnerStore, percentStore, qualityStore)
-	if err := auctionService.RefreshFromPostgres(ctx, db); err != nil {
-		log.Fatalf("initial ADV snapshot failed: %v", err)
-	}
+	auctionService.SetAntiPerekrutEnabled(cfg.AntiperekrutEnabled)
 
 	botNotifier := utils.NewBotMessageWithTimeout(cfg.BotBaseURL, cfg.BotInternalSecret, cfg.AntiperekrutControlTimeout)
-	antiManager, err := auction.NewAntiPerekrutManager(
-		db, clickhouseConn, cfg.ClickhouseConfig.Database, runtimeStore,
-		auctionService.CurrentSnapshot, cfg.AntiperekrutTickOffset, botNotifier.SendTextMessageToBot,
-	)
-	if err != nil {
-		log.Fatalf("cannot initialize antiperekrut: %v", err)
-	}
-	auctionService.SetAntiPerekrutManager(antiManager)
+	var antiManager *auction.AntiPerekrutManager
+	var startupEvent antiControl.StartupEvent
 
-	hostname, _ := os.Hostname()
-	startupEvent := antiControl.NewStartupEvent("adv", hostname)
-	if _, err := antiManager.RegisterStartupEvent(ctx, startupEvent.EventID, startupEvent.SourceService, startupEvent.SourceInstance); err != nil {
-		_ = botNotifier.SendTextMessageToBot(ctx, fmt.Sprintf("[ADV][ANTIPEREKRUT_STARTUP_ERROR] %v", err))
-		log.Fatalf("cannot register ADV startup reset: %v", err)
+	if cfg.AntiperekrutEnabled {
+		// Production rollout applies the additive migration from the cabinet first.
+		// Automatic DDL is opt-in because the ADV database role may intentionally
+		// have DML permissions without ALTER TABLE privileges.
+		if cfg.AntiperekrutAutoMigrate {
+			if err := auction.EnsureAntiPerekrutSchema(ctx, db); err != nil {
+				log.Fatalf("cannot migrate antiperekrut schema: %v", err)
+			}
+		}
+
+		clickhouseAddr := net.JoinHostPort(
+			cfg.ClickhouseConfig.Host,
+			cfg.ClickhouseConfig.Port,
+		)
+		clickhouseConn, err := clickhouse.Open(
+			&clickhouse.Options{
+				Addr:     []string{clickhouseAddr},
+				Protocol: clickhouse.Native,
+				TLS:      &tls.Config{MinVersion: tls.VersionTLS12},
+				Auth: clickhouse.Auth{
+					Username: cfg.ClickhouseConfig.Username,
+					Password: cfg.ClickhouseConfig.Password,
+					Database: cfg.ClickhouseConfig.Database,
+				},
+				MaxOpenConns: 2,
+				MaxIdleConns: 2,
+			},
+		)
+		if err != nil {
+			log.Fatalf("cannot initialize ADV ClickHouse client: %v", err)
+		}
+		defer func() {
+			if err := clickhouseConn.Close(); err != nil {
+				log.Printf("ADV ClickHouse close failed: %v", err)
+			}
+		}()
+
+		if err := auctionService.RefreshFromPostgres(ctx, db); err != nil {
+			log.Fatalf("initial ADV snapshot failed: %v", err)
+		}
+
+		antiManager, err = auction.NewAntiPerekrutManager(
+			db, clickhouseConn, cfg.ClickhouseConfig.Database, runtimeStore,
+			auctionService.CurrentSnapshot, cfg.AntiperekrutTickOffset, botNotifier.SendTextMessageToBot,
+		)
+		if err != nil {
+			log.Fatalf("cannot initialize antiperekrut: %v", err)
+		}
+		auctionService.SetAntiPerekrutManager(antiManager)
+
+		hostname, _ := os.Hostname()
+		startupEvent = antiControl.NewStartupEvent("adv", hostname)
+		if _, err := antiManager.RegisterStartupEvent(ctx, startupEvent.EventID, startupEvent.SourceService, startupEvent.SourceInstance); err != nil {
+			_ = botNotifier.SendTextMessageToBot(ctx, fmt.Sprintf("[ADV][ANTIPEREKRUT_STARTUP_ERROR] %v", err))
+			log.Fatalf("cannot register ADV startup reset: %v", err)
+		}
+		if err := antiManager.Refresh(ctx); err != nil {
+			_ = botNotifier.SendTextMessageToBot(ctx, fmt.Sprintf("[ADV][ANTIPEREKRUT_INITIAL_REFRESH_ERROR] %v", err))
+			log.Fatalf("initial antiperekrut state failed: %v", err)
+		}
+		if state := antiManager.State(); state == nil || state.LoadedAt.IsZero() {
+			log.Fatal("initial antiperekrut state has not completed ClickHouse/Redis loading")
+		}
+		antiManager.Start(ctx)
+	} else {
+		if err := auctionService.RefreshFromPostgres(ctx, db); err != nil {
+			log.Fatalf("initial ADV snapshot failed: %v", err)
+		}
+		log.Print("antiperekrut is disabled by ANTIPEREKRUT_ENABLED=false")
 	}
-	if err := antiManager.Refresh(ctx); err != nil {
-		_ = botNotifier.SendTextMessageToBot(ctx, fmt.Sprintf("[ADV][ANTIPEREKRUT_INITIAL_REFRESH_ERROR] %v", err))
-		log.Fatalf("initial antiperekrut state failed: %v", err)
-	}
-	if state := antiManager.State(); state == nil || state.LoadedAt.IsZero() {
-		log.Fatal("initial antiperekrut state has not completed ClickHouse/Redis loading")
-	}
-	antiManager.Start(ctx)
 
 	auctionService.StartPostgresRefreshTicker(ctx, db, cfg.CampaignRefreshInterval, func(err error) {
 		_ = botNotifier.SendTextMessageToBot(ctx, fmt.Sprintf("[ADV][SNAPSHOT_REFRESH_ERROR] %v", err))
@@ -186,13 +186,15 @@ func main() {
 	// auction gRPC server must not become ready until the initial attempt has
 	// addressed every configured ADV URL and at least one durable ACK exists.
 	go httpServer.RunHttpServer(ctx, router, cfg.HttpServer.Host, cfg.HttpServer.Port)
-	err = antiControl.FanoutStartupEvent(ctx, antiControl.ClientConfig{
-		Enabled: true, URLs: []string(cfg.AdvServiceControlURLs),
-		RequestTimeout: cfg.AntiperekrutControlTimeout, RetryInitial: cfg.AntiperekrutRetryInitial, RetryMax: cfg.AntiperekrutRetryMax,
-	}, startupEvent, botNotifier.SendTextMessageToBot)
-	if err != nil {
-		_ = botNotifier.SendTextMessageToBot(ctx, fmt.Sprintf("[ADV][ANTIPEREKRUT_FANOUT_ERROR] %v", err))
-		log.Fatalf("ADV startup reset fan-out failed: %v", err)
+	if cfg.AntiperekrutEnabled {
+		err = antiControl.FanoutStartupEvent(ctx, antiControl.ClientConfig{
+			Enabled: true, URLs: []string(cfg.AdvServiceControlURLs),
+			RequestTimeout: cfg.AntiperekrutControlTimeout, RetryInitial: cfg.AntiperekrutRetryInitial, RetryMax: cfg.AntiperekrutRetryMax,
+		}, startupEvent, botNotifier.SendTextMessageToBot)
+		if err != nil {
+			_ = botNotifier.SendTextMessageToBot(ctx, fmt.Sprintf("[ADV][ANTIPEREKRUT_FANOUT_ERROR] %v", err))
+			log.Fatalf("ADV startup reset fan-out failed: %v", err)
+		}
 	}
 	go func() {
 		errChan <- grpcServer.Serve(listener)
@@ -234,14 +236,16 @@ func validateConfig(cfg *config.AdvConfig) error {
 	if cfg.CampaignRefreshInterval <= 0 || cfg.AdvWinnerTTL <= 0 || cfg.AdvPacingTickInterval <= 0 || cfg.AdvPacingCurrentTTL <= 0 || cfg.AdvPacingSlotTTL <= 0 {
 		return fmt.Errorf("ADV durations must be positive")
 	}
-	if cfg.AntiperekrutTickOffset < 0 || cfg.AntiperekrutTickOffset >= time.Minute {
-		return fmt.Errorf("ANTIPEREKRUT_TICK_OFFSET must be in [0,1m)")
-	}
-	if len(cfg.AdvServiceControlURLs) == 0 {
-		return fmt.Errorf("antiperekrut requires ADV_SERVICE_CONTROL_URLS")
-	}
-	if strings.TrimSpace(cfg.BotBaseURL) == "" || strings.TrimSpace(cfg.BotInternalSecret) == "" {
-		return fmt.Errorf("antiperekrut requires BOT_BASE_URL and BOT_INTERNAL_SECRET")
+	if cfg.AntiperekrutEnabled {
+		if cfg.AntiperekrutTickOffset < 0 || cfg.AntiperekrutTickOffset >= time.Minute {
+			return fmt.Errorf("ANTIPEREKRUT_TICK_OFFSET must be in [0,1m)")
+		}
+		if len(cfg.AdvServiceControlURLs) == 0 {
+			return fmt.Errorf("antiperekrut requires ADV_SERVICE_CONTROL_URLS")
+		}
+		if strings.TrimSpace(cfg.BotBaseURL) == "" || strings.TrimSpace(cfg.BotInternalSecret) == "" {
+			return fmt.Errorf("antiperekrut requires BOT_BASE_URL and BOT_INTERNAL_SECRET")
+		}
 	}
 	return nil
 }

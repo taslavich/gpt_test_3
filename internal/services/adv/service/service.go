@@ -35,6 +35,7 @@ const (
 	unknownTrackerValue  = "unknown"
 	topBidPoolRatio      = 0.80
 	auctionPriceEpsilon  = 1e-12
+	antiPerekrutEnabled  = false
 )
 
 type auctionMode uint8
@@ -163,11 +164,12 @@ type AuctionService struct {
 	percents *PercentStore
 	quality  *QualityStore
 
-	antiperekrut *AntiPerekrutManager
+	antiperekrut        *AntiPerekrutManager
+	antiperekrutEnabled bool
 }
 
 func NewAuctionService(runtime *RuntimeStore, winners *WinnerStore, percents *PercentStore, quality *QualityStore) *AuctionService {
-	s := &AuctionService{runtime: runtime, winners: winners, percents: percents, quality: quality}
+	s := &AuctionService{runtime: runtime, winners: winners, percents: percents, quality: quality, antiperekrutEnabled: true}
 	s.snapshot.Store(&Snapshot{Campaigns: []*Campaign{}, UserGoals: map[string]float64{}})
 	return s
 }
@@ -175,6 +177,12 @@ func NewAuctionService(runtime *RuntimeStore, winners *WinnerStore, percents *Pe
 func (s *AuctionService) SetAntiPerekrutManager(manager *AntiPerekrutManager) {
 	if s != nil {
 		s.antiperekrut = manager
+	}
+}
+
+func (s *AuctionService) SetAntiPerekrutEnabled(enabled bool) {
+	if s != nil {
+		s.antiperekrutEnabled = enabled
 	}
 }
 
@@ -472,14 +480,17 @@ func (s *AuctionService) Auction(ctx context.Context, req *ortb.BidRequest, now 
 		len(snapshot.UserGoals),
 	)
 
-	if s.antiperekrut == nil {
-		logf("[ADV][AUCTION_ERROR] request_id=%q reason=antiperekrut_manager_unavailable", requestID)
-		return nil, errors.New("antiperekrut manager is unavailable")
-	}
-	antiState := s.antiperekrut.State()
-	if antiState == nil || antiState.LoadedAt.IsZero() {
-		logf("[ADV][AUCTION_ERROR] request_id=%q reason=antiperekrut_state_unavailable", requestID)
-		return nil, errors.New("antiperekrut state is unavailable")
+	var antiState *AntiPerekrutState
+	if s.antiperekrutEnabled {
+		if s.antiperekrut == nil {
+			logf("[ADV][AUCTION_ERROR] request_id=%q reason=antiperekrut_manager_unavailable", requestID)
+			return nil, errors.New("antiperekrut manager is unavailable")
+		}
+		antiState = s.antiperekrut.State()
+		if antiState == nil || antiState.LoadedAt.IsZero() {
+			logf("[ADV][AUCTION_ERROR] request_id=%q reason=antiperekrut_state_unavailable", requestID)
+			return nil, errors.New("antiperekrut state is unavailable")
+		}
 	}
 	userBalanceCache := make(map[string]cachedUserBalance)
 
@@ -904,36 +915,38 @@ func (s *AuctionService) evaluateCampaign(
 		return candidate{}, false, nil
 	}
 
-	balance := s.cachedUserBalance(ctx, snapshot, userID, userBalanceCache)
-	if balance.err != nil {
-		logf("[ADV][CAMPAIGN_ERROR] request_id=%q imp_id=%q campaign_id=%q user_id=%q reason=antiperekrut_user_balance_read_failed error=%v", requestID, impID, campaignID, userID, balance.err)
-		if s.antiperekrut != nil {
-			s.antiperekrut.NotifyAuctionError("user_balance_read", balance.err)
+	if s.antiperekrutEnabled {
+		balance := s.cachedUserBalance(ctx, snapshot, userID, userBalanceCache)
+		if balance.err != nil {
+			logf("[ADV][CAMPAIGN_ERROR] request_id=%q imp_id=%q campaign_id=%q user_id=%q reason=antiperekrut_user_balance_read_failed error=%v", requestID, impID, campaignID, userID, balance.err)
+			if s.antiperekrut != nil {
+				s.antiperekrut.NotifyAuctionError("user_balance_read", balance.err)
+			}
+			return candidate{}, false, balance.err
 		}
-		return candidate{}, false, balance.err
-	}
-	userRemaining := balance.remaining
-	recent := 0.0
-	if antiState != nil {
-		recent = antiState.UserSpend[userID].Spend
-	}
-	guardReject := recent*2 > userRemaining
-	if guardReject {
-		logf("[ADV][ANTIPEREKRUT_USER_GUARD] request_id=%q imp_id=%q campaign_id=%q user_id=%q user_spend=%.12f user_remaining=%.12f would_reject=true", requestID, impID, campaignID, userID, recent, userRemaining)
-		return candidate{}, false, nil
-	}
-	hashID := requestID
-	if strings.TrimSpace(hashID) == "" {
-		hashID = hashFallback
-	}
-	limit := TrafficLimitFull
-	if s.antiperekrut != nil {
-		limit = s.antiperekrut.EffectiveTrafficLimit(antiState, campaign)
-	}
-	hashPass := trafficHashPass(hashID, campaignID, limit)
-	if !hashPass {
-		logf("[ADV][ANTIPEREKRUT_HASH_GATE] request_id=%q imp_id=%q campaign_id=%q user_id=%q traffic_limit=%d would_reject=true", requestID, impID, campaignID, userID, limit)
-		return candidate{}, false, nil
+		userRemaining := balance.remaining
+		recent := 0.0
+		if antiState != nil {
+			recent = antiState.UserSpend[userID].Spend
+		}
+		guardReject := recent*2 > userRemaining
+		if guardReject {
+			logf("[ADV][ANTIPEREKRUT_USER_GUARD] request_id=%q imp_id=%q campaign_id=%q user_id=%q user_spend=%.12f user_remaining=%.12f would_reject=true", requestID, impID, campaignID, userID, recent, userRemaining)
+			return candidate{}, false, nil
+		}
+		hashID := requestID
+		if strings.TrimSpace(hashID) == "" {
+			hashID = hashFallback
+		}
+		limit := TrafficLimitFull
+		if s.antiperekrut != nil {
+			limit = s.antiperekrut.EffectiveTrafficLimit(antiState, campaign)
+		}
+		hashPass := trafficHashPass(hashID, campaignID, limit)
+		if !hashPass {
+			logf("[ADV][ANTIPEREKRUT_HASH_GATE] request_id=%q imp_id=%q campaign_id=%q user_id=%q traffic_limit=%d would_reject=true", requestID, impID, campaignID, userID, limit)
+			return candidate{}, false, nil
+		}
 	}
 	if !s.quality.Contains(campaign.QualitySegment, sspDomain) {
 		logf("[ADV][CAMPAIGN_REJECT] request_id=%q imp_id=%q campaign_id=%q user_id=%q reason=quality_mismatch campaign_quality=%q ssp_domain=%q", requestID, impID, campaignID, userID, campaign.QualitySegment, sspDomain)

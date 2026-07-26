@@ -262,24 +262,28 @@ func main() {
 		log.Fatalf("failed to listen: %v", err)
 	}
 
-	if len(cfg.AdvServiceControlURLs) == 0 {
-		log.Fatal("antiperekrut startup reset requires ADV_SERVICE_CONTROL_URLS")
-	}
-	if strings.TrimSpace(cfg.BotBaseURL) == "" || strings.TrimSpace(cfg.BotInternalSecret) == "" {
-		log.Fatal("antiperekrut startup reset requires BOT_BASE_URL and BOT_INTERNAL_SECRET")
-	}
-	startupHost, _ := os.Hostname()
-	startupNotifier := utils.NewBotMessageWithTimeout(cfg.BotBaseURL, cfg.BotInternalSecret, cfg.AntiperekrutControlTimeout)
-	startupEvent := antiControl.NewStartupEvent("router", startupHost)
-	if err := antiControl.FanoutStartupEvent(ctx, antiControl.ClientConfig{
-		Enabled:        true,
-		URLs:           []string(cfg.AdvServiceControlURLs),
-		RequestTimeout: cfg.AntiperekrutControlTimeout,
-		RetryInitial:   cfg.AntiperekrutRetryInitial,
-		RetryMax:       cfg.AntiperekrutRetryMax,
-	}, startupEvent, startupNotifier.SendTextMessageToBot); err != nil {
-		_ = startupNotifier.SendTextMessageToBot(ctx, fmt.Sprintf("[router][ANTIPEREKRUT_STARTUP_ERROR] %v", err))
-		log.Fatalf("cannot deliver antiperekrut startup event: %v", err)
+	if cfg.AntiperekrutEnabled {
+		if len(cfg.AdvServiceControlURLs) == 0 {
+			log.Fatal("antiperekrut startup reset requires ADV_SERVICE_CONTROL_URLS")
+		}
+		if strings.TrimSpace(cfg.BotBaseURL) == "" || strings.TrimSpace(cfg.BotInternalSecret) == "" {
+			log.Fatal("antiperekrut startup reset requires BOT_BASE_URL and BOT_INTERNAL_SECRET")
+		}
+		startupHost, _ := os.Hostname()
+		startupNotifier := utils.NewBotMessageWithTimeout(cfg.BotBaseURL, cfg.BotInternalSecret, cfg.AntiperekrutControlTimeout)
+		startupEvent := antiControl.NewStartupEvent("router", startupHost)
+		if err := antiControl.FanoutStartupEvent(ctx, antiControl.ClientConfig{
+			Enabled:        true,
+			URLs:           []string(cfg.AdvServiceControlURLs),
+			RequestTimeout: cfg.AntiperekrutControlTimeout,
+			RetryInitial:   cfg.AntiperekrutRetryInitial,
+			RetryMax:       cfg.AntiperekrutRetryMax,
+		}, startupEvent, startupNotifier.SendTextMessageToBot); err != nil {
+			_ = startupNotifier.SendTextMessageToBot(ctx, fmt.Sprintf("[router][ANTIPEREKRUT_STARTUP_ERROR] %v", err))
+			log.Fatalf("cannot deliver antiperekrut startup event: %v", err)
+		}
+	} else {
+		log.Print("antiperekrut startup reset is disabled by ANTIPEREKRUT_ENABLED=false")
 	}
 
 	go httpServer.RunHttpServer(ctx, router, cfg.HttpServer.Host, cfg.HttpServer.Port)
