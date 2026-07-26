@@ -213,7 +213,7 @@ func optimizeGoRuntimeSafe(serviceType string) {
 
 func ShouldTraceSSPDomain(value string) bool {
 	normalized := strings.ToLower(strings.TrimSpace(value))
-	return normalized == "adl_test" || normalized == "mc_test" || strings.HasSuffix(normalized, "_test")
+	return strings.HasSuffix(normalized, "_test")
 }
 
 func ShouldSSPDomain(value string) bool {

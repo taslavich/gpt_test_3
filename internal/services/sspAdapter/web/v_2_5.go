@@ -179,21 +179,6 @@ func postBid_V2_5(
 		return
 	}
 
-	traceRequest := strings.TrimSpace(input.Feed) == "1"
-	if traceRequest {
-		log.Printf(
-			"[SPP][BID_RECEIVED] request_id=%q path=%q method=%q feed=%q format=%q traffic_type=%q impressions=%d remote_addr=%q",
-			input.Payload.BidRequest.GetId(),
-			r.URL.Path,
-			r.Method,
-			input.Feed,
-			format,
-			typic,
-			len(input.Payload.BidRequest.GetImp()),
-			r.RemoteAddr,
-		)
-	}
-
 	if orchestratorClient == nil || isBadIp == nil || getCountryISO == nil || siteIdsAndDomains == nil || ipLimitStore == nil {
 		log.Print("SSP adapter request dependencies are not initialized")
 		http.Error(w, "service dependencies are unavailable", http.StatusServiceUnavailable)
@@ -202,22 +187,24 @@ func postBid_V2_5(
 
 	ssp_domain, ok := sspFeeds[input.Feed]
 	if !ok {
-		if traceRequest {
-			log.Printf(
-				"[SPP][BID_REJECT] request_id=%q feed=%q format=%q traffic_type=%q reason=feed_not_configured configured_feeds=%d",
-				input.Payload.BidRequest.GetId(),
-				input.Feed,
-				format,
-				typic,
-				len(sspFeeds),
-			)
-		}
 		err := fmt.Errorf("Busy")
 		http.Error(w, err.Error(), http.StatusForbidden)
 		return
 	}
-	traceRequest = traceRequest || utils.ShouldTraceSSPDomain(ssp_domain)
+	traceRequest := utils.ShouldTraceSSPDomain(ssp_domain)
 	if traceRequest {
+		log.Printf(
+			"[SPP][BID_RECEIVED] request_id=%q path=%q method=%q feed=%q ssp_domain=%q format=%q traffic_type=%q impressions=%d remote_addr=%q",
+			input.Payload.BidRequest.GetId(),
+			r.URL.Path,
+			r.Method,
+			input.Feed,
+			ssp_domain,
+			format,
+			typic,
+			len(input.Payload.BidRequest.GetImp()),
+			r.RemoteAddr,
+		)
 		log.Printf(
 			"[SPP][FEED_RESOLVED] request_id=%q feed=%q ssp_domain=%q format=%q traffic_type=%q",
 			input.Payload.BidRequest.GetId(),

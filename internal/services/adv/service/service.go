@@ -385,8 +385,11 @@ func (s *AuctionService) Auction(ctx context.Context, req *ortb.BidRequest, now 
 		requestID = strings.TrimSpace(req.GetId())
 	}
 
-	// Detailed auction diagnostics are always enabled for every SSP domain and format.
-	logf := debugLogFunc(log.Printf)
+	// Detailed auction diagnostics are enabled only for SSP domains ending in "_test".
+	logf := debugLogFunc(func(string, ...any) {})
+	if strings.HasSuffix(sspDomain, "_test") {
+		logf = log.Printf
+	}
 
 	antiPerekrutEnabled := s != nil && s.antiperekrutEnabled
 	logf(

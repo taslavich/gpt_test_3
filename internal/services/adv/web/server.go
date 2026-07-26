@@ -76,39 +76,50 @@ func (s *Server) DoAuction(ctx context.Context, req *advGrpc.DoAuctionRequest) (
 		}
 	}
 
-	log.Printf(
-		"[ADV][REQUEST] request_id=%q format=%q traffic_type=%q ssp_domain=%q impressions=%d imp_uuid_count=%d",
-		requestID,
-		format,
-		trafficType,
-		sspDomain,
-		impressions,
-		impUUIDCount,
-	)
-
-	if utils.ShouldSSPDomain(sspDomain) {
+	traceRequest := utils.ShouldTraceSSPDomain(sspDomain)
+	if traceRequest {
 		log.Printf(
-			"[ADV][REQUEST_REJECT] request_id=%q format=%q traffic_type=%q ssp_domain=%q reason=ssp_domain_not_allowed",
+			"[ADV][REQUEST] request_id=%q format=%q traffic_type=%q ssp_domain=%q impressions=%d imp_uuid_count=%d",
 			requestID,
 			format,
 			trafficType,
 			sspDomain,
+			impressions,
+			impUUIDCount,
 		)
+	}
+
+	if utils.ShouldSSPDomain(sspDomain) {
+		if traceRequest {
+			log.Printf(
+				"[ADV][REQUEST_REJECT] request_id=%q format=%q traffic_type=%q ssp_domain=%q reason=ssp_domain_not_allowed",
+				requestID,
+				format,
+				trafficType,
+				sspDomain,
+			)
+		}
 		return nil, status.Error(codes.Unavailable, disabledMessage)
 	}
 
 	if s == nil || s.work == nil || !s.work.Enabled() {
-		log.Printf("[ADV][REQUEST_REJECT] request_id=%q reason=service_disabled", requestID)
+		if traceRequest {
+			log.Printf("[ADV][REQUEST_REJECT] request_id=%q reason=service_disabled", requestID)
+		}
 		return nil, status.Error(codes.Unavailable, disabledMessage)
 	}
 
 	if req == nil || req.GetBidRequest() == nil || len(req.GetBidRequest().GetImp()) == 0 {
-		log.Printf("[ADV][REQUEST_REJECT] request_id=%q reason=no_impressions", requestID)
+		if traceRequest {
+			log.Printf("[ADV][REQUEST_REJECT] request_id=%q reason=no_impressions", requestID)
+		}
 		return nil, status.Error(codes.InvalidArgument, "ADV auction request must contain at least one impression")
 	}
 
 	if s.auctionService == nil {
-		log.Printf("[ADV][REQUEST_ERROR] request_id=%q reason=auction_service_unavailable", requestID)
+		if traceRequest {
+			log.Printf("[ADV][REQUEST_ERROR] request_id=%q reason=auction_service_unavailable", requestID)
+		}
 		return nil, status.Error(codes.Unavailable, "ADV auction service is unavailable")
 	}
 
@@ -120,11 +131,15 @@ func (s *Server) DoAuction(ctx context.Context, req *advGrpc.DoAuctionRequest) (
 	})
 
 	if errors.Is(err, auction.ErrInvalidAuctionRequest) {
-		log.Printf("[ADV][REQUEST_REJECT] request_id=%q reason=invalid_auction_request error=%v", requestID, err)
+		if traceRequest {
+			log.Printf("[ADV][REQUEST_REJECT] request_id=%q reason=invalid_auction_request error=%v", requestID, err)
+		}
 		return nil, status.Error(codes.InvalidArgument, err.Error())
 	}
 	if err != nil {
-		log.Printf("[ADV][REQUEST_ERROR] request_id=%q reason=auction_failed error=%v", requestID, err)
+		if traceRequest {
+			log.Printf("[ADV][REQUEST_ERROR] request_id=%q reason=auction_failed error=%v", requestID, err)
+		}
 		return nil, status.Error(codes.Unavailable, fmt.Sprintf("ADV auction failed: %v", err))
 	}
 
@@ -133,24 +148,28 @@ func (s *Server) DoAuction(ctx context.Context, req *advGrpc.DoAuctionRequest) (
 		if outcome != nil {
 			winnerUsers = len(outcome.WinnerUserIDs)
 		}
-		log.Printf(
-			"[ADV][RESPONSE_NO_BID] request_id=%q winner_user_ids=%d",
-			requestID,
-			winnerUsers,
-		)
+		if traceRequest {
+			log.Printf(
+				"[ADV][RESPONSE_NO_BID] request_id=%q winner_user_ids=%d",
+				requestID,
+				winnerUsers,
+			)
+		}
 		return &advGrpc.DoAuctionResponse{
 			WinnerUserIds:    map[string]string{},
 			WinnerBasePrices: map[string]float64{},
 		}, nil
 	}
 
-	log.Printf(
-		"[ADV][RESPONSE_SUCCESS] request_id=%q seatbids=%d bids=%d winner_user_ids=%d",
-		requestID,
-		len(outcome.BidResponse.GetSeatbid()),
-		countBids(outcome.BidResponse),
-		len(outcome.WinnerUserIDs),
-	)
+	if traceRequest {
+		log.Printf(
+			"[ADV][RESPONSE_SUCCESS] request_id=%q seatbids=%d bids=%d winner_user_ids=%d",
+			requestID,
+			len(outcome.BidResponse.GetSeatbid()),
+			countBids(outcome.BidResponse),
+			len(outcome.WinnerUserIDs),
+		)
+	}
 	return &advGrpc.DoAuctionResponse{
 		BidResponse:      outcome.BidResponse,
 		WinnerUserIds:    outcome.WinnerUserIDs,
