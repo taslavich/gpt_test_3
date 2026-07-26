@@ -915,6 +915,7 @@ func (s *AuctionService) evaluateCampaign(
 		return candidate{}, false, nil
 	}
 
+	userRemaining := 0.0
 	if s.antiperekrutEnabled {
 		balance := s.cachedUserBalance(ctx, snapshot, userID, userBalanceCache)
 		if balance.err != nil {
@@ -924,7 +925,7 @@ func (s *AuctionService) evaluateCampaign(
 			}
 			return candidate{}, false, balance.err
 		}
-		userRemaining := balance.remaining
+		userRemaining = balance.remaining
 		recent := 0.0
 		if antiState != nil {
 			recent = antiState.UserSpend[userID].Spend
