@@ -59,24 +59,43 @@ func (s *Server) DoAuction(ctx context.Context, req *advGrpc.DoAuctionRequest) (
 		}
 	}()
 
-	if utils.ShouldSSPDomain(req.SspDomain) {
-		return nil, status.Error(codes.Unavailable, disabledMessage)
-	}
-
 	requestID := ""
-	if req != nil && req.GetBidRequest() != nil {
-		requestID = req.GetBidRequest().GetId()
+	format := ""
+	trafficType := ""
+	sspDomain := ""
+	impressions := 0
+	impUUIDCount := 0
+	if req != nil {
+		format = req.GetFormat()
+		trafficType = req.GetTrafficType()
+		sspDomain = req.GetSspDomain()
+		impUUIDCount = len(req.GetImpIdUuid())
+		if req.GetBidRequest() != nil {
+			requestID = req.GetBidRequest().GetId()
+			impressions = len(req.GetBidRequest().GetImp())
+		}
 	}
 
 	log.Printf(
 		"[ADV][REQUEST] request_id=%q format=%q traffic_type=%q ssp_domain=%q impressions=%d imp_uuid_count=%d",
 		requestID,
-		req.GetFormat(),
-		req.GetTrafficType(),
-		req.GetSspDomain(),
-		len(req.GetBidRequest().GetImp()),
-		len(req.GetImpIdUuid()),
+		format,
+		trafficType,
+		sspDomain,
+		impressions,
+		impUUIDCount,
 	)
+
+	if utils.ShouldSSPDomain(sspDomain) {
+		log.Printf(
+			"[ADV][REQUEST_REJECT] request_id=%q format=%q traffic_type=%q ssp_domain=%q reason=ssp_domain_not_allowed",
+			requestID,
+			format,
+			trafficType,
+			sspDomain,
+		)
+		return nil, status.Error(codes.Unavailable, disabledMessage)
+	}
 
 	if s == nil || s.work == nil || !s.work.Enabled() {
 		log.Printf("[ADV][REQUEST_REJECT] request_id=%q reason=service_disabled", requestID)

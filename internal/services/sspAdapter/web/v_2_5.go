@@ -178,6 +178,22 @@ func postBid_V2_5(
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
+
+	traceRequest := strings.TrimSpace(input.Feed) == "1"
+	if traceRequest {
+		log.Printf(
+			"[SPP][BID_RECEIVED] request_id=%q path=%q method=%q feed=%q format=%q traffic_type=%q impressions=%d remote_addr=%q",
+			input.Payload.BidRequest.GetId(),
+			r.URL.Path,
+			r.Method,
+			input.Feed,
+			format,
+			typic,
+			len(input.Payload.BidRequest.GetImp()),
+			r.RemoteAddr,
+		)
+	}
+
 	if orchestratorClient == nil || isBadIp == nil || getCountryISO == nil || siteIdsAndDomains == nil || ipLimitStore == nil {
 		log.Print("SSP adapter request dependencies are not initialized")
 		http.Error(w, "service dependencies are unavailable", http.StatusServiceUnavailable)
@@ -186,9 +202,30 @@ func postBid_V2_5(
 
 	ssp_domain, ok := sspFeeds[input.Feed]
 	if !ok {
+		if traceRequest {
+			log.Printf(
+				"[SPP][BID_REJECT] request_id=%q feed=%q format=%q traffic_type=%q reason=feed_not_configured configured_feeds=%d",
+				input.Payload.BidRequest.GetId(),
+				input.Feed,
+				format,
+				typic,
+				len(sspFeeds),
+			)
+		}
 		err := fmt.Errorf("Busy")
 		http.Error(w, err.Error(), http.StatusForbidden)
 		return
+	}
+	traceRequest = traceRequest || utils.ShouldTraceSSPDomain(ssp_domain)
+	if traceRequest {
+		log.Printf(
+			"[SPP][FEED_RESOLVED] request_id=%q feed=%q ssp_domain=%q format=%q traffic_type=%q",
+			input.Payload.BidRequest.GetId(),
+			input.Feed,
+			ssp_domain,
+			format,
+			typic,
+		)
 	}
 
 	if input.Payload.Device == nil {
@@ -501,6 +538,18 @@ func postBid_V2_5(
 	reqCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
+	if traceRequest {
+		log.Printf(
+			"[SPP][ORCHESTRATOR_CALL_START] request_id=%q ssp_domain=%q format=%q traffic_type=%q timeout_ms=%d impressions=%d",
+			input.Payload.BidRequest.GetId(),
+			ssp_domain,
+			format,
+			typic,
+			timeout.Milliseconds(),
+			len(input.Payload.BidRequest.GetImp()),
+		)
+	}
+	orchestratorStartedAt := time.Now()
 	res, err := orchestratorClient.GetWinnerBid_V2_5(
 		reqCtx,
 		&orchestratorProto.OrchestratorRequest_V2_5{
@@ -515,6 +564,16 @@ func postBid_V2_5(
 		},
 	)
 	if err != nil {
+		if traceRequest {
+			log.Printf(
+				"[SPP][ORCHESTRATOR_CALL_ERROR] request_id=%q ssp_domain=%q format=%q duration_ms=%d error=%v",
+				input.Payload.BidRequest.GetId(),
+				ssp_domain,
+				format,
+				time.Since(orchestratorStartedAt).Milliseconds(),
+				err,
+			)
+		}
 		httpErr := fmt.Errorf("Cannot GetWinnerBid because got error")
 
 		httpCode := http.StatusInternalServerError
@@ -528,9 +587,32 @@ func postBid_V2_5(
 		return
 	}
 	if res == nil {
+		if traceRequest {
+			log.Printf(
+				"[SPP][ORCHESTRATOR_CALL_DONE] request_id=%q ssp_domain=%q format=%q duration_ms=%d response_nil=true",
+				input.Payload.BidRequest.GetId(),
+				ssp_domain,
+				format,
+				time.Since(orchestratorStartedAt).Milliseconds(),
+			)
+		}
 		log.Print("orchestrator returned a nil response")
 		http.Error(w, "orchestrator returned an empty response", http.StatusServiceUnavailable)
 		return
+	}
+
+	if traceRequest {
+		log.Printf(
+			"[SPP][ORCHESTRATOR_CALL_DONE] request_id=%q ssp_domain=%q format=%q duration_ms=%d response_nil=false code=%d rekl=%t has_bid_response=%t failed_imp_ids=%d",
+			input.Payload.BidRequest.GetId(),
+			ssp_domain,
+			format,
+			time.Since(orchestratorStartedAt).Milliseconds(),
+			res.GetCode(),
+			res.GetRekl(),
+			res.GetBidResponse() != nil,
+			len(res.GetFailedImpIds()),
+		)
 	}
 
 	if res.Code == 703 {

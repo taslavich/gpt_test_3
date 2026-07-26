@@ -10,6 +10,7 @@ import (
 	bidEngineGrpc "gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/proto/services/bidEngine"
 	dspRouterGrpc "gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/proto/services/dspRouter"
 	orchestratorGrpc "gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/proto/services/orchestrator"
+	utils "gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/utils_grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
@@ -73,6 +74,19 @@ func (s *Server) GetWinnerBid_V2_5(
 		return nil, status.Error(codes.Unavailable, "orchestrator downstream client is unavailable")
 	}
 
+	traceRequest := utils.ShouldTraceSSPDomain(req.GetSspDomain())
+	if traceRequest {
+		log.Printf(
+			"[ORCHESTRATOR][REQUEST_RECEIVED] request_id=%q ssp_domain=%q format=%q traffic_type=%q impressions=%d imp_uuid_count=%d",
+			req.GetBidRequest().GetId(),
+			req.GetSspDomain(),
+			req.GetFormat(),
+			trafficTypeFromOrchestratorRequest(req),
+			len(req.GetBidRequest().GetImp()),
+			len(req.GetImpIdUuid()),
+		)
+	}
+
 	getBidsTimeout := s.getBidsTimeout
 	if getBidsTimeout <= 0 {
 		getBidsTimeout = time.Second
@@ -80,6 +94,16 @@ func (s *Server) GetWinnerBid_V2_5(
 	getBidsReqCtx, cancel := context.WithTimeout(ctx, getBidsTimeout)
 	defer cancel()
 
+	if traceRequest {
+		log.Printf(
+			"[ORCHESTRATOR][ROUTER_CALL_START] request_id=%q ssp_domain=%q format=%q timeout_ms=%d",
+			req.GetBidRequest().GetId(),
+			req.GetSspDomain(),
+			req.GetFormat(),
+			getBidsTimeout.Milliseconds(),
+		)
+	}
+	routerStartedAt := time.Now()
 	bids, err := s.dspRouterGrpcClient.GetBids_V2_5(
 		getBidsReqCtx,
 		&dspRouterGrpc.DspRouterRequest_V2_5{
@@ -94,6 +118,16 @@ func (s *Server) GetWinnerBid_V2_5(
 		},
 	)
 	if err != nil {
+		if traceRequest {
+			log.Printf(
+				"[ORCHESTRATOR][ROUTER_CALL_ERROR] request_id=%q ssp_domain=%q format=%q duration_ms=%d error=%v",
+				req.GetBidRequest().GetId(),
+				req.GetSspDomain(),
+				req.GetFormat(),
+				time.Since(routerStartedAt).Milliseconds(),
+				err,
+			)
+		}
 		newErr := fmt.Errorf("Can not get bids from router in GetWinnerBid because got uknown error: %w", err)
 
 		grpcCode := codes.Unknown
@@ -107,7 +141,31 @@ func (s *Server) GetWinnerBid_V2_5(
 	}
 
 	if bids == nil {
+		if traceRequest {
+			log.Printf(
+				"[ORCHESTRATOR][ROUTER_CALL_DONE] request_id=%q ssp_domain=%q format=%q duration_ms=%d response_nil=true",
+				req.GetBidRequest().GetId(),
+				req.GetSspDomain(),
+				req.GetFormat(),
+				time.Since(routerStartedAt).Milliseconds(),
+			)
+		}
 		return nil, status.Error(codes.Unavailable, "router returned a nil response")
+	}
+
+	if traceRequest {
+		log.Printf(
+			"[ORCHESTRATOR][ROUTER_CALL_DONE] request_id=%q ssp_domain=%q format=%q duration_ms=%d response_nil=false code=%d rekl=%t has_ready_bid_response=%t bid_responses=%d winner_user_ids=%d",
+			req.GetBidRequest().GetId(),
+			req.GetSspDomain(),
+			req.GetFormat(),
+			time.Since(routerStartedAt).Milliseconds(),
+			bids.GetCode(),
+			bids.GetRekl(),
+			bids.GetReadyBidResponse() != nil,
+			len(bids.GetBidResponses()),
+			len(bids.GetWinnerUserIds()),
+		)
 	}
 
 	if bids.GetCode() == 703 {

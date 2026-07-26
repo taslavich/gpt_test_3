@@ -211,11 +211,15 @@ func optimizeGoRuntimeSafe(serviceType string) {
 		debug.SetGCPercent(-1))
 }
 
+func ShouldTraceSSPDomain(value string) bool {
+	normalized := strings.ToLower(strings.TrimSpace(value))
+	return normalized == "adl_test" || normalized == "mc_test" || strings.HasSuffix(normalized, "_test")
+}
+
 func ShouldSSPDomain(value string) bool {
-	switch strings.ToLower(strings.TrimSpace(value)) {
-	case "adl_test", "mc_test", "1":
+	normalized := strings.ToLower(strings.TrimSpace(value))
+	if normalized == "1" || ShouldTraceSSPDomain(normalized) {
 		return false
-	default:
-		return true
 	}
+	return true
 }

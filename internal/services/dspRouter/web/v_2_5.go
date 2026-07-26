@@ -245,6 +245,20 @@ func (s *Server) GetBids_V2_5(
 	if req == nil || req.GetBidRequest() == nil {
 		return nil, status.Error(codes.InvalidArgument, "bid request is nil")
 	}
+
+	traceRequest := utils.ShouldTraceSSPDomain(req.GetSspDomain())
+	if traceRequest {
+		log.Printf(
+			"[ROUTER][REQUEST_RECEIVED] request_id=%q ssp_domain=%q format=%q traffic_type=%q impressions=%d imp_uuid_count=%d",
+			req.GetBidRequest().GetId(),
+			req.GetSspDomain(),
+			req.GetFormat(),
+			trafficTypeFromDspRouterRequest(req),
+			len(req.GetBidRequest().GetImp()),
+			len(req.GetImpIdUuid()),
+		)
+	}
+
 	timeout := getSspTimeout(req.GetSspDomain(), s.configTimeouts)
 	if timeout <= 0 {
 		timeout = time.Second
@@ -305,6 +319,14 @@ func (s *Server) GetBids_V2_5(
 	}
 
 	if filters != nil && !filters.Allowed(req.BidRequest, "", true) {
+		if traceRequest {
+			log.Printf(
+				"[ROUTER][REQUEST_REJECT] request_id=%q ssp_domain=%q format=%q reason=ssp_filter_rejected",
+				req.GetBidRequest().GetId(),
+				req.GetSspDomain(),
+				req.GetFormat(),
+			)
+		}
 		return &dspRouterGrpc.DspRouterResponse_V2_5{
 			BidRequest:   req.BidRequest,
 			BidResponses: map[string]*ortb_V2_5.BidResponse{},
@@ -320,13 +342,58 @@ func (s *Server) GetBids_V2_5(
 		break
 	}
 
+	if traceRequest {
+		log.Printf(
+			"[ROUTER][ADV_CALL_START] request_id=%q ssp_domain=%q format=%q traffic_type=%q timeout_ms=%d impressions=%d",
+			req.GetBidRequest().GetId(),
+			req.GetSspDomain(),
+			req.GetFormat(),
+			trafficTypeFromDspRouterRequest(req),
+			timeout.Milliseconds(),
+			len(req.GetBidRequest().GetImp()),
+		)
+	}
+	advStartedAt := time.Now()
 	advResponse, advErr := s.doAdvAuction(ctx, req, timeout)
 	readyADVResponse := successfulADVBidResponse(advResponse, advErr)
+	if traceRequest {
+		if advErr != nil {
+			log.Printf(
+				"[ROUTER][ADV_CALL_ERROR] request_id=%q ssp_domain=%q format=%q duration_ms=%d error=%v",
+				req.GetBidRequest().GetId(),
+				req.GetSspDomain(),
+				req.GetFormat(),
+				time.Since(advStartedAt).Milliseconds(),
+				advErr,
+			)
+		} else {
+			log.Printf(
+				"[ROUTER][ADV_CALL_DONE] request_id=%q ssp_domain=%q format=%q duration_ms=%d response_nil=%t has_bid_response=%t winner_user_ids=%d winner_base_prices=%d",
+				req.GetBidRequest().GetId(),
+				req.GetSspDomain(),
+				req.GetFormat(),
+				time.Since(advStartedAt).Milliseconds(),
+				advResponse == nil,
+				readyADVResponse != nil,
+				len(advResponse.GetWinnerUserIds()),
+				len(advResponse.GetWinnerBasePrices()),
+			)
+		}
+	}
 	if advErr != nil {
 		// ADV errors always fall through to the DSP path, even if a response
 		// object was returned together with the error.
 		log.Printf("ADV auction failed, falling back to DSP: %v", advErr)
 	} else if readyADVResponse != nil {
+		if traceRequest {
+			log.Printf(
+				"[ROUTER][ADV_SELECTED] request_id=%q ssp_domain=%q format=%q winner_user_ids=%d",
+				req.GetBidRequest().GetId(),
+				req.GetSspDomain(),
+				req.GetFormat(),
+				len(advResponse.GetWinnerUserIds()),
+			)
+		}
 		return &dspRouterGrpc.DspRouterResponse_V2_5{
 			BidRequest:       req.GetBidRequest(),
 			BidResponses:     map[string]*ortb_V2_5.BidResponse{},
@@ -338,6 +405,16 @@ func (s *Server) GetBids_V2_5(
 			ImpIdUuid:        cloneStringMap(req.GetImpIdUuid()),
 			WinnerBasePrices: cloneFloat64Map(advResponse.GetWinnerBasePrices()),
 		}, nil
+	}
+
+	if traceRequest {
+		log.Printf(
+			"[ROUTER][ADV_NO_BID_FALLBACK_DSP] request_id=%q ssp_domain=%q format=%q dsp_endpoints=%d",
+			req.GetBidRequest().GetId(),
+			req.GetSspDomain(),
+			req.GetFormat(),
+			len(dspList),
+		)
 	}
 
 	for endpoint, domain := range dspList {
