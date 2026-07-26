@@ -39,6 +39,8 @@ function baseCreative(overrides: Partial<CreativeDraft> = {}): CreativeDraft {
     imageFileName: "banner.jpg",
     imageMimeType: "image/jpeg",
     mediaType: "image",
+    imageWidth: 300,
+    imageHeight: 250,
     ...overrides,
   };
 }
@@ -322,6 +324,23 @@ describe("creative API migration", () => {
     expect(client.uploads).toHaveLength(1);
     expect(client.creates[0].body.image_id).toBe("uploaded-image-1");
     expect(client.creates[0].body.banner_type).toBeUndefined();
+    expect(client.creates[0].body.w).toBe(300);
+    expect(client.creates[0].body.h).toBe(250);
+  });
+
+  it.each([
+    ["native", 640, 640],
+    ["push", 192, 192],
+  ] as const)("sends final cropped dimensions for %s", (format, w, h) => {
+    const body = buildCreativeWriteBody({
+      format,
+      creative: baseCreative({ imageWidth: w, imageHeight: h }),
+      dimensions: { w: null, h: null },
+      imageId: "image-1",
+      imageUrl: "https://cdn.example/image.jpg",
+    });
+
+    expect(body).toMatchObject({ w, h });
   });
 
   it("creates popunder without image upload or image fields", async () => {

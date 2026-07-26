@@ -8,7 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { AutoCropConfirmDialog } from "@/components/dashboard/AutoCropConfirmDialog";
 import { getTargetDims } from "@/lib/creativeTarget";
-import { ArrowLeft, Save, AlertCircle } from "lucide-react";
+import { ArrowLeft, Save, AlertCircle, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { useCampaigns, type TargetingState, type PricingModel, type TrafficQuality, type TrafficType, type Creative, type Vertical, VERTICALS } from "@/contexts/CampaignContext";
 import { TargetingSection } from "@/components/dashboard/TargetingSection";
@@ -33,9 +33,10 @@ export default function EditCampaign() {
   const { id } = useParams();
   const [searchParams] = useSearchParams();
   const defaultTab = searchParams.get("tab") || "general";
-  const { getCampaign, updateCampaign } = useCampaigns();
+  const { getCampaign, updateCampaign, loadCampaignCreatives, loading } = useCampaigns();
   const { t } = useLanguage();
   const campaign = getCampaign(id || "");
+  const [creativeLoadError, setCreativeLoadError] = useState("");
 
   const [name, setName] = useState("");
   const [bannerSize, setBannerSize] = useState("");
@@ -61,7 +62,19 @@ export default function EditCampaign() {
   const [bidRecommendation, setBidRecommendation] = useState<BidRecommendation | null>(null);
 
   useEffect(() => {
-    if (campaign) {
+    if (!id || !campaign || campaign.creativesLoaded) return;
+    let cancelled = false;
+    void loadCampaignCreatives(id).catch((error: unknown) => {
+      if (cancelled) return;
+      const message = error instanceof Error ? error.message : String(error);
+      setCreativeLoadError(message);
+      toast.error(message);
+    });
+    return () => { cancelled = true; };
+  }, [id, campaign, loadCampaignCreatives]);
+
+  useEffect(() => {
+    if (campaign?.creativesLoaded) {
       setName(campaign.name);
       setBannerSize(campaign.bannerSize || "");
       setBrandName(campaign.brandName || "");
@@ -149,10 +162,18 @@ export default function EditCampaign() {
     setActiveTab(nextTab);
   };
 
-  if (!campaign) {
+  if (loading || (campaign && !campaign.creativesLoaded && !creativeLoadError)) {
+    return (
+      <div className="flex items-center justify-center py-12">
+        <Loader2 className="h-6 w-6 animate-spin text-primary" />
+      </div>
+    );
+  }
+
+  if (!campaign || creativeLoadError) {
     return (
       <div className="text-center py-12">
-        <p className="text-muted-foreground">{t("edit.notFound")}</p>
+        <p className="text-muted-foreground">{creativeLoadError || t("edit.notFound")}</p>
         <Button variant="outline" onClick={() => navigate("/dashboard/campaigns")} className="mt-4">{t("create.back")}</Button>
       </div>
     );
@@ -406,7 +427,7 @@ export default function EditCampaign() {
 
               <div className="pt-2">
                 <p className="text-sm font-medium text-muted-foreground mb-3">{t("create.creatives")}</p>
-                <CreativesEditor ref={creativesEditorRef} formatKey={campaign.formatKey} bannerSize={bannerSize} creatives={creatives} onChange={setCreatives} errors={errors} onClearError={clearError} />
+                <CreativesEditor ref={creativesEditorRef} formatKey={campaign.formatKey} bannerSize={bannerSize} brandName={brandName} creatives={creatives} onChange={setCreatives} errors={errors} onClearError={clearError} />
               </div>
             </CardContent>
           </Card>

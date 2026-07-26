@@ -455,7 +455,7 @@ export const ES_TRANSLATIONS: Record<string, string> = {
   "create.htmlFileSizeError": "El archivo HTML no debe superar 1 MB",
   "create.previewTitle": "Cómo se verá el creativo en un sitio",
   "create.previewDesktop": "Escritorio",
-  "create.previewAndroid": "Android",
+  "create.previewMobile": "Móvil",
   "create.previewDisclaimer": "Vista aproximada. La apariencia puede variar en distintos sitios.",
   "create.previewPopunderNote": "Popunder abre una nueva pestaña con tu URL, no requiere vista previa.",
   "create.cropTitle": "Editor de imagen",

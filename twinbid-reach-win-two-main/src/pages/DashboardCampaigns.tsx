@@ -34,7 +34,7 @@ type SortDir = "asc" | "desc";
 
 export default function DashboardCampaigns() {
   const navigate = useNavigate();
-  const { campaigns, updateCampaign, deleteCampaign: ctxDelete, addCampaign } = useCampaigns();
+  const { campaigns, updateCampaign, deleteCampaign: ctxDelete, addCampaign, loadCampaignCreatives } = useCampaigns();
   const { t } = useLanguage();
   const [viewCampaign, setViewCampaign] = useState<Campaign | null>(null);
   const [deleteId, setDeleteId] = useState<string | null>(null);
@@ -106,9 +106,17 @@ export default function DashboardCampaigns() {
   const toggleStatus = async (id: string) => {
     const c = campaigns.find(x => x.id === id);
     if (!c) return;
-    if (c.status === "draft" && !isDraftComplete(c)) {
-      toast.error(t("campaigns.draftIncomplete"));
-      return;
+    if (c.status === "draft") {
+      try {
+        const creatives = await loadCampaignCreatives(c.id);
+        if (!isDraftComplete({ ...c, creatives })) {
+          toast.error(t("campaigns.draftIncomplete"));
+          return;
+        }
+      } catch (error: unknown) {
+        toast.error(error instanceof Error ? error.message : String(error));
+        return;
+      }
     }
     const ns = c.status === "active" ? "paused" : "active";
     try {
@@ -133,6 +141,7 @@ export default function DashboardCampaigns() {
   const duplicateCampaign = async (c: Campaign) => {
     const { id: _id, ...rest } = c;
     try {
+      const sourceCreatives = await loadCampaignCreatives(c.id);
       // For formats with a visual (banner/native/push), the backend requires
       // a file on creative create. The duplicated source creatives only have
       // a presigned `imageUrl` — download those bytes and attach as
@@ -140,7 +149,7 @@ export default function DashboardCampaigns() {
       const needsFile = c.formatKey === "banner" || c.formatKey === "native" || c.formatKey === "push";
       const creatives = needsFile
         ? await Promise.all(
-            (rest.creatives || []).map(async (cr) => {
+            sourceCreatives.map(async (cr) => {
               if (cr.pendingFile || !cr.imageUrl) return cr;
               try {
                 const resp = await fetch(cr.imageUrl);
@@ -155,7 +164,7 @@ export default function DashboardCampaigns() {
               }
             })
           )
-        : rest.creatives;
+        : sourceCreatives;
       const id = await addCampaign({ ...rest, creatives, name: `${c.name} ${t("campaigns.copyPostfix")}`, status: "draft", spent: 0, impressions: 0, clicks: 0, ctr: 0 });
       if (id) toast.success(t("campaigns.copied"));
     } catch (e: any) {

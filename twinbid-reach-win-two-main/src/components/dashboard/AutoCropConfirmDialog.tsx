@@ -21,6 +21,7 @@ interface PreviewEntry {
   beforeUrl: string;
   afterUrl?: string;
   file?: File;
+  dimensions?: { w: number; h: number };
   isGif: boolean;
   error?: string;
 }
@@ -48,9 +49,10 @@ export function AutoCropConfirmDialog({ open, creatives, target, onCancel, onCon
         };
         if (!gif) {
           try {
-            const { dataUrl, file } = await autoCropImage(c.imageUrl, target, c.imageFileName);
+            const { dataUrl, file, dimensions } = await autoCropImage(c.imageUrl, target, c.imageFileName);
             entry.afterUrl = dataUrl;
             entry.file = file;
+            entry.dimensions = dimensions;
           } catch (e: any) {
             entry.error = e?.message || "error";
           }
@@ -72,8 +74,16 @@ export function AutoCropConfirmDialog({ open, creatives, target, onCancel, onCon
     const map = new Map(previews.map(p => [p.creativeId, p]));
     const next = creatives.map(c => {
       const p = map.get(c.id);
-      if (!p || !p.afterUrl || !p.file) return c;
-      return { ...c, imageUrl: p.afterUrl, pendingFile: p.file, imageFileName: p.file.name, sizeMismatch: false };
+      if (!p || !p.afterUrl || !p.file || !p.dimensions) return c;
+      return {
+        ...c,
+        imageUrl: p.afterUrl,
+        pendingFile: p.file,
+        imageFileName: p.file.name,
+        imageWidth: p.dimensions.w,
+        imageHeight: p.dimensions.h,
+        sizeMismatch: false,
+      };
     });
     onConfirm(next);
   };

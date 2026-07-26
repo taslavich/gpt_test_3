@@ -126,7 +126,7 @@ function MultiSelectFilter({ label, options, selected, onChange }: {
 
 export default function DashboardStatistics() {
   const isMobile = useIsMobile();
-  const { campaigns } = useCampaigns();
+  const { campaigns, loadCampaignCreatives } = useCampaigns();
   const { t, lang } = useLanguage();
   
   const {
@@ -661,7 +661,13 @@ export default function DashboardStatistics() {
 
         <div className="flex min-w-0 flex-col gap-2">
           <Label className="text-sm text-muted-foreground font-medium">{t("stats.creatives")}</Label>
-          <Popover>
+          <Popover onOpenChange={(open) => {
+            if (open && selectedCampaignId) {
+              void loadCampaignCreatives(selectedCampaignId).catch((error: unknown) => {
+                toast.error(error instanceof Error ? error.message : String(error));
+              });
+            }
+          }}>
             <PopoverTrigger asChild>
               <Button variant="outline" className="w-full min-w-0 justify-start bg-background border-border text-left font-normal sm:w-[260px]" disabled={!selectedCampaignId}>
                 {!selectedCampaignId

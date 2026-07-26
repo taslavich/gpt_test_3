@@ -486,7 +486,7 @@ const translations: Record<string, Record<"ru" | "en", string>> = {
   "create.htmlFileSizeError": { ru: "Размер HTML-файла не должен превышать 1 МБ", en: "HTML file size must not exceed 1 MB" },
   "create.previewTitle": { ru: "Как креатив будет показан на сайте", en: "How the creative will look on a site" },
   "create.previewDesktop": { ru: "Десктоп", en: "Desktop" },
-  "create.previewAndroid": { ru: "Android", en: "Android" },
+  "create.previewMobile": { ru: "Мобильный", en: "Mobile" },
   "create.previewDisclaimer": { ru: "Примерный вид. На разных площадках оформление может отличаться.", en: "Approximate look. Rendering may differ across sites." },
   "create.previewPopunderNote": { ru: "Popunder открывается как отдельная вкладка с вашим URL — предпросмотр не требуется.", en: "Popunder opens as a new tab with your URL — no preview needed." },
   "create.cropTitle": { ru: "Редактор изображения", en: "Image editor" },

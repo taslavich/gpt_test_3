@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useCallback, useEffect, type ReactNode } from "react";
+import { createContext, useContext, useState, useCallback, useEffect, useRef, type ReactNode } from "react";
 import { api } from "@/api";
 import type {
   ApiCampaign, ApiCreative, TargetingMap,
@@ -85,6 +85,9 @@ export interface Creative {
   imageFileName?: string;
   imageMimeType?: string;
   mediaType?: "image" | "video";
+  /** Final media dimensions after crop/resize. Sent as creative w/h for native and in-page push. */
+  imageWidth?: number;
+  imageHeight?: number;
   /** New file picked by the user. Uploaded before the creative JSON POST/PATCH. */
   pendingFile?: File;
   title?: string;
@@ -130,6 +133,8 @@ export interface Campaign {
   startDate: string;
   endDate: string;
   creatives: Creative[];
+  /** UI-only marker: creatives were explicitly loaded for this campaign. */
+  creativesLoaded?: boolean;
   targeting: Record<string, TargetingState>;
   evenSpend: boolean;
   bannerSize?: string;
@@ -244,7 +249,7 @@ function readApiTargeting(c: ApiCampaign): Record<string, TargetingState> {
 
 
 // ---- Mapping --------------------------------------------------------------
-function mapApiCampaignToUi(c: ApiCampaign, creatives: Creative[]): Campaign {
+function mapApiCampaignToUi(c: ApiCampaign, creatives: Creative[], creativesLoaded = false): Campaign {
   let priceValue = Number(c.base_price) || 0;
   // Popunder CPC is stored as CPM-equivalent (value * 1000). Convert back for display.
   if (c.format_type === "popunder" && c.pricing_model === "cpc") {
@@ -268,6 +273,7 @@ function mapApiCampaignToUi(c: ApiCampaign, creatives: Creative[]): Campaign {
     startDate: c.start_ts ? c.start_ts.slice(0, 10) : "",
     endDate: c.end_ts ? c.end_ts.slice(0, 10) : "",
     creatives,
+    creativesLoaded,
     targeting: readApiTargeting(c),
     evenSpend: !!c.evenness_by_slot_mode,
     bannerSize: c.w && c.h ? `${c.w}x${c.h}` : undefined,
@@ -307,6 +313,8 @@ export function mapApiCreativeToUi(cr: ApiCreative): Creative {
     imageFileName: imageName,
     imageMimeType: mimeType,
     mediaType: isVideoAsset(mimeType, imageName) ? "video" : "image",
+    imageWidth: cr.w || undefined,
+    imageHeight: cr.h || undefined,
     title: cr.title || undefined,
     description: cr.description || undefined,
     creativeType,
@@ -432,6 +440,7 @@ interface CampaignContextType {
   updateCampaign: (id: string, updates: Partial<Campaign>) => Promise<void>;
   deleteCampaign: (id: string) => Promise<void>;
   getCampaign: (id: string) => Campaign | undefined;
+  loadCampaignCreatives: (id: string, force?: boolean) => Promise<Creative[]>;
   refetch: () => Promise<void>;
 }
 
@@ -441,6 +450,13 @@ export function CampaignProvider({ children }: { children: ReactNode }) {
   const { user } = useAuth();
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
   const [loading, setLoading] = useState(true);
+  const creativeCache = useRef(new Map<string, Creative[]>());
+  const creativeRequests = useRef(new Map<string, Promise<Creative[]>>());
+
+  useEffect(() => {
+    creativeCache.current.clear();
+    creativeRequests.current.clear();
+  }, [user?.id]);
 
   const fetchCampaigns = useCallback(async () => {
     if (!user) { setCampaigns([]); setLoading(false); return; }
@@ -450,20 +466,22 @@ export function CampaignProvider({ children }: { children: ReactNode }) {
       // Backend may return `items: null` when the user has no campaigns yet.
       // Treat null/undefined as an empty list instead of crashing on .map.
       const items: ApiCampaign[] = Array.isArray(res?.items) ? res.items : [];
-      // Isolate creative loading per-campaign: a single failure must not
-      // break the whole list. Failed reads degrade to an empty creatives
-      // array so the rest of the campaign still shows up.
-      const withCreatives = await Promise.all(items.map(async c => {
-        let crs: ApiCreative[] = [];
-        try {
-          const r = await api.readCreatives(c.campaign_id);
-          crs = Array.isArray(r) ? r : [];
-        } catch (e) {
-          console.error(`readCreatives failed for ${c.campaign_id}:`, e);
+      // Campaign lists do not need creative bodies. Preserve already loaded
+      // creatives, but never fan out one GET /creatives per campaign.
+      setCampaigns(() => {
+        const currentIds = new Set(items.map(item => item.campaign_id));
+        for (const cachedId of creativeCache.current.keys()) {
+          if (!currentIds.has(cachedId)) creativeCache.current.delete(cachedId);
         }
-        return mapApiCampaignToUi(c, crs.map(mapApiCreativeToUi));
-      }));
-      setCampaigns(withCreatives);
+        return items.map(item => {
+          const cachedCreatives = creativeCache.current.get(item.campaign_id);
+          return mapApiCampaignToUi(
+            item,
+            cachedCreatives ?? [],
+            cachedCreatives !== undefined,
+          );
+        });
+      });
     } catch (e) {
       console.error("Campaigns fetch error:", e);
       setCampaigns([]);
@@ -473,6 +491,36 @@ export function CampaignProvider({ children }: { children: ReactNode }) {
   }, [user]);
 
   useEffect(() => { fetchCampaigns(); }, [fetchCampaigns]);
+
+  const loadCampaignCreatives = useCallback(async (id: string, force = false): Promise<Creative[]> => {
+    if (!user) throw new Error("Not authenticated");
+    const cached = creativeCache.current.get(id);
+    if (!force && cached !== undefined) {
+      return cached;
+    }
+
+    const pending = creativeRequests.current.get(id);
+    if (pending) return pending;
+
+    const request = (async () => {
+      const raw = await api.readCreatives(id);
+      const creatives = (Array.isArray(raw) ? raw : []).map(mapApiCreativeToUi);
+      creativeCache.current.set(id, creatives);
+      setCampaigns(prev => prev.map(campaign =>
+        campaign.id === id
+          ? { ...campaign, creatives, creativesLoaded: true }
+          : campaign
+      ));
+      return creatives;
+    })();
+
+    creativeRequests.current.set(id, request);
+    try {
+      return await request;
+    } finally {
+      creativeRequests.current.delete(id);
+    }
+  }, [user]);
 
   const addCampaign = useCallback(async (c: Omit<Campaign, "id">): Promise<string | undefined> => {
     if (!user) throw new Error("Not authenticated");
@@ -498,7 +546,9 @@ export function CampaignProvider({ children }: { children: ReactNode }) {
     // creatives separately for every campaign, so doing that after a single
     // create caused one GET /creatives per existing campaign (and the
     // following status PATCH repeated the whole fan-out once more).
-    const createdUi = mapApiCampaignToUi(created, createdCreatives.map(mapApiCreativeToUi));
+    const createdUiCreatives = createdCreatives.map(mapApiCreativeToUi);
+    creativeCache.current.set(created.campaign_id, createdUiCreatives);
+    const createdUi = mapApiCampaignToUi(created, createdUiCreatives, true);
     setCampaigns(prev => [...prev.filter(item => item.id !== createdUi.id), createdUi]);
     return created.campaign_id;
   }, [user]);
@@ -544,6 +594,7 @@ export function CampaignProvider({ children }: { children: ReactNode }) {
       // every other campaign in the account.
       const refreshedRaw = await api.readCreatives(id);
       refreshedCreatives = (Array.isArray(refreshedRaw) ? refreshedRaw : []).map(mapApiCreativeToUi);
+      creativeCache.current.set(id, refreshedCreatives);
     }
 
     // Build a *partial* patch so toggling a single field (status, budget,
@@ -560,21 +611,23 @@ export function CampaignProvider({ children }: { children: ReactNode }) {
     setCampaigns(prev => prev.map(item => {
       if (item.id !== id) return item;
       const creatives = refreshedCreatives ?? item.creatives;
-      if (patchedCampaign) return mapApiCampaignToUi(patchedCampaign, creatives);
-      return { ...item, ...updates, creatives };
+      const creativesLoaded = refreshedCreatives !== undefined || item.creativesLoaded === true;
+      if (patchedCampaign) return mapApiCampaignToUi(patchedCampaign, creatives, creativesLoaded);
+      return { ...item, ...updates, creatives, creativesLoaded };
     }));
   }, [user, campaigns]);
 
   const deleteCampaign = useCallback(async (id: string) => {
     if (!user) throw new Error("Not authenticated");
     await api.deleteCampaign(id);
+    creativeCache.current.delete(id);
     setCampaigns(prev => prev.filter(campaign => campaign.id !== id));
   }, [user]);
 
   const getCampaign = useCallback((id: string) => campaigns.find(c => c.id === id), [campaigns]);
 
   return (
-    <CampaignContext.Provider value={{ campaigns, loading, addCampaign, updateCampaign, deleteCampaign, getCampaign, refetch: fetchCampaigns }}>
+    <CampaignContext.Provider value={{ campaigns, loading, addCampaign, updateCampaign, deleteCampaign, getCampaign, loadCampaignCreatives, refetch: fetchCampaigns }}>
       {children}
     </CampaignContext.Provider>
   );

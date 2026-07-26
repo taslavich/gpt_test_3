@@ -11,6 +11,9 @@ export interface CreativeDraft {
   imageFileName?: string;
   imageMimeType?: string;
   mediaType?: "image" | "video";
+  /** Final media dimensions after any crop/resize performed by the editor. */
+  imageWidth?: number;
+  imageHeight?: number;
   pendingFile?: File;
   title?: string;
   description?: string;
@@ -324,6 +327,11 @@ export function buildCreativeWriteBody({
   base.adm = stripMacrosFromUrl(creative.url);
   base.trackers_macros = extractMacrosFromUrl(creative.url);
   if (format === "native" || format === "push") {
+    const w = creative.imageWidth ?? dimensions.w;
+    const h = creative.imageHeight ?? dimensions.h;
+    if (!w || !h) throw new Error("Creative image dimensions are required");
+    base.w = w;
+    base.h = h;
     base.title = creative.title?.trim() || "";
     base.description = creative.description?.trim() || "";
     return withImageId(base, imageId);

@@ -20,6 +20,7 @@ import { useLanguage } from "@/contexts/LanguageContext";
 import { api } from "@/api";
 import { buildRecommendBidRequest, makeBidRecommendation, type BidRecommendation } from "@/lib/bidRecommendation";
 import { getBidLimits, getMaximumBid } from "@/lib/bidLimits";
+import { submitCreatedCampaignToModeration } from "@/lib/campaignSubmission";
 import {
   creativeRequiresImage,
   extractIframeSrc,
@@ -51,7 +52,7 @@ const generateId = () => String(Date.now()) + Math.random().toString(36).slice(2
 
 export default function CreateCampaign() {
   const navigate = useNavigate();
-  const { addCampaign, updateCampaign } = useCampaigns();
+  const { addCampaign, updateCampaign, refetch } = useCampaigns();
   const { t } = useLanguage();
   const { addNotification } = useNotifications();
   const [step, setStep] = useState(1);
@@ -256,13 +257,19 @@ export default function CreateCampaign() {
         return;
       }
       savedAsDraft.current = true;
-      try {
-        await updateCampaign(id, { status: "moderation" });
-      } catch (e: any) {
-        toast.error(`${t("create.failed") || "Failed to submit campaign"}: ${e?.message || e}`);
-        setIsCreating(false);
-        return;
+      const moderationError = await submitCreatedCampaignToModeration(id, updateCampaign);
+      if (moderationError) {
+        const error = moderationError;
+        const message = error instanceof Error ? error.message : String(error);
+        toast.error(`${t("create.failed") || "Failed to submit campaign"}: ${message}`);
+        // The backend may save the status before an external moderation bot
+        // reports an error. Refresh in the background, but never block the
+        // redirect on that secondary synchronization.
+        void refetch();
       }
+      // The campaign and its creatives already exist at this point. A
+      // moderation notification failure must not leave the create form
+      // active, otherwise the same campaign can be submitted repeatedly.
       toast.success(t("create.created"));
       navigate("/dashboard/campaigns");
     } catch (e: any) {
@@ -424,7 +431,7 @@ export default function CreateCampaign() {
                 <>
                   <div className="pt-2">
                     <p className="text-sm font-medium text-muted-foreground mb-3">{t("create.creatives")}</p>
-                    <CreativesEditor ref={creativesEditorRef} formatKey={adFormat} bannerSize={bannerSize} creatives={creatives} onChange={setCreatives} errors={errors} onClearError={clearError} />
+                    <CreativesEditor ref={creativesEditorRef} formatKey={adFormat} bannerSize={bannerSize} brandName={brandName} creatives={creatives} onChange={setCreatives} errors={errors} onClearError={clearError} />
                   </div>
                 </>
               )}

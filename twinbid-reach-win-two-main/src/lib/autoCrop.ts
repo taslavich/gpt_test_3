@@ -51,7 +51,7 @@ export async function autoCropImage(
   dataUrl: string,
   target: CropperTarget,
   fileNameHint?: string,
-): Promise<{ dataUrl: string; file: File }> {
+): Promise<{ dataUrl: string; file: File; dimensions: { w: number; h: number } }> {
   const img = await loadImage(dataUrl);
   const crop = computeCoverCrop(img.naturalWidth, img.naturalHeight, target);
   const canvas = document.createElement("canvas");
@@ -89,7 +89,11 @@ export async function autoCropImage(
     r.onerror = () => rej(r.error);
     r.readAsDataURL(file);
   });
-  return { dataUrl: outUrl, file };
+  return {
+    dataUrl: outUrl,
+    file,
+    dimensions: { w: crop.outW, h: crop.outH },
+  };
 }
 
 /**
@@ -109,9 +113,17 @@ export async function autoCropMismatched(
       return c;
     }
     try {
-      const { dataUrl, file } = await autoCropImage(c.imageUrl, target, c.imageFileName);
+      const { dataUrl, file, dimensions } = await autoCropImage(c.imageUrl, target, c.imageFileName);
       cropped++;
-      return { ...c, imageUrl: dataUrl, pendingFile: file, imageFileName: file.name, sizeMismatch: false };
+      return {
+        ...c,
+        imageUrl: dataUrl,
+        pendingFile: file,
+        imageFileName: file.name,
+        imageWidth: dimensions.w,
+        imageHeight: dimensions.h,
+        sizeMismatch: false,
+      };
     } catch {
       skipped++;
       return c;

@@ -118,4 +118,47 @@ describe("CampaignProvider mutation requests", () => {
     expect(result.current.campaigns[0].creatives[0].id).toBe("creative-1");
     expect(result.current.campaigns[0].status).toBe("moderation");
   });
+
+  it("loads the campaign list without requesting creatives for every campaign", async () => {
+    apiMock.listCampaigns.mockResolvedValue({
+      items: [
+        apiCampaign,
+        { ...apiCampaign, campaign_id: "campaign-2", campaign_name: "Campaign 2" },
+        { ...apiCampaign, campaign_id: "campaign-3", campaign_name: "Campaign 3" },
+      ],
+      total: 3,
+    });
+
+    const { result } = renderHook(() => useCampaigns(), { wrapper });
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    expect(result.current.campaigns).toHaveLength(3);
+    expect(apiMock.listCampaigns).toHaveBeenCalledTimes(1);
+    expect(apiMock.readCreatives).not.toHaveBeenCalled();
+    expect(result.current.campaigns.every(campaign => campaign.creatives.length === 0)).toBe(true);
+  });
+
+  it("loads creatives only on demand and deduplicates concurrent reads", async () => {
+    apiMock.listCampaigns.mockResolvedValue({ items: [apiCampaign], total: 1 });
+    apiMock.readCreatives.mockResolvedValue([apiCreative]);
+
+    const { result } = renderHook(() => useCampaigns(), { wrapper });
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    await act(async () => {
+      await Promise.all([
+        result.current.loadCampaignCreatives("campaign-1"),
+        result.current.loadCampaignCreatives("campaign-1"),
+      ]);
+    });
+
+    expect(apiMock.readCreatives).toHaveBeenCalledTimes(1);
+    expect(result.current.campaigns[0].creativesLoaded).toBe(true);
+    expect(result.current.campaigns[0].creatives[0].id).toBe("creative-1");
+
+    await act(async () => {
+      await result.current.loadCampaignCreatives("campaign-1");
+    });
+    expect(apiMock.readCreatives).toHaveBeenCalledTimes(1);
+  });
 });

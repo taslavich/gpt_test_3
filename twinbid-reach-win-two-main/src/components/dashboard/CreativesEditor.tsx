@@ -61,6 +61,7 @@ const URL_MACROS = [
 interface CreativesEditorProps {
   formatKey: string;
   bannerSize?: string;
+  brandName?: string;
   creatives: Creative[];
   onChange: (creatives: Creative[]) => void;
   errors?: Record<string, string>;
@@ -136,7 +137,7 @@ function HiddenSizeProbe({
 }
 
 export const CreativesEditor = forwardRef<CreativesEditorHandle, CreativesEditorProps>(function CreativesEditor(
-  { formatKey, bannerSize, creatives, onChange, errors = {}, onClearError },
+  { formatKey, bannerSize, brandName, creatives, onChange, errors = {}, onClearError },
   ref,
 ) {
   const { t } = useLanguage();
@@ -224,6 +225,14 @@ export const CreativesEditor = forwardRef<CreativesEditorHandle, CreativesEditor
               isVideo: video,
             },
           });
+          if (!creative.imageWidth || !creative.imageHeight) {
+            const latest = creativesRef.current;
+            const next = latest.map(item => item.id === creative.id
+              ? { ...item, imageWidth: w, imageHeight: h }
+              : item);
+            creativesRef.current = next;
+            onChange(next);
+          }
         })
         .catch(() => {
           // The media remains displayable even if its intrinsic dimensions
@@ -332,6 +341,8 @@ export const CreativesEditor = forwardRef<CreativesEditorHandle, CreativesEditor
         imageFileName: sanitizeCreativeFilename(file.name),
         imageMimeType: video ? "video/mp4" : file.type,
         mediaType: video ? "video" : "image",
+        imageWidth: w,
+        imageHeight: h,
         sizeMismatch: mismatch,
       });
       onClearError?.(`creative_${creativeId}_image`);
@@ -979,12 +990,14 @@ export const CreativesEditor = forwardRef<CreativesEditorHandle, CreativesEditor
       target={target}
       fileNameHint={activeSource?.fileName}
       onClose={() => setCropperCreativeId(null)}
-      onSave={(file, dataUrl) => {
+      onSave={(file, dataUrl, dimensions) => {
         if (!cropperCreativeId) return;
         updateCreative(cropperCreativeId, {
           imageUrl: dataUrl,
           pendingFile: file,
           imageFileName: file.name,
+          imageWidth: dimensions.w,
+          imageHeight: dimensions.h,
           sizeMismatch: false,
         });
         setCropperCreativeId(null);
@@ -995,6 +1008,7 @@ export const CreativesEditor = forwardRef<CreativesEditorHandle, CreativesEditor
       onClose={() => setPreviewCreativeId(null)}
       formatKey={formatKey}
       bannerSize={bannerSize}
+      brandName={brandName}
       creative={creatives.find(c => c.id === previewCreativeId) || null}
     />
     </>

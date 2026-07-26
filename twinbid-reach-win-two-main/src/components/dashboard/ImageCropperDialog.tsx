@@ -30,7 +30,7 @@ interface Props {
   source: Source | null;
   target: CropperTarget | null;
   fileNameHint?: string;
-  onSave: (file: File, dataUrl: string) => void;
+  onSave: (file: File, dataUrl: string, dimensions: { w: number; h: number }) => void;
   onClose: () => void;
 }
 
@@ -178,7 +178,10 @@ export function ImageCropperDialog({ open, source, target, fileNameHint, onSave,
         { type: mime },
       );
       const reader = new FileReader();
-      reader.onload = () => { onSave(file, String(reader.result)); setSaving(false); };
+      reader.onload = () => {
+        onSave(file, String(reader.result), { w: outW, h: outH });
+        setSaving(false);
+      };
       reader.onerror = () => { toast.error("Failed to read output"); setSaving(false); };
       reader.readAsDataURL(file);
     } catch (err) {

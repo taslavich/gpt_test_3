@@ -8,12 +8,16 @@ interface DashboardThemeContextValue {
 }
 
 const STORAGE_KEY = "twinbid-dashboard-theme";
+const DEFAULT_THEME: DashboardTheme = "dark";
 
 const DashboardThemeContext = createContext<DashboardThemeContextValue | null>(null);
 
 function getInitialTheme(): DashboardTheme {
-  if (typeof window === "undefined") return "dark";
-  return window.localStorage.getItem(STORAGE_KEY) === "light" ? "light" : "dark";
+  if (typeof window === "undefined") return DEFAULT_THEME;
+  const storedTheme = window.localStorage.getItem(STORAGE_KEY);
+  return storedTheme === "light" || storedTheme === "dark"
+    ? storedTheme
+    : DEFAULT_THEME;
 }
 
 export function DashboardThemeProvider({ children }: { children: ReactNode }) {
