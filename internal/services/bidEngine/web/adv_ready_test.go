@@ -2,7 +2,10 @@ package bidEngineWeb
 
 import (
 	"context"
+	"html"
 	"net/url"
+	"regexp"
+	"strings"
 	"testing"
 
 	"gitlab.com/twinbid-exchange/RTB-exchange/internal/constants"
@@ -13,7 +16,7 @@ import (
 func TestReadyADVResponseSkipsAuctionButFinalizesCallbacks(t *testing.T) {
 	impID := "imp-1"
 	bidID := "bid-1"
-	adm := "https://creative.example/render"
+	adm := `<a href="https://creative.example/render?a=1&amp;b=2" target="_blank"><img src="https://cdn.example/banner.png" width="300" height="250"></a>`
 	price := float32(1.25)
 
 	readyBid := &ortb.Bid{
@@ -49,7 +52,10 @@ func TestReadyADVResponseSkipsAuctionButFinalizesCallbacks(t *testing.T) {
 		t.Fatalf("got %d bids, want 1", len(bids))
 	}
 	finalBid := bids[0]
-	assertReadyCallback(t, finalBid.GetAdm(), "/adm", "winner-uuid", adm)
+	if !strings.Contains(finalBid.GetAdm(), `<img src="https://cdn.example/banner.png" width="300" height="250">`) {
+		t.Fatalf("banner image markup was changed: %q", finalBid.GetAdm())
+	}
+	assertReadyCallback(t, readyBannerHref(t, finalBid.GetAdm()), "/adm", "winner-uuid", "https://creative.example/render?a=1&b=2")
 	assertReadyCallback(t, finalBid.GetNurl(), "/nurl", "winner-uuid", "")
 	assertReadyCallback(t, finalBid.GetBurl(), "/burl", "winner-uuid", "")
 	if parsed, err := url.Parse(finalBid.GetNurl()); err != nil {
@@ -71,4 +77,19 @@ func assertReadyCallback(t *testing.T, raw, path, winnerID, original string) {
 	if original != "" && parsed.Query().Get("url") != original {
 		t.Fatalf("callback original URL=%q want %q", parsed.Query().Get("url"), original)
 	}
+}
+
+var readyBannerHrefPattern = regexp.MustCompile(`(?is)<a\b[^>]*\bhref\s*=\s*(?:"([^"]*)"|'([^']*)')`)
+
+func readyBannerHref(t *testing.T, adm string) string {
+	t.Helper()
+	match := readyBannerHrefPattern.FindStringSubmatch(adm)
+	if match == nil {
+		t.Fatalf("banner href not found in ADM: %q", adm)
+	}
+	href := match[1]
+	if href == "" {
+		href = match[2]
+	}
+	return html.UnescapeString(href)
 }

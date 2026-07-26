@@ -2,31 +2,33 @@ package bidEngine
 
 import (
 	"encoding/json"
+	"html"
 	"net/url"
+	"strings"
 	"testing"
 
 	"gitlab.com/twinbid-exchange/RTB-exchange/internal/constants"
 	ortb "gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/proto/types/ortb_V2_5"
 )
 
-func TestFinalizeADVCallbacksDoNotEmbedDSPCallbacks(t *testing.T) {
+func TestFinalizeADVPopCallbacksDoNotEmbedDSPCallbacks(t *testing.T) {
 	adm := "https://creative.example/render?a=1"
 	unexpectedNURL := "https://dsp.example/win"
 	unexpectedBURL := "https://dsp.example/bill"
 	bid := &ortb.Bid{Adm: &adm, Nurl: &unexpectedNURL, Burl: &unexpectedBURL}
 
-	got, ok := FinalizeADVCallbacks(bid, "callbacks.example", "winner-1", "ssp.example", constants.BAN)
+	got, ok := FinalizeADVCallbacks(bid, "callbacks.example", "winner-1", "ssp.example", constants.POP)
 	if !ok || got == nil {
 		t.Fatal("ADV callback finalization failed")
 	}
 	assertCallbackQuery(t, got.GetAdm(), "/adm", map[string]string{
-		"id": "winner-1", "url": adm, "f": constants.FormatToCodes[constants.BAN],
+		"id": "winner-1", "url": adm, "f": constants.FormatToCodes[constants.POP],
 	})
 	assertCallbackQuery(t, got.GetNurl(), "/nurl", map[string]string{
-		"id": "winner-1", "s": "ssp.example", "f": constants.FormatToCodes[constants.BAN],
+		"id": "winner-1", "s": "ssp.example", "f": constants.FormatToCodes[constants.POP],
 	})
 	assertCallbackQuery(t, got.GetBurl(), "/burl", map[string]string{
-		"id": "winner-1", "f": constants.FormatToCodes[constants.BAN],
+		"id": "winner-1", "f": constants.FormatToCodes[constants.POP],
 	})
 	assertQueryMissing(t, got.GetNurl(), "url")
 	assertQueryMissing(t, got.GetBurl(), "url")
@@ -34,6 +36,69 @@ func TestFinalizeADVCallbacksDoNotEmbedDSPCallbacks(t *testing.T) {
 	if bid.GetAdm() != adm || bid.GetNurl() != unexpectedNURL || bid.GetBurl() != unexpectedBURL {
 		t.Fatal("source bid was mutated")
 	}
+}
+
+func TestFinalizeADVBannerImageKeepsHTMLAndWrapsOnlyHref(t *testing.T) {
+	adm := `<a href="https://landing.example/path?a=1&amp;b=2" target="_blank"><img src="https://cdn.example/banner.png" width="300" height="250"></a>`
+	unexpectedNURL := "https://dsp.example/win"
+	unexpectedBURL := "https://dsp.example/bill"
+	bid := &ortb.Bid{Adm: &adm, Nurl: &unexpectedNURL, Burl: &unexpectedBURL}
+
+	got, ok := FinalizeADVCallbacks(bid, "callbacks.example", "banner-winner", "ban_mc_test", constants.BAN)
+	if !ok || got == nil {
+		t.Fatal("ADV banner callback finalization failed")
+	}
+	if !strings.Contains(got.GetAdm(), `<img src="https://cdn.example/banner.png" width="300" height="250">`) {
+		t.Fatalf("banner image markup was changed: %s", got.GetAdm())
+	}
+	href := bannerHrefFromADM(t, got.GetAdm())
+	assertCallbackQuery(t, href, "/adm", map[string]string{
+		"id": "banner-winner", "url": "https://landing.example/path?a=1&b=2", "f": constants.FormatToCodes[constants.BAN],
+	})
+	assertCallbackQuery(t, got.GetNurl(), "/nurl", map[string]string{
+		"id": "banner-winner", "s": "ban_mc_test", "f": constants.FormatToCodes[constants.BAN],
+	})
+	assertCallbackQuery(t, got.GetBurl(), "/burl", map[string]string{
+		"id": "banner-winner", "f": constants.FormatToCodes[constants.BAN],
+	})
+	if bid.GetAdm() != adm || bid.GetNurl() != unexpectedNURL || bid.GetBurl() != unexpectedBURL {
+		t.Fatal("source banner bid was mutated")
+	}
+}
+
+func TestFinalizeADVBannerIframeKeepsADMUnchanged(t *testing.T) {
+	adm := `<iframe src="https://iframe.example/render?a=1&amp;b=2" width="300" height="250"></iframe>`
+	bid := &ortb.Bid{Adm: &adm}
+
+	got, ok := FinalizeADVCallbacks(bid, "callbacks.example", "iframe-winner", "ban_mc_test", constants.BAN)
+	if !ok || got == nil {
+		t.Fatal("ADV iframe banner callback finalization failed")
+	}
+	if got.GetAdm() != adm {
+		t.Fatalf("iframe ADM changed: got %q want %q", got.GetAdm(), adm)
+	}
+	if strings.Contains(got.GetAdm(), "/adm?") {
+		t.Fatalf("iframe ADM must not contain click wrapper: %q", got.GetAdm())
+	}
+	assertCallbackQuery(t, got.GetNurl(), "/nurl", map[string]string{
+		"id": "iframe-winner", "s": "ban_mc_test", "f": constants.FormatToCodes[constants.BAN],
+	})
+	assertCallbackQuery(t, got.GetBurl(), "/burl", map[string]string{
+		"id": "iframe-winner", "f": constants.FormatToCodes[constants.BAN],
+	})
+}
+
+func bannerHrefFromADM(t *testing.T, adm string) string {
+	t.Helper()
+	match := bannerAnchorHrefPattern.FindStringSubmatch(adm)
+	if match == nil {
+		t.Fatalf("banner href not found in ADM: %s", adm)
+	}
+	href := match[2]
+	if href == "" {
+		href = match[3]
+	}
+	return html.UnescapeString(href)
 }
 
 func TestFinalizeADVNativeCallbacksWrapOnlyLinkAndAddBURL(t *testing.T) {

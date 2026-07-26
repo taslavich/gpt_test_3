@@ -278,7 +278,8 @@ func FinalizeBidCallbacks(
 }
 
 // FinalizeADVCallbacks finalizes a preselected ADV winner without treating ADV
-// as a downstream DSP. ADM keeps the original creative URL, while NURL and BURL
+// as a downstream DSP. Native and image-banner click destinations are wrapped
+// inside their ADM payloads; iframe banner ADM stays unchanged. NURL and BURL
 // point only to this exchange and never contain an embedded downstream URL.
 func FinalizeADVCallbacks(
 	source *ortb_V2_5.Bid,
@@ -289,6 +290,9 @@ func FinalizeADVCallbacks(
 	}
 	if isADVNativeFormat(format) {
 		return finalizeADVNativeCallbacks(source, admDomain, globalID, format)
+	}
+	if isADVBannerFormat(format) {
+		return finalizeADVBannerCallbacks(source, admDomain, globalID, sspDomain, format)
 	}
 
 	cleanSource, ok := proto.Clone(source).(*ortb_V2_5.Bid)
