@@ -7,7 +7,8 @@ import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Upload, Plus, Trash2, Loader2, Pencil, AlertTriangle, Eye, Info } from "lucide-react";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Upload, Plus, Trash2, Loader2, Pencil, AlertTriangle, Eye, Info, LayoutGrid } from "lucide-react";
 import { toast } from "sonner";
 import { useLanguage } from "@/contexts/LanguageContext";
 import type { Creative, CreativeType } from "@/contexts/CampaignContext";
@@ -21,6 +22,7 @@ import {
   sanitizeCreativeFilename,
   validateCreativeFile,
 } from "@/lib/creativeApi";
+import { createBannerSizeVariants } from "@/lib/bannerCreativeVariants";
 
 function readFileAsDataUrl(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -60,7 +62,6 @@ const URL_MACROS = [
 
 interface CreativesEditorProps {
   formatKey: string;
-  bannerSize?: string;
   brandName?: string;
   creatives: Creative[];
   onChange: (creatives: Creative[]) => void;
@@ -77,7 +78,11 @@ const generateId = () => String(Date.now()) + Math.random().toString(36).slice(2
 
 const MAX_CREATIVES = 10;
 
-import { getTargetDims } from "@/lib/creativeTarget";
+import { BANNER_SIZES, getTargetDims } from "@/lib/creativeTarget";
+
+function getCreativeTarget(formatKey: string, creative: Creative) {
+  return getTargetDims(formatKey, formatKey === "banner" ? creative.bannerSize : undefined);
+}
 
 /**
  * Hidden iframe used to measure the intrinsic content size of user-provided
@@ -137,7 +142,7 @@ function HiddenSizeProbe({
 }
 
 export const CreativesEditor = forwardRef<CreativesEditorHandle, CreativesEditorProps>(function CreativesEditor(
-  { formatKey, bannerSize, brandName, creatives, onChange, errors = {}, onClearError },
+  { formatKey, brandName, creatives, onChange, errors = {}, onClearError },
   ref,
 ) {
   const { t } = useLanguage();
@@ -182,7 +187,6 @@ export const CreativesEditor = forwardRef<CreativesEditorHandle, CreativesEditor
   // Measured content size per creative for html/iframe (for the human-readable mismatch message).
   const [measured, setMeasured] = useState<Record<string, { w: number; h: number; crossOrigin: boolean }>>({});
 
-  const target = getTargetDims(formatKey, bannerSize);
   const isBanner = formatKey === "banner";
 
   // Refs to always read the latest props/state from within effects and async
@@ -242,7 +246,11 @@ export const CreativesEditor = forwardRef<CreativesEditorHandle, CreativesEditor
     return () => { cancelled = true; };
   }, [mediaSourceSignature]);
 
-  // Recompute image sizeMismatch ONLY when format/bannerSize changes.
+  const creativeTargetSignature = creatives
+    .map(c => `${c.id}:${c.bannerSize || ""}`)
+    .join("|");
+
+  // Recompute image sizeMismatch when the format or this creative's size changes.
   // Per-creative mismatch on upload is set inside handleImageUpload; we must
   // not re-touch other creatives when an unrelated one is uploaded (otherwise
   // a stale-closure onChange could clobber sibling flags and surface warnings
@@ -256,6 +264,7 @@ export const CreativesEditor = forwardRef<CreativesEditorHandle, CreativesEditor
       if (!c.imageUrl) return c;
       const src = origSourcesRef.current[c.id];
       if (!src) return c;
+      const target = getCreativeTarget(formatKey, c);
       const mismatch = target && !src.isVideo ? (target.mode === "fixed"
         ? src.naturalWidth !== target.w || src.naturalHeight !== target.h
         : src.naturalWidth !== src.naturalHeight || src.naturalWidth < (target.minSide ?? 200))
@@ -268,7 +277,7 @@ export const CreativesEditor = forwardRef<CreativesEditorHandle, CreativesEditor
     });
     if (changed) onChange(next);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [formatKey, bannerSize]);
+  }, [formatKey, creativeTargetSignature]);
 
   const showTitle = formatKey === "native" || formatKey === "push";
   const showDescription = formatKey === "native" || formatKey === "push";
@@ -278,7 +287,9 @@ export const CreativesEditor = forwardRef<CreativesEditorHandle, CreativesEditor
     // Read from ref so async handlers (image uploads etc.) can't overwrite
     // recent sibling edits with a stale creatives snapshot.
     const list = creativesRef.current;
-    onChange(list.map(c => c.id === id ? { ...c, ...updates } : c));
+    const next = list.map(c => c.id === id ? { ...c, ...updates } : c);
+    creativesRef.current = next;
+    onChange(next);
   };
 
   const addCreative = () => {
@@ -299,7 +310,8 @@ export const CreativesEditor = forwardRef<CreativesEditorHandle, CreativesEditor
   };
 
 
-  const checkMismatch = (natW: number, natH: number): boolean => {
+  const checkMismatch = (creative: Creative, natW: number, natH: number): boolean => {
+    const target = getCreativeTarget(formatKey, creative);
     if (!target) return false;
     if (target.mode === "fixed") return natW !== target.w || natH !== target.h;
     return natW !== natH || natW < (target.minSide ?? 200);
@@ -311,9 +323,10 @@ export const CreativesEditor = forwardRef<CreativesEditorHandle, CreativesEditor
     const ext = file.name.toLowerCase().slice(file.name.lastIndexOf("."));
     const validation = validateCreativeFile(file, isBanner);
     if (!validation.valid) {
-      const messageKey = validation.reason === "video-size"
+      const reason = "reason" in validation ? validation.reason : "format";
+      const messageKey = reason === "video-size"
         ? "create.videoSizeError"
-        : validation.reason === "image-size"
+        : reason === "image-size"
           ? "create.imageSizeError"
           : isBanner
             ? "create.bannerMediaFormatError"
@@ -330,7 +343,8 @@ export const CreativesEditor = forwardRef<CreativesEditorHandle, CreativesEditor
       const isGif = file.type === "image/gif" || ext === ".gif";
       // MP4 is rendered into the selected banner slot dimensions by ADM.
       // Image creatives retain the existing crop/mismatch workflow.
-      const mismatch = video ? false : checkMismatch(w, h);
+      const currentCreative = creativesRef.current.find(c => c.id === creativeId);
+      const mismatch = video || !currentCreative ? false : checkMismatch(currentCreative, w, h);
       setOrigSources(prev => ({
         ...prev,
         [creativeId]: { dataUrl, naturalWidth: w, naturalHeight: h, fileName: file.name, isGif, isVideo: video },
@@ -344,6 +358,7 @@ export const CreativesEditor = forwardRef<CreativesEditorHandle, CreativesEditor
         imageWidth: w,
         imageHeight: h,
         sizeMismatch: mismatch,
+        allBannerSizesGenerated: false,
       });
       onClearError?.(`creative_${creativeId}_image`);
       toast.success(t(video ? "create.videoUploaded" : "create.imageUploaded"));
@@ -429,6 +444,41 @@ export const CreativesEditor = forwardRef<CreativesEditorHandle, CreativesEditor
   }), [creatives, origSources, t]);
 
   const activeSource = cropperCreativeId ? origSources[cropperCreativeId] : null;
+  const activeCropCreative = cropperCreativeId
+    ? creatives.find(c => c.id === cropperCreativeId)
+    : undefined;
+  const activeCropTarget = activeCropCreative
+    ? getCreativeTarget(formatKey, activeCropCreative)
+    : null;
+
+  const generateAllBannerSizes = (creative: Creative, index: number) => {
+    const source = origSourcesRef.current[creative.id];
+    if (!source || source.isVideo || source.isGif) return;
+    const list = creativesRef.current;
+    const additionalCount = BANNER_SIZES.length - 1;
+    if (list.length + additionalCount > MAX_CREATIVES) {
+      toast.error(t("create.creativeLimit").replace("{max}", String(MAX_CREATIVES)));
+      return;
+    }
+
+    const variants = createBannerSizeVariants(creative, {
+      startIndex: index,
+      creativeLabel: t("create.creative"),
+      sourceWidth: source.naturalWidth,
+      sourceHeight: source.naturalHeight,
+      createId: generateId,
+    });
+
+    const next = [...list.slice(0, index), ...variants, ...list.slice(index + 1)];
+    creativesRef.current = next;
+    onChange(next);
+    setOrigSources(previous => {
+      const updated = { ...previous };
+      variants.forEach(variant => { updated[variant.id] = source; });
+      return updated;
+    });
+    toast.success(t("create.allBannerSizesCreated"));
+  };
 
   /** Effective iframe URL used for probe/preview, from either mode. */
   const getEffectiveIframeUrl = (c: Creative): string => {
@@ -453,13 +503,14 @@ export const CreativesEditor = forwardRef<CreativesEditorHandle, CreativesEditor
     );
   };
 
-  // Update measured mismatch for html/iframe when target changes or measurements arrive.
+  // Update measured mismatch for html/iframe when its size changes or measurements arrive.
   useEffect(() => {
-    if (!target || target.mode !== "fixed") return;
     let changed = false;
     const next = creatives.map(c => {
       const type = c.creativeType || "image";
       if (type === "image") return c;
+      const target = getCreativeTarget(formatKey, c);
+      if (!target || target.mode !== "fixed") return c;
       if (type === "html") {
         const m = measured[c.id];
         if (!c.htmlCode?.trim()) {
@@ -492,7 +543,7 @@ export const CreativesEditor = forwardRef<CreativesEditorHandle, CreativesEditor
     });
     if (changed) onChange(next);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [measured, formatKey, bannerSize, creatives.map(c => `${c.id}:${c.creativeType}:${c.iframeMode}:${c.htmlCode}:${c.iframeUrl}:${c.iframeCode}:${c.iframeSizeConfirmed}`).join("|")]);
+  }, [measured, formatKey, creatives.map(c => `${c.id}:${c.bannerSize}:${c.creativeType}:${c.iframeMode}:${c.htmlCode}:${c.iframeUrl}:${c.iframeCode}:${c.iframeSizeConfirmed}`).join("|")]);
 
   return (
     <>
@@ -501,6 +552,7 @@ export const CreativesEditor = forwardRef<CreativesEditorHandle, CreativesEditor
         const activeMacros = new Set(URL_MACROS.filter(m => creative.url.includes(`{${m}}`)));
         const src = origSources[creative.id];
         const type: CreativeType = (isBanner ? (creative.creativeType || "image") : "image");
+        const target = getCreativeTarget(formatKey, creative);
         const canCrop = type === "image" && !!src && !src.isGif && !src.isVideo && !!target;
         const meas = measured[creative.id];
 
@@ -526,6 +578,43 @@ export const CreativesEditor = forwardRef<CreativesEditorHandle, CreativesEditor
               <p className="text-xs text-muted-foreground">{t("create.creativeNameHint")}</p>
               {errors[`creative_${creative.id}_name`] && <p className="text-xs text-destructive">{errors[`creative_${creative.id}_name`]}</p>}
             </div>
+
+            {isBanner && (
+              <div className="space-y-2">
+                <Label>{t("create.bannerSize")} *</Label>
+                <Select
+                  value={creative.bannerSize || ""}
+                  onValueChange={(value) => {
+                    const nextTarget = getTargetDims("banner", value);
+                    const source = origSourcesRef.current[creative.id];
+                    const sizeMismatch = !!source && !source.isVideo && !!nextTarget
+                      ? source.naturalWidth !== nextTarget.w || source.naturalHeight !== nextTarget.h
+                      : false;
+                    updateCreative(creative.id, {
+                      bannerSize: value,
+                      sizeMismatch,
+                      iframeSizeConfirmed: false,
+                    });
+                    onClearError?.(`creative_${creative.id}_bannerSize`);
+                    setMeasured(previous => {
+                      const next = { ...previous };
+                      delete next[creative.id];
+                      return next;
+                    });
+                  }}
+                >
+                  <SelectTrigger className={`bg-background border-border ${errors[`creative_${creative.id}_bannerSize`] ? "border-destructive" : ""}`}>
+                    <SelectValue placeholder={t("create.selectBannerSize")} />
+                  </SelectTrigger>
+                  <SelectContent className="bg-card border-border">
+                    {BANNER_SIZES.map(size => <SelectItem key={size} value={size}>{size}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+                {errors[`creative_${creative.id}_bannerSize`] && (
+                  <p className="text-xs text-destructive">{errors[`creative_${creative.id}_bannerSize`]}</p>
+                )}
+              </div>
+            )}
 
             {isBanner && (
               <div className="space-y-2">
@@ -640,6 +729,19 @@ export const CreativesEditor = forwardRef<CreativesEditorHandle, CreativesEditor
                   )}
                   {creative.imageFileName && <span className="min-w-0 break-all text-sm text-muted-foreground">{creative.imageFileName}</span>}
                 </div>
+                {creative.pendingFile && creative.imageUrl && src && !src.isVideo && !src.isGif && !creative.allBannerSizesGenerated && (
+                  <div className="rounded-lg border border-primary/40 bg-primary/10 p-3">
+                    <p className="text-sm text-foreground">{t("create.generateAllBannerSizesHint")}</p>
+                    <Button
+                      type="button"
+                      onClick={() => generateAllBannerSizes(creative, idx)}
+                      className="mt-3 w-full gap-2 bg-primary text-primary-foreground shadow-[0_0_24px_hsl(var(--primary)/0.25)] hover:bg-primary/90 sm:w-auto"
+                    >
+                      <LayoutGrid className="h-4 w-4" />
+                      {t("create.generateAllBannerSizes")}
+                    </Button>
+                  </div>
+                )}
                 {creative.sizeMismatch && target && (
                   <div className="flex items-start gap-2 p-2 rounded border border-yellow-500/30 bg-yellow-500/10">
                     <AlertTriangle className="h-4 w-4 text-yellow-500 shrink-0 mt-0.5" />
@@ -987,7 +1089,7 @@ export const CreativesEditor = forwardRef<CreativesEditorHandle, CreativesEditor
     <ImageCropperDialog
       open={!!cropperCreativeId}
       source={activeSource ? { dataUrl: activeSource.dataUrl, naturalWidth: activeSource.naturalWidth, naturalHeight: activeSource.naturalHeight } : null}
-      target={target}
+      target={activeCropTarget}
       fileNameHint={activeSource?.fileName}
       onClose={() => setCropperCreativeId(null)}
       onSave={(file, dataUrl, dimensions) => {
@@ -1007,7 +1109,7 @@ export const CreativesEditor = forwardRef<CreativesEditorHandle, CreativesEditor
       open={!!previewCreativeId}
       onClose={() => setPreviewCreativeId(null)}
       formatKey={formatKey}
-      bannerSize={bannerSize}
+      bannerSize={creatives.find(c => c.id === previewCreativeId)?.bannerSize}
       brandName={brandName}
       creative={creatives.find(c => c.id === previewCreativeId) || null}
     />

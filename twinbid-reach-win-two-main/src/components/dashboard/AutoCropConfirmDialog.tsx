@@ -3,13 +3,13 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { Loader2, ArrowRight } from "lucide-react";
 import type { Creative } from "@/contexts/CampaignContext";
 import { autoCropImage, isGifDataUrl, isGifFileName } from "@/lib/autoCrop";
-import type { CropperTarget } from "@/components/dashboard/ImageCropperDialog";
 import { useLanguage } from "@/contexts/LanguageContext";
+import { getTargetDims } from "@/lib/creativeTarget";
 
 interface Props {
   open: boolean;
   creatives: Creative[];
-  target: CropperTarget | null;
+  formatKey: string;
   onCancel: () => void;
   /** Called with a new creatives array where mismatched non-GIF images are auto-cropped. */
   onConfirm: (nextCreatives: Creative[]) => void;
@@ -26,13 +26,13 @@ interface PreviewEntry {
   error?: string;
 }
 
-export function AutoCropConfirmDialog({ open, creatives, target, onCancel, onConfirm }: Props) {
+export function AutoCropConfirmDialog({ open, creatives, formatKey, onCancel, onConfirm }: Props) {
   const { t } = useLanguage();
   const [previews, setPreviews] = useState<PreviewEntry[]>([]);
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    if (!open || !target) return;
+    if (!open) return;
     let cancelled = false;
     setLoading(true);
     (async () => {
@@ -40,6 +40,8 @@ export function AutoCropConfirmDialog({ open, creatives, target, onCancel, onCon
       for (let i = 0; i < creatives.length; i++) {
         const c = creatives[i];
         if (!c.sizeMismatch || !c.imageUrl) continue;
+        const target = getTargetDims(formatKey, formatKey === "banner" ? c.bannerSize : undefined);
+        if (!target) continue;
         const gif = isGifDataUrl(c.imageUrl) || isGifFileName(c.imageFileName);
         const entry: PreviewEntry = {
           creativeId: c.id,
@@ -65,7 +67,7 @@ export function AutoCropConfirmDialog({ open, creatives, target, onCancel, onCon
       }
     })();
     return () => { cancelled = true; };
-  }, [open, creatives, target, t]);
+  }, [open, creatives, formatKey, t]);
 
   const confirmingRef = useRef(false);
 
@@ -134,7 +136,7 @@ export function AutoCropConfirmDialog({ open, creatives, target, onCancel, onCon
                       {p.afterUrl && <img src={p.afterUrl} alt="" className="max-h-full max-w-full object-contain" />}
                     </div>
                     <div className="text-[11px] text-primary mt-2 text-center">
-                      {t("create.autoCropAfter")} {target && `· ${target.w}×${target.h}${target.mode === "square-resizable" ? "+" : ""}`}
+                      {t("create.autoCropAfter")} {p.dimensions && `· ${p.dimensions.w}×${p.dimensions.h}`}
                     </div>
                   </div>
                 </div>

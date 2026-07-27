@@ -1,5 +1,7 @@
 import type { CropperTarget } from "@/components/dashboard/ImageCropperDialog";
 
+export const BANNER_SIZES = ["300x100", "300x250", "300x600", "728x90"] as const;
+
 export function getTargetDims(formatKey: string, bannerSize?: string): CropperTarget | null {
   if (formatKey === "banner") {
     if (!bannerSize || !/^\d+x\d+$/.test(bannerSize)) return null;

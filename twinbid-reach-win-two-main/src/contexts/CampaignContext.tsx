@@ -78,6 +78,10 @@ export interface Creative {
   id: string;
   name?: string;
   url: string;
+  /** Banner slot size owned by this creative, e.g. "300x250". */
+  bannerSize?: string;
+  /** UI-only guard that prevents repeatedly expanding the same visual. */
+  allBannerSizesGenerated?: boolean;
   /** Permanent backend image_url, or a local data URL preview before upload. */
   imageUrl?: string;
   /** Permanent backend image identifier. Kept only for display/state; unchanged images are omitted from PATCH. */
@@ -315,6 +319,7 @@ export function mapApiCreativeToUi(cr: ApiCreative): Creative {
     mediaType: isVideoAsset(mimeType, imageName) ? "video" : "image",
     imageWidth: cr.w || undefined,
     imageHeight: cr.h || undefined,
+    bannerSize: cr.w && cr.h ? `${cr.w}x${cr.h}` : undefined,
     title: cr.title || undefined,
     description: cr.description || undefined,
     creativeType,
@@ -351,15 +356,12 @@ function endTimestamp(date: string): string | null {
 }
 
 function buildApiCampaignBody(c: Omit<Campaign, "id">): Omit<ApiCampaign, "campaign_id" | "user_id" | "cum_done_dollars"> {
-  let w: number | null = null, h: number | null = null;
-  if (c.bannerSize && /^\d+x\d+$/.test(c.bannerSize)) {
-    const [ws, hs] = c.bannerSize.split("x");
-    w = Number(ws); h = Number(hs);
-  }
+  const isBanner = (c.formatKey || c.format) === "banner";
   const body: any = {
     campaign_name: c.name,
     format_type: (c.formatKey || c.format) as FormatType,
-    h, w,
+    h: isBanner ? 999 : null,
+    w: isBanner ? 999 : null,
     status: c.status,
     traffic_type: c.trafficType,
     vertical: verticalsToApiArray(c.verticals),
@@ -398,14 +400,6 @@ function buildApiCampaignPatch(updates: Partial<Campaign>): Partial<ApiCampaign>
     p.format_type = ((updates.formatKey ?? updates.format) || "") as FormatType;
   }
   if (updates.brandName !== undefined) p.brand_name = updates.brandName ?? null;
-  if (updates.bannerSize !== undefined) {
-    if (updates.bannerSize && /^\d+x\d+$/.test(updates.bannerSize)) {
-      const [ws, hs] = updates.bannerSize.split("x");
-      p.w = Number(ws); p.h = Number(hs);
-    } else {
-      p.w = null; p.h = null;
-    }
-  }
   if (updates.status !== undefined) p.status = updates.status;
   if (updates.trafficType !== undefined) p.traffic_type = updates.trafficType;
   if (updates.verticals !== undefined) p.vertical = verticalsToApiArray(updates.verticals);
@@ -527,16 +521,10 @@ export function CampaignProvider({ children }: { children: ReactNode }) {
     // Errors here propagate to the caller so the UI can show the real
     // backend message instead of a fake success toast.
     const created = await api.createCampaign(buildApiCampaignBody(c));
-    let cw: number | null = null, ch: number | null = null;
-    if (c.formatKey === "banner" && c.bannerSize && /^\d+x\d+$/.test(c.bannerSize)) {
-      const [ws, hs] = c.bannerSize.split("x");
-      cw = Number(ws); ch = Number(hs);
-    }
     const createdCreatives = await createCampaignCreatives({
       client: api,
       campaignId: created.campaign_id,
       format: c.formatKey,
-      dimensions: { w: cw, h: ch },
       creatives: c.creatives,
       // Incomplete auto-saved drafts may legitimately have no finished
       // creative yet. Formal campaign creation is validated by the page.
@@ -572,20 +560,12 @@ export function CampaignProvider({ children }: { children: ReactNode }) {
       // misclassify every existing creative as new and create duplicates.
       const existingRaw = await api.readCreatives(id);
       const existing: ApiCreative[] = Array.isArray(existingRaw) ? existingRaw : [];
-      // Resolve current banner size for w/h on creative body.
       const currentC = campaigns.find(c => c.id === id);
       const formatKey = updates.formatKey ?? currentC?.formatKey;
-      const bannerSize = updates.bannerSize ?? currentC?.bannerSize;
-      let cw: number | null = null, ch: number | null = null;
-      if (formatKey === "banner" && bannerSize && /^\d+x\d+$/.test(bannerSize)) {
-        const [ws, hs] = bannerSize.split("x");
-        cw = Number(ws); ch = Number(hs);
-      }
       await syncCampaignCreatives({
         client: api,
         campaignId: id,
         format: formatKey || "",
-        dimensions: { w: cw, h: ch },
         creatives: updates.creatives,
         existing,
       });
@@ -600,6 +580,12 @@ export function CampaignProvider({ children }: { children: ReactNode }) {
     // Build a *partial* patch so toggling a single field (status, budget,
     // ...) does not rewrite unrelated fields.
     const patch = buildApiCampaignPatch(effectiveUpdates);
+    if (fmt === "banner") {
+      // Real banner dimensions belong to each creative. The campaign keeps
+      // a neutral technical size required by the moderation bot.
+      patch.w = 999;
+      patch.h = 999;
+    }
     let patchedCampaign: ApiCampaign | undefined;
     if (Object.keys(patch).length > 0) {
       patchedCampaign = await api.patchCampaign(id, patch);

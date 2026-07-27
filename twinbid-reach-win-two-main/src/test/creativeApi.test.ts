@@ -34,6 +34,7 @@ function baseCreative(overrides: Partial<CreativeDraft> = {}): CreativeDraft {
     id: "local-1",
     name: "Creative",
     url: "https://target.example?site_id={site_id}",
+    bannerSize: "300x250",
     creativeType: "image",
     pendingFile: imageFile(),
     imageFileName: "banner.jpg",
@@ -130,6 +131,25 @@ describe("creative API migration", () => {
     expect(client.creates[0].body.adm).toContain('href="https://target.example"');
     expect(client.creates[0].body.adm).not.toContain("{site_id}");
     expect(client.creates[0].body.adm).toContain('src="https://cdn.example/banner.jpg"');
+  });
+
+  it("uses independent dimensions for every banner creative", async () => {
+    const client = new FakeCreativeApi();
+    await createCampaignCreatives({
+      client,
+      campaignId: "campaign-1",
+      format: "banner",
+      dimensions: { w: 999, h: 999 },
+      creatives: [
+        baseCreative({ id: "local-1", bannerSize: "300x100" }),
+        baseCreative({ id: "local-2", bannerSize: "728x90" }),
+      ],
+    });
+
+    expect(client.creates.map(({ body }) => ({ w: body.w, h: body.h }))).toEqual([
+      { w: 300, h: 100 },
+      { w: 728, h: 90 },
+    ]);
   });
 
   it("replaces unsafe filename separators before creative upload", async () => {
@@ -488,6 +508,7 @@ describe("creative API migration", () => {
     expect(mapped.imageFileName).toBe("permanent.jpg");
     expect(mapped.pendingFile).toBeUndefined();
     expect(mapped.creativeType).toBe("image");
+    expect(mapped.bannerSize).toBe("300x250");
   });
 
   it("sends MP4 with video/mp4 MIME and builds video ADM", async () => {

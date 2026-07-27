@@ -7,7 +7,6 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { AutoCropConfirmDialog } from "@/components/dashboard/AutoCropConfirmDialog";
-import { getTargetDims } from "@/lib/creativeTarget";
 import { ArrowLeft, Save, AlertCircle, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { useCampaigns, type TargetingState, type PricingModel, type TrafficQuality, type TrafficType, type Creative, type Vertical, VERTICALS } from "@/contexts/CampaignContext";
@@ -26,8 +25,6 @@ import {
   isValidCreativeUrl,
 } from "@/lib/creativeApi";
 
-const bannerSizes = ["300x100", "300x250", "300x600", "728x90"];
-
 export default function EditCampaign() {
   const navigate = useNavigate();
   const { id } = useParams();
@@ -39,7 +36,6 @@ export default function EditCampaign() {
   const [creativeLoadError, setCreativeLoadError] = useState("");
 
   const [name, setName] = useState("");
-  const [bannerSize, setBannerSize] = useState("");
   const [brandName, setBrandName] = useState("");
   const [creatives, setCreatives] = useState<Creative[]>([]);
   const [initialCreatives, setInitialCreatives] = useState<Creative[]>([]);
@@ -76,9 +72,15 @@ export default function EditCampaign() {
   useEffect(() => {
     if (campaign?.creativesLoaded) {
       setName(campaign.name);
-      setBannerSize(campaign.bannerSize || "");
       setBrandName(campaign.brandName || "");
-      const crvs = campaign.creatives?.length ? campaign.creatives : [{ id: "migrated", url: "" }];
+      const loadedCreatives = campaign.creatives?.length ? campaign.creatives : [{ id: "migrated", url: "" }];
+      // Older banner campaigns stored one size on the campaign. Use it only
+      // as a migration fallback when an existing creative has no own w/h.
+      const crvs = loadedCreatives.map(creative => (
+        campaign.formatKey === "banner" && !creative.bannerSize && campaign.bannerSize
+          ? { ...creative, bannerSize: campaign.bannerSize }
+          : creative
+      ));
       setCreatives(crvs);
       setInitialCreatives(JSON.parse(JSON.stringify(crvs)));
       const targeting = campaign.targeting || {};
@@ -101,7 +103,6 @@ export default function EditCampaign() {
       setInitialTrafficType(campaign.trafficType || "mainstream");
       setVerticals(campaign.verticals || []);
       
-      setInitialBannerSize(campaign.bannerSize || "");
     }
   }, [campaign]);
 
@@ -109,13 +110,10 @@ export default function EditCampaign() {
     return JSON.stringify(creatives) !== JSON.stringify(initialCreatives);
   }, [creatives, initialCreatives]);
 
-  const [initialBannerSize, setInitialBannerSize] = useState("");
   const isRestart = campaign?.status === "completed";
-  const showBannerSize = campaign?.formatKey === "banner";
   const showBrandName = campaign?.formatKey === "native" || campaign?.formatKey === "push";
-  const hasBannerSizeChanged = showBannerSize && bannerSize !== initialBannerSize;
   const hasTrafficTypeChanged = trafficType !== initialTrafficType;
-  const needsModeration = hasCreativeChanged || hasTrafficTypeChanged || hasBannerSizeChanged;
+  const needsModeration = hasCreativeChanged || hasTrafficTypeChanged;
 
   const clearError = (...keys: string[]) => setErrors(prev => {
     const next = { ...prev };
@@ -213,6 +211,9 @@ export default function EditCampaign() {
     crvs.forEach(c => {
       if (!c.name?.trim()) e[`creative_${c.id}_name`] = t("create.required");
       const type = campaign.formatKey === "banner" ? (c.creativeType || "image") : "image";
+      if (campaign.formatKey === "banner" && !c.bannerSize) {
+        e[`creative_${c.id}_bannerSize`] = t("create.required");
+      }
       if (campaign.formatKey === "banner" && type === "html") {
         if (!c.htmlCode?.trim()) e[`creative_${c.id}_html`] = t("create.required");
       } else if (campaign.formatKey === "banner" && type === "iframe") {
@@ -248,8 +249,6 @@ export default function EditCampaign() {
       if ((campaign.formatKey === "native" || campaign.formatKey === "push") && !c.description?.trim()) e[`creative_${c.id}_description`] = t("create.required");
     });
 
-    if (campaign.formatKey === "banner" && !bannerSize) e.bannerSize = t("create.required");
-
     // Block save when a banner html/iframe creative has a size mismatch (no auto-crop for those).
     if (campaign.formatKey === "banner") {
       const bad = crvs.find(c => {
@@ -258,14 +257,15 @@ export default function EditCampaign() {
       });
       if (bad) {
         const key = bad.creativeType === "iframe" ? "iframe" : "html";
+        const [targetW = "?", targetH = "?"] = (bad.bannerSize || "").split("x");
         e[`creative_${bad.id}_${key}`] = t("create.required");
         toast.error(
           (bad.creativeType === "iframe"
             ? t("create.iframeSizeMismatch")
             : t("create.htmlSizeMismatch"))
             .replace("{actualW}", "?").replace("{actualH}", "?")
-            .replace("{w}", String(bannerSize.split("x")[0] || "?"))
-            .replace("{h}", String(bannerSize.split("x")[1] || "?"))
+            .replace("{w}", targetW)
+            .replace("{h}", targetH)
         );
       }
     }
@@ -302,7 +302,6 @@ export default function EditCampaign() {
         targeting: Object.fromEntries(Object.entries(lists).map(([k, v]) => [k, { mode: v.mode, items: v.items }])),
         budget: tb, dailyBudget: null,
         priceValue: pv, pricingModel, trafficQuality, startDate, endDate, evenSpend, status: newStatus,
-        bannerSize: showBannerSize ? bannerSize : undefined,
         brandName: showBrandName ? brandName : undefined,
         
       });
@@ -402,21 +401,6 @@ export default function EditCampaign() {
                 <p className="text-xs text-muted-foreground">{t("edit.formatLocked")}</p>
               </div>
 
-              {showBannerSize && (
-                <div className="space-y-2">
-                  <Label>{t("create.bannerSize")} *</Label>
-                  <Select value={bannerSize} onValueChange={(v) => { setBannerSize(v); clearError("bannerSize"); }}>
-                    <SelectTrigger className={`bg-background border-border ${errors.bannerSize ? "border-destructive" : ""}`}>
-                      <SelectValue placeholder={t("create.selectBannerSize")} />
-                    </SelectTrigger>
-                    <SelectContent className="bg-card border-border">
-                      {bannerSizes.map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}
-                    </SelectContent>
-                  </Select>
-                  {errors.bannerSize && <p className="text-xs text-destructive">{errors.bannerSize}</p>}
-                </div>
-              )}
-
               {showBrandName && (
                 <div className="space-y-2">
                   <Label>{t("create.brandName")}</Label>
@@ -427,7 +411,7 @@ export default function EditCampaign() {
 
               <div className="pt-2">
                 <p className="text-sm font-medium text-muted-foreground mb-3">{t("create.creatives")}</p>
-                <CreativesEditor ref={creativesEditorRef} formatKey={campaign.formatKey} bannerSize={bannerSize} brandName={brandName} creatives={creatives} onChange={setCreatives} errors={errors} onClearError={clearError} />
+                <CreativesEditor ref={creativesEditorRef} formatKey={campaign.formatKey} brandName={brandName} creatives={creatives} onChange={setCreatives} errors={errors} onClearError={clearError} />
               </div>
             </CardContent>
           </Card>
@@ -475,10 +459,12 @@ export default function EditCampaign() {
         const validateGeneral = () => {
           const e: Record<string, string> = {};
           if (!name.trim()) e.name = t("create.required");
-          if (showBannerSize && !bannerSize) e.bannerSize = t("create.required");
           creatives.forEach(c => {
             if (!c.name?.trim()) e[`creative_${c.id}_name`] = t("create.required");
             const type = campaign.formatKey === "banner" ? (c.creativeType || "image") : "image";
+            if (campaign.formatKey === "banner" && !c.bannerSize) {
+              e[`creative_${c.id}_bannerSize`] = t("create.required");
+            }
             if (campaign.formatKey === "banner" && type === "html") {
               if (!c.htmlCode?.trim()) e[`creative_${c.id}_html`] = t("create.required");
             } else if (campaign.formatKey === "banner" && type === "iframe") {
@@ -547,7 +533,7 @@ export default function EditCampaign() {
       <AutoCropConfirmDialog
         open={confirmMismatchOpen}
         creatives={creatives}
-        target={getTargetDims(campaign.formatKey, bannerSize)}
+        formatKey={campaign.formatKey}
         onCancel={() => {
           setConfirmMismatchOpen(false);
           setActiveTab("general");

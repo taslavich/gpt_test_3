@@ -119,6 +119,42 @@ describe("CampaignProvider mutation requests", () => {
     expect(result.current.campaigns[0].status).toBe("moderation");
   });
 
+  it("sends the technical 999x999 size for a banner campaign", async () => {
+    const { result } = renderHook(() => useCampaigns(), { wrapper });
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    await act(async () => {
+      await result.current.addCampaign({
+        ...campaignDraft,
+        format: "banner",
+        formatKey: "banner",
+        creatives: [],
+      });
+    });
+
+    expect(apiMock.createCampaign).toHaveBeenCalledWith(
+      expect.objectContaining({ w: 999, h: 999 }),
+    );
+  });
+
+  it("keeps the technical banner size on status updates", async () => {
+    apiMock.listCampaigns.mockResolvedValue({
+      items: [{ ...apiCampaign, format_type: "banner", w: null, h: null }],
+      total: 1,
+    });
+    const { result } = renderHook(() => useCampaigns(), { wrapper });
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    await act(async () => {
+      await result.current.updateCampaign("campaign-1", { status: "moderation" });
+    });
+
+    expect(apiMock.patchCampaign).toHaveBeenCalledWith(
+      "campaign-1",
+      expect.objectContaining({ status: "moderation", w: 999, h: 999 }),
+    );
+  });
+
   it("loads the campaign list without requesting creatives for every campaign", async () => {
     apiMock.listCampaigns.mockResolvedValue({
       items: [

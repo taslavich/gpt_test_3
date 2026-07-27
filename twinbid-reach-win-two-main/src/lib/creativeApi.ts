@@ -6,6 +6,8 @@ export interface CreativeDraft {
   id: string;
   name?: string;
   url: string;
+  /** Banner slot size owned by this creative, e.g. "300x250". */
+  bannerSize?: string;
   imageId?: string;
   imageUrl?: string;
   imageFileName?: string;
@@ -31,6 +33,7 @@ export interface CreativeApiClient {
   deleteCreative: (creativeId: string) => Promise<void>;
 }
 
+/** @deprecated Banner dimensions are now read from each creative's bannerSize. */
 export interface CreativeDimensions {
   w: number | null;
   h: number | null;
@@ -38,8 +41,11 @@ export interface CreativeDimensions {
 
 export class CreativeImageUploadError extends Error {
   constructor(message: string, options?: { cause?: unknown }) {
-    super(message, options);
+    super(message);
     this.name = "CreativeImageUploadError";
+    if (options && "cause" in options) {
+      (this as Error & { cause?: unknown }).cause = options.cause;
+    }
   }
 }
 
@@ -250,6 +256,7 @@ export function creativeRequiresImage(format: string, creative: CreativeDraft): 
 export function isCreativeReadyForCreate(format: string, creative: CreativeDraft): boolean {
   if (!creative.name?.trim()) return false;
   if (format === "banner") {
+    if (!parseBannerSize(creative.bannerSize)) return false;
     const type = creative.creativeType || "image";
     if (type === "html") return !!creative.htmlCode?.trim();
     if (type === "iframe") {
@@ -264,6 +271,12 @@ export function isCreativeReadyForCreate(format: string, creative: CreativeDraft
   return !!creative.pendingFile && !!creative.url.trim();
 }
 
+function parseBannerSize(value: string | undefined): { w: number; h: number } | null {
+  if (!value || !/^\d+x\d+$/.test(value)) return null;
+  const [w, h] = value.split("x").map(Number);
+  return w > 0 && h > 0 ? { w, h } : null;
+}
+
 function withImageId(body: ApiCreativeWrite, imageId: string | null | undefined): ApiCreativeWrite {
   if (imageId !== undefined) body.image_id = imageId;
   return body;
@@ -272,14 +285,14 @@ function withImageId(body: ApiCreativeWrite, imageId: string | null | undefined)
 export function buildCreativeWriteBody({
   format,
   creative,
-  dimensions,
   imageId,
   imageUrl,
   imageMimeType,
 }: {
   format: FormatType | string;
   creative: CreativeDraft;
-  dimensions: CreativeDimensions;
+  /** @deprecated Ignored. Kept only for source compatibility. */
+  dimensions?: CreativeDimensions;
   imageId?: string | null;
   imageUrl?: string;
   imageMimeType?: string;
@@ -291,9 +304,9 @@ export function buildCreativeWriteBody({
   };
 
   if (format === "banner") {
-    const w = dimensions.w;
-    const h = dimensions.h;
-    if (!w || !h) throw new Error("Banner size is required");
+    const size = parseBannerSize(creative.bannerSize);
+    if (!size) throw new Error("Banner creative size is required");
+    const { w, h } = size;
     base.w = w;
     base.h = h;
 
@@ -327,8 +340,8 @@ export function buildCreativeWriteBody({
   base.adm = stripMacrosFromUrl(creative.url);
   base.trackers_macros = extractMacrosFromUrl(creative.url);
   if (format === "native" || format === "push") {
-    const w = creative.imageWidth ?? dimensions.w;
-    const h = creative.imageHeight ?? dimensions.h;
+    const w = creative.imageWidth;
+    const h = creative.imageHeight;
     if (!w || !h) throw new Error("Creative image dimensions are required");
     base.w = w;
     base.h = h;
@@ -381,14 +394,14 @@ export async function createCampaignCreatives({
   client,
   campaignId,
   format,
-  dimensions,
   creatives,
   skipIncomplete = false,
 }: {
   client: CreativeApiClient;
   campaignId: string;
   format: FormatType | string;
-  dimensions: CreativeDimensions;
+  /** @deprecated Ignored. Kept only for source compatibility. */
+  dimensions?: CreativeDimensions;
   creatives: CreativeDraft[];
   skipIncomplete?: boolean;
 }): Promise<ApiCreative[]> {
@@ -402,7 +415,6 @@ export async function createCampaignCreatives({
     const body = buildCreativeWriteBody({
       format,
       creative,
-      dimensions,
       imageId: uploaded?.image_id,
       imageUrl: uploaded?.image_url,
       imageMimeType: uploaded?.mime_type || uploaded?.file_format,
@@ -416,14 +428,14 @@ export async function syncCampaignCreatives({
   client,
   campaignId,
   format,
-  dimensions,
   creatives,
   existing,
 }: {
   client: CreativeApiClient;
   campaignId: string;
   format: FormatType | string;
-  dimensions: CreativeDimensions;
+  /** @deprecated Ignored. Kept only for source compatibility. */
+  dimensions?: CreativeDimensions;
   creatives: CreativeDraft[];
   existing: ApiCreative[];
 }): Promise<void> {
@@ -438,7 +450,6 @@ export async function syncCampaignCreatives({
         client,
         campaignId,
         format,
-        dimensions,
         creatives: [creative],
       });
       continue;
@@ -466,7 +477,6 @@ export async function syncCampaignCreatives({
     const patch = buildCreativeWriteBody({
       format,
       creative,
-      dimensions,
       imageId,
       imageUrl: imageUrl || undefined,
       imageMimeType: imageMimeType || undefined,

@@ -6,7 +6,6 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { AutoCropConfirmDialog } from "@/components/dashboard/AutoCropConfirmDialog";
-import { getTargetDims } from "@/lib/creativeTarget";
 import { ArrowLeft } from "lucide-react";
 import { toast } from "sonner";
 import { useCampaigns, type TargetingState, type PricingModel, type TrafficQuality, type TrafficType, type ListMode, type Creative, type Vertical, VERTICALS } from "@/contexts/CampaignContext";
@@ -31,8 +30,6 @@ import {
 const formatLabels: Record<string, string> = {
   banner: "Banner", popunder: "Popunder", native: "Native", push: "In-page Push",
 };
-
-const bannerSizes = ["300x100", "300x250", "300x600", "728x90"];
 
 const allScheduleItems = (): string[] => {
   const days = ["monday","tuesday","wednesday","thursday","friday","saturday","sunday"];
@@ -60,7 +57,6 @@ export default function CreateCampaign() {
   const [trafficType, setTrafficType] = useState<TrafficType>("mainstream");
   const [name, setName] = useState("");
   const [adFormat, setAdFormat] = useState("");
-  const [bannerSize, setBannerSize] = useState("");
   const [brandName, setBrandName] = useState("");
   const [verticals, setVerticals] = useState<Vertical[]>([]);
   const [creatives, setCreatives] = useState<Creative[]>([{ id: generateId(), url: "" }]);
@@ -102,19 +98,20 @@ export default function CreateCampaign() {
     setLists(prev => ({ ...prev, [key]: { ...prev[key], ...updates } }));
   };
 
-  const showBannerSize = adFormat === "banner";
   const showBrandName = adFormat === "native" || adFormat === "push";
 
   const validateStep1 = () => {
     const e: Record<string, string> = {};
     if (!name.trim()) e.name = t("create.required");
     if (!adFormat) e.adFormat = t("create.selectFormatError");
-    if (adFormat === "banner" && !bannerSize) e.bannerSize = t("create.required");
 
     // Validate creatives
     creatives.forEach(c => {
       if (!c.name?.trim()) e[`creative_${c.id}_name`] = t("create.required");
       const type = adFormat === "banner" ? (c.creativeType || "image") : "image";
+      if (adFormat === "banner" && !c.bannerSize) {
+        e[`creative_${c.id}_bannerSize`] = t("create.required");
+      }
       if (adFormat === "banner" && type === "html") {
         if (!c.htmlCode?.trim()) e[`creative_${c.id}_html`] = t("create.required");
       } else if (adFormat === "banner" && type === "iframe") {
@@ -155,14 +152,15 @@ export default function CreateCampaign() {
       });
       if (badHtmlOrIframe) {
         const key = (badHtmlOrIframe.creativeType === "iframe") ? "iframe" : "html";
+        const [targetW = "?", targetH = "?"] = (badHtmlOrIframe.bannerSize || "").split("x");
         e[`creative_${badHtmlOrIframe.id}_${key}`] = t("create.required");
         toast.error(
           (badHtmlOrIframe.creativeType === "iframe"
             ? t("create.iframeSizeMismatch")
             : t("create.htmlSizeMismatch"))
             .replace("{actualW}", "?").replace("{actualH}", "?")
-            .replace("{w}", String(bannerSize.split("x")[0] || "?"))
-            .replace("{h}", String(bannerSize.split("x")[1] || "?"))
+            .replace("{w}", targetW)
+            .replace("{h}", targetH)
         );
       }
     }
@@ -248,7 +246,7 @@ export default function CreateCampaign() {
         spent: 0, impressions: 0, clicks: 0, ctr: 0, pricingModel, priceValue: parseNum(priceValue),
         trafficQuality, startDate, endDate, creatives: crvs,
         targeting: Object.fromEntries(Object.entries(lists).map(([k, v]) => [k, { mode: v.mode, items: v.items }])),
-        evenSpend, bannerSize: adFormat === "banner" ? bannerSize : undefined,
+        evenSpend,
         brandName: showBrandName ? brandName : undefined,
       });
       if (!id) {
@@ -295,7 +293,7 @@ export default function CreateCampaign() {
         spent: 0, impressions: 0, clicks: 0, ctr: 0, pricingModel, priceValue: priceValue ? parseNum(priceValue) : 0,
         trafficQuality, startDate, endDate, creatives,
         targeting: Object.fromEntries(Object.entries(lists).map(([k, v]) => [k, { mode: v.mode, items: v.items }])),
-        evenSpend, bannerSize: adFormat === "banner" ? bannerSize : undefined,
+        evenSpend,
         brandName: showBrandName ? brandName : undefined,
       });
     } catch (e: any) {
@@ -404,21 +402,6 @@ export default function CreateCampaign() {
                 {errors.adFormat && <p className="text-xs text-destructive">{errors.adFormat}</p>}
               </div>
 
-              {showBannerSize && (
-                <div className="space-y-2">
-                  <Label>{t("create.bannerSize")} *</Label>
-                  <Select value={bannerSize} onValueChange={(v) => { setBannerSize(v); clearError("bannerSize"); }}>
-                    <SelectTrigger className={`bg-background border-border ${errors.bannerSize ? "border-destructive" : ""}`}>
-                      <SelectValue placeholder={t("create.selectBannerSize")} />
-                    </SelectTrigger>
-                    <SelectContent className="bg-card border-border">
-                      {bannerSizes.map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}
-                    </SelectContent>
-                  </Select>
-                  {errors.bannerSize && <p className="text-xs text-destructive">{errors.bannerSize}</p>}
-                </div>
-              )}
-
               {showBrandName && (
                 <div className="space-y-2">
                   <Label>{t("create.brandName")}</Label>
@@ -431,7 +414,7 @@ export default function CreateCampaign() {
                 <>
                   <div className="pt-2">
                     <p className="text-sm font-medium text-muted-foreground mb-3">{t("create.creatives")}</p>
-                    <CreativesEditor ref={creativesEditorRef} formatKey={adFormat} bannerSize={bannerSize} brandName={brandName} creatives={creatives} onChange={setCreatives} errors={errors} onClearError={clearError} />
+                    <CreativesEditor ref={creativesEditorRef} formatKey={adFormat} brandName={brandName} creatives={creatives} onChange={setCreatives} errors={errors} onClearError={clearError} />
                   </div>
                 </>
               )}
@@ -482,7 +465,7 @@ export default function CreateCampaign() {
       <AutoCropConfirmDialog
         open={confirmMismatchOpen}
         creatives={creatives}
-        target={getTargetDims(adFormat, bannerSize)}
+        formatKey={adFormat}
         onCancel={() => {
           setConfirmMismatchOpen(false);
           // Jump to step 1 (creatives) and open cropper for the first mismatched image

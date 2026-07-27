@@ -80,7 +80,7 @@ Resp: `User`.
   "campaign_name": "string",
   "format_type": "banner | popunder | native | push",
   "brand_name": "string?",
-  "h": 250, "w": 300,
+  "h": 999, "w": 999,
   "status": "active | paused | draft | completed | moderation",
   "traffic_type": "mainstream | adult | mixed",
   "vertical": ["Dating", "Nutra"],
@@ -105,6 +105,10 @@ Resp: `User`.
 
 > Если расписание выключено — `active_intervals = [["mon,0","sun,23"]]`.
 > `cum_done_dollars` приходит ТОЛЬКО с бэка (не пишется фронтом).
+> Для banner фронт отправляет на кампании технический размер
+> `h: 999, w: 999`, необходимый для Telegram-модерации. Фактические `h/w`
+> передаются отдельно в каждом креативе, поэтому в одной banner-кампании
+> могут одновременно работать креативы разных размеров.
 
 ### GET `/api/campaigns?status=&limit=&offset=` → `{ items: Campaign[], total }`
 ### GET `/api/campaigns/:id` → `Campaign`
@@ -190,6 +194,9 @@ multipart-запрос с новым access token.
 
 Обычный JSON. Файл не передаётся. Для креатива с изображением сначала
 вызывается `creative-images`, затем `image_id` передаётся в JSON.
+
+Для каждого banner-креатива обязательны собственные `w` и `h`. Они берутся
+из размера, выбранного непосредственно в карточке креатива, а не из кампании.
 
 Для banner HTML:
 
