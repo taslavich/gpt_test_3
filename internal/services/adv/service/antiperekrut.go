@@ -32,7 +32,9 @@ type SpendPoint struct {
 
 type AntiPerekrutState struct {
 	UserSpend                   map[string]SpendPoint
+	UserRemainingBalance        map[string]float64
 	CampaignSpend               map[string]SpendPoint
+	CampaignAuctionAllowed      map[string]bool
 	TrafficLimit                map[string]uint32
 	AppliedCampaignResetVersion map[string]int64
 	CampaignResetAppliedAt      map[string]time.Time
@@ -98,9 +100,13 @@ func NewAntiPerekrutManager(
 
 func newEmptyAntiPerekrutState() *AntiPerekrutState {
 	return &AntiPerekrutState{
-		UserSpend: map[string]SpendPoint{}, CampaignSpend: map[string]SpendPoint{},
-		TrafficLimit: map[string]uint32{}, AppliedCampaignResetVersion: map[string]int64{},
-		CampaignResetAppliedAt: map[string]time.Time{},
+		UserSpend:                   map[string]SpendPoint{},
+		UserRemainingBalance:        map[string]float64{},
+		CampaignSpend:               map[string]SpendPoint{},
+		CampaignAuctionAllowed:      map[string]bool{},
+		TrafficLimit:                map[string]uint32{},
+		AppliedCampaignResetVersion: map[string]int64{},
+		CampaignResetAppliedAt:      map[string]time.Time{},
 	}
 }
 
@@ -166,27 +172,64 @@ func (m *AntiPerekrutManager) Refresh(ctx context.Context) error {
 
 	baseGeneration := base.Generation
 	baseGlobalGeneration := base.GlobalResetGeneration
-	userSpend, err := loadSpendPoints(ctx, m.clickhouse, m.database, "user_dsp_price_sum", "user_id")
-	if err != nil {
-		return fmt.Errorf("load user spend: %w", err)
-	}
-	campaignSpend, err := loadSpendPoints(ctx, m.clickhouse, m.database, "campaign_dsp_price_sum", "cid")
-	if err != nil {
-		return fmt.Errorf("load campaign spend: %w", err)
-	}
+
 	userIDs := make([]string, 0, len(snapshot.UserGoals))
 	for userID := range snapshot.UserGoals {
 		userIDs = append(userIDs, userID)
+	}
+	sort.Strings(userIDs)
+
+	// The user guard is calculated once per minute here, outside the hot auction
+	// path. Missing entities in the latest ClickHouse batch are explicitly treated
+	// as zero spend; the MV technical row identifies the latest completed batch.
+	userSpend, err := loadLatestBatchSpendPoints(
+		ctx,
+		m.clickhouse,
+		m.database,
+		"user_dsp_price_sum",
+		"user_id",
+		userIDs,
+	)
+	if err != nil {
+		return fmt.Errorf("load latest user spend: %w", err)
 	}
 	runtimeSpent, err := m.runtime.UserSpentBatch(ctx, userIDs)
 	if err != nil {
 		return fmt.Errorf("load runtime user spends: %w", err)
 	}
+	userRemaining, campaignAllowed := calculateCampaignAuctionAllowed(snapshot, userSpend, runtimeSpent)
+
+	allowedCampaignIDs := make([]string, 0, len(campaignAllowed))
+	for campaignID, allowed := range campaignAllowed {
+		if allowed {
+			allowedCampaignIDs = append(allowedCampaignIDs, campaignID)
+		}
+	}
+	sort.Strings(allowedCampaignIDs)
+
+	// Campaign spend is intentionally not queried for blocked users. Their
+	// percentages remain frozen until a later user batch makes them eligible.
+	campaignSpend := make(map[string]SpendPoint, len(allowedCampaignIDs))
+	if len(allowedCampaignIDs) > 0 {
+		campaignSpend, err = loadLatestBatchSpendPoints(
+			ctx,
+			m.clickhouse,
+			m.database,
+			"campaign_dsp_price_sum",
+			"cid",
+			allowedCampaignIDs,
+		)
+		if err != nil {
+			return fmt.Errorf("load latest allowed campaign spend: %w", err)
+		}
+	}
 
 	now := time.Now().UTC()
 	next := cloneAntiPerekrutState(base)
 	next.UserSpend = userSpend
+	next.UserRemainingBalance = userRemaining
 	next.CampaignSpend = campaignSpend
+	next.CampaignAuctionAllowed = campaignAllowed
 	next.LoadedAt = now
 	next.Generation = baseGeneration + 1
 
@@ -210,7 +253,7 @@ func (m *AntiPerekrutManager) Refresh(ctx context.Context) error {
 		}
 	}
 	removeInactiveCampaignState(next, snapshot)
-	calculateTrafficLimits(next, snapshot, runtimeSpent, resetCampaigns)
+	calculateTrafficLimits(next, snapshot, resetCampaigns)
 
 	m.writer.Lock()
 	defer m.writer.Unlock()
@@ -222,46 +265,141 @@ func (m *AntiPerekrutManager) Refresh(ctx context.Context) error {
 	return nil
 }
 
-func loadSpendPoints(ctx context.Context, ch clickhouse.Conn, database, table, idColumn string) (map[string]SpendPoint, error) {
+func loadLatestBatchSpendPoints(
+	ctx context.Context,
+	ch clickhouse.Conn,
+	database, table, idColumn string,
+	entityIDs []string,
+) (map[string]SpendPoint, error) {
 	if ch == nil {
 		return nil, errors.New("ClickHouse connection is nil")
 	}
-	qualified := fmt.Sprintf("`%s`.`%s`", strings.TrimSpace(database), table)
-	idExpression := fmt.Sprintf("toString(%s)", idColumn)
-	query := fmt.Sprintf(`
-SELECT
-    %s AS entity_id,
-    argMax(sum_cum_per_period, created_at) AS spend,
-    max(created_at) AS spend_created_at
-FROM %s
-WHERE sum_cum_per_period != 0 AND notEmpty(trimBoth(%s))
-GROUP BY %s`, idExpression, qualified, idExpression, idColumn)
-	rows, err := ch.Query(ctx, query)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	out := make(map[string]SpendPoint)
-	for rows.Next() {
-		var id string
-		var spend float64
-		var createdAt time.Time
-		if err := rows.Scan(&id, &spend, &createdAt); err != nil {
-			return nil, err
-		}
-		id = strings.TrimSpace(id)
-		if id == "" || math.IsNaN(spend) || math.IsInf(spend, 0) || spend < 0 {
+
+	uniqueIDs := make([]string, 0, len(entityIDs))
+	seen := make(map[string]struct{}, len(entityIDs))
+	for _, rawID := range entityIDs {
+		id := strings.TrimSpace(rawID)
+		if id == "" {
 			continue
 		}
-		out[id] = SpendPoint{Spend: spend, CreatedAt: createdAt.UTC()}
+		if _, exists := seen[id]; exists {
+			continue
+		}
+		seen[id] = struct{}{}
+		uniqueIDs = append(uniqueIDs, id)
 	}
-	if err := rows.Err(); err != nil {
-		return nil, err
+	if len(uniqueIDs) == 0 {
+		return map[string]SpendPoint{}, nil
+	}
+	sort.Strings(uniqueIDs)
+
+	qualified := fmt.Sprintf("`%s`.`%s`", strings.TrimSpace(database), table)
+	idExpression := fmt.Sprintf("toString(%s)", idColumn)
+
+	var latestBatch time.Time
+	if err := ch.QueryRow(ctx, fmt.Sprintf("SELECT max(created_at) FROM %s", qualified)).Scan(&latestBatch); err != nil {
+		return nil, fmt.Errorf("load %s latest batch timestamp: %w", table, err)
+	}
+	latestBatch = latestBatch.UTC()
+	if latestBatch.IsZero() || latestBatch.Unix() <= 0 {
+		return nil, fmt.Errorf("%s latest completed batch is unavailable", table)
+	}
+
+	// Every requested entity starts with zero at the latest completed batch.
+	// Actual rows from that same batch overwrite these defaults below.
+	out := make(map[string]SpendPoint, len(uniqueIDs))
+	for _, id := range uniqueIDs {
+		out[id] = SpendPoint{Spend: 0, CreatedAt: latestBatch}
+	}
+
+	// Keep the SQL bounded when a user owns many campaigns. Only requested IDs
+	// are read, so campaigns belonging to blocked users never enter this query.
+	const queryChunkSize = 5_000
+	for start := 0; start < len(uniqueIDs); start += queryChunkSize {
+		end := start + queryChunkSize
+		if end > len(uniqueIDs) {
+			end = len(uniqueIDs)
+		}
+		chunk := uniqueIDs[start:end]
+		placeholders := strings.TrimSuffix(strings.Repeat("?,", len(chunk)), ",")
+		query := fmt.Sprintf(`
+SELECT
+    %s AS entity_id,
+    max(sum_cum_per_period) AS spend
+FROM %s
+WHERE
+    created_at = ?
+    AND %s IN (%s)
+GROUP BY entity_id`,
+			idExpression,
+			qualified,
+			idExpression,
+			placeholders,
+		)
+
+		args := make([]any, 0, len(chunk)+1)
+		args = append(args, latestBatch)
+		for _, id := range chunk {
+			args = append(args, id)
+		}
+		rows, err := ch.Query(ctx, query, args...)
+		if err != nil {
+			return nil, err
+		}
+		for rows.Next() {
+			var id string
+			var spend float64
+			if err := rows.Scan(&id, &spend); err != nil {
+				rows.Close()
+				return nil, err
+			}
+			id = strings.TrimSpace(id)
+			if id == "" {
+				continue
+			}
+			if math.IsNaN(spend) || math.IsInf(spend, 0) || spend < 0 {
+				rows.Close()
+				return nil, fmt.Errorf("%s latest batch contains invalid spend for %s=%q: %v", table, idColumn, id, spend)
+			}
+			out[id] = SpendPoint{Spend: spend, CreatedAt: latestBatch}
+		}
+		if err := rows.Err(); err != nil {
+			rows.Close()
+			return nil, err
+		}
+		rows.Close()
 	}
 	return out, nil
 }
 
-func calculateTrafficLimits(state *AntiPerekrutState, snapshot *Snapshot, runtimeSpent map[string]float64, resetCampaigns map[string]struct{}) {
+func calculateCampaignAuctionAllowed(
+	snapshot *Snapshot,
+	userSpend map[string]SpendPoint,
+	runtimeSpent map[string]float64,
+) (map[string]float64, map[string]bool) {
+	userRemaining := make(map[string]float64, len(snapshot.UserGoals))
+	userAllowed := make(map[string]bool, len(snapshot.UserGoals))
+	for userID, goal := range snapshot.UserGoals {
+		remaining := goal - runtimeSpent[userID]
+		if remaining < 0 {
+			remaining = 0
+		}
+		userRemaining[userID] = remaining
+		recent := userSpend[userID].Spend
+		userAllowed[userID] = recent*2 <= remaining
+	}
+
+	campaignAllowed := make(map[string]bool, len(snapshot.Campaigns))
+	for _, campaign := range snapshot.Campaigns {
+		if campaign == nil || campaign.Status != CampaignStatusActive {
+			continue
+		}
+		campaignAllowed[campaign.ID] = userAllowed[campaign.UserID]
+	}
+	return userRemaining, campaignAllowed
+}
+
+func calculateTrafficLimits(state *AntiPerekrutState, snapshot *Snapshot, resetCampaigns map[string]struct{}) {
 	byUser := make(map[string][]*Campaign)
 	for _, campaign := range snapshot.Campaigns {
 		if campaign != nil && campaign.Status == CampaignStatusActive {
@@ -269,6 +407,9 @@ func calculateTrafficLimits(state *AntiPerekrutState, snapshot *Snapshot, runtim
 		}
 	}
 	for userID, campaigns := range byUser {
+		if len(campaigns) == 0 || !state.CampaignAuctionAllowed[campaigns[0].ID] {
+			continue
+		}
 		complete := true
 		for _, campaign := range campaigns {
 			if _, resetNow := resetCampaigns[campaign.ID]; resetNow {
@@ -291,10 +432,7 @@ func calculateTrafficLimits(state *AntiPerekrutState, snapshot *Snapshot, runtim
 			}
 			return li < lj
 		})
-		remaining := snapshot.UserGoals[userID] - runtimeSpent[userID]
-		if remaining < 0 {
-			remaining = 0
-		}
+		remaining := state.UserRemainingBalance[userID]
 		accumulated := 0.0
 		for i, campaign := range campaigns {
 			point := state.CampaignSpend[campaign.ID]
@@ -411,6 +549,8 @@ func removeInactiveCampaignState(state *AntiPerekrutState, snapshot *Snapshot) {
 	}
 	for campaignID := range state.TrafficLimit {
 		if _, ok := active[campaignID]; !ok {
+			delete(state.CampaignSpend, campaignID)
+			delete(state.CampaignAuctionAllowed, campaignID)
 			delete(state.TrafficLimit, campaignID)
 			delete(state.AppliedCampaignResetVersion, campaignID)
 			delete(state.CampaignResetAppliedAt, campaignID)
@@ -423,17 +563,28 @@ func cloneAntiPerekrutState(src *AntiPerekrutState) *AntiPerekrutState {
 		return newEmptyAntiPerekrutState()
 	}
 	out := &AntiPerekrutState{
-		UserSpend: make(map[string]SpendPoint, len(src.UserSpend)), CampaignSpend: make(map[string]SpendPoint, len(src.CampaignSpend)),
+		UserSpend:                   make(map[string]SpendPoint, len(src.UserSpend)),
+		UserRemainingBalance:        make(map[string]float64, len(src.UserRemainingBalance)),
+		CampaignSpend:               make(map[string]SpendPoint, len(src.CampaignSpend)),
+		CampaignAuctionAllowed:      make(map[string]bool, len(src.CampaignAuctionAllowed)),
 		TrafficLimit:                make(map[string]uint32, len(src.TrafficLimit)),
 		AppliedCampaignResetVersion: make(map[string]int64, len(src.AppliedCampaignResetVersion)),
 		CampaignResetAppliedAt:      make(map[string]time.Time, len(src.CampaignResetAppliedAt)),
-		GlobalResetGeneration:       src.GlobalResetGeneration, LoadedAt: src.LoadedAt, Generation: src.Generation,
+		GlobalResetGeneration:       src.GlobalResetGeneration,
+		LoadedAt:                    src.LoadedAt,
+		Generation:                  src.Generation,
 	}
 	for k, v := range src.UserSpend {
 		out.UserSpend[k] = v
 	}
+	for k, v := range src.UserRemainingBalance {
+		out.UserRemainingBalance[k] = v
+	}
 	for k, v := range src.CampaignSpend {
 		out.CampaignSpend[k] = v
+	}
+	for k, v := range src.CampaignAuctionAllowed {
+		out.CampaignAuctionAllowed[k] = v
 	}
 	for k, v := range src.TrafficLimit {
 		out.TrafficLimit[k] = v
@@ -481,6 +632,14 @@ func EnsureAntiPerekrutSchema(ctx context.Context, db *sql.DB) error {
 		}
 	}
 	return nil
+}
+
+func (m *AntiPerekrutManager) CampaignAllowed(state *AntiPerekrutState, campaign *Campaign) bool {
+	if m == nil || state == nil || campaign == nil {
+		return false
+	}
+	allowed, exists := state.CampaignAuctionAllowed[campaign.ID]
+	return exists && allowed
 }
 
 func (m *AntiPerekrutManager) EffectiveTrafficLimit(state *AntiPerekrutState, campaign *Campaign) uint32 {

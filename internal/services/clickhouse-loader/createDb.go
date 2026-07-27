@@ -514,7 +514,7 @@ TTL created_at + INTERVAL 24 HOUR DELETE
 SETTINGS index_granularity = 8192;
 
 CREATE MATERIALIZED VIEW {db}.mv_user_dsp_price_sum
-REFRESH EVERY 1 MINUTE
+REFRESH EVERY 1 MINUTE OFFSET 5 SECOND
 APPEND TO {db}.user_dsp_price_sum
 AS
 WITH now('UTC') AS batch_created_at
@@ -553,8 +553,9 @@ FROM
     UNION ALL
 
     /*
-       Техническая строка нужна, чтобы новый batch создавался,
-       даже если за последние 5 минут вообще не было событий.
+       Техническая строка отмечает последний завершённый batch.
+       ADV считает отсутствие конкретного user_id в этом batch нулевым расходом,
+       поэтому старое ненулевое значение больше не переиспользуется.
     */
     SELECT
         '' AS user_id,
@@ -589,7 +590,7 @@ FROM
     SELECT
         argMax(win_cid, event_time) AS cid,
         argMax(win_dsp_price, event_time) / 1000 AS spend
-    FROM ads.fact_impressions
+    FROM {db}.fact_impressions
     WHERE
         event_time >= toStartOfMinute(batch_created_at - INTERVAL 1 MINUTE)
         AND event_time < toStartOfMinute(batch_created_at)
@@ -603,7 +604,7 @@ FROM
     SELECT
         argMax(win_cid, event_time) AS cid,
         argMax(win_dsp_price, event_time) AS spend
-    FROM ads.fact_clicks
+    FROM {db}.fact_clicks
     WHERE
         event_time >= toStartOfMinute(batch_created_at - INTERVAL 1 MINUTE)
         AND event_time < toStartOfMinute(batch_created_at)
@@ -613,7 +614,10 @@ FROM
 
     UNION ALL
 
-    /* Создаёт batch, даже если за минуту событий не было */
+    /*
+       Техническая строка отмечает последний завершённый batch.
+       ADV считает отсутствие разрешённой кампании в этом batch нулевым расходом.
+    */
     SELECT
         '' AS cid,
         toFloat64(0) AS spend

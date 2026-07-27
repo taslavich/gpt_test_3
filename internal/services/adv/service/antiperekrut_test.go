@@ -36,10 +36,12 @@ func TestCalculateTrafficLimits(t *testing.T) {
 			"c1": {Spend: 1, CreatedAt: spendAt},
 			"c2": {Spend: 1, CreatedAt: spendAt},
 		},
+		CampaignAuctionAllowed: map[string]bool{"c1": true, "c2": true},
+		UserRemainingBalance:   map[string]float64{"u1": 100},
 		TrafficLimit:           map[string]uint32{"c1": TrafficLimitInitial, "c2": TrafficLimitInitial},
 		CampaignResetAppliedAt: map[string]time.Time{"c1": resetAt, "c2": resetAt},
 	}
-	calculateTrafficLimits(state, snapshot, map[string]float64{"u1": 0}, nil)
+	calculateTrafficLimits(state, snapshot, nil)
 	if state.TrafficLimit["c1"] != 300 || state.TrafficLimit["c2"] != 300 {
 		t.Fatalf("limits=%v, both campaigns must increase exactly x3", state.TrafficLimit)
 	}
@@ -55,10 +57,12 @@ func TestCalculateTrafficLimitsRequiresCompletePostResetSpend(t *testing.T) {
 			"c1": {Spend: 1, CreatedAt: resetAt.Add(time.Minute)},
 			// c2 is deliberately absent.
 		},
+		CampaignAuctionAllowed: map[string]bool{"c1": true, "c2": true},
+		UserRemainingBalance:   map[string]float64{"u1": 100},
 		TrafficLimit:           map[string]uint32{"c1": TrafficLimitInitial, "c2": TrafficLimitInitial},
 		CampaignResetAppliedAt: map[string]time.Time{"c1": resetAt, "c2": resetAt},
 	}
-	calculateTrafficLimits(state, snapshot, map[string]float64{"u1": 0}, nil)
+	calculateTrafficLimits(state, snapshot, nil)
 	if state.TrafficLimit["c1"] != TrafficLimitInitial || state.TrafficLimit["c2"] != TrafficLimitInitial {
 		t.Fatalf("incomplete spend must keep all user campaigns unchanged: %v", state.TrafficLimit)
 	}
@@ -74,12 +78,71 @@ func TestCalculateTrafficLimitsStopsWhenBalanceIsInsufficient(t *testing.T) {
 		CampaignSpend: map[string]SpendPoint{
 			"c1": {Spend: 1, CreatedAt: spendAt}, "c2": {Spend: 1, CreatedAt: spendAt},
 		},
+		CampaignAuctionAllowed: map[string]bool{"c1": true, "c2": true},
+		UserRemainingBalance:   map[string]float64{"u1": 5},
 		TrafficLimit:           map[string]uint32{"c1": TrafficLimitInitial, "c2": TrafficLimitInitial},
 		CampaignResetAppliedAt: map[string]time.Time{"c1": resetAt, "c2": resetAt},
 	}
-	calculateTrafficLimits(state, snapshot, map[string]float64{"u1": 0}, nil)
+	calculateTrafficLimits(state, snapshot, nil)
 	if state.TrafficLimit["c1"] != TrafficLimitInitial || state.TrafficLimit["c2"] != TrafficLimitInitial {
 		t.Fatalf("insufficient balance must not increase current or following campaign: %v", state.TrafficLimit)
+	}
+}
+
+func TestCalculateCampaignAuctionAllowedUsesUserGuardOncePerUser(t *testing.T) {
+	snapshot := &Snapshot{
+		Campaigns: []*Campaign{
+			{ID: "c1", UserID: "u1", Status: CampaignStatusActive},
+			{ID: "c2", UserID: "u1", Status: CampaignStatusActive},
+			{ID: "c3", UserID: "u2", Status: CampaignStatusActive},
+		},
+		UserGoals: map[string]float64{"u1": 10, "u2": 10},
+	}
+	userSpend := map[string]SpendPoint{
+		"u1": {Spend: 3},
+		"u2": {Spend: 4},
+	}
+	runtimeSpent := map[string]float64{"u1": 4, "u2": 3}
+
+	remaining, allowed := calculateCampaignAuctionAllowed(snapshot, userSpend, runtimeSpent)
+	if remaining["u1"] != 6 || remaining["u2"] != 7 {
+		t.Fatalf("unexpected remaining balances: %v", remaining)
+	}
+	if !allowed["c1"] || !allowed["c2"] {
+		t.Fatalf("u1 campaigns must be allowed because 3*2 <= 6: %v", allowed)
+	}
+	if allowed["c3"] {
+		t.Fatalf("u2 campaign must be blocked because 4*2 > 7: %v", allowed)
+	}
+}
+
+func TestCalculateTrafficLimitsFreezesBlockedUser(t *testing.T) {
+	resetAt := time.Date(2026, 7, 24, 0, 0, 0, 0, time.UTC)
+	campaign := &Campaign{ID: "c1", UserID: "u1", Status: CampaignStatusActive}
+	snapshot := &Snapshot{Campaigns: []*Campaign{campaign}, UserGoals: map[string]float64{"u1": 100}}
+	state := &AntiPerekrutState{
+		CampaignSpend:          map[string]SpendPoint{},
+		CampaignAuctionAllowed: map[string]bool{"c1": false},
+		UserRemainingBalance:   map[string]float64{"u1": 100},
+		TrafficLimit:           map[string]uint32{"c1": 900},
+		CampaignResetAppliedAt: map[string]time.Time{"c1": resetAt},
+	}
+	calculateTrafficLimits(state, snapshot, nil)
+	if state.TrafficLimit["c1"] != 900 {
+		t.Fatalf("blocked user traffic limit changed: %d", state.TrafficLimit["c1"])
+	}
+}
+
+func TestCampaignAllowedFailsClosedWhenFlagIsMissing(t *testing.T) {
+	manager := &AntiPerekrutManager{}
+	campaign := &Campaign{ID: "c1"}
+	state := &AntiPerekrutState{CampaignAuctionAllowed: map[string]bool{}}
+	if manager.CampaignAllowed(state, campaign) {
+		t.Fatal("missing campaign flag must fail closed")
+	}
+	state.CampaignAuctionAllowed["c1"] = true
+	if !manager.CampaignAllowed(state, campaign) {
+		t.Fatal("explicit true campaign flag must pass")
 	}
 }
 

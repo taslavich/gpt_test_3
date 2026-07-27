@@ -270,7 +270,7 @@ type AdvConfig struct {
 	AdvPacingTickInterval   time.Duration `yaml:"ADV_PACING_TICK_INTERVAL" env:"ADV_PACING_TICK_INTERVAL" env-default:"5s"`
 	AdvPacingCurrentTTL     time.Duration `yaml:"ADV_PACING_CURRENT_TTL" env:"ADV_PACING_CURRENT_TTL" env-default:"10m"`
 	AdvPacingSlotTTL        time.Duration `yaml:"ADV_PACING_SLOT_TTL" env:"ADV_PACING_SLOT_TTL" env-default:"48h"`
-	AntiperekrutTickOffset  time.Duration `yaml:"ANTIPEREKRUT_TICK_OFFSET" env:"ANTIPEREKRUT_TICK_OFFSET" env-default:"3s"`
+	AntiperekrutTickOffset  time.Duration `yaml:"ANTIPEREKRUT_TICK_OFFSET" env:"ANTIPEREKRUT_TICK_OFFSET" env-default:"8s"`
 	AntiperekrutAutoMigrate bool          `yaml:"ANTIPEREKRUT_AUTO_MIGRATE" env:"ANTIPEREKRUT_AUTO_MIGRATE" env-default:"false"`
 	BotBaseURL              string        `yaml:"BOT_BASE_URL" env:"BOT_BASE_URL"`
 	BotInternalSecret       string        `yaml:"BOT_INTERNAL_SECRET" env:"BOT_INTERNAL_SECRET"`

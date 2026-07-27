@@ -137,13 +137,6 @@ type candidate struct {
 	effectivePrice float64
 }
 
-type cachedUserBalance struct {
-	goal      float64
-	spent     float64
-	remaining float64
-	err       error
-}
-
 type AuctionService struct {
 	// Keep the uint64 counter first to preserve 64-bit alignment for atomic
 	// operations even if the service is ever built for a 32-bit architecture.
@@ -484,7 +477,6 @@ func (s *AuctionService) Auction(ctx context.Context, req *ortb.BidRequest, now 
 			return nil, errors.New("antiperekrut state is unavailable")
 		}
 	}
-	userBalanceCache := make(map[string]cachedUserBalance)
 
 	seat := &ortb.SeatBid{Bid: make([]*ortb.Bid, 0, len(req.GetImp()))}
 	winnerUsers := make(map[string]string)
@@ -558,7 +550,6 @@ func (s *AuctionService) Auction(ctx context.Context, req *ortb.BidRequest, now 
 		for _, campaign := range snapshot.Campaigns {
 			cand, eligible, infraErr := s.evaluateCampaign(
 				ctx,
-				snapshot,
 				campaign,
 				req,
 				imp,
@@ -568,7 +559,6 @@ func (s *AuctionService) Auction(ctx context.Context, req *ortb.BidRequest, now 
 				sspDomain,
 				winnerUUID,
 				antiState,
-				userBalanceCache,
 				logf,
 			)
 			if infraErr != nil {
@@ -1093,7 +1083,6 @@ func logCandidateSelectionOutcomes(
 
 func (s *AuctionService) evaluateCampaign(
 	ctx context.Context,
-	snapshot *Snapshot,
 	campaign *Campaign,
 	req *ortb.BidRequest,
 	imp *ortb.Imp,
@@ -1101,7 +1090,6 @@ func (s *AuctionService) evaluateCampaign(
 	requestedFormat, trafficType, sspDomain string,
 	hashFallback string,
 	antiState *AntiPerekrutState,
-	userBalanceCache map[string]cachedUserBalance,
 	logf debugLogFunc,
 ) (candidate, bool, error) {
 	requestID := ""
@@ -1176,34 +1164,23 @@ func (s *AuctionService) evaluateCampaign(
 
 	userRemaining := 0.0
 	if s.antiperekrutEnabled {
-		balance := s.cachedUserBalance(ctx, snapshot, userID, userBalanceCache)
-		if balance.err != nil {
-			logf("[ADV][CAMPAIGN_ERROR] request_id=%q imp_id=%q format=%q campaign_id=%q user_id=%q reason=antiperekrut_user_balance_read_failed error=%v", requestID, impID, requestedFormat, campaignID, userID, balance.err)
-			if s.antiperekrut != nil {
-				s.antiperekrut.NotifyAuctionError("user_balance_read", balance.err)
-			}
-			return candidate{}, false, balance.err
-		}
-		userRemaining = balance.remaining
-		recent := 0.0
 		if antiState != nil {
-			recent = antiState.UserSpend[userID].Spend
+			userRemaining = antiState.UserRemainingBalance[userID]
 		}
-		guardReject := recent*2 > userRemaining
-		if guardReject {
-			logf("[ADV][ANTIPEREKRUT_USER_GUARD] request_id=%q imp_id=%q format=%q campaign_id=%q user_id=%q user_spend=%.12f user_remaining=%.12f would_reject=true", requestID, impID, requestedFormat, campaignID, userID, recent, userRemaining)
+		if s.antiperekrut == nil || !s.antiperekrut.CampaignAllowed(antiState, campaign) {
+			recent := 0.0
+			if antiState != nil {
+				recent = antiState.UserSpend[userID].Spend
+			}
+			logf("[ADV][ANTIPEREKRUT_CAMPAIGN_BLOCKED] request_id=%q imp_id=%q format=%q campaign_id=%q user_id=%q user_spend=%.12f user_remaining=%.12f campaign_allowed=false", requestID, impID, requestedFormat, campaignID, userID, recent, userRemaining)
 			return candidate{}, false, nil
 		}
 		hashID := requestID
 		if strings.TrimSpace(hashID) == "" {
 			hashID = hashFallback
 		}
-		limit := TrafficLimitFull
-		if s.antiperekrut != nil {
-			limit = s.antiperekrut.EffectiveTrafficLimit(antiState, campaign)
-		}
-		hashPass := trafficHashPass(hashID, campaignID, limit)
-		if !hashPass {
+		limit := s.antiperekrut.EffectiveTrafficLimit(antiState, campaign)
+		if !trafficHashPass(hashID, campaignID, limit) {
 			logf("[ADV][ANTIPEREKRUT_HASH_GATE] request_id=%q imp_id=%q format=%q campaign_id=%q user_id=%q traffic_limit=%d would_reject=true", requestID, impID, requestedFormat, campaignID, userID, limit)
 			return candidate{}, false, nil
 		}
@@ -1363,31 +1340,6 @@ func (s *AuctionService) evaluateCampaign(
 
 func effectivePriceMeetsBidFloor(effective float64, imp *ortb.Imp) bool {
 	return imp != nil && effective >= float64(imp.GetBidfloor())
-}
-
-func (s *AuctionService) cachedUserBalance(ctx context.Context, snapshot *Snapshot, userID string, cache map[string]cachedUserBalance) cachedUserBalance {
-	userID = strings.TrimSpace(userID)
-	if cached, ok := cache[userID]; ok {
-		return cached
-	}
-	value := cachedUserBalance{}
-	goal, ok := snapshot.UserGoals[userID]
-	if !ok || goal < 0 || math.IsNaN(goal) || math.IsInf(goal, 0) {
-		value.err = fmt.Errorf("user goal is missing or invalid for %s", userID)
-		cache[userID] = value
-		return value
-	}
-	spent, err := s.runtime.UserSpent(ctx, userID)
-	if err != nil {
-		value.err = err
-		cache[userID] = value
-		return value
-	}
-	value.goal = goal
-	value.spent = spent
-	value.remaining = goal - spent
-	cache[userID] = value
-	return value
 }
 
 func logCampaignActivityRejection(logf debugLogFunc, requestID, impID string, campaign *Campaign, now time.Time) {
