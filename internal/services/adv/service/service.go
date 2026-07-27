@@ -2026,19 +2026,19 @@ func extractRequestFilterValues(req *ortb.BidRequest) requestFilterValues {
 	}
 	if device := req.GetDevice(); device != nil {
 		if geo := device.GetGeo(); geo != nil {
-			values.country = nonEmptyStringPtr(geo.GetCountry())
+			values.country = nonEmptyStringPtr(normalizeCountry(geo.GetCountry()))
 		}
 		values.language = nonEmptyStringPtr(normalizeLanguage(device.GetLanguage()))
-		values.osName = nonEmptyStringPtr(device.GetOs())
+		values.osName = nonEmptyStringPtr(normalizeOS(device.GetOs()))
 		values.ip = nonEmptyStringPtr(device.GetIp())
 
 		rawUA := strings.TrimSpace(device.GetUa())
 		if rawUA != "" {
 			parsed := ua.ParseUA(rawUA)
 			values.deviceType = nonEmptyStringPtr(normalizeDeviceType(parsed.Device))
-			values.browser = nonEmptyStringPtr(parsed.Browser)
+			values.browser = nonEmptyStringPtr(normalizeBrowser(parsed.Browser))
 			if values.osName == nil {
-				values.osName = nonEmptyStringPtr(parsed.OS)
+				values.osName = nonEmptyStringPtr(normalizeOS(parsed.OS))
 			}
 		} else if device.DeviceType != nil {
 			values.deviceType = nonEmptyStringPtr(normalizeDeviceType(strconv.Itoa(int(device.GetDeviceType()))))
@@ -2138,6 +2138,29 @@ func allowed(filter *filterV2.Filters, value *string) bool {
 		return true
 	}
 	return filter.Allowed(value)
+}
+
+func normalizeCountry(value string) string {
+	return strings.ToUpper(strings.TrimSpace(value))
+}
+
+func normalizeOS(value string) string {
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case "ios", "iphone os", "ipad os":
+		return "ios"
+	case "macos", "mac os", "mac os x", "os x":
+		return "macos"
+	case "chromeos", "chrome os":
+		return "chromeos"
+	case "windows phone", "windows mobile":
+		return "windows phone"
+	default:
+		return strings.ToLower(strings.TrimSpace(value))
+	}
+}
+
+func normalizeBrowser(value string) string {
+	return strings.ToLower(strings.TrimSpace(value))
 }
 
 func normalizeLanguage(value string) string {

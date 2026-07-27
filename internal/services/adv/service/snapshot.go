@@ -330,6 +330,7 @@ func (r campaignDBRow) campaign() (*Campaign, error) {
 	if err != nil {
 		return nil, err
 	}
+	normalizeFilterObjects(country, normalizeCountry)
 	language, err := parseFilter(r.Language, "language")
 	if err != nil {
 		return nil, err
@@ -345,10 +346,12 @@ func (r campaignDBRow) campaign() (*Campaign, error) {
 	if err != nil {
 		return nil, err
 	}
+	normalizeFilterObjects(osFilter, normalizeOS)
 	browser, err := parseFilter(r.Browser, "browser")
 	if err != nil {
 		return nil, err
 	}
+	normalizeFilterObjects(browser, normalizeBrowser)
 	siteID, err := parseFilter(r.SiteID, "site_id")
 	if err != nil {
 		return nil, err
