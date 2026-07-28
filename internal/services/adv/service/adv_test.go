@@ -480,15 +480,16 @@ func TestSnapshotDeepClone(t *testing.T) {
 		BasePrice: 1, GoalTotalDollars: 100, StartTS: now, EndTS: now.Add(time.Hour),
 		CountryFilter: filter, Creatives: []*Creative{creative},
 	}
-	source := &Snapshot{UserGoals: map[string]float64{"u": 10}, Campaigns: []*Campaign{campaign}}
+	source := &Snapshot{UserGoals: map[string]float64{"u": 10}, UserAntiPerekrutBlocked: map[string]bool{"u": true}, Campaigns: []*Campaign{campaign}}
 	clone, err := cloneAndValidateSnapshot(source)
 	if err != nil {
 		t.Fatal(err)
 	}
 	source.UserGoals["u"] = 0
+	source.UserAntiPerekrutBlocked["u"] = false
 	filter.Objects["SE"] = false
 	creative.TrackersMacros["device"] = false
-	if clone.UserGoals["u"] != 10 || !clone.Campaigns[0].CountryFilter.Objects["SE"] || !clone.Campaigns[0].Creatives[0].TrackersMacros["device"] {
+	if clone.UserGoals["u"] != 10 || !clone.UserAntiPerekrutBlocked["u"] || !clone.Campaigns[0].CountryFilter.Objects["SE"] || !clone.Campaigns[0].Creatives[0].TrackersMacros["device"] {
 		t.Fatal("published snapshot shares mutable state")
 	}
 }

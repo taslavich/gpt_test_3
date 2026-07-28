@@ -16,6 +16,7 @@ import (
 	"github.com/ClickHouse/clickhouse-go/v2"
 	"github.com/cespare/xxhash/v2"
 	"github.com/google/uuid"
+	"github.com/lib/pq"
 )
 
 const (
@@ -33,6 +34,8 @@ type SpendPoint struct {
 type AntiPerekrutState struct {
 	UserSpend                   map[string]SpendPoint
 	UserRemainingBalance        map[string]float64
+	UserAntiPerekrutBlocked     map[string]bool
+	PendingUserBlocks           map[string]time.Time
 	CampaignSpend               map[string]SpendPoint
 	CampaignAuctionAllowed      map[string]bool
 	CampaignActiveIntervalStart map[string]time.Time
@@ -103,6 +106,8 @@ func newEmptyAntiPerekrutState() *AntiPerekrutState {
 	return &AntiPerekrutState{
 		UserSpend:                   map[string]SpendPoint{},
 		UserRemainingBalance:        map[string]float64{},
+		UserAntiPerekrutBlocked:     map[string]bool{},
+		PendingUserBlocks:           map[string]time.Time{},
 		CampaignSpend:               map[string]SpendPoint{},
 		CampaignAuctionAllowed:      map[string]bool{},
 		CampaignActiveIntervalStart: map[string]time.Time{},
@@ -199,9 +204,48 @@ func (m *AntiPerekrutManager) Refresh(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("load runtime user spends: %w", err)
 	}
-	userRemaining, campaignAllowed := calculateCampaignAuctionAllowed(snapshot, userSpend, runtimeSpent)
-
 	now := time.Now().UTC()
+	userRemaining, campaignAllowed, userBlocked, pendingUserBlocks, usersToPersist := calculateCampaignAuctionAllowed(
+		snapshot,
+		userSpend,
+		runtimeSpent,
+		base.PendingUserBlocks,
+	)
+
+	if len(usersToPersist) > 0 {
+		if err := blockUsersInPostgres(ctx, m.db, usersToPersist); err != nil {
+			m.notifyError(ctx, "postgres_block_users", err)
+			log.Printf("[ADV][ANTIPEREKRUT][postgres_block_users] %v", err)
+
+			// The database marker could not be persisted. Publish the affected users
+			// as blocked locally and retain them in PendingUserBlocks so every next
+			// minute retries the same idempotent bulk UPDATE. No traffic-limit growth
+			// is performed in this degraded cycle.
+			next := cloneAntiPerekrutState(base)
+			next.UserSpend = userSpend
+			next.UserRemainingBalance = userRemaining
+			next.UserAntiPerekrutBlocked = userBlocked
+			next.PendingUserBlocks = pendingUserBlocks
+			next.CampaignAuctionAllowed = campaignAllowed
+			next.LoadedAt = now
+			next.Generation = baseGeneration + 1
+			applyCampaignStateTransitions(next, snapshot, now)
+			applyUserBlockTransitions(next, snapshot, base.UserAntiPerekrutBlocked, userBlocked, now)
+			removeInactiveCampaignState(next, snapshot)
+
+			m.writer.Lock()
+			current := m.state.Load()
+			if current == nil || (current.Generation == baseGeneration && current.GlobalResetGeneration == baseGlobalGeneration) {
+				m.state.Store(next)
+			}
+			m.writer.Unlock()
+			return nil
+		}
+		persistedAt := time.Now().UTC()
+		for _, userID := range usersToPersist {
+			pendingUserBlocks[userID] = persistedAt
+		}
+	}
 	allowedCampaignIDs := make([]string, 0, len(campaignAllowed))
 	for _, campaign := range snapshot.Campaigns {
 		if campaign == nil || !campaignAllowed[campaign.ID] || !campaignActiveAt(campaign, now) {
@@ -231,12 +275,15 @@ func (m *AntiPerekrutManager) Refresh(ctx context.Context) error {
 	next := cloneAntiPerekrutState(base)
 	next.UserSpend = userSpend
 	next.UserRemainingBalance = userRemaining
+	next.UserAntiPerekrutBlocked = userBlocked
+	next.PendingUserBlocks = pendingUserBlocks
 	next.CampaignSpend = campaignSpend
 	next.CampaignAuctionAllowed = campaignAllowed
 	next.LoadedAt = now
 	next.Generation = baseGeneration + 1
 
 	resetCampaigns := applyCampaignStateTransitions(next, snapshot, now)
+	applyUserBlockTransitions(next, snapshot, base.UserAntiPerekrutBlocked, userBlocked, now)
 	removeInactiveCampaignState(next, snapshot)
 	calculateTrafficLimits(next, snapshot, resetCampaigns, now)
 
@@ -361,27 +408,96 @@ func calculateCampaignAuctionAllowed(
 	snapshot *Snapshot,
 	userSpend map[string]SpendPoint,
 	runtimeSpent map[string]float64,
-) (map[string]float64, map[string]bool) {
+	pendingBlocks map[string]time.Time,
+) (map[string]float64, map[string]bool, map[string]bool, map[string]time.Time, []string) {
 	userRemaining := make(map[string]float64, len(snapshot.UserGoals))
-	userAllowed := make(map[string]bool, len(snapshot.UserGoals))
+	userBlocked := make(map[string]bool, len(snapshot.UserGoals))
+	nextPendingBlocks := make(map[string]time.Time)
+	usersToPersist := make([]string, 0)
+
 	for userID, goal := range snapshot.UserGoals {
 		remaining := goal - runtimeSpent[userID]
 		if remaining < 0 {
 			remaining = 0
 		}
 		userRemaining[userID] = remaining
+
+		durableBlocked := snapshot.UserAntiPerekrutBlocked[userID]
+		pendingAt, hasPending := pendingBlocks[userID]
+		pendingBlocked := hasPending && !durableBlocked &&
+			(pendingAt.IsZero() || snapshot.LoadedAt.IsZero() || !snapshot.LoadedAt.After(pendingAt))
 		recent := userSpend[userID].Spend
-		userAllowed[userID] = recent*2 <= remaining
+		unsafe := recent*2 > remaining
+		blocked := durableBlocked || pendingBlocked || unsafe
+		userBlocked[userID] = blocked
+
+		if blocked && !durableBlocked {
+			if pendingBlocked {
+				nextPendingBlocks[userID] = pendingAt
+			} else {
+				nextPendingBlocks[userID] = time.Time{}
+			}
+			if nextPendingBlocks[userID].IsZero() {
+				usersToPersist = append(usersToPersist, userID)
+			}
+		}
 	}
+	sort.Strings(usersToPersist)
 
 	campaignAllowed := make(map[string]bool, len(snapshot.Campaigns))
 	for _, campaign := range snapshot.Campaigns {
 		if campaign == nil || campaign.Status != CampaignStatusActive {
 			continue
 		}
-		campaignAllowed[campaign.ID] = userAllowed[campaign.UserID]
+		campaignAllowed[campaign.ID] = !userBlocked[campaign.UserID]
 	}
-	return userRemaining, campaignAllowed
+	return userRemaining, campaignAllowed, userBlocked, nextPendingBlocks, usersToPersist
+}
+
+func blockUsersInPostgres(ctx context.Context, db *sql.DB, userIDs []string) error {
+	if db == nil {
+		return errors.New("postgres db is nil")
+	}
+	if len(userIDs) == 0 {
+		return nil
+	}
+	result, err := db.ExecContext(ctx, `
+UPDATE users
+SET antiperekrut_blocked = TRUE, updated_at = NOW()
+WHERE id = ANY($1::uuid[])`, pq.Array(userIDs))
+	if err != nil {
+		return err
+	}
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if affected != int64(len(userIDs)) {
+		return fmt.Errorf("blocked %d of %d users", affected, len(userIDs))
+	}
+	return nil
+}
+
+func applyUserBlockTransitions(
+	state *AntiPerekrutState,
+	snapshot *Snapshot,
+	previousBlocked map[string]bool,
+	currentBlocked map[string]bool,
+	now time.Time,
+) {
+	if state == nil || snapshot == nil {
+		return
+	}
+	now = now.UTC()
+	for _, campaign := range snapshot.Campaigns {
+		if campaign == nil || !currentBlocked[campaign.UserID] {
+			continue
+		}
+		state.TrafficLimit[campaign.ID] = TrafficLimitInitial
+		if !previousBlocked[campaign.UserID] {
+			state.CampaignResetAppliedAt[campaign.ID] = now
+		}
+	}
 }
 
 func applyCampaignStateTransitions(
@@ -615,6 +731,8 @@ func cloneAntiPerekrutState(src *AntiPerekrutState) *AntiPerekrutState {
 	out := &AntiPerekrutState{
 		UserSpend:                   make(map[string]SpendPoint, len(src.UserSpend)),
 		UserRemainingBalance:        make(map[string]float64, len(src.UserRemainingBalance)),
+		UserAntiPerekrutBlocked:     make(map[string]bool, len(src.UserAntiPerekrutBlocked)),
+		PendingUserBlocks:           make(map[string]time.Time, len(src.PendingUserBlocks)),
 		CampaignSpend:               make(map[string]SpendPoint, len(src.CampaignSpend)),
 		CampaignAuctionAllowed:      make(map[string]bool, len(src.CampaignAuctionAllowed)),
 		CampaignActiveIntervalStart: make(map[string]time.Time, len(src.CampaignActiveIntervalStart)),
@@ -630,6 +748,12 @@ func cloneAntiPerekrutState(src *AntiPerekrutState) *AntiPerekrutState {
 	}
 	for k, v := range src.UserRemainingBalance {
 		out.UserRemainingBalance[k] = v
+	}
+	for k, v := range src.UserAntiPerekrutBlocked {
+		out.UserAntiPerekrutBlocked[k] = v
+	}
+	for k, v := range src.PendingUserBlocks {
+		out.PendingUserBlocks[k] = v
 	}
 	for k, v := range src.CampaignSpend {
 		out.CampaignSpend[k] = v
@@ -663,6 +787,7 @@ func EnsureAntiPerekrutSchema(ctx context.Context, db *sql.DB) error {
 		return errors.New("postgres db is nil")
 	}
 	queries := []string{
+		`ALTER TABLE users ADD COLUMN IF NOT EXISTS antiperekrut_blocked BOOLEAN NOT NULL DEFAULT FALSE`,
 		`ALTER TABLE campaigns ADD COLUMN IF NOT EXISTS traffic_reset_version BIGINT NOT NULL DEFAULT 0`,
 		`CREATE TABLE IF NOT EXISTS antiperekrut_control_state (
 			id SMALLINT PRIMARY KEY,

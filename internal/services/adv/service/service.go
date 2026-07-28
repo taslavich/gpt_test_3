@@ -113,8 +113,10 @@ type Campaign struct {
 }
 
 type Snapshot struct {
-	Campaigns []*Campaign
-	UserGoals map[string]float64
+	Campaigns               []*Campaign
+	UserGoals               map[string]float64
+	UserAntiPerekrutBlocked map[string]bool
+	LoadedAt                time.Time
 }
 
 type AuctionRequestOptions struct {
@@ -154,7 +156,7 @@ type AuctionService struct {
 
 func NewAuctionService(runtime *RuntimeStore, winners *WinnerStore, percents *PercentStore, quality *QualityStore) *AuctionService {
 	s := &AuctionService{runtime: runtime, winners: winners, percents: percents, quality: quality, antiperekrutEnabled: true}
-	s.snapshot.Store(&Snapshot{Campaigns: []*Campaign{}, UserGoals: map[string]float64{}})
+	s.snapshot.Store(&Snapshot{Campaigns: []*Campaign{}, UserGoals: map[string]float64{}, UserAntiPerekrutBlocked: map[string]bool{}})
 	return s
 }
 
@@ -226,8 +228,10 @@ func cloneAndValidateSnapshot(src *Snapshot) (*Snapshot, error) {
 		return nil, errors.New("snapshot is nil")
 	}
 	out := &Snapshot{
-		Campaigns: make([]*Campaign, 0, len(src.Campaigns)),
-		UserGoals: make(map[string]float64, len(src.UserGoals)),
+		Campaigns:               make([]*Campaign, 0, len(src.Campaigns)),
+		UserGoals:               make(map[string]float64, len(src.UserGoals)),
+		UserAntiPerekrutBlocked: make(map[string]bool, len(src.UserAntiPerekrutBlocked)),
+		LoadedAt:                src.LoadedAt.UTC(),
 	}
 	for rawID, goal := range src.UserGoals {
 		id := strings.TrimSpace(rawID)
@@ -238,6 +242,16 @@ func cloneAndValidateSnapshot(src *Snapshot) (*Snapshot, error) {
 			return nil, fmt.Errorf("duplicate normalized user id %q", id)
 		}
 		out.UserGoals[id] = goal
+	}
+	for rawID, blocked := range src.UserAntiPerekrutBlocked {
+		id := strings.TrimSpace(rawID)
+		if id == "" {
+			return nil, fmt.Errorf("invalid antiperekrut user id %q", rawID)
+		}
+		if _, ok := out.UserGoals[id]; !ok {
+			return nil, fmt.Errorf("antiperekrut marker has no user goal for %q", id)
+		}
+		out.UserAntiPerekrutBlocked[id] = blocked
 	}
 
 	campaignIDs := make(map[string]struct{}, len(src.Campaigns))

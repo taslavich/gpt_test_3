@@ -530,7 +530,7 @@ FROM
         argMax(win_dsp_price, created_at) / 1000 AS spend
     FROM {db}.fact_impressions
     WHERE
-        created_at >= batch_created_at - INTERVAL 5 MINUTE
+        created_at >= batch_created_at - INTERVAL 1 MINUTE
         AND created_at < batch_created_at
         AND format IN ('NAT', 'BAN', 'POP')
         AND notEmpty(trimBoth(win_user_id))
@@ -544,7 +544,7 @@ FROM
         argMax(win_dsp_price, created_at) AS spend
     FROM {db}.fact_clicks
     WHERE
-        created_at >= batch_created_at - INTERVAL 5 MINUTE
+        created_at >= batch_created_at - INTERVAL 1 MINUTE
         AND created_at < batch_created_at
         AND format = 'IPP'
         AND notEmpty(trimBoth(win_user_id))

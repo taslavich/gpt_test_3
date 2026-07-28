@@ -132,6 +132,7 @@ func (s *AuctionService) StartPostgresRefreshTicker(ctx context.Context, db *sql
 }
 
 func LoadSnapshotFromPostgres(ctx context.Context, db *sql.DB) (*Snapshot, error) {
+	loadedAt := time.Now().UTC()
 	if db == nil {
 		return nil, errors.New("postgres db is nil")
 	}
@@ -215,7 +216,7 @@ func LoadSnapshotFromPostgres(ctx context.Context, db *sql.DB) (*Snapshot, error
 	for id := range userSet {
 		userIDs = append(userIDs, id)
 	}
-	userGoals, err := loadUserGoalsBatch(ctx, db, userIDs)
+	userGoals, userAntiPerekrutBlocked, err := loadUsersBatch(ctx, db, userIDs)
 	if err != nil {
 		return nil, err
 	}
@@ -237,7 +238,7 @@ func LoadSnapshotFromPostgres(ctx context.Context, db *sql.DB) (*Snapshot, error
 	if activeRows > 0 && len(validCampaigns) == 0 {
 		return nil, fmt.Errorf("all %d active campaign rows were invalid; previous snapshot must be retained", activeRows)
 	}
-	return &Snapshot{Campaigns: validCampaigns, UserGoals: userGoals}, nil
+	return &Snapshot{Campaigns: validCampaigns, UserGoals: userGoals, UserAntiPerekrutBlocked: userAntiPerekrutBlocked, LoadedAt: loadedAt}, nil
 }
 
 type campaignDBRow struct {
@@ -465,34 +466,37 @@ func loadCreativesBatch(ctx context.Context, db *sql.DB, campaignIDs []string, c
 	return rows.Err()
 }
 
-func loadUserGoalsBatch(ctx context.Context, db *sql.DB, userIDs []string) (map[string]float64, error) {
+func loadUsersBatch(ctx context.Context, db *sql.DB, userIDs []string) (map[string]float64, map[string]bool, error) {
 	goals := make(map[string]float64, len(userIDs))
+	blocked := make(map[string]bool, len(userIDs))
 	if len(userIDs) == 0 {
-		return goals, nil
+		return goals, blocked, nil
 	}
 	rows, err := db.QueryContext(
 		ctx,
 		`
-		SELECT
-			id::text,
-			goal_total_dollars::text
-		FROM users
-		WHERE id::text = ANY($1)
-	`,
+			SELECT
+				id::text,
+				goal_total_dollars::text,
+				antiperekrut_blocked
+			FROM users
+			WHERE id::text = ANY($1)
+		`,
 		pq.Array(userIDs),
 	)
 	if err != nil {
-		return nil, fmt.Errorf(
-			"batch query users.goal_total_dollars: %w",
+		return nil, nil, fmt.Errorf(
+			"batch query users goal/antiperekrut marker: %w",
 			err,
 		)
 	}
 	defer rows.Close()
 	for rows.Next() {
 		var id, rawGoal string
-		if err := rows.Scan(&id, &rawGoal); err != nil {
-			return nil, fmt.Errorf(
-				"scan users.goal_total_dollars: %w",
+		var isBlocked bool
+		if err := rows.Scan(&id, &rawGoal, &isBlocked); err != nil {
+			return nil, nil, fmt.Errorf(
+				"scan users goal/antiperekrut marker: %w",
 				err,
 			)
 		}
@@ -507,11 +511,12 @@ func loadUserGoalsBatch(ctx context.Context, db *sql.DB, userIDs []string) (map[
 			continue
 		}
 		goals[id] = goal
+		blocked[id] = isBlocked
 	}
 	if err := rows.Err(); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	return goals, nil
+	return goals, blocked, nil
 }
 
 func parseFiniteNonNegative(value string) (float64, error) {

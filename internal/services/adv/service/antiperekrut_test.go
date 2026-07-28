@@ -104,7 +104,7 @@ func TestCalculateCampaignAuctionAllowedUsesUserGuardOncePerUser(t *testing.T) {
 	}
 	runtimeSpent := map[string]float64{"u1": 4, "u2": 3}
 
-	remaining, allowed := calculateCampaignAuctionAllowed(snapshot, userSpend, runtimeSpent)
+	remaining, allowed, blocked, pending, toPersist := calculateCampaignAuctionAllowed(snapshot, userSpend, runtimeSpent, nil)
 	if remaining["u1"] != 6 || remaining["u2"] != 7 {
 		t.Fatalf("unexpected remaining balances: %v", remaining)
 	}
@@ -113,6 +113,99 @@ func TestCalculateCampaignAuctionAllowedUsesUserGuardOncePerUser(t *testing.T) {
 	}
 	if allowed["c3"] {
 		t.Fatalf("u2 campaign must be blocked because 4*2 > 7: %v", allowed)
+	}
+	if blocked["u1"] || !blocked["u2"] {
+		t.Fatalf("unexpected blocked state: %v", blocked)
+	}
+	if pendingAt, ok := pending["u2"]; !ok || !pendingAt.IsZero() {
+		t.Fatalf("new block must be pending persistence: %v", pending)
+	}
+	if len(toPersist) != 1 || toPersist[0] != "u2" {
+		t.Fatalf("users to persist=%v, want [u2]", toPersist)
+	}
+}
+
+func TestDurableUserBlockDoesNotExpireWhenMinuteSpendBecomesZero(t *testing.T) {
+	snapshot := &Snapshot{
+		Campaigns:               []*Campaign{{ID: "c1", UserID: "u1", Status: CampaignStatusActive}},
+		UserGoals:               map[string]float64{"u1": 10},
+		UserAntiPerekrutBlocked: map[string]bool{"u1": true},
+	}
+	_, allowed, blocked, pending, toPersist := calculateCampaignAuctionAllowed(
+		snapshot,
+		map[string]SpendPoint{"u1": {Spend: 0}},
+		map[string]float64{"u1": 8},
+		nil,
+	)
+	if allowed["c1"] || !blocked["u1"] {
+		t.Fatalf("durably blocked user was re-enabled: allowed=%v blocked=%v", allowed, blocked)
+	}
+	if _, ok := pending["u1"]; ok || len(toPersist) != 0 {
+		t.Fatalf("durable block must not be repersisted: pending=%v toPersist=%v", pending, toPersist)
+	}
+}
+
+func TestPendingUserBlockIsRetriedAndRemainsFailClosed(t *testing.T) {
+	snapshot := &Snapshot{
+		Campaigns:               []*Campaign{{ID: "c1", UserID: "u1", Status: CampaignStatusActive}},
+		UserGoals:               map[string]float64{"u1": 10},
+		UserAntiPerekrutBlocked: map[string]bool{"u1": false},
+	}
+	_, allowed, blocked, pending, toPersist := calculateCampaignAuctionAllowed(
+		snapshot,
+		map[string]SpendPoint{"u1": {Spend: 0}},
+		map[string]float64{"u1": 8},
+		map[string]time.Time{"u1": {}},
+	)
+	if allowed["c1"] || !blocked["u1"] {
+		t.Fatalf("pending block was lost: allowed=%v blocked=%v pending=%v", allowed, blocked, pending)
+	}
+	if pendingAt, ok := pending["u1"]; !ok || !pendingAt.IsZero() {
+		t.Fatalf("failed write must remain pending: %v", pending)
+	}
+	if len(toPersist) != 1 || toPersist[0] != "u1" {
+		t.Fatalf("pending block retry=%v, want [u1]", toPersist)
+	}
+}
+
+func TestFreshSnapshotFalseClearsSuccessfullyPersistedPendingBlock(t *testing.T) {
+	persistedAt := time.Date(2026, 7, 28, 16, 24, 8, 0, time.UTC)
+	snapshot := &Snapshot{
+		Campaigns:               []*Campaign{{ID: "c1", UserID: "u1", Status: CampaignStatusActive}},
+		UserGoals:               map[string]float64{"u1": 20},
+		UserAntiPerekrutBlocked: map[string]bool{"u1": false},
+		LoadedAt:                persistedAt.Add(time.Second),
+	}
+	_, allowed, blocked, pending, toPersist := calculateCampaignAuctionAllowed(
+		snapshot,
+		map[string]SpendPoint{"u1": {Spend: 0}},
+		map[string]float64{"u1": 8},
+		map[string]time.Time{"u1": persistedAt},
+	)
+	if !allowed["c1"] || blocked["u1"] {
+		t.Fatalf("fresh snapshot clear was ignored: allowed=%v blocked=%v", allowed, blocked)
+	}
+	if len(pending) != 0 || len(toPersist) != 0 {
+		t.Fatalf("cleared block must not remain pending: pending=%v toPersist=%v", pending, toPersist)
+	}
+}
+
+func TestUserBlockResetsEveryCampaignToInitial(t *testing.T) {
+	now := time.Date(2026, 7, 28, 16, 24, 8, 0, time.UTC)
+	snapshot := &Snapshot{Campaigns: []*Campaign{
+		{ID: "c1", UserID: "u1", Status: CampaignStatusActive},
+		{ID: "c2", UserID: "u1", Status: CampaignStatusActive},
+	}}
+	state := &AntiPerekrutState{
+		TrafficLimit:           map[string]uint32{"c1": 130_000, "c2": 560_000},
+		CampaignResetAppliedAt: map[string]time.Time{},
+	}
+	applyUserBlockTransitions(state, snapshot, map[string]bool{"u1": false}, map[string]bool{"u1": true}, now)
+	if state.TrafficLimit["c1"] != TrafficLimitInitial || state.TrafficLimit["c2"] != TrafficLimitInitial {
+		t.Fatalf("blocked user limits=%v", state.TrafficLimit)
+	}
+	if !state.CampaignResetAppliedAt["c1"].Equal(now) || !state.CampaignResetAppliedAt["c2"].Equal(now) {
+		t.Fatalf("blocked user reset timestamps=%v", state.CampaignResetAppliedAt)
 	}
 }
 
