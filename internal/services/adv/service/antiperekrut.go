@@ -35,6 +35,7 @@ type AntiPerekrutState struct {
 	UserRemainingBalance        map[string]float64
 	CampaignSpend               map[string]SpendPoint
 	CampaignAuctionAllowed      map[string]bool
+	CampaignActiveIntervalStart map[string]time.Time
 	TrafficLimit                map[string]uint32
 	AppliedCampaignResetVersion map[string]int64
 	CampaignResetAppliedAt      map[string]time.Time
@@ -104,6 +105,7 @@ func newEmptyAntiPerekrutState() *AntiPerekrutState {
 		UserRemainingBalance:        map[string]float64{},
 		CampaignSpend:               map[string]SpendPoint{},
 		CampaignAuctionAllowed:      map[string]bool{},
+		CampaignActiveIntervalStart: map[string]time.Time{},
 		TrafficLimit:                map[string]uint32{},
 		AppliedCampaignResetVersion: map[string]int64{},
 		CampaignResetAppliedAt:      map[string]time.Time{},
@@ -199,11 +201,13 @@ func (m *AntiPerekrutManager) Refresh(ctx context.Context) error {
 	}
 	userRemaining, campaignAllowed := calculateCampaignAuctionAllowed(snapshot, userSpend, runtimeSpent)
 
+	now := time.Now().UTC()
 	allowedCampaignIDs := make([]string, 0, len(campaignAllowed))
-	for campaignID, allowed := range campaignAllowed {
-		if allowed {
-			allowedCampaignIDs = append(allowedCampaignIDs, campaignID)
+	for _, campaign := range snapshot.Campaigns {
+		if campaign == nil || !campaignAllowed[campaign.ID] || !campaignActiveAt(campaign, now) {
+			continue
 		}
+		allowedCampaignIDs = append(allowedCampaignIDs, campaign.ID)
 	}
 	sort.Strings(allowedCampaignIDs)
 
@@ -224,7 +228,6 @@ func (m *AntiPerekrutManager) Refresh(ctx context.Context) error {
 		}
 	}
 
-	now := time.Now().UTC()
 	next := cloneAntiPerekrutState(base)
 	next.UserSpend = userSpend
 	next.UserRemainingBalance = userRemaining
@@ -233,27 +236,9 @@ func (m *AntiPerekrutManager) Refresh(ctx context.Context) error {
 	next.LoadedAt = now
 	next.Generation = baseGeneration + 1
 
-	resetCampaigns := make(map[string]struct{})
-	for _, campaign := range snapshot.Campaigns {
-		if campaign == nil {
-			continue
-		}
-		applied := next.AppliedCampaignResetVersion[campaign.ID]
-		if campaign.TrafficResetVersion > applied {
-			next.TrafficLimit[campaign.ID] = TrafficLimitInitial
-			next.AppliedCampaignResetVersion[campaign.ID] = campaign.TrafficResetVersion
-			next.CampaignResetAppliedAt[campaign.ID] = now
-			resetCampaigns[campaign.ID] = struct{}{}
-		}
-		if _, exists := next.TrafficLimit[campaign.ID]; !exists {
-			next.TrafficLimit[campaign.ID] = TrafficLimitInitial
-			if _, ok := next.CampaignResetAppliedAt[campaign.ID]; !ok {
-				next.CampaignResetAppliedAt[campaign.ID] = now
-			}
-		}
-	}
+	resetCampaigns := applyCampaignStateTransitions(next, snapshot, now)
 	removeInactiveCampaignState(next, snapshot)
-	calculateTrafficLimits(next, snapshot, resetCampaigns)
+	calculateTrafficLimits(next, snapshot, resetCampaigns, now)
 
 	m.writer.Lock()
 	defer m.writer.Unlock()
@@ -399,10 +384,74 @@ func calculateCampaignAuctionAllowed(
 	return userRemaining, campaignAllowed
 }
 
-func calculateTrafficLimits(state *AntiPerekrutState, snapshot *Snapshot, resetCampaigns map[string]struct{}) {
+func applyCampaignStateTransitions(
+	state *AntiPerekrutState,
+	snapshot *Snapshot,
+	now time.Time,
+) map[string]struct{} {
+	resetCampaigns := make(map[string]struct{})
+	if state == nil || snapshot == nil {
+		return resetCampaigns
+	}
+	if state.CampaignActiveIntervalStart == nil {
+		state.CampaignActiveIntervalStart = make(map[string]time.Time)
+	}
+	now = now.UTC()
+	for _, campaign := range snapshot.Campaigns {
+		if campaign == nil {
+			continue
+		}
+		applied := state.AppliedCampaignResetVersion[campaign.ID]
+		if campaign.TrafficResetVersion > applied {
+			state.TrafficLimit[campaign.ID] = TrafficLimitInitial
+			state.AppliedCampaignResetVersion[campaign.ID] = campaign.TrafficResetVersion
+			state.CampaignResetAppliedAt[campaign.ID] = now
+			resetCampaigns[campaign.ID] = struct{}{}
+		}
+		if _, exists := state.TrafficLimit[campaign.ID]; !exists {
+			state.TrafficLimit[campaign.ID] = TrafficLimitInitial
+			if _, ok := state.CampaignResetAppliedAt[campaign.ID]; !ok {
+				state.CampaignResetAppliedAt[campaign.ID] = now
+			}
+		}
+
+		if len(campaign.ActiveIntervals) == 0 {
+			delete(state.CampaignActiveIntervalStart, campaign.ID)
+			continue
+		}
+		if !strings.EqualFold(strings.TrimSpace(campaign.Status), CampaignStatusActive) {
+			continue
+		}
+		activeInterval, activeNow := campaignActiveIntervalAt(campaign, now)
+		if !activeNow {
+			continue
+		}
+		storedStart, exists := state.CampaignActiveIntervalStart[campaign.ID]
+		if exists && storedStart.Equal(activeInterval.Start) {
+			continue
+		}
+
+		// A new continuous schedule block always starts from 0.01%. Unlike a
+		// version/global reset, this reset may grow on the same +8s minute tick:
+		// the hot path has already enforced 0.01% since the exact block start.
+		state.TrafficLimit[campaign.ID] = TrafficLimitInitial
+		state.CampaignActiveIntervalStart[campaign.ID] = activeInterval.Start
+		if resetAt, ok := state.CampaignResetAppliedAt[campaign.ID]; !ok || resetAt.Before(activeInterval.Start) {
+			state.CampaignResetAppliedAt[campaign.ID] = activeInterval.Start
+		}
+	}
+	return resetCampaigns
+}
+
+func calculateTrafficLimits(
+	state *AntiPerekrutState,
+	snapshot *Snapshot,
+	resetCampaigns map[string]struct{},
+	now time.Time,
+) {
 	byUser := make(map[string][]*Campaign)
 	for _, campaign := range snapshot.Campaigns {
-		if campaign != nil && campaign.Status == CampaignStatusActive {
+		if campaign != nil && campaignScheduledActiveAt(campaign, now) {
 			byUser[campaign.UserID] = append(byUser[campaign.UserID], campaign)
 		}
 	}
@@ -551,6 +600,7 @@ func removeInactiveCampaignState(state *AntiPerekrutState, snapshot *Snapshot) {
 		if _, ok := active[campaignID]; !ok {
 			delete(state.CampaignSpend, campaignID)
 			delete(state.CampaignAuctionAllowed, campaignID)
+			delete(state.CampaignActiveIntervalStart, campaignID)
 			delete(state.TrafficLimit, campaignID)
 			delete(state.AppliedCampaignResetVersion, campaignID)
 			delete(state.CampaignResetAppliedAt, campaignID)
@@ -567,6 +617,7 @@ func cloneAntiPerekrutState(src *AntiPerekrutState) *AntiPerekrutState {
 		UserRemainingBalance:        make(map[string]float64, len(src.UserRemainingBalance)),
 		CampaignSpend:               make(map[string]SpendPoint, len(src.CampaignSpend)),
 		CampaignAuctionAllowed:      make(map[string]bool, len(src.CampaignAuctionAllowed)),
+		CampaignActiveIntervalStart: make(map[string]time.Time, len(src.CampaignActiveIntervalStart)),
 		TrafficLimit:                make(map[string]uint32, len(src.TrafficLimit)),
 		AppliedCampaignResetVersion: make(map[string]int64, len(src.AppliedCampaignResetVersion)),
 		CampaignResetAppliedAt:      make(map[string]time.Time, len(src.CampaignResetAppliedAt)),
@@ -585,6 +636,9 @@ func cloneAntiPerekrutState(src *AntiPerekrutState) *AntiPerekrutState {
 	}
 	for k, v := range src.CampaignAuctionAllowed {
 		out.CampaignAuctionAllowed[k] = v
+	}
+	for k, v := range src.CampaignActiveIntervalStart {
+		out.CampaignActiveIntervalStart[k] = v
 	}
 	for k, v := range src.TrafficLimit {
 		out.TrafficLimit[k] = v
@@ -642,7 +696,11 @@ func (m *AntiPerekrutManager) CampaignAllowed(state *AntiPerekrutState, campaign
 	return exists && allowed
 }
 
-func (m *AntiPerekrutManager) EffectiveTrafficLimit(state *AntiPerekrutState, campaign *Campaign) uint32 {
+func (m *AntiPerekrutManager) EffectiveTrafficLimit(
+	state *AntiPerekrutState,
+	campaign *Campaign,
+	now time.Time,
+) uint32 {
 	if m == nil || campaign == nil {
 		return TrafficLimitInitial
 	}
@@ -651,6 +709,13 @@ func (m *AntiPerekrutManager) EffectiveTrafficLimit(state *AntiPerekrutState, ca
 	}
 	if campaign.TrafficResetVersion > state.AppliedCampaignResetVersion[campaign.ID] {
 		return TrafficLimitInitial
+	}
+	if len(campaign.ActiveIntervals) > 0 {
+		activeInterval, activeNow := campaignActiveIntervalAt(campaign, now)
+		storedStart, exists := state.CampaignActiveIntervalStart[campaign.ID]
+		if !activeNow || !exists || !storedStart.Equal(activeInterval.Start) {
+			return TrafficLimitInitial
+		}
 	}
 	limit, ok := state.TrafficLimit[campaign.ID]
 	if !ok || limit < TrafficLimitInitial {

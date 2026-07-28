@@ -1179,7 +1179,7 @@ func (s *AuctionService) evaluateCampaign(
 		if strings.TrimSpace(hashID) == "" {
 			hashID = hashFallback
 		}
-		limit := s.antiperekrut.EffectiveTrafficLimit(antiState, campaign)
+		limit := s.antiperekrut.EffectiveTrafficLimit(antiState, campaign, now)
 		if !trafficHashPass(hashID, campaignID, limit) {
 			logf("[ADV][ANTIPEREKRUT_HASH_GATE] request_id=%q imp_id=%q format=%q campaign_id=%q user_id=%q traffic_limit=%d would_reject=true", requestID, impID, requestedFormat, campaignID, userID, limit)
 			return candidate{}, false, nil
@@ -1803,12 +1803,38 @@ func campaignActiveAt(campaign *Campaign, now time.Time) bool {
 	if len(campaign.ActiveIntervals) == 0 {
 		return true
 	}
+	_, active := campaignActiveIntervalAt(campaign, now)
+	return active
+}
+
+func campaignScheduledActiveAt(campaign *Campaign, now time.Time) bool {
+	if campaign == nil || !strings.EqualFold(strings.TrimSpace(campaign.Status), CampaignStatusActive) {
+		return false
+	}
+	if len(campaign.ActiveIntervals) == 0 {
+		return true
+	}
+	_, active := campaignActiveIntervalAt(campaign, now)
+	return active
+}
+
+func campaignActiveIntervalAt(campaign *Campaign, now time.Time) (TimeRange, bool) {
+	if campaign == nil || len(campaign.ActiveIntervals) == 0 {
+		return TimeRange{}, false
+	}
+	now = now.UTC()
 	for _, interval := range campaign.ActiveIntervals {
-		if !now.Before(interval.Start) && now.Before(interval.End) {
-			return true
+		if !interval.Start.Before(interval.End) {
+			continue
+		}
+		if now.Before(interval.Start) {
+			return TimeRange{}, false
+		}
+		if now.Before(interval.End) {
+			return interval, true
 		}
 	}
-	return false
+	return TimeRange{}, false
 }
 
 func matchingCreatives(campaign *Campaign, imp *ortb.Imp, format string) []*Creative {

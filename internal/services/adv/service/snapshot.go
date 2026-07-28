@@ -64,8 +64,7 @@ func ParseActiveIntervalSchedule(schedule [][]string, windowStart, windowEnd tim
 			}
 		}
 	}
-	sort.Slice(intervals, func(i, j int) bool { return intervals[i].Start.Before(intervals[j].Start) })
-	return intervals, nil
+	return normalizeActiveIntervals(intervals), nil
 }
 
 func parseWeekOffset(value string) (time.Duration, error) {
@@ -558,5 +557,40 @@ func parseActiveIntervalsJSONB(raw []byte, windowStart, windowEnd time.Time) ([]
 			out = append(out, TimeRange{Start: start, End: end})
 		}
 	}
-	return out, nil
+	return normalizeActiveIntervals(out), nil
+}
+
+func normalizeActiveIntervals(intervals []TimeRange) []TimeRange {
+	if len(intervals) == 0 {
+		return nil
+	}
+	normalized := make([]TimeRange, 0, len(intervals))
+	for _, interval := range intervals {
+		start := interval.Start.UTC()
+		end := interval.End.UTC()
+		if start.Before(end) {
+			normalized = append(normalized, TimeRange{Start: start, End: end})
+		}
+	}
+	if len(normalized) == 0 {
+		return nil
+	}
+	sort.Slice(normalized, func(i, j int) bool {
+		if normalized[i].Start.Equal(normalized[j].Start) {
+			return normalized[i].End.Before(normalized[j].End)
+		}
+		return normalized[i].Start.Before(normalized[j].Start)
+	})
+	merged := normalized[:1]
+	for _, interval := range normalized[1:] {
+		last := &merged[len(merged)-1]
+		if !interval.Start.After(last.End) {
+			if interval.End.After(last.End) {
+				last.End = interval.End
+			}
+			continue
+		}
+		merged = append(merged, interval)
+	}
+	return merged
 }
