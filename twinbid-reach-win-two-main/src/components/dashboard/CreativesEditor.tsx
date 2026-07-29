@@ -78,7 +78,7 @@ const generateId = () => String(Date.now()) + Math.random().toString(36).slice(2
 
 const MAX_CREATIVES = 10;
 
-import { BANNER_SIZES, getTargetDims } from "@/lib/creativeTarget";
+import { BANNER_SIZES, getTargetDims, isMediaSizeMismatch } from "@/lib/creativeTarget";
 
 function getCreativeTarget(formatKey: string, creative: Creative) {
   return getTargetDims(formatKey, formatKey === "banner" ? creative.bannerSize : undefined);
@@ -249,6 +249,9 @@ export const CreativesEditor = forwardRef<CreativesEditorHandle, CreativesEditor
   const creativeTargetSignature = creatives
     .map(c => `${c.id}:${c.bannerSize || ""}`)
     .join("|");
+  const originalSourceSignature = Object.entries(origSources)
+    .map(([id, source]) => `${id}:${source.naturalWidth}x${source.naturalHeight}:${source.isGif}:${source.isVideo}`)
+    .join("|");
 
   // Recompute image sizeMismatch when the format or this creative's size changes.
   // Per-creative mismatch on upload is set inside handleImageUpload; we must
@@ -265,10 +268,7 @@ export const CreativesEditor = forwardRef<CreativesEditorHandle, CreativesEditor
       const src = origSourcesRef.current[c.id];
       if (!src) return c;
       const target = getCreativeTarget(formatKey, c);
-      const mismatch = target && !src.isVideo ? (target.mode === "fixed"
-        ? src.naturalWidth !== target.w || src.naturalHeight !== target.h
-        : src.naturalWidth !== src.naturalHeight || src.naturalWidth < (target.minSide ?? 200))
-        : false;
+      const mismatch = isMediaSizeMismatch(target, src.naturalWidth, src.naturalHeight);
       if (mismatch !== !!c.sizeMismatch) {
         changed = true;
         return { ...c, sizeMismatch: mismatch };
@@ -277,7 +277,7 @@ export const CreativesEditor = forwardRef<CreativesEditorHandle, CreativesEditor
     });
     if (changed) onChange(next);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [formatKey, creativeTargetSignature]);
+  }, [formatKey, creativeTargetSignature, originalSourceSignature]);
 
   const showTitle = formatKey === "native" || formatKey === "push";
   const showDescription = formatKey === "native" || formatKey === "push";
@@ -311,10 +311,7 @@ export const CreativesEditor = forwardRef<CreativesEditorHandle, CreativesEditor
 
 
   const checkMismatch = (creative: Creative, natW: number, natH: number): boolean => {
-    const target = getCreativeTarget(formatKey, creative);
-    if (!target) return false;
-    if (target.mode === "fixed") return natW !== target.w || natH !== target.h;
-    return natW !== natH || natW < (target.minSide ?? 200);
+    return isMediaSizeMismatch(getCreativeTarget(formatKey, creative), natW, natH);
   };
 
   const handleImageUpload = async (creativeId: string, e: React.ChangeEvent<HTMLInputElement>) => {
@@ -341,10 +338,8 @@ export const CreativesEditor = forwardRef<CreativesEditorHandle, CreativesEditor
       const dataUrl = await readFileAsDataUrl(file);
       const { w, h } = video ? await loadVideoDims(dataUrl) : await loadImageDims(dataUrl);
       const isGif = file.type === "image/gif" || ext === ".gif";
-      // MP4 is rendered into the selected banner slot dimensions by ADM.
-      // Image creatives retain the existing crop/mismatch workflow.
       const currentCreative = creativesRef.current.find(c => c.id === creativeId);
-      const mismatch = video || !currentCreative ? false : checkMismatch(currentCreative, w, h);
+      const mismatch = currentCreative ? checkMismatch(currentCreative, w, h) : false;
       setOrigSources(prev => ({
         ...prev,
         [creativeId]: { dataUrl, naturalWidth: w, naturalHeight: h, fileName: file.name, isGif, isVideo: video },
@@ -435,10 +430,7 @@ export const CreativesEditor = forwardRef<CreativesEditorHandle, CreativesEditor
       if (!targetCreative) return;
       if ((targetCreative.creativeType || "image") !== "image") return;
       const src = await ensureSource(targetCreative);
-      if (!src || src.isGif || src.isVideo) {
-        toast.error(t("create.autoCropGifSkip"));
-        return;
-      }
+      if (!src) return;
       setCropperCreativeId(targetCreative.id);
     },
   }), [creatives, origSources, t]);
@@ -553,7 +545,7 @@ export const CreativesEditor = forwardRef<CreativesEditorHandle, CreativesEditor
         const src = origSources[creative.id];
         const type: CreativeType = (isBanner ? (creative.creativeType || "image") : "image");
         const target = getCreativeTarget(formatKey, creative);
-        const canCrop = type === "image" && !!src && !src.isGif && !src.isVideo && !!target;
+        const canCrop = type === "image" && !!src && !!target;
         const meas = measured[creative.id];
 
         return (
@@ -587,8 +579,8 @@ export const CreativesEditor = forwardRef<CreativesEditorHandle, CreativesEditor
                   onValueChange={(value) => {
                     const nextTarget = getTargetDims("banner", value);
                     const source = origSourcesRef.current[creative.id];
-                    const sizeMismatch = !!source && !source.isVideo && !!nextTarget
-                      ? source.naturalWidth !== nextTarget.w || source.naturalHeight !== nextTarget.h
+                    const sizeMismatch = source
+                      ? isMediaSizeMismatch(nextTarget, source.naturalWidth, source.naturalHeight)
                       : false;
                     updateCreative(creative.id, {
                       bannerSize: value,
@@ -746,7 +738,9 @@ export const CreativesEditor = forwardRef<CreativesEditorHandle, CreativesEditor
                   <div className="flex items-start gap-2 p-2 rounded border border-yellow-500/30 bg-yellow-500/10">
                     <AlertTriangle className="h-4 w-4 text-yellow-500 shrink-0 mt-0.5" />
                     <p className="text-xs text-yellow-500">
-                      {src?.isGif
+                      {src?.isVideo
+                        ? t("create.videoExactSize").replace("{w}", String(target.w)).replace("{h}", String(target.h))
+                        : src?.isGif
                         ? t("create.gifExactSize").replace("{w}", String(target.w)).replace("{h}", String(target.h))
                         : t("create.imageWrongSize").replace("{w}", String(target.w)).replace("{h}", String(target.h))}
                     </p>
@@ -1051,7 +1045,9 @@ export const CreativesEditor = forwardRef<CreativesEditorHandle, CreativesEditor
                   <div className="flex items-start gap-2 p-2 rounded border border-yellow-500/30 bg-yellow-500/10">
                     <AlertTriangle className="h-4 w-4 text-yellow-500 shrink-0 mt-0.5" />
                     <p className="text-xs text-yellow-500">
-                      {src?.isGif
+                      {src?.isVideo
+                        ? t("create.videoExactSize").replace("{w}", String(target.w)).replace("{h}", String(target.h))
+                        : src?.isGif
                         ? t("create.gifExactSize").replace("{w}", String(target.w)).replace("{h}", String(target.h))
                         : t("create.imageWrongSize").replace("{w}", String(target.w)).replace("{h}", String(target.h))}
                     </p>
@@ -1088,7 +1084,12 @@ export const CreativesEditor = forwardRef<CreativesEditorHandle, CreativesEditor
     </Dialog>
     <ImageCropperDialog
       open={!!cropperCreativeId}
-      source={activeSource ? { dataUrl: activeSource.dataUrl, naturalWidth: activeSource.naturalWidth, naturalHeight: activeSource.naturalHeight } : null}
+      source={activeSource ? {
+        dataUrl: activeSource.dataUrl,
+        naturalWidth: activeSource.naturalWidth,
+        naturalHeight: activeSource.naturalHeight,
+        mediaKind: activeSource.isVideo ? "video" : activeSource.isGif ? "gif" : "image",
+      } : null}
       target={activeCropTarget}
       fileNameHint={activeSource?.fileName}
       onClose={() => setCropperCreativeId(null)}
@@ -1098,6 +1099,8 @@ export const CreativesEditor = forwardRef<CreativesEditorHandle, CreativesEditor
           imageUrl: dataUrl,
           pendingFile: file,
           imageFileName: file.name,
+          imageMimeType: file.type,
+          mediaType: file.type === "video/mp4" ? "video" : "image",
           imageWidth: dimensions.w,
           imageHeight: dimensions.h,
           sizeMismatch: false,

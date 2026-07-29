@@ -11,7 +11,7 @@ interface Props {
   creatives: Creative[];
   formatKey: string;
   onCancel: () => void;
-  /** Called with a new creatives array where mismatched non-GIF images are auto-cropped. */
+  /** Called with a new creatives array where mismatched static images are auto-cropped. */
   onConfirm: (nextCreatives: Creative[]) => void;
 }
 
@@ -22,7 +22,7 @@ interface PreviewEntry {
   afterUrl?: string;
   file?: File;
   dimensions?: { w: number; h: number };
-  isGif: boolean;
+  mediaKind: "image" | "gif" | "video";
   error?: string;
 }
 
@@ -42,21 +42,24 @@ export function AutoCropConfirmDialog({ open, creatives, formatKey, onCancel, on
         if (!c.sizeMismatch || !c.imageUrl) continue;
         const target = getTargetDims(formatKey, formatKey === "banner" ? c.bannerSize : undefined);
         if (!target) continue;
-        const gif = isGifDataUrl(c.imageUrl) || isGifFileName(c.imageFileName);
+        const video = c.mediaType === "video"
+          || c.imageMimeType === "video/mp4"
+          || /\.mp4$/i.test(c.imageFileName || "");
+        const gif = !video && (isGifDataUrl(c.imageUrl) || isGifFileName(c.imageFileName));
         const entry: PreviewEntry = {
           creativeId: c.id,
           label: c.name?.trim() || `${t("create.creative")} #${i + 1}`,
           beforeUrl: c.imageUrl,
-          isGif: gif,
+          mediaKind: video ? "video" : gif ? "gif" : "image",
         };
-        if (!gif) {
+        if (!gif && !video) {
           try {
             const { dataUrl, file, dimensions } = await autoCropImage(c.imageUrl, target, c.imageFileName);
             entry.afterUrl = dataUrl;
             entry.file = file;
             entry.dimensions = dimensions;
-          } catch (e: any) {
-            entry.error = e?.message || "error";
+          } catch (error: unknown) {
+            entry.error = error instanceof Error ? error.message : "error";
           }
         }
         items.push(entry);
@@ -91,7 +94,7 @@ export function AutoCropConfirmDialog({ open, creatives, formatKey, onCancel, on
   };
 
   const hasCroppable = previews.some(p => p.afterUrl);
-  const hasGif = previews.some(p => p.isGif);
+  const hasManualMedia = previews.some(p => p.mediaKind !== "image");
 
   return (
     <AlertDialog open={open} onOpenChange={(o) => {
@@ -115,9 +118,11 @@ export function AutoCropConfirmDialog({ open, creatives, formatKey, onCancel, on
           {!loading && previews.map(p => (
             <div key={p.creativeId} className="rounded-lg border border-border bg-background/40 p-3 sm:p-4">
               <div className="text-xs font-medium text-foreground mb-3 text-center">{p.label}</div>
-              {p.isGif ? (
+              {p.mediaKind !== "image" ? (
                 <div className="flex flex-col items-center gap-2">
-                  <img src={p.beforeUrl} alt="" className="max-h-64 max-w-full rounded border border-border object-contain bg-black/20" />
+                  {p.mediaKind === "video"
+                    ? <video src={p.beforeUrl} muted loop autoPlay playsInline className="max-h-64 max-w-full rounded border border-border object-contain bg-black/20" />
+                    : <img src={p.beforeUrl} alt="" className="max-h-64 max-w-full rounded border border-border object-contain bg-black/20" />}
                   <p className="text-xs text-yellow-500 text-center">{t("create.autoCropGifSkip")}</p>
                 </div>
               ) : p.error ? (
@@ -143,14 +148,14 @@ export function AutoCropConfirmDialog({ open, creatives, formatKey, onCancel, on
               )}
             </div>
           ))}
-          {!loading && hasGif && (
+          {!loading && hasManualMedia && (
             <p className="text-xs text-yellow-500">{t("create.autoCropGifNote")}</p>
           )}
         </div>
 
         <AlertDialogFooter>
           <AlertDialogCancel>{t("create.mismatchGoEdit")}</AlertDialogCancel>
-          <AlertDialogAction disabled={loading || !hasCroppable || hasGif} onClick={handleConfirm}>
+          <AlertDialogAction disabled={loading || !hasCroppable || hasManualMedia} onClick={handleConfirm}>
             {t("create.autoCropConfirm")}
           </AlertDialogAction>
         </AlertDialogFooter>

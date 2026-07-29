@@ -225,7 +225,7 @@ export default function CreateCampaign() {
     }
     if (step === 3) { if (!validateStep3()) return; setStep(4); setErrors({}); return; }
     if (step === 4) {
-      if (creatives.some(c => (c.creativeType || "image") === "image" && c.mediaType !== "video" && c.sizeMismatch)) { setConfirmMismatchOpen(true); return; }
+      if (creatives.some(c => (c.creativeType || "image") === "image" && c.sizeMismatch)) { setConfirmMismatchOpen(true); return; }
       await handleCreate();
       return;
     }

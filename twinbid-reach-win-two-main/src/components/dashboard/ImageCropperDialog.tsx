@@ -2,10 +2,15 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Slider } from "@/components/ui/slider";
-import { Minus, Plus } from "lucide-react";
+import { Loader2, Minus, Plus } from "lucide-react";
 import { toast } from "sonner";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { buildDerivedCreativeFilename } from "@/lib/creativeApi";
+import {
+  cropAnimatedGif,
+  cropMp4Video,
+  type MediaCropRect,
+} from "@/lib/animatedMediaCrop";
 
 const MAX_BYTES = 1 * 1024 * 1024;
 const MAX_STAGE_W = 560;
@@ -23,6 +28,7 @@ interface Source {
   dataUrl: string;
   naturalWidth: number;
   naturalHeight: number;
+  mediaKind?: "image" | "gif" | "video";
 }
 
 interface Props {
@@ -145,6 +151,31 @@ export function ImageCropperDialog({ open, source, target, fileNameHint, onSave,
         outW = side; outH = side;
       }
 
+      const crop: MediaCropRect = {
+        sx,
+        sy,
+        sw,
+        sh,
+        sourceWidth: source.naturalWidth,
+        sourceHeight: source.naturalHeight,
+        outW,
+        outH,
+      };
+
+      if (source.mediaKind === "gif") {
+        const result = await cropAnimatedGif(source.dataUrl, crop, fileNameHint);
+        onSave(result.file, result.dataUrl, result.dimensions);
+        setSaving(false);
+        return;
+      }
+
+      if (source.mediaKind === "video") {
+        const result = await cropMp4Video(source.dataUrl, crop, fileNameHint);
+        onSave(result.file, result.dataUrl, result.dimensions);
+        setSaving(false);
+        return;
+      }
+
       const img = new Image();
       img.crossOrigin = "anonymous";
       img.src = source.dataUrl;
@@ -186,7 +217,14 @@ export function ImageCropperDialog({ open, source, target, fileNameHint, onSave,
       reader.readAsDataURL(file);
     } catch (err) {
       console.error(err);
-      toast.error("Failed to crop image");
+      const reason = err instanceof Error ? err.message : "";
+      if (reason === "gif-too-large") {
+        toast.error(t("create.cropGifTooLarge"));
+      } else if (reason === "video-too-large") {
+        toast.error(t("create.cropVideoTooLarge"));
+      } else {
+        toast.error(t("create.cropFailed"));
+      }
       setSaving(false);
     }
   }, [source, target, scale, offset, frameW, frameH, stageW, stageH, fileNameHint, onSave, t]);
@@ -208,22 +246,42 @@ export function ImageCropperDialog({ open, source, target, fileNameHint, onSave,
           onPointerUp={onImgPointerUp}
           onPointerCancel={onImgPointerUp}
         >
-          {/* Image */}
-          <img
-            src={source.dataUrl}
-            alt=""
-            draggable={false}
-            style={{
-              position: "absolute",
-              left: stageW / 2 + offset.x,
-              top: stageH / 2 + offset.y,
-              width: source.naturalWidth * scale,
-              height: source.naturalHeight * scale,
-              transform: "translate(-50%, -50%)",
-              maxWidth: "none",
-              pointerEvents: "none",
-            }}
-          />
+          {/* Media */}
+          {source.mediaKind === "video" ? (
+            <video
+              src={source.dataUrl}
+              muted
+              loop
+              autoPlay
+              playsInline
+              style={{
+                position: "absolute",
+                left: stageW / 2 + offset.x,
+                top: stageH / 2 + offset.y,
+                width: source.naturalWidth * scale,
+                height: source.naturalHeight * scale,
+                transform: "translate(-50%, -50%)",
+                maxWidth: "none",
+                pointerEvents: "none",
+              }}
+            />
+          ) : (
+            <img
+              src={source.dataUrl}
+              alt=""
+              draggable={false}
+              style={{
+                position: "absolute",
+                left: stageW / 2 + offset.x,
+                top: stageH / 2 + offset.y,
+                width: source.naturalWidth * scale,
+                height: source.naturalHeight * scale,
+                transform: "translate(-50%, -50%)",
+                maxWidth: "none",
+                pointerEvents: "none",
+              }}
+            />
+          )}
           {/* Dark overlay with cutout via 4 rects */}
           <div className="pointer-events-none absolute inset-0" style={{ boxShadow: `0 0 0 9999px rgba(0,0,0,0.55) inset`, clipPath: `polygon(0 0, 100% 0, 100% 100%, 0 100%, 0 ${(stageH/2 - frameH/2)}px, ${(stageW/2 - frameW/2)}px ${(stageH/2 - frameH/2)}px, ${(stageW/2 - frameW/2)}px ${(stageH/2 + frameH/2)}px, ${(stageW/2 + frameW/2)}px ${(stageH/2 + frameH/2)}px, ${(stageW/2 + frameW/2)}px ${(stageH/2 - frameH/2)}px, 0 ${(stageH/2 - frameH/2)}px)` }} />
           {/* Frame */}
@@ -280,6 +338,7 @@ export function ImageCropperDialog({ open, source, target, fileNameHint, onSave,
         <DialogFooter>
           <Button type="button" variant="outline" onClick={onClose} disabled={saving}>{t("create.cropCancel")}</Button>
           <Button type="button" onClick={handleSave} disabled={saving} className="bg-primary hover:bg-primary/90 text-primary-foreground">
+            {saving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
             {t("create.cropSave")}
           </Button>
         </DialogFooter>

@@ -68,7 +68,7 @@ export function Marquee({ items }: { items: string[] }) {
     <div className="relative overflow-hidden border-y border-white/[0.07] bg-white/[0.018] py-4 backdrop-blur-sm">
       <div className="marquee-track flex w-max whitespace-nowrap will-change-transform">
         {[0, 1].map((copyIndex) => (
-          <div key={copyIndex} className="flex shrink-0" aria-hidden={copyIndex === 1}>
+          <div key={copyIndex} className="marquee-set" aria-hidden={copyIndex === 1}>
             {group.map((t, i) => (
               <span
                 key={`${copyIndex}-${i}`}

@@ -276,8 +276,8 @@ export default function EditCampaign() {
       return;
     }
 
-    // Only image creatives fall into the auto-crop confirm path.
-    if (!skipMismatchCheck && crvs.some(c => (c.creativeType || "image") === "image" && c.mediaType !== "video" && c.sizeMismatch)) {
+    // Every visual creative must match its configured visible area.
+    if (!skipMismatchCheck && crvs.some(c => (c.creativeType || "image") === "image" && c.sizeMismatch)) {
       setConfirmMismatchOpen(true);
       return;
     }
