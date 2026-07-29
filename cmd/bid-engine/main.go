@@ -196,6 +196,8 @@ func main() {
 	} else {
 		log.Print("antiperekrut startup reset is disabled by ANTIPEREKRUT_ENABLED=true")
 	}
+
+	log.Printf("AdvServiceControlURLs: %q", cfg.AdvServiceControlURLs)
 	errChan := make(chan error)
 
 	go func() {

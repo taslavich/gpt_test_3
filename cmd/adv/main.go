@@ -159,6 +159,7 @@ func main() {
 		}
 		log.Print("antiperekrut is disabled by ANTIPEREKRUT_ENABLED=true")
 	}
+	log.Printf("AdvServiceControlURLs: %q", cfg.AdvServiceControlURLs)
 
 	auctionService.StartPostgresRefreshTicker(ctx, db, cfg.CampaignRefreshInterval, func(err error) {
 		_ = botNotifier.SendTextMessageToBot(ctx, fmt.Sprintf("[ADV][SNAPSHOT_REFRESH_ERROR] %v", err))

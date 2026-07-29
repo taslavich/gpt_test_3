@@ -157,6 +157,7 @@ func main() {
 	if err != nil {
 		log.Fatalf("Cannot inspect ADV billing outbox: %v", err)
 	}
+	log.Printf("AdvServiceControlURLs: %q", cfg.AdvServiceControlURLs)
 	if len(pendingRecords) > 0 {
 		pendingErr := fmt.Errorf("ADV billing outbox contains %d pending events after startup", len(pendingRecords))
 		statuses := services.SetADVWorkStatus(ctx, []string(cfg.AdvServiceControlURLs), false)

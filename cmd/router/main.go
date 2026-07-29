@@ -286,6 +286,8 @@ func main() {
 		log.Print("antiperekrut startup reset is disabled by ANTIPEREKRUT_ENABLED=true")
 	}
 
+	log.Printf("AdvServiceControlURLs: %q", cfg.AdvServiceControlURLs)
+
 	go httpServer.RunHttpServer(ctx, router, cfg.HttpServer.Host, cfg.HttpServer.Port)
 
 	log.Printf("Server started on %s:%d", cfg.GrpcServer.Host, cfg.GrpcServer.Port)

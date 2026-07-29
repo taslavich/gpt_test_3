@@ -98,6 +98,8 @@ func main() {
 		log.Print("antiperekrut startup reset is disabled by ANTIPEREKRUT_ENABLED=true")
 	}
 
+	log.Printf("AdvServiceControlURLs: %q", cfg.AdvServiceControlURLs)
+
 	log.Printf("Server started on %s:%d", cfg.GrpcServer.Host, cfg.GrpcServer.Port)
 	if err := s.Serve(lis); err != nil {
 		errChan <- err
