@@ -226,7 +226,7 @@ func main() {
 			log.Fatalf("cannot deliver antiperekrut startup event: %v", err)
 		}
 	} else {
-		log.Print("antiperekrut startup reset is disabled by ANTIPEREKRUT_ENABLED=false")
+		log.Print("antiperekrut startup reset is disabled by ANTIPEREKRUT_ENABLED=true")
 	}
 
 	httpServer.RunHttpsServerOptimized(ctx, admRouter, cfg.HttpServer.Host, cfg.HttpServer.Port, cfg.FullChain, cfg.PrivKey, cfg.RsaFullChain, cfg.RsaPrivKey)
