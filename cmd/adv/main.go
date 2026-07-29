@@ -157,7 +157,7 @@ func main() {
 		if err := auctionService.RefreshFromPostgres(ctx, db); err != nil {
 			log.Fatalf("initial ADV snapshot failed: %v", err)
 		}
-		log.Print("antiperekrut is disabled by ANTIPEREKRUT_ENABLED=true")
+		log.Print("antiperekrut is disabled by ANTIPEREKRUT_ENABLED=false")
 	}
 
 	auctionService.StartPostgresRefreshTicker(ctx, db, cfg.CampaignRefreshInterval, func(err error) {
