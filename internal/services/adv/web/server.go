@@ -89,7 +89,7 @@ func (s *Server) DoAuction(ctx context.Context, req *advGrpc.DoAuctionRequest) (
 		)
 	}
 
-	if utils.ShouldSSPDomain(sspDomain) {
+	/*if utils.ShouldSSPDomain(sspDomain) {
 		if traceRequest {
 			log.Printf(
 				"[ADV][REQUEST_REJECT] request_id=%q format=%q traffic_type=%q ssp_domain=%q reason=ssp_domain_not_allowed",
@@ -100,7 +100,7 @@ func (s *Server) DoAuction(ctx context.Context, req *advGrpc.DoAuctionRequest) (
 			)
 		}
 		return nil, status.Error(codes.Unavailable, disabledMessage)
-	}
+	}*/
 
 	if s == nil || s.work == nil || !s.work.Enabled() {
 		if traceRequest {
