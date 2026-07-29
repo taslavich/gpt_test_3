@@ -247,14 +247,14 @@ Frontend синхронизирует креативы по ID: изменённ
   "user_id": "uuid",
   "transaction_time": "iso",
   "transaction_id": "string",
-  "payment_method": "usdt_trc20 | usdt_erc20 | ...",
+  "payment_method": "usdc_erc20 | usdt_trc20 | usdt_erc20",
   "bonus_amount": 25,
   "promocode_id": "uuid?",
   "transaction_hash": "string?",
   "deposit_amount": 100,
   "total_balance_increase": 125,
   "status": "draft | pending | approved | rejected | cancelled",
-  "currency": "usdt",
+  "currency": "usdt | usdc",
   "created_at": "iso",
   "updated_at": "iso"
 }

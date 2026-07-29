@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { PasswordInput } from "@/components/ui/password-input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -97,8 +98,9 @@ export function AuthDialog({ trigger, defaultTab = "login" }: AuthDialogProps) {
               </div>
               <div className="space-y-2">
                 <Label htmlFor="password-login">{t("auth.password")}</Label>
-                <Input id="password-login" type="password" placeholder="••••••••" className="bg-background border-border"
+                <PasswordInput id="password-login" placeholder="••••••••" className="bg-background border-border"
                   value={loginPassword} onChange={(e) => setLoginPassword(e.target.value)} required />
+                <p className="text-xs text-muted-foreground">{t("auth.passwordResetSupport")}</p>
               </div>
               <Button type="submit" className="w-full bg-primary hover:bg-primary/90" disabled={loading}>
                 {loading ? "..." : t("auth.loginBtn")}
@@ -119,12 +121,12 @@ export function AuthDialog({ trigger, defaultTab = "login" }: AuthDialogProps) {
               </div>
               <div className="space-y-2">
                 <Label htmlFor="password-register">{t("auth.password")}</Label>
-                <Input id="password-register" type="password" placeholder="••••••••" className="bg-background border-border"
+                <PasswordInput id="password-register" placeholder="••••••••" className="bg-background border-border"
                   value={regPassword} onChange={(e) => setRegPassword(e.target.value)} required />
               </div>
               <div className="space-y-2">
                 <Label htmlFor="password-confirm">{t("auth.confirmPassword")}</Label>
-                <Input id="password-confirm" type="password" placeholder="••••••••" className="bg-background border-border"
+                <PasswordInput id="password-confirm" placeholder="••••••••" className="bg-background border-border"
                   value={regConfirm} onChange={(e) => setRegConfirm(e.target.value)} required />
               </div>
               <div className="space-y-2">

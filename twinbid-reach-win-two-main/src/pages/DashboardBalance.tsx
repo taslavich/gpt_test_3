@@ -15,16 +15,12 @@ import { usePendingPayment } from "@/contexts/PendingPaymentContext";
 import { api } from "@/api";
 import { supabase } from "@/integrations/supabase/client";
 import type { ApiUserTransaction } from "@/api/types";
+import { getPaymentCurrency, PAYMENT_METHODS } from "@/lib/paymentMethods";
 
 const fmtMoney = (n: number | string | null | undefined) =>
   Number(n || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
 const amounts = [100, 250, 500, 1000, 5000];
-
-const usdtMethods = [
-  { id: "usdt_trc20", label: "USDT (TRC-20)", desc: "Tether on Tron" },
-  { id: "usdt_erc20", label: "USDT (ERC-20)", desc: "Tether on Ethereum" },
-];
 
 type TopupRequest = ApiUserTransaction;
 
@@ -168,7 +164,7 @@ export default function DashboardBalance() {
       deposit_amount: finalAmount,
       total_balance_increase: finalAmount + bonusAmount,
       status: "draft" as const,
-      currency: "usdt",
+      currency: getPaymentCurrency(selectedMethod),
     };
     let txId: string | null = null;
     try {
@@ -268,7 +264,7 @@ export default function DashboardBalance() {
             <div className="space-y-2">
               <Label>{t("balance.paymentMethod")}</Label>
               <div className="grid sm:grid-cols-2 gap-3">
-                {usdtMethods.map((m) => (
+                {PAYMENT_METHODS.map((m) => (
                   <button key={m.id} onClick={() => setSelectedMethod(m.id)}
                     className={cn("flex flex-col items-start gap-1 p-4 rounded-lg border transition-colors text-left",
                       selectedMethod === m.id ? "border-primary bg-primary/10" : "border-border bg-background hover:border-primary/50"
@@ -358,7 +354,7 @@ export default function DashboardBalance() {
                 </thead>
                 <tbody>
                   {visible.map((req) => {
-                    const methodLabel = usdtMethods.find(m => m.id === req.payment_method)?.label || req.payment_method;
+                    const methodLabel = PAYMENT_METHODS.find(m => m.id === req.payment_method)?.label || req.payment_method;
                     const st = statusMap[req.status] || statusMap.pending;
                     let promoLabel: string | null = null;
                     if (req.promocode_id) {

@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { PasswordInput } from "@/components/ui/password-input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -191,15 +192,15 @@ export default function DashboardSettings() {
               <div className="space-y-4">
                 <div className="space-y-2">
                   <Label>{t("settings.currentPassword")}</Label>
-                  <Input type="password" placeholder="••••••••" value={currentPassword} onChange={(e) => setCurrentPassword(e.target.value)} className="bg-background border-border max-w-sm" />
+                  <PasswordInput placeholder="••••••••" value={currentPassword} onChange={(e) => setCurrentPassword(e.target.value)} className="bg-background border-border" containerClassName="max-w-sm" />
                 </div>
                 <div className="space-y-2">
                   <Label>{t("settings.newPassword")}</Label>
-                  <Input type="password" placeholder="••••••••" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} className="bg-background border-border max-w-sm" />
+                  <PasswordInput placeholder="••••••••" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} className="bg-background border-border" containerClassName="max-w-sm" />
                 </div>
                 <div className="space-y-2">
                   <Label>{t("settings.repeatPassword")}</Label>
-                  <Input type="password" placeholder="••••••••" value={repeatPassword} onChange={(e) => setRepeatPassword(e.target.value)} className="bg-background border-border max-w-sm" />
+                  <PasswordInput placeholder="••••••••" value={repeatPassword} onChange={(e) => setRepeatPassword(e.target.value)} className="bg-background border-border" containerClassName="max-w-sm" />
                 </div>
                 <Button onClick={handleChangePassword} className="bg-primary hover:bg-primary/90">{t("settings.changePassword")}</Button>
               </div>

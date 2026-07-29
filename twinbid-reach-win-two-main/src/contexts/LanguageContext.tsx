@@ -113,6 +113,9 @@ const translations: Record<string, Record<"ru" | "en", string>> = {
   "auth.register": { ru: "Регистрация", en: "Sign up" },
   "auth.email": { ru: "Email", en: "Email" },
   "auth.password": { ru: "Пароль", en: "Password" },
+  "password.show": { ru: "Показать пароль", en: "Show password" },
+  "password.hide": { ru: "Скрыть пароль", en: "Hide password" },
+  "auth.passwordResetSupport": { ru: "Для сброса пароля свяжитесь с поддержкой.", en: "Contact support to reset your password." },
   "auth.name": { ru: "Имя (опционально)", en: "Name (optional)" },
   "auth.phone": { ru: "Телефон", en: "Phone" },
   "auth.telegram": { ru: "Telegram", en: "Telegram" },
@@ -214,7 +217,7 @@ const translations: Record<string, Record<"ru" | "en", string>> = {
 
   // Balance page
   "balance.title": { ru: "Баланс и платежи", en: "Balance & Payments" },
-  "balance.subtitle": { ru: "Пополнение USDT", en: "USDT top-up" },
+  "balance.subtitle": { ru: "Пополнение USDT и USDC", en: "USDT and USDC top-up" },
   "balance.current": { ru: "Текущий баланс", en: "Current balance" },
   "balance.spentToday": { ru: "Потрачено сегодня", en: "Spent today" },
   "balance.spentWeek": { ru: "Потрачено за неделю", en: "Spent this week" },

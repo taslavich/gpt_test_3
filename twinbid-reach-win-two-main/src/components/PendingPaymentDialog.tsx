@@ -11,13 +11,9 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useNotifications } from "@/contexts/NotificationContext";
 import { useProfile } from "@/contexts/ProfileContext";
 import { usePendingPayment } from "@/contexts/PendingPaymentContext";
+import { getPaymentCurrency, PAYMENT_METHODS } from "@/lib/paymentMethods";
 
 import { api } from "@/api";
-
-const usdtMethods = [
-  { id: "usdt_trc20", label: "USDT (TRC-20)", desc: "Tether on Tron", address: "TXkRh4pKz7w9Yb2mN5vQx8Gp3jL6fD0eW" },
-  { id: "usdt_erc20", label: "USDT (ERC-20)", desc: "Tether on Ethereum", address: "0x3F7a9c2B1d5E8f4A6C0b9D1e2F3a4B5c6D7e8F9a" },
-];
 
 // Track the persistent "payment not completed" notification across the whole app.
 let pendingNotifId: string | null = null;
@@ -174,7 +170,7 @@ export function PendingPaymentDialog() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [notifications]);
 
-  const currentMethod = usdtMethods.find(m => m.id === pendingPayment?.method);
+  const currentMethod = PAYMENT_METHODS.find(m => m.id === pendingPayment?.method);
 
   const copyAddress = (address: string) => {
     navigator.clipboard.writeText(address);
@@ -249,7 +245,7 @@ export function PendingPaymentDialog() {
           deposit_amount: depositAmount,
           total_balance_increase: totalBalanceIncrease,
           status: "pending" as const,
-          currency: "usdt",
+          currency: getPaymentCurrency(pendingPayment.method),
         };
 
         let created;

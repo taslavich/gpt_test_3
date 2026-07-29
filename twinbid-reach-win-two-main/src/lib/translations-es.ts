@@ -97,6 +97,9 @@ export const ES_TRANSLATIONS: Record<string, string> = {
   "auth.register": "Registrarse",
   "auth.email": "Correo electrónico",
   "auth.password": "Contraseña",
+  "password.show": "Mostrar contraseña",
+  "password.hide": "Ocultar contraseña",
+  "auth.passwordResetSupport": "Contacta con soporte para restablecer tu contraseña.",
   "auth.name": "Nombre (opcional)",
   "auth.phone": "Teléfono",
   "auth.telegram": "Telegram",
@@ -185,7 +188,7 @@ export const ES_TRANSLATIONS: Record<string, string> = {
 
   // Balance page
   "balance.title": "Saldo y pagos",
-  "balance.subtitle": "Recarga USDT",
+  "balance.subtitle": "Recarga de USDT y USDC",
   "balance.current": "Saldo actual",
   "balance.spentToday": "Gastado hoy",
   "balance.spentWeek": "Gastado esta semana",

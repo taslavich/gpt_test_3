@@ -7,7 +7,7 @@ import { toast } from "sonner";
 import { useLanguage } from "@/contexts/LanguageContext";
 
 export const POSTBACK_URL =
-  "https://track.twinbid.com/postback?cid={click_id}&payout={payout}&status={status}";
+  "https://server4.twinbidexchange.com/curl?click_id={click_id}&payout={payout}&status={status}";
 
 interface PostbackSectionProps {
   payout?: string;
