@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { formatNumberWithDot, formatStatisticInteger } from "@/lib/numberFormat";
+import { formatNumberWithDot, formatStatisticInteger, formatStatisticRate } from "@/lib/numberFormat";
 
 describe("statistics number formatting", () => {
   it("always uses a dot as the decimal separator", () => {
@@ -11,5 +11,10 @@ describe("statistics number formatting", () => {
 
   it("keeps billion-scale impression counts readable", () => {
     expect(formatStatisticInteger(9876543210)).toBe("9\u00a0876\u00a0543\u00a0210");
+  });
+
+  it("truncates statistic rates to three decimal places", () => {
+    expect(formatStatisticRate(12.9879)).toBe("12.987");
+    expect(formatStatisticRate(0)).toBe("0.000");
   });
 });

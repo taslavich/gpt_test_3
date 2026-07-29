@@ -26,7 +26,7 @@ import {
 } from "@/lib/statFilters";
 import { api } from "@/api";
 import type { StatsGroupBy, StatsFilterBy } from "@/api/types";
-import { formatNumberWithDot, formatStatisticInteger } from "@/lib/numberFormat";
+import { formatNumberWithDot, formatStatisticInteger, formatStatisticRate } from "@/lib/numberFormat";
 import { useIsMobile } from "@/hooks/use-mobile";
 
 type GroupBy = "dates" | "hours" | "browsers" | "siteid" | "devices" | "os" | "country";
@@ -545,14 +545,14 @@ export default function DashboardStatistics() {
       return /[",\n;]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
     };
     const cpmOf = (r: { spent: number; impressions: number }) => {
-      if (r.impressions === 0) return "0.00";
+      if (r.impressions === 0) return "0.000";
       const v = r.spent / r.impressions * 1000;
-      return (Math.floor(v * 100) / 100).toFixed(2);
+      return formatStatisticRate(v);
     };
     const cpcOf = (r: { spent: number; clicks: number }) => {
-      if (r.clicks === 0) return "0.00000";
+      if (r.clicks === 0) return "0.000";
       const v = r.spent / r.clicks;
-      return (Math.floor(v * 100000) / 100000).toFixed(5);
+      return formatStatisticRate(v);
     };
     const rows = sortedData.map(r => {
       const label = appliedGroupBy === "country" ? formatCountryLabel(r.label, lang) : r.label;
@@ -1030,8 +1030,7 @@ export default function DashboardStatistics() {
                           : null)
                         : null;
                     const fmtMoney = (n: number) => `$${formatNumberWithDot(n, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-                    const fmtMoney2 = (n: number) => `$${formatNumberWithDot(Math.floor(n * 100) / 100, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-                    const fmtMoney5 = (n: number) => `$${formatNumberWithDot(Math.floor(n * 100000) / 100000, { minimumFractionDigits: 5, maximumFractionDigits: 5 })}`;
+                    const fmtRate = (n: number) => `$${formatStatisticRate(n)}`;
                     const cpmOf = (r: { spent: number; impressions: number }) => r.impressions > 0 ? r.spent / r.impressions * 1000 : 0;
                     const cpcOf = (r: { spent: number; clicks: number }) => r.clicks > 0 ? r.spent / r.clicks : 0;
                     return (
@@ -1125,8 +1124,8 @@ export default function DashboardStatistics() {
                           {showClicks && <td className="py-2 px-2 whitespace-nowrap">{formatStatisticInteger(row.clicks)}</td>}
                           {showCtr && <td className="py-2 px-2 whitespace-nowrap">{row.impressions > 0 ? ((row.clicks / row.impressions) * 100).toFixed(2) : "0.00"}%</td>}
                           {showSpent && <td className={cn("py-2 px-2 whitespace-nowrap", firstCost === "spent" && trafficCols > 0 && sep)}>{fmtMoney(row.spent)}</td>}
-                          {showCpm && <td className={cn("py-2 px-2 whitespace-nowrap", firstCost === "cpm" && trafficCols > 0 && sep)}>{fmtMoney2(cpmOf(row))}</td>}
-                          {showCpc && <td className={cn("py-2 px-2 whitespace-nowrap", firstCost === "cpc" && trafficCols > 0 && sep)}>{fmtMoney5(cpcOf(row))}</td>}
+                          {showCpm && <td className={cn("py-2 px-2 whitespace-nowrap", firstCost === "cpm" && trafficCols > 0 && sep)}>{fmtRate(cpmOf(row))}</td>}
+                          {showCpc && <td className={cn("py-2 px-2 whitespace-nowrap", firstCost === "cpc" && trafficCols > 0 && sep)}>{fmtRate(cpcOf(row))}</td>}
                           {showConversions && (
                             <>
                               {showConversionsCol && <td className={cn("py-2 px-2 whitespace-nowrap", firstConv === "conversions" && (trafficCols + costCols) > 0 && sep)}>{formatStatisticInteger(row.conversions)}</td>}
@@ -1146,8 +1145,8 @@ export default function DashboardStatistics() {
                         {showClicks && <td className="py-2 px-2 whitespace-nowrap">{formatStatisticInteger(totals.clicks)}</td>}
                         {showCtr && <td className="py-2 px-2 whitespace-nowrap">{totals.impressions > 0 ? ((totals.clicks / totals.impressions) * 100).toFixed(2) : "0.00"}%</td>}
                         {showSpent && <td className={cn("py-2 px-2 whitespace-nowrap", firstCost === "spent" && trafficCols > 0 && sep)}>{fmtMoney(totals.spent)}</td>}
-                        {showCpm && <td className={cn("py-2 px-2 whitespace-nowrap", firstCost === "cpm" && trafficCols > 0 && sep)}>{fmtMoney2(cpmOf(totals))}</td>}
-                        {showCpc && <td className={cn("py-2 px-2 whitespace-nowrap", firstCost === "cpc" && trafficCols > 0 && sep)}>{fmtMoney5(cpcOf(totals))}</td>}
+                        {showCpm && <td className={cn("py-2 px-2 whitespace-nowrap", firstCost === "cpm" && trafficCols > 0 && sep)}>{fmtRate(cpmOf(totals))}</td>}
+                        {showCpc && <td className={cn("py-2 px-2 whitespace-nowrap", firstCost === "cpc" && trafficCols > 0 && sep)}>{fmtRate(cpcOf(totals))}</td>}
                         {showConversions && (() => {
                           const cr = totals.clicks > 0 ? ((totals.conversions / totals.clicks) * 100).toFixed(2) : "0.00";
                           const roiNum = totals.spent > 0 ? ((totals.confirmedIncome - totals.spent) / totals.spent) * 100 : 0;
