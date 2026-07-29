@@ -58,7 +58,7 @@ export interface ApiCampaign {
   browser: TargetingMap;
   site_id: TargetingMap;
   ip: TargetingMap;
-  quality_type: "usual" | "high_quality" | "ultra_high_quality";
+  quality_type: "usual" | "high" | "ultra";
   /** Fixed reward per conversion (USD). Used in statistics when the postback does not deliver a payout value. */
   payout?: number | null;
 }

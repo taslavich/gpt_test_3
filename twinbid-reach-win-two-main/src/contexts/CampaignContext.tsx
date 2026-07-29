@@ -59,7 +59,7 @@ export type TrafficType = ApiTraffic;
 
 type ApiQuality = ApiCampaign["quality_type"];
 const uiQualityToApi = (q: TrafficQuality): ApiQuality =>
-  q === "common" ? "usual" : q === "high" ? "high_quality" : "ultra_high_quality";
+  q === "common" ? "usual" : q;
 const apiQualityToUi = (q: ApiQuality | string | undefined): TrafficQuality => {
   if (q === "usual" || q === "common") return "common";
   if (q === "high_quality" || q === "high") return "high";

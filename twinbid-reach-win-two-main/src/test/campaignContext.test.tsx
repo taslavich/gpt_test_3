@@ -136,6 +136,33 @@ describe("CampaignProvider mutation requests", () => {
     );
   });
 
+  it("sends traffic quality names without the quality suffix", async () => {
+    const { result } = renderHook(() => useCampaigns(), { wrapper });
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    let id: string | undefined;
+    await act(async () => {
+      id = await result.current.addCampaign({
+        ...campaignDraft,
+        trafficQuality: "high",
+        creatives: [],
+      });
+    });
+
+    expect(apiMock.createCampaign).toHaveBeenCalledWith(
+      expect.objectContaining({ quality_type: "high" }),
+    );
+
+    await act(async () => {
+      await result.current.updateCampaign(id!, { trafficQuality: "ultra" });
+    });
+
+    expect(apiMock.patchCampaign).toHaveBeenCalledWith(
+      id,
+      expect.objectContaining({ quality_type: "ultra" }),
+    );
+  });
+
   it("keeps the technical banner size on status updates", async () => {
     apiMock.listCampaigns.mockResolvedValue({
       items: [{ ...apiCampaign, format_type: "banner", w: null, h: null }],
