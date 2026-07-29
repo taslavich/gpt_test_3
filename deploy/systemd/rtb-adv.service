@@ -11,6 +11,7 @@ Group=root
 
 WorkingDirectory=/root/RTB/gpt_test_3
 EnvironmentFile=/root/RTB/gpt_test_3/cmd/adv/adv.env
+EnvironmentFile=/etc/rtb/common.env
 ExecStart=/root/RTB/gpt_test_3/cmd/adv/adv
 
 Restart=always

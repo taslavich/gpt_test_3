@@ -10,6 +10,7 @@ Group=root
 WorkingDirectory=/root/RTB/gpt_test_3
 
 EnvironmentFile=/root/RTB/gpt_test_3/cmd/router/router.env
+EnvironmentFile=/etc/rtb/common.env
 Environment=ROUTER_INSTANCE=%i
 Environment=HTTP_PORT=806%i
 Environment=GRPC_PORT=805%i

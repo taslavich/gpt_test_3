@@ -9,6 +9,7 @@ RestartSec=1
 StartLimitInterval=0
 
 EnvironmentFile=/root/RTB/gpt_test_3/cmd/router/router.env
+EnvironmentFile=/etc/rtb/common.env
 
 # FD / процессы
 LimitNOFILE=1048576

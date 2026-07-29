@@ -15,6 +15,7 @@ StartLimitInterval=0
 
 # Environment файл из проекта
 EnvironmentFile=/root/RTB/gpt_test_3/cmd/kafka-loader/kafka-loader.env
+EnvironmentFile=/etc/rtb/common.env
 
 # Logging
 StandardOutput=append:/var/log/rtb/kafka-loader.log
