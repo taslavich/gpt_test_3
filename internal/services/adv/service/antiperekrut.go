@@ -124,6 +124,23 @@ func (m *AntiPerekrutManager) State() *AntiPerekrutState {
 	return m.state.Load()
 }
 
+// TrafficPercentMap returns a detached snapshot of the current campaign traffic
+// limits converted from the internal [0, TrafficLimitFull] scale to percent.
+func (m *AntiPerekrutManager) TrafficPercentMap() map[string]float64 {
+	result := make(map[string]float64)
+	state := m.State()
+	if state == nil {
+		return result
+	}
+	for campaignID, limit := range state.TrafficLimit {
+		if limit > TrafficLimitFull {
+			limit = TrafficLimitFull
+		}
+		result[campaignID] = float64(limit) * 100 / float64(TrafficLimitFull)
+	}
+	return result
+}
+
 func (m *AntiPerekrutManager) Start(ctx context.Context) {
 	if m == nil {
 		return

@@ -404,3 +404,36 @@ func TestNormalizeActiveIntervalsMergesTouchingRanges(t *testing.T) {
 		t.Fatalf("touching ranges were not merged: %#v", got)
 	}
 }
+
+func TestTrafficPercentMapReturnsDetachedPercentSnapshot(t *testing.T) {
+	manager := &AntiPerekrutManager{}
+	manager.state.Store(&AntiPerekrutState{
+		TrafficLimit: map[string]uint32{
+			"campaign-initial": TrafficLimitInitial,
+			"campaign-grown":   900,
+			"campaign-full":    TrafficLimitFull,
+			"campaign-clamped": TrafficLimitFull + 1,
+		},
+	})
+
+	got := manager.TrafficPercentMap()
+	want := map[string]float64{
+		"campaign-initial": 0.01,
+		"campaign-grown":   0.09,
+		"campaign-full":    100,
+		"campaign-clamped": 100,
+	}
+	if len(got) != len(want) {
+		t.Fatalf("map length=%d want=%d: %#v", len(got), len(want), got)
+	}
+	for campaignID, wantPercent := range want {
+		if gotPercent := got[campaignID]; gotPercent != wantPercent {
+			t.Fatalf("campaign %q percent=%v want=%v", campaignID, gotPercent, wantPercent)
+		}
+	}
+
+	got["campaign-initial"] = 77
+	if statePercent := manager.State().TrafficLimit["campaign-initial"]; statePercent != TrafficLimitInitial {
+		t.Fatalf("returned map mutated state: limit=%d", statePercent)
+	}
+}

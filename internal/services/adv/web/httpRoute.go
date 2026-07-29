@@ -23,11 +23,12 @@ const (
 	PutSspGeoDspPercentsMapURL      = "/filter/ssp_geo_dsp_percents_map"
 	GetDebugSspGeoDspPercentsMapURL = "/filter/debug_ssp_geo_dsp_percents_map"
 
-	GetQualityMapURL       = "/filter/quality_map"
-	PutQualityMapURL       = "/filter/quality_map"
-	GetDebugQualityMapURL  = "/filter/debug_quality_map"
-	WorkStatusURL          = "/work_status"
-	AntiPerekrutRestartURL = "/internal/antiperekrut/restart"
+	GetQualityMapURL                 = "/filter/quality_map"
+	PutQualityMapURL                 = "/filter/quality_map"
+	GetDebugQualityMapURL            = "/filter/debug_quality_map"
+	WorkStatusURL                    = "/work_status"
+	AntiPerekrutRestartURL           = "/internal/antiperekrut/restart"
+	GetAntiPerekrutTrafficPercentURL = "/internal/antiperekrut/traffic-percent"
 )
 
 // Backward-compatible aliases for callers that used the previous Go constant spelling.
@@ -212,6 +213,9 @@ func InitHttpRoutes(httpRouter *chi.Mux, percentStore *auction.PercentStore, qua
 
 	if len(antiConfig) > 0 && antiConfig[0].Manager != nil {
 		cfg := antiConfig[0]
+		httpRouter.Get(GetAntiPerekrutTrafficPercentURL, func(w http.ResponseWriter, _ *http.Request) {
+			writeJSON(w, http.StatusOK, cfg.Manager.TrafficPercentMap())
+		})
 		httpRouter.Post(AntiPerekrutRestartURL, func(w http.ResponseWriter, r *http.Request) {
 			defer r.Body.Close()
 			decoder := json.NewDecoder(http.MaxBytesReader(w, r.Body, 64<<10))
