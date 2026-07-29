@@ -95,7 +95,7 @@ func main() {
 			log.Fatalf("cannot deliver antiperekrut startup event: %v", err)
 		}
 	} else {
-		log.Print("antiperekrut startup reset is disabled by ANTIPEREKRUT_ENABLED=false")
+		log.Print("antiperekrut startup reset is disabled by ANTIPEREKRUT_ENABLED=true")
 	}
 
 	log.Printf("Server started on %s:%d", cfg.GrpcServer.Host, cfg.GrpcServer.Port)
