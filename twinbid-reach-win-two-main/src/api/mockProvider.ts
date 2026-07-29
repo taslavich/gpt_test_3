@@ -164,14 +164,6 @@ export const mockProvider = {
     saveState();
     return ok(state.campaigns[i]);
   },
-  async deleteCampaign(id: string): Promise<ApiEnvelope<void>> {
-    state.campaigns = state.campaigns.filter(c => c.campaign_id !== id);
-    state.creatives = state.creatives.filter(cr => cr.campaign_id !== id);
-    state.creativeImages = state.creativeImages.filter(image => image.campaign_id !== id);
-    saveState();
-    return ok(undefined as unknown as void);
-  },
-
   // -- creatives ----------------------------------------------------------
   async readCreatives(campaignId: string): Promise<ApiEnvelope<ApiCreative[]>> {
     return ok(state.creatives.filter(c => c.campaign_id === campaignId));

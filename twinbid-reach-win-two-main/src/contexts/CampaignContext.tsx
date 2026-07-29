@@ -459,7 +459,9 @@ export function CampaignProvider({ children }: { children: ReactNode }) {
       const res = await api.listCampaigns();
       // Backend may return `items: null` when the user has no campaigns yet.
       // Treat null/undefined as an empty list instead of crashing on .map.
-      const items: ApiCampaign[] = Array.isArray(res?.items) ? res.items : [];
+      const items: ApiCampaign[] = Array.isArray(res?.items)
+        ? res.items.filter(item => item.status !== "deleted")
+        : [];
       // Campaign lists do not need creative bodies. Preserve already loaded
       // creatives, but never fan out one GET /creatives per campaign.
       setCampaigns(() => {
@@ -605,7 +607,7 @@ export function CampaignProvider({ children }: { children: ReactNode }) {
 
   const deleteCampaign = useCallback(async (id: string) => {
     if (!user) throw new Error("Not authenticated");
-    await api.deleteCampaign(id);
+    await api.patchCampaign(id, { status: "deleted" });
     creativeCache.current.delete(id);
     setCampaigns(prev => prev.filter(campaign => campaign.id !== id));
   }, [user]);

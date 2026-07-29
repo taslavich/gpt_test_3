@@ -81,7 +81,7 @@ Resp: `User`.
   "format_type": "banner | popunder | native | push",
   "brand_name": "string?",
   "h": 999, "w": 999,
-  "status": "active | paused | draft | completed | moderation",
+  "status": "active | paused | draft | completed | moderation | no_budget | waiting | deleted",
   "traffic_type": "mainstream | adult | mixed",
   "vertical": ["Dating", "Nutra"],
   "pricing_model": "cpm | cpc",
@@ -114,8 +114,11 @@ Resp: `User`.
 ### GET `/api/campaigns/:id` → `Campaign`
 ### POST `/api/campaigns` (без `cum_done_dollars`, без `campaign_id`) → `Campaign`
 ### PATCH `/api/campaigns/:id` → `Campaign`
-### DELETE `/api/campaigns/:id` → 204
 ### POST `/api/campaigns/:id/status` body `{ status }` → `Campaign`
+
+Удаление кампании выполняется мягко через
+`PATCH /api/campaigns/:id` с телом `{ "status": "deleted" }`.
+Кампании со статусом `deleted`, полученные в списке, фронтенд не отображает.
 
 ---
 

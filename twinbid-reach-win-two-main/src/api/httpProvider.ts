@@ -76,7 +76,6 @@ export const httpProvider: RawApiProvider = {
   getCampaign:     (id)    => http<ApiEnvelope<ApiCampaign>>(`/api/campaigns/${id}`),
   createCampaign:  (body)  => http<ApiEnvelope<ApiCampaign>>("/api/campaigns", { method: "POST", body }),
   patchCampaign:   (id,p)  => http<ApiEnvelope<ApiCampaign>>(`/api/campaigns/${id}`, { method: "PATCH", body: p }),
-  deleteCampaign:  (id)    => http<ApiEnvelope<void>>(`/api/campaigns/${id}`, { method: "DELETE" }),
 
   // creatives
   readCreatives:   (cid)         => http<ApiEnvelope<ApiCreative[]>>(`/api/campaigns/${cid}/creatives`),

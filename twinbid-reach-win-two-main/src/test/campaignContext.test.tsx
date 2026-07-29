@@ -12,7 +12,6 @@ const apiMock = vi.hoisted(() => ({
   patchCampaign: vi.fn(),
   patchCreative: vi.fn(),
   deleteCreative: vi.fn(),
-  deleteCampaign: vi.fn(),
 }));
 const authMock = vi.hoisted(() => ({ user: { id: "user-1" } }));
 
@@ -172,6 +171,35 @@ describe("CampaignProvider mutation requests", () => {
     expect(apiMock.listCampaigns).toHaveBeenCalledTimes(1);
     expect(apiMock.readCreatives).not.toHaveBeenCalled();
     expect(result.current.campaigns.every(campaign => campaign.creatives.length === 0)).toBe(true);
+  });
+
+  it("does not show campaigns returned with deleted status", async () => {
+    apiMock.listCampaigns.mockResolvedValue({
+      items: [
+        apiCampaign,
+        { ...apiCampaign, campaign_id: "campaign-deleted", status: "deleted" },
+      ],
+      total: 2,
+    });
+
+    const { result } = renderHook(() => useCampaigns(), { wrapper });
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    expect(result.current.campaigns.map(campaign => campaign.id)).toEqual(["campaign-1"]);
+  });
+
+  it("soft-deletes a campaign by patching its status and hides it locally", async () => {
+    apiMock.listCampaigns.mockResolvedValue({ items: [apiCampaign], total: 1 });
+
+    const { result } = renderHook(() => useCampaigns(), { wrapper });
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    await act(async () => {
+      await result.current.deleteCampaign("campaign-1");
+    });
+
+    expect(apiMock.patchCampaign).toHaveBeenCalledWith("campaign-1", { status: "deleted" });
+    expect(result.current.campaigns).toHaveLength(0);
   });
 
   it("loads creatives only on demand and deduplicates concurrent reads", async () => {
