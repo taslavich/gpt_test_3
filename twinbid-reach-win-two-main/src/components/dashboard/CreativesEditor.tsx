@@ -1,4 +1,4 @@
-import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "react";
+import { forwardRef, useCallback, useEffect, useImperativeHandle, useLayoutEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -60,6 +60,12 @@ const URL_MACROS = [
   "campaign_id", "browser", "device", "device_os", "ip_address",
 ] as const;
 
+function appendUrlMacro(url: string, macro: string) {
+  if (url.includes(`{${macro}}`)) return url;
+  const token = `${macro}={${macro}}`;
+  return `${url}${url.includes("?") ? "&" : "?"}${token}`;
+}
+
 function getHighlightedUrlSegments(url: string): Array<{ text: string; highlighted: boolean }> {
   const segments: Array<{ text: string; highlighted: boolean }> = [];
   const pattern = new RegExp(`([?&])([^?&=#]+)(=\\{(${URL_MACROS.join("|")})\\})`, "g");
@@ -90,7 +96,20 @@ function MacroUrlInput({
   hasError: boolean;
 }) {
   const [scrollLeft, setScrollLeft] = useState(0);
+  const inputRef = useRef<HTMLInputElement | null>(null);
+  const pendingCaretRef = useRef<number | null>(null);
   const segments = getHighlightedUrlSegments(value);
+
+  const restorePendingCaret = useCallback(() => {
+    const caret = pendingCaretRef.current;
+    if (caret === null || !inputRef.current) return;
+    inputRef.current.setSelectionRange(caret, caret);
+    pendingCaretRef.current = null;
+  }, []);
+
+  useLayoutEffect(() => {
+    restorePendingCaret();
+  }, [value, restorePendingCaret]);
 
   return (
     <div className="relative rounded-md bg-background">
@@ -112,8 +131,25 @@ function MacroUrlInput({
         </div>
       )}
       <Input
+        ref={inputRef}
         value={value}
-        onChange={event => onChange(event.target.value)}
+        onChange={event => {
+          const rawValue = event.target.value;
+          const nextValue = rawValue.trim() && !rawValue.includes("{click_id}")
+            ? appendUrlMacro(rawValue, "click_id")
+            : rawValue;
+          if (nextValue !== rawValue) {
+            pendingCaretRef.current = event.target.selectionStart ?? rawValue.length;
+          }
+          onChange(nextValue);
+          if (nextValue !== rawValue) {
+            if (typeof window.requestAnimationFrame === "function") {
+              window.requestAnimationFrame(restorePendingCaret);
+            } else {
+              window.setTimeout(restorePendingCaret, 0);
+            }
+          }
+        }}
         onBlur={event => onBlur(event.target.value)}
         onScroll={event => setScrollLeft(event.currentTarget.scrollLeft)}
         placeholder={placeholder}
@@ -431,16 +467,9 @@ export const CreativesEditor = forwardRef<CreativesEditorHandle, CreativesEditor
     }
   };
 
-  const appendMacro = (url: string, macro: string) => {
-    if (url.includes(`{${macro}}`)) return url;
-    const token = `${macro}={${macro}}`;
-    const separator = url.includes("?") ? "&" : "?";
-    return url + separator + token;
-  };
-
   const toggleMacro = (creativeId: string, macro: string, currentUrl: string) => {
     if (macro === "click_id") {
-      updateCreative(creativeId, { url: appendMacro(currentUrl, macro) });
+      updateCreative(creativeId, { url: appendUrlMacro(currentUrl, macro) });
       return;
     }
     if (currentUrl.includes(`{${macro}}`)) {
@@ -452,14 +481,14 @@ export const CreativesEditor = forwardRef<CreativesEditorHandle, CreativesEditor
       }
       updateCreative(creativeId, { url: newUrl });
     } else {
-      updateCreative(creativeId, { url: appendMacro(currentUrl, macro) });
+      updateCreative(creativeId, { url: appendUrlMacro(currentUrl, macro) });
     }
   };
 
   const ensureClickId = (creativeId: string, url: string) => {
     if (!url.trim()) return;
     if (!url.includes("{click_id}")) {
-      updateCreative(creativeId, { url: appendMacro(url, "click_id") });
+      updateCreative(creativeId, { url: appendUrlMacro(url, "click_id") });
     }
   };
 

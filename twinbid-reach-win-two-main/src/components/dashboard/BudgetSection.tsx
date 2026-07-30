@@ -247,6 +247,7 @@ export function BudgetSection({
                 mode="single"
                 selected={startDateObj}
                 onSelect={(d) => d && setStartDate(format(d, "yyyy-MM-dd"))}
+                disabled={(date) => date < today}
                 className="p-3 pointer-events-auto"
               />
             </PopoverContent>
