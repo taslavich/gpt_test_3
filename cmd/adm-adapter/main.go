@@ -10,6 +10,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/redis/go-redis/v9"
 	"gitlab.com/twinbid-exchange/RTB-exchange/internal/config"
+	"gitlab.com/twinbid-exchange/RTB-exchange/internal/constants"
 	utils "gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/utils_grpc"
 	httpServer "gitlab.com/twinbid-exchange/RTB-exchange/internal/http"
 	services "gitlab.com/twinbid-exchange/RTB-exchange/internal/services"
@@ -59,14 +60,16 @@ func main() {
 	}()
 
 	if err := redis_service.PingClients(ctx, "Imp", redisClients.Impressions); err != nil {
-		log.Fatalf("Failed to connect to Imp Redis shards: %v", err)
+		log.Printf("⚠️ Imp Redis shards unavailable at startup; starting degraded: %v", err)
+	} else {
+		log.Println("✅ Connected to Imp Redis shards")
 	}
-	log.Println("✅ Connected to Imp Redis shards")
 
 	if err := redis_service.PingClients(ctx, "Clicks", redisClients.Clicks); err != nil {
-		log.Fatalf("Failed to connect to Clicks Redis shards: %v", err)
+		log.Printf("⚠️ Clicks Redis shards unavailable at startup; ADM callbacks will use the durable outbox: %v", err)
+	} else {
+		log.Println("✅ Connected to Clicks Redis shards")
 	}
-	log.Println("✅ Connected to Clicks Redis shards")
 
 	redisAdmClient, err := redis_service.NewRedisClient(
 		cfg.RedisUUIDAddr,
@@ -101,36 +104,37 @@ func main() {
 	}()
 
 	if err := redisAdmClient.Ping(ctx).Err(); err != nil {
-		log.Fatalf("Failed to connect to ADM Redis: %v", err)
+		log.Printf("⚠️ DSP ADM Redis unavailable at startup; winner resolution will be retried through the durable outbox: %v", err)
+	} else {
+		log.Println("✅ Connected to DSP ADM Redis")
 	}
 	if err := redisBurlClient.Ping(ctx).Err(); err != nil {
-		log.Fatalf("Failed to connect to BURL Redis: %v", err)
+		log.Printf("⚠️ BURL Redis unavailable at startup; starting degraded: %v", err)
+	} else {
+		log.Println("✅ Connected to BURL Redis")
 	}
-	log.Println("✅ Connected to ADM/BURL Redis")
 
 	advRuntimeRedis := redis.NewClient(&redis.Options{
 		Addr:     cfg.RedisADVAddr,
 		Password: cfg.RedisPassword,
 		DB:       cfg.RedisDBAdvRuntime,
 	})
-	if err != nil {
-		log.Fatalf("Cannot init ADV runtime Redis: %v", err)
-	}
 	defer advRuntimeRedis.Close()
 	advWinnerRedis := redis.NewClient(&redis.Options{
 		Addr:     cfg.RedisADVAddr,
 		Password: cfg.RedisPassword,
 		DB:       cfg.RedisDBAdvWinner,
 	})
-	if err != nil {
-		log.Fatalf("Cannot init ADV winner Redis: %v", err)
-	}
 	defer advWinnerRedis.Close()
 	if err := advRuntimeRedis.Ping(ctx).Err(); err != nil {
-		log.Fatalf("ADV runtime Redis unavailable: %v", err)
+		log.Printf("⚠️ ADV runtime Redis unavailable at startup; billing will be retried through the durable outbox: %v", err)
+	} else {
+		log.Println("✅ Connected to ADV runtime Redis")
 	}
 	if err := advWinnerRedis.Ping(ctx).Err(); err != nil {
-		log.Fatalf("ADV winner Redis unavailable: %v", err)
+		log.Printf("⚠️ ADV winner Redis unavailable at startup; winner resolution will be retried through the durable outbox: %v", err)
+	} else {
+		log.Println("✅ Connected to ADV winner Redis")
 	}
 
 	advOutbox, err := outbox.Open(cfg.AdvOutboxPath)
@@ -158,8 +162,9 @@ func main() {
 		log.Fatalf("Cannot inspect ADV billing outbox: %v", err)
 	}
 	log.Printf("AdvServiceControlURLs: %q", cfg.AdvServiceControlURLs)
-	if len(pendingRecords) > 0 {
-		pendingErr := fmt.Errorf("ADV billing outbox contains %d pending events after startup", len(pendingRecords))
+	pendingADVRecords := countPendingADVBillingRecords(pendingRecords)
+	if pendingADVRecords > 0 {
+		pendingErr := fmt.Errorf("ADV billing outbox contains %d billing-relevant pending events after startup", pendingADVRecords)
 		statuses := services.SetADVWorkStatus(ctx, []string(cfg.AdvServiceControlURLs), false)
 		redisWriteErrorMonitor.RecordForURL(pendingErr, cfg.SspAdapterWorkStatusURL)
 		message := fmt.Sprintf("ADV remains disabled while durable billing outbox is pending: error=%v adv_statuses=%v", pendingErr, statuses)
@@ -168,7 +173,17 @@ func main() {
 			log.Printf("ADV outbox startup notification failed: %v", notifyErr)
 		}
 	}
-	billing.NewWorker(advBillingStore, advOutbox, cfg.AdvOutboxRetryInterval, cfg.AdvOutboxMaxBackoff).Start(ctx)
+	billing.NewWorker(
+		advBillingStore,
+		advOutbox,
+		cfg.AdvOutboxRetryInterval,
+		cfg.AdvOutboxMaxBackoff,
+		billing.ADMRetryConfig{
+			DSPWinnerRedis: redisAdmClient,
+			ClickRedis:     redisClients.Clicks,
+			ClickSet:       cfg.RedisSetClicks,
+		},
+	).Start(ctx)
 
 	admRouter := httpServer.InitHttpRouter(chi.NewRouter())
 	sppAdapterWeb.InitHttpsRoutes(
@@ -231,6 +246,22 @@ func main() {
 	}
 
 	httpServer.RunHttpsServerOptimized(ctx, admRouter, cfg.HttpServer.Host, cfg.HttpServer.Port, cfg.FullChain, cfg.PrivKey, cfg.RsaFullChain, cfg.RsaPrivKey)
+}
+
+func countPendingADVBillingRecords(records []outbox.Record) int {
+	count := 0
+	for _, record := range records {
+		switch outbox.NormalizeKind(record.Kind) {
+		case outbox.KindBilling:
+			count++
+		case outbox.KindADM:
+			winnerType := outbox.NormalizeWinnerType(record.WinnerType)
+			if winnerType == outbox.WinnerADV || (winnerType == outbox.WinnerUnknown && strings.EqualFold(record.Format, constants.IPP)) {
+				count++
+			}
+		}
+	}
+	return count
 }
 
 func validateConfig(cfg *config.AdmAdapterConfig) error {

@@ -346,7 +346,7 @@ func TestBuildBidBannerImageAppendsTrackerMacrosOnlyToAnchorHref(t *testing.T) {
 		ID:             "creative-1",
 		ADMURL:         adm,
 		BannerType:     "img",
-		TrackersMacros: map[string]bool{"site_id": true},
+		TrackersMacros: map[string]string{"site_id": "site_id"},
 		W:              300,
 		H:              250,
 	}
@@ -395,7 +395,7 @@ func TestBuildBidBannerIframeDoesNotAppendTrackerMacros(t *testing.T) {
 		ID:             "creative-1",
 		ADMURL:         adm,
 		BannerType:     "iframe",
-		TrackersMacros: map[string]bool{"site_id": true},
+		TrackersMacros: map[string]string{"site_id": "site_id"},
 		W:              300,
 		H:              250,
 	}
@@ -412,15 +412,15 @@ func TestBuildBidBannerIframeDoesNotAppendTrackerMacros(t *testing.T) {
 func TestTrackerMacrosUnknownAndEncoded(t *testing.T) {
 	siteID := "site id&1"
 	req := &ortb.BidRequest{Site: &ortb.Site{Id: &siteID}}
-	result := appendTrackerMacros("https://example.test/a?existing=1", map[string]bool{"site_id": true, "browser": true}, "c", "cr", req)
+	result := appendTrackerMacros("https://example.test/a?existing=1", map[string]string{"site_id": "source", "browser": "browser_name"}, "c", "cr", req)
 	parsed, err := url.Parse(result)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if parsed.Query().Get("site_id") != siteID {
+	if parsed.Query().Get("source") != siteID {
 		t.Fatalf("site_id not encoded/decoded correctly: %s", result)
 	}
-	if parsed.Query().Get("browser") != unknownTrackerValue {
+	if parsed.Query().Get("browser_name") != unknownTrackerValue {
 		t.Fatalf("missing browser should be unknown")
 	}
 	if parsed.Query().Get("existing") != "1" {
@@ -473,7 +473,7 @@ func TestPercentMapExplicitZeroOverridesDefault(t *testing.T) {
 func TestSnapshotDeepClone(t *testing.T) {
 	filter := filterV2.NewFilters(true, true, []string{"SE"})
 	now := time.Date(2026, 7, 13, 12, 0, 0, 0, time.UTC)
-	creative := &Creative{ID: "cr", CampaignID: "c", ADMURL: "https://example.test/creative", W: 300, H: 250, TrackersMacros: map[string]bool{"device": true}}
+	creative := &Creative{ID: "cr", CampaignID: "c", ADMURL: "https://example.test/creative", W: 300, H: 250, TrackersMacros: map[string]string{"device": "device_name"}}
 	campaign := &Campaign{
 		ID: "c", UserID: "u", Status: CampaignStatusActive, PricingModel: PricingModelCPM,
 		Format: "BAN", TrafficType: TrafficMainstream, QualitySegment: "usual",
@@ -488,8 +488,8 @@ func TestSnapshotDeepClone(t *testing.T) {
 	source.UserGoals["u"] = 0
 	source.UserAntiPerekrutBlocked["u"] = false
 	filter.Objects["SE"] = false
-	creative.TrackersMacros["device"] = false
-	if clone.UserGoals["u"] != 10 || !clone.UserAntiPerekrutBlocked["u"] || !clone.Campaigns[0].CountryFilter.Objects["SE"] || !clone.Campaigns[0].Creatives[0].TrackersMacros["device"] {
+	creative.TrackersMacros["device"] = "changed"
+	if clone.UserGoals["u"] != 10 || !clone.UserAntiPerekrutBlocked["u"] || !clone.Campaigns[0].CountryFilter.Objects["SE"] || clone.Campaigns[0].Creatives[0].TrackersMacros["device"] != "device_name" {
 		t.Fatal("published snapshot shares mutable state")
 	}
 }
@@ -793,5 +793,54 @@ func nativeTestImp(raw string) *ortb.Imp {
 func TestNormalizePushCampaignFormatToIPP(t *testing.T) {
 	if got := normalizeFormat("push"); got != constants.IPP {
 		t.Fatalf("push format normalized to %q want %q", got, constants.IPP)
+	}
+}
+
+func TestTrackerMacrosUseConfiguredParameterNamesAndSkipClickID(t *testing.T) {
+	siteID := "source-42"
+	req := &ortb.BidRequest{Site: &ortb.Site{Id: &siteID}}
+	result := appendTrackerMacros(
+		"https://example.test/path?source=old&subid=placeholder",
+		map[string]string{
+			"site_id":  "source",
+			"click_id": "subid",
+		},
+		"campaign",
+		"creative",
+		req,
+	)
+	parsed, err := url.Parse(result)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := parsed.Query().Get("source"); got != siteID {
+		t.Fatalf("configured site_id parameter got %q want %q", got, siteID)
+	}
+	if got := parsed.Query().Get("subid"); got != "placeholder" {
+		t.Fatalf("click_id must not be filled during auction, got %q", got)
+	}
+}
+
+func TestParseTrackersMacrosJSONBSupportsLegacyBooleans(t *testing.T) {
+	got, err := parseTrackersMacrosJSONB([]byte(`{
+		"site_id": true,
+		"country_code": false,
+		"click_id": "subid"
+	}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got["site_id"] != "site_id" || got["click_id"] != "subid" {
+		t.Fatalf("unexpected macros: %#v", got)
+	}
+	if _, exists := got["country_code"]; exists {
+		t.Fatalf("disabled legacy macro must be omitted: %#v", got)
+	}
+}
+
+func TestParseTrackersMacrosJSONBRejectsDuplicateParameterNames(t *testing.T) {
+	_, err := parseTrackersMacrosJSONB([]byte(`{"site_id":"subid","click_id":"subid"}`))
+	if err == nil {
+		t.Fatal("duplicate parameter names must be rejected")
 	}
 }

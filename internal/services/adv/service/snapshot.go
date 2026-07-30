@@ -531,13 +531,61 @@ func parseFiniteNonNegative(value string) (float64, error) {
 	return parsed, nil
 }
 
-func parseTrackersMacrosJSONB(raw []byte) (map[string]bool, error) {
+func parseTrackersMacrosJSONB(raw []byte) (map[string]string, error) {
 	if len(raw) == 0 || string(raw) == "null" || string(raw) == "{}" {
 		return nil, nil
 	}
-	var result map[string]bool
-	if err := json.Unmarshal(raw, &result); err != nil {
+	var values map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &values); err != nil {
 		return nil, err
+	}
+	result := make(map[string]string, len(values))
+	seenParameterNames := make(map[string]string, len(values))
+	add := func(key, parameterName string) error {
+		key = strings.TrimSpace(key)
+		parameterName = strings.TrimSpace(parameterName)
+		if key != "click_id" && !supportedTrackerMacro(key) {
+			return fmt.Errorf("unsupported tracker macro %q", key)
+		}
+		if !validTrackerParameterName(parameterName) {
+			return fmt.Errorf("tracker macro %q has invalid parameter name %q", key, parameterName)
+		}
+		if previousKey, duplicate := seenParameterNames[parameterName]; duplicate && previousKey != key {
+			return fmt.Errorf("tracker macros %q and %q use duplicate parameter name %q", previousKey, key, parameterName)
+		}
+		seenParameterNames[parameterName] = key
+		result[key] = parameterName
+		return nil
+	}
+	for key, rawValue := range values {
+		var parameterName string
+		if err := json.Unmarshal(rawValue, &parameterName); err == nil {
+			if strings.TrimSpace(parameterName) != "" {
+				if err := add(key, parameterName); err != nil {
+					return nil, err
+				}
+			}
+			continue
+		}
+		var enabled bool
+		if err := json.Unmarshal(rawValue, &enabled); err == nil {
+			if enabled {
+				if err := add(key, key); err != nil {
+					return nil, err
+				}
+			}
+			continue
+		}
+		var numeric int
+		if err := json.Unmarshal(rawValue, &numeric); err == nil {
+			if numeric != 0 {
+				if err := add(key, key); err != nil {
+					return nil, err
+				}
+			}
+			continue
+		}
+		return nil, fmt.Errorf("tracker macro %q has unsupported value %s", key, string(rawValue))
 	}
 	return result, nil
 }

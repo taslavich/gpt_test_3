@@ -73,7 +73,7 @@ type Creative struct {
 	ImageURL       string
 	FileFormat     string
 	BannerType     string
-	TrackersMacros map[string]bool
+	TrackersMacros map[string]string
 	W              int
 	H              int
 	Name           string
@@ -345,7 +345,7 @@ func cloneAndValidateSnapshot(src *Snapshot) (*Snapshot, error) {
 				return nil, fmt.Errorf("campaign %s has duplicate creative %s", clone.ID, cc.ID)
 			}
 			creativeIDs[cc.ID] = struct{}{}
-			cc.TrackersMacros = cloneBoolMap(creative.TrackersMacros)
+			cc.TrackersMacros = cloneStringMap(creative.TrackersMacros)
 			clone.Creatives = append(clone.Creatives, &cc)
 		}
 		out.Campaigns = append(out.Campaigns, &clone)
@@ -377,6 +377,17 @@ func cloneBoolMap(src map[string]bool) map[string]bool {
 		return nil
 	}
 	out := make(map[string]bool, len(src))
+	for key, value := range src {
+		out[key] = value
+	}
+	return out
+}
+
+func cloneStringMap(src map[string]string) map[string]string {
+	if len(src) == 0 {
+		return nil
+	}
+	out := make(map[string]string, len(src))
 	for key, value := range src {
 		out[key] = value
 	}
@@ -704,10 +715,11 @@ func (s *AuctionService) Auction(ctx context.Context, req *ortb.BidRequest, now 
 			}
 
 			winner := WinnerRecord{
-				Price:      cand.chargePrice,
-				UserID:     cand.campaign.UserID,
-				CampaignID: cand.campaign.ID,
-				Format:     requestedFormat,
+				Price:        cand.chargePrice,
+				UserID:       cand.campaign.UserID,
+				CampaignID:   cand.campaign.ID,
+				Format:       requestedFormat,
+				ClickIDParam: strings.TrimSpace(creative.TrackersMacros["click_id"]),
 			}
 			if err := s.winners.Put(ctx, winnerUUID, winner); err != nil {
 				attemptResults[campaignID] = "winner_redis_write_failed"
@@ -2188,7 +2200,7 @@ var bannerAnchorHrefPattern = regexp.MustCompile(`(?is)(<a\b[^>]*\bhref\s*=\s*)(
 
 func applyTrackerMacrosToADM(
 	adm string,
-	macros map[string]bool,
+	macros map[string]string,
 	campaignFormat, bannerType, campaignID, creativeID string,
 	req *ortb.BidRequest,
 ) string {
@@ -2211,7 +2223,7 @@ func applyTrackerMacrosToADM(
 
 func appendTrackerMacrosToBannerHref(
 	adm string,
-	macros map[string]bool,
+	macros map[string]string,
 	campaignID, creativeID string,
 	req *ortb.BidRequest,
 ) string {
@@ -2242,7 +2254,7 @@ func appendTrackerMacrosToBannerHref(
 	return adm[:hrefStart] + updatedHref + adm[hrefEnd:]
 }
 
-func appendTrackerMacros(admURL string, macros map[string]bool, campaignID, creativeID string, req *ortb.BidRequest) string {
+func appendTrackerMacros(admURL string, macros map[string]string, campaignID, creativeID string, req *ortb.BidRequest) string {
 	if len(macros) == 0 {
 		return admURL
 	}
@@ -2251,11 +2263,15 @@ func appendTrackerMacros(admURL string, macros map[string]bool, campaignID, crea
 		return admURL
 	}
 	q := parsed.Query()
-	for key, enabled := range macros {
-		if !enabled || !supportedTrackerMacro(key) {
+	for key, rawParameterName := range macros {
+		if key == "click_id" || !supportedTrackerMacro(key) {
 			continue
 		}
-		q.Set(key, trackerMacroValue(key, campaignID, creativeID, req))
+		parameterName := strings.TrimSpace(rawParameterName)
+		if !validTrackerParameterName(parameterName) {
+			continue
+		}
+		q.Set(parameterName, trackerMacroValue(key, campaignID, creativeID, req))
 	}
 	parsed.RawQuery = q.Encode()
 	return parsed.String()
@@ -2268,6 +2284,12 @@ func supportedTrackerMacro(key string) bool {
 	default:
 		return false
 	}
+}
+
+var trackerParameterNamePattern = regexp.MustCompile(`^[A-Za-z0-9_.~-]+$`)
+
+func validTrackerParameterName(value string) bool {
+	return trackerParameterNamePattern.MatchString(strings.TrimSpace(value))
 }
 
 func trackerMacroValue(key, campaignID, creativeID string, req *ortb.BidRequest) string {

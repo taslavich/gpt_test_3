@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/redis/go-redis/v9"
+	"gitlab.com/twinbid-exchange/RTB-exchange/internal/constants"
 )
 
 const (
@@ -173,10 +174,11 @@ func (s *RuntimeStore) removeStaleCurrentKeys(ctx context.Context, active map[st
 }
 
 type WinnerRecord struct {
-	Price      float64
-	UserID     string
-	CampaignID string
-	Format     string
+	Price        float64
+	UserID       string
+	CampaignID   string
+	Format       string
+	ClickIDParam string
 }
 
 type WinnerStore struct {
@@ -200,12 +202,16 @@ func (s *WinnerStore) Put(ctx context.Context, winnerUUID string, record WinnerR
 		return errors.New("invalid ADV winner record")
 	}
 	pipe := s.client.TxPipeline()
-	pipe.HSet(ctx, winnerUUID, map[string]any{
+	fields := map[string]any{
 		"price":       strconv.FormatFloat(record.Price, 'f', -1, 64),
 		"user_id":     record.UserID,
 		"campaign_id": record.CampaignID,
 		"format":      normalizeFormat(record.Format),
-	})
+	}
+	if clickIDParam := strings.TrimSpace(record.ClickIDParam); validTrackerParameterName(clickIDParam) {
+		fields[constants.ADVWinnerClickIDParamField] = clickIDParam
+	}
+	pipe.HSet(ctx, winnerUUID, fields)
 	pipe.Expire(ctx, winnerUUID, s.ttl)
 	if _, err := pipe.Exec(ctx); err != nil {
 		return fmt.Errorf("write ADV winner %s: %w", winnerUUID, err)

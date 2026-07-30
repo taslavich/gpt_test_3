@@ -69,6 +69,10 @@ const (
 // without changing the request that is forwarded to external DSPs.
 const ADVImpressionFormatMarkerPrefix = "twinbid_adv_format="
 
+// ADVWinnerClickIDParamField stores the advertiser-defined query parameter
+// name used by the ADM redirect for the generated click UUID.
+const ADVWinnerClickIDParamField = "click_id_param"
+
 const (
 	BOOLEAN_FALSE = false
 	BOOLEAN_TRUE  = true

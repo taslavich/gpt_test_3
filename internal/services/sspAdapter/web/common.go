@@ -9,6 +9,7 @@ import (
 	"log"
 	"net/http"
 	"net/url"
+	"regexp"
 	"strings"
 	"time"
 
@@ -50,77 +51,152 @@ func getAdm(
 		http.Error(w, "invalid redirect URL", http.StatusBadRequest)
 		return
 	}
-	isADV, err := handleADVCallback(
-		r.Context(),
-		input.GlobalId,
-		format,
-		"adm",
-		format == constants.IPP,
-		advBillingStore,
-		advOutbox,
-		advControlURLs,
-		sspAdapterWorkStatusURL,
-		redisWriteErrorMonitor,
-	)
-	if err != nil {
-		w.WriteHeader(http.StatusServiceUnavailable)
-		return
-	}
-	if !isADV {
-		exists, err := utils.UUIDKeyExistsInRedis(ctx, redisAdmClient, input.GlobalId)
-		if err != nil {
-			recordRedisError(redisWriteErrorMonitor, err, sspAdapterWorkStatusURL)
-			w.WriteHeader(http.StatusServiceUnavailable)
-			return
-		}
-		if !exists {
-			w.WriteHeader(http.StatusBadRequest)
-			return
-		}
-	}
-
 	clickUUID := uuid.NewString()
-	if err := utils.WriteClickStats(ctx, redisClients, clickUUID, input.GlobalId, format, true); err != nil {
-		recordRedisError(redisWriteErrorMonitor, err, sspAdapterWorkStatusURL)
-		w.WriteHeader(http.StatusServiceUnavailable)
-		return
-	}
-	if err := utils.AddUUIDToRedisSet(ctx, redisClients, redisSetClicks, clickUUID, true); err != nil {
-		recordRedisError(redisWriteErrorMonitor, err, sspAdapterWorkStatusURL)
-		w.WriteHeader(http.StatusServiceUnavailable)
-		return
+	record := outbox.Record{
+		Kind:       outbox.KindADM,
+		EventID:    "adm:" + clickUUID,
+		GlobalID:   strings.TrimSpace(input.GlobalId),
+		ClickID:    clickUUID,
+		WinnerType: outbox.WinnerUnknown,
+		Format:     format,
+		Source:     "adm",
+		CreatedAt:  time.Now().UTC(),
+		Attempts:   1,
 	}
 	redirectURL := decodedURL
-	if isADV {
-		redirectURL = appendClickID(decodedURL, clickUUID)
+	var processingErr error
+	stopADV := false
+
+	dspWinner, err := utils.UUIDKeyExistsInRedis(ctx, redisAdmClient, input.GlobalId)
+	if err != nil {
+		processingErr = fmt.Errorf("resolve DSP ADM winner: %w", err)
+	} else if dspWinner {
+		record.WinnerType = outbox.WinnerDSP
+	} else if advBillingStore == nil {
+		processingErr = errors.New("ADV billing store is not initialized")
+	} else {
+		winner, winnerErr := advBillingStore.ReadWinner(ctx, input.GlobalId, format)
+		if winnerErr != nil {
+			processingErr = fmt.Errorf("resolve ADV ADM winner: %w", winnerErr)
+			if !errors.Is(winnerErr, redis.Nil) {
+				stopADV = true
+			}
+		} else {
+			record.WinnerType = outbox.WinnerADV
+			record.UserID = winner.UserID
+			record.CampaignID = winner.CampaignID
+			record.Price = winner.Price
+			redirectURL = appendClickIDParameter(decodedURL, winner.ClickIDParam, clickUUID)
+			if format == constants.IPP {
+				billingRecord := record
+				billingRecord.Kind = outbox.KindBilling
+				if applyErr := advBillingStore.Apply(ctx, billingRecord); applyErr != nil {
+					processingErr = fmt.Errorf("apply ADV ADM billing: %w", applyErr)
+					stopADV = true
+				}
+			}
+		}
 	}
 
+	if processingErr == nil {
+		if err := utils.WriteClickStats(ctx, redisClients, clickUUID, input.GlobalId, format, true); err != nil {
+			processingErr = fmt.Errorf("write ADM click stats: %w", err)
+		} else if err := utils.AddUUIDToRedisSet(ctx, redisClients, redisSetClicks, clickUUID, true); err != nil {
+			processingErr = fmt.Errorf("add ADM click to Redis set: %w", err)
+		}
+	}
+
+	if processingErr != nil {
+		record.LastError = processingErr.Error()
+		record.LastAttemptAt = time.Now().UTC()
+		persistADMFailure(
+			processingErr,
+			record,
+			advOutbox,
+			advControlURLs,
+			sspAdapterWorkStatusURL,
+			redisWriteErrorMonitor,
+			stopADV,
+		)
+	}
+
+	// The SSP request has already been paid for. Infrastructure and billing
+	// failures are retried through the durable outbox and must never block the
+	// user's redirect.
 	http.Redirect(w, r, redirectURL, http.StatusFound)
 }
 
-func appendClickID(rawURL, clickID string) string {
-	rawURL = strings.TrimSpace(rawURL)
-	clickID = strings.TrimSpace(clickID)
+var clickIDParameterNamePattern = regexp.MustCompile(`^[A-Za-z0-9_.~-]+$`)
 
-	if rawURL == "" || clickID == "" {
+func appendClickIDParameter(rawURL, parameterName, clickID string) string {
+	rawURL = strings.TrimSpace(rawURL)
+	parameterName = strings.TrimSpace(parameterName)
+	clickID = strings.TrimSpace(clickID)
+	if rawURL == "" || clickID == "" || !clickIDParameterNamePattern.MatchString(parameterName) {
 		return rawURL
 	}
-
 	parsed, err := url.Parse(rawURL)
 	if err != nil {
-		// Не получилось разобрать ссылку — проксируем исходную.
 		return rawURL
 	}
-
-	clickIDParameter := "click_id=" + url.QueryEscape(clickID)
-
-	if parsed.RawQuery == "" {
-		parsed.RawQuery = clickIDParameter
-	} else {
-		parsed.RawQuery += "&" + clickIDParameter
-	}
-
+	query := parsed.Query()
+	query.Set(parameterName, clickID)
+	parsed.RawQuery = query.Encode()
 	return parsed.String()
+}
+
+func persistADMFailure(
+	processingErr error,
+	record outbox.Record,
+	outboxStore *outbox.Store,
+	controlURLs []string,
+	sspAdapterWorkStatusURL string,
+	monitor *services.RedisWriteErrorMonitor,
+	stopADV bool,
+) {
+	outboxErr := errors.New("ADM outbox is not initialized")
+	if outboxStore != nil {
+		outboxErr = outboxStore.Save(record)
+	}
+	if monitor != nil {
+		monitor.RecordForURL(processingErr, sspAdapterWorkStatusURL)
+	}
+	severity := "ADM callback deferred to durable outbox"
+	if outboxErr != nil {
+		severity = "CRITICAL ADM callback processing and outbox failure"
+	}
+	message := fmt.Sprintf(
+		"%s: error=%v outbox_error=%v event_id=%s global_id=%s winner_type=%s",
+		severity,
+		processingErr,
+		outboxErr,
+		record.EventID,
+		record.GlobalID,
+		record.WinnerType,
+	)
+	log.Print(message)
+
+	// Do not delay the paid redirect while control endpoints or Telegram are
+	// unavailable. The durable local save above is the only synchronous step.
+	if !stopADV && outboxErr == nil {
+		return
+	}
+	go func() {
+		statuses := map[string]int{}
+		if stopADV {
+			stopCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			statuses = services.SetADVWorkStatus(stopCtx, controlURLs, false)
+			cancel()
+		}
+		statusJSON, _ := json.Marshal(statuses)
+		asyncMessage := fmt.Sprintf("%s adv_statuses=%s", message, statusJSON)
+		log.Print(asyncMessage)
+		if outboxErr != nil && monitor != nil {
+			if err := monitor.NotifyNowForRecordedError(asyncMessage); err != nil {
+				log.Printf("ADM outbox immediate notification failed: %v", err)
+			}
+		}
+	}()
 }
 
 func getNurl(

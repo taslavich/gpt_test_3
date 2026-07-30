@@ -17,10 +17,11 @@ import (
 const maxTransactionRetries = 5
 
 type Winner struct {
-	Price      float64
-	UserID     string
-	CampaignID string
-	Format     string
+	Price        float64
+	UserID       string
+	CampaignID   string
+	Format       string
+	ClickIDParam string
 }
 
 type Store struct {
@@ -59,7 +60,13 @@ func (s *Store) ReadWinner(ctx context.Context, winnerUUID, expectedFormat strin
 	if format == "" || format != normalizeFormat(expectedFormat) {
 		return Winner{}, fmt.Errorf("ADV winner format mismatch: got %s expected %s", format, expectedFormat)
 	}
-	winner := Winner{Price: price, UserID: strings.TrimSpace(values["user_id"]), CampaignID: strings.TrimSpace(values["campaign_id"]), Format: format}
+	winner := Winner{
+		Price:        price,
+		UserID:       strings.TrimSpace(values["user_id"]),
+		CampaignID:   strings.TrimSpace(values["campaign_id"]),
+		Format:       format,
+		ClickIDParam: strings.TrimSpace(values[constants.ADVWinnerClickIDParamField]),
+	}
 	if winner.UserID == "" || winner.CampaignID == "" {
 		return Winner{}, errors.New("ADV winner has empty user_id or campaign_id")
 	}
