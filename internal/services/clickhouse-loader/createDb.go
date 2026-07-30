@@ -946,7 +946,7 @@ FROM
 ) AS a
 ANY INNER JOIN {db}.fact_clicks AS o
     ON a.clicks_uuid = o.clicks_uuid
-WHERE a.status IN ('', 'PENDING', 'APPROVED')
+WHERE a.status IN ('', 'PENDING', 'APPROVED', '{STATUS}')
   AND a.created_at >= now() - toIntervalMinute(1440)
   AND (
       a.clicks_uuid,
