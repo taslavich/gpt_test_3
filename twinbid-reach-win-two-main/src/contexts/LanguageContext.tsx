@@ -523,6 +523,10 @@ const translations: Record<string, Record<"ru" | "en", string>> = {
   "create.creativeDescription": { ru: "Описание", en: "Description" },
   "create.creativeUrl": { ru: "Ссылка", en: "URL" },
   "create.urlMacrosHint": { ru: "Нажмите для добавления макросов отслеживания:", en: "Click to add tracking macros:" },
+  "create.urlMacroNamesWarning": {
+    ru: "Базовые названия параметров, выделенные жёлтым, необходимо заменить на названия, которые обрабатывает ваша партнёрская сеть или трекер. Это необходимо для корректной работы статистики. Если их не заменить, будут передаваться базовые названия, которые партнёрская сеть может не распознать.",
+    en: "Replace the default parameter names highlighted in yellow with the names supported by your affiliate network or tracker. This is required for correct statistics. Otherwise, the default names will be sent and may not be recognized by the affiliate network.",
+  },
   "create.endDateError": { ru: "Дата окончания не может быть раньше сегодняшнего дня", en: "End date cannot be earlier than today" },
   "create.endDateRequired": { ru: "Укажите корректные даты для завершения создания", en: "Specify valid dates to complete creation" },
   "create.step4": { ru: "Отслеживание конверсий", en: "Conversion tracking" },

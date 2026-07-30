@@ -60,6 +60,71 @@ const URL_MACROS = [
   "campaign_id", "browser", "device", "device_os", "ip_address",
 ] as const;
 
+function getHighlightedUrlSegments(url: string): Array<{ text: string; highlighted: boolean }> {
+  const segments: Array<{ text: string; highlighted: boolean }> = [];
+  const pattern = new RegExp(`([?&])([^?&=#]+)(=\\{(${URL_MACROS.join("|")})\\})`, "g");
+  let cursor = 0;
+  for (const match of url.matchAll(pattern)) {
+    const index = match.index ?? 0;
+    if (index > cursor) segments.push({ text: url.slice(cursor, index), highlighted: false });
+    segments.push({ text: match[1], highlighted: false });
+    segments.push({ text: match[2], highlighted: match[2] === match[4] });
+    segments.push({ text: match[3], highlighted: false });
+    cursor = index + match[0].length;
+  }
+  if (cursor < url.length) segments.push({ text: url.slice(cursor), highlighted: false });
+  return segments;
+}
+
+function MacroUrlInput({
+  value,
+  onChange,
+  onBlur,
+  placeholder,
+  hasError,
+}: {
+  value: string;
+  onChange: (value: string) => void;
+  onBlur: (value: string) => void;
+  placeholder: string;
+  hasError: boolean;
+}) {
+  const [scrollLeft, setScrollLeft] = useState(0);
+  const segments = getHighlightedUrlSegments(value);
+
+  return (
+    <div className="relative rounded-md bg-background">
+      {value && (
+        <div
+          aria-hidden="true"
+          className="pointer-events-none absolute inset-0 z-0 flex items-center overflow-hidden rounded-md px-3 py-2 text-base md:text-sm"
+        >
+          <div className="whitespace-pre" style={{ transform: `translateX(-${scrollLeft}px)` }}>
+            {segments.map((segment, index) => (
+              <span
+                key={`${index}-${segment.text}`}
+                className={segment.highlighted ? "font-medium text-yellow-500" : "text-foreground"}
+              >
+                {segment.text}
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
+      <Input
+        value={value}
+        onChange={event => onChange(event.target.value)}
+        onBlur={event => onBlur(event.target.value)}
+        onScroll={event => setScrollLeft(event.currentTarget.scrollLeft)}
+        placeholder={placeholder}
+        className={`relative z-10 bg-transparent text-transparent caret-foreground selection:bg-primary/30 ${
+          hasError ? "border-destructive" : "border-border"
+        }`}
+      />
+    </div>
+  );
+}
+
 interface CreativesEditorProps {
   formatKey: string;
   brandName?: string;
@@ -380,7 +445,7 @@ export const CreativesEditor = forwardRef<CreativesEditorHandle, CreativesEditor
     }
     if (currentUrl.includes(`{${macro}}`)) {
       let newUrl = currentUrl;
-      const regexAmp = new RegExp(`[&?]${macro}=\\{${macro}\\}`, "g");
+      const regexAmp = new RegExp(`[&?][^?&=#]+=\\{${macro}\\}`, "g");
       newUrl = newUrl.replace(regexAmp, "");
       if (newUrl.includes("&") && !newUrl.includes("?")) {
         newUrl = newUrl.replace("&", "?");
@@ -645,10 +710,13 @@ export const CreativesEditor = forwardRef<CreativesEditorHandle, CreativesEditor
             {isBanner && type === "image" && (
               <div className="space-y-2">
                 <Label>{t("create.creativeUrl")} *</Label>
-                <Input value={creative.url} onChange={e => { updateCreative(creative.id, { url: e.target.value }); if (e.target.value.trim()) onClearError?.(`creative_${creative.id}_url`); }}
-                  onBlur={e => ensureClickId(creative.id, e.target.value)}
+                <MacroUrlInput
+                  value={creative.url}
+                  onChange={value => { updateCreative(creative.id, { url: value }); if (value.trim()) onClearError?.(`creative_${creative.id}_url`); }}
+                  onBlur={value => ensureClickId(creative.id, value)}
                   placeholder="https://example.com/landing"
-                  className={`bg-background border-border ${errors[`creative_${creative.id}_url`] ? "border-destructive" : ""}`} />
+                  hasError={!!errors[`creative_${creative.id}_url`]}
+                />
                 {errors[`creative_${creative.id}_url`] && <p className="text-xs text-destructive">{errors[`creative_${creative.id}_url`]}</p>}
                 {isInsecureHttpUrl(creative.url) && (
                   <div className="flex items-start gap-2 rounded border border-yellow-500/30 bg-yellow-500/10 p-2">
@@ -680,6 +748,10 @@ export const CreativesEditor = forwardRef<CreativesEditorHandle, CreativesEditor
                         </Badge>
                       );
                     })}
+                  </div>
+                  <div className="flex items-start gap-2 rounded border border-yellow-500/30 bg-yellow-500/10 p-2">
+                    <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-yellow-500" />
+                    <p className="text-xs text-yellow-500">{t("create.urlMacroNamesWarning")}</p>
                   </div>
                 </div>
               </div>
@@ -965,10 +1037,13 @@ export const CreativesEditor = forwardRef<CreativesEditorHandle, CreativesEditor
             {!isBanner && (
               <div className="space-y-2">
                 <Label>{t("create.creativeUrl")} *</Label>
-                <Input value={creative.url} onChange={e => { updateCreative(creative.id, { url: e.target.value }); if (e.target.value.trim()) onClearError?.(`creative_${creative.id}_url`); }}
-                  onBlur={e => ensureClickId(creative.id, e.target.value)}
+                <MacroUrlInput
+                  value={creative.url}
+                  onChange={value => { updateCreative(creative.id, { url: value }); if (value.trim()) onClearError?.(`creative_${creative.id}_url`); }}
+                  onBlur={value => ensureClickId(creative.id, value)}
                   placeholder="https://example.com/landing"
-                  className={`bg-background border-border ${errors[`creative_${creative.id}_url`] ? "border-destructive" : ""}`} />
+                  hasError={!!errors[`creative_${creative.id}_url`]}
+                />
                 {errors[`creative_${creative.id}_url`] && <p className="text-xs text-destructive">{errors[`creative_${creative.id}_url`]}</p>}
                 {isInsecureHttpUrl(creative.url) && (
                   <div className="flex items-start gap-2 rounded border border-yellow-500/30 bg-yellow-500/10 p-2">
@@ -1000,6 +1075,10 @@ export const CreativesEditor = forwardRef<CreativesEditorHandle, CreativesEditor
                         </Badge>
                       );
                     })}
+                  </div>
+                  <div className="flex items-start gap-2 rounded border border-yellow-500/30 bg-yellow-500/10 p-2">
+                    <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-yellow-500" />
+                    <p className="text-xs text-yellow-500">{t("create.urlMacroNamesWarning")}</p>
                   </div>
                 </div>
               </div>

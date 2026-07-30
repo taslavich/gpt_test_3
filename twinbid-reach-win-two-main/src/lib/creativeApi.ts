@@ -78,7 +78,7 @@ export function isCreativeImageUploadError(error: unknown): error is CreativeIma
 }
 
 const TRACKER_MACRO_KEYS = [
-  "device", "browser", "site_id", "device_os", "ip_address",
+  "click_id", "device", "browser", "site_id", "device_os", "ip_address",
   "campaign_id", "creative_id", "country_code",
 ] as const;
 
@@ -108,7 +108,7 @@ export function stripMacrosFromUrl(url: string | undefined): string {
   if (!url) return "";
   let result = url;
   for (const macro of URL_MACRO_TOKENS) {
-    result = result.replace(new RegExp(`[?&]${macro}=\\{${macro}\\}`, "g"), "");
+    result = result.replace(new RegExp(`[?&][^?&=#]+=\\{${macro}\\}`, "g"), "");
   }
   if (!result.includes("?")) {
     const ampIndex = result.indexOf("&");
@@ -119,22 +119,29 @@ export function stripMacrosFromUrl(url: string | undefined): string {
   return result.replace(/[?&]+$/, "");
 }
 
-export function extractMacrosFromUrl(url: string | undefined): Record<string, boolean> {
-  return Object.fromEntries(
-    TRACKER_MACRO_KEYS
-      .filter((macro) => !!url?.includes(`{${macro}}`))
-      .map((macro) => [macro, true]),
-  );
+export function extractMacrosFromUrl(url: string | undefined): Record<string, string> {
+  const result: Record<string, string> = {};
+  if (!url) return result;
+  for (const macro of TRACKER_MACRO_KEYS) {
+    const match = url.match(new RegExp(`[?&]([^?&=#]+)=\\{${macro}\\}(?=&|#|$)`));
+    if (match?.[1]) result[macro] = match[1];
+  }
+  return result;
 }
 
 export function buildUrlWithMacros(
   cleanUrl: string | undefined,
-  macros: Record<string, boolean> | undefined,
+  macros: Record<string, string | boolean> | undefined,
 ): string {
   let url = cleanUrl || "";
   for (const macro of TRACKER_MACRO_KEYS) {
-    if (macros?.[macro] !== true || url.includes(`{${macro}}`) || !url.trim()) continue;
-    url += `${url.includes("?") ? "&" : "?"}${macro}={${macro}}`;
+    const configuredName = macros?.[macro];
+    const enabled = macro === "click_id" || typeof configuredName === "string" || configuredName === true;
+    if (!enabled || url.includes(`{${macro}}`) || !url.trim()) continue;
+    const parameterName = typeof configuredName === "string" && configuredName.trim()
+      ? configuredName.trim()
+      : macro;
+    url += `${url.includes("?") ? "&" : "?"}${parameterName}={${macro}}`;
   }
   return url;
 }
@@ -325,20 +332,22 @@ export function buildCreativeWriteBody({
     }
 
     if (!imageUrl) throw new Error("Creative image is missing");
+    const macroUrl = buildUrlWithMacros(creative.url, {});
     base.adm = buildBannerMediaAdm(
-      stripMacrosFromUrl(creative.url),
+      stripMacrosFromUrl(macroUrl),
       imageUrl,
       w,
       h,
       isVideoAsset(imageMimeType, creative.imageFileName),
     );
     base.banner_type = "img";
-    base.trackers_macros = extractMacrosFromUrl(creative.url);
+    base.trackers_macros = extractMacrosFromUrl(macroUrl);
     return withImageId(base, imageId);
   }
 
-  base.adm = stripMacrosFromUrl(creative.url);
-  base.trackers_macros = extractMacrosFromUrl(creative.url);
+  const macroUrl = buildUrlWithMacros(creative.url, {});
+  base.adm = stripMacrosFromUrl(macroUrl);
+  base.trackers_macros = extractMacrosFromUrl(macroUrl);
   if (format === "native" || format === "push") {
     const w = creative.imageWidth;
     const h = creative.imageHeight;

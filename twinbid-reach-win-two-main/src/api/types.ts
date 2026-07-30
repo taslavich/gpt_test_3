@@ -89,7 +89,8 @@ export interface ApiCreative {
   image_name?: string | null;
   /** MIME type returned for the attached permanent media asset. */
   mime_type?: string | null;
-  trackers_macros?: Record<string, boolean>;
+  /** Macro token -> query parameter name. Boolean values are accepted only for legacy responses. */
+  trackers_macros?: Record<string, string | boolean>;
   w?: number | null;
   h?: number | null;
   title?: string | null;
@@ -102,7 +103,8 @@ export interface ApiCreativeWrite {
   adm: string;
   banner_type?: BannerType | null;
   image_id?: string | null;
-  trackers_macros?: Record<string, boolean>;
+  /** Macro token -> query parameter name, e.g. { click_id: "subid" }. */
+  trackers_macros?: Record<string, string>;
   w?: number | null;
   h?: number | null;
   title?: string | null;

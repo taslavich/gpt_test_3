@@ -492,6 +492,7 @@ export const ES_TRANSLATIONS: Record<string, string> = {
   "create.creativeDescription": "Descripción",
   "create.creativeUrl": "Enlace",
   "create.urlMacrosHint": "Haz clic para añadir macros de seguimiento:",
+  "create.urlMacroNamesWarning": "Sustituye los nombres de parámetros predeterminados resaltados en amarillo por los nombres compatibles con tu red de afiliados o tracker. Esto es necesario para que las estadísticas funcionen correctamente. Si no los sustituyes, se enviarán los nombres predeterminados y la red puede no reconocerlos.",
   "create.endDateError": "La fecha de fin no puede ser anterior a hoy",
   "create.endDateRequired": "Indica fechas válidas para finalizar la creación",
   "create.vertical": "Vertical",

@@ -648,10 +648,9 @@ export default function DashboardStatistics() {
                   {t("stats.allCampaigns")}
                 </label>
                 {activeCampaigns.map(c => (
-                  <label key={c.id} className="flex items-center gap-2 px-2 py-1.5 rounded hover:bg-muted/50 cursor-pointer text-sm">
+                  <label key={c.id} className="flex min-w-0 items-center gap-2 px-2 py-1.5 rounded hover:bg-muted/50 cursor-pointer text-sm">
                     <Checkbox checked={selectedCampaignIds.has(c.id)} onCheckedChange={() => toggleCampaign(c.id)} />
-                    <span className="text-muted-foreground mr-1">{c.id}</span>
-                    <span className="truncate">— {c.name}</span>
+                    <span className="min-w-0 flex-1 truncate" title={c.name}>{c.name}</span>
                   </label>
                 ))}
               </div>

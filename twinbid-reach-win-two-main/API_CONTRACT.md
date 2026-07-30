@@ -141,7 +141,10 @@ Resp: `User`.
   "image_id": "uuid",
   "image_url": "https://cdn.example/permanent-object-url",
   "image_name": "banner_300x250.png",
-  "trackers_macros": {},
+  "trackers_macros": {
+    "click_id": "subid",
+    "site_id": "source"
+  },
   "w": 300,
   "h": 250,
   "title": null,
@@ -200,6 +203,11 @@ multipart-запрос с новым access token.
 
 Для каждого banner-креатива обязательны собственные `w` и `h`. Они берутся
 из размера, выбранного непосредственно в карточке креатива, а не из кампании.
+
+`trackers_macros` передаётся как map `макрос → название query-параметра`.
+Например, ссылка `?subid={click_id}&source={site_id}` превращается в
+`{"click_id":"subid","site_id":"source"}`. Значения `true/false` фронтенд
+больше не отправляет. `click_id` обязателен и всегда присутствует в map.
 
 Для banner HTML:
 

@@ -124,7 +124,10 @@ describe("creative API migration", () => {
     expect(client.creates[0].body).toMatchObject({
       banner_type: "img",
       image_id: "uploaded-image-1",
-      trackers_macros: { site_id: true },
+      trackers_macros: {
+        click_id: "click_id",
+        site_id: "site_id",
+      },
       w: 300,
       h: 250,
     });
@@ -176,17 +179,42 @@ describe("creative API migration", () => {
     expect(client.uploads[0].filename).toBe("image_13_cropped.png");
   });
 
-  it("uses a boolean macro map and restores only explicitly enabled macros", () => {
+  it("maps every macro to its query parameter name and restores the URL", () => {
     expect(extractMacrosFromUrl(
-      "https://target.example?site_id={site_id}&country_code={country_code}",
+      "https://target.example?subid={click_id}&source={site_id}&geo={country_code}",
     )).toEqual({
-      site_id: true,
-      country_code: true,
+      click_id: "subid",
+      site_id: "source",
+      country_code: "geo",
     });
     expect(buildUrlWithMacros("https://target.example", {
-      site_id: true,
+      click_id: "subid",
+      site_id: "source",
       country_code: false,
-    })).toBe("https://target.example?site_id={site_id}");
+    })).toBe("https://target.example?subid={click_id}&source={site_id}");
+  });
+
+  it("always restores required click_id and removes renamed macro parameters from ADM URLs", () => {
+    expect(buildUrlWithMacros("https://target.example", {}))
+      .toBe("https://target.example?click_id={click_id}");
+
+    const body = buildCreativeWriteBody({
+      format: "native",
+      creative: baseCreative({
+        url: "https://target.example?subid={click_id}&source={site_id}",
+        imageWidth: 300,
+        imageHeight: 250,
+        title: "Title",
+        description: "Description",
+      }),
+      imageId: "image-1",
+    });
+
+    expect(body.adm).toBe("https://target.example");
+    expect(body.trackers_macros).toEqual({
+      click_id: "subid",
+      site_id: "source",
+    });
   });
 
   it("requires an image for a banner image creative", () => {
@@ -394,7 +422,7 @@ describe("creative API migration", () => {
     expect(client.deletes).toHaveLength(0);
   });
 
-  it("does not upload or PATCH an unchanged existing image creative", async () => {
+  it("adds the required click_id mapping to a legacy image creative without reuploading it", async () => {
     const client = new FakeCreativeApi();
     const existing = existingCreative();
     await syncCampaignCreatives({
@@ -414,7 +442,13 @@ describe("creative API migration", () => {
       existing: [existing],
     });
     expect(client.uploads).toHaveLength(0);
-    expect(client.patches).toHaveLength(0);
+    expect(client.patches).toHaveLength(1);
+    expect(client.patches[0]).toMatchObject({
+      id: "creative-1",
+      body: {
+        trackers_macros: { click_id: "click_id" },
+      },
+    });
     expect(client.deletes).toHaveLength(0);
   });
 
