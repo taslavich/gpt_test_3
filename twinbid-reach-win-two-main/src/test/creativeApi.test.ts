@@ -378,7 +378,7 @@ describe("creative API migration", () => {
 
   it.each([
     ["native", 640, 640],
-    ["push", 192, 192],
+    ["push", 200, 200],
   ] as const)("sends final cropped dimensions for %s", (format, w, h) => {
     const body = buildCreativeWriteBody({
       format,

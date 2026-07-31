@@ -16,4 +16,14 @@ describe("creative media dimensions", () => {
     expect(isMediaSizeMismatch(target, 199, 199)).toBe(true);
     expect(isMediaSizeMismatch(target, 400, 300)).toBe(true);
   });
+
+  it("requires IPP visuals to be square and at least 200x200", () => {
+    const target = getTargetDims("push");
+
+    expect(target).toMatchObject({ w: 200, h: 200, minSide: 200, mode: "square-resizable" });
+    expect(isMediaSizeMismatch(target, 200, 200)).toBe(false);
+    expect(isMediaSizeMismatch(target, 400, 400)).toBe(false);
+    expect(isMediaSizeMismatch(target, 199, 199)).toBe(true);
+    expect(isMediaSizeMismatch(target, 300, 250)).toBe(true);
+  });
 });
