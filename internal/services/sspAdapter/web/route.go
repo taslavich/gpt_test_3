@@ -2,6 +2,8 @@ package sppAdapterWeb
 
 import (
 	"context"
+	"encoding/json"
+	"log"
 	"net/http"
 	"time"
 
@@ -220,13 +222,19 @@ func InitHttpRoutes(
 	//---------------------------------------------------------------
 
 	httpRouter.With(
-		httpin.NewInput(postBidRequest_V2_5{}),
+		httpin.NewInput(
+			postBidRequest_V2_5{},
+			httpin.Option.WithErrorHandler(postBidInputErrorHandler),
+		),
 	).Post(PostBid_BAN_ADL_V_2_5_URL, func(w http.ResponseWriter, r *http.Request) {
 		postBid_V2_5(ctx, w, r, redisClients, redisSetOrtb, isBadIp, getCountryISO, orchestratorClient, bidRequestTimeout, sspFeedsBanAdl, &counter, ADULT, constants.BAN, siteIdsAndDomains, geoToLang, redisWriteErrorMonitor, sspAdapterWorkStatusURL, ipLimitStore)
 	})
 
 	httpRouter.With(
-		httpin.NewInput(postBidRequest_V2_5{}),
+		httpin.NewInput(
+			postBidRequest_V2_5{},
+			httpin.Option.WithErrorHandler(postBidInputErrorHandler),
+		),
 	).Post(PostBid_BAN_MC_V_2_5_URL, func(w http.ResponseWriter, r *http.Request) {
 		postBid_V2_5(ctx, w, r, redisClients, redisSetOrtb, isBadIp, getCountryISO, orchestratorClient, bidRequestTimeout, sspFeedsBanMc, &counter, MAINSTREAM, constants.BAN, siteIdsAndDomains, geoToLang, redisWriteErrorMonitor, sspAdapterWorkStatusURL, ipLimitStore)
 	})
@@ -307,4 +315,28 @@ func InitHttpsRoutes(
 	).Get(GetCurlUrl, func(w http.ResponseWriter, r *http.Request) {
 		getCurl(ctx, w, r, redisClientsConv, redisSetConversions, redisWriteErrorMonitor, sspAdapterWorkStatusURL)
 	})
+}
+
+func postBidInputErrorHandler(
+	w http.ResponseWriter,
+	r *http.Request,
+	err error,
+) {
+	log.Printf(
+		"[SPP][INPUT_REJECT] path=%q feed=%q remote_addr=%q content_type=%q content_encoding=%q content_length=%d error=%v",
+		r.URL.Path,
+		r.URL.Query().Get("feed"),
+		r.RemoteAddr,
+		r.Header.Get("Content-Type"),
+		r.Header.Get("Content-Encoding"),
+		r.ContentLength,
+		err,
+	)
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusUnprocessableEntity)
+	err = json.NewEncoder(w).Encode(err)
+	if err != nil {
+		log.Printf("[SPP][INPUT_REJECT] Failed to encode error response: %v", err)
+	}
 }
