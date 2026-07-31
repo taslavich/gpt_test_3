@@ -419,7 +419,14 @@ export default function DashboardStatistics() {
       { label: t("stats.impressions"), value: formatStatisticInteger(totalImpressions), icon: Eye },
       { label: t("stats.clicks"), value: formatStatisticInteger(totalClicks), icon: MousePointer },
       { label: t("stats.ctr"), value: `${ctr}%`, icon: Target },
-      { label: t("stats.spent"), value: `$${formatNumberWithDot(totalSpent)}`, icon: TrendingUp },
+      {
+        label: t("stats.spent"),
+        value: `$${formatNumberWithDot(totalSpent, {
+          minimumFractionDigits: 2,
+          maximumFractionDigits: 2,
+        })}`,
+        icon: TrendingUp,
+      },
     ];
     if (!showConversions) return base;
     return [

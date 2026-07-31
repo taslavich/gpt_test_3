@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import {
   BarChart3,
   Check,
@@ -32,9 +32,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { useCampaigns, type Campaign, type PricingModel } from "@/contexts/CampaignContext";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { getBidLimits, getMaximumBid } from "@/lib/bidLimits";
-import { COUNTRIES, LANGUAGES } from "@/lib/dimensions";
 import { formatNumberWithDot, formatStatisticInteger } from "@/lib/numberFormat";
 import { BROWSER_FILTER_KEYS, DEVICE_FILTER_KEYS, OS_FILTER_KEYS, OTHER_KEY } from "@/lib/statFilters";
+import { getTargetingDimensionOptions } from "@/lib/targetingDimensions";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 
@@ -281,6 +281,14 @@ export default function TrafficCalculator() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const selected = campaigns.find((campaign) => campaign.id === selectedId);
+  const countryOptions = useMemo(
+    () => getTargetingDimensionOptions("country", lang),
+    [lang],
+  );
+  const languageOptions = useMemo(
+    () => getTargetingDimensionOptions("language", lang),
+    [lang],
+  );
 
   const resetResult = () => {
     setResult(null);
@@ -431,8 +439,8 @@ export default function TrafficCalculator() {
             <Field label={text.trafficType}><Select value={filters.trafficType} onValueChange={(trafficType: FilterState["trafficType"]) => updateFilters({ trafficType })}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="mainstream">Mainstream</SelectItem><SelectItem value="adult">Adult</SelectItem><SelectItem value="mixed">Mixed</SelectItem></SelectContent></Select></Field>
           </div>
           <div className="mt-5 grid gap-3 sm:grid-cols-2">
-            <MultiChoice label={text.countries} text={text} mode={filters.countryMode} values={filters.country} options={COUNTRIES.map((item) => ({ value: item.code, label: lang === "ru" ? item.ru : lang === "es" ? item.es : item.en }))} onModeChange={(countryMode) => updateFilters({ countryMode })} onChange={(country) => updateFilters({ country })} />
-            <MultiChoice label={text.languages} text={text} mode={filters.languageMode} values={filters.language} options={LANGUAGES.map((item) => ({ value: item.code, label: lang === "ru" ? item.ru : lang === "es" ? item.es : item.en }))} onModeChange={(languageMode) => updateFilters({ languageMode })} onChange={(language) => updateFilters({ language })} />
+            <MultiChoice label={text.countries} text={text} mode={filters.countryMode} values={filters.country} options={countryOptions} onModeChange={(countryMode) => updateFilters({ countryMode })} onChange={(country) => updateFilters({ country })} />
+            <MultiChoice label={text.languages} text={text} mode={filters.languageMode} values={filters.language} options={languageOptions} onModeChange={(languageMode) => updateFilters({ languageMode })} onChange={(language) => updateFilters({ language })} />
             <MultiChoice label={text.devices} text={text} mode={filters.deviceTypeMode} values={filters.deviceType} options={DEVICE_FILTER_KEYS.filter((item) => item !== OTHER_KEY).map(simpleOption)} onModeChange={(deviceTypeMode) => updateFilters({ deviceTypeMode })} onChange={(deviceType) => updateFilters({ deviceType })} />
             <MultiChoice label="OS" text={text} mode={filters.osMode} values={filters.os} options={OS_FILTER_KEYS.filter((item) => item !== OTHER_KEY).map(simpleOption)} onModeChange={(osMode) => updateFilters({ osMode })} onChange={(os) => updateFilters({ os })} />
             <MultiChoice label={text.browsers} text={text} mode={filters.browserMode} values={filters.browser} options={BROWSER_FILTER_KEYS.filter((item) => item !== OTHER_KEY).map(simpleOption)} onModeChange={(browserMode) => updateFilters({ browserMode })} onChange={(browser) => updateFilters({ browser })} />

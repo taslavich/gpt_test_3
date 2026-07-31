@@ -8,18 +8,13 @@ import type { TargetingState, ListMode } from "@/contexts/CampaignContext";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
-import { COUNTRIES, LANGUAGES, COUNTRY_CODES, LANGUAGE_CODES } from "@/lib/dimensions";
+import { COUNTRY_CODES, LANGUAGE_CODES } from "@/lib/dimensions";
+import { formatTargetingDimensionLabel } from "@/lib/targetingDimensions";
 import {
   BROWSER_FILTER_KEYS, OS_FILTER_KEYS, DEVICE_FILTER_KEYS, OTHER_KEY,
 } from "@/lib/statFilters";
 
 const withoutOther = (keys: string[]) => keys.filter(k => k !== OTHER_KEY);
-
-const countryNames: Record<string, { ru: string; en: string; es: string }> =
-  Object.fromEntries(COUNTRIES.map(c => [c.code, { ru: c.ru, en: c.en, es: c.es }]));
-const languageNames: Record<string, { ru: string; en: string; es: string }> =
-  Object.fromEntries(LANGUAGES.map(l => [l.code, { ru: l.ru, en: l.en, es: l.es }]));
-
 
 const targetingOptions: Record<string, string[]> = {
   country: COUNTRY_CODES,
@@ -61,9 +56,7 @@ function AutocompleteInput({
   const keepOpenRef = useRef(false);
 
   const getDisplayLabel = (option: string) => {
-    if (countryNames[option]) return `${countryNames[option][lang]} (${option})`;
-    if (languageNames[option]) return `${languageNames[option][lang]} (${option})`;
-    return option;
+    return formatTargetingDimensionLabel(option, lang);
   };
 
 
@@ -351,9 +344,7 @@ function ListItem({ config, list: rawList, onUpdate }: {
   const isIp = config.key === "ip";
 
   const getDisplayLabel = (item: string) => {
-    if (countryNames[item]) return `${countryNames[item][lang]} (${item})`;
-    if (languageNames[item]) return `${languageNames[item][lang]} (${item})`;
-    return item;
+    return formatTargetingDimensionLabel(item, lang);
   };
 
 

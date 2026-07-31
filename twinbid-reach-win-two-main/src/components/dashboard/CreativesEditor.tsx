@@ -1203,16 +1203,29 @@ export const CreativesEditor = forwardRef<CreativesEditorHandle, CreativesEditor
       onClose={() => setCropperCreativeId(null)}
       onSave={(file, dataUrl, dimensions) => {
         if (!cropperCreativeId) return;
+        const isVideo = file.type === "video/mp4" || /\.mp4$/i.test(file.name);
+        const isGif = !isVideo && (file.type === "image/gif" || /\.gif$/i.test(file.name));
         updateCreative(cropperCreativeId, {
           imageUrl: dataUrl,
           pendingFile: file,
           imageFileName: file.name,
           imageMimeType: file.type,
-          mediaType: file.type === "video/mp4" ? "video" : "image",
+          mediaType: isVideo ? "video" : "image",
           imageWidth: dimensions.w,
           imageHeight: dimensions.h,
           sizeMismatch: false,
         });
+        setOrigSources(previous => ({
+          ...previous,
+          [cropperCreativeId]: {
+            dataUrl,
+            naturalWidth: dimensions.w,
+            naturalHeight: dimensions.h,
+            fileName: file.name,
+            isGif,
+            isVideo,
+          },
+        }));
         setCropperCreativeId(null);
       }}
     />

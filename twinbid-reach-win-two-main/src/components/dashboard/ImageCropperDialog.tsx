@@ -11,6 +11,11 @@ import {
   cropMp4Video,
   type MediaCropRect,
 } from "@/lib/animatedMediaCrop";
+import {
+  inferCropMediaKind,
+  resolveCropMediaKind,
+  type CropMediaKind,
+} from "@/lib/cropMediaKind";
 
 const MAX_BYTES = 1 * 1024 * 1024;
 const MAX_STAGE_W = 560;
@@ -28,7 +33,7 @@ interface Source {
   dataUrl: string;
   naturalWidth: number;
   naturalHeight: number;
-  mediaKind?: "image" | "gif" | "video";
+  mediaKind?: CropMediaKind;
 }
 
 interface Props {
@@ -48,6 +53,9 @@ export function ImageCropperDialog({ open, source, target, fileNameHint, onSave,
   const [saving, setSaving] = useState(false);
   const [stageW, setStageW] = useState(MAX_STAGE_W);
   const stageH = stageW / STAGE_ASPECT;
+  const mediaKind = source
+    ? inferCropMediaKind(source.dataUrl, fileNameHint, source.mediaKind)
+    : "image";
 
   useEffect(() => {
     if (!open) return;
@@ -162,14 +170,20 @@ export function ImageCropperDialog({ open, source, target, fileNameHint, onSave,
         outH,
       };
 
-      if (source.mediaKind === "gif") {
+      const outputMediaKind = await resolveCropMediaKind(
+        source.dataUrl,
+        fileNameHint,
+        source.mediaKind,
+      );
+
+      if (outputMediaKind === "gif") {
         const result = await cropAnimatedGif(source.dataUrl, crop, fileNameHint);
         onSave(result.file, result.dataUrl, result.dimensions);
         setSaving(false);
         return;
       }
 
-      if (source.mediaKind === "video") {
+      if (outputMediaKind === "video") {
         const result = await cropMp4Video(source.dataUrl, crop, fileNameHint);
         onSave(result.file, result.dataUrl, result.dimensions);
         setSaving(false);
@@ -247,7 +261,7 @@ export function ImageCropperDialog({ open, source, target, fileNameHint, onSave,
           onPointerCancel={onImgPointerUp}
         >
           {/* Media */}
-          {source.mediaKind === "video" ? (
+          {mediaKind === "video" ? (
             <video
               src={source.dataUrl}
               muted
