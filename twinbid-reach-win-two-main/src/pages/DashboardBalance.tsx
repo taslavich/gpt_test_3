@@ -16,9 +16,10 @@ import { api } from "@/api";
 import { supabase } from "@/integrations/supabase/client";
 import type { ApiUserTransaction } from "@/api/types";
 import { getPaymentCurrency, PAYMENT_METHODS } from "@/lib/paymentMethods";
+import { formatCurrencyAmount } from "@/lib/numberFormat";
 
 const fmtMoney = (n: number | string | null | undefined) =>
-  Number(n || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  formatCurrencyAmount(Number(n || 0));
 
 const amounts = [100, 250, 500, 1000, 5000];
 

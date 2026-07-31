@@ -1,8 +1,10 @@
 import { useState, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
-import { Plus, MoreHorizontal, Play, Pause, Pencil, Trash2, Eye, Filter, Copy, RotateCcw, XCircle, ArrowUpDown, ArrowUp, ArrowDown } from "lucide-react";
+import { Plus, MoreHorizontal, Play, Pause, Pencil, Trash2, Eye, Filter, Copy, RotateCcw, XCircle, ArrowUpDown, ArrowUp, ArrowDown, Type } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
@@ -12,7 +14,7 @@ import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { useCampaigns, type Campaign } from "@/contexts/CampaignContext";
@@ -37,6 +39,9 @@ export default function DashboardCampaigns() {
   const { campaigns, updateCampaign, deleteCampaign: ctxDelete, addCampaign, loadCampaignCreatives } = useCampaigns();
   const { t } = useLanguage();
   const [viewCampaign, setViewCampaign] = useState<Campaign | null>(null);
+  const [renameCampaign, setRenameCampaign] = useState<Campaign | null>(null);
+  const [renameValue, setRenameValue] = useState("");
+  const [isRenaming, setIsRenaming] = useState(false);
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [searchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
@@ -186,6 +191,42 @@ export default function DashboardCampaigns() {
     toast.info(t("campaigns.restarted"));
   };
 
+  const openRenameDialog = (campaign: Campaign) => {
+    setRenameCampaign(campaign);
+    setRenameValue(campaign.name);
+  };
+
+  const closeRenameDialog = () => {
+    if (isRenaming) return;
+    setRenameCampaign(null);
+    setRenameValue("");
+  };
+
+  const handleRename = async () => {
+    if (!renameCampaign || isRenaming) return;
+    const name = renameValue.trim();
+    if (!name) {
+      toast.error(t("campaigns.nameRequired"));
+      return;
+    }
+    if (name === renameCampaign.name) {
+      closeRenameDialog();
+      return;
+    }
+
+    setIsRenaming(true);
+    try {
+      await updateCampaign(renameCampaign.id, { name });
+      setRenameCampaign(null);
+      setRenameValue("");
+      toast.success(t("campaigns.renamed"));
+    } catch (e: any) {
+      toast.error(`${t("campaigns.renameFailed")}: ${e?.message || e}`);
+    } finally {
+      setIsRenaming(false);
+    }
+  };
+
   return (
     <>
       <div className="space-y-6">
@@ -220,8 +261,8 @@ export default function DashboardCampaigns() {
         <div className="grid grid-cols-1 gap-4 min-[480px]:grid-cols-2 md:grid-cols-4">
           <Card className="min-w-0 bg-card border-border"><CardContent className="p-4"><p className="text-sm text-muted-foreground">{t("campaigns.total")}</p><p className="mt-1 truncate text-2xl font-bold">{totalCount}</p></CardContent></Card>
           <Card className="min-w-0 bg-card border-border"><CardContent className="p-4"><p className="text-sm text-muted-foreground">{t("campaigns.activeCount")}</p><p className="mt-1 truncate text-2xl font-bold text-green-500">{activeCount}</p></CardContent></Card>
-          <Card className="min-w-0 bg-card border-border"><CardContent className="p-4"><p className="text-sm text-muted-foreground">{t("campaigns.budget")}</p><p className="mt-1 truncate text-2xl font-bold">${formatNumberWithDot(totalBudget)}</p></CardContent></Card>
-          <Card className="min-w-0 bg-card border-border"><CardContent className="p-4"><p className="text-sm text-muted-foreground">{t("overview.spent")}</p><p className="mt-1 truncate text-2xl font-bold">${formatNumberWithDot(totalSpent)}</p></CardContent></Card>
+          <Card className="min-w-0 bg-card border-border"><CardContent className="p-4"><p className="text-sm text-muted-foreground">{t("campaigns.budget")}</p><p className="mt-1 truncate text-2xl font-bold">${formatNumberWithDot(totalBudget, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p></CardContent></Card>
+          <Card className="min-w-0 bg-card border-border"><CardContent className="p-4"><p className="text-sm text-muted-foreground">{t("overview.spent")}</p><p className="mt-1 truncate text-2xl font-bold">${formatNumberWithDot(totalSpent, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p></CardContent></Card>
         </div>
 
         <Card className="bg-card border-border">
@@ -277,6 +318,7 @@ export default function DashboardCampaigns() {
                           <DropdownMenuTrigger asChild><Button variant="ghost" size="icon" className="h-8 w-8"><MoreHorizontal className="h-4 w-4" /></Button></DropdownMenuTrigger>
                           <DropdownMenuContent align="end" className="bg-card border-border">
                             <DropdownMenuItem className="gap-2" onClick={() => setViewCampaign(campaign)}><Eye className="h-4 w-4" /> {t("campaigns.view")}</DropdownMenuItem>
+                            <DropdownMenuItem className="gap-2" onClick={() => openRenameDialog(campaign)}><Type className="h-4 w-4" /> {t("campaigns.rename")}</DropdownMenuItem>
                             {campaign.status !== "moderation" && (
                               <DropdownMenuItem className="gap-2" onClick={() => navigate(`/dashboard/campaigns/${campaign.id}/edit`)}><Pencil className="h-4 w-4" /> {t("campaigns.edit")}</DropdownMenuItem>
                             )}
@@ -356,6 +398,36 @@ export default function DashboardCampaigns() {
             </div>
             );
           })()}
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!renameCampaign} onOpenChange={(open) => { if (!open) closeRenameDialog(); }}>
+        <DialogContent className="bg-card border-border sm:max-w-[440px]">
+          <form onSubmit={(event) => { event.preventDefault(); void handleRename(); }} className="space-y-4">
+            <DialogHeader>
+              <DialogTitle>{t("campaigns.renameTitle")}</DialogTitle>
+              <DialogDescription>{t("campaigns.renameDescription")}</DialogDescription>
+            </DialogHeader>
+            <div className="space-y-2">
+              <Label htmlFor="campaign-rename">{t("campaigns.name")}</Label>
+              <Input
+                id="campaign-rename"
+                value={renameValue}
+                onChange={(event) => setRenameValue(event.target.value)}
+                autoFocus
+                disabled={isRenaming}
+                className="bg-background border-border"
+              />
+            </div>
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={closeRenameDialog} disabled={isRenaming} className="border-border">
+                {t("campaigns.cancel")}
+              </Button>
+              <Button type="submit" disabled={isRenaming || !renameValue.trim()}>
+                {isRenaming ? t("campaigns.renaming") : t("campaigns.renameSave")}
+              </Button>
+            </DialogFooter>
+          </form>
         </DialogContent>
       </Dialog>
     </>

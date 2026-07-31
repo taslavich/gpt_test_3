@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { useNavigate } from "react-router-dom";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { useProfile } from "@/contexts/ProfileContext";
+import { formatCurrencyAmount } from "@/lib/numberFormat";
 
 export function BalanceCard() {
   const navigate = useNavigate();
@@ -22,7 +23,7 @@ export function BalanceCard() {
       </CardHeader>
       <CardContent>
         <p className="text-3xl font-bold bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
-          {loading ? "..." : `$${balance.toLocaleString()}`}
+          {loading ? "..." : `$${formatCurrencyAmount(balance)}`}
         </p>
         <p className="text-xs text-muted-foreground mt-1">
           {t("balanceCard.daysLeft")}

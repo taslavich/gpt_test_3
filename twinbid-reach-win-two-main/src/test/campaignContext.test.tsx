@@ -181,6 +181,22 @@ describe("CampaignProvider mutation requests", () => {
     );
   });
 
+  it("renames a campaign with a name-only patch and no creative requests", async () => {
+    apiMock.listCampaigns.mockResolvedValue({ items: [apiCampaign], total: 1 });
+    const { result } = renderHook(() => useCampaigns(), { wrapper });
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    await act(async () => {
+      await result.current.updateCampaign("campaign-1", { name: "Renamed campaign" });
+    });
+
+    expect(apiMock.patchCampaign).toHaveBeenCalledWith("campaign-1", {
+      campaign_name: "Renamed campaign",
+    });
+    expect(apiMock.readCreatives).not.toHaveBeenCalled();
+    expect(result.current.campaigns[0].name).toBe("Renamed campaign");
+  });
+
   it("loads the campaign list without requesting creatives for every campaign", async () => {
     apiMock.listCampaigns.mockResolvedValue({
       items: [

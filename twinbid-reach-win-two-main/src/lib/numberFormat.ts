@@ -19,3 +19,11 @@ export function formatStatisticRate(value: number): string {
     maximumFractionDigits: 3,
   });
 }
+
+export function formatCurrencyAmount(value: number): string {
+  if (!Number.isFinite(value)) return "0.00";
+  return value.toLocaleString("en-US", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
+}

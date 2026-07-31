@@ -11,6 +11,7 @@ import { LanguageSelector } from "@/components/LanguageSelector";
 import { cn } from "@/lib/utils";
 import { useNavigate } from "react-router-dom";
 import { DashboardMobileNavigation } from "@/components/dashboard/DashboardSidebar";
+import { formatCurrencyAmount } from "@/lib/numberFormat";
 
 export function DashboardHeader() {
   const { notifications, removeNotification } = useNotifications();
@@ -62,7 +63,7 @@ export function DashboardHeader() {
           >
             <Wallet className="hidden h-5 w-5 shrink-0 text-muted-foreground min-[390px]:block" />
             <span className="max-w-[92px] truncate tabular-nums sm:max-w-none">
-              {loading ? "..." : `$${balance.toLocaleString()}`}
+              {loading ? "..." : `$${formatCurrencyAmount(balance)}`}
             </span>
             <Plus className="hidden h-4 w-4 shrink-0 text-muted-foreground sm:block" />
           </button>
