@@ -1,0 +1,44 @@
+// @vitest-environment jsdom
+import { useState } from "react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
+import { describe, expect, it } from "vitest";
+import { TargetingSection } from "@/components/dashboard/TargetingSection";
+import { LanguageProvider } from "@/contexts/LanguageContext";
+import type { TargetingState } from "@/contexts/CampaignContext";
+
+function Harness() {
+  const [lists, setLists] = useState<Record<string, TargetingState>>({
+    country: { mode: "white", items: ["US", "DE"] },
+  });
+
+  return (
+    <LanguageProvider>
+      <TargetingSection
+        lists={lists}
+        onUpdate={(key, updates) => {
+          setLists(current => ({
+            ...current,
+            [key]: { ...current[key], mode: current[key]?.mode ?? "none", items: current[key]?.items ?? [], ...updates },
+          }));
+        }}
+      />
+    </LanguageProvider>
+  );
+}
+
+describe("targeting list controls", () => {
+  it("clears all selected values in one targeting without changing its mode", () => {
+    render(<Harness />);
+
+    const countriesCard = screen.getByText("Countries").closest("div.rounded-lg");
+    expect(countriesCard).not.toBeNull();
+    expect(within(countriesCard as HTMLElement).getByText("United States (US)")).toBeInTheDocument();
+    expect(within(countriesCard as HTMLElement).getByText("Germany (DE)")).toBeInTheDocument();
+
+    fireEvent.click(within(countriesCard as HTMLElement).getByRole("button", { name: "Clear" }));
+
+    expect(within(countriesCard as HTMLElement).queryByText("United States (US)")).not.toBeInTheDocument();
+    expect(within(countriesCard as HTMLElement).queryByText("Germany (DE)")).not.toBeInTheDocument();
+    expect(within(countriesCard as HTMLElement).getByRole("button", { name: "White" })).toHaveClass("bg-green-600");
+  });
+});

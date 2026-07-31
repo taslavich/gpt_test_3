@@ -611,6 +611,7 @@ const translations: Record<string, Record<"ru" | "en", string>> = {
   "targeting.scheduleHint": { ru: "Кликните или протяните мышью для выбора часов. Кликните на день/час для выделения целого ряда/столбца", en: "Click or drag to select hours. Click a day/hour header to toggle an entire row/column" },
   "targeting.selectAll": { ru: "Все", en: "All" },
   "targeting.deselectAll": { ru: "Снять", en: "Clear" },
+  "targeting.clear": { ru: "Очистить", en: "Clear" },
   "targeting.scheduleRequired": { ru: "Выберите хотя бы один активный час в расписании", en: "Select at least one active hour in the schedule" },
   "targeting.ipHint": { ru: "Введите IPv4 адреса через запятую", en: "Enter IPv4 addresses, comma-separated" },
   "targeting.ipFormatError": { ru: "Неверный формат IP. Допускаются только IPv4 адреса", en: "Invalid IP format. Only IPv4 addresses are allowed" },

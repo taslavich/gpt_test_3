@@ -533,6 +533,7 @@ export const ES_TRANSLATIONS: Record<string, string> = {
   "targeting.scheduleHint": "Haz clic o arrastra para seleccionar horas. Haz clic en un día/hora para alternar toda la fila/columna",
   "targeting.selectAll": "Todo",
   "targeting.deselectAll": "Limpiar",
+  "targeting.clear": "Limpiar",
   "targeting.scheduleRequired": "Selecciona al menos una hora activa en el horario",
   "targeting.ipHint": "Introduce direcciones IPv4 separadas por coma",
   "targeting.ipFormatError": "Formato de IP no válido. Solo se permiten IPv4",

@@ -358,6 +358,11 @@ function ListItem({ config, list: rawList, onUpdate }: {
     onUpdate({ items: list.items.filter(i => i !== item) });
   };
 
+  const clearItems = () => {
+    setInputValue("");
+    onUpdate({ items: [] });
+  };
+
   // For schedule, the picker is always active (no off switch).
   const modeButtons = isSchedule
     ? ([] as const)
@@ -367,9 +372,8 @@ function ListItem({ config, list: rawList, onUpdate }: {
     <div className="min-w-0 space-y-3 rounded-lg bg-background/50 p-3 border border-border/50 sm:p-4">
       <div className="flex flex-col gap-2 min-[440px]:flex-row min-[440px]:items-center min-[440px]:justify-between">
         <Label className="font-medium">{t(config.labelKey)}</Label>
-        {modeButtons.length > 0 && (
-          <div className="flex flex-wrap gap-1.5">
-            {modeButtons.map((m) => (
+        <div className="flex flex-wrap gap-1.5">
+          {modeButtons.length > 0 && modeButtons.map((m) => (
               <Button key={m} type="button" size="sm" variant="outline"
                 onClick={() => onUpdate({ mode: m })}
                 className={
@@ -381,9 +385,19 @@ function ListItem({ config, list: rawList, onUpdate }: {
                 }>
                 {m === "none" ? t("targeting.off") : m === "white" ? "White" : "Black"}
               </Button>
-            ))}
-          </div>
-        )}
+          ))}
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            onClick={clearItems}
+            disabled={list.items.length === 0}
+            className="gap-1.5 border-border"
+          >
+            <X className="h-3.5 w-3.5" />
+            {t("targeting.clear")}
+          </Button>
+        </div>
       </div>
       {(isSchedule || list.mode !== "none") && (
         <div className="space-y-2">
