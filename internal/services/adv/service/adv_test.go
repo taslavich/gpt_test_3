@@ -494,17 +494,6 @@ func TestSnapshotDeepClone(t *testing.T) {
 	}
 }
 
-func TestBannerRequiresRouterMarkerAndDoesNotMatchNativeFormats(t *testing.T) {
-	banner := &ortb.Banner{Ext: []string{constants.ADVImpressionFormatMarkerPrefix + constants.BAN}}
-	imp := &ortb.Imp{Banner: banner}
-	if !impressionMatchesFormat(imp, constants.BAN) {
-		t.Fatal("BAN marker must match BAN")
-	}
-	if impressionMatchesFormat(imp, constants.IPP) || impressionMatchesFormat(imp, constants.NAT) {
-		t.Fatal("banner impression must not match native-response formats")
-	}
-}
-
 func TestQualityMapsAllowEmptySnapshot(t *testing.T) {
 	snapshot, err := buildQualitySnapshot(emptyQualityMaps())
 	if err != nil {
@@ -743,20 +732,6 @@ func TestNativeImageUsesOnlyMinimumDimensionsAndAllowedFormats(t *testing.T) {
 	creative.FileFormat = "video/mp4"
 	if _, ok := buildNativeADM(imp, campaign, creative, creative.ADMURL); ok {
 		t.Fatal("MP4 must not be eligible for native image asset")
-	}
-}
-
-func TestNativeAndIPPImpressionsUseNativeRequest(t *testing.T) {
-	imp := nativeTestImp(`{"native":{"assets":[{"id":1,"title":{"len":80}}]}}`)
-	if !impressionMatchesFormat(imp, constants.NAT) {
-		t.Fatal("native impression must match NAT")
-	}
-	if !impressionMatchesFormat(imp, constants.IPP) {
-		t.Fatal("native impression must match IPP endpoint format")
-	}
-	banner := &ortb.Imp{Banner: &ortb.Banner{Ext: []string{constants.ADVImpressionFormatMarkerPrefix + constants.IPP}}}
-	if impressionMatchesFormat(banner, constants.IPP) {
-		t.Fatal("IPP without native.request cannot build native JSON")
 	}
 }
 

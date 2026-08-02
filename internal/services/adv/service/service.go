@@ -528,22 +528,6 @@ func (s *AuctionService) Auction(ctx context.Context, req *ortb.BidRequest, now 
 			continue
 		}
 
-		if !impressionMatchesFormat(imp, requestedFormat) {
-			logf(
-				"[ADV][IMP_REJECT] request_id=%q imp_id=%q reason=impression_format_mismatch requested_format=%q has_banner=%t has_native=%t banner_ext=%q banner_sizes=%q banner_mimes=%q native_request_length=%d",
-				requestID,
-				impID,
-				requestedFormat,
-				imp.GetBanner() != nil,
-				imp.GetNative() != nil,
-				bannerExtValues(imp),
-				formatBannerSizes(bannerSizes(imp)),
-				bannerMimeValues(imp),
-				nativeRequestPayloadLength(imp),
-			)
-			continue
-		}
-
 		winnerUUID := strings.TrimSpace(options.ImpIDUUID[impID])
 		if winnerUUID == "" {
 			logf(
@@ -1943,35 +1927,6 @@ func bannerSizes(imp *ortb.Imp) map[[2]int]bool {
 		out[[2]int{int(banner.GetW()), int(banner.GetH())}] = true
 	}
 	return out
-}
-
-func impressionMatchesFormat(imp *ortb.Imp, format string) bool {
-	if imp == nil {
-		return false
-	}
-	normalized := normalizeFormat(format)
-	switch normalized {
-	case "BAN":
-		banner := imp.GetBanner()
-		if banner == nil || imp.GetNative() != nil {
-			return false
-		}
-		expected := constants.ADVImpressionFormatMarkerPrefix + normalized
-		for _, value := range banner.GetExt() {
-			if strings.EqualFold(strings.TrimSpace(value), expected) {
-				return true
-			}
-		}
-		return false
-	case "NAT", "IPP":
-		return imp.GetNative() != nil && imp.GetBanner() == nil
-	case "POP":
-		// OpenRTB 2.5 has no dedicated popunder object. In this project POP is
-		// represented by an impression without banner/native objects.
-		return imp.GetBanner() == nil && imp.GetNative() == nil
-	default:
-		return false
-	}
 }
 
 func normalizeFormat(value string) string {
