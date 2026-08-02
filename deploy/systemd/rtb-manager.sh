@@ -12,10 +12,9 @@ REDIS_SERVICES=(
     "rtb-redis-7005"
 )
 
-# Kafka-loader и kafkaredis управляются вместе
+# Сервисы Kafka data pipeline
 KAFKA_SERVICES=(
     "rtb-kafka-loader"
-    "rtb-kafkaredis"
 )
 
 DATA_PIPELINE_SERVICES=(
@@ -123,12 +122,6 @@ wait_for_loaders() {
         echo "⚠️ Kafka-loader not running"
     fi
 
-    if systemctl is-active rtb-kafkaredis >/dev/null 2>&1; then
-        echo "✅ kafkaredis ready"
-    else
-        echo "⚠️ kafkaredis not running"
-    fi
-
     if systemctl is-active rtb-clickhouse-loader >/dev/null 2>&1; then
         echo "✅ ClickHouse-loader ready"
     else
@@ -141,7 +134,7 @@ wait_for_loaders() {
 case "$1" in
     # --- Data Pipeline (D) ---
     startD|start-data-pipeline)
-        echo "🚀 Starting Data Pipeline services (Kafka-loader, kafkaredis, ClickHouse-loader)..."
+        echo "🚀 Starting Data Pipeline services (Kafka-loader, ClickHouse-loader)..."
         start_services "${DATA_PIPELINE_SERVICES[@]}"
         wait_for_loaders
         echo "✅ Data pipeline fully started"
@@ -150,7 +143,6 @@ case "$1" in
     stopD|stop-data-pipeline)
         echo "🛑 Stopping Data Pipeline..."
         stop_services "rtb-clickhouse-loader"
-        stop_services "rtb-kafkaredis"
         stop_services "rtb-kafka-loader"
         echo "✅ Data pipeline stopped"
         ;;
@@ -163,12 +155,10 @@ case "$1" in
 
         go build -o ./cmd/clickhouse-loader/clickhouse-loader ./cmd/clickhouse-loader
         go build -o ./cmd/kafka-loader/kafka-loader ./cmd/kafka-loader
-        go build -o ./cmd/kafkaredis/kafkaredis ./cmd/kafkaredis
 
         chmod +x \
             ./cmd/clickhouse-loader/clickhouse-loader \
-            ./cmd/kafka-loader/kafka-loader \
-            ./cmd/kafkaredis/kafkaredis
+            ./cmd/kafka-loader/kafka-loader
 
         echo "✅ Data Pipeline rebuild completed"
 
@@ -335,7 +325,6 @@ case "$1" in
         go build -o ./cmd/clickhouse-loader/clickhouse-loader ./cmd/clickhouse-loader
 
         go build -o ./cmd/kafka-loader/kafka-loader ./cmd/kafka-loader
-        go build -o ./cmd/kafkaredis/kafkaredis ./cmd/kafkaredis
 
         chmod +x ./cmd/*/*
 
@@ -384,7 +373,7 @@ case "$1" in
         echo "Usage: $0 <command>"
         echo ""
         echo "Data Pipeline (D):"
-        echo "  startD              Start Kafka-loader, kafkaredis and ClickHouse-loader"
+        echo "  startD              Start Kafka-loader and ClickHouse-loader"
         echo "  stopD               Stop Data Pipeline services"
         echo "  restartD            Restart Data Pipeline"
         echo "  statusD             Show Data Pipeline status"
