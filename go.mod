@@ -64,7 +64,6 @@ require (
 	github.com/oschwald/maxminddb-golang v1.12.0
 	github.com/redis/go-redis/v9 v9.14.0
 	github.com/segmentio/kafka-go v0.4.49
-	github.com/shopspring/decimal v1.4.0
 	github.com/yl2chen/cidranger v1.0.2
 	go.etcd.io/bbolt v1.5.0
 	golang.org/x/sys v0.45.0 // indirect

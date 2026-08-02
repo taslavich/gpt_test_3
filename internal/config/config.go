@@ -276,25 +276,6 @@ type AdvConfig struct {
 	BotInternalSecret       string        `yaml:"BOT_INTERNAL_SECRET" env:"BOT_INTERNAL_SECRET"`
 }
 
-type KafkaredisConfig struct {
-	HttpServer HttpServer
-	RedisConfig
-	KafkaConfig
-	PostgresDSN                string        `yaml:"POSTGRES_DSN" env:"POSTGRES_DSN"`
-	RedisExportInterval        time.Duration `yaml:"KAFKAREDIS_REDIS_EXPORT_INTERVAL" env:"KAFKAREDIS_REDIS_EXPORT_INTERVAL" env-default:"30s"`
-	RedisScanCount             int           `yaml:"KAFKAREDIS_REDIS_SCAN_COUNT" env:"KAFKAREDIS_REDIS_SCAN_COUNT" env-default:"2000"`
-	KafkaExportBatchSize       int           `yaml:"KAFKAREDIS_KAFKA_EXPORT_BATCH_SIZE" env:"KAFKAREDIS_KAFKA_EXPORT_BATCH_SIZE" env-default:"2000"`
-	KafkaExportBatchBytes      int           `yaml:"KAFKAREDIS_KAFKA_EXPORT_BATCH_BYTES" env:"KAFKAREDIS_KAFKA_EXPORT_BATCH_BYTES" env-default:"4194304"`
-	KafkaImportBatchSize       int           `yaml:"KAFKAREDIS_KAFKA_IMPORT_BATCH_SIZE" env:"KAFKAREDIS_KAFKA_IMPORT_BATCH_SIZE" env-default:"2000"`
-	KafkaImportBatchTimeout    time.Duration `yaml:"KAFKAREDIS_KAFKA_IMPORT_BATCH_TIMEOUT" env:"KAFKAREDIS_KAFKA_IMPORT_BATCH_TIMEOUT" env-default:"100ms"`
-	ImportDisabledPollInterval time.Duration `yaml:"KAFKAREDIS_IMPORT_DISABLED_POLL_INTERVAL" env:"KAFKAREDIS_IMPORT_DISABLED_POLL_INTERVAL" env-default:"250ms"`
-	PostgresMaxOpenConns       int           `yaml:"KAFKAREDIS_POSTGRES_MAX_OPEN_CONNS" env:"KAFKAREDIS_POSTGRES_MAX_OPEN_CONNS" env-default:"8"`
-	PostgresMaxIdleConns       int           `yaml:"KAFKAREDIS_POSTGRES_MAX_IDLE_CONNS" env:"KAFKAREDIS_POSTGRES_MAX_IDLE_CONNS" env-default:"8"`
-	PostgresConnMaxLifetime    time.Duration `yaml:"KAFKAREDIS_POSTGRES_CONN_MAX_LIFETIME" env:"KAFKAREDIS_POSTGRES_CONN_MAX_LIFETIME" env-default:"30m"`
-	SelfControlURL             string        `yaml:"KAFKAREDIS_SELF_CONTROL_URL" env:"KAFKAREDIS_SELF_CONTROL_URL"`
-	BotBaseURL                 string        `yaml:"BOT_BASE_URL" env:"BOT_BASE_URL"`
-	BotInternalSecret          string        `yaml:"BOT_INTERNAL_SECRET" env:"BOT_INTERNAL_SECRET"`
-}
 type KafkaLoaderConfig struct {
 	RedisConfig
 	KafkaConfig
@@ -428,15 +409,11 @@ type KafkaConfig struct {
 	KafkaTopicClicks      string `yaml:"KAFKA_TOPIC_CLICKS" env:"KAFKA_TOPIC_CLICKS" env-default:"clicks"`
 	KafkaTopicConversions string `yaml:"KAFKA_TOPIC_CONVERSIONS" env:"KAFKA_TOPIC_CONVERSIONS" env-default:"conversions"`
 
-	KafkaTopicSpentTotals string `yaml:"KAFKA_TOPIC_SPENT_TOTALS" env:"KAFKA_TOPIC_SPENT_TOTALS" env-default:"spent_totals"`
-
 	// Kafka consumer groups
 	KafkaGroupIDOrtb        string `yaml:"KAFKA_GROUP_ID_ORTB" env:"KAFKA_GROUP_ID_ORTB" env-default:"groupIdOrtb"`
 	KafkaGroupIDImpressions string `yaml:"KAFKA_GROUP_ID_IMPRESSIONS" env:"KAFKA_GROUP_ID_IMPRESSIONS" env-default:"groupIdImpressions"`
 	KafkaGroupIDClicks      string `yaml:"KAFKA_GROUP_ID_CLICKS" env:"KAFKA_GROUP_ID_CLICKS" env-default:"groupIdClicks"`
 	KafkaGroupIDConversions string `yaml:"KAFKA_GROUP_ID_CONVERSIONS" env:"KAFKA_GROUP_ID_CONVERSIONS" env-default:"groupIdConversions"`
-
-	KafkaGroupIDSpentTotals string `yaml:"KAFKA_GROUP_ID_SPENT_TOTALS" env:"KAFKA_GROUP_ID_SPENT_TOTALS" env-default:"kafkaredis-spent-totals"`
 }
 
 type HttpServer struct {
@@ -450,7 +427,7 @@ type GrpcServer struct {
 }
 
 func getEnvFileNames() []string {
-	return []string{".env.local", ".env", "bid-engine.env", "clickhouse-loader.env", "kafka-loader.env", "dsp1.env", "dsp2.env", "dsp3.env", "orchestrator.env", "router.env", "spp-adapter.env", "adm-adapter.env", "adv.env", "kafkaredis.env"}
+	return []string{".env.local", ".env", "bid-engine.env", "clickhouse-loader.env", "kafka-loader.env", "dsp1.env", "dsp2.env", "dsp3.env", "orchestrator.env", "router.env", "spp-adapter.env", "adm-adapter.env", "adv.env"}
 }
 
 func LoadConfig[
@@ -463,8 +440,7 @@ func LoadConfig[
 		MockDspConfig |
 		PercenterConfig |
 		AdmAdapterConfig |
-		AdvConfig |
-		KafkaredisConfig,
+		AdvConfig,
 ](ctx context.Context) (*T, error) {
 	for _, fileName := range getEnvFileNames() {
 		err := godotenv.Load(fileName)
