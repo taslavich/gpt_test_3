@@ -13,6 +13,8 @@ require (
 	google.golang.org/protobuf v1.36.7
 )
 
+require github.com/shopspring/decimal v1.4.0 // indirect
+
 require (
 	github.com/BurntSushi/toml v1.2.1 // indirect
 	github.com/ClickHouse/ch-go v0.68.0 // indirect
