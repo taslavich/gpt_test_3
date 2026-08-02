@@ -6,7 +6,7 @@ import { CreativesEditor } from "@/components/dashboard/CreativesEditor";
 import { LanguageProvider } from "@/contexts/LanguageContext";
 import type { Creative } from "@/contexts/CampaignContext";
 
-function Harness() {
+function Harness({ formatKey = "popunder" }: { formatKey?: string }) {
   const [creatives, setCreatives] = useState<Creative[]>([{
     id: "creative-1",
     name: "Creative",
@@ -16,7 +16,7 @@ function Harness() {
   return (
     <LanguageProvider>
       <CreativesEditor
-        formatKey="popunder"
+        formatKey={formatKey}
         creatives={creatives}
         onChange={setCreatives}
       />
@@ -32,5 +32,15 @@ describe("creative URL macros", () => {
     fireEvent.change(input, { target: { value: "h" } });
 
     expect(input).toHaveValue("h?click_id={click_id}");
+  });
+
+  it("shows the 80-character recommendation for Native and IPP visible text", () => {
+    render(<Harness formatKey="native" />);
+
+    const title = screen.getByPlaceholderText("Ad headline");
+    fireEvent.change(title, { target: { value: "a".repeat(81) } });
+
+    expect(screen.getByText("81/80")).toHaveClass("text-destructive");
+    expect(screen.getAllByText("We recommend no more than 80 characters")).toHaveLength(2);
   });
 });

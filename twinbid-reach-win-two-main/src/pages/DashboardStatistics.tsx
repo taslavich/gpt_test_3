@@ -2,13 +2,25 @@ import { useMemo, useCallback, useEffect, useLayoutEffect, useRef, useState } fr
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Eye, MousePointer, Target, TrendingUp, ArrowUpDown, CalendarIcon, RefreshCw, Filter, Download, Zap, Percent, DollarSign } from "lucide-react";
+import { Eye, MousePointer, Target, TrendingUp, ArrowUpDown, CalendarIcon, RefreshCw, Filter, Download, Zap, Percent, DollarSign, ShieldCheck, ShieldX, Eraser, X } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
 import { format, subDays } from "date-fns";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 import { cn } from "@/lib/utils";
 import type { DateRange } from "react-day-picker";
@@ -26,14 +38,20 @@ import {
 } from "@/lib/statFilters";
 import { api } from "@/api";
 import type { StatsGroupBy, StatsFilterBy } from "@/api/types";
-import { formatNumberWithDot, formatStatisticInteger, formatStatisticRate } from "@/lib/numberFormat";
+import { formatNumberWithDot, formatStatisticInteger, formatStatisticRate, formatStatisticSpend } from "@/lib/numberFormat";
+import { sortStatisticRowsByLabel } from "@/lib/statisticsSort";
 import { useIsMobile } from "@/hooks/use-mobile";
+import {
+  buildTrafficCleanerTargeting,
+  selectUnconvertedSiteIds,
+  type TrafficCleanerMode,
+} from "@/lib/trafficCleaner";
 
 type GroupBy = "dates" | "hours" | "browsers" | "siteid" | "devices" | "os" | "country";
 type SortKey = "label" | "impressions" | "clicks" | "spent" | "cpm" | "cpc" | "conversions" | "income";
 type SortDir = "asc" | "desc";
 
-interface UiRow { label: string; impressions: number; clicks: number; spent: number; conversions: number; income: number; confirmedConversions: number; confirmedIncome: number; }
+interface UiRow { label: string; sortValue?: number; impressions: number; clicks: number; spent: number; conversions: number; income: number; confirmedConversions: number; confirmedIncome: number; }
 
 // UI groupBy → ClickHouse group_by + bucket key in the response row.
 const GROUP_MAP: Record<GroupBy, { api: StatsGroupBy }> = {
@@ -126,7 +144,7 @@ function MultiSelectFilter({ label, options, selected, onChange }: {
 
 export default function DashboardStatistics() {
   const isMobile = useIsMobile();
-  const { campaigns, loadCampaignCreatives } = useCampaigns();
+  const { campaigns, loadCampaignCreatives, updateCampaign } = useCampaigns();
   const { t, lang } = useLanguage();
   
   const {
@@ -219,6 +237,12 @@ export default function DashboardStatistics() {
   const [slowLoading, setSlowLoading] = useState(false);
   type PageSize = 50 | 100 | "all";
   const [pageSize, setPageSize] = useState<PageSize>(50);
+  const [selectedSiteIds, setSelectedSiteIds] = useState<Set<string>>(new Set());
+  const [cleanerCampaignId, setCleanerCampaignId] = useState("");
+  const [cleanerSpendThreshold, setCleanerSpendThreshold] = useState("0");
+  const [cleanerSaving, setCleanerSaving] = useState(false);
+  const [removingSiteId, setRemovingSiteId] = useState<string | null>(null);
+  const [pendingCleanerMode, setPendingCleanerMode] = useState<TrafficCleanerMode | null>(null);
   useEffect(() => { setPageSize(50); }, [appliedGroupBy]);
 
   // Preserve scroll position when the user switches grouping or page size.
@@ -343,7 +367,11 @@ export default function DashboardStatistics() {
         }
         rows = keys.map(k => {
           const m = byKey.get(k) ?? empty;
-          return { label: formatHourLabel(k), ...m };
+          return {
+            label: formatHourLabel(k),
+            sortValue: Date.parse(`${k.replace(" ", "T")}:00Z`),
+            ...m,
+          };
         });
       } else if (apiGroup === "date") {
         const keys: string[] = [];
@@ -357,7 +385,11 @@ export default function DashboardStatistics() {
         }
         rows = keys.map(k => {
           const m = byKey.get(k) ?? empty;
-          return { label: formatDateLabel(k), ...m };
+          return {
+            label: formatDateLabel(k),
+            sortValue: Date.parse(`${k}T00:00:00Z`),
+            ...m,
+          };
         });
       } else {
         const reverse =
@@ -421,10 +453,7 @@ export default function DashboardStatistics() {
       { label: t("stats.ctr"), value: `${ctr}%`, icon: Target },
       {
         label: t("stats.spent"),
-        value: `$${formatNumberWithDot(totalSpent, {
-          minimumFractionDigits: 2,
-          maximumFractionDigits: 2,
-        })}`,
+        value: `$${formatStatisticSpend(totalSpent)}`,
         icon: TrendingUp,
       },
     ];
@@ -495,7 +524,7 @@ export default function DashboardStatistics() {
 
   const sortedData = useMemo(() => {
     if (sortKey === "label") {
-      return [...data].sort((a, b) => sortDir === "asc" ? a.label.localeCompare(b.label) : b.label.localeCompare(a.label));
+      return sortStatisticRowsByLabel(data, sortDir);
     }
     const valueOf = (r: UiRow): number => {
       if (sortKey === "cpm") return r.impressions > 0 ? r.spent / r.impressions * 1000 : 0;
@@ -513,6 +542,152 @@ export default function DashboardStatistics() {
     () => pageSize === "all" ? sortedData : sortedData.slice(0, pageSize),
     [sortedData, pageSize],
   );
+
+  const cleanerCampaigns = useMemo(
+    () => campaigns.filter((campaign) => appliedCampaignIds.has(campaign.id)),
+    [campaigns, appliedCampaignIds],
+  );
+  const singleAppliedCampaign = useMemo(() => {
+    if (appliedCampaignIds.size !== 1) return null;
+    const campaignId = Array.from(appliedCampaignIds)[0];
+    return campaigns.find((campaign) => campaign.id === campaignId) ?? null;
+  }, [campaigns, appliedCampaignIds]);
+  const appliedSiteListMode = singleAppliedCampaign?.targeting.sites?.mode ?? "none";
+  const appliedListedSiteIds = useMemo(
+    () => new Set(
+      appliedSiteListMode === "none"
+        ? []
+        : (singleAppliedCampaign?.targeting.sites?.items ?? []),
+    ),
+    [singleAppliedCampaign, appliedSiteListMode],
+  );
+
+  useEffect(() => {
+    if (appliedListedSiteIds.size === 0) return;
+    setSelectedSiteIds((current) => {
+      const next = new Set(Array.from(current).filter((siteId) => !appliedListedSiteIds.has(siteId)));
+      return next.size === current.size ? current : next;
+    });
+  }, [appliedListedSiteIds]);
+
+  useEffect(() => {
+    setCleanerCampaignId((current) => {
+      if (cleanerCampaigns.some((campaign) => campaign.id === current)) return current;
+      return cleanerCampaigns.length === 1 ? cleanerCampaigns[0].id : "";
+    });
+  }, [cleanerCampaigns]);
+
+  useEffect(() => {
+    if (appliedGroupBy !== "siteid") {
+      setSelectedSiteIds(new Set());
+      return;
+    }
+    const available = new Set(data.map((row) => row.label));
+    setSelectedSiteIds((current) => {
+      const next = new Set(Array.from(current).filter((siteId) => available.has(siteId)));
+      if (next.size === current.size && Array.from(next).every((siteId) => current.has(siteId))) return current;
+      return next;
+    });
+  }, [appliedGroupBy, data]);
+
+  const visibleSiteIds = useMemo(
+    () => appliedGroupBy === "siteid"
+      ? visibleRows.map((row) => row.label).filter((siteId) => siteId && !appliedListedSiteIds.has(siteId))
+      : [],
+    [appliedGroupBy, visibleRows, appliedListedSiteIds],
+  );
+  const allVisibleSitesSelected = visibleSiteIds.length > 0 && visibleSiteIds.every((siteId) => selectedSiteIds.has(siteId));
+  const someVisibleSitesSelected = visibleSiteIds.some((siteId) => selectedSiteIds.has(siteId));
+
+  const toggleVisibleSiteIds = (checked: boolean) => {
+    setSelectedSiteIds((current) => {
+      const next = new Set(current);
+      visibleSiteIds.forEach((siteId) => checked ? next.add(siteId) : next.delete(siteId));
+      return next;
+    });
+  };
+
+  const handleSelectUnconvertedSites = () => {
+    const parsedThreshold = Number(cleanerSpendThreshold.replace(",", "."));
+    const selected = selectUnconvertedSiteIds(sortedData, parsedThreshold, appliedListedSiteIds);
+    setSelectedSiteIds(new Set(selected));
+    if (selected.length === 0) toast.info(t("stats.cleaner.noMatches"));
+  };
+
+  const applyTrafficCleaner = async (mode: TrafficCleanerMode, replaceConfirmed = false) => {
+    const targetCampaign = cleanerCampaigns.find((campaign) => campaign.id === cleanerCampaignId);
+    if (!targetCampaign) {
+      toast.error(t("stats.cleaner.selectCampaignError"));
+      return;
+    }
+    if (selectedSiteIds.size === 0) {
+      toast.error(t("stats.cleaner.selectSitesError"));
+      return;
+    }
+
+    const result = buildTrafficCleanerTargeting(targetCampaign.targeting.sites, selectedSiteIds, mode);
+    if (!result.replacesExisting && result.addedCount === 0) {
+      toast.info(t("stats.cleaner.alreadyAdded"));
+      return;
+    }
+    if (result.replacesExisting && !replaceConfirmed) {
+      setPendingCleanerMode(mode);
+      return;
+    }
+
+    setCleanerSaving(true);
+    try {
+      await updateCampaign(targetCampaign.id, {
+        targeting: {
+          ...targetCampaign.targeting,
+          sites: result.next,
+        },
+      });
+      toast.success(
+        t(mode === "black" ? "stats.cleaner.blacklistSaved" : "stats.cleaner.whitelistSaved")
+          .replace("{count}", String(result.addedCount))
+          .replace("{campaign}", targetCampaign.name),
+      );
+      setSelectedSiteIds(new Set());
+      setPendingCleanerMode(null);
+    } catch (error) {
+      console.error("Traffic Cleaner update failed:", error);
+      toast.error(t("stats.cleaner.saveFailed"));
+    } finally {
+      setCleanerSaving(false);
+    }
+  };
+
+  const removeSiteFromAppliedList = async (siteId: string) => {
+    if (!singleAppliedCampaign || appliedSiteListMode === "none" || !appliedListedSiteIds.has(siteId)) return;
+    setRemovingSiteId(siteId);
+    try {
+      await updateCampaign(singleAppliedCampaign.id, {
+        targeting: {
+          ...singleAppliedCampaign.targeting,
+          sites: {
+            mode: appliedSiteListMode,
+            items: singleAppliedCampaign.targeting.sites.items.filter((item) => item !== siteId),
+          },
+        },
+      });
+      setSelectedSiteIds((current) => {
+        const next = new Set(current);
+        next.delete(siteId);
+        return next;
+      });
+      toast.success(
+        t("stats.cleaner.removed")
+          .replace("{site}", siteId)
+          .replace("{campaign}", singleAppliedCampaign.name),
+      );
+    } catch (error) {
+      console.error("Traffic Cleaner remove failed:", error);
+      toast.error(t("stats.cleaner.removeFailed"));
+    } finally {
+      setRemovingSiteId(null);
+    }
+  };
 
   const toggleSort = (key: SortKey) => {
     if (sortKey === key) setSortDir(d => d === "desc" ? "asc" : "desc");
@@ -574,7 +749,7 @@ export default function DashboardStatistics() {
       if (showImpressions) base.push(r.impressions);
       if (showClicks) base.push(r.clicks);
       if (showCtr) base.push(ctr);
-      if (showSpent) base.push(r.spent.toFixed(2));
+      if (showSpent) base.push(formatStatisticSpend(r.spent));
       if (showCpm) base.push(cpmOf(r));
       if (showCpc) base.push(cpcOf(r));
       if (!showConversions) return base.map(escape).join(",");
@@ -594,7 +769,7 @@ export default function DashboardStatistics() {
     if (showImpressions) baseTotal.push(totals.impressions);
     if (showClicks) baseTotal.push(totals.clicks);
     if (showCtr) baseTotal.push(ctrTotal);
-    if (showSpent) baseTotal.push(totals.spent.toFixed(2));
+    if (showSpent) baseTotal.push(formatStatisticSpend(totals.spent));
     if (showCpm) baseTotal.push(cpmOf(totals));
     if (showCpc) baseTotal.push(cpcOf(totals));
     const crTotal = totals.clicks > 0 ? ((totals.conversions / totals.clicks) * 100).toFixed(2) + "%" : "0.00%";
@@ -635,7 +810,7 @@ export default function DashboardStatistics() {
     return (
       <div className="rounded-lg border bg-card px-3 py-2 text-sm shadow-md" style={{ borderColor: "hsl(var(--border))" }}>
         <p className="font-medium text-foreground">{label}</p>
-        <p className="text-muted-foreground">{metricLabel}: <span className="font-semibold text-foreground">{chartMetric === "spent" ? `$${formatNumberWithDot(Number(value) || 0)}` : formatNumberWithDot(Number(value) || 0)}</span></p>
+        <p className="text-muted-foreground">{metricLabel}: <span className="font-semibold text-foreground">{chartMetric === "spent" ? `$${formatStatisticSpend(Number(value) || 0)}` : formatNumberWithDot(Number(value) || 0)}</span></p>
       </div>
     );
   };
@@ -905,7 +1080,11 @@ export default function DashboardStatistics() {
                         tickFormatter={appliedGroupBy === "hours" ? (val: string) => val.split(" ")[1] || val : undefined}
                         interval={appliedGroupBy === "hours" ? "preserveStartEnd" : undefined}
                       />
-                      <YAxis stroke="hsl(var(--muted-foreground))" fontSize={12} />
+                      <YAxis
+                        stroke="hsl(var(--muted-foreground))"
+                        fontSize={12}
+                        tickFormatter={chartMetric === "spent" ? (value: number) => formatStatisticSpend(Number(value) || 0) : undefined}
+                      />
                       {appliedGroupBy === "hours" ? (
                         <Tooltip content={<HoursTooltip />} />
                       ) : (
@@ -1027,6 +1206,90 @@ export default function DashboardStatistics() {
                   </div>
                 </div>
               </div>
+              {appliedGroupBy === "siteid" && data.length > 0 && (
+                <div className="mt-3 rounded-xl border border-primary/25 bg-primary/5 p-3 sm:p-4">
+                  <div className="flex flex-col gap-1 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2">
+                        <ShieldCheck className="h-4 w-4 shrink-0 text-primary" />
+                        <p className="font-semibold">Traffic Cleaner</p>
+                      </div>
+                      <p className="mt-1 text-xs text-muted-foreground sm:text-sm">{t("stats.cleaner.description")}</p>
+                    </div>
+                    <p className="shrink-0 text-sm font-medium text-primary">
+                      {t("stats.cleaner.selectedCount").replace("{count}", String(selectedSiteIds.size))}
+                    </p>
+                  </div>
+
+                  <div className="mt-4 grid min-w-0 gap-3 lg:grid-cols-[minmax(220px,1fr)_minmax(180px,0.65fr)_auto] lg:items-end">
+                    <div className="min-w-0 space-y-1.5">
+                      <Label className="text-xs text-muted-foreground">{t("stats.cleaner.campaign")}</Label>
+                      <Select value={cleanerCampaignId} onValueChange={setCleanerCampaignId}>
+                        <SelectTrigger className="w-full bg-background">
+                          <SelectValue placeholder={t("stats.cleaner.selectCampaign")} />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {cleanerCampaigns.map((campaign) => (
+                            <SelectItem key={campaign.id} value={campaign.id}>{campaign.name}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="min-w-0 space-y-1.5">
+                      <Label htmlFor="traffic-cleaner-spend" className="text-xs text-muted-foreground">
+                        {t("stats.cleaner.minimumSpend")}
+                      </Label>
+                      <Input
+                        id="traffic-cleaner-spend"
+                        inputMode="decimal"
+                        value={cleanerSpendThreshold}
+                        onChange={(event) => setCleanerSpendThreshold(event.target.value)}
+                        className="bg-background"
+                        placeholder="0.00"
+                      />
+                    </div>
+                    <div className="flex min-w-0 flex-wrap gap-2">
+                      <Button type="button" variant="outline" onClick={handleSelectUnconvertedSites} className="min-w-0 flex-1 gap-2 lg:flex-none">
+                        <Filter className="h-4 w-4 shrink-0" />
+                        <span className="truncate">{t("stats.cleaner.selectNoConversions")}</span>
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        onClick={() => setSelectedSiteIds(new Set())}
+                        disabled={selectedSiteIds.size === 0}
+                        className="gap-2"
+                      >
+                        <Eraser className="h-4 w-4" />
+                        {t("stats.cleaner.clearSelection")}
+                      </Button>
+                    </div>
+                  </div>
+
+                  <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:justify-end">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      disabled={cleanerSaving || selectedSiteIds.size === 0 || !cleanerCampaignId}
+                      onClick={() => void applyTrafficCleaner("white")}
+                      className="gap-2 border-emerald-500/40 text-emerald-600 hover:bg-emerald-500/10 hover:text-emerald-600 dark:text-emerald-400 dark:hover:text-emerald-400"
+                    >
+                      <ShieldCheck className="h-4 w-4" />
+                      {t("stats.cleaner.addWhitelist")}
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      disabled={cleanerSaving || selectedSiteIds.size === 0 || !cleanerCampaignId}
+                      onClick={() => void applyTrafficCleaner("black")}
+                      className="gap-2 border-destructive/40 text-destructive hover:bg-destructive/10 hover:text-destructive"
+                    >
+                      <ShieldX className="h-4 w-4" />
+                      {t("stats.cleaner.addBlacklist")}
+                    </Button>
+                  </div>
+                </div>
+              )}
             </CardHeader>
             <CardContent className="p-0">
               {data.length === 0 ? (
@@ -1057,6 +1320,7 @@ export default function DashboardStatistics() {
                           : showRoi ? "roi"
                           : null)
                         : null;
+                    const fmtSpent = (n: number) => `$${formatStatisticSpend(n)}`;
                     const fmtMoney = (n: number) => `$${formatNumberWithDot(n, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
                     const fmtRate = (n: number) => `$${formatStatisticRate(n)}`;
                     const cpmOf = (r: { spent: number; impressions: number }) => r.impressions > 0 ? r.spent / r.impressions * 1000 : 0;
@@ -1080,7 +1344,18 @@ export default function DashboardStatistics() {
                       <tr className="border-b border-border">
                         <th className={cn("text-left py-2 px-2 text-sm font-medium text-muted-foreground whitespace-nowrap", stickyHead, canSortByLabel && "cursor-pointer select-none")}
                           onClick={() => canSortByLabel && toggleSort("label")}>
-                          {labelHeader} {canSortByLabel && <SortIcon col="label" />}
+                          <span className="inline-flex items-center gap-2">
+                            {appliedGroupBy === "siteid" && (
+                              <Checkbox
+                                aria-label={t("stats.cleaner.selectVisible")}
+                                checked={allVisibleSitesSelected ? true : someVisibleSitesSelected ? "indeterminate" : false}
+                                onCheckedChange={(checked) => toggleVisibleSiteIds(checked === true)}
+                                onClick={(event) => event.stopPropagation()}
+                              />
+                            )}
+                            <span>{labelHeader}</span>
+                            {canSortByLabel && <SortIcon col="label" />}
+                          </span>
                         </th>
                         {showImpressions && (
                           <th className="text-left py-2 px-2 text-sm font-medium text-muted-foreground cursor-pointer select-none whitespace-nowrap" onClick={() => toggleSort("impressions")}>
@@ -1143,15 +1418,58 @@ export default function DashboardStatistics() {
                         const cr = row.clicks > 0 ? ((row.conversions / row.clicks) * 100).toFixed(2) : "0.00";
                         const roiNum = row.spent > 0 ? ((row.confirmedIncome - row.spent) / row.spent) * 100 : 0;
                         const roi = row.spent > 0 ? roiNum.toFixed(2) : "0.00";
+                        const listedMode = appliedGroupBy === "siteid" && appliedListedSiteIds.has(row.label)
+                          ? appliedSiteListMode
+                          : null;
                         return (
                         <tr key={row.label} className="group border-b border-border/50 hover:bg-muted/50 transition-colors">
                           <td className={cn("py-2 px-2 font-medium whitespace-nowrap", stickyBody, "group-hover:bg-muted/50")}>
-                            {appliedGroupBy === "country" ? formatCountryLabel(row.label, lang) : row.label}
+                            <span className="inline-flex items-center gap-2">
+                              {appliedGroupBy === "siteid" && (
+                                <Checkbox
+                                  aria-label={t("stats.cleaner.selectSite").replace("{site}", row.label)}
+                                  checked={selectedSiteIds.has(row.label)}
+                                  disabled={listedMode !== null}
+                                  onCheckedChange={(checked) => {
+                                    setSelectedSiteIds((current) => {
+                                      const next = new Set(current);
+                                      if (checked === true) next.add(row.label); else next.delete(row.label);
+                                      return next;
+                                    });
+                                  }}
+                                />
+                              )}
+                              <span>{appliedGroupBy === "country" ? formatCountryLabel(row.label, lang) : row.label}</span>
+                              {listedMode && (
+                                <>
+                                  <span className={cn(
+                                    "rounded-md border px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide",
+                                    listedMode === "black"
+                                      ? "border-destructive/35 bg-destructive/10 text-destructive"
+                                      : "border-emerald-500/35 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400",
+                                  )}>
+                                    {t(listedMode === "black" ? "stats.cleaner.inBlacklist" : "stats.cleaner.inWhitelist")}
+                                  </span>
+                                  <Button
+                                    type="button"
+                                    variant="ghost"
+                                    size="sm"
+                                    disabled={removingSiteId !== null || cleanerSaving}
+                                    onClick={() => void removeSiteFromAppliedList(row.label)}
+                                    className="h-6 gap-1 px-1.5 text-xs text-muted-foreground hover:text-destructive"
+                                    title={t("stats.cleaner.removeFromList")}
+                                  >
+                                    <X className="h-3.5 w-3.5" />
+                                    {t("stats.cleaner.remove")}
+                                  </Button>
+                                </>
+                              )}
+                            </span>
                           </td>
                           {showImpressions && <td className="py-2 px-2 whitespace-nowrap">{formatStatisticInteger(row.impressions)}</td>}
                           {showClicks && <td className="py-2 px-2 whitespace-nowrap">{formatStatisticInteger(row.clicks)}</td>}
                           {showCtr && <td className="py-2 px-2 whitespace-nowrap">{row.impressions > 0 ? ((row.clicks / row.impressions) * 100).toFixed(2) : "0.00"}%</td>}
-                          {showSpent && <td className={cn("py-2 px-2 whitespace-nowrap", firstCost === "spent" && trafficCols > 0 && sep)}>{fmtMoney(row.spent)}</td>}
+                          {showSpent && <td className={cn("py-2 px-2 whitespace-nowrap", firstCost === "spent" && trafficCols > 0 && sep)}>{fmtSpent(row.spent)}</td>}
                           {showCpm && <td className={cn("py-2 px-2 whitespace-nowrap", firstCost === "cpm" && trafficCols > 0 && sep)}>{fmtRate(cpmOf(row))}</td>}
                           {showCpc && <td className={cn("py-2 px-2 whitespace-nowrap", firstCost === "cpc" && trafficCols > 0 && sep)}>{fmtRate(cpcOf(row))}</td>}
                           {showConversions && (
@@ -1172,7 +1490,7 @@ export default function DashboardStatistics() {
                         {showImpressions && <td className="py-2 px-2 whitespace-nowrap">{formatStatisticInteger(totals.impressions)}</td>}
                         {showClicks && <td className="py-2 px-2 whitespace-nowrap">{formatStatisticInteger(totals.clicks)}</td>}
                         {showCtr && <td className="py-2 px-2 whitespace-nowrap">{totals.impressions > 0 ? ((totals.clicks / totals.impressions) * 100).toFixed(2) : "0.00"}%</td>}
-                        {showSpent && <td className={cn("py-2 px-2 whitespace-nowrap", firstCost === "spent" && trafficCols > 0 && sep)}>{fmtMoney(totals.spent)}</td>}
+                        {showSpent && <td className={cn("py-2 px-2 whitespace-nowrap", firstCost === "spent" && trafficCols > 0 && sep)}>{fmtSpent(totals.spent)}</td>}
                         {showCpm && <td className={cn("py-2 px-2 whitespace-nowrap", firstCost === "cpm" && trafficCols > 0 && sep)}>{fmtRate(cpmOf(totals))}</td>}
                         {showCpc && <td className={cn("py-2 px-2 whitespace-nowrap", firstCost === "cpc" && trafficCols > 0 && sep)}>{fmtRate(cpcOf(totals))}</td>}
                         {showConversions && (() => {
@@ -1201,6 +1519,25 @@ export default function DashboardStatistics() {
           </Card>
         </>
       )}
+      <AlertDialog open={pendingCleanerMode !== null} onOpenChange={(open) => { if (!open) setPendingCleanerMode(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{t("stats.cleaner.replaceTitle")}</AlertDialogTitle>
+            <AlertDialogDescription>{t("stats.cleaner.replaceDescription")}</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>{t("stats.cleaner.cancel")}</AlertDialogCancel>
+            <AlertDialogAction
+              disabled={cleanerSaving || pendingCleanerMode === null}
+              onClick={() => {
+                if (pendingCleanerMode) void applyTrafficCleaner(pendingCleanerMode, true);
+              }}
+            >
+              {t("stats.cleaner.replace")}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

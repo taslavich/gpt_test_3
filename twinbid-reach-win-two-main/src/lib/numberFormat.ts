@@ -20,6 +20,14 @@ export function formatStatisticRate(value: number): string {
   });
 }
 
+export function formatStatisticSpend(value: number): string {
+  const truncated = Math.trunc(value * 1000) / 1000;
+  return formatNumberWithDot(truncated, {
+    minimumFractionDigits: 3,
+    maximumFractionDigits: 3,
+  });
+}
+
 export function formatCurrencyAmount(value: number): string {
   if (!Number.isFinite(value)) return "0.00";
   return value.toLocaleString("en-US", {

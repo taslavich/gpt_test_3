@@ -641,6 +641,8 @@ export const CreativesEditor = forwardRef<CreativesEditorHandle, CreativesEditor
         const target = getCreativeTarget(formatKey, creative);
         const canCrop = type === "image" && !!src && !!target;
         const meas = measured[creative.id];
+        const titleLength = Array.from(creative.title || "").length;
+        const descriptionLength = Array.from(creative.description || "").length;
 
         return (
           <div key={creative.id} className="min-w-0 space-y-4 rounded-lg border border-border bg-background/30 p-3 sm:p-4">
@@ -717,20 +719,36 @@ export const CreativesEditor = forwardRef<CreativesEditorHandle, CreativesEditor
 
             {showTitle && (
               <div className="space-y-2">
-                <Label>{t("create.creativeTitle")} *</Label>
+                <div className="flex items-center justify-between gap-3">
+                  <Label>{t("create.creativeTitle")} *</Label>
+                  <span className={`text-xs tabular-nums ${titleLength > 80 ? "font-semibold text-destructive" : "text-muted-foreground"}`}>
+                    {titleLength}/80
+                  </span>
+                </div>
                 <Input value={creative.title || ""} onChange={e => { updateCreative(creative.id, { title: e.target.value }); if (e.target.value.trim()) onClearError?.(`creative_${creative.id}_title`); }}
                   placeholder={t("create.titlePlaceholder")}
                   className={`bg-background border-border ${errors[`creative_${creative.id}_title`] ? "border-destructive" : ""}`} />
+                <p className={`text-xs ${titleLength > 80 ? "text-destructive" : "text-muted-foreground"}`}>
+                  {t("create.visibleTextLengthHint")}
+                </p>
                 {errors[`creative_${creative.id}_title`] && <p className="text-xs text-destructive">{errors[`creative_${creative.id}_title`]}</p>}
               </div>
             )}
 
             {showDescription && (
               <div className="space-y-2">
-                <Label>{t("create.creativeDescription")} *</Label>
+                <div className="flex items-center justify-between gap-3">
+                  <Label>{t("create.creativeDescription")} *</Label>
+                  <span className={`text-xs tabular-nums ${descriptionLength > 80 ? "font-semibold text-destructive" : "text-muted-foreground"}`}>
+                    {descriptionLength}/80
+                  </span>
+                </div>
                 <Textarea value={creative.description || ""} onChange={e => { updateCreative(creative.id, { description: e.target.value }); if (e.target.value.trim()) onClearError?.(`creative_${creative.id}_description`); }}
                   placeholder={t("create.descriptionPlaceholder")}
                   className={`bg-background border-border resize-none ${errors[`creative_${creative.id}_description`] ? "border-destructive" : ""}`} rows={2} />
+                <p className={`text-xs ${descriptionLength > 80 ? "text-destructive" : "text-muted-foreground"}`}>
+                  {t("create.visibleTextLengthHint")}
+                </p>
                 {errors[`creative_${creative.id}_description`] && <p className="text-xs text-destructive">{errors[`creative_${creative.id}_description`]}</p>}
               </div>
             )}
