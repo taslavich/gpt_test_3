@@ -9,6 +9,7 @@ import (
 	"net"
 	"os"
 	"os/signal"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -84,6 +85,12 @@ func main() {
 	winnerStore := auction.NewWinnerStore(winnerRedis, cfg.AdvWinnerTTL)
 	auctionService := auction.NewAuctionService(runtimeStore, winnerStore, percentStore, qualityStore)
 	auctionService.SetAntiPerekrutEnabled(cfg.AntiperekrutEnabled)
+	auctionService.StartDiagnostics(ctx)
+	diagnosticsEnabled, err := boolEnvironment("AUCTION_DIAGNOSTICS_ENABLED", false)
+	if err != nil {
+		log.Fatalf("invalid AUCTION_DIAGNOSTICS_ENABLED: %v", err)
+	}
+	auctionService.SetDiagnosticsEnabled(diagnosticsEnabled)
 
 	botNotifier := utils.NewBotMessageWithTimeout(cfg.BotBaseURL, cfg.BotInternalSecret, cfg.AntiperekrutControlTimeout)
 	var antiManager *auction.AntiPerekrutManager
@@ -175,7 +182,8 @@ func main() {
 
 	router := httpServer.InitHttpRouter(chi.NewRouter())
 	advWeb.InitHttpRoutes(router, percentStore, qualityStore, workController, advWeb.AntiPerekrutHTTPConfig{
-		Manager: antiManager,
+		Manager:        antiManager,
+		AuctionService: auctionService,
 	})
 
 	listener, err := net.Listen("tcp", fmt.Sprintf("%s:%d", cfg.GrpcServer.Host, cfg.GrpcServer.Port))
@@ -213,6 +221,18 @@ func main() {
 			log.Fatalf("ADV server stopped: %v", err)
 		}
 	}
+}
+
+func boolEnvironment(name string, fallback bool) (bool, error) {
+	raw, exists := os.LookupEnv(name)
+	if !exists || strings.TrimSpace(raw) == "" {
+		return fallback, nil
+	}
+	value, err := strconv.ParseBool(strings.TrimSpace(raw))
+	if err != nil {
+		return false, fmt.Errorf("%s must be true or false: %w", name, err)
+	}
+	return value, nil
 }
 
 func validateConfig(cfg *config.AdvConfig) error {

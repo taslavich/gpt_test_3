@@ -47,6 +47,17 @@ type AntiPerekrutState struct {
 	Generation                  uint64
 }
 
+type AntiPerekrutEligibilityReason uint8
+
+const (
+	AntiPerekrutEligibilityAllowed AntiPerekrutEligibilityReason = iota
+	AntiPerekrutEligibilityDurableUserBlock
+	AntiPerekrutEligibilityPendingUserBlock
+	AntiPerekrutEligibilityBalanceGuardRejected
+	AntiPerekrutEligibilityCampaignStateMissing
+	AntiPerekrutEligibilityBlockedUnknown
+)
+
 type AntiPerekrutNotifier func(context.Context, string) error
 
 type AntiPerekrutManager struct {
@@ -836,6 +847,40 @@ func (m *AntiPerekrutManager) CampaignAllowed(state *AntiPerekrutState, campaign
 	}
 	allowed, exists := state.CampaignAuctionAllowed[campaign.ID]
 	return exists && allowed
+}
+
+// CampaignEligibility classifies an AntiPerekrut rejection after
+// CampaignAllowed has already made the auction decision. It is observational
+// and cannot change campaign eligibility.
+func (m *AntiPerekrutManager) CampaignEligibility(
+	state *AntiPerekrutState,
+	campaign *Campaign,
+	durableBlocked bool,
+) AntiPerekrutEligibilityReason {
+	if m == nil || state == nil || campaign == nil {
+		return AntiPerekrutEligibilityCampaignStateMissing
+	}
+	allowed, exists := state.CampaignAuctionAllowed[campaign.ID]
+	if !exists {
+		return AntiPerekrutEligibilityCampaignStateMissing
+	}
+	if allowed {
+		return AntiPerekrutEligibilityAllowed
+	}
+
+	userID := strings.TrimSpace(campaign.UserID)
+	if durableBlocked {
+		return AntiPerekrutEligibilityDurableUserBlock
+	}
+	if _, pending := state.PendingUserBlocks[userID]; pending {
+		return AntiPerekrutEligibilityPendingUserBlock
+	}
+	recent := state.UserSpend[userID].Spend
+	remaining := state.UserRemainingBalance[userID]
+	if recent*2 > remaining {
+		return AntiPerekrutEligibilityBalanceGuardRejected
+	}
+	return AntiPerekrutEligibilityBlockedUnknown
 }
 
 func (m *AntiPerekrutManager) EffectiveTrafficLimit(

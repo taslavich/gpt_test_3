@@ -110,6 +110,10 @@ type Campaign struct {
 
 	TrafficResetVersion int64
 	UpdatedAt           time.Time
+
+	// diagnosticIndex is assigned only when a validated snapshot is published.
+	// It gives the diagnostics-on path O(1) array access without a UUID map lookup.
+	diagnosticIndex uint32
 }
 
 type Snapshot struct {
@@ -137,6 +141,11 @@ type candidate struct {
 	creatives      []*Creative
 	chargePrice    float64
 	effectivePrice float64
+
+	// Diagnostics metadata is observational only. It is never read by pricing,
+	// filtering, candidate-pool construction, random selection, or bid building.
+	diagnosticIndex uint32
+	diagnosticSlot  int
 }
 
 type AuctionService struct {
@@ -152,10 +161,18 @@ type AuctionService struct {
 
 	antiperekrut        *AntiPerekrutManager
 	antiperekrutEnabled bool
+	diagnostics         *AuctionDiagnostics
 }
 
 func NewAuctionService(runtime *RuntimeStore, winners *WinnerStore, percents *PercentStore, quality *QualityStore) *AuctionService {
-	s := &AuctionService{runtime: runtime, winners: winners, percents: percents, quality: quality, antiperekrutEnabled: true}
+	s := &AuctionService{
+		runtime:             runtime,
+		winners:             winners,
+		percents:            percents,
+		quality:             quality,
+		antiperekrutEnabled: true,
+		diagnostics:         NewAuctionDiagnostics(time.Now().UTC()),
+	}
 	s.snapshot.Store(&Snapshot{Campaigns: []*Campaign{}, UserGoals: map[string]float64{}, UserAntiPerekrutBlocked: map[string]bool{}})
 	return s
 }
@@ -218,6 +235,9 @@ func (s *AuctionService) PublishSnapshot(snapshot *Snapshot) error {
 	cloned, err := cloneAndValidateSnapshot(snapshot)
 	if err != nil {
 		return err
+	}
+	if s.diagnostics != nil {
+		s.diagnostics.registerCampaigns(cloned.Campaigns)
 	}
 	s.snapshot.Store(cloned)
 	return nil
@@ -395,6 +415,37 @@ func cloneStringMap(src map[string]string) map[string]string {
 }
 
 func (s *AuctionService) Auction(ctx context.Context, req *ortb.BidRequest, now time.Time, options AuctionRequestOptions) (*AuctionOutcome, error) {
+	if s == nil {
+		return nil, ErrInvalidAuctionRequest
+	}
+
+	// Diagnostics are a passive observer around the single auction
+	// implementation below. Enabling them cannot select a different campaign,
+	// creative, price, random draw, or return value.
+	var recorder *auctionDiagnosticRecorder
+	if s.diagnostics != nil {
+		if session := s.diagnostics.active.Load(); session != nil {
+			requestID := ""
+			if req != nil {
+				requestID = strings.TrimSpace(req.GetId())
+			}
+			if value, ok := session.begin(requestID); ok {
+				recorder = &value
+				defer recorder.Close()
+			}
+		}
+	}
+
+	return s.auctionCore(ctx, req, now, options, recorder)
+}
+
+func (s *AuctionService) auctionCore(
+	ctx context.Context,
+	req *ortb.BidRequest,
+	now time.Time,
+	options AuctionRequestOptions,
+	recorder *auctionDiagnosticRecorder,
+) (*AuctionOutcome, error) {
 	requestedFormat := normalizeFormat(options.Format)
 	trafficType := normalizeTraffic(options.TrafficType)
 	sspDomain := normalizeDomain(options.SSPDomain)
@@ -403,35 +454,62 @@ func (s *AuctionService) Auction(ctx context.Context, req *ortb.BidRequest, now 
 		requestID = strings.TrimSpace(req.GetId())
 	}
 
-	// Detailed auction diagnostics are enabled only for SSP domains ending in "_test".
 	logf := debugLogFunc(func(string, ...any) {})
 	if strings.HasSuffix(sspDomain, "_test") {
 		logf = log.Printf
 	}
 
-	antiPerekrutEnabled := s != nil && s.antiperekrutEnabled
+	impressions := 0
+	if req != nil {
+		impressions = len(req.GetImp())
+	}
+	if recorder != nil {
+		recorder.RecordRequestStart(impressions)
+	}
+
+	antiPerekrutEnabled := s.antiperekrutEnabled
 	logf(
 		"[ADV][AUCTION_START] request_id=%q format=%q traffic_type=%q ssp_domain=%q impressions=%d imp_uuid_count=%d antiperekrut_enabled=%t",
 		requestID,
 		requestedFormat,
 		trafficType,
 		sspDomain,
-		len(req.GetImp()),
+		impressions,
 		len(options.ImpIDUUID),
 		antiPerekrutEnabled,
 	)
 
-	if s == nil || !validAuctionInput(req, options.ImpIDUUID) {
+	if !validAuctionInput(req, options.ImpIDUUID) {
+		if recorder != nil {
+			reason := auctionInputDiagnostic(req, options.ImpIDUUID)
+			if validReasonForScope(reason, diagnosticScopeGlobalImpression) {
+				recorder.RecordGlobalImpression(reason)
+			} else {
+				recorder.RecordGlobalRequest(reason)
+			}
+		}
 		logf(
 			"[ADV][AUCTION_REJECT] request_id=%q reason=invalid_input request_nil=%t impressions=%d imp_uuid_count=%d",
 			requestID,
 			req == nil,
-			len(req.GetImp()),
+			impressions,
 			len(options.ImpIDUUID),
 		)
 		return nil, ErrInvalidAuctionRequest
 	}
 	if s.runtime == nil || s.winners == nil || s.percents == nil || s.quality == nil {
+		if recorder != nil {
+			switch {
+			case s.runtime == nil:
+				recorder.RecordGlobalRequest(diagGlobalRuntimeStoreUnavailable)
+			case s.winners == nil:
+				recorder.RecordGlobalRequest(diagGlobalWinnerStoreUnavailable)
+			case s.percents == nil:
+				recorder.RecordGlobalRequest(diagGlobalPercentStoreUnavailable)
+			case s.quality == nil:
+				recorder.RecordGlobalRequest(diagGlobalQualityStoreUnavailable)
+			}
+		}
 		logf(
 			"[ADV][AUCTION_ERROR] request_id=%q reason=dependencies_not_initialized runtime_nil=%t winners_nil=%t percents_nil=%t quality_nil=%t",
 			requestID,
@@ -444,6 +522,16 @@ func (s *AuctionService) Auction(ctx context.Context, req *ortb.BidRequest, now 
 	}
 
 	if requestedFormat == "" || trafficType == "" || sspDomain == "" {
+		if recorder != nil {
+			switch {
+			case requestedFormat == "":
+				recorder.RecordGlobalRequest(diagGlobalInvalidFormat)
+			case trafficType == "":
+				recorder.RecordGlobalRequest(diagGlobalInvalidTrafficType)
+			case sspDomain == "":
+				recorder.RecordGlobalRequest(diagGlobalSSPDomainEmpty)
+			}
+		}
 		logf(
 			"[ADV][AUCTION_REJECT] request_id=%q reason=invalid_format_traffic_or_domain raw_format=%q raw_traffic_type=%q raw_ssp_domain=%q normalized_format=%q normalized_traffic_type=%q normalized_ssp_domain=%q",
 			requestID,
@@ -465,21 +553,12 @@ func (s *AuctionService) Auction(ctx context.Context, req *ortb.BidRequest, now 
 		mode.String(),
 	)
 
-	if !s.quality.ContainsAny(sspDomain) {
-		logf(
-			"[ADV][AUCTION_NO_BID] request_id=%q reason=ssp_not_in_any_quality_map ssp_domain=%q",
-			requestID,
-			sspDomain,
-		)
-		return &AuctionOutcome{WinnerUserIDs: map[string]string{}}, nil
-	}
-
 	snapshot := s.currentSnapshot()
 	if snapshot == nil {
-		logf(
-			"[ADV][AUCTION_ERROR] request_id=%q reason=campaign_snapshot_unavailable",
-			requestID,
-		)
+		if recorder != nil {
+			recorder.RecordGlobalRequest(diagGlobalCampaignSnapshotUnavailable)
+		}
+		logf("[ADV][AUCTION_ERROR] request_id=%q reason=campaign_snapshot_unavailable", requestID)
 		return nil, errors.New("campaign snapshot is unavailable")
 	}
 
@@ -493,11 +572,17 @@ func (s *AuctionService) Auction(ctx context.Context, req *ortb.BidRequest, now 
 	var antiState *AntiPerekrutState
 	if s.antiperekrutEnabled {
 		if s.antiperekrut == nil {
+			if recorder != nil {
+				recorder.RecordGlobalRequest(diagGlobalAntiPerekrutManagerUnavailable)
+			}
 			logf("[ADV][AUCTION_ERROR] request_id=%q reason=antiperekrut_manager_unavailable", requestID)
 			return nil, errors.New("antiperekrut manager is unavailable")
 		}
 		antiState = s.antiperekrut.State()
 		if antiState == nil || antiState.LoadedAt.IsZero() {
+			if recorder != nil {
+				recorder.RecordGlobalRequest(diagGlobalAntiPerekrutStateUnavailable)
+			}
 			logf("[ADV][AUCTION_ERROR] request_id=%q reason=antiperekrut_state_unavailable", requestID)
 			return nil, errors.New("antiperekrut state is unavailable")
 		}
@@ -510,26 +595,27 @@ func (s *AuctionService) Auction(ctx context.Context, req *ortb.BidRequest, now 
 
 	for idx, imp := range req.GetImp() {
 		if imp == nil {
-			logf(
-				"[ADV][IMP_REJECT] request_id=%q imp_index=%d reason=impression_nil",
-				requestID,
-				idx,
-			)
+			if recorder != nil {
+				recorder.RecordGlobalImpression(diagGlobalImpressionNil)
+			}
+			logf("[ADV][IMP_REJECT] request_id=%q imp_index=%d reason=impression_nil", requestID, idx)
 			continue
 		}
 
 		impID := strings.TrimSpace(imp.GetId())
 		if impID == "" {
-			logf(
-				"[ADV][IMP_REJECT] request_id=%q imp_index=%d reason=imp_id_empty",
-				requestID,
-				idx,
-			)
+			if recorder != nil {
+				recorder.RecordGlobalImpression(diagGlobalImpressionIDEmpty)
+			}
+			logf("[ADV][IMP_REJECT] request_id=%q imp_index=%d reason=imp_id_empty", requestID, idx)
 			continue
 		}
 
 		winnerUUID := strings.TrimSpace(options.ImpIDUUID[impID])
 		if winnerUUID == "" {
+			if recorder != nil {
+				recorder.RecordGlobalImpression(diagGlobalWinnerUUIDMissing)
+			}
 			logf(
 				"[ADV][IMP_REJECT] request_id=%q imp_id=%q format=%q reason=winner_uuid_missing",
 				requestID,
@@ -537,6 +623,10 @@ func (s *AuctionService) Auction(ctx context.Context, req *ortb.BidRequest, now 
 				requestedFormat,
 			)
 			continue
+		}
+
+		if recorder != nil && len(snapshot.Campaigns) == 0 {
+			recorder.RecordGlobalImpression(diagGlobalCampaignSnapshotEmpty)
 		}
 
 		logf(
@@ -556,8 +646,23 @@ func (s *AuctionService) Auction(ctx context.Context, req *ortb.BidRequest, now 
 		)
 
 		candidates := make([]candidate, 0, len(snapshot.Campaigns))
+		nilCampaignSeen := false
+		emptyCampaignIDSeen := false
 		for _, campaign := range snapshot.Campaigns {
-			cand, eligible, infraErr := s.evaluateCampaign(
+			if recorder != nil && campaign == nil && !nilCampaignSeen {
+				recorder.RecordGlobalImpression(diagGlobalCampaignEntryNil)
+				nilCampaignSeen = true
+			}
+			if recorder != nil && campaign != nil && strings.TrimSpace(campaign.ID) == "" && !emptyCampaignIDSeen {
+				recorder.RecordGlobalImpression(diagGlobalCampaignIDEmpty)
+				emptyCampaignIDSeen = true
+			}
+
+			durableUserBlocked := false
+			if campaign != nil {
+				durableUserBlocked = snapshot.UserAntiPerekrutBlocked[campaign.UserID]
+			}
+			cand, eligible, reason, infraErr := s.evaluateCampaign(
 				ctx,
 				campaign,
 				req,
@@ -568,6 +673,8 @@ func (s *AuctionService) Auction(ctx context.Context, req *ortb.BidRequest, now 
 				sspDomain,
 				winnerUUID,
 				antiState,
+				durableUserBlocked,
+				recorder != nil,
 				logf,
 			)
 			if infraErr != nil {
@@ -590,11 +697,21 @@ func (s *AuctionService) Auction(ctx context.Context, req *ortb.BidRequest, now 
 					campaignFormat,
 					infraErr,
 				)
+			}
+			if !eligible {
+				if recorder != nil && campaign != nil && campaign.diagnosticIndex != invalidDiagnosticIndex {
+					if reason == diagNone {
+						reason = diagNoWinnerSelected
+					}
+					recorder.RecordCampaign(campaign.diagnosticIndex, reason)
+				}
 				continue
 			}
-			if eligible {
-				candidates = append(candidates, cand)
+			if recorder != nil {
+				cand.diagnosticIndex = campaign.diagnosticIndex
+				cand.diagnosticSlot = len(candidates)
 			}
+			candidates = append(candidates, cand)
 		}
 
 		logf(
@@ -613,9 +730,21 @@ func (s *AuctionService) Auction(ctx context.Context, req *ortb.BidRequest, now 
 		selectionPool := append([]candidate(nil), candidatePool...)
 		logCandidatePool(logf, requestID, impID, requestedFormat, mode, candidates, selectionPool)
 
+		var states []candidateDiagnosticState
+		if recorder != nil {
+			states = make([]candidateDiagnosticState, len(candidates))
+			for _, cand := range selectionPool {
+				if cand.diagnosticSlot >= 0 && cand.diagnosticSlot < len(states) {
+					states[cand.diagnosticSlot].inPool = true
+				}
+			}
+		}
+
 		attemptResults := make(map[string]string, len(selectionPool))
 		winnerCampaignID := ""
 		winnerEffectivePrice := 0.0
+		winnerSlot := -1
+		selectionFailure := diagNone
 		for len(candidatePool) > 0 {
 			candidateIndex := 0
 			randomUnit := -1.0
@@ -623,6 +752,7 @@ func (s *AuctionService) Auction(ctx context.Context, req *ortb.BidRequest, now 
 				randomUnit = rand.Float64()
 				candidateIndex = weightedCandidateIndex(candidatePool, randomUnit)
 				if candidateIndex < 0 {
+					selectionFailure = diagWeightedIndexUnavailable
 					logf(
 						"[ADV][CANDIDATE_SELECTION_ERROR] request_id=%q imp_id=%q format=%q auction_mode=%q reason=weighted_index_unavailable pool_size=%d random_unit=%.12f total_weight=%.12f",
 						requestID,
@@ -661,40 +791,22 @@ func (s *AuctionService) Auction(ctx context.Context, req *ortb.BidRequest, now 
 
 			if len(cand.creatives) == 0 {
 				attemptResults[campaignID] = "eligible_candidate_has_no_creatives"
-				logf(
-					"[ADV][CANDIDATE_SKIP] request_id=%q imp_id=%q format=%q campaign_id=%q reason=eligible_candidate_has_no_creatives",
-					requestID,
-					impID,
-					requestedFormat,
-					campaignID,
-				)
+				setCandidateDiagnosticReason(states, cand.diagnosticSlot, diagEligibleCandidateHasNoCreatives)
+				logf("[ADV][CANDIDATE_SKIP] request_id=%q imp_id=%q format=%q campaign_id=%q reason=eligible_candidate_has_no_creatives", requestID, impID, requestedFormat, campaignID)
 				continue
 			}
 			creative := cand.creatives[rand.Intn(len(cand.creatives))]
 			if creative == nil {
 				attemptResults[campaignID] = "random_creative_nil"
-				logf(
-					"[ADV][CANDIDATE_SKIP] request_id=%q imp_id=%q format=%q campaign_id=%q reason=random_creative_nil matched_creatives=%d",
-					requestID,
-					impID,
-					requestedFormat,
-					campaignID,
-					len(cand.creatives),
-				)
+				setCandidateDiagnosticReason(states, cand.diagnosticSlot, diagRandomCreativeNil)
+				logf("[ADV][CANDIDATE_SKIP] request_id=%q imp_id=%q format=%q campaign_id=%q reason=random_creative_nil matched_creatives=%d", requestID, impID, requestedFormat, campaignID, len(cand.creatives))
 				continue
 			}
 			bid := s.buildBid(req, imp, cand.campaign, creative, cand.effectivePrice)
 			if bid == nil {
 				attemptResults[campaignID] = "bid_build_failed"
-				logf(
-					"[ADV][CANDIDATE_SKIP] request_id=%q imp_id=%q format=%q campaign_id=%q creative_id=%q reason=bid_build_failed adm_url_empty=%t",
-					requestID,
-					impID,
-					requestedFormat,
-					campaignID,
-					creative.ID,
-					strings.TrimSpace(creative.ADMURL) == "",
-				)
+				setCandidateDiagnosticReason(states, cand.diagnosticSlot, diagBidBuildFailed)
+				logf("[ADV][CANDIDATE_SKIP] request_id=%q imp_id=%q format=%q campaign_id=%q creative_id=%q reason=bid_build_failed adm_url_empty=%t", requestID, impID, requestedFormat, campaignID, creative.ID, strings.TrimSpace(creative.ADMURL) == "")
 				continue
 			}
 
@@ -707,17 +819,8 @@ func (s *AuctionService) Auction(ctx context.Context, req *ortb.BidRequest, now 
 			}
 			if err := s.winners.Put(ctx, winnerUUID, winner); err != nil {
 				attemptResults[campaignID] = "winner_redis_write_failed"
-				logf(
-					"[ADV][WINNER_REDIS_ERROR] request_id=%q imp_id=%q format=%q winner_uuid=%q campaign_id=%q creative_id=%q user_id=%q error=%v",
-					requestID,
-					impID,
-					requestedFormat,
-					winnerUUID,
-					campaignID,
-					creative.ID,
-					cand.campaign.UserID,
-					err,
-				)
+				setCandidateDiagnosticReason(states, cand.diagnosticSlot, diagWinnerRedisWriteFailed)
+				logf("[ADV][WINNER_REDIS_ERROR] request_id=%q imp_id=%q format=%q winner_uuid=%q campaign_id=%q creative_id=%q user_id=%q error=%v", requestID, impID, requestedFormat, winnerUUID, campaignID, creative.ID, cand.campaign.UserID, err)
 				infrastructureErrors++
 				continue
 			}
@@ -727,7 +830,9 @@ func (s *AuctionService) Auction(ctx context.Context, req *ortb.BidRequest, now 
 			winnerBasePrices[impID] = cand.campaign.BasePrice
 			winnerCampaignID = campaignID
 			winnerEffectivePrice = cand.effectivePrice
+			winnerSlot = cand.diagnosticSlot
 			attemptResults[campaignID] = "winner"
+			setCandidateDiagnosticReason(states, cand.diagnosticSlot, diagBidWon)
 			logf(
 				"[ADV][WINNER] request_id=%q imp_id=%q format=%q winner_uuid=%q auction_position=%d auction_mode=%q campaign_id=%q creative_id=%q user_id=%q base_price=%.12f charge_price=%.12f effective_price=%.12f matched_creatives=%d",
 				requestID,
@@ -759,42 +864,100 @@ func (s *AuctionService) Auction(ctx context.Context, req *ortb.BidRequest, now 
 			winnerCampaignID,
 			winnerEffectivePrice,
 		)
+
+		if recorder != nil {
+			for _, cand := range candidates {
+				reason := candidateFinalDiagnosticReason(
+					cand,
+					states,
+					mode,
+					winnerSlot,
+					winnerEffectivePrice,
+					selectionFailure,
+				)
+				recorder.RecordCampaign(cand.diagnosticIndex, reason)
+			}
+		}
 	}
 
 	if len(seat.Bid) == 0 {
 		if infrastructureErrors > 0 {
-			logf(
-				"[ADV][AUCTION_ERROR] request_id=%q reason=redis_operations_failed errors=%d",
-				requestID,
-				infrastructureErrors,
-			)
+			if recorder != nil {
+				recorder.RecordGlobalRequest(diagGlobalAuctionInfrastructureError)
+			}
+			logf("[ADV][AUCTION_ERROR] request_id=%q reason=redis_operations_failed errors=%d", requestID, infrastructureErrors)
 			return nil, fmt.Errorf("ADV Redis operations failed for %d candidates", infrastructureErrors)
 		}
-		logf(
-			"[ADV][AUCTION_NO_BID] request_id=%q format=%q impressions=%d winner_user_ids=%d",
-			requestID,
-			requestedFormat,
-			len(req.GetImp()),
-			len(winnerUsers),
-		)
+		logf("[ADV][AUCTION_NO_BID] request_id=%q format=%q impressions=%d winner_user_ids=%d", requestID, requestedFormat, len(req.GetImp()), len(winnerUsers))
 		return &AuctionOutcome{WinnerUserIDs: winnerUsers, WinnerBasePrices: winnerBasePrices}, nil
 	}
 
 	responseID := strings.TrimSpace(req.GetId())
 	currency := "USD"
-	logf(
-		"[ADV][AUCTION_SUCCESS] request_id=%q format=%q response_id=%q bids=%d winner_user_ids=%d",
-		requestID,
-		requestedFormat,
-		responseID,
-		len(seat.Bid),
-		len(winnerUsers),
-	)
+	logf("[ADV][AUCTION_SUCCESS] request_id=%q format=%q response_id=%q bids=%d winner_user_ids=%d", requestID, requestedFormat, responseID, len(seat.Bid), len(winnerUsers))
 	return &AuctionOutcome{
 		BidResponse:      &ortb.BidResponse{Id: &responseID, Cur: &currency, Seatbid: []*ortb.SeatBid{seat}},
 		WinnerUserIDs:    winnerUsers,
 		WinnerBasePrices: winnerBasePrices,
 	}, nil
+}
+
+type candidateDiagnosticState struct {
+	inPool bool
+	reason diagnosticReason
+}
+
+func setCandidateDiagnosticReason(states []candidateDiagnosticState, slot int, reason diagnosticReason) {
+	if slot < 0 || slot >= len(states) {
+		return
+	}
+	states[slot].reason = reason
+}
+
+func candidateFinalDiagnosticReason(
+	cand candidate,
+	states []candidateDiagnosticState,
+	mode auctionMode,
+	winnerSlot int,
+	winnerEffectivePrice float64,
+	selectionFailure diagnosticReason,
+) diagnosticReason {
+	if cand.diagnosticSlot < 0 || cand.diagnosticSlot >= len(states) {
+		return diagNoWinnerSelected
+	}
+	state := states[cand.diagnosticSlot]
+	if state.reason != diagNone {
+		return state.reason
+	}
+	if !state.inPool {
+		if mode == auctionModeWeightedTop {
+			return diagBelowWeightedTopThreshold
+		}
+		return diagExcludedUnknownAuctionMode
+	}
+	if winnerSlot < 0 {
+		if selectionFailure != diagNone {
+			return selectionFailure
+		}
+		return diagNoWinnerSelected
+	}
+	if cand.diagnosticSlot == winnerSlot {
+		return diagBidWon
+	}
+	switch mode {
+	case auctionModeMaxBid:
+		if auctionPricesEqual(cand.effectivePrice, winnerEffectivePrice) {
+			return diagEqualTopPriceNotSelectedAfterShuffle
+		}
+		if cand.effectivePrice < winnerEffectivePrice {
+			return diagLowerEffectivePriceThanWinner
+		}
+		return diagWinnerSelectedBeforeAttempt
+	case auctionModeWeightedTop, auctionModeWeightedAll:
+		return diagNotSelectedByWeightedDraw
+	default:
+		return diagExcludedUnknownAuctionMode
+	}
 }
 
 func validAuctionInput(req *ortb.BidRequest, impIDUUID map[string]string) bool {
@@ -824,6 +987,48 @@ func validAuctionInput(req *ortb.BidRequest, impIDUUID map[string]string) bool {
 		}
 	}
 	return len(seen) > 0
+}
+
+func auctionInputDiagnostic(req *ortb.BidRequest, impIDUUID map[string]string) diagnosticReason {
+	if req == nil {
+		return diagGlobalBidRequestNil
+	}
+	if strings.TrimSpace(req.GetId()) == "" {
+		return diagGlobalRequestIDEmpty
+	}
+	if len(req.GetImp()) == 0 {
+		return diagGlobalImpressionsEmpty
+	}
+	if len(impIDUUID) == 0 {
+		return diagGlobalImpUUIDMapEmpty
+	}
+
+	seen := make(map[string]struct{}, len(req.GetImp()))
+	seenUUIDs := make(map[string]struct{}, len(req.GetImp()))
+	for _, imp := range req.GetImp() {
+		if imp == nil {
+			continue
+		}
+		impID := strings.TrimSpace(imp.GetId())
+		if impID == "" {
+			return diagGlobalImpressionIDEmpty
+		}
+		if _, duplicate := seen[impID]; duplicate {
+			return diagGlobalImpressionIDDuplicate
+		}
+		seen[impID] = struct{}{}
+		winnerUUID := strings.TrimSpace(impIDUUID[impID])
+		if winnerUUID != "" {
+			if _, duplicate := seenUUIDs[winnerUUID]; duplicate {
+				return diagGlobalWinnerUUIDDuplicate
+			}
+			seenUUIDs[winnerUUID] = struct{}{}
+		}
+	}
+	if len(seen) == 0 {
+		return diagGlobalNoValidImpressions
+	}
+	return diagNone
 }
 
 type shuffleCandidatesFunc func(n int, swap func(i, j int))
@@ -1100,8 +1305,10 @@ func (s *AuctionService) evaluateCampaign(
 	requestedFormat, trafficType, sspDomain string,
 	hashFallback string,
 	antiState *AntiPerekrutState,
+	durableUserBlocked bool,
+	diagnosticsEnabled bool,
 	logf debugLogFunc,
-) (candidate, bool, error) {
+) (candidate, bool, diagnosticReason, error) {
 	requestID := ""
 	if req != nil {
 		requestID = strings.TrimSpace(req.GetId())
@@ -1112,13 +1319,8 @@ func (s *AuctionService) evaluateCampaign(
 	}
 
 	if campaign == nil {
-		logf(
-			"[ADV][CAMPAIGN_REJECT] request_id=%q imp_id=%q format=%q reason=campaign_nil",
-			requestID,
-			impID,
-			requestedFormat,
-		)
-		return candidate{}, false, nil
+		logf("[ADV][CAMPAIGN_REJECT] request_id=%q imp_id=%q format=%q reason=campaign_nil", requestID, impID, requestedFormat)
+		return candidate{}, false, diagNone, nil
 	}
 
 	campaignID := strings.TrimSpace(campaign.ID)
@@ -1143,33 +1345,16 @@ func (s *AuctionService) evaluateCampaign(
 	)
 
 	if campaignFormat != requestedFormat {
-		logf(
-			"[ADV][CAMPAIGN_REJECT] request_id=%q imp_id=%q campaign_id=%q user_id=%q reason=format_mismatch campaign_format=%q requested_format=%q",
-			requestID,
-			impID,
-			campaignID,
-			userID,
-			campaignFormat,
-			requestedFormat,
-		)
-		return candidate{}, false, nil
+		logf("[ADV][CAMPAIGN_REJECT] request_id=%q imp_id=%q campaign_id=%q user_id=%q reason=format_mismatch campaign_format=%q requested_format=%q", requestID, impID, campaignID, userID, campaignFormat, requestedFormat)
+		return candidate{}, false, diagCampaignFormatMismatch, nil
 	}
 	if !trafficMatches(campaign.TrafficType, trafficType) {
-		logf(
-			"[ADV][CAMPAIGN_REJECT] request_id=%q imp_id=%q format=%q campaign_id=%q user_id=%q reason=traffic_type_mismatch campaign_traffic_type=%q requested_traffic_type=%q",
-			requestID,
-			impID,
-			requestedFormat,
-			campaignID,
-			userID,
-			normalizeTraffic(campaign.TrafficType),
-			trafficType,
-		)
-		return candidate{}, false, nil
+		logf("[ADV][CAMPAIGN_REJECT] request_id=%q imp_id=%q format=%q campaign_id=%q user_id=%q reason=traffic_type_mismatch campaign_traffic_type=%q requested_traffic_type=%q", requestID, impID, requestedFormat, campaignID, userID, normalizeTraffic(campaign.TrafficType), trafficType)
+		return candidate{}, false, diagTrafficTypeMismatch, nil
 	}
 	if !campaignActiveAt(campaign, now) {
 		logCampaignActivityRejection(logf, requestID, impID, campaign, now)
-		return candidate{}, false, nil
+		return candidate{}, false, campaignActivityRejectionReason(campaign, now), nil
 	}
 
 	userRemaining := 0.0
@@ -1177,13 +1362,21 @@ func (s *AuctionService) evaluateCampaign(
 		if antiState != nil {
 			userRemaining = antiState.UserRemainingBalance[userID]
 		}
+		// CampaignAllowed remains the business decision. Detailed classification is
+		// performed only after that decision and cannot alter it.
 		if s.antiperekrut == nil || !s.antiperekrut.CampaignAllowed(antiState, campaign) {
+			reason := diagAntiPerekrutCampaignBlockedUnknown
+			if diagnosticsEnabled && s.antiperekrut != nil {
+				reason = diagnosticReasonForAntiPerekrutEligibility(
+					s.antiperekrut.CampaignEligibility(antiState, campaign, durableUserBlocked),
+				)
+			}
 			recent := 0.0
 			if antiState != nil {
 				recent = antiState.UserSpend[userID].Spend
 			}
-			logf("[ADV][ANTIPEREKRUT_CAMPAIGN_BLOCKED] request_id=%q imp_id=%q format=%q campaign_id=%q user_id=%q user_spend=%.12f user_remaining=%.12f campaign_allowed=false", requestID, impID, requestedFormat, campaignID, userID, recent, userRemaining)
-			return candidate{}, false, nil
+			logf("[ADV][ANTIPEREKRUT_CAMPAIGN_BLOCKED] request_id=%q imp_id=%q format=%q campaign_id=%q user_id=%q user_spend=%.12f user_remaining=%.12f reason=%q", requestID, impID, requestedFormat, campaignID, userID, recent, userRemaining, diagnosticReasonName(reason))
+			return candidate{}, false, reason, nil
 		}
 		hashID := requestID
 		if strings.TrimSpace(hashID) == "" {
@@ -1192,85 +1385,57 @@ func (s *AuctionService) evaluateCampaign(
 		limit := s.antiperekrut.EffectiveTrafficLimit(antiState, campaign, now)
 		if !trafficHashPass(hashID, campaignID, limit) {
 			logf("[ADV][ANTIPEREKRUT_HASH_GATE] request_id=%q imp_id=%q format=%q campaign_id=%q user_id=%q traffic_limit=%d would_reject=true", requestID, impID, requestedFormat, campaignID, userID, limit)
-			return candidate{}, false, nil
+			return candidate{}, false, diagAntiPerekrutHashGateRejected, nil
 		}
 	}
 	if !s.quality.Contains(campaign.QualitySegment, sspDomain) {
 		logf("[ADV][CAMPAIGN_REJECT] request_id=%q imp_id=%q format=%q campaign_id=%q user_id=%q reason=quality_mismatch campaign_quality=%q ssp_domain=%q", requestID, impID, requestedFormat, campaignID, userID, campaign.QualitySegment, sspDomain)
-		return candidate{}, false, nil
+		return candidate{}, false, diagQualityMismatch, nil
 	}
 
 	chargePrice := CalculateChargePrice(campaign.BasePrice, campaign.PricingModel, requestedFormat)
 	if chargePrice <= 0 || math.IsNaN(chargePrice) || math.IsInf(chargePrice, 0) {
-		logf(
-			"[ADV][CAMPAIGN_REJECT] request_id=%q imp_id=%q campaign_id=%q user_id=%q reason=invalid_charge_price base_price=%.12f pricing_model=%q requested_format=%q charge_price=%.12f",
-			requestID,
-			impID,
-			campaignID,
-			userID,
-			campaign.BasePrice,
-			campaign.PricingModel,
-			requestedFormat,
-			chargePrice,
-		)
-		return candidate{}, false, nil
+		logf("[ADV][CAMPAIGN_REJECT] request_id=%q imp_id=%q campaign_id=%q user_id=%q reason=invalid_charge_price base_price=%.12f pricing_model=%q requested_format=%q charge_price=%.12f", requestID, impID, campaignID, userID, campaign.BasePrice, campaign.PricingModel, requestedFormat, chargePrice)
+		return candidate{}, false, diagInvalidChargePrice, nil
 	}
 
 	campaignSpent, err := s.runtime.CampaignSpent(ctx, campaign.ID)
 	if err != nil {
-		logf(
-			"[ADV][CAMPAIGN_ERROR] request_id=%q imp_id=%q format=%q campaign_id=%q user_id=%q reason=campaign_spent_read_failed error=%v",
-			requestID,
-			impID,
-			requestedFormat,
-			campaignID,
-			userID,
-			err,
-		)
-		return candidate{}, false, err
+		logf("[ADV][CAMPAIGN_ERROR] request_id=%q imp_id=%q format=%q campaign_id=%q user_id=%q reason=campaign_spent_read_failed error=%v", requestID, impID, requestedFormat, campaignID, userID, err)
+		return candidate{}, false, diagCampaignSpentReadFailed, err
 	}
 	campaignRemaining := campaign.GoalTotalDollars - campaignSpent
 	if campaignRemaining < chargePrice {
-		logf(
-			"[ADV][CAMPAIGN_REJECT] request_id=%q imp_id=%q format=%q campaign_id=%q user_id=%q reason=campaign_balance_insufficient campaign_goal_total_dollars=%.12f campaign_spent=%.12f campaign_remaining=%.12f charge_price=%.12f",
-			requestID,
-			impID,
-			requestedFormat,
-			campaignID,
-			userID,
-			campaign.GoalTotalDollars,
-			campaignSpent,
-			campaignRemaining,
-			chargePrice,
-		)
-		return candidate{}, false, nil
+		logf("[ADV][CAMPAIGN_REJECT] request_id=%q imp_id=%q format=%q campaign_id=%q user_id=%q reason=campaign_balance_insufficient campaign_goal_total_dollars=%.12f campaign_spent=%.12f campaign_remaining=%.12f charge_price=%.12f", requestID, impID, requestedFormat, campaignID, userID, campaign.GoalTotalDollars, campaignSpent, campaignRemaining, chargePrice)
+		return candidate{}, false, diagCampaignBalanceInsufficient, nil
 	}
 
 	if campaign.EvennessBySlotMode {
-		eligible, err := s.runtime.PacingEligible(ctx, campaign, now, campaignSpent)
+		eligible, pacingReason, err := s.runtime.PacingEligibility(ctx, campaign, now, campaignSpent)
+		diagnosticReason := diagnosticReasonForPacingEligibility(pacingReason)
 		if err != nil {
-			logf(
-				"[ADV][CAMPAIGN_ERROR] request_id=%q imp_id=%q format=%q campaign_id=%q user_id=%q reason=pacing_check_failed campaign_spent=%.12f error=%v",
-				requestID,
-				impID,
-				requestedFormat,
-				campaignID,
-				userID,
-				campaignSpent,
-				err,
-			)
-			return candidate{}, false, err
+			logf("[ADV][CAMPAIGN_ERROR] request_id=%q imp_id=%q format=%q campaign_id=%q user_id=%q reason=%q campaign_spent=%.12f error=%v", requestID, impID, requestedFormat, campaignID, userID, diagnosticReasonName(diagnosticReason), campaignSpent, err)
+			return candidate{}, false, diagnosticReason, err
 		}
 		if !eligible {
-			s.logPacingRejection(ctx, campaign, now, campaignSpent, requestID, impID, logf)
-			return candidate{}, false, nil
+			logf("[ADV][CAMPAIGN_REJECT] request_id=%q imp_id=%q format=%q campaign_id=%q user_id=%q reason=%q campaign_spent=%.12f", requestID, impID, requestedFormat, campaignID, userID, diagnosticReasonName(diagnosticReason), campaignSpent)
+			return candidate{}, false, diagnosticReason, nil
 		}
 	}
 
+	// matchingCreatives is the business decision. Diagnostics only classifies
+	// the already-rejected campaign and does not replace the matching result.
 	creatives := matchingCreatives(campaign, imp, requestedFormat)
 	if len(creatives) == 0 {
 		logCreativeRejections(logf, requestID, impID, campaign, imp, requestedFormat)
-		return candidate{}, false, nil
+		reason := diagCreativeNotMatchedUnknown
+		if diagnosticsEnabled {
+			_, reason = matchingCreativesWithLastRejection(campaign, imp, requestedFormat)
+			if reason == diagNone || !validReasonForScope(reason, diagnosticScopeCampaign) {
+				reason = diagCreativeNotMatchedUnknown
+			}
+		}
+		return candidate{}, false, reason, nil
 	}
 	for _, creative := range creatives {
 		if creative == nil {
@@ -1295,38 +1460,25 @@ func (s *AuctionService) evaluateCampaign(
 		)
 	}
 
+	// Preserve the original filter decision and logging. When diagnostics are
+	// active, classify the first failed filter only after the decision is false.
 	if !campaignPassesFiltersWithDebug(campaign, req, requestID, impID, logf) {
-		return candidate{}, false, nil
+		reason := diagCreativeNotMatchedUnknown
+		if diagnosticsEnabled {
+			reason = campaignFilterRejectionWithDebug(campaign, req, requestID, impID, func(string, ...any) {})
+		}
+		return candidate{}, false, reason, nil
 	}
 
 	deduction := s.percents.Lookup(campaign.UserID)
 	effective := CalculateEffectiveAuctionPrice(campaign.BasePrice, deduction)
 	if effective <= 0 || math.IsNaN(effective) || math.IsInf(effective, 0) {
-		logf(
-			"[ADV][CAMPAIGN_REJECT] request_id=%q imp_id=%q format=%q campaign_id=%q user_id=%q reason=effective_price_non_positive base_price=%.12f deduction=%.12f effective_price=%.12f",
-			requestID,
-			impID,
-			requestedFormat,
-			campaignID,
-			userID,
-			campaign.BasePrice,
-			deduction,
-			effective,
-		)
-		return candidate{}, false, nil
+		logf("[ADV][CAMPAIGN_REJECT] request_id=%q imp_id=%q format=%q campaign_id=%q user_id=%q reason=effective_price_non_positive base_price=%.12f deduction=%.12f effective_price=%.12f", requestID, impID, requestedFormat, campaignID, userID, campaign.BasePrice, deduction, effective)
+		return candidate{}, false, diagEffectivePriceNonPositive, nil
 	}
 	if !effectivePriceMeetsBidFloor(effective, imp) {
-		logf(
-			"[ADV][CAMPAIGN_REJECT] request_id=%q imp_id=%q format=%q campaign_id=%q user_id=%q reason=effective_price_below_bidfloor effective_price=%.12f bidfloor=%.12f",
-			requestID,
-			impID,
-			requestedFormat,
-			campaignID,
-			userID,
-			effective,
-			float64(imp.GetBidfloor()),
-		)
-		return candidate{}, false, nil
+		logf("[ADV][CAMPAIGN_REJECT] request_id=%q imp_id=%q format=%q campaign_id=%q user_id=%q reason=effective_price_below_bidfloor effective_price=%.12f bidfloor=%.12f", requestID, impID, requestedFormat, campaignID, userID, effective, float64(imp.GetBidfloor()))
+		return candidate{}, false, diagEffectivePriceBelowBidFloor, nil
 	}
 
 	logf(
@@ -1345,7 +1497,66 @@ func (s *AuctionService) evaluateCampaign(
 		campaignRemaining,
 		userRemaining,
 	)
-	return candidate{campaign: campaign, creatives: creatives, chargePrice: chargePrice, effectivePrice: effective}, true, nil
+	return candidate{campaign: campaign, creatives: creatives, chargePrice: chargePrice, effectivePrice: effective}, true, diagNone, nil
+}
+
+func diagnosticReasonForAntiPerekrutEligibility(reason AntiPerekrutEligibilityReason) diagnosticReason {
+	switch reason {
+	case AntiPerekrutEligibilityDurableUserBlock:
+		return diagAntiPerekrutDurableUserBlock
+	case AntiPerekrutEligibilityPendingUserBlock:
+		return diagAntiPerekrutPendingUserBlock
+	case AntiPerekrutEligibilityBalanceGuardRejected:
+		return diagAntiPerekrutBalanceGuardRejected
+	case AntiPerekrutEligibilityCampaignStateMissing:
+		return diagAntiPerekrutCampaignStateMissing
+	case AntiPerekrutEligibilityBlockedUnknown:
+		return diagAntiPerekrutCampaignBlockedUnknown
+	default:
+		return diagAntiPerekrutCampaignBlockedUnknown
+	}
+}
+
+func diagnosticReasonForPacingEligibility(reason PacingEligibilityReason) diagnosticReason {
+	switch reason {
+	case PacingEligibilityCurrentSlotMissing:
+		return diagPacingCurrentSlotMissing
+	case PacingEligibilityCurrentSlotReadFailed:
+		return diagPacingCurrentSlotReadFailed
+	case PacingEligibilityCurrentSlotKeyInvalid:
+		return diagPacingCurrentSlotKeyInvalid
+	case PacingEligibilitySlotSpentReadFailed:
+		return diagPacingSlotSpentReadFailed
+	case PacingEligibilitySlotTargetFailed:
+		return diagPacingSlotTargetFailed
+	case PacingEligibilityTargetNonPositive:
+		return diagPacingTargetNonPositive
+	case PacingEligibilitySlotLimitReached:
+		return diagPacingSlotLimitReached
+	default:
+		return diagPacingCheckFailed
+	}
+}
+
+func campaignActivityRejectionReason(campaign *Campaign, now time.Time) diagnosticReason {
+	if campaign == nil {
+		return diagNone
+	}
+	switch {
+	case !strings.EqualFold(strings.TrimSpace(campaign.Status), CampaignStatusActive):
+		return diagCampaignStatusNotActive
+	case campaign.StartTS.IsZero() || campaign.EndTS.IsZero() || !campaign.StartTS.Before(campaign.EndTS):
+		return diagCampaignTimeWindowInvalid
+	case now.Before(campaign.StartTS):
+		return diagCampaignNotStarted
+	case !now.Before(campaign.EndTS):
+		return diagCampaignEnded
+	case len(campaign.ActiveIntervals) > 0:
+		if _, active := campaignActiveIntervalAt(campaign, now); !active {
+			return diagOutsideActiveIntervals
+		}
+	}
+	return diagNone
 }
 
 func effectivePriceMeetsBidFloor(effective float64, imp *ortb.Imp) bool {
@@ -1893,6 +2104,130 @@ func matchingCreatives(campaign *Campaign, imp *ortb.Imp, format string) []*Crea
 	return out
 }
 
+func matchingCreativesWithLastRejection(campaign *Campaign, imp *ortb.Imp, format string) ([]*Creative, diagnosticReason) {
+	if campaign == nil {
+		return nil, diagCreativeNotMatchedUnknown
+	}
+	if len(campaign.Creatives) == 0 {
+		return nil, diagNoCreativesConfigured
+	}
+
+	normalized := normalizeFormat(format)
+	out := make([]*Creative, 0, len(campaign.Creatives))
+	lastReason := diagCreativeNotMatchedUnknown
+	for _, creative := range campaign.Creatives {
+		matched, reason := creativeMatchesImpression(campaign, creative, imp, normalized)
+		if matched {
+			out = append(out, creative)
+			continue
+		}
+		lastReason = reason
+	}
+	if len(out) > 0 {
+		return out, diagNone
+	}
+	return nil, lastReason
+}
+
+func creativeMatchesImpression(campaign *Campaign, creative *Creative, imp *ortb.Imp, normalizedFormat string) (bool, diagnosticReason) {
+	if creative == nil {
+		return false, diagCreativeNil
+	}
+	if strings.TrimSpace(creative.ID) == "" {
+		return false, diagCreativeIDEmpty
+	}
+	if strings.TrimSpace(creative.ADMURL) == "" {
+		return false, diagCreativeADMURLEmpty
+	}
+
+	switch normalizedFormat {
+	case constants.NAT, constants.IPP:
+		if _, ok := buildNativeADM(imp, campaign, creative, creative.ADMURL); ok {
+			return true, diagNone
+		}
+		diagnostic := diagnoseNativeCreativeRejection(imp, campaign, creative)
+		return false, diagnosticReasonForNativeRejection(diagnostic.Reason)
+
+	case constants.BAN:
+		if imp == nil || imp.GetBanner() == nil {
+			return false, diagBannerObjectMissing
+		}
+		sizes := bannerSizes(imp)
+		if len(sizes) == 0 {
+			return false, diagBannerSizesMissing
+		}
+		if creative.W <= 0 || creative.H <= 0 {
+			return false, diagBannerCreativeDimensionsInvalid
+		}
+		if !sizes[[2]int{creative.W, creative.H}] {
+			return false, diagBannerSizeMismatch
+		}
+		if !bannerCreativeMatchesMimes(creative, imp) {
+			return false, diagBannerMimeMismatch
+		}
+		return true, diagNone
+
+	case constants.POP:
+		return true, diagNone
+
+	default:
+		return false, diagCreativeNotMatchedUnknown
+	}
+}
+
+func diagnosticReasonForNativeRejection(reason string) diagnosticReason {
+	switch strings.TrimSpace(reason) {
+	case "impression_nil":
+		return diagGlobalImpressionNil
+	case "native_object_missing":
+		return diagNativeObjectMissing
+	case "native_request_empty":
+		return diagNativeRequestEmpty
+	case "native_request_json_invalid":
+		return diagNativeRequestJSONInvalid
+	case "native_payload_json_invalid":
+		return diagNativePayloadJSONInvalid
+	case "native_assets_empty":
+		return diagNativeAssetsEmpty
+	case "campaign_format_not_native_or_ipp":
+		return diagNativeCampaignFormatInvalid
+	case "required_title_missing":
+		return diagNativeRequiredTitleMissing
+	case "required_brand_name_missing":
+		return diagNativeRequiredBrandNameMissing
+	case "required_description_missing":
+		return diagNativeRequiredDescriptionMissing
+	case "required_data_type_unsupported":
+		return diagNativeRequiredDataTypeUnsupported
+	case "required_image_url_missing":
+		return diagNativeRequiredImageURLMissing
+	case "required_image_dimensions_invalid":
+		return diagNativeRequiredImageDimensionsInvalid
+	case "required_image_width_below_wmin":
+		return diagNativeRequiredImageWidthBelowWMin
+	case "required_image_height_below_hmin":
+		return diagNativeRequiredImageHeightBelowHMin
+	case "required_image_format_unsupported":
+		return diagNativeRequiredImageFormatUnsupported
+	case "required_image_not_eligible":
+		return diagNativeRequiredImageNotEligible
+	case "required_asset_type_unsupported":
+		return diagNativeRequiredAssetTypeUnsupported
+	case "native_adm_build_failed_unknown":
+		return diagNativeADMBuildFailedUnknown
+	case "creative_nil":
+		return diagCreativeNil
+	case "creative_id_empty":
+		return diagCreativeIDEmpty
+	case "adm_url_empty":
+		return diagCreativeADMURLEmpty
+	}
+	if strings.HasPrefix(reason, "native_asset_id_invalid_at_") {
+		return diagNativeAssetIDInvalid
+	}
+	return diagNativeADMBuildFailedUnknown
+}
+
 func bannerCreativeMatchesMimes(creative *Creative, imp *ortb.Imp) bool {
 	if creative == nil || imp == nil || imp.GetBanner() == nil {
 		return false
@@ -2090,6 +2425,84 @@ func campaignPassesFiltersWithDebug(
 		)
 	}
 	return allAllowed
+}
+
+type campaignDiagnosticFilterCheck struct {
+	name   string
+	filter *filterV2.Filters
+	value  *string
+	reason diagnosticReason
+}
+
+func campaignFilterRejectionWithDebug(
+	c *Campaign,
+	req *ortb.BidRequest,
+	requestID, impID string,
+	logf debugLogFunc,
+) diagnosticReason {
+	if c == nil {
+		return diagCreativeNotMatchedUnknown
+	}
+	values := extractRequestFilterValues(req)
+	checks := []campaignDiagnosticFilterCheck{
+		{name: "country", filter: c.CountryFilter, value: values.country, reason: diagCountryFilterRejected},
+		{name: "language", filter: c.LanguageFilter, value: values.language, reason: diagLanguageFilterRejected},
+		{name: "device_type", filter: c.DeviceTypeFilter, value: values.deviceType, reason: diagDeviceTypeFilterRejected},
+		{name: "os", filter: c.OSFilter, value: values.osName, reason: diagOSFilterRejected},
+		{name: "browser", filter: c.BrowserFilter, value: values.browser, reason: diagBrowserFilterRejected},
+		{name: "site_id", filter: c.SiteIDFilter, value: values.siteID, reason: diagSiteIDFilterRejected},
+		{name: "ip", filter: c.IPFilter, value: values.ip, reason: diagIPFilterRejected},
+	}
+
+	for _, check := range checks {
+		if allowed(check.filter, check.value) {
+			continue
+		}
+
+		value := "<nil>"
+		listed := false
+		if check.value != nil {
+			value = *check.value
+			if check.filter != nil {
+				listed = check.filter.Objects[value]
+			}
+		}
+		mode := "disabled"
+		configuredObjects := 0
+		if check.filter != nil {
+			configuredObjects = len(check.filter.Objects)
+			if check.filter.IsWhiteList {
+				mode = "whitelist"
+			} else {
+				mode = "blacklist"
+			}
+		}
+		logf(
+			"[ADV][FILTER_REJECT] request_id=%q imp_id=%q format=%q campaign_id=%q user_id=%q filter=%q value=%q mode=%q listed=%t configured_objects=%d diagnostic_code=%d",
+			requestID,
+			impID,
+			normalizeFormat(c.Format),
+			c.ID,
+			c.UserID,
+			check.name,
+			value,
+			mode,
+			listed,
+			configuredObjects,
+			diagnosticDefinitions[check.reason].Code,
+		)
+		logf(
+			"[ADV][CAMPAIGN_REJECT] request_id=%q imp_id=%q format=%q campaign_id=%q user_id=%q reason=%q",
+			requestID,
+			impID,
+			normalizeFormat(c.Format),
+			c.ID,
+			c.UserID,
+			diagnosticReasonName(check.reason),
+		)
+		return check.reason
+	}
+	return diagNone
 }
 
 func allowed(filter *filterV2.Filters, value *string) bool {

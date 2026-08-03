@@ -103,17 +103,13 @@ func (s *Server) DoAuction(ctx context.Context, req *advGrpc.DoAuctionRequest) (
 	}*/
 
 	if s == nil || s.work == nil || !s.work.Enabled() {
+		if s != nil && s.auctionService != nil {
+			s.auctionService.RecordServiceDisabledRequest(requestID, impressions)
+		}
 		if traceRequest {
 			log.Printf("[ADV][REQUEST_REJECT] request_id=%q reason=service_disabled", requestID)
 		}
 		return nil, status.Error(codes.Unavailable, disabledMessage)
-	}
-
-	if req == nil || req.GetBidRequest() == nil || len(req.GetBidRequest().GetImp()) == 0 {
-		if traceRequest {
-			log.Printf("[ADV][REQUEST_REJECT] request_id=%q reason=no_impressions", requestID)
-		}
-		return nil, status.Error(codes.InvalidArgument, "ADV auction request must contain at least one impression")
 	}
 
 	if s.auctionService == nil {

@@ -29,6 +29,8 @@ const (
 	WorkStatusURL                    = "/work_status"
 	AntiPerekrutRestartURL           = "/internal/antiperekrut/restart"
 	GetAntiPerekrutTrafficPercentURL = "/internal/antiperekrut/traffic-percent"
+	GetAuctionDiagnosticsURL         = "/internal/auction-diagnostics"
+	AuctionDiagnosticsStatusURL      = "/internal/auction-diagnostics/status"
 )
 
 // Backward-compatible aliases for callers that used the previous Go constant spelling.
@@ -39,7 +41,8 @@ const (
 )
 
 type AntiPerekrutHTTPConfig struct {
-	Manager *auction.AntiPerekrutManager
+	Manager        *auction.AntiPerekrutManager
+	AuctionService *auction.AuctionService
 }
 
 type antiPerekrutRestartRequest struct {
@@ -210,6 +213,30 @@ func InitHttpRoutes(httpRouter *chi.Mux, percentStore *auction.PercentStore, qua
 		}
 		writeJSON(w, http.StatusOK, map[string]bool{"work": enabled})
 	})
+
+	if len(antiConfig) > 0 && antiConfig[0].AuctionService != nil {
+		service := antiConfig[0].AuctionService
+		httpRouter.Get(GetAuctionDiagnosticsURL, func(w http.ResponseWriter, _ *http.Request) {
+			snapshot := service.DiagnosticsSnapshot()
+			if snapshot == nil {
+				http.Error(w, "auction diagnostics are unavailable", http.StatusServiceUnavailable)
+				return
+			}
+			writeJSON(w, http.StatusOK, snapshot)
+		})
+		httpRouter.Get(AuctionDiagnosticsStatusURL, func(w http.ResponseWriter, _ *http.Request) {
+			writeJSON(w, http.StatusOK, service.DiagnosticsStatus())
+		})
+		httpRouter.Put(AuctionDiagnosticsStatusURL, func(w http.ResponseWriter, r *http.Request) {
+			raw := strings.TrimSpace(r.URL.Query().Get("enabled"))
+			enabled, err := strconv.ParseBool(raw)
+			if err != nil {
+				http.Error(w, "enabled must be true or false", http.StatusBadRequest)
+				return
+			}
+			writeJSON(w, http.StatusOK, service.SetDiagnosticsEnabled(enabled))
+		})
+	}
 
 	if len(antiConfig) > 0 && antiConfig[0].Manager != nil {
 		cfg := antiConfig[0]

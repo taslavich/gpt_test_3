@@ -65,36 +65,57 @@ func (s *RuntimeStore) floatValue(ctx context.Context, key string) (float64, err
 	return value, nil
 }
 
+type PacingEligibilityReason uint8
+
+const (
+	PacingEligibilityAllowed PacingEligibilityReason = iota
+	PacingEligibilityCurrentSlotMissing
+	PacingEligibilityCurrentSlotReadFailed
+	PacingEligibilityCurrentSlotKeyInvalid
+	PacingEligibilitySlotSpentReadFailed
+	PacingEligibilitySlotTargetFailed
+	PacingEligibilityTargetNonPositive
+	PacingEligibilitySlotLimitReached
+)
+
 func (s *RuntimeStore) PacingEligible(ctx context.Context, campaign *Campaign, now time.Time, campaignSpent float64) (bool, error) {
+	eligible, _, err := s.PacingEligibility(ctx, campaign, now, campaignSpent)
+	return eligible, err
+}
+
+func (s *RuntimeStore) PacingEligibility(ctx context.Context, campaign *Campaign, now time.Time, campaignSpent float64) (bool, PacingEligibilityReason, error) {
 	if campaign == nil {
-		return false, nil
+		return false, PacingEligibilityTargetNonPositive, nil
 	}
 	if s == nil || s.client == nil {
-		return false, errors.New("ADV runtime Redis client is nil")
+		return false, PacingEligibilityAllowed, errors.New("ADV runtime Redis client is nil")
 	}
 	currentKey := pacingCurrentPrefix + campaign.ID
 	slotKey, err := s.client.Get(ctx, currentKey).Result()
 	if err != nil {
 		if errors.Is(err, redis.Nil) {
-			return false, nil
+			return false, PacingEligibilityCurrentSlotMissing, nil
 		}
-		return false, fmt.Errorf("read %s: %w", currentKey, err)
+		return false, PacingEligibilityCurrentSlotReadFailed, fmt.Errorf("read %s: %w", currentKey, err)
 	}
 	if !strings.HasPrefix(slotKey, pacingSpentPrefix+campaign.ID+":") {
-		return false, fmt.Errorf("invalid current pacing key for campaign %s", campaign.ID)
+		return false, PacingEligibilityCurrentSlotKeyInvalid, fmt.Errorf("invalid current pacing key for campaign %s", campaign.ID)
 	}
 	slotSpent, err := s.floatValue(ctx, slotKey)
 	if err != nil {
-		return false, err
+		return false, PacingEligibilitySlotSpentReadFailed, err
 	}
 	slotTarget, err := pacingSlotTarget(campaign, now, campaignSpent, slotSpent)
 	if err != nil {
-		return false, err
+		return false, PacingEligibilitySlotTargetFailed, err
 	}
 	if slotTarget <= 0 {
-		return false, nil
+		return false, PacingEligibilityTargetNonPositive, nil
 	}
-	return slotSpent < slotTarget, nil
+	if slotSpent >= slotTarget {
+		return false, PacingEligibilitySlotLimitReached, nil
+	}
+	return true, PacingEligibilityAllowed, nil
 }
 
 func pacingSlotTarget(campaign *Campaign, now time.Time, campaignSpent, slotSpent float64) (float64, error) {
