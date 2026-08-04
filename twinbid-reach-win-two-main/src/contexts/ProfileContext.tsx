@@ -45,20 +45,29 @@ export function ProfileProvider({ children }: { children: ReactNode }) {
   const [profile, setProfile] = useState<Profile | null>(null);
   const [loading, setLoading] = useState(true);
 
-  const fetchProfile = useCallback(async () => {
+  const fetchProfile = useCallback(async (showLoading = true) => {
     if (!user) { setProfile(null); setLoading(false); return; }
-    setLoading(true);
+    if (showLoading) setLoading(true);
     try {
       const u = await api.getProfile();
       setProfile((prev) => fromApi(u, user.id, prev));
     } catch (e) {
       console.error("Profile fetch error:", e);
     } finally {
-      setLoading(false);
+      if (showLoading) setLoading(false);
     }
   }, [user]);
 
-  useEffect(() => { fetchProfile(); }, [fetchProfile]);
+  useEffect(() => {
+    void fetchProfile();
+    if (!user) return;
+
+    const interval = window.setInterval(() => {
+      void fetchProfile(false);
+    }, 60 * 1000);
+
+    return () => window.clearInterval(interval);
+  }, [fetchProfile, user]);
 
   const updateProfile = useCallback(async (updates: Partial<Omit<Profile, "id">>) => {
     if (!user) return;
