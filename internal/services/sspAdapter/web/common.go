@@ -154,6 +154,9 @@ func persistADMFailure(
 	monitor *services.RedisWriteErrorMonitor,
 	stopADV bool,
 ) {
+	requiresADVRecovery := stopADV
+	record.RequiresADVRecovery = &requiresADVRecovery
+
 	outboxErr := errors.New("ADM outbox is not initialized")
 	if outboxStore != nil {
 		outboxErr = outboxStore.Save(record)
@@ -161,42 +164,38 @@ func persistADMFailure(
 	if monitor != nil {
 		monitor.RecordForURL(processingErr, sspAdapterWorkStatusURL)
 	}
+
+	statuses := map[string]int{}
+	if stopADV {
+		stopCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		statuses = services.SetADVWorkStatus(stopCtx, controlURLs, false)
+		cancel()
+	}
+
 	severity := "ADM callback deferred to durable outbox"
 	if outboxErr != nil {
 		severity = "CRITICAL ADM callback processing and outbox failure"
 	}
+	statusJSON, _ := json.Marshal(statuses)
 	message := fmt.Sprintf(
-		"%s: error=%v outbox_error=%v event_id=%s global_id=%s winner_type=%s",
+		"%s: error=%v outbox_error=%v event_id=%s global_id=%s winner_type=%s adv_statuses=%s",
 		severity,
 		processingErr,
 		outboxErr,
 		record.EventID,
 		record.GlobalID,
 		record.WinnerType,
+		statusJSON,
 	)
 	log.Print(message)
 
-	// Do not delay the paid redirect while control endpoints or Telegram are
-	// unavailable. The durable local save above is the only synchronous step.
-	if !stopADV && outboxErr == nil {
-		return
-	}
-	go func() {
-		statuses := map[string]int{}
-		if stopADV {
-			stopCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-			statuses = services.SetADVWorkStatus(stopCtx, controlURLs, false)
-			cancel()
-		}
-		statusJSON, _ := json.Marshal(statuses)
-		asyncMessage := fmt.Sprintf("%s adv_statuses=%s", message, statusJSON)
-		log.Print(asyncMessage)
-		if outboxErr != nil && monitor != nil {
-			if err := monitor.NotifyNowForRecordedError(asyncMessage); err != nil {
+	if outboxErr != nil && monitor != nil {
+		go func() {
+			if err := monitor.NotifyNowForRecordedError(message); err != nil {
 				log.Printf("ADM outbox immediate notification failed: %v", err)
 			}
-		}
-	}()
+		}()
+	}
 }
 
 func getNurl(
@@ -394,6 +393,9 @@ func handleADVCallback(
 }
 
 func handleADVWriteFailure(redisErr error, record outbox.Record, outboxStore *outbox.Store, controlURLs []string, sspAdapterWorkStatusURL string, monitor *services.RedisWriteErrorMonitor) {
+	requiresADVRecovery := true
+	record.RequiresADVRecovery = &requiresADVRecovery
+
 	outboxErr := errors.New("ADV outbox is not initialized")
 	if outboxStore != nil {
 		outboxErr = outboxStore.Save(record)

@@ -28,20 +28,21 @@ const (
 )
 
 type Record struct {
-	Kind          string    `json:"kind,omitempty"`
-	EventID       string    `json:"event_id"`
-	GlobalID      string    `json:"global_id,omitempty"`
-	ClickID       string    `json:"click_id,omitempty"`
-	WinnerType    string    `json:"winner_type,omitempty"`
-	UserID        string    `json:"user_id,omitempty"`
-	CampaignID    string    `json:"campaign_id,omitempty"`
-	Price         float64   `json:"price,omitempty"`
-	Format        string    `json:"format"`
-	Source        string    `json:"source"`
-	CreatedAt     time.Time `json:"created_at"`
-	Attempts      int       `json:"attempts"`
-	LastError     string    `json:"last_error,omitempty"`
-	LastAttemptAt time.Time `json:"last_attempt_at,omitempty"`
+	Kind                string    `json:"kind,omitempty"`
+	RequiresADVRecovery *bool     `json:"requires_adv_recovery,omitempty"`
+	EventID             string    `json:"event_id"`
+	GlobalID            string    `json:"global_id,omitempty"`
+	ClickID             string    `json:"click_id,omitempty"`
+	WinnerType          string    `json:"winner_type,omitempty"`
+	UserID              string    `json:"user_id,omitempty"`
+	CampaignID          string    `json:"campaign_id,omitempty"`
+	Price               float64   `json:"price,omitempty"`
+	Format              string    `json:"format"`
+	Source              string    `json:"source"`
+	CreatedAt           time.Time `json:"created_at"`
+	Attempts            int       `json:"attempts"`
+	LastError           string    `json:"last_error,omitempty"`
+	LastAttemptAt       time.Time `json:"last_attempt_at,omitempty"`
 }
 
 func NormalizeKind(value string) string {
@@ -60,6 +61,26 @@ func NormalizeWinnerType(value string) string {
 		return WinnerADV
 	default:
 		return WinnerUnknown
+	}
+}
+
+// NeedsADVRecovery reports whether processing this record is allowed to
+// automatically re-enable ADV. New records carry an explicit flag. The
+// fallback is only for records written by older versions of the service.
+func NeedsADVRecovery(record Record) bool {
+	if record.RequiresADVRecovery != nil {
+		return *record.RequiresADVRecovery
+	}
+
+	switch NormalizeKind(record.Kind) {
+	case KindBilling:
+		return true
+	case KindADM:
+		winnerType := NormalizeWinnerType(record.WinnerType)
+		return winnerType == WinnerADV ||
+			(winnerType == WinnerUnknown && strings.EqualFold(record.Format, "IPP"))
+	default:
+		return false
 	}
 }
 
@@ -151,6 +172,31 @@ func (s *Store) Delete(eventID string) error {
 		return errors.New("outbox is not initialized")
 	}
 	return s.db.Update(func(tx *bolt.Tx) error { return tx.Bucket(bucketName).Delete([]byte(eventID)) })
+}
+
+func (s *Store) SetADVRecoveryRequired(eventID string, required bool) error {
+	if s == nil || s.db == nil {
+		return errors.New("outbox is not initialized")
+	}
+	return s.db.Update(func(tx *bolt.Tx) error {
+		bucket := tx.Bucket(bucketName)
+		raw := bucket.Get([]byte(eventID))
+		if raw == nil {
+			return errors.New("outbox record not found")
+		}
+		var record Record
+		if err := json.Unmarshal(append([]byte(nil), raw...), &record); err != nil {
+			return err
+		}
+		record = normalizeRecord(record)
+		record.RequiresADVRecovery = new(bool)
+		*record.RequiresADVRecovery = required
+		encoded, err := json.Marshal(record)
+		if err != nil {
+			return err
+		}
+		return bucket.Put([]byte(eventID), encoded)
+	})
 }
 
 func (s *Store) UpdateFailure(eventID string, applyErr error) error {
@@ -271,8 +317,16 @@ func validateRecord(record Record) error {
 
 func sameEvent(a, b Record) bool {
 	return NormalizeKind(a.Kind) == NormalizeKind(b.Kind) &&
+		sameOptionalBool(a.RequiresADVRecovery, b.RequiresADVRecovery) &&
 		a.EventID == b.EventID && a.GlobalID == b.GlobalID && a.ClickID == b.ClickID &&
 		NormalizeWinnerType(a.WinnerType) == NormalizeWinnerType(b.WinnerType) &&
 		a.UserID == b.UserID && a.CampaignID == b.CampaignID && a.Price == b.Price &&
 		strings.EqualFold(a.Format, b.Format) && strings.EqualFold(a.Source, b.Source)
+}
+
+func sameOptionalBool(a, b *bool) bool {
+	if a == nil || b == nil {
+		return a == nil && b == nil
+	}
+	return *a == *b
 }

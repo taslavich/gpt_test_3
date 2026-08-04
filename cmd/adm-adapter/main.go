@@ -178,6 +178,7 @@ func main() {
 		advOutbox,
 		cfg.AdvOutboxRetryInterval,
 		cfg.AdvOutboxMaxBackoff,
+		[]string(cfg.AdvServiceControlURLs),
 		billing.ADMRetryConfig{
 			DSPWinnerRedis: redisAdmClient,
 			ClickRedis:     redisClients.Clicks,
@@ -251,14 +252,8 @@ func main() {
 func countPendingADVBillingRecords(records []outbox.Record) int {
 	count := 0
 	for _, record := range records {
-		switch outbox.NormalizeKind(record.Kind) {
-		case outbox.KindBilling:
+		if outbox.NeedsADVRecovery(record) {
 			count++
-		case outbox.KindADM:
-			winnerType := outbox.NormalizeWinnerType(record.WinnerType)
-			if winnerType == outbox.WinnerADV || (winnerType == outbox.WinnerUnknown && strings.EqualFold(record.Format, constants.IPP)) {
-				count++
-			}
 		}
 	}
 	return count
