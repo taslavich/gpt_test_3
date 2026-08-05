@@ -255,46 +255,89 @@ Frontend синхронизирует креативы по ID: изменённ
   "user_id": "uuid",
   "transaction_time": "iso",
   "transaction_id": "string",
-  "payment_method": "usdc_erc20 | usdt_trc20 | usdt_erc20",
+  "payment_channel": "static_wallet | passimpay_invoice",
+  "payment_method": "usdc_erc20 | usdt_trc20 | usdt_erc20 | passimpay",
   "bonus_amount": 25,
   "promocode_id": "uuid?",
   "transaction_hash": "string?",
   "deposit_amount": 100,
   "total_balance_increase": 125,
   "status": "draft | pending | approved | rejected | cancelled",
-  "currency": "usdt | usdc",
+  "currency": "usdt | usdc | USD",
+  "payment_url": "https://...",
+  "provider_status": "waiting | paid | error | create_unknown | string",
+  "credited_at": "iso?",
   "created_at": "iso",
   "updated_at": "iso"
 }
 ```
 
 ### Поток пополнения
-1. `POST /api/transactions` — создаёт транзакцию. Фронт присылает **все** поля `UserTransaction`, которые может посчитать сам (`user_id`, `transaction_time`, `transaction_id`, `payment_method`, `bonus_amount`, `promocode_id`, `transaction_hash`, `deposit_amount`, `total_balance_increase`, `status`, `currency`). Бэк присваивает только PK `id` и проставляет `created_at` / `updated_at`:
+1. `POST /api/transactions` создаёт оба канала оплаты.
+
+   PassimPay Invoice Link:
    ```json
    {
-     "user_id": "uuid",
-     "transaction_time": "iso",
-     "transaction_id": "string",
-     "payment_method": "usdt_trc20",
-     "bonus_amount": 25,
-     "promocode_id": "uuid?",
-     "transaction_hash": "string?",
+     "payment_channel": "passimpay_invoice",
      "deposit_amount": 100,
-     "total_balance_increase": 125,
-     "status": "draft | pending",
-     "currency": "usdt"
+     "currency": "USD",
+     "promocode_id": "PROMOCODE_OR_NULL"
    }
    ```
-   Resp: `UserTransaction`.
-2. `PATCH /api/transactions/:id` — частичное обновление (например `{ transaction_hash, status: "pending" }`). Resp: `UserTransaction`.
-3. `POST /api/transactions/:id/cancel` → `cancelled`. Resp: `UserTransaction`.
-4. `GET /api/transactions?status=&limit=&offset=` → история.
+   `deposit_amount` всегда содержит исходную сумму, введённую пользователем. Backend
+   самостоятельно проверяет промокод, рассчитывает `bonus_amount` и возвращает
+   `total_balance_increase`. Frontend не отправляет сумму с бонусом, статус, hash или
+   рассчитанные бонусные поля. В ответе backend возвращает `data.id`, `payment_url`
+   и `provider_status`. Если `provider_status=create_unknown`, frontend не создаёт
+   повторную транзакцию, а опрашивает существующую по `data.id`.
 
-> Внутренние клиентские методы фронта: `listTransactions`, `createTransaction`, `patchTransaction`, `cancelTransaction`.
+   Статический криптокошелёк:
+   ```json
+   {
+     "payment_channel": "static_wallet",
+     "payment_method": "usdt_trc20",
+     "deposit_amount": 100,
+     "currency": "usdt",
+     "promocode_id": "PROMOCODE_OR_NULL",
+     "status": "draft"
+   }
+   ```
+   Без `payment_channel` backend также считает платёж `static_wallet`, поэтому
+   старые клиенты остаются совместимыми.
+
+2. `PATCH /api/transactions/:id` разрешён только для статического кошелька и
+   принимает только blockchain hash:
+   ```json
+   {
+     "transaction_hash": "0x..."
+   }
+   ```
+3. `GET /api/transactions/:id` возвращает актуальную транзакцию. Для PassimPay
+   frontend опрашивает эту ручку каждые 5 секунд первые 2 минуты, затем каждые
+   15 секунд, пока открыт экран оплаты.
+4. `POST /api/transactions/:id/cancel` → `cancelled`. Кнопка отмены показывается
+   только для `static_wallet`.
+5. `GET /api/transactions?status=&limit=&offset=` → единая история обоих каналов.
+
+Успешное зачисление PassimPay определяется только сочетанием:
+```json
+{
+  "status": "approved",
+  "credited_at": "iso"
+}
+```
+После него frontend повторно вызывает `GET /api/profile`; баланс локально не
+начисляется и в `PATCH /api/profile` не передаётся.
+
+> Внутренние клиентские методы фронта: `listTransactions`, `getTransaction`,
+> `createTransaction`, `patchTransaction`, `cancelTransaction`. Frontend не
+> вызывает PassimPay напрямую и не хранит его секреты.
 
 ### Promo
 - GET `/api/promocodes/:code` → `{ id, promocode_text, bonus_percent, usage_count, usage_limit, valid_from, valid_to }`.
-  Бэк проверяет: код активен, не достигнут `usage_limit`, не использован этим юзером ранее (через `user_transactions.promocode_id`).
+  Frontend до создания любого вида платежа сохраняет текущие проверки срока,
+  `usage_limit` и повторного использования. Backend повторно проверяет: код активен,
+  не достигнут `usage_limit`, не использован этим юзером ранее (через `user_transactions.promocode_id`).
   Если нельзя — 400 `{ error: { code: "PROMO_LIMIT" | "PROMO_USED" | "PROMO_EXPIRED", message } }`.
 
 ---
@@ -319,7 +362,7 @@ Frontend синхронизирует креативы по ID: изменённ
 ### POST `/api/notifications` body `{ type, text, transaction_id?, campaign_id?, deposit_amount? }` → `Notification` (создание с фронта, например для незавершённой транзакции).
 ### PATCH `/api/notifications/:id` body `{ status }` → `Notification` (отметка как `inactive`).
 
-> Уведомление о незавершённой транзакции переводится в `inactive` ТОЛЬКО при отмене транзакции (`POST /api/transactions/:id/cancel`) или при её успешном завершении (статус `pending`/`approved`).
+> Для `static_wallet` уведомление о незавершённой транзакции переводится в `inactive` после отмены или успешной отправки hash. Для `passimpay_invoice` отмена с фронта не предлагается: уведомление закрывается после `status=approved` вместе с `credited_at` либо скрывается самим пользователем без отмены инвойса.
 
 ---
 

@@ -11,6 +11,7 @@ export interface Notification {
   action?: { label: string; onClick: () => void };
   persistent?: boolean; // when true, also persisted to backend so it survives reloads
   onDismiss?: () => void; // called when user clicks X to dismiss
+  dismissWithoutConfirmation?: boolean;
   // Backend linkage (only set for persisted notifications loaded from API)
   apiId?: string;
   apiType?: NotificationType;
@@ -35,7 +36,11 @@ interface NotificationContextType {
    */
   attachHandlers: (
     apiId: string,
-    handlers: { action?: Notification["action"]; onDismiss?: Notification["onDismiss"] },
+    handlers: {
+      action?: Notification["action"];
+      onDismiss?: Notification["onDismiss"];
+      dismissWithoutConfirmation?: boolean;
+    },
   ) => void;
 }
 
@@ -161,10 +166,23 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
       if (!target) return prev;
       const nextAction = handlers.action ?? target.action;
       const nextDismiss = handlers.onDismiss ?? target.onDismiss;
+      const nextDismissWithoutConfirmation = handlers.dismissWithoutConfirmation
+        ?? target.dismissWithoutConfirmation;
       // No-op if nothing actually changes — prevents re-render loops.
-      if (nextAction === target.action && nextDismiss === target.onDismiss) return prev;
+      if (
+        nextAction === target.action
+        && nextDismiss === target.onDismiss
+        && nextDismissWithoutConfirmation === target.dismissWithoutConfirmation
+      ) return prev;
       return prev.map(n =>
-        n.apiId === apiId ? { ...n, action: nextAction, onDismiss: nextDismiss } : n,
+        n.apiId === apiId
+          ? {
+              ...n,
+              action: nextAction,
+              onDismiss: nextDismiss,
+              dismissWithoutConfirmation: nextDismissWithoutConfirmation,
+            }
+          : n,
       );
     });
   }, []);

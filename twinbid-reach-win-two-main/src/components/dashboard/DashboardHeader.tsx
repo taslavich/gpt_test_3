@@ -25,10 +25,11 @@ export function DashboardHeader() {
   const balance = profile?.balance ?? 0;
 
   const handleDismissClick = (n: Notification) => {
-    if (n.onDismiss) {
+    if (n.onDismiss && !n.dismissWithoutConfirmation) {
       // Show confirmation dialog for notifications with onDismiss (pending transactions)
       setConfirmDismiss(n);
     } else {
+      n.onDismiss?.();
       removeNotification(n.id);
     }
   };

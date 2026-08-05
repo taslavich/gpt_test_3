@@ -539,7 +539,7 @@ export const CreativesEditor = forwardRef<CreativesEditorHandle, CreativesEditor
 
   const generateAllBannerSizes = (creative: Creative, index: number) => {
     const source = origSourcesRef.current[creative.id];
-    if (!source || source.isVideo || source.isGif) return;
+    if (!source) return;
     const list = creativesRef.current;
     const additionalCount = BANNER_SIZES.length - 1;
     if (list.length + additionalCount > MAX_CREATIVES) {
@@ -840,7 +840,7 @@ export const CreativesEditor = forwardRef<CreativesEditorHandle, CreativesEditor
                   )}
                   {creative.imageFileName && <span className="min-w-0 break-all text-sm text-muted-foreground">{creative.imageFileName}</span>}
                 </div>
-                {creative.pendingFile && creative.imageUrl && src && !src.isVideo && !src.isGif && !creative.allBannerSizesGenerated && (
+                {creative.pendingFile && creative.imageUrl && src && !creative.allBannerSizesGenerated && (
                   <div className="rounded-lg border border-primary/40 bg-primary/10 p-3">
                     <p className="text-sm text-foreground">{t("create.generateAllBannerSizesHint")}</p>
                     <Button

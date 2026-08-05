@@ -7,6 +7,7 @@ export type PricingModel = "cpm" | "cpc";
 export type TrafficType = "mainstream" | "adult" | "mixed";
 export type FormatType = "banner" | "popunder" | "native" | "push";
 export type TopupStatus = "draft" | "pending" | "approved" | "rejected" | "cancelled";
+export type PaymentChannel = "static_wallet" | "passimpay_invoice";
 export type NotificationType = "incomplete_topup" | "low_balance" | "campaign_status" | "other";
 export type NotificationStatus = "active" | "inactive";
 
@@ -116,6 +117,7 @@ export interface ApiUserTransaction {
   user_id: string;
   transaction_time: string;
   transaction_id: string;
+  payment_channel?: PaymentChannel;
   payment_method: string;
   bonus_amount: number;
   promocode_id: string | null;
@@ -124,8 +126,31 @@ export interface ApiUserTransaction {
   total_balance_increase: number;
   status: TopupStatus;
   currency: string;
+  payment_url?: string | null;
+  provider_status?: string | null;
+  provider_payment_id?: string | null;
+  provider_transaction_id?: string | null;
+  amount_paid?: number | null;
+  amount_credited?: number | null;
+  fee_service?: number | null;
+  fee_network?: number | null;
+  credited_at?: string | null;
   created_at: string;
   updated_at: string;
+}
+
+export interface ApiCreateTransactionRequest {
+  payment_channel?: PaymentChannel;
+  payment_method?: string;
+  deposit_amount: number;
+  currency: string;
+  promocode_id?: string | null;
+  status?: TopupStatus;
+}
+
+/** The user-facing PATCH is intentionally limited to a static-wallet txhash. */
+export interface ApiPatchTransactionRequest {
+  transaction_hash: string;
 }
 
 export interface ApiPromocode {
@@ -207,7 +232,7 @@ export interface TrafficSegmentRequest {
   site_id_mode?: "include" | "exclude";
 }
 
-export interface CalculatorRequest extends TrafficSegmentRequest {}
+export type CalculatorRequest = TrafficSegmentRequest;
 
 export interface CalculatorResponse {
   /** Historical number of available impressions matching the request. */
@@ -217,7 +242,7 @@ export interface CalculatorResponse {
 // ---- Historical bid recommendation -------------------------------------
 // Uses the same segment filters as the calculator. The backend returns the
 // average non-zero winning bid for the latest fully closed day.
-export interface RecommendBidRequest extends TrafficSegmentRequest {}
+export type RecommendBidRequest = TrafficSegmentRequest;
 
 export interface RecommendBidResponse {
   /** Average non-zero bid for the requested segment. */

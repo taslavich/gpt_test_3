@@ -92,6 +92,7 @@ export const httpProvider: RawApiProvider = {
 
   // transactions
   listTransactions:   ()        => http<ApiEnvelope<{ items: ApiUserTransaction[]; total: number }>>("/api/transactions"),
+  getTransaction:     (id)      => http<ApiEnvelope<ApiUserTransaction>>(`/api/transactions/${id}`),
   createTransaction:  (body)    => http<ApiEnvelope<ApiUserTransaction>>("/api/transactions", { method: "POST", body }),
   patchTransaction:   (id, p)   => http<ApiEnvelope<ApiUserTransaction>>(`/api/transactions/${id}`, { method: "PATCH", body: p }),
   cancelTransaction:  (id)      => http<ApiEnvelope<ApiUserTransaction>>(`/api/transactions/${id}/cancel`, { method: "POST" }),

@@ -1,4 +1,5 @@
 import { useMemo, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -144,8 +145,9 @@ function MultiSelectFilter({ label, options, selected, onChange }: {
 
 export default function DashboardStatistics() {
   const isMobile = useIsMobile();
-  const { campaigns, loadCampaignCreatives, updateCampaign } = useCampaigns();
+  const { campaigns, loading: campaignsLoading, loadCampaignCreatives, updateCampaign } = useCampaigns();
   const { t, lang } = useLanguage();
+  const [searchParams] = useSearchParams();
   
   const {
     selectedCampaignIds, setSelectedCampaignIds,
@@ -191,10 +193,15 @@ export default function DashboardStatistics() {
     siteid: t("stats.bySiteId"), devices: t("stats.byDevices"), os: t("stats.byOS"), country: t("stats.byCountry"),
   };
 
-  const activeCampaigns = useMemo(() =>
-    campaigns.filter(c => c.status === "active" || c.status === "completed" || c.status === "paused"),
+  // Statistics are available for every campaign shown in the campaigns
+  // section except unfinished drafts. Deleted campaigns are already removed
+  // by CampaignContext.
+  const statisticsCampaigns = useMemo(() =>
+    campaigns.filter(c => c.status !== "draft"),
     [campaigns]
   );
+  const requestedCampaignId = searchParams.get("campaign")?.trim() || "";
+  const handledCampaignParamRef = useRef("");
 
   const selectedCampaignId = useMemo(() => {
     if (selectedCampaignIds.size === 1) return Array.from(selectedCampaignIds)[0];
@@ -219,17 +226,51 @@ export default function DashboardStatistics() {
     [lang]
   );
 
-  // On mount: if nothing applied yet, auto-apply "all active campaigns" + last 7 days.
+  // A direct link from the campaigns table selects and immediately applies
+  // that campaign. Keeping the id in the URL also makes refresh/deep links
+  // deterministic.
   useEffect(() => {
-    if (appliedCampaignIds.size === 0 && activeCampaigns.length > 0) {
+    if (!requestedCampaignId || campaignsLoading || handledCampaignParamRef.current === requestedCampaignId) return;
+
+    const requestedCampaign = statisticsCampaigns.find(c => c.id === requestedCampaignId);
+    const defaultRange: DateRange = { from: subDays(utcToday(), 6), to: utcToday() };
+    const effectiveRange = dateRange?.from
+      ? dateRange
+      : appliedDateRange?.from
+        ? appliedDateRange
+        : defaultRange;
+
+    setSelectedCreativeIds(new Set());
+    setAppliedCreativeIds(new Set());
+    setDateRange(effectiveRange);
+    setAppliedDateRange(effectiveRange);
+
+    if (requestedCampaign) {
+      const campaignSelection = new Set([requestedCampaign.id]);
+      setSelectedCampaignIds(campaignSelection);
+      setAppliedCampaignIds(new Set(campaignSelection));
+    } else {
+      // Invalid and draft campaign links fall back to all campaigns that are
+      // actually eligible for statistics; a draft is never selected.
+      setSelectedCampaignIds(new Set());
+      setAppliedCampaignIds(new Set(statisticsCampaigns.map(c => c.id)));
+    }
+
+    handledCampaignParamRef.current = requestedCampaignId;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [requestedCampaignId, campaignsLoading, statisticsCampaigns]);
+
+  // On mount: if nothing applied yet, auto-apply all non-draft campaigns + last 7 days.
+  useEffect(() => {
+    if (!requestedCampaignId && appliedCampaignIds.size === 0 && statisticsCampaigns.length > 0) {
       const defaultRange: DateRange = { from: subDays(utcToday(), 6), to: utcToday() };
-      setAppliedCampaignIds(new Set(activeCampaigns.map(c => c.id)));
+      setAppliedCampaignIds(new Set(statisticsCampaigns.map(c => c.id)));
       // Reflect defaults in the UI controls so the user sees what's applied
       if (!dateRange?.from) setDateRange(defaultRange);
       setAppliedDateRange(appliedDateRange ?? defaultRange);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeCampaigns]);
+  }, [statisticsCampaigns, requestedCampaignId]);
 
   const hasSelection = appliedCampaignIds.size > 0 && appliedDateRange?.from;
 
@@ -474,10 +515,10 @@ export default function DashboardStatistics() {
   }, [appliedGroupBy]);
 
 
-   const handleRefresh = useCallback(() => {
-    // For "all" campaigns, add all active campaign ids
+  const handleRefresh = useCallback(() => {
+    // For "all" campaigns, add every non-draft campaign id.
     if (selectedCampaignIds.size === 0) {
-      setAppliedCampaignIds(new Set(activeCampaigns.map(c => c.id)));
+      setAppliedCampaignIds(new Set(statisticsCampaigns.map(c => c.id)));
     } else {
       setAppliedCampaignIds(new Set(selectedCampaignIds));
     }
@@ -488,7 +529,7 @@ export default function DashboardStatistics() {
     setAppliedFilterDevice(filterDevice);
     setAppliedFilterOS(filterOS);
     toast.success(t("stats.refreshed"));
-  }, [selectedCampaignIds, selectedCreativeIds, dateRange, filterCountry, filterBrowser, filterDevice, filterOS, t, activeCampaigns]);
+  }, [selectedCampaignIds, selectedCreativeIds, dateRange, filterCountry, filterBrowser, filterDevice, filterOS, t, statisticsCampaigns]);
 
   const toggleCampaign = (id: string) => {
     setSelectedCampaignIds(prev => {
@@ -839,7 +880,7 @@ export default function DashboardStatistics() {
                 {selectedCampaignIds.size === 0
                   ? t("stats.allCampaigns")
                   : selectedCampaignIds.size === 1
-                    ? (activeCampaigns.find(c => c.id === Array.from(selectedCampaignIds)[0])?.name ?? `${t("stats.selected")} 1`)
+                    ? (statisticsCampaigns.find(c => c.id === Array.from(selectedCampaignIds)[0])?.name ?? `${t("stats.selected")} 1`)
                     : `${t("stats.selected")} ${selectedCampaignIds.size}`}
               </Button>
             </PopoverTrigger>
@@ -851,7 +892,7 @@ export default function DashboardStatistics() {
                   }} />
                   {t("stats.allCampaigns")}
                 </label>
-                {activeCampaigns.map(c => (
+                {statisticsCampaigns.map(c => (
                   <label key={c.id} className="flex min-w-0 items-center gap-2 px-2 py-1.5 rounded hover:bg-muted/50 cursor-pointer text-sm">
                     <Checkbox checked={selectedCampaignIds.has(c.id)} onCheckedChange={() => toggleCampaign(c.id)} />
                     <span className="min-w-0 flex-1 truncate" title={c.name}>{c.name}</span>

@@ -1,5 +1,6 @@
 import type {
   ApiUser, ApiCampaign, ApiCreative, ApiCreativeImage, ApiCreativeWrite, ApiUserTransaction, ApiPromocode,
+  ApiCreateTransactionRequest, ApiPatchTransactionRequest,
   ApiNotification, StatsQueryRequest, StatsQueryResponse, StatsSummary,
   CalculatorRequest, CalculatorResponse, RecommendBidRequest, RecommendBidResponse,
   AuthResponse, AuthTokens, ApiEnvelope,
@@ -257,12 +258,35 @@ export const mockProvider = {
   async listTransactions(): Promise<ApiEnvelope<{ items: ApiUserTransaction[]; total: number }>> {
     return ok({ items: state.transactions, total: state.transactions.length });
   },
-  async createTransaction(
-    body: Omit<ApiUserTransaction, "id" | "created_at" | "updated_at">,
-  ): Promise<ApiEnvelope<ApiUserTransaction>> {
+  async getTransaction(id: string): Promise<ApiEnvelope<ApiUserTransaction>> {
+    const transaction = state.transactions.find(item => item.id === id);
+    return transaction ? ok(transaction) : fail("Transaction not found");
+  },
+  async createTransaction(body: ApiCreateTransactionRequest): Promise<ApiEnvelope<ApiUserTransaction>> {
+    const channel = body.payment_channel === "passimpay_invoice" ? "passimpay_invoice" : "static_wallet";
+    const promoCode = String(body.promocode_id || "").trim().toUpperCase();
+    const promo = promoFixtures[promoCode];
+    const bonusAmount = promo
+      ? Math.round((body.deposit_amount * promo.bonus_percent + Number.EPSILON)) / 100
+      : 0;
+    const id = uid();
     const t: ApiUserTransaction = {
-      ...body,
-      id: uid(),
+      id,
+      user_id: "mock-user",
+      transaction_time: now(),
+      transaction_id: uid(),
+      payment_channel: channel,
+      payment_method: body.payment_method || (channel === "passimpay_invoice" ? "passimpay" : ""),
+      bonus_amount: bonusAmount,
+      promocode_id: promo?.id || body.promocode_id || null,
+      transaction_hash: null,
+      deposit_amount: body.deposit_amount,
+      total_balance_increase: body.deposit_amount + bonusAmount,
+      status: body.status || "pending",
+      currency: body.currency,
+      payment_url: channel === "passimpay_invoice" ? `https://pay.passimpay.io/invoice/${id}` : null,
+      provider_status: channel === "passimpay_invoice" ? "waiting" : null,
+      credited_at: null,
       created_at: now(),
       updated_at: now(),
     };
@@ -270,15 +294,27 @@ export const mockProvider = {
     saveState();
     return ok(t);
   },
-  async patchTransaction(id: string, patch: Partial<ApiUserTransaction>): Promise<ApiEnvelope<ApiUserTransaction>> {
+  async patchTransaction(id: string, patch: ApiPatchTransactionRequest): Promise<ApiEnvelope<ApiUserTransaction>> {
     const i = state.transactions.findIndex(t => t.id === id);
     if (i < 0) return fail("Transaction not found");
-    state.transactions[i] = { ...state.transactions[i], ...patch, updated_at: now() };
+    if (state.transactions[i].payment_channel === "passimpay_invoice") {
+      return fail("PassimPay invoice cannot be changed from frontend");
+    }
+    state.transactions[i] = {
+      ...state.transactions[i],
+      transaction_hash: patch.transaction_hash,
+      status: "pending",
+      updated_at: now(),
+    };
     saveState();
     return ok(state.transactions[i]);
   },
   async cancelTransaction(id: string): Promise<ApiEnvelope<ApiUserTransaction>> {
-    return this.patchTransaction(id, { status: "cancelled" });
+    const i = state.transactions.findIndex(t => t.id === id);
+    if (i < 0) return fail("Transaction not found");
+    state.transactions[i] = { ...state.transactions[i], status: "cancelled", updated_at: now() };
+    saveState();
+    return ok(state.transactions[i]);
   },
 
   // -- promo --------------------------------------------------------------

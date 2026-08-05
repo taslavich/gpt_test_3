@@ -8,6 +8,7 @@ import { useDashboardTheme } from "@/contexts/DashboardThemeContext";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import twinbidLogoDark from "@/assets/twinbid-logo.svg";
+import twinbidMark from "@/assets/twinbid-mark.svg";
 
 function useDashboardNavigation() {
   const navigate = useNavigate();
@@ -44,9 +45,7 @@ function DashboardNavContent({ onNavigate, mobile = false }: { onNavigate?: () =
       <div className={cn("shrink-0 border-b border-border", mobile ? "flex h-16 items-center px-5" : "p-6")}>
         {theme === "light" ? (
           <button type="button" onClick={() => goTo("/dashboard")} className="flex items-center gap-2.5" aria-label="TwinBid">
-            <span className="relative block h-9 w-[27px] overflow-hidden">
-              <img src={twinbidLogoDark} alt="" className="absolute left-0 top-0 h-9 max-w-none" />
-            </span>
+            <img src={twinbidMark} alt="" className="h-7 w-7 shrink-0" />
             <span className="text-xl font-semibold tracking-tight text-foreground">TwinBid</span>
           </button>
         ) : (

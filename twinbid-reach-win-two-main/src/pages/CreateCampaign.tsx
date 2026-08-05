@@ -11,6 +11,7 @@ import { toast } from "sonner";
 import { useCampaigns, type TargetingState, type PricingModel, type TrafficQuality, type TrafficType, type ListMode, type Creative, type Vertical, VERTICALS } from "@/contexts/CampaignContext";
 import { useNotifications } from "@/contexts/NotificationContext";
 import { TargetingSection, targetingConfigs } from "@/components/dashboard/TargetingSection";
+import { TargetingImportDialog } from "@/components/dashboard/TargetingImportDialog";
 import { BudgetSection } from "@/components/dashboard/BudgetSection";
 import { CreativesEditor, type CreativesEditorHandle } from "@/components/dashboard/CreativesEditor";
 import { PostbackSection } from "@/components/dashboard/PostbackSection";
@@ -49,7 +50,7 @@ const generateId = () => String(Date.now()) + Math.random().toString(36).slice(2
 
 export default function CreateCampaign() {
   const navigate = useNavigate();
-  const { addCampaign, updateCampaign, refetch } = useCampaigns();
+  const { campaigns, addCampaign, updateCampaign, refetch } = useCampaigns();
   const { t } = useLanguage();
   const { addNotification } = useNotifications();
   const [step, setStep] = useState(1);
@@ -421,7 +422,18 @@ export default function CreateCampaign() {
             </>
           )}
 
-          {step === 2 && <TargetingSection lists={lists} onUpdate={updateList} />}
+          {step === 2 && (
+            <div className="space-y-4">
+              <div className="flex justify-end">
+                <TargetingImportDialog
+                  campaigns={campaigns}
+                  currentTargeting={lists}
+                  onImport={setLists}
+                />
+              </div>
+              <TargetingSection lists={lists} onUpdate={updateList} />
+            </div>
+          )}
 
           {step === 3 && (
             <BudgetSection

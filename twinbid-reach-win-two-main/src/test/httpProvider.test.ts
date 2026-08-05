@@ -183,3 +183,52 @@ describe("creative multipart authentication", () => {
     ).rejects.toMatchObject({ status: 0, code: "NETWORK_ERROR" });
   });
 });
+
+describe("transaction HTTP contract", () => {
+  it("gets a PassimPay transaction by its backend id", async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      expect(String(input)).toMatch(/\/api\/transactions\/transaction-id$/);
+      expect(init?.method).toBe("GET");
+      return jsonResponse({
+        success: true,
+        errorMsg: "",
+        data: {
+          id: "transaction-id",
+          user_id: "user-id",
+          transaction_time: "2026-08-05T00:00:00Z",
+          transaction_id: "provider-id",
+          payment_channel: "passimpay_invoice",
+          payment_method: "passimpay",
+          bonus_amount: 10,
+          promocode_id: "promo-id",
+          transaction_hash: null,
+          deposit_amount: 100,
+          total_balance_increase: 110,
+          status: "pending",
+          currency: "USD",
+          payment_url: "https://pay.example/invoice",
+          provider_status: "waiting",
+          created_at: "2026-08-05T00:00:00Z",
+          updated_at: "2026-08-05T00:00:00Z",
+        },
+      });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await httpProvider.getTransaction("transaction-id");
+    expect(result.data.payment_channel).toBe("passimpay_invoice");
+    expect(result.data.payment_url).toBe("https://pay.example/invoice");
+  });
+
+  it("sends only transaction_hash when a static-wallet payment is submitted", async () => {
+    const fetchMock = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+      expect(init?.method).toBe("PATCH");
+      expect(JSON.parse(String(init?.body))).toEqual({ transaction_hash: "0xhash" });
+      return jsonResponse({ success: true, errorMsg: "", data: {} });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await httpProvider.patchTransaction("transaction-id", { transaction_hash: "0xhash" });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+});

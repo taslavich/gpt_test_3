@@ -11,6 +11,7 @@ import { ArrowLeft, Save, AlertCircle, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { useCampaigns, type TargetingState, type PricingModel, type TrafficQuality, type TrafficType, type Creative, type Vertical, VERTICALS } from "@/contexts/CampaignContext";
 import { TargetingSection } from "@/components/dashboard/TargetingSection";
+import { TargetingImportDialog } from "@/components/dashboard/TargetingImportDialog";
 import { BudgetSection } from "@/components/dashboard/BudgetSection";
 import { CreativesEditor, type CreativesEditorHandle } from "@/components/dashboard/CreativesEditor";
 import { PostbackSection } from "@/components/dashboard/PostbackSection";
@@ -30,7 +31,7 @@ export default function EditCampaign() {
   const { id } = useParams();
   const [searchParams] = useSearchParams();
   const defaultTab = searchParams.get("tab") || "general";
-  const { getCampaign, updateCampaign, loadCampaignCreatives, loading } = useCampaigns();
+  const { campaigns, getCampaign, updateCampaign, loadCampaignCreatives, loading } = useCampaigns();
   const { t } = useLanguage();
   const campaign = getCampaign(id || "");
   const [creativeLoadError, setCreativeLoadError] = useState("");
@@ -419,7 +420,15 @@ export default function EditCampaign() {
 
         <TabsContent value="targeting">
           <Card className="bg-card border-border">
-            <CardHeader><CardTitle className="text-lg">{t("edit.targeting")}</CardTitle></CardHeader>
+            <CardHeader className="flex flex-col gap-3 space-y-0 sm:flex-row sm:items-center sm:justify-between">
+              <CardTitle className="text-lg">{t("edit.targeting")}</CardTitle>
+              <TargetingImportDialog
+                campaigns={campaigns}
+                currentCampaignId={campaign.id}
+                currentTargeting={lists}
+                onImport={setLists}
+              />
+            </CardHeader>
             <CardContent><TargetingSection lists={lists} onUpdate={updateList} /></CardContent>
           </Card>
         </TabsContent>
