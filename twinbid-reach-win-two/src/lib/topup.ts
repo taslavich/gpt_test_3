@@ -1,5 +1,4 @@
 import type { ApiCreateTransactionRequest, ApiPromocode, ApiUserTransaction, PaymentChannel } from "@/api/types";
-import { getPaymentCurrency } from "@/lib/paymentMethods";
 
 export const PASSIMPAY_FEE_PERCENT = 1;
 export type PromocodeValidationFailure = "expired" | "limit" | "already_used";
@@ -56,9 +55,8 @@ export function buildStaticWalletTopup(params: {
     payment_channel: "static_wallet",
     payment_method: params.paymentMethod,
     deposit_amount: params.depositAmount,
-    currency: getPaymentCurrency(params.paymentMethod),
+    currency: "USD",
     promocode_id: params.promoCode || null,
-    status: "draft",
   };
 }
 
@@ -76,4 +74,16 @@ export function buildPassimPayTopup(params: {
 
 export function getTransactionChannel(transaction: Pick<ApiUserTransaction, "payment_channel">): PaymentChannel {
   return transaction.payment_channel === "passimpay_invoice" ? "passimpay_invoice" : "static_wallet";
+}
+
+export function isTransactionCredited(
+  transaction: Pick<ApiUserTransaction, "status" | "credited_at">,
+): boolean {
+  return transaction.status === "approved" && transaction.credited_at != null;
+}
+
+export function isPassimPayPartial(
+  transaction: Pick<ApiUserTransaction, "status" | "credited_at" | "amount_paid">,
+): boolean {
+  return Number(transaction.amount_paid) > 0 && !isTransactionCredited(transaction);
 }

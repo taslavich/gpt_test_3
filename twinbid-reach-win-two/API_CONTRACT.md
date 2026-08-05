@@ -266,6 +266,8 @@ Frontend синхронизирует креативы по ID: изменённ
   "currency": "usdt | usdc | USD",
   "payment_url": "https://...",
   "provider_status": "waiting | paid | error | create_unknown | string",
+  "amount_paid": 0,
+  "amount_credited": 0,
   "credited_at": "iso?",
   "created_at": "iso",
   "updated_at": "iso"
@@ -297,9 +299,8 @@ Frontend синхронизирует креативы по ID: изменённ
      "payment_channel": "static_wallet",
      "payment_method": "usdt_trc20",
      "deposit_amount": 100,
-     "currency": "usdt",
-     "promocode_id": "PROMOCODE_OR_NULL",
-     "status": "draft"
+     "currency": "USD",
+     "promocode_id": "PROMOCODE_OR_NULL"
    }
    ```
    Без `payment_channel` backend также считает платёж `static_wallet`, поэтому
@@ -318,6 +319,11 @@ Frontend синхронизирует креативы по ID: изменённ
 4. `POST /api/transactions/:id/cancel` → `cancelled`. Кнопка отмены показывается
    только для `static_wallet`.
 5. `GET /api/transactions?status=&limit=&offset=` → единая история обоих каналов.
+
+Во всех URL `/api/transactions/:id` frontend использует только `data.id` — внутренний
+ID строки. Поле `data.transaction_id` является публичным order ID провайдера и в URL
+TwinBid API не подставляется. В локальном состоянии `data.id` хранится под именем
+`transactionRowId`.
 
 Успешное зачисление PassimPay определяется только сочетанием:
 ```json

@@ -185,6 +185,50 @@ describe("creative multipart authentication", () => {
 });
 
 describe("transaction HTTP contract", () => {
+  it("creates static-wallet payments without frontend-calculated financial fields", async () => {
+    const fetchMock = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+      expect(init?.method).toBe("POST");
+      expect(JSON.parse(String(init?.body))).toEqual({
+        payment_channel: "static_wallet",
+        payment_method: "usdt_trc20",
+        deposit_amount: 100,
+        currency: "USD",
+        promocode_id: null,
+      });
+      return jsonResponse({ success: true, errorMsg: "", data: {} });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await httpProvider.createTransaction({
+      payment_channel: "static_wallet",
+      payment_method: "usdt_trc20",
+      deposit_amount: 100,
+      currency: "USD",
+      promocode_id: null,
+    });
+  });
+
+  it("creates PassimPay invoices without provider or calculated fields", async () => {
+    const fetchMock = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+      expect(init?.method).toBe("POST");
+      expect(JSON.parse(String(init?.body))).toEqual({
+        payment_channel: "passimpay_invoice",
+        deposit_amount: 100,
+        currency: "USD",
+        promocode_id: "WELCOME10",
+      });
+      return jsonResponse({ success: true, errorMsg: "", data: {} });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await httpProvider.createTransaction({
+      payment_channel: "passimpay_invoice",
+      deposit_amount: 100,
+      currency: "USD",
+      promocode_id: "WELCOME10",
+    });
+  });
+
   it("gets a PassimPay transaction by its backend id", async () => {
     const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       expect(String(input)).toMatch(/\/api\/transactions\/transaction-id$/);

@@ -115,15 +115,15 @@ export interface ApiCreativeWrite {
 export interface ApiUserTransaction {
   id: string;
   user_id: string;
-  transaction_time: string;
+  transaction_time?: string;
   transaction_id: string;
   payment_channel?: PaymentChannel;
-  payment_method: string;
-  bonus_amount: number;
+  payment_method?: string | null;
+  bonus_amount?: number | null;
   promocode_id: string | null;
-  transaction_hash: string | null;
+  transaction_hash?: string | null;
   deposit_amount: number;
-  total_balance_increase: number;
+  total_balance_increase?: number | null;
   status: TopupStatus;
   currency: string;
   payment_url?: string | null;
@@ -135,17 +135,16 @@ export interface ApiUserTransaction {
   fee_service?: number | null;
   fee_network?: number | null;
   credited_at?: string | null;
-  created_at: string;
-  updated_at: string;
+  created_at?: string;
+  updated_at?: string;
 }
 
 export interface ApiCreateTransactionRequest {
-  payment_channel?: PaymentChannel;
+  payment_channel: PaymentChannel;
   payment_method?: string;
   deposit_amount: number;
   currency: string;
   promocode_id?: string | null;
-  status?: TopupStatus;
 }
 
 /** The user-facing PATCH is intentionally limited to a static-wallet txhash. */

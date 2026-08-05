@@ -15,7 +15,7 @@ import { PAYMENT_METHODS } from "@/lib/paymentMethods";
 import { getPassimPayFee, getTransactionBonusAmount, getTransactionChannel } from "@/lib/topup";
 import type { ApiUserTransaction } from "@/api/types";
 
-import { api } from "@/api";
+import { api, ApiError } from "@/api";
 
 // Track the persistent "payment not completed" notification across the whole app.
 let pendingNotifId: string | null = null;
@@ -33,11 +33,13 @@ function pendingFromTransaction(transaction: ApiUserTransaction, promo?: string)
     bonus_amount: bonusAmount,
     promo,
     promocode_id: transaction.promocode_id ?? null,
-    transaction_id: transaction.id,
+    transactionRowId: transaction.id,
     total_balance_increase: Number(transaction.total_balance_increase) || amount + bonusAmount,
     status: transaction.status,
     payment_url: transaction.payment_url,
     provider_status: transaction.provider_status,
+    amount_paid: transaction.amount_paid,
+    amount_credited: transaction.amount_credited,
     credited_at: transaction.credited_at,
   };
 }
@@ -55,13 +57,17 @@ export function PendingPaymentDialog() {
 
   const [txHash, setTxHash] = useState("");
   const [checkingPassimPay, setCheckingPassimPay] = useState(false);
+  const [pollingError, setPollingError] = useState<string | null>(null);
   const hydratedTxRef = useRef<string | null>(null);
   const handlersAttachedRef = useRef<string | null>(null);
   const draftCheckedRef = useRef<string | null>(null);
   const approvedHandledRef = useRef<string | null>(null);
 
   useEffect(() => {
-    if (isDialogOpen) setTxHash("");
+    if (isDialogOpen) {
+      setTxHash("");
+      setPollingError(null);
+    }
   }, [isDialogOpen]);
 
   // If the user has an unfinished static-wallet draft or PassimPay invoice but
@@ -130,15 +136,16 @@ export function PendingPaymentDialog() {
     }
 
     pendingNotifId = persisted.id;
-    const txId = persisted.apiPayload?.transaction_id ?? null;
+    const transactionRowId = persisted.apiPayload?.transaction_id ?? null;
+    const persistedIsPassimPay = persisted.title.toLowerCase().includes("passimpay");
 
     // Hydrate pendingPayment from backend tx — only ONCE per txId to avoid loop.
-    if (!pendingPayment && hydratedTxRef.current !== (txId ?? persisted.id)) {
-      hydratedTxRef.current = txId ?? persisted.id;
-      if (txId) {
+    if (!pendingPayment && hydratedTxRef.current !== (transactionRowId ?? persisted.id)) {
+      hydratedTxRef.current = transactionRowId ?? persisted.id;
+      if (transactionRowId) {
         (async () => {
           try {
-            const tx = await api.getTransaction(txId);
+            const tx = await api.getTransaction(transactionRowId);
             let promoName: string | undefined;
             if (tx.promocode_id) {
               try {
@@ -153,8 +160,9 @@ export function PendingPaymentDialog() {
             if (persisted.apiPayload?.deposit_amount) {
               setPendingPayment({
                 amount: Number(persisted.apiPayload.deposit_amount) || 0,
-                method: "usdt_trc20",
-                transaction_id: txId,
+                method: persistedIsPassimPay ? "passimpay" : "usdt_trc20",
+                channel: persistedIsPassimPay ? "passimpay_invoice" : "static_wallet",
+                transactionRowId,
               });
             }
           }
@@ -172,14 +180,14 @@ export function PendingPaymentDialog() {
       handlersAttachedRef.current = persisted.id;
       attachHandlers(persisted.id, {
         action: { label: t("balance.notif.completePayment"), onClick: () => openDialog() },
-        dismissWithoutConfirmation: persisted.title.toLowerCase().includes("passimpay"),
+        dismissWithoutConfirmation: persistedIsPassimPay,
         onDismiss: async () => {
-          const txId2 = persisted.apiPayload?.transaction_id ?? null;
-          if (txId2) {
+          const transactionRowIdToDismiss = persisted.apiPayload?.transaction_id ?? null;
+          if (transactionRowIdToDismiss) {
             try {
-              const transaction = await api.getTransaction(txId2);
+              const transaction = await api.getTransaction(transactionRowIdToDismiss);
               if (getTransactionChannel(transaction) === "static_wallet") {
-                await api.cancelTransaction(txId2);
+                await api.cancelTransaction(transactionRowIdToDismiss);
               }
             } catch (e) {
               console.error("dismiss incomplete topup failed", e);
@@ -211,10 +219,11 @@ export function PendingPaymentDialog() {
     }
   };
 
-  const refreshPassimPay = useCallback(async (transactionId: string, showSpinner = false) => {
+  const refreshPassimPay = useCallback(async (transactionRowId: string, showSpinner = false) => {
     if (showSpinner) setCheckingPassimPay(true);
     try {
-      const transaction = await api.getTransaction(transactionId);
+      const transaction = await api.getTransaction(transactionRowId);
+      setPollingError(null);
       setPendingPayment(previous => pendingFromTransaction(transaction, previous?.promo));
       if (
         transaction.status === "approved"
@@ -230,29 +239,44 @@ export function PendingPaymentDialog() {
         }
         toast.success(t("balance.passimpay.paid"));
       }
-      return transaction;
+      return { transaction, stopPolling: false };
     } catch (error) {
+      const stopPolling = error instanceof ApiError && (error.status === 404 || error.status === 503);
+      const message = error instanceof ApiError && error.status === 503
+        ? t("balance.passimpay.unavailable")
+        : error instanceof ApiError && error.status === 404
+          ? t("balance.passimpay.notFound")
+          : error instanceof Error
+            ? error.message
+            : t("balance.toast.submitError");
+      setPollingError(message);
       if (showSpinner) notifyError(t("balance.toast.submitError"), error);
       else console.error("[topup] PassimPay polling failed", error);
-      return null;
+      return { transaction: null, stopPolling };
     } finally {
       if (showSpinner) setCheckingPassimPay(false);
     }
   }, [refetchProfile, removeNotification, setPendingPayment, t, triggerRefresh]);
 
   useEffect(() => {
-    const transactionId = pendingPayment?.transaction_id;
-    if (!isDialogOpen || pendingPayment?.channel !== "passimpay_invoice" || !transactionId) return;
+    const transactionRowId = pendingPayment?.transactionRowId;
+    if (!isDialogOpen || pendingPayment?.channel !== "passimpay_invoice" || !transactionRowId) return;
 
     let stopped = false;
     let timer: ReturnType<typeof setTimeout> | undefined;
     const startedAt = Date.now();
 
     const poll = async () => {
-      const transaction = await refreshPassimPay(transactionId);
+      const result = await refreshPassimPay(transactionRowId);
       if (stopped) return;
+      if (result.stopPolling) return;
+      const transaction = result.transaction;
       if (transaction?.status === "approved" && transaction.credited_at) return;
-      if (transaction?.status === "rejected" || transaction?.provider_status === "error") return;
+      if (
+        transaction?.status === "rejected"
+        || transaction?.status === "cancelled"
+        || transaction?.provider_status === "error"
+      ) return;
       const delay = Date.now() - startedAt < 2 * 60 * 1000 ? 5_000 : 15_000;
       timer = setTimeout(poll, delay);
     };
@@ -262,18 +286,26 @@ export function PendingPaymentDialog() {
       stopped = true;
       if (timer) clearTimeout(timer);
     };
-  }, [isDialogOpen, pendingPayment?.channel, pendingPayment?.transaction_id, refreshPassimPay]);
+  }, [isDialogOpen, pendingPayment?.channel, pendingPayment?.transactionRowId, refreshPassimPay]);
 
   const handleSubmitTx = async () => {
-    if (!txHash.trim() || !user || !pendingPayment?.transaction_id) return;
+    if (!txHash.trim() || !user || !pendingPayment?.transactionRowId) return;
 
     try {
       // The backend keeps the amount, promo and calculated bonus on the draft.
       // The user-facing PATCH is deliberately limited to the blockchain hash.
-      await api.patchTransaction(pendingPayment.transaction_id, {
+      await api.patchTransaction(pendingPayment.transactionRowId, {
         transaction_hash: txHash.trim(),
       });
     } catch (e: unknown) {
+      if (e instanceof ApiError && e.status === 409 && pendingPayment.transactionRowId) {
+        try {
+          const transaction = await api.getTransaction(pendingPayment.transactionRowId);
+          setPendingPayment(previous => pendingFromTransaction(transaction, previous?.promo));
+        } catch (refreshError) {
+          console.error("refresh transaction after conflict failed", refreshError);
+        }
+      }
       notifyError(t("balance.toast.submitError"), e);
       console.error(e);
       return;
@@ -300,11 +332,22 @@ export function PendingPaymentDialog() {
 
   const handleCancelPayment = async () => {
     if (pendingPayment?.channel === "passimpay_invoice") return;
-    // Mark the backend transaction as cancelled so it's purged from the
-    // user-visible history (the table filters out `cancelled`).
-    if (pendingPayment?.transaction_id) {
-      try { await api.cancelTransaction(pendingPayment.transaction_id); }
-      catch (e) { console.error("cancelTransaction failed", e); }
+    // Static-wallet drafts may be cancelled before they are sent for review.
+    if (pendingPayment?.transactionRowId) {
+      try {
+        await api.cancelTransaction(pendingPayment.transactionRowId);
+      } catch (e) {
+        if (e instanceof ApiError && e.status === 409) {
+          try {
+            const transaction = await api.getTransaction(pendingPayment.transactionRowId);
+            setPendingPayment(previous => pendingFromTransaction(transaction, previous?.promo));
+          } catch (refreshError) {
+            console.error("refresh transaction after cancel conflict failed", refreshError);
+          }
+        }
+        notifyError(t("balance.toast.submitError"), e);
+        return;
+      }
     }
     closeDialog();
     setPendingPayment(null);
@@ -323,6 +366,7 @@ export function PendingPaymentDialog() {
       closeDialog();
       const isTerminal = (pendingPayment.status === "approved" && !!pendingPayment.credited_at)
         || pendingPayment.status === "rejected"
+        || pendingPayment.status === "cancelled"
         || pendingPayment.provider_status === "error";
       if (isTerminal) {
         setPendingPayment(null);
@@ -341,7 +385,7 @@ export function PendingPaymentDialog() {
         apiType: "incomplete_topup",
         apiPayload: {
           deposit_amount: pendingPayment.amount,
-          transaction_id: pendingPayment.transaction_id ?? null,
+          transaction_id: pendingPayment.transactionRowId ?? null,
         },
         action: { label: t("balance.notif.completePayment"), onClick: () => openDialog() },
         dismissWithoutConfirmation: true,
@@ -378,12 +422,12 @@ export function PendingPaymentDialog() {
         apiPayload: {
           deposit_amount: pendingPayment.amount,
           // Persist the tx id so a reload can rehydrate full bonus info.
-          transaction_id: pendingPayment.transaction_id ?? null,
+          transaction_id: pendingPayment.transactionRowId ?? null,
         },
         action: { label: t("balance.notif.completePayment"), onClick: () => openDialog() },
         onDismiss: async () => {
-          if (pendingPayment.transaction_id) {
-            try { await api.cancelTransaction(pendingPayment.transaction_id); }
+          if (pendingPayment.transactionRowId) {
+            try { await api.cancelTransaction(pendingPayment.transactionRowId); }
             catch (e) { console.error("cancelTransaction failed", e); }
           }
           setPendingPayment(null);
@@ -406,6 +450,12 @@ export function PendingPaymentDialog() {
     && !!pendingPayment.credited_at;
   const passimPayFailed = isPassimPay
     && (pendingPayment.status === "rejected" || pendingPayment.provider_status === "error");
+  const passimPayCancelled = isPassimPay && pendingPayment.status === "cancelled";
+  const passimPayPartial = isPassimPay
+    && pendingPayment.status === "pending"
+    && pendingPayment.provider_status !== "error"
+    && Number(pendingPayment.amount_paid) > 0
+    && !passimPayApproved;
   const passimPayCreating = isPassimPay
     && !pendingPayment.payment_url
     && pendingPayment.provider_status === "create_unknown";
@@ -466,7 +516,9 @@ export function PendingPaymentDialog() {
               <div className="flex items-center gap-3 rounded-xl border border-border bg-muted/40 p-4">
                 {passimPayApproved ? (
                   <CircleCheckBig className="h-6 w-6 shrink-0 text-green-500" />
-                ) : passimPayFailed ? (
+                ) : passimPayCancelled ? (
+                  <CircleX className="h-6 w-6 shrink-0 text-muted-foreground" />
+                ) : passimPayFailed && !passimPayPartial ? (
                   <CircleX className="h-6 w-6 shrink-0 text-destructive" />
                 ) : (
                   <Loader2 className="h-6 w-6 shrink-0 animate-spin text-primary" />
@@ -475,19 +527,34 @@ export function PendingPaymentDialog() {
                   <p className="font-medium">
                     {passimPayApproved
                       ? t("balance.passimpay.paid")
-                      : passimPayFailed
-                        ? t("balance.passimpay.failed")
-                        : passimPayCreating || !pendingPayment?.payment_url
-                          ? t("balance.passimpay.creatingLink")
-                          : t("balance.passimpay.waiting")}
+                      : passimPayCancelled
+                        ? t("balance.passimpay.cancelled")
+                        : passimPayPartial
+                          ? t("balance.passimpay.partial")
+                          : passimPayFailed
+                            ? t("balance.passimpay.failed")
+                            : passimPayCreating || !pendingPayment?.payment_url
+                              ? t("balance.passimpay.creatingLink")
+                              : t("balance.passimpay.waiting")}
                   </p>
-                  {!passimPayApproved && !passimPayFailed && (
+                  {passimPayPartial && (
+                    <p className="mt-0.5 text-xs text-muted-foreground">
+                      {t("balance.passimpay.received")
+                        .replace("{paid}", `$${Number(pendingPayment?.amount_paid || 0).toLocaleString()}`)
+                        .replace("{total}", `$${Number(pendingPayment?.amount || 0).toLocaleString()}`)}
+                    </p>
+                  )}
+                  {!passimPayApproved && !passimPayFailed && !passimPayCancelled && !passimPayPartial && (
                     <p className="mt-0.5 text-xs text-muted-foreground">{t("balance.passimpay.description")}</p>
                   )}
                 </div>
               </div>
 
-              {passimPayApproved || passimPayFailed ? (
+              {pollingError && (
+                <p className="text-sm text-destructive" role="alert">{pollingError}</p>
+              )}
+
+              {passimPayApproved || passimPayFailed || passimPayCancelled ? (
                 <Button type="button" className="w-full" onClick={finishPassimPay}>
                   {t("balance.passimpay.done")}
                 </Button>
@@ -512,10 +579,10 @@ export function PendingPaymentDialog() {
                     type="button"
                     variant="outline"
                     className="w-full border-border"
-                    disabled={checkingPassimPay || !pendingPayment?.transaction_id}
+                    disabled={checkingPassimPay || !pendingPayment?.transactionRowId}
                     onClick={() => {
-                      if (pendingPayment?.transaction_id) {
-                        void refreshPassimPay(pendingPayment.transaction_id, true);
+                      if (pendingPayment?.transactionRowId) {
+                        void refreshPassimPay(pendingPayment.transactionRowId, true);
                       }
                     }}
                   >

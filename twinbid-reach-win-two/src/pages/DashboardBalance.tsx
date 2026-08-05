@@ -12,7 +12,7 @@ import { useLanguage } from "@/contexts/LanguageContext";
 import { useProfile } from "@/contexts/ProfileContext";
 import { useAuth } from "@/contexts/AuthContext";
 import { usePendingPayment } from "@/contexts/PendingPaymentContext";
-import { api } from "@/api";
+import { api, ApiError } from "@/api";
 import { supabase } from "@/integrations/supabase/client";
 import type { ApiUserTransaction, PaymentChannel } from "@/api/types";
 import { PAYMENT_METHODS } from "@/lib/paymentMethods";
@@ -23,6 +23,8 @@ import {
   buildStaticWalletTopup,
   getPassimPayFee,
   getTransactionBonusAmount,
+  isPassimPayPartial,
+  isTransactionCredited,
   parseTopupAmount,
   PASSIMPAY_FEE_PERCENT,
   sanitizeTopupAmountInput,
@@ -54,6 +56,7 @@ export default function DashboardBalance() {
   const [topupRequests, setTopupRequests] = useState<TopupRequest[]>([]);
   const [loadingRequests, setLoadingRequests] = useState(true);
   const [submittingTopup, setSubmittingTopup] = useState(false);
+  const [topupError, setTopupError] = useState<string | null>(null);
   const topupSubmitLockRef = useRef(false);
 
   const [promoNames, setPromoNames] = useState<Record<string, string>>({});
@@ -168,6 +171,16 @@ export default function DashboardBalance() {
     }
     topupSubmitLockRef.current = true;
     setSubmittingTopup(true);
+    setTopupError(null);
+    let paymentWindow: Window | null = null;
+    if (selectedChannel === "passimpay_invoice") {
+      try {
+        paymentWindow = window.open("", "_blank");
+        if (paymentWindow) paymentWindow.opener = null;
+      } catch {
+        // The dialog keeps the backend payment URL as a regular fallback link.
+      }
+    }
     const promoCodeText = appliedPromo?.code ?? null;
     try {
       const body = selectedChannel === "passimpay_invoice"
@@ -178,15 +191,14 @@ export default function DashboardBalance() {
             promoCode: promoCodeText,
           });
       const created = await api.createTransaction(body);
-      const transactionChannel = created.payment_channel === "passimpay_invoice"
-        ? "passimpay_invoice"
-        : selectedChannel;
+      const transactionRowId = created.id;
+      const transactionChannel = created.payment_channel || selectedChannel;
       const bonusAmount = getTransactionBonusAmount(created);
 
-      if (created.id && appliedPromo) {
+      if (transactionRowId && appliedPromo) {
         try {
           const map = JSON.parse(localStorage.getItem("twinbid_promo_codes") || "{}");
-          map[created.id] = appliedPromo.code;
+          map[transactionRowId] = appliedPromo.code;
           map[appliedPromo.id] = appliedPromo.code;
           localStorage.setItem("twinbid_promo_codes", JSON.stringify(map));
         } catch { /* local display cache is best-effort */ }
@@ -200,21 +212,38 @@ export default function DashboardBalance() {
         bonus: appliedPromo?.bonus,
         bonus_amount: bonusAmount,
         promocode_id: created.promocode_id ?? appliedPromo?.id ?? null,
-        transaction_id: created.id,
+        transactionRowId,
         total_balance_increase: Number(created.total_balance_increase) || finalAmount + bonusAmount,
         status: created.status,
         payment_url: created.payment_url,
         provider_status: created.provider_status,
+        amount_paid: created.amount_paid,
+        amount_credited: created.amount_credited,
         credited_at: created.credited_at,
       });
       setAppliedPromo(null);
       setPromoCode("");
       openDialog();
       if (transactionChannel === "passimpay_invoice" && created.payment_url) {
-        window.open(created.payment_url, "_blank", "noopener,noreferrer");
+        if (paymentWindow && !paymentWindow.closed) {
+          try {
+            paymentWindow.location.href = created.payment_url;
+          } catch {
+            paymentWindow.close();
+          }
+        }
+      } else if (paymentWindow && !paymentWindow.closed) {
+        paymentWindow.close();
       }
       void fetchTopupRequests();
     } catch (e: unknown) {
+      if (paymentWindow && !paymentWindow.closed) paymentWindow.close();
+      const message = selectedChannel === "passimpay_invoice" && e instanceof ApiError && e.status === 503
+        ? t("balance.passimpay.unavailable")
+        : e instanceof Error
+          ? e.message
+          : t("balance.toast.submitError");
+      setTopupError(message);
       notifyError(t("balance.toast.submitError"), e);
     } finally {
       topupSubmitLockRef.current = false;
@@ -235,11 +264,13 @@ export default function DashboardBalance() {
         channel: "passimpay_invoice",
         bonus_amount: bonusAmount,
         promocode_id: transaction.promocode_id ?? null,
-        transaction_id: transaction.id,
+        transactionRowId: transaction.id,
         total_balance_increase: Number(transaction.total_balance_increase) || amount + bonusAmount,
         status: transaction.status,
         payment_url: transaction.payment_url,
         provider_status: transaction.provider_status,
+        amount_paid: transaction.amount_paid,
+        amount_credited: transaction.amount_credited,
         credited_at: transaction.credited_at,
       });
       openDialog();
@@ -253,13 +284,16 @@ export default function DashboardBalance() {
 
   const formatDate = (dateStr: string) => {
     const d = new Date(dateStr);
+    if (Number.isNaN(d.getTime())) return "—";
     return `${String(d.getUTCDate()).padStart(2, "0")}.${String(d.getUTCMonth() + 1).padStart(2, "0")}.${d.getUTCFullYear()}`;
   };
 
   const statusMap: Record<string, { label: string; className: string }> = {
+    draft: { label: t("balance.created"), className: "text-muted-foreground border-border" },
     pending: { label: t("balance.pending"), className: "text-yellow-500 border-yellow-500/20" },
     approved: { label: t("balance.completed"), className: "text-green-500 border-green-500/20" },
     rejected: { label: t("balance.rejected") || "Rejected", className: "text-destructive border-destructive/20" },
+    cancelled: { label: t("balance.cancelled"), className: "text-muted-foreground border-border" },
   };
 
   return (
@@ -325,7 +359,10 @@ export default function DashboardBalance() {
               <div className="grid gap-3 sm:grid-cols-2">
                 <button
                   type="button"
-                  onClick={() => setSelectedChannel("static_wallet")}
+                  onClick={() => {
+                    setSelectedChannel("static_wallet");
+                    setTopupError(null);
+                  }}
                   className={cn(
                     "relative flex min-h-24 items-center gap-3 rounded-xl border p-4 text-left transition-colors",
                     selectedChannel === "static_wallet"
@@ -347,7 +384,10 @@ export default function DashboardBalance() {
 
                 <button
                   type="button"
-                  onClick={() => setSelectedChannel("passimpay_invoice")}
+                  onClick={() => {
+                    setSelectedChannel("passimpay_invoice");
+                    setTopupError(null);
+                  }}
                   className={cn(
                     "relative flex min-h-24 items-center rounded-xl border p-4 pr-16 text-left transition-colors",
                     selectedChannel === "passimpay_invoice"
@@ -448,6 +488,9 @@ export default function DashboardBalance() {
                 </div>
               )}
             </div>
+            {topupError && (
+              <p className="text-sm text-destructive" role="alert">{topupError}</p>
+            )}
             <p className="text-xs text-muted-foreground">{t("balance.minAmount")}</p>
           </CardContent>
         </Card>
@@ -463,11 +506,7 @@ export default function DashboardBalance() {
         <CardContent className="p-0">
           <div className="max-w-full overflow-x-auto overscroll-x-contain">
             {(() => {
-              // `draft` and `cancelled` are internal-only states (incomplete or
-              // abandoned attempts) — never shown in the user-facing history.
-              const visible = topupRequests.filter(
-                tx => tx.status !== "draft" && tx.status !== "cancelled",
-              );
+              const visible = topupRequests;
               if (loadingRequests) {
                 return <div className="py-12 text-center text-muted-foreground">Loading...</div>;
               }
@@ -488,8 +527,32 @@ export default function DashboardBalance() {
                   {visible.map((req) => {
                     const methodLabel = req.payment_channel === "passimpay_invoice"
                       ? "PassimPay"
-                      : PAYMENT_METHODS.find(m => m.id === req.payment_method)?.label || req.payment_method;
-                    const st = statusMap[req.status] || statusMap.pending;
+                      : "TwinBid Crypto";
+                    const credited = isTransactionCredited(req);
+                    const partial = req.payment_channel === "passimpay_invoice"
+                      && req.status === "pending"
+                      && req.provider_status !== "error"
+                      && isPassimPayPartial(req);
+                    const historyStatus = credited
+                      ? "approved"
+                      : req.status === "approved"
+                        ? "pending"
+                        : req.status;
+                    const baseStatus = statusMap[historyStatus] || statusMap.pending;
+                    const providerStatus = req.payment_channel === "passimpay_invoice"
+                      && req.status === "pending"
+                      && !credited
+                      ? partial
+                        ? { label: t("balance.passimpay.partial"), className: "text-yellow-500 border-yellow-500/20" }
+                        : req.provider_status === "create_unknown"
+                          ? { label: t("balance.passimpay.checkingPayment"), className: "text-yellow-500 border-yellow-500/20" }
+                          : req.provider_status === "waiting" && req.status === "pending"
+                            ? { label: t("balance.passimpay.waiting"), className: "text-yellow-500 border-yellow-500/20" }
+                            : req.provider_status === "error"
+                              ? { label: t("balance.passimpay.error"), className: "text-destructive border-destructive/20" }
+                              : null
+                      : null;
+                    const st = providerStatus || baseStatus;
                     let promoLabel: string | null = null;
                     if (req.promocode_id) {
                       // Prefer the resolved DB name; fall back to the local cache used by submission flow.
@@ -504,7 +567,7 @@ export default function DashboardBalance() {
                     const bonusAmt = Math.max(0, Number(req.total_balance_increase || 0) - Number(req.deposit_amount || 0));
                     return (
                       <tr key={req.id} className="border-b border-border/50 hover:bg-muted/50 transition-colors">
-                        <td className="py-3 px-4 text-sm">{formatDate(req.created_at)}</td>
+                        <td className="py-3 px-4 text-sm">{formatDate(req.created_at || req.transaction_time || "")}</td>
                         <td className="py-3 px-4 text-sm">
                           {t("balance.topUpVia")} · {methodLabel}
                           {req.promocode_id && (
@@ -513,8 +576,11 @@ export default function DashboardBalance() {
                             </span>
                           )}
                         </td>
-                        <td className="py-3 px-4 text-sm text-left font-medium text-green-500">
-                          +${fmtMoney(req.total_balance_increase || req.deposit_amount)}
+                        <td className={cn(
+                          "py-3 px-4 text-sm text-left font-medium",
+                          credited ? "text-green-500" : "text-foreground",
+                        )}>
+                          {credited ? "+" : ""}${fmtMoney(req.total_balance_increase || req.deposit_amount)}
                         </td>
                         <td className="py-3 px-4 text-left">
                           <Badge variant="outline" className={cn("font-normal", st.className)}>

@@ -5,6 +5,8 @@ import {
   buildStaticWalletTopup,
   getPassimPayFee,
   getTransactionBonusAmount,
+  isPassimPayPartial,
+  isTransactionCredited,
   parseTopupAmount,
   validatePromocodeForTopup,
 } from "@/lib/topup";
@@ -48,7 +50,7 @@ describe("top-up request contract", () => {
     });
   });
 
-  it("keeps the existing static-wallet method and network currency", () => {
+  it("sends the minimal static-wallet payload required by the backend", () => {
     expect(buildStaticWalletTopup({
       paymentMethod: "usdt_trc20",
       depositAmount: 250,
@@ -57,9 +59,8 @@ describe("top-up request contract", () => {
       payment_channel: "static_wallet",
       payment_method: "usdt_trc20",
       deposit_amount: 250,
-      currency: "usdt",
+      currency: "USD",
       promocode_id: "BONUS25",
-      status: "draft",
     });
   });
 
@@ -71,6 +72,23 @@ describe("top-up request contract", () => {
 
   it("uses the backend total as the source of truth for the promo bonus", () => {
     expect(getTransactionBonusAmount(transaction())).toBe(25);
+  });
+
+  it("treats a payment as credited only after approved plus credited_at", () => {
+    expect(isTransactionCredited(transaction({ status: "approved", credited_at: null }))).toBe(false);
+    expect(isTransactionCredited(transaction({
+      status: "approved",
+      credited_at: "2026-08-05T00:05:00Z",
+    }))).toBe(true);
+  });
+
+  it("detects partial PassimPay payments without marking them credited", () => {
+    expect(isPassimPayPartial(transaction({ amount_paid: 45 }))).toBe(true);
+    expect(isPassimPayPartial(transaction({
+      status: "approved",
+      amount_paid: 100,
+      credited_at: "2026-08-05T00:05:00Z",
+    }))).toBe(false);
   });
 });
 

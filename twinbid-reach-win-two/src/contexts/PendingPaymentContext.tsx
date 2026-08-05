@@ -11,12 +11,14 @@ export interface PendingPaymentData {
   promocode_id?: string | null;
   /** Actual bonus amount in $ (from backend tx.bonus_amount on rehydrate). Source of truth for the notification total. */
   bonus_amount?: number;
-  /** Backend transaction id (status="created") created when the dialog opens. */
-  transaction_id?: string | null;
+  /** Backend row id (`transaction.id`). Used in every TwinBid transaction URL. */
+  transactionRowId?: string | null;
   total_balance_increase?: number;
   status?: TopupStatus;
   payment_url?: string | null;
   provider_status?: string | null;
+  amount_paid?: number | null;
+  amount_credited?: number | null;
   credited_at?: string | null;
 }
 
