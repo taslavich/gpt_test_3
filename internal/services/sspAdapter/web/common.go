@@ -355,6 +355,35 @@ func getBurl(
 	w.WriteHeader(http.StatusNoContent)
 }
 
+func getClicksWins(
+	ctx context.Context,
+	w http.ResponseWriter,
+	r *http.Request,
+	redisClients []*redis.Client,
+	redisSetClicksWins string,
+	redisWriteErrorMonitor *services.RedisWriteErrorMonitor,
+	sspAdapterWorkStatusURL string,
+) {
+	input, ok := r.Context().Value(httpin.Input).(*clicksWinsRequest)
+	if !ok || input == nil {
+		http.Error(w, "invalid ClicksWins request", http.StatusBadRequest)
+		return
+	}
+
+	clicksWinsUUID := uuid.NewString()
+	if err := utils.WriteClicksWinStats(ctx, redisClients, clicksWinsUUID, input.GlobalId, true); err != nil {
+		recordRedisError(redisWriteErrorMonitor, err, sspAdapterWorkStatusURL)
+		w.WriteHeader(http.StatusServiceUnavailable)
+		return
+	}
+	if err := utils.AddUUIDToRedisSet(ctx, redisClients, redisSetClicksWins, clicksWinsUUID, true); err != nil {
+		recordRedisError(redisWriteErrorMonitor, err, sspAdapterWorkStatusURL)
+		w.WriteHeader(http.StatusServiceUnavailable)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
 func handleADVCallback(
 	ctx context.Context,
 	winnerUUID, format, source string,

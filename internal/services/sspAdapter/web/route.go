@@ -93,6 +93,10 @@ type burlRequest struct {
 	Format   string `in:"query=f" required:"true"`
 }
 
+type clicksWinsRequest struct {
+	GlobalId string `in:"query=id" required:"true"`
+}
+
 type curlRequest struct {
 	ClickUuid string `in:"query=click_id" required:"true"`
 	Payout    string `in:"query=payout" required:"true"`
@@ -314,6 +318,12 @@ func InitHttpsRoutes(
 		httpin.NewInput(curlRequest{}),
 	).Get(GetCurlUrl, func(w http.ResponseWriter, r *http.Request) {
 		getCurl(ctx, w, r, redisClientsConv, redisSetConversions, redisWriteErrorMonitor, sspAdapterWorkStatusURL)
+	})
+
+	httpRouter.With(
+		httpin.NewInput(clicksWinsRequest{}),
+	).Get(GetBurlUrl, func(w http.ResponseWriter, r *http.Request) {
+		getClicksWins(ctx, w, r, redisClientsImp, redisSetImpressions, redisWriteErrorMonitor, sspAdapterWorkStatusURL)
 	})
 }
 

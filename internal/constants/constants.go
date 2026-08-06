@@ -42,6 +42,10 @@ const (
 )
 
 const (
+	EVENT_TIME_CLICKS_WINS_COLUMN = "EVENT_TIME_CLICKS_WINS"
+)
+
+const (
 	ORTB_UUID = "ORTB_UUID"
 )
 

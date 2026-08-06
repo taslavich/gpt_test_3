@@ -259,6 +259,39 @@ func WriteImpressionStats(
 	return nil
 }
 
+// WriteClicksWinStats записывает статистику выигрыша клика в Redis одним HSET.
+func WriteClicksWinStats(
+	ctx context.Context,
+	redisClients []*redis.Client,
+	clicksWinsUuid string,
+	globalId string,
+	logged bool,
+) error {
+	if !logged {
+		return nil
+	}
+
+	client, idx, err := redis_service.SelectShard(redisClients, clicksWinsUuid)
+	if err != nil {
+		return fmt.Errorf("failed to select shard for uuid %s: %w", clicksWinsUuid, err)
+	}
+
+	fields := map[string]interface{}{
+		constants.ORTB_UUID:                     globalId,
+		constants.EVENT_TIME_CLICKS_WINS_COLUMN: time.Now().UTC().Format("2006-01-02 15:04:05.000"),
+	}
+
+	pipe := client.Pipeline()
+	pipe.HSet(ctx, clicksWinsUuid, fields)
+	pipe.Expire(ctx, clicksWinsUuid, RedisKeyTTL)
+
+	if _, err := pipe.Exec(ctx); err != nil {
+		return fmt.Errorf("failed to write clicks wins stats to Redis (uuid=%s, shard=%d): %w", clicksWinsUuid, idx, err)
+	}
+
+	return nil
+}
+
 func WriteConversionStats(
 	ctx context.Context,
 	redisClients []*redis.Client,
