@@ -21,10 +21,10 @@ export function formatStatisticRate(value: number): string {
 }
 
 export function formatStatisticSpend(value: number): string {
-  const truncated = Math.trunc(value * 1000) / 1000;
+  const truncated = Math.trunc(value * 100) / 100;
   return formatNumberWithDot(truncated, {
-    minimumFractionDigits: 3,
-    maximumFractionDigits: 3,
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
   });
 }
 

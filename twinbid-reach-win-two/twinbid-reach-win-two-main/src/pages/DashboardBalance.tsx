@@ -162,10 +162,12 @@ export default function DashboardBalance() {
   );
   const hasPendingPassimPay = !!pendingPassimPay;
   const hasUnfinishedPayment = hasDraft || hasPendingPassimPay;
+  const isTopUpBlocked = selectedChannel !== "passimpay_invoice"
+    && (!!pendingPayment || hasUnfinishedPayment);
 
   const handleTopUp = async () => {
     if (!finalAmount || finalAmount < 100 || !user || !selectedChannel || submittingTopup || topupSubmitLockRef.current) return;
-    if (pendingPayment || hasUnfinishedPayment) {
+    if (isTopUpBlocked) {
       toast.error(t("balance.disabledReason"));
       return;
     }
@@ -458,7 +460,7 @@ export default function DashboardBalance() {
 
             <div className="flex flex-col sm:flex-row sm:items-center gap-3">
               <Button onClick={handleTopUp} className="h-auto min-h-10 w-full whitespace-normal bg-accent py-2 hover:bg-accent/90 text-accent-foreground sm:w-auto"
-                disabled={!finalAmount || finalAmount < 100 || !selectedChannel || !!pendingPayment || hasUnfinishedPayment || submittingTopup}>
+                disabled={!finalAmount || finalAmount < 100 || !selectedChannel || isTopUpBlocked || submittingTopup}>
                 {submittingTopup
                   ? t("balance.payment.creating")
                   : selectedChannel === "passimpay_invoice"
@@ -466,7 +468,7 @@ export default function DashboardBalance() {
                     : t("balance.topUpBtn")} {finalAmount ? `$${fmtMoney(finalAmount)}` : ""}
                 {appliedPromo && finalAmount ? ` (+${fmtMoney(promoPreviewBonus)}$ ${t("balance.promo.bonusShort")})` : ""}
               </Button>
-              {(pendingPayment || hasUnfinishedPayment) && (
+              {isTopUpBlocked && (
                 <div className="flex flex-col items-start gap-2">
                   <p className="text-xs text-yellow-500">
                     {pendingPayment?.channel === "passimpay_invoice" || pendingPassimPay

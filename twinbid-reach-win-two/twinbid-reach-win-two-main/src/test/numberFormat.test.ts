@@ -18,9 +18,9 @@ describe("statistics number formatting", () => {
     expect(formatStatisticRate(0)).toBe("0.000");
   });
 
-  it("truncates campaign statistics spend instead of rounding it", () => {
-    expect(formatStatisticSpend(12.9879)).toBe("12.987");
-    expect(formatStatisticSpend(0)).toBe("0.000");
+  it("truncates campaign statistics spend to two decimal places instead of rounding it", () => {
+    expect(formatStatisticSpend(12.9879)).toBe("12.98");
+    expect(formatStatisticSpend(0)).toBe("0.00");
   });
 
   it("formats a fractional balance with a decimal point and two digits", () => {
