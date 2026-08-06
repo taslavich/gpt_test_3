@@ -92,6 +92,12 @@ ORDER BY (created_at, uuid)
 TTL created_at + INTERVAL 1 HOUR DELETE
 SETTINGS index_granularity = 8192;
 
+-- Lookup by auction UUID for clicks_wins -> ORTB enrichment.
+-- ALTER is kept for compatibility with already existing tables.
+ALTER TABLE {db}.ortb
+    ADD INDEX IF NOT EXISTS idx_ortb_uuid
+    uuid TYPE bloom_filter(0.01) GRANULARITY 1;
+
 
 -- ============================================================
 -- IP LIMIT IPV4
@@ -518,6 +524,21 @@ ALTER TABLE {db}.fact_conversions
     ADD COLUMN IF NOT EXISTS approved UInt8
     DEFAULT 0
     AFTER status;
+
+-- Lookup indexes used by the corrected refreshable MVs.
+-- Existing parts require a one-time MATERIALIZE INDEX command;
+-- new parts receive these indexes automatically.
+ALTER TABLE {db}.fact_clicks
+    ADD INDEX IF NOT EXISTS idx_fact_clicks_clicks_uuid
+    clicks_uuid TYPE bloom_filter(0.01) GRANULARITY 1;
+
+ALTER TABLE {db}.fact_clicks_wins
+    ADD INDEX IF NOT EXISTS idx_fact_clicks_wins_created_at
+    created_at TYPE minmax GRANULARITY 1;
+
+ALTER TABLE {db}.fact_conversions
+    ADD INDEX IF NOT EXISTS idx_fact_conversions_created_at
+    created_at TYPE minmax GRANULARITY 1;
 
 
 -- ============================================================
@@ -960,9 +981,24 @@ WHERE a.clicks_uuid NOT IN (
 AND a.created_at >= now() - INTERVAL 60 MINUTE;
 
 CREATE MATERIALIZED VIEW {db}.mv_clicks_wins_to_fact
-REFRESH EVERY 1 MINUTE
+REFRESH EVERY 1 MINUTE OFFSET 20 SECOND
 APPEND TO {db}.fact_clicks_wins
 AS
+WITH pending_clicks_wins AS
+(
+    SELECT
+        event_time_clicks_wins,
+        clicks_wins_uuid,
+        uuid
+    FROM {db}.clicks_wins_in
+    PREWHERE created_at >= now() - INTERVAL 60 MINUTE
+    WHERE clicks_wins_uuid NOT IN
+    (
+        SELECT clicks_wins_uuid
+        FROM {db}.fact_clicks_wins
+        PREWHERE created_at >= now() - INTERVAL 65 MINUTE
+    )
+)
 SELECT
     a.event_time_clicks_wins AS event_time_clicks_wins,
     o.event_time AS event_time,
@@ -1005,21 +1041,91 @@ SELECT
     o.win_cid AS win_cid,
     o.win_crid AS win_crid,
     o.win_user_id AS win_user_id
-FROM {db}.clicks_wins_in AS a
-ANY INNER JOIN {db}.ortb AS o
-    ON a.uuid = o.uuid
-WHERE a.clicks_wins_uuid NOT IN
+FROM
 (
-    SELECT clicks_wins_uuid
-    FROM {db}.fact_clicks_wins
-    WHERE created_at >= now() - INTERVAL 65 MINUTE
-)
-AND a.created_at >= now() - INTERVAL 60 MINUTE;
+    /*
+     * ORTB is the streamed (left) side.
+     * Only UUIDs present in the small pending set are read, and one
+     * deterministic ORTB row is retained for every auction UUID.
+     */
+    SELECT
+        event_time,
+        uuid,
+        code,
+        format,
+        typic,
+        spp_domain,
+        ip,
+        ipv6,
+        lang,
+        browser,
+        browser_version,
+        os,
+        os_version,
+        device,
+        site_id,
+        site_domain,
+        bid_floor,
+        geo,
+        city_id,
+        bid_responses_raw,
+        win_dsp_domain,
+        win_final_price,
+        win_dsp_price,
+        win_cid,
+        win_crid,
+        win_user_id
+    FROM {db}.ortb
+    PREWHERE created_at >= now() - INTERVAL 65 MINUTE
+    WHERE uuid IN
+    (
+        SELECT uuid
+        FROM pending_clicks_wins
+    )
+    ORDER BY created_at DESC
+    LIMIT 1 BY uuid
+) AS o
+ALL INNER JOIN pending_clicks_wins AS a
+    ON o.uuid = a.uuid
+SETTINGS query_plan_join_swap_table = 'false';
 
-CREATE MATERIALIZED VIEW IF NOT EXISTS {db}.mv_conversions_to_fact
-REFRESH EVERY 1 MINUTE
+CREATE MATERIALIZED VIEW {db}.mv_conversions_to_fact
+REFRESH EVERY 1 MINUTE OFFSET 40 SECOND
 APPEND TO {db}.fact_conversions
 AS
+WITH pending_conversions AS
+(
+    SELECT
+        created_at,
+        conversions_event_time,
+        clicks_uuid,
+        payout,
+        upperUTF8(ifNull(status, '')) AS status,
+        toUInt8(upperUTF8(ifNull(status, '')) = 'APPROVED') AS approved
+    FROM {db}.conversions_in
+    PREWHERE created_at >= now() - toIntervalMinute(1440)
+    WHERE upperUTF8(ifNull(status, '')) IN
+    (
+        '',
+        'PENDING',
+        'APPROVED',
+        '{STATUS}'
+    )
+    AND
+    (
+        clicks_uuid,
+        conversions_event_time,
+        toUInt8(upperUTF8(ifNull(status, '')) = 'APPROVED')
+    ) NOT IN
+    (
+        SELECT
+            clicks_uuid,
+            conversions_event_time,
+            approved
+        FROM {db}.fact_conversions
+        PREWHERE created_at >= now() - toIntervalMinute(1445)
+    )
+)
 SELECT
     a.conversions_event_time AS conversions_event_time,
     o.event_time AS event_time,
@@ -1032,7 +1138,6 @@ SELECT
 
     o.format AS format,
     o.typic AS typic,
-
     o.spp_domain AS spp_domain,
 
     o.ip AS ip,
@@ -1063,44 +1168,58 @@ SELECT
     o.win_cid AS win_cid,
     o.win_crid AS win_crid,
     o.win_user_id AS win_user_id,
+
     a.payout AS payout,
     a.status AS status,
     a.approved AS approved
 FROM
 (
+    /*
+     * fact_clicks is streamed from the left. The hash table is built only
+     * from the small pending_conversions set on the right.
+     */
     SELECT
-        created_at,
-        conversions_event_time,
+        event_time,
+        uuid,
         clicks_uuid,
-        payout,
+        code,
+        format,
+        typic,
+        spp_domain,
+        ip,
+        ipv6,
+        lang,
+        browser,
+        browser_version,
+        os,
+        os_version,
+        device_type,
+        site_id,
+        site_domain,
+        bid_floor,
+        geo,
+        city_id,
+        bid_responses_raw,
+        win_dsp_domain,
+        win_final_price,
+        win_dsp_price,
+        win_cid,
+        win_crid,
+        win_user_id
+    FROM {db}.fact_clicks
+    WHERE clicks_uuid IN
+    (
+        SELECT clicks_uuid
+        FROM pending_conversions
+    )
+    ORDER BY created_at DESC
+    LIMIT 1 BY clicks_uuid
+) AS o
+ALL INNER JOIN pending_conversions AS a
+    ON o.clicks_uuid = a.clicks_uuid
+SETTINGS query_plan_join_swap_table = 'false';
 
-        upperUTF8(ifNull(status, '')) AS status,
-
-        toUInt8(
-            upperUTF8(ifNull(status, '')) = 'APPROVED'
-        ) AS approved
-
-    FROM {db}.conversions_in
-) AS a
-ANY INNER JOIN {db}.fact_clicks AS o
-    ON a.clicks_uuid = o.clicks_uuid
-WHERE a.status IN ('', 'PENDING', 'APPROVED', '{STATUS}')
-  AND a.created_at >= now() - toIntervalMinute(1440)
-  AND (
-      a.clicks_uuid,
-      a.conversions_event_time,
-      a.approved
-  ) NOT IN
-  (
-      SELECT
-          clicks_uuid,
-          conversions_event_time,
-          approved
-      FROM {db}.fact_conversions
-      WHERE created_at >= now() - toIntervalMinute(1445)
-  );
-
-  CREATE MATERIALIZED VIEW {db}.mv_recover_pop_impressions
+CREATE MATERIALIZED VIEW {db}.mv_recover_pop_impressions
 REFRESH EVERY 1 HOUR OFFSET 10 MINUTE
 APPEND TO {db}.fact_impressions
 (
