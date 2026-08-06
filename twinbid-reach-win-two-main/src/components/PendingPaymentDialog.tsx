@@ -8,7 +8,7 @@ import { toast } from "sonner";
 import { notifyError } from "@/lib/apiStatus";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { useAuth } from "@/contexts/AuthContext";
-import { useNotifications } from "@/contexts/NotificationContext";
+import { useNotifications, type Notification } from "@/contexts/NotificationContext";
 import { useProfile } from "@/contexts/ProfileContext";
 import { usePendingPayment, type PendingPaymentData } from "@/contexts/PendingPaymentContext";
 import { PAYMENT_METHODS } from "@/lib/paymentMethods";
@@ -19,6 +19,28 @@ import { api, ApiError } from "@/api";
 
 // Track the persistent "payment not completed" notification across the whole app.
 let pendingNotifId: string | null = null;
+
+const STATIC_WALLET_REMINDER_TITLES = new Set([
+  "Оплата не завершена",
+  "Payment not completed",
+  "Pago no completado",
+]);
+
+const LEGACY_PASSIMPAY_REMINDER_TITLES = new Set([
+  "Оплата через PassimPay не завершена",
+  "PassimPay payment is not complete",
+  "El pago con PassimPay no está completo",
+]);
+
+function isStaticWalletReminder(notification: Pick<Notification, "apiType" | "title">): boolean {
+  return notification.apiType === "incomplete_topup"
+    && STATIC_WALLET_REMINDER_TITLES.has(notification.title.trim());
+}
+
+function isLegacyPassimPayReminder(notification: Pick<Notification, "apiType" | "title">): boolean {
+  return notification.apiType === "incomplete_topup"
+    && LEGACY_PASSIMPAY_REMINDER_TITLES.has(notification.title.trim());
+}
 
 function pendingFromTransaction(transaction: ApiUserTransaction, promo?: string): PendingPaymentData {
   const amount = Number(transaction.deposit_amount) || 0;
@@ -70,8 +92,9 @@ export function PendingPaymentDialog() {
     }
   }, [isDialogOpen]);
 
-  // If the user has an unfinished static-wallet draft or PassimPay invoice but
-  // no "incomplete_topup" notification, create one so the payment can be resumed.
+  // If the user has an unfinished static-wallet draft but no
+  // "incomplete_topup" notification, create one so the payment can be resumed.
+  // PassimPay status notifications are created exclusively by the backend.
   // Runs once per user session and ONLY
   // after notifications have been hydrated from the backend (otherwise we'd
   // create a duplicate on every reload before the existing one loads).
@@ -79,7 +102,7 @@ export function PendingPaymentDialog() {
     if (!user) { draftCheckedRef.current = null; return; }
     if (!notificationsLoaded) return;
     if (draftCheckedRef.current === user.id) return;
-    const hasIncompleteNotif = notifications.some(n => n.apiType === "incomplete_topup");
+    const hasIncompleteNotif = notifications.some(isStaticWalletReminder);
     if (hasIncompleteNotif) { draftCheckedRef.current = user.id; return; }
     draftCheckedRef.current = user.id;
     (async () => {
@@ -87,27 +110,21 @@ export function PendingPaymentDialog() {
         const res = await api.listTransactions();
         const items = Array.isArray(res?.items) ? res.items : [];
         const unfinished = items.find(
-          x => x.user_id === user.id && (
-            (x.status === "draft" && x.payment_channel !== "passimpay_invoice")
-            || (
-              x.status === "pending"
-              && x.payment_channel === "passimpay_invoice"
-              && x.provider_status !== "error"
-            )
-          ),
+          x => x.user_id === user.id
+            && x.status === "draft"
+            && x.payment_channel !== "passimpay_invoice",
         );
         if (!unfinished) return;
         // Re-check to avoid race with hydration creating the notif elsewhere.
-        if (notifications.some(n => n.apiType === "incomplete_topup" || n.apiPayload?.transaction_id === unfinished.id)) return;
+        if (notifications.some(
+          n => isStaticWalletReminder(n) || n.apiPayload?.transaction_id === unfinished.id,
+        )) return;
         const depositAmt = Number(unfinished.deposit_amount) || 0;
         const bonusUsd = getTransactionBonusAmount(unfinished);
         const total = depositAmt + bonusUsd;
-        const isPassimPay = unfinished.payment_channel === "passimpay_invoice";
         await addNotification({
-          title: isPassimPay ? t("balance.passimpay.notCompleted") : t("balance.notif.notCompleted"),
-          description: isPassimPay
-            ? `${t("balance.passimpay.waiting")} · $${total}`
-            : `${t("balance.notif.noHash")} $${total}`,
+          title: t("balance.notif.notCompleted"),
+          description: `${t("balance.notif.noHash")} $${total}`,
           type: "warning",
           persistent: true,
           apiType: "incomplete_topup",
@@ -115,7 +132,6 @@ export function PendingPaymentDialog() {
             deposit_amount: depositAmt,
             transaction_id: unfinished.id,
           },
-          dismissWithoutConfirmation: isPassimPay,
         });
       } catch (e) {
         console.error("[topup] draft auto-notify failed", e);
@@ -127,7 +143,13 @@ export function PendingPaymentDialog() {
   // and rehydrate pendingPayment from the linked transaction so all bonus info
   // (promocode_id, bonus_amount) is restored without re-asking the user.
   useEffect(() => {
-    const persisted = notifications.find(n => n.apiType === "incomplete_topup");
+    const obsoletePassimPayReminder = notifications.find(isLegacyPassimPayReminder);
+    if (obsoletePassimPayReminder) {
+      removeNotification(obsoletePassimPayReminder.id);
+      return;
+    }
+
+    const persisted = notifications.find(isStaticWalletReminder);
     if (!persisted) {
       pendingNotifId = null;
       hydratedTxRef.current = null;
@@ -137,7 +159,6 @@ export function PendingPaymentDialog() {
 
     pendingNotifId = persisted.id;
     const transactionRowId = persisted.apiPayload?.transaction_id ?? null;
-    const persistedIsPassimPay = persisted.title.toLowerCase().includes("passimpay");
 
     // Hydrate pendingPayment from backend tx — only ONCE per txId to avoid loop.
     if (!pendingPayment && hydratedTxRef.current !== (transactionRowId ?? persisted.id)) {
@@ -160,8 +181,8 @@ export function PendingPaymentDialog() {
             if (persisted.apiPayload?.deposit_amount) {
               setPendingPayment({
                 amount: Number(persisted.apiPayload.deposit_amount) || 0,
-                method: persistedIsPassimPay ? "passimpay" : "usdt_trc20",
-                channel: persistedIsPassimPay ? "passimpay_invoice" : "static_wallet",
+                method: "usdt_trc20",
+                channel: "static_wallet",
                 transactionRowId,
               });
             }
@@ -180,7 +201,6 @@ export function PendingPaymentDialog() {
       handlersAttachedRef.current = persisted.id;
       attachHandlers(persisted.id, {
         action: { label: t("balance.notif.completePayment"), onClick: () => openDialog() },
-        dismissWithoutConfirmation: persistedIsPassimPay,
         onDismiss: async () => {
           const transactionRowIdToDismiss = persisted.apiPayload?.transaction_id ?? null;
           if (transactionRowIdToDismiss) {
@@ -233,10 +253,6 @@ export function PendingPaymentDialog() {
         approvedHandledRef.current = transaction.id;
         await refetchProfile();
         triggerRefresh();
-        if (pendingNotifId) {
-          removeNotification(pendingNotifId);
-          pendingNotifId = null;
-        }
         toast.success(t("balance.passimpay.paid"));
       }
       return { transaction, stopPolling: false };
@@ -256,7 +272,7 @@ export function PendingPaymentDialog() {
     } finally {
       if (showSpinner) setCheckingPassimPay(false);
     }
-  }, [refetchProfile, removeNotification, setPendingPayment, t, triggerRefresh]);
+  }, [refetchProfile, setPendingPayment, t, triggerRefresh]);
 
   useEffect(() => {
     const transactionRowId = pendingPayment?.transactionRowId;
@@ -370,33 +386,8 @@ export function PendingPaymentDialog() {
         || pendingPayment.provider_status === "error";
       if (isTerminal) {
         setPendingPayment(null);
-        clearPendingNotif();
         triggerRefresh();
-        return;
       }
-      if (pendingNotifId && notifications.some(n => n.id === pendingNotifId)) return;
-      const notificationAmount = pendingPayment.total_balance_increase
-        || pendingPayment.amount + (pendingPayment.bonus_amount || 0);
-      const id = await addNotification({
-        title: t("balance.passimpay.notCompleted"),
-        description: `${t("balance.passimpay.waiting")} · $${notificationAmount.toLocaleString()}`,
-        type: "warning",
-        persistent: true,
-        apiType: "incomplete_topup",
-        apiPayload: {
-          deposit_amount: pendingPayment.amount,
-          transaction_id: pendingPayment.transactionRowId ?? null,
-        },
-        action: { label: t("balance.notif.completePayment"), onClick: () => openDialog() },
-        dismissWithoutConfirmation: true,
-        onDismiss: () => {
-          setPendingPayment(null);
-          pendingNotifId = null;
-          triggerRefresh();
-        },
-      });
-      pendingNotifId = id;
-      toast(t("balance.toast.notCompleted"), { duration: 5000 });
       return;
     }
 
@@ -463,7 +454,6 @@ export function PendingPaymentDialog() {
   const finishPassimPay = () => {
     closeDialog();
     setPendingPayment(null);
-    clearPendingNotif();
     triggerRefresh();
   };
 
