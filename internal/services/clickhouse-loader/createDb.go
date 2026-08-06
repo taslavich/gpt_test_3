@@ -526,7 +526,7 @@ ALTER TABLE {db}.fact_conversions
     AFTER status;
 
 -- Lookup indexes used by the corrected refreshable MVs.
--- Existing parts require a one-time MATERIALIZE INDEX command;
+-- Existing parts require a one-time MATERIALIZE INDEX command
 -- new parts receive these indexes automatically.
 ALTER TABLE {db}.fact_clicks
     ADD INDEX IF NOT EXISTS idx_fact_clicks_clicks_uuid
