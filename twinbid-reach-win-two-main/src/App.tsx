@@ -12,6 +12,7 @@ import { ProfileProvider } from "./contexts/ProfileContext";
 import { PendingPaymentProvider } from "./contexts/PendingPaymentContext";
 import { PendingPaymentDialog } from "./components/PendingPaymentDialog";
 import { ProtectedRoute } from "./components/ProtectedRoute";
+import { YandexMetrikaTracker } from "./components/YandexMetrikaTracker";
 import Index from "./pages/Index";
 import NotFound from "./pages/NotFound";
 import Dashboard from "./pages/Dashboard";
@@ -34,6 +35,7 @@ const App = () => (
       <Toaster />
       <Sonner />
       <BrowserRouter>
+        <YandexMetrikaTracker />
         <LanguageProvider>
           <AuthProvider>
             <ProfileProvider>
