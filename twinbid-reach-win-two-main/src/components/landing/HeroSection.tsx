@@ -174,7 +174,7 @@ export function HeroSection() {
             />
 
             <a
-              href="#benefits"
+              href="https://t.me/twinbid"
               className="landing-button landing-button-ghost justify-center px-7 py-4 text-[14px]"
             >
               {t("hero.learnMore")}

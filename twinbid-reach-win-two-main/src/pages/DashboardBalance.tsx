@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
-import { CreditCard, Wallet, Plus, Receipt, Tag } from "lucide-react";
+import { CreditCard, ExternalLink, Wallet, Plus, Receipt, Tag } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { notifyError } from "@/lib/apiStatus";
@@ -493,7 +493,18 @@ export default function DashboardBalance() {
             {topupError && (
               <p className="text-sm text-destructive" role="alert">{topupError}</p>
             )}
-            <p className="text-xs text-muted-foreground">{t("balance.minAmount")}</p>
+            <div className="space-y-1 text-xs text-muted-foreground">
+              <p>{t("balance.minAmount")}</p>
+              <a
+                href="https://t.me/twinbid/712"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-1 font-medium text-primary underline decoration-primary/40 underline-offset-4 transition-colors hover:decoration-primary"
+              >
+                {t("balance.promo.telegramPost")}
+                <ExternalLink className="h-3 w-3" />
+              </a>
+            </div>
           </CardContent>
         </Card>
       </div>

@@ -209,6 +209,7 @@ export const ES_TRANSLATIONS: Record<string, string> = {
   "balance.promo.alreadyUsed": "Ya has usado este código",
   "balance.promo.active": "Código {code}: bono +{percent}%",
   "balance.promo.bonusShort": "bono",
+  "balance.promo.telegramPost": "Obtén el código en la publicación fijada de Telegram",
   "balance.paymentTitle": "Pago",
   "balance.paymentDesc": "Transfiere el importe exacto a la dirección indicada y pega el hash de la transacción",
   "balance.topUpAmount": "Importe de recarga:",

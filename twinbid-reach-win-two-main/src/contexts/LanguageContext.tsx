@@ -238,6 +238,7 @@ const translations: Record<string, Record<"ru" | "en", string>> = {
   "balance.promo.alreadyUsed": { ru: "Вы уже использовали этот промокод", en: "You have already used this promo code" },
   "balance.promo.active": { ru: "Промокод {code} — бонус +{percent}%", en: "Promo code {code} — +{percent}% bonus" },
   "balance.promo.bonusShort": { ru: "бонус", en: "bonus" },
+  "balance.promo.telegramPost": { ru: "Промокод — в закреплённом посте Telegram-канала", en: "Get the promo code from the pinned Telegram post" },
   "balance.paymentTitle": { ru: "Оплата", en: "Payment" },
   "balance.paymentDesc": { ru: "Переведите точную сумму на указанный адрес и вставьте хэш транзакции", en: "Transfer the exact amount to the specified address and paste the transaction hash" },
   "balance.topUpAmount": { ru: "Сумма пополнения:", en: "Top-up amount:" },
