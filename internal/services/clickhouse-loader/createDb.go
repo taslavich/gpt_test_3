@@ -964,7 +964,7 @@ AND a.created_at >= now() - INTERVAL 60 MINUTE;
 -- REFRESHABLE MV: CLICKS WINS INPUT -> FACT CLICKS WINS
 -- ============================================================
 
-CREATE MATERIALIZED VIEW IF NOT EXISTS {db}.mv_clicks_wins_to_fact
+CREATE MATERIALIZED VIEW {db}.mv_clicks_wins_to_fact
 REFRESH EVERY 1 MINUTE
 APPEND TO {db}.fact_clicks_wins
 AS
@@ -980,7 +980,6 @@ SELECT
 
     o.format AS format,
     o.typic AS typic,
-
     o.spp_domain AS spp_domain,
 
     o.ip AS ip,
@@ -1011,15 +1010,28 @@ SELECT
     o.win_cid AS win_cid,
     o.win_crid AS win_crid,
     o.win_user_id AS win_user_id
-FROM {db}.clicks_wins_in AS a
-ANY INNER JOIN {db}.ortb AS o
-    ON a.uuid = o.uuid
-WHERE a.clicks_wins_uuid NOT IN (
-    SELECT clicks_wins_uuid
-    FROM {db}.fact_clicks_wins
-    WHERE created_at >= now() - INTERVAL 65 MINUTE
-)
-AND a.created_at >= now() - INTERVAL 60 MINUTE;
+FROM
+(
+    SELECT
+        event_time_clicks_wins,
+        clicks_wins_uuid,
+        uuid
+    FROM {db}.clicks_wins_in
+    PREWHERE created_at >= now() - INTERVAL 60 MINUTE
+    WHERE clicks_wins_uuid NOT IN
+    (
+        SELECT clicks_wins_uuid
+        FROM {db}.fact_clicks_wins
+        PREWHERE created_at >= now() - INTERVAL 65 MINUTE
+    )
+) AS a
+ANY INNER JOIN
+(
+    SELECT *
+    FROM {db}.ortb
+    PREWHERE event_time >= now() - INTERVAL 1 DAY
+) AS o
+    ON a.uuid = o.uuid;
 
 CREATE MATERIALIZED VIEW IF NOT EXISTS {db}.mv_conversions_to_fact
 REFRESH EVERY 1 MINUTE
