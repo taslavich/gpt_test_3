@@ -22,6 +22,8 @@ import (
 	redis_service "gitlab.com/twinbid-exchange/RTB-exchange/internal/services/redis"
 )
 
+const clicksWinsMaxBatchSize int64 = 10000
+
 func main() {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -57,6 +59,23 @@ func main() {
 		}
 	}()
 
+	redisClientsClicksWins, err := redis_service.NewRedisShardedClientsForDB(
+		redisAddrs,
+		cfg.RedisPassword,
+		cfg.RedisDBClicksWins,
+		cfg.RedisUseTLS,
+		cfg.RedisPoolSize,
+		cfg.RedisMinIdleConns,
+	)
+	if err != nil {
+		log.Fatalf("Cannot init Clicks Wins redis shards: %v", err)
+	}
+	defer func() {
+		if err := redis_service.CloseClients(redisClientsClicksWins); err != nil {
+			log.Printf("⚠️ failed to close Clicks Wins Redis clients: %v", err)
+		}
+	}()
+
 	if err := redis_service.PingClients(ctx, "ORTB", redisClients.Ortb); err != nil {
 		log.Fatalf("Failed to connect to ORTB redis shards: %v", err)
 	}
@@ -72,6 +91,11 @@ func main() {
 	}
 	log.Println("✅ Connected to Clicks Redis shards")
 
+	if err := redis_service.PingClients(ctx, "Clicks Wins", redisClientsClicksWins); err != nil {
+		log.Fatalf("Failed to connect to Clicks Wins redis shards: %v", err)
+	}
+	log.Println("✅ Connected to Clicks Wins Redis shards")
+
 	kafkaWriter, err := kafka_service.CreateKafkaWriters(cfg.KafkaConfig)
 	if err != nil {
 		log.Fatalf("Cannot init kafka: %v", err)
@@ -80,6 +104,12 @@ func main() {
 	defer func() {
 		if err := kafkaWriter.Clicks.Close(); err != nil {
 			log.Printf("⚠️ failed to close Clicks Kafka writer: %v", err)
+		}
+	}()
+
+	defer func() {
+		if err := kafkaWriter.ClicksWins.Close(); err != nil {
+			log.Printf("⚠️ failed to close Clicks Wins Kafka writer: %v", err)
 		}
 	}()
 
@@ -170,11 +200,21 @@ func main() {
 	}
 
 	log.Printf(
-		"🚀 Kafka Loader initialized. Batch processing is stopped until POST /loader/start. Topics: %s, %s, %s",
+		"🚀 Kafka Loader initialized. Batch processing is stopped until POST /loader/start. Topics: %s, %s, %s, %s",
 		cfg.KafkaConfig.KafkaTopicOrtb,
 		cfg.KafkaConfig.KafkaTopicImpressions,
 		cfg.KafkaConfig.KafkaTopicClicks,
+		cfg.KafkaConfig.KafkaTopicClicksWins,
 	)
+
+	clicksWinsInterval := time.Duration(cfg.KafkaConfig.ClicksWinsFlushIntervalSec) * time.Second
+	if clicksWinsInterval <= 0 {
+		clicksWinsInterval = 2 * time.Second
+	}
+	clicksWinsBatchSize := cfg.RedisConfig.BatchSizeClicksWins
+	if clicksWinsBatchSize <= 0 || clicksWinsBatchSize > clicksWinsMaxBatchSize {
+		clicksWinsBatchSize = clicksWinsMaxBatchSize
+	}
 
 	loaderWG.Add(1)
 	go func() {
@@ -201,6 +241,29 @@ func main() {
 					return
 				case <-time.After(emptyPause):
 				}
+			}
+		}
+	}()
+
+	loaderWG.Add(1)
+	go func() {
+		defer loaderWG.Done()
+
+		for {
+			if err := loaderControl.WaitIntervalAfterStart(ctx, clicksWinsInterval); err != nil {
+				return
+			}
+
+			err := kafka_loader.ProcessBatchClicksWins(
+				ctx,
+				redisClientsClicksWins,
+				kafkaWriter.ClicksWins,
+				clicksWinsBatchSize,
+				cfg.RedisSetClicksWins,
+			)
+			if err != nil {
+				handleStreamError(err)
+				continue
 			}
 		}
 	}()

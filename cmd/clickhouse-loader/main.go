@@ -20,6 +20,8 @@ import (
 	kafka_service "gitlab.com/twinbid-exchange/RTB-exchange/internal/services/kafka"
 )
 
+const clicksWinsMaxBatchSize = 10000
+
 func main() {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -121,6 +123,12 @@ func main() {
 	}()
 
 	defer func() {
+		if err := kafkaReaders.ClicksWins.Close(); err != nil {
+			log.Printf("⚠️ failed to close Clicks Wins Kafka reader: %v", err)
+		}
+	}()
+
+	defer func() {
 		if err := kafkaReaders.Impressions.Close(); err != nil {
 			log.Printf("⚠️ failed to close Impressions Kafka reader: %v", err)
 		}
@@ -141,7 +149,22 @@ func main() {
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
 
-	log.Printf("🚀 ClickHouse Loader initialized. Batch processing is stopped until POST /loader/start. Topics: %s, %s, %s", cfg.Kafka.KafkaTopicOrtb, cfg.Kafka.KafkaTopicImpressions, cfg.Kafka.KafkaTopicClicks)
+	log.Printf(
+		"🚀 ClickHouse Loader initialized. Batch processing is stopped until POST /loader/start. Topics: %s, %s, %s, %s",
+		cfg.Kafka.KafkaTopicOrtb,
+		cfg.Kafka.KafkaTopicImpressions,
+		cfg.Kafka.KafkaTopicClicks,
+		cfg.Kafka.KafkaTopicClicksWins,
+	)
+
+	clicksWinsInterval := time.Duration(cfg.Kafka.ClicksWinsFlushIntervalSec) * time.Second
+	if clicksWinsInterval <= 0 {
+		clicksWinsInterval = 2 * time.Second
+	}
+	clicksWinsBatchSize := cfg.Clickhouse.BatchSizeClicksWins
+	if clicksWinsBatchSize <= 0 || clicksWinsBatchSize > clicksWinsMaxBatchSize {
+		clicksWinsBatchSize = clicksWinsMaxBatchSize
+	}
 
 	impressionClickInterval := time.Duration(cfg.ImpressionClickFlushIntervalSec) * time.Second
 	if impressionClickInterval <= 0 {
@@ -195,6 +218,31 @@ func main() {
 					return
 				case <-time.After(emptyPause):
 				}
+			}
+		}
+	}()
+
+	loaderWG.Add(1)
+	go func() {
+		defer loaderWG.Done()
+
+		for {
+			if err := loaderControl.WaitIntervalAfterStart(ctx, clicksWinsInterval); err != nil {
+				return
+			}
+
+			err := clickhouse_loader.ProcessKafkaMessagesClicksWins(
+				ctx,
+				kafkaReaders.ClicksWins,
+				connProd,
+				cfg.Clickhouse.TableClicksWins,
+				clicksWinsBatchSize,
+				cfg.TimeoutSec,
+				cfg.Clickhouse.BatchTimeoutMS,
+			)
+			if err != nil {
+				handleStreamError(err)
+				continue
 			}
 		}
 	}()

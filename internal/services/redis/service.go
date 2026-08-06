@@ -184,6 +184,17 @@ func NewRedisClient(
 	return clients[0], nil
 }
 
+func NewRedisShardedClientsForDB(
+	addrs []string,
+	password string,
+	db int,
+	useTLS bool,
+	poolSize int,
+	minIdleConns int,
+) ([]*redis.Client, error) {
+	return newRedisClientsForDB(addrs, password, db, useTLS, poolSize, minIdleConns)
+}
+
 func newRedisClientsForDB(
 	addrs []string,
 	password string,

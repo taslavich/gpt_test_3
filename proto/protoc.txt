@@ -12,4 +12,5 @@ protoc \
                                                  --go_out=./internal/grpc \
                                                  --go-grpc_out=./internal/grpc \
                                                  proto/services/*.proto \
-                                                 proto/types/ortb_V2_5/*.proto
+                                                 proto/types/ortb_V2_5/*.proto \
+                                                 proto/buffer/*.proto

@@ -10,7 +10,6 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/redis/go-redis/v9"
 	"gitlab.com/twinbid-exchange/RTB-exchange/internal/config"
-	"gitlab.com/twinbid-exchange/RTB-exchange/internal/constants"
 	utils "gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/utils_grpc"
 	httpServer "gitlab.com/twinbid-exchange/RTB-exchange/internal/http"
 	services "gitlab.com/twinbid-exchange/RTB-exchange/internal/services"
@@ -59,6 +58,23 @@ func main() {
 		}
 	}()
 
+	redisClientsClicksWins, err := redis_service.NewRedisShardedClientsForDB(
+		redisAddrs,
+		cfg.RedisPassword,
+		cfg.RedisDBClicksWins,
+		cfg.RedisUseTLS,
+		cfg.RedisPoolSize,
+		cfg.RedisMinIdleConns,
+	)
+	if err != nil {
+		log.Fatalf("Cannot init Clicks Wins redis shards: %v", err)
+	}
+	defer func() {
+		if err := redis_service.CloseClients(redisClientsClicksWins); err != nil {
+			log.Printf("⚠️ failed to close Clicks Wins Redis clients: %v", err)
+		}
+	}()
+
 	if err := redis_service.PingClients(ctx, "Imp", redisClients.Impressions); err != nil {
 		log.Printf("⚠️ Imp Redis shards unavailable at startup; starting degraded: %v", err)
 	} else {
@@ -69,6 +85,12 @@ func main() {
 		log.Printf("⚠️ Clicks Redis shards unavailable at startup; ADM callbacks will use the durable outbox: %v", err)
 	} else {
 		log.Println("✅ Connected to Clicks Redis shards")
+	}
+
+	if err := redis_service.PingClients(ctx, "Clicks Wins", redisClientsClicksWins); err != nil {
+		log.Printf("⚠️ Clicks Wins Redis shards unavailable at startup; /clicks_wins will return service unavailable: %v", err)
+	} else {
+		log.Println("✅ Connected to Clicks Wins Redis shards")
 	}
 
 	redisAdmClient, err := redis_service.NewRedisClient(
@@ -202,6 +224,8 @@ func main() {
 		redisClients.Impressions,
 		cfg.RedisSetConversions,
 		redisClients.Conversions,
+		cfg.RedisSetClicksWins,
+		redisClientsClicksWins,
 		advBillingStore,
 		advOutbox,
 		[]string(cfg.AdvServiceControlURLs),

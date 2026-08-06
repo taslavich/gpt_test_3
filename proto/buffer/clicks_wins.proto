@@ -1,0 +1,11 @@
+syntax = "proto3";
+
+package events;
+
+option go_package = "gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/proto/buffer;eventspb";
+
+message ClicksWinEvent {
+  string clicks_wins_uuid = 1;
+  string ortb_uuid = 2;
+  int64 event_time_clicks_wins_ms = 3;
+}

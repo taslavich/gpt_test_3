@@ -28,6 +28,7 @@ DROP VIEW IF EXISTS {db}.mv_fact_impressions_to_agg_stats SYNC;
 
 DROP VIEW IF EXISTS {db}.mv_conversions_to_fact SYNC;
 DROP VIEW IF EXISTS {db}.mv_clicks_to_fact SYNC;
+DROP VIEW IF EXISTS {db}.mv_clicks_wins_to_fact SYNC;
 DROP VIEW IF EXISTS {db}.mv_impressions_to_fact SYNC;
 
 DROP VIEW IF EXISTS {db}.mv_ortb_minute_metrics SYNC;
@@ -209,6 +210,20 @@ ENGINE = MergeTree
 ORDER BY (event_time_clicks, uuid)
 TTL created_at + INTERVAL 1 HOUR DELETE;
 
+CREATE TABLE IF NOT EXISTS {db}.clicks_wins_in
+(
+    event_time_clicks_wins DateTime64(3, 'UTC') DEFAULT now64(3),
+    created_at             DateTime64(3, 'UTC') DEFAULT now64(3),
+
+    uuid UUID,
+    clicks_wins_uuid UUID,
+
+    INDEX idx_clicks_wins_in_clicks_wins_uuid clicks_wins_uuid TYPE bloom_filter(0.01) GRANULARITY 1
+)
+ENGINE = MergeTree
+ORDER BY (event_time_clicks_wins, uuid)
+TTL created_at + INTERVAL 1 HOUR DELETE;
+
 CREATE TABLE IF NOT EXISTS {db}.conversions_in
 (
     created_at        DateTime64(3, 'UTC') DEFAULT now64(3),
@@ -230,11 +245,17 @@ ALTER TABLE {db}.impressions_in
 ALTER TABLE {db}.clicks_in
     ADD COLUMN IF NOT EXISTS clicks_uuid UUID AFTER uuid;
 
+ALTER TABLE {db}.clicks_wins_in
+    ADD COLUMN IF NOT EXISTS clicks_wins_uuid UUID AFTER uuid;
+
 ALTER TABLE {db}.impressions_in
     ADD INDEX IF NOT EXISTS idx_impressions_in_impressions_uuid impressions_uuid TYPE bloom_filter(0.01) GRANULARITY 1;
 
 ALTER TABLE {db}.clicks_in
     ADD INDEX IF NOT EXISTS idx_clicks_in_clicks_uuid clicks_uuid TYPE bloom_filter(0.01) GRANULARITY 1;
+
+ALTER TABLE {db}.clicks_wins_in
+    ADD INDEX IF NOT EXISTS idx_clicks_wins_in_clicks_wins_uuid clicks_wins_uuid TYPE bloom_filter(0.01) GRANULARITY 1;
 
 ALTER TABLE {db}.conversions_in
     ADD COLUMN IF NOT EXISTS conversions_uuid UUID AFTER conversions_event_time;
@@ -364,6 +385,62 @@ TTL event_date + INTERVAL 6 MONTH DELETE
 SETTINGS index_granularity = 8192;
 
 
+-- ============================================================
+-- FACT CLICKS WINS
+-- ============================================================
+
+CREATE TABLE IF NOT EXISTS {db}.fact_clicks_wins
+(
+    event_time_clicks_wins DateTime64(3, 'UTC'),
+    event_time             DateTime64(3, 'UTC'),
+    event_date             Date,
+    event_hour             DateTime('UTC'),
+
+    uuid                   UUID,
+    clicks_wins_uuid       UUID,
+    code                   UInt16 DEFAULT 0,
+
+    format                 LowCardinality(String),
+    typic                  LowCardinality(String),
+
+    spp_domain             Nullable(String),
+
+    ip                     Nullable(IPv4),
+    ipv6                   Nullable(IPv6),
+
+    lang                   LowCardinality(String),
+    browser                LowCardinality(String),
+    browser_version        LowCardinality(String),
+    os                     LowCardinality(String),
+    os_version             LowCardinality(String),
+    device_type            LowCardinality(String),
+
+    site_id                LowCardinality(String),
+    site_domain            LowCardinality(String),
+
+    bid_floor              Float64,
+
+    geo                    LowCardinality(String),
+    city_id                Nullable(Int32),
+    bid_responses_raw      String DEFAULT '',
+
+    win_dsp_domain         LowCardinality(String),
+
+    win_final_price        Float64,
+    win_dsp_price          Float64,
+
+    win_cid                String DEFAULT '',
+    win_crid               String DEFAULT '',
+    win_user_id            String DEFAULT '',
+    created_at             DateTime64(3, 'UTC') DEFAULT now64(3)
+)
+ENGINE = MergeTree
+PARTITION BY toYYYYMMDD(event_date)
+ORDER BY event_time
+TTL event_date + INTERVAL 6 MONTH DELETE
+SETTINGS index_granularity = 8192;
+
+
 CREATE TABLE IF NOT EXISTS {db}.fact_conversions
 (
     conversions_event_time DateTime64(3, 'UTC'),
@@ -424,6 +501,9 @@ ALTER TABLE {db}.fact_impressions
 
 ALTER TABLE {db}.fact_clicks
     ADD COLUMN IF NOT EXISTS clicks_uuid UUID AFTER uuid;
+
+ALTER TABLE {db}.fact_clicks_wins
+    ADD COLUMN IF NOT EXISTS clicks_wins_uuid UUID AFTER uuid;
 
 ALTER TABLE {db}.fact_conversions
     ADD COLUMN IF NOT EXISTS conversions_event_time DateTime64(3, 'UTC')
@@ -875,6 +955,68 @@ ANY INNER JOIN {db}.ortb AS o
 WHERE a.clicks_uuid NOT IN (
     SELECT clicks_uuid
     FROM {db}.fact_clicks
+    WHERE created_at >= now() - INTERVAL 65 MINUTE
+)
+AND a.created_at >= now() - INTERVAL 60 MINUTE;
+
+
+-- ============================================================
+-- REFRESHABLE MV: CLICKS WINS INPUT -> FACT CLICKS WINS
+-- ============================================================
+
+CREATE MATERIALIZED VIEW IF NOT EXISTS {db}.mv_clicks_wins_to_fact
+REFRESH EVERY 1 MINUTE
+APPEND TO {db}.fact_clicks_wins
+AS
+SELECT
+    a.event_time_clicks_wins AS event_time_clicks_wins,
+    o.event_time AS event_time,
+    toDate(o.event_time) AS event_date,
+    toStartOfHour(toDateTime(o.event_time, 'UTC')) AS event_hour,
+
+    o.uuid AS uuid,
+    a.clicks_wins_uuid AS clicks_wins_uuid,
+    o.code AS code,
+
+    o.format AS format,
+    o.typic AS typic,
+
+    o.spp_domain AS spp_domain,
+
+    o.ip AS ip,
+    o.ipv6 AS ipv6,
+
+    ifNull(o.lang, '') AS lang,
+    ifNull(o.browser, '') AS browser,
+    ifNull(o.browser_version, '') AS browser_version,
+    ifNull(o.os, '') AS os,
+    ifNull(o.os_version, '') AS os_version,
+    ifNull(o.device, '') AS device_type,
+
+    ifNull(o.site_id, '') AS site_id,
+    ifNull(o.site_domain, '') AS site_domain,
+
+    o.bid_floor AS bid_floor,
+
+    ifNull(o.geo, '') AS geo,
+    o.city_id AS city_id,
+
+    o.bid_responses_raw AS bid_responses_raw,
+
+    ifNull(o.win_dsp_domain, '') AS win_dsp_domain,
+
+    o.win_final_price AS win_final_price,
+    o.win_dsp_price AS win_dsp_price,
+
+    o.win_cid AS win_cid,
+    o.win_crid AS win_crid,
+    o.win_user_id AS win_user_id
+FROM {db}.clicks_wins_in AS a
+ANY INNER JOIN {db}.ortb AS o
+    ON a.uuid = o.uuid
+WHERE a.clicks_wins_uuid NOT IN (
+    SELECT clicks_wins_uuid
+    FROM {db}.fact_clicks_wins
     WHERE created_at >= now() - INTERVAL 65 MINUTE
 )
 AND a.created_at >= now() - INTERVAL 60 MINUTE;

@@ -46,10 +46,11 @@ const (
 	PostBid_IPP_ADL_V_2_5_URL = "/bid_v_2_5_ipp_adl"
 	PostBid_IPP_MC_V_2_5_URL  = "/bid_v_2_5_ipp_mc"
 
-	GetAdmUrl  = "/adm"
-	GetNurlUrl = "/nurl"
-	GetBurlUrl = "/burl"
-	GetCurlUrl = "/curl"
+	GetAdmUrl        = "/adm"
+	GetNurlUrl       = "/nurl"
+	GetBurlUrl       = "/burl"
+	GetCurlUrl       = "/curl"
+	GetClicksWinsUrl = "/clicks_wins"
 
 	GetWorkStatusUrl = "/work_status"
 
@@ -273,6 +274,8 @@ func InitHttpsRoutes(
 	redisClientsImp []*redis.Client,
 	redisSetConversions string,
 	redisClientsConv []*redis.Client,
+	redisSetClicksWins string,
+	redisClientsClicksWins []*redis.Client,
 	advBillingStore *billing.Store,
 	advOutbox *outbox.Store,
 	advControlURLs []string,
@@ -322,8 +325,8 @@ func InitHttpsRoutes(
 
 	httpRouter.With(
 		httpin.NewInput(clicksWinsRequest{}),
-	).Get(GetBurlUrl, func(w http.ResponseWriter, r *http.Request) {
-		getClicksWins(ctx, w, r, redisClientsImp, redisSetImpressions, redisWriteErrorMonitor, sspAdapterWorkStatusURL)
+	).Get(GetClicksWinsUrl, func(w http.ResponseWriter, r *http.Request) {
+		getClicksWins(ctx, w, r, redisClientsClicksWins, redisSetClicksWins, redisWriteErrorMonitor, sspAdapterWorkStatusURL)
 	})
 }
 

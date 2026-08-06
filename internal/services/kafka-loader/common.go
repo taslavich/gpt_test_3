@@ -490,6 +490,10 @@ func HasDataConversions(record types.Conversions) bool {
 	return record.CONVERSIONS_UUID != ""
 }
 
+func HasDataClicksWins(record types.ClicksWins) bool {
+	return record.CLICKS_WINS_UUID != "" && record.ORTB_UUID != ""
+}
+
 func HasDataImpressions(record types.Impressions) bool {
 	if record.IMPRESSIONS_UUID == "" {
 		log.Println("HasDataImpressions: impression UUID is empty")

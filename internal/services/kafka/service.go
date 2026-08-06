@@ -19,6 +19,7 @@ type KafkaReaders struct {
 	Ortb        *kafka.Reader
 	Impressions *kafka.Reader
 	Clicks      *kafka.Reader
+	ClicksWins  *kafka.Reader
 	Conversions *kafka.Reader
 }
 
@@ -26,6 +27,7 @@ type KafkaWriters struct {
 	Ortb        *kafka.Writer
 	Impressions *kafka.Writer
 	Clicks      *kafka.Writer
+	ClicksWins  *kafka.Writer
 	Conversions *kafka.Writer
 }
 
@@ -36,7 +38,7 @@ func (r *KafkaReaders) Close() error {
 	items := []struct {
 		name   string
 		reader *kafka.Reader
-	}{{"ORTB", r.Ortb}, {"Impressions", r.Impressions}, {"Clicks", r.Clicks}, {"Conversions", r.Conversions}}
+	}{{"ORTB", r.Ortb}, {"Impressions", r.Impressions}, {"Clicks", r.Clicks}, {"Clicks Wins", r.ClicksWins}, {"Conversions", r.Conversions}}
 	var lastErr error
 	for _, item := range items {
 		if item.reader == nil {
@@ -57,7 +59,7 @@ func (w *KafkaWriters) Close() error {
 	items := []struct {
 		name   string
 		writer *kafka.Writer
-	}{{"ORTB", w.Ortb}, {"Impressions", w.Impressions}, {"Clicks", w.Clicks}, {"Conversions", w.Conversions}}
+	}{{"ORTB", w.Ortb}, {"Impressions", w.Impressions}, {"Clicks", w.Clicks}, {"Clicks Wins", w.ClicksWins}, {"Conversions", w.Conversions}}
 	var lastErr error
 	for _, item := range items {
 		if item.writer == nil {
@@ -72,7 +74,13 @@ func (w *KafkaWriters) Close() error {
 }
 
 func kafkaTopics(cfg config.KafkaConfig) []string {
-	return []string{cfg.KafkaTopicOrtb, cfg.KafkaTopicImpressions, cfg.KafkaTopicClicks, cfg.KafkaTopicConversions}
+	return []string{
+		cfg.KafkaTopicOrtb,
+		cfg.KafkaTopicImpressions,
+		cfg.KafkaTopicClicks,
+		cfg.KafkaTopicClicksWins,
+		cfg.KafkaTopicConversions,
+	}
 }
 
 func checkKafkaBrokers(brokers []string) error {
@@ -252,6 +260,7 @@ func InitKafkaReaders(cfg config.KafkaConfig) (*KafkaReaders, error) {
 		{name: "ORTB", topic: cfg.KafkaTopicOrtb, groupID: cfg.KafkaGroupIDOrtb},
 		{name: "Impressions", topic: cfg.KafkaTopicImpressions, groupID: cfg.KafkaGroupIDImpressions},
 		{name: "Clicks", topic: cfg.KafkaTopicClicks, groupID: cfg.KafkaGroupIDClicks},
+		{name: "Clicks Wins", topic: cfg.KafkaTopicClicksWins, groupID: cfg.KafkaGroupIDClicksWins},
 		{name: "Conversions", topic: cfg.KafkaTopicConversions, groupID: cfg.KafkaGroupIDConversions},
 	}
 	readers := make([]*kafka.Reader, 0, len(readerConfigs))
@@ -270,7 +279,13 @@ func InitKafkaReaders(cfg config.KafkaConfig) (*KafkaReaders, error) {
 		}
 		readers = append(readers, reader)
 	}
-	return &KafkaReaders{Ortb: readers[0], Impressions: readers[1], Clicks: readers[2], Conversions: readers[3]}, nil
+	return &KafkaReaders{
+		Ortb:        readers[0],
+		Impressions: readers[1],
+		Clicks:      readers[2],
+		ClicksWins:  readers[3],
+		Conversions: readers[4],
+	}, nil
 }
 
 func checkKafkaTopic(brokers []string, topic string) error {
@@ -355,6 +370,7 @@ func CreateKafkaWriters(cfg config.KafkaConfig) (*KafkaWriters, error) {
 		{name: "ORTB", topic: cfg.KafkaTopicOrtb},
 		{name: "Impressions", topic: cfg.KafkaTopicImpressions},
 		{name: "Clicks", topic: cfg.KafkaTopicClicks},
+		{name: "Clicks Wins", topic: cfg.KafkaTopicClicksWins},
 		{name: "Conversions", topic: cfg.KafkaTopicConversions},
 	}
 	writers := make([]*kafka.Writer, 0, len(writerConfigs))
@@ -373,5 +389,11 @@ func CreateKafkaWriters(cfg config.KafkaConfig) (*KafkaWriters, error) {
 		}
 		writers = append(writers, writer)
 	}
-	return &KafkaWriters{Ortb: writers[0], Impressions: writers[1], Clicks: writers[2], Conversions: writers[3]}, nil
+	return &KafkaWriters{
+		Ortb:        writers[0],
+		Impressions: writers[1],
+		Clicks:      writers[2],
+		ClicksWins:  writers[3],
+		Conversions: writers[4],
+	}, nil
 }

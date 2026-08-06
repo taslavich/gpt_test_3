@@ -36,6 +36,12 @@ type Clicks struct {
 	FORMAT            string `json:"FORMAT"`
 }
 
+type ClicksWins struct {
+	CLICKS_WINS_UUID       string `json:"CLICKS_WINS_UUID"`
+	ORTB_UUID              string `json:"ORTB_UUID"`
+	EVENT_TIME_CLICKS_WINS string `json:"EVENT_TIME_CLICKS_WINS"`
+}
+
 type Impressions struct {
 	IMPRESSIONS_UUID       string `json:"IMPRESSIONS_UUID"`
 	ORTB_UUID              string `json:"ORTB_UUID"`
