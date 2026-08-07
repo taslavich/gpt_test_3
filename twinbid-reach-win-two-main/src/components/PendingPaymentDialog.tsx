@@ -12,7 +12,7 @@ import { useNotifications, type Notification } from "@/contexts/NotificationCont
 import { useProfile } from "@/contexts/ProfileContext";
 import { usePendingPayment, type PendingPaymentData } from "@/contexts/PendingPaymentContext";
 import { PAYMENT_METHODS } from "@/lib/paymentMethods";
-import { getPassimPayFee, getTransactionBonusAmount, getTransactionChannel } from "@/lib/topup";
+import { getPassimPayChargeAmount, getPassimPayFee, getTransactionBonusAmount, getTransactionChannel } from "@/lib/topup";
 import type { ApiUserTransaction } from "@/api/types";
 
 import { api, ApiError } from "@/api";
@@ -74,7 +74,7 @@ export function PendingPaymentDialog() {
   const {
     pendingPayment, setPendingPayment,
     isDialogOpen, openDialog, closeDialog,
-    triggerRefresh,
+    restorePaymentAfterPassimPay, triggerRefresh,
   } = usePendingPayment();
 
   const [txHash, setTxHash] = useState("");
@@ -380,14 +380,8 @@ export function PendingPaymentDialog() {
     }
     if (pendingPayment?.channel === "passimpay_invoice") {
       closeDialog();
-      const isTerminal = (pendingPayment.status === "approved" && !!pendingPayment.credited_at)
-        || pendingPayment.status === "rejected"
-        || pendingPayment.status === "cancelled"
-        || pendingPayment.provider_status === "error";
-      if (isTerminal) {
-        setPendingPayment(null);
-        triggerRefresh();
-      }
+      restorePaymentAfterPassimPay();
+      triggerRefresh();
       return;
     }
 
@@ -453,7 +447,7 @@ export function PendingPaymentDialog() {
 
   const finishPassimPay = () => {
     closeDialog();
-    setPendingPayment(null);
+    restorePaymentAfterPassimPay();
     triggerRefresh();
   };
 
@@ -464,6 +458,7 @@ export function PendingPaymentDialog() {
       : 0;
   const visibleBalanceIncrease = pendingPayment?.total_balance_increase
     || (pendingPayment ? pendingPayment.amount + visibleBonusAmount : 0);
+  const visiblePassimPayCharge = getPassimPayChargeAmount(pendingPayment?.amount || 0);
 
   return (
     <Dialog open={isDialogOpen} onOpenChange={handleOpenChange}>
@@ -531,7 +526,7 @@ export function PendingPaymentDialog() {
                     <p className="mt-0.5 text-xs text-muted-foreground">
                       {t("balance.passimpay.received")
                         .replace("{paid}", `$${Number(pendingPayment?.amount_paid || 0).toLocaleString()}`)
-                        .replace("{total}", `$${Number(pendingPayment?.amount || 0).toLocaleString()}`)}
+                        .replace("{total}", `$${visiblePassimPayCharge.toLocaleString()}`)}
                     </p>
                   )}
                   {!passimPayApproved && !passimPayFailed && !passimPayCancelled && !passimPayPartial && (
@@ -562,7 +557,7 @@ export function PendingPaymentDialog() {
                   >
                     <ExternalLink className="mr-2 h-4 w-4" />
                     {pendingPayment?.payment_url
-                      ? t("balance.passimpay.open")
+                      ? `${t("balance.passimpay.open")} · $${visiblePassimPayCharge.toLocaleString()}`
                       : t("balance.passimpay.creatingLink")}
                   </Button>
                   <Button

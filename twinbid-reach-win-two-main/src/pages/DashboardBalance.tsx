@@ -21,6 +21,7 @@ import { PassimPayBrand } from "@/components/dashboard/PassimPayBrand";
 import {
   buildPassimPayTopup,
   buildStaticWalletTopup,
+  getPassimPayChargeAmount,
   getPassimPayFee,
   getTransactionBonusAmount,
   isPassimPayPartial,
@@ -44,8 +45,7 @@ export default function DashboardBalance() {
   const { user } = useAuth();
   const { profile, loading: profileLoading } = useProfile();
   const {
-    pendingPayment, setPendingPayment,
-    openDialog, registerRefreshHandler,
+    pendingPayment, openPayment, registerRefreshHandler,
   } = usePendingPayment();
 
   const [selectedAmount, setSelectedAmount] = useState<number | null>(250);
@@ -122,6 +122,7 @@ export default function DashboardBalance() {
     ? Math.round((finalAmount * appliedPromo.bonus + Number.EPSILON)) / 100
     : 0;
   const passimPayFee = finalAmount ? getPassimPayFee(finalAmount) : 0;
+  const passimPayChargeAmount = finalAmount ? getPassimPayChargeAmount(finalAmount) : 0;
 
   const handleApplyPromo = async () => {
     const code = promoCode.trim().toUpperCase();
@@ -204,7 +205,7 @@ export default function DashboardBalance() {
         } catch { /* local display cache is best-effort */ }
       }
 
-      setPendingPayment({
+      openPayment({
         amount: Number(created.deposit_amount) || finalAmount,
         method: created.payment_method || (transactionChannel === "passimpay_invoice" ? "passimpay" : selectedMethod),
         channel: transactionChannel,
@@ -223,7 +224,6 @@ export default function DashboardBalance() {
       });
       setAppliedPromo(null);
       setPromoCode("");
-      openDialog();
       if (transactionChannel === "passimpay_invoice" && created.payment_url) {
         if (paymentWindow && !paymentWindow.closed) {
           try {
@@ -263,6 +263,36 @@ export default function DashboardBalance() {
     approved: { label: t("balance.completed"), className: "text-green-500 border-green-500/20" },
     rejected: { label: t("balance.rejected") || "Rejected", className: "text-destructive border-destructive/20" },
     cancelled: { label: t("balance.cancelled"), className: "text-muted-foreground border-border" },
+  };
+
+  const openPassimPayFromHistory = (transaction: ApiUserTransaction) => {
+    const amount = Number(transaction.deposit_amount) || 0;
+    const bonusAmount = getTransactionBonusAmount(transaction);
+    let promoName = transaction.promocode_id ? promoNames[transaction.promocode_id] : undefined;
+    if (!promoName && transaction.promocode_id) {
+      try {
+        const map = JSON.parse(localStorage.getItem("twinbid_promo_codes") || "{}");
+        promoName = map[transaction.id] || map[transaction.promocode_id] || undefined;
+      } catch { /* local display cache is best-effort */ }
+    }
+
+    openPayment({
+      amount,
+      method: transaction.payment_method || "passimpay",
+      channel: "passimpay_invoice",
+      promo: promoName,
+      bonus: amount > 0 && bonusAmount > 0 ? bonusAmount / amount * 100 : undefined,
+      bonus_amount: bonusAmount,
+      promocode_id: transaction.promocode_id ?? null,
+      transactionRowId: transaction.id,
+      total_balance_increase: Number(transaction.total_balance_increase) || amount + bonusAmount,
+      status: transaction.status,
+      payment_url: transaction.payment_url,
+      provider_status: transaction.provider_status,
+      amount_paid: transaction.amount_paid,
+      amount_credited: transaction.amount_credited,
+      credited_at: transaction.credited_at,
+    });
   };
 
   return (
@@ -432,7 +462,9 @@ export default function DashboardBalance() {
                   ? t("balance.payment.creating")
                   : selectedChannel === "passimpay_invoice"
                     ? t("balance.passimpay.create")
-                    : t("balance.topUpBtn")} {finalAmount ? `$${fmtMoney(finalAmount)}` : ""}
+                    : t("balance.topUpBtn")} {finalAmount
+                      ? `$${fmtMoney(selectedChannel === "passimpay_invoice" ? passimPayChargeAmount : finalAmount)}`
+                      : ""}
                 {appliedPromo && finalAmount ? ` (+${fmtMoney(promoPreviewBonus)}$ ${t("balance.promo.bonusShort")})` : ""}
               </Button>
               {isTopUpBlocked && (
@@ -547,9 +579,27 @@ export default function DashboardBalance() {
                           {credited ? "+" : ""}${fmtMoney(req.total_balance_increase || req.deposit_amount)}
                         </td>
                         <td className="py-3 px-4 text-left">
-                          <Badge variant="outline" className={cn("font-normal", st.className)}>
-                            {st.label}
-                          </Badge>
+                          <div className="flex items-center gap-2">
+                            <Badge variant="outline" className={cn("font-normal", st.className)}>
+                              {st.label}
+                            </Badge>
+                            {req.payment_channel === "passimpay_invoice"
+                              && !credited
+                              && req.status !== "rejected"
+                              && req.status !== "cancelled"
+                              && req.provider_status !== "error" && (
+                                <Button
+                                  type="button"
+                                  variant="outline"
+                                  size="sm"
+                                  className="h-8 whitespace-nowrap border-border"
+                                  onClick={() => openPassimPayFromHistory(req)}
+                                >
+                                  <ExternalLink className="mr-1.5 h-3.5 w-3.5" />
+                                  {t("balance.passimpay.view")}
+                                </Button>
+                              )}
+                          </div>
                         </td>
                       </tr>
                     );

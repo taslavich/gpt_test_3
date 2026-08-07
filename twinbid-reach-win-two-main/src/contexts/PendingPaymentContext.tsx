@@ -28,6 +28,8 @@ interface PendingPaymentContextType {
   isDialogOpen: boolean;
   openDialog: () => void;
   closeDialog: () => void;
+  openPayment: (payment: PendingPaymentData) => void;
+  restorePaymentAfterPassimPay: () => void;
   // Notify Balance page to refresh history after submission
   registerRefreshHandler: (fn: () => void) => void;
   triggerRefresh: () => void;
@@ -39,9 +41,27 @@ export function PendingPaymentProvider({ children }: { children: ReactNode }) {
   const [pendingPayment, setPendingPayment] = useState<PendingPaymentData | null>(null);
   const [isDialogOpen, setDialogOpen] = useState(false);
   const refreshRef = useRef<() => void>(() => {});
+  const savedStaticPaymentRef = useRef<PendingPaymentData | null>(null);
 
   const openDialog = useCallback(() => setDialogOpen(true), []);
   const closeDialog = useCallback(() => setDialogOpen(false), []);
+  const openPayment = useCallback((payment: PendingPaymentData) => {
+    setPendingPayment(current => {
+      if (payment.channel === "passimpay_invoice" && current && current.channel !== "passimpay_invoice") {
+        savedStaticPaymentRef.current = current;
+      }
+      return payment;
+    });
+    setDialogOpen(true);
+  }, []);
+  const restorePaymentAfterPassimPay = useCallback(() => {
+    setPendingPayment(current => {
+      if (current?.channel !== "passimpay_invoice") return current;
+      const savedStaticPayment = savedStaticPaymentRef.current;
+      savedStaticPaymentRef.current = null;
+      return savedStaticPayment;
+    });
+  }, []);
 
   const registerRefreshHandler = useCallback((fn: () => void) => {
     refreshRef.current = fn;
@@ -54,6 +74,7 @@ export function PendingPaymentProvider({ children }: { children: ReactNode }) {
     <PendingPaymentContext.Provider value={{
       pendingPayment, setPendingPayment,
       isDialogOpen, openDialog, closeDialog,
+      openPayment, restorePaymentAfterPassimPay,
       registerRefreshHandler, triggerRefresh,
     }}>
       {children}

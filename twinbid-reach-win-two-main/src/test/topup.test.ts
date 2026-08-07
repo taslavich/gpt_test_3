@@ -3,6 +3,7 @@ import type { ApiPromocode, ApiUserTransaction } from "@/api/types";
 import {
   buildPassimPayTopup,
   buildStaticWalletTopup,
+  getPassimPayChargeAmount,
   getPassimPayFee,
   getTransactionBonusAmount,
   isPassimPayPartial,
@@ -69,6 +70,8 @@ describe("top-up request contract", () => {
     expect(parseTopupAmount("100,25")).toBe(100.25);
     expect(parseTopupAmount("100.259")).toBeNull();
     expect(getPassimPayFee(100.25)).toBe(1);
+    expect(getPassimPayChargeAmount(100)).toBe(101);
+    expect(getPassimPayChargeAmount(100.25)).toBe(101.25);
   });
 
   it("uses the backend total as the source of truth for the promo bonus", () => {

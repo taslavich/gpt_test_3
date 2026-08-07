@@ -21,6 +21,11 @@ export function getPassimPayFee(depositAmount: number): number {
   return roundMoney(depositAmount * PASSIMPAY_FEE_PERCENT / 100);
 }
 
+/** Amount shown to the user and charged by PassimPay: deposit + TwinBid fee. */
+export function getPassimPayChargeAmount(depositAmount: number): number {
+  return roundMoney(depositAmount + getPassimPayFee(depositAmount));
+}
+
 export function validatePromocodeForTopup(params: {
   promo: ApiPromocode;
   transactions: ApiUserTransaction[];
