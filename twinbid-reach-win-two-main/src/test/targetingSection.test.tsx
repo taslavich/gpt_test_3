@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { useState } from "react";
 import { fireEvent, render, screen, within } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 import { TargetingSection } from "@/components/dashboard/TargetingSection";
 import { LanguageProvider } from "@/contexts/LanguageContext";
 import type { TargetingState } from "@/contexts/CampaignContext";
@@ -27,6 +27,10 @@ function Harness() {
 }
 
 describe("targeting list controls", () => {
+  beforeEach(() => {
+    window.localStorage.setItem("twinbid_lang", "en");
+  });
+
   it("clears all selected values in one targeting without changing its mode", () => {
     render(<Harness />);
 

@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { useState } from "react";
 import { fireEvent, render, screen } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 import { CreativesEditor } from "@/components/dashboard/CreativesEditor";
 import { LanguageProvider } from "@/contexts/LanguageContext";
 import type { Creative } from "@/contexts/CampaignContext";
@@ -25,6 +25,10 @@ function Harness({ formatKey = "popunder" }: { formatKey?: string }) {
 }
 
 describe("creative URL macros", () => {
+  beforeEach(() => {
+    window.localStorage.setItem("twinbid_lang", "en");
+  });
+
   it("shows click_id immediately after the first URL character is entered", () => {
     render(<Harness />);
     const input = screen.getByPlaceholderText("https://example.com/landing");

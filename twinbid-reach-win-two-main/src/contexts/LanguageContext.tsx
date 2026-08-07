@@ -864,7 +864,7 @@ export function LanguageProvider({ children }: { children: ReactNode }) {
       const stored = localStorage.getItem("twinbid_lang");
       if (stored === "en" || stored === "ru" || stored === "es") return stored;
     } catch {}
-    return "en";
+    return "ru";
   });
 
   const handleSetLang = useCallback((newLang: Lang) => {
@@ -887,6 +887,10 @@ export function LanguageProvider({ children }: { children: ReactNode }) {
     setErrorTranslator((raw) => translateServerError(raw, t));
     return () => setErrorTranslator(null);
   }, [t]);
+
+  useEffect(() => {
+    document.documentElement.lang = lang;
+  }, [lang]);
 
   return (
     <LanguageContext.Provider value={{ lang, setLang: handleSetLang, t }}>
