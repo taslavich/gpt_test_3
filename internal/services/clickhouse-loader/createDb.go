@@ -39,6 +39,7 @@ DROP VIEW IF EXISTS {db}.mv_user_dsp_price_sum SYNC;
 DROP VIEW IF EXISTS ads.mv_ortb_traffic_hourly SYNC;
 DROP VIEW IF EXISTS {db}.mv_campaign_dsp_price_sum SYNC;
 DROP VIEW IF EXISTS {db}.mv_recover_pop_impressions SYNC;
+DROP VIEW IF EXISTS {db}.mv_recover_clicks_from_clicks_wins SYNC;
 
 -- ============================================================
 -- ORTB TABLE
@@ -1396,6 +1397,180 @@ FROM deficits AS d
 INNER JOIN base_impression AS b USING (uuid)
 ARRAY JOIN range(toUInt64(d.missing_cnt)) AS copy_number
 WHERE d.impression_cnt > 0;
+
+CREATE MATERIALIZED VIEW {db}.mv_recover_clicks_from_clicks_wins
+REFRESH EVERY 1 HOUR OFFSET 10 MINUTE
+APPEND TO {db}.fact_clicks
+(
+    event_time_clicks,
+    event_time,
+    event_date,
+    event_hour,
+    uuid,
+    clicks_uuid,
+    code,
+    format,
+    typic,
+    spp_domain,
+    ip,
+    ipv6,
+    lang,
+    browser,
+    browser_version,
+    os,
+    os_version,
+    device_type,
+    site_id,
+    site_domain,
+    bid_floor,
+    geo,
+    city_id,
+    bid_responses_raw,
+    win_dsp_domain,
+    win_final_price,
+    win_dsp_price,
+    win_cid,
+    win_crid,
+    win_user_id,
+    created_at
+)
+EMPTY
+AS
+
+WITH
+    toStartOfHour(now() - INTERVAL 1 HOUR) AS dt_from,
+    toStartOfHour(now()) AS dt_to,
+
+    clicks_wins_count AS
+    (
+        SELECT
+            uuid,
+            count() AS clicks_wins_cnt
+        FROM {db}.fact_clicks_wins
+        WHERE event_time >= dt_from
+          AND event_time < dt_to
+        GROUP BY uuid
+    ),
+
+    clicks_count AS
+    (
+        SELECT
+            uuid,
+            count() AS click_cnt
+        FROM {db}.fact_clicks
+        WHERE event_time >= dt_from
+          AND event_time < dt_to
+        GROUP BY uuid
+    ),
+
+    deficits AS
+    (
+        SELECT
+            w.uuid,
+            w.clicks_wins_cnt,
+            ifNull(c.click_cnt, 0) AS click_cnt,
+            w.clicks_wins_cnt - ifNull(c.click_cnt, 0) AS missing_cnt
+        FROM clicks_wins_count AS w
+        LEFT JOIN clicks_count AS c USING (uuid)
+        WHERE w.clicks_wins_cnt > ifNull(c.click_cnt, 0)
+    ),
+
+    base_clicks_win AS
+    (
+        SELECT *
+        FROM {db}.fact_clicks_wins
+        WHERE event_time >= dt_from
+          AND event_time < dt_to
+        ORDER BY event_time DESC
+        LIMIT 1 BY uuid
+    )
+
+/*
+ * Случай №1:
+ * UUID полностью отсутствует в {db}.fact_clicks.
+ * Берём соответствующие строки из fact_clicks_wins.
+ */
+SELECT
+    w.event_time_clicks_wins AS event_time_clicks,
+    w.event_time AS event_time,
+    w.event_date AS event_date,
+    w.event_hour AS event_hour,
+    w.uuid AS uuid,
+    w.clicks_wins_uuid AS clicks_uuid,
+    w.code AS code,
+    w.format AS format,
+    w.typic AS typic,
+    w.spp_domain AS spp_domain,
+    w.ip AS ip,
+    w.ipv6 AS ipv6,
+    w.lang AS lang,
+    w.browser AS browser,
+    w.browser_version AS browser_version,
+    w.os AS os,
+    w.os_version AS os_version,
+    w.device_type AS device_type,
+    w.site_id AS site_id,
+    w.site_domain AS site_domain,
+    w.bid_floor AS bid_floor,
+    w.geo AS geo,
+    w.city_id AS city_id,
+    w.bid_responses_raw AS bid_responses_raw,
+    w.win_dsp_domain AS win_dsp_domain,
+    w.win_final_price AS win_final_price,
+    w.win_dsp_price AS win_dsp_price,
+    w.win_cid AS win_cid,
+    w.win_crid AS win_crid,
+    w.win_user_id AS win_user_id,
+    w.created_at AS created_at
+FROM {db}.fact_clicks_wins AS w
+INNER JOIN deficits AS d USING (uuid)
+WHERE d.click_cnt = 0
+  AND w.event_time >= dt_from
+  AND w.event_time < dt_to
+
+UNION ALL
+
+/*
+ * Случай №2:
+ * UUID есть в обеих таблицах, но строк в fact_clicks меньше.
+ * Добавляем ровно missing_cnt строк на основе fact_clicks_wins.
+ */
+SELECT
+    b.event_time_clicks_wins AS event_time_clicks,
+    b.event_time AS event_time,
+    b.event_date AS event_date,
+    b.event_hour AS event_hour,
+    b.uuid AS uuid,
+    b.clicks_wins_uuid AS clicks_uuid,
+    b.code AS code,
+    b.format AS format,
+    b.typic AS typic,
+    b.spp_domain AS spp_domain,
+    b.ip AS ip,
+    b.ipv6 AS ipv6,
+    b.lang AS lang,
+    b.browser AS browser,
+    b.browser_version AS browser_version,
+    b.os AS os,
+    b.os_version AS os_version,
+    b.device_type AS device_type,
+    b.site_id AS site_id,
+    b.site_domain AS site_domain,
+    b.bid_floor AS bid_floor,
+    b.geo AS geo,
+    b.city_id AS city_id,
+    b.bid_responses_raw AS bid_responses_raw,
+    b.win_dsp_domain AS win_dsp_domain,
+    b.win_final_price AS win_final_price,
+    b.win_dsp_price AS win_dsp_price,
+    b.win_cid AS win_cid,
+    b.win_crid AS win_crid,
+    b.win_user_id AS win_user_id,
+    b.created_at AS created_at
+FROM deficits AS d
+INNER JOIN base_clicks_win AS b USING (uuid)
+ARRAY JOIN range(toUInt64(d.missing_cnt)) AS copy_number
+WHERE d.click_cnt > 0;
 
 -- ============================================================
 -- MV: FACT IMPRESSIONS -> AGG STATS
