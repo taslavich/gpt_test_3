@@ -1181,6 +1181,7 @@ type BidExt struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Btype         *int32                 `protobuf:"varint,1,opt,name=btype,proto3,oneof" json:"btype,omitempty"`
 	VerticalId    *int32                 `protobuf:"varint,2,opt,name=vertical_id,json=verticalId,proto3,oneof" json:"vertical_id,omitempty"`
+	Cwin          *string                `protobuf:"bytes,3,opt,name=cwin,proto3,oneof" json:"cwin,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1227,6 +1228,13 @@ func (x *BidExt) GetVerticalId() int32 {
 		return *x.VerticalId
 	}
 	return 0
+}
+
+func (x *BidExt) GetCwin() string {
+	if x != nil && x.Cwin != nil {
+		return *x.Cwin
+	}
+	return ""
 }
 
 type BidResponse struct {
@@ -1548,13 +1556,15 @@ const file_types_ortb_V2_5_ortb_proto_rawDesc = "" +
 	"\a_dealidB\x04\n" +
 	"\x02_wB\x04\n" +
 	"\x02_hB\x06\n" +
-	"\x04_ext\"c\n" +
+	"\x04_ext\"\x85\x01\n" +
 	"\x06BidExt\x12\x19\n" +
 	"\x05btype\x18\x01 \x01(\x05H\x00R\x05btype\x88\x01\x01\x12$\n" +
 	"\vvertical_id\x18\x02 \x01(\x05H\x01R\n" +
-	"verticalId\x88\x01\x01B\b\n" +
+	"verticalId\x88\x01\x01\x12\x17\n" +
+	"\x04cwin\x18\x03 \x01(\tH\x02R\x04cwin\x88\x01\x01B\b\n" +
 	"\x06_btypeB\x0e\n" +
-	"\f_vertical_id\"\xe9\x01\n" +
+	"\f_vertical_idB\a\n" +
+	"\x05_cwin\"\xe9\x01\n" +
 	"\vBidResponse\x12\x13\n" +
 	"\x02id\x18\x01 \x01(\tH\x00R\x02id\x88\x01\x01\x12,\n" +
 	"\aseatbid\x18\x02 \x03(\v2\x12.ortb_V2_5.SeatBidR\aseatbid\x12\x19\n" +

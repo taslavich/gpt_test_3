@@ -46,6 +46,12 @@ func WrapBurlURL(hostname, globalID, format string) string {
 	}, "id", "f")
 }
 
+func WrapClicksWinsURL(hostname, globalID string) string {
+	return buildCallbackURL(hostname, "clicks_wins", map[string]string{
+		"id": globalID,
+	}, "id")
+}
+
 func formatCode(format string) string {
 	return constants.FormatToCodes[strings.ToUpper(strings.TrimSpace(format))]
 }

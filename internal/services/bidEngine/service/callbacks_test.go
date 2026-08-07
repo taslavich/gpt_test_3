@@ -30,6 +30,9 @@ func TestFinalizeADVPopCallbacksDoNotEmbedDSPCallbacks(t *testing.T) {
 	assertCallbackQuery(t, got.GetBurl(), "/burl", map[string]string{
 		"id": "winner-1", "f": constants.FormatToCodes[constants.POP],
 	})
+	assertCallbackQuery(t, got.GetExt().GetCwin(), "/clicks_wins", map[string]string{
+		"id": "winner-1",
+	})
 	assertQueryMissing(t, got.GetNurl(), "url")
 	assertQueryMissing(t, got.GetBurl(), "url")
 
@@ -61,6 +64,9 @@ func TestFinalizeADVBannerImageKeepsHTMLAndWrapsOnlyHref(t *testing.T) {
 	assertCallbackQuery(t, got.GetBurl(), "/burl", map[string]string{
 		"id": "banner-winner", "f": constants.FormatToCodes[constants.BAN],
 	})
+	assertCallbackQuery(t, got.GetExt().GetCwin(), "/clicks_wins", map[string]string{
+		"id": "banner-winner",
+	})
 	if bid.GetAdm() != adm || bid.GetNurl() != unexpectedNURL || bid.GetBurl() != unexpectedBURL {
 		t.Fatal("source banner bid was mutated")
 	}
@@ -86,6 +92,46 @@ func TestFinalizeADVBannerIframeKeepsADMUnchanged(t *testing.T) {
 	assertCallbackQuery(t, got.GetBurl(), "/burl", map[string]string{
 		"id": "iframe-winner", "f": constants.FormatToCodes[constants.BAN],
 	})
+	assertCallbackQuery(t, got.GetExt().GetCwin(), "/clicks_wins", map[string]string{
+		"id": "iframe-winner",
+	})
+}
+
+func TestFinalizeDSPCallbacksAddsCwinAndPreservesBidExt(t *testing.T) {
+	adm := "https://creative.example/render"
+	nurl := "https://dsp.example/win"
+	btype := int32(1)
+	verticalID := int32(42)
+	source := &ortb.Bid{
+		Adm:  &adm,
+		Nurl: &nurl,
+		Ext: &ortb.BidExt{
+			Btype:      &btype,
+			VerticalId: &verticalID,
+		},
+	}
+
+	got, ok := FinalizeBidCallbacks(
+		source,
+		"callbacks.example",
+		"dsp-winner",
+		"ssp.example",
+		constants.POP,
+		true,
+		true,
+	)
+	if !ok || got == nil {
+		t.Fatal("DSP callback finalization failed")
+	}
+	assertCallbackQuery(t, got.GetExt().GetCwin(), "/clicks_wins", map[string]string{
+		"id": "dsp-winner",
+	})
+	if got.GetExt().GetBtype() != btype || got.GetExt().GetVerticalId() != verticalID {
+		t.Fatalf("existing bid ext was not preserved: %+v", got.GetExt())
+	}
+	if source.GetExt().GetCwin() != "" {
+		t.Fatal("source bid ext was mutated")
+	}
 }
 
 func bannerHrefFromADM(t *testing.T, adm string) string {
@@ -116,6 +162,9 @@ func TestFinalizeADVNativeCallbacksWrapOnlyLinkAndAddBURL(t *testing.T) {
 	})
 	assertCallbackQuery(t, got.GetBurl(), "/burl", map[string]string{
 		"id": "winner-2", "f": constants.FormatToCodes[constants.IPP],
+	})
+	assertCallbackQuery(t, got.GetExt().GetCwin(), "/clicks_wins", map[string]string{
+		"id": "winner-2",
 	})
 	if got.GetNurl() != "" {
 		t.Fatalf("native ADV response must not contain nurl: %q", got.GetNurl())

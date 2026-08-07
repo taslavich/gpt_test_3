@@ -182,6 +182,7 @@ func GetWinnerBidInternal_V_2_5(
 			Adid:  winner.bid.Adid,
 			Cid:   winner.bid.Cid,
 			Crid:  winner.bid.Crid,
+			Ext:   winner.bid.Ext,
 		}
 		finalBid, ok := FinalizeBidCallbacks(
 			baseBid,
@@ -253,6 +254,10 @@ func FinalizeBidCallbacks(
 	finalBid.Nurl = nil
 	finalBid.Burl = nil
 
+	if !setClicksWinsCallback(finalBid, admDomain, globalID) {
+		return nil, false
+	}
+
 	if wrapADM {
 		wrappedADM := utils.WrapURL(admDomain, source.GetAdm(), globalID, format)
 		if wrappedADM == "" {
@@ -289,10 +294,18 @@ func FinalizeADVCallbacks(
 		return nil, false
 	}
 	if isADVNativeFormat(format) {
-		return finalizeADVNativeCallbacks(source, admDomain, globalID, format)
+		finalBid, ok := finalizeADVNativeCallbacks(source, admDomain, globalID, format)
+		if !ok || !setClicksWinsCallback(finalBid, admDomain, globalID) {
+			return nil, false
+		}
+		return finalBid, true
 	}
 	if isADVBannerFormat(format) {
-		return finalizeADVBannerCallbacks(source, admDomain, globalID, sspDomain, format)
+		finalBid, ok := finalizeADVBannerCallbacks(source, admDomain, globalID, sspDomain, format)
+		if !ok || !setClicksWinsCallback(finalBid, admDomain, globalID) {
+			return nil, false
+		}
+		return finalBid, true
 	}
 
 	cleanSource, ok := proto.Clone(source).(*ortb_V2_5.Bid)
@@ -323,6 +336,21 @@ func FinalizeADVCallbacks(
 	}
 	finalBid.Nurl = &wrappedNURL
 	return finalBid, true
+}
+
+func setClicksWinsCallback(bid *ortb_V2_5.Bid, admDomain, globalID string) bool {
+	if bid == nil {
+		return false
+	}
+	cwin := utils.WrapClicksWinsURL(admDomain, globalID)
+	if strings.TrimSpace(cwin) == "" {
+		return false
+	}
+	if bid.Ext == nil {
+		bid.Ext = &ortb_V2_5.BidExt{}
+	}
+	bid.Ext.Cwin = &cwin
+	return true
 }
 
 func applyPriceConstraintsAndPercent(dspPrice, bidFloor, profitPercent float32, needed bool) (

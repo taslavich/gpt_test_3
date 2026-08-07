@@ -130,6 +130,7 @@ message Bid {
 message BidExt {
     optional int32 btype = 1;
     optional int32 vertical_id = 2;
+    optional string cwin = 3;
 }
 
 message BidResponse {
