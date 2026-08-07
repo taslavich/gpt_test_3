@@ -2,10 +2,12 @@ import { LayoutDashboard, TrendingUp, Eye, ShieldCheck, Brain, type LucideIcon }
 import { useLanguage } from "@/contexts/LanguageContext";
 import { motion } from "framer-motion";
 import { WordsReveal, LineReveal } from "./CinematicReveal";
+import { useIsMobileImmediate } from "@/hooks/use-mobile";
 
 const benefitIcons = [LayoutDashboard, TrendingUp, Eye, ShieldCheck, Brain];
 
 function StatsChart() {
+  const isMobile = useIsMobileImmediate();
   const bars = [34, 52, 43, 70, 61, 86, 74, 104, 92, 126, 112, 142];
 
   return (
@@ -34,8 +36,8 @@ function StatsChart() {
             height={height}
             rx="5"
             fill="url(#statsBars)"
-            initial={{ opacity: 0, scaleY: 0 }}
-            whileInView={{ opacity: 1, scaleY: 1 }}
+            initial={isMobile ? false : { opacity: 0, scaleY: 0 }}
+            whileInView={isMobile ? undefined : { opacity: 1, scaleY: 1 }}
             viewport={{ once: true }}
             transition={{ duration: 0.55, delay: index * 0.035 }}
             style={{ transformOrigin: "bottom" }}
@@ -48,8 +50,8 @@ function StatsChart() {
           stroke="hsl(168 70% 60%)"
           strokeWidth="3"
           strokeLinecap="round"
-          initial={{ pathLength: 0, opacity: 0 }}
-          whileInView={{ pathLength: 1, opacity: 1 }}
+          initial={isMobile ? false : { pathLength: 0, opacity: 0 }}
+          whileInView={isMobile ? undefined : { pathLength: 1, opacity: 1 }}
           viewport={{ once: true }}
           transition={{ duration: 1.25, ease: [0.22, 1, 0.36, 1] }}
         />
@@ -108,11 +110,12 @@ export function BenefitsSection() {
 }
 
 function BenefitRow({ benefit, index }: { benefit: { icon: LucideIcon; title: string; description: string }; index: number }) {
+  const isMobile = useIsMobileImmediate();
   const spans = ["md:col-span-7 md:row-span-2", "md:col-span-5", "md:col-span-5", "md:col-span-6", "md:col-span-6"];
   return (
     <motion.div
-      initial={{ opacity: 0, y: 20 }}
-      whileInView={{ opacity: 1, y: 0 }}
+      initial={isMobile ? false : { opacity: 0, y: 20 }}
+      whileInView={isMobile ? undefined : { opacity: 1, y: 0 }}
       viewport={{ once: true, margin: "-80px" }}
       transition={{ duration: 0.7, delay: index * 0.05, ease: [0.22, 1, 0.36, 1] }}
       className={`landing-card group relative flex min-h-[240px] flex-col overflow-hidden p-7 md:p-9 ${spans[index]}`}

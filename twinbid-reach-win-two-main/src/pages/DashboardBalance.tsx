@@ -25,6 +25,7 @@ import {
   getTransactionBonusAmount,
   isPassimPayPartial,
   isTransactionCredited,
+  isUnfinishedStaticWalletTransaction,
   parseTopupAmount,
   PASSIMPAY_FEE_PERCENT,
   sanitizeTopupAmountInput,
@@ -153,17 +154,14 @@ export default function DashboardBalance() {
     setPromoCode("");
   };
 
-  const hasDraft = topupRequests.some(tx => tx.status === "draft" && (!user || tx.user_id === user.id));
-  const pendingPassimPay = topupRequests.find(
-    tx => tx.payment_channel === "passimpay_invoice"
-      && tx.status === "pending"
-      && tx.provider_status !== "error"
+  const hasUnfinishedStaticWallet = topupRequests.some(
+    tx => isUnfinishedStaticWalletTransaction(tx)
       && (!user || tx.user_id === user.id),
   );
-  const hasPendingPassimPay = !!pendingPassimPay;
-  const hasUnfinishedPayment = hasDraft || hasPendingPassimPay;
-  const isTopUpBlocked = selectedChannel !== "passimpay_invoice"
-    && (!!pendingPayment || hasUnfinishedPayment);
+  const hasPendingStaticWalletDialog = !!pendingPayment
+    && pendingPayment.channel !== "passimpay_invoice";
+  const isTopUpBlocked = selectedChannel === "static_wallet"
+    && (hasPendingStaticWalletDialog || hasUnfinishedStaticWallet);
 
   const handleTopUp = async () => {
     if (!finalAmount || finalAmount < 100 || !user || !selectedChannel || submittingTopup || topupSubmitLockRef.current) return;
@@ -249,37 +247,6 @@ export default function DashboardBalance() {
       notifyError(t("balance.toast.submitError"), e);
     } finally {
       topupSubmitLockRef.current = false;
-      setSubmittingTopup(false);
-    }
-  };
-
-  const handleResumePassimPay = async () => {
-    if (!pendingPassimPay || submittingTopup) return;
-    setSubmittingTopup(true);
-    try {
-      const transaction = await api.getTransaction(pendingPassimPay.id);
-      const amount = Number(transaction.deposit_amount) || 0;
-      const bonusAmount = getTransactionBonusAmount(transaction);
-      setPendingPayment({
-        amount,
-        method: transaction.payment_method || "passimpay",
-        channel: "passimpay_invoice",
-        bonus_amount: bonusAmount,
-        promocode_id: transaction.promocode_id ?? null,
-        transactionRowId: transaction.id,
-        total_balance_increase: Number(transaction.total_balance_increase) || amount + bonusAmount,
-        status: transaction.status,
-        payment_url: transaction.payment_url,
-        provider_status: transaction.provider_status,
-        amount_paid: transaction.amount_paid,
-        amount_credited: transaction.amount_credited,
-        credited_at: transaction.credited_at,
-      });
-      openDialog();
-    } catch (e: unknown) {
-      notifyError(t("balance.toast.submitError"), e);
-      void fetchTopupRequests();
-    } finally {
       setSubmittingTopup(false);
     }
   };
@@ -469,25 +436,9 @@ export default function DashboardBalance() {
                 {appliedPromo && finalAmount ? ` (+${fmtMoney(promoPreviewBonus)}$ ${t("balance.promo.bonusShort")})` : ""}
               </Button>
               {isTopUpBlocked && (
-                <div className="flex flex-col items-start gap-2">
-                  <p className="text-xs text-yellow-500">
-                    {pendingPayment?.channel === "passimpay_invoice" || pendingPassimPay
-                      ? t("balance.passimpay.pendingReason")
-                      : t("balance.disabledReason")}
-                  </p>
-                  {!pendingPayment && pendingPassimPay && (
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      className="border-border"
-                      disabled={submittingTopup}
-                      onClick={() => void handleResumePassimPay()}
-                    >
-                      {t("balance.passimpay.resume")}
-                    </Button>
-                  )}
-                </div>
+                <p className="text-xs text-yellow-500">
+                  {t("balance.disabledReason")}
+                </p>
               )}
             </div>
             {topupError && (

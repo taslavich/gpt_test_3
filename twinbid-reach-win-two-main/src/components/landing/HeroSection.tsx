@@ -3,8 +3,10 @@ import type { CSSProperties } from "react";
 import { motion } from "framer-motion";
 import { AuthDialog } from "./AuthDialog";
 import { useLanguage } from "@/contexts/LanguageContext";
+import { useIsMobileImmediate } from "@/hooks/use-mobile";
 
 function NetworkStage() {
+  const isMobile = useIsMobileImmediate();
   const formats = [
     {
       name: "Popunder",
@@ -34,8 +36,8 @@ function NetworkStage() {
 
   return (
     <motion.div
-      initial={{ opacity: 0, y: 28, scale: 0.97 }}
-      animate={{ opacity: 1, y: 0, scale: 1 }}
+      initial={isMobile ? false : { opacity: 0, y: 28, scale: 0.97 }}
+      animate={isMobile ? undefined : { opacity: 1, y: 0, scale: 1 }}
       transition={{
         duration: 1,
         delay: 0.25,
@@ -73,8 +75,8 @@ function NetworkStage() {
           <div className="landing-format-anchor absolute left-1/2 top-0">
             <div className="landing-format-counter">
               <motion.div
-                initial={{ opacity: 0, scale: 0.75 }}
-                animate={{ opacity: 1, scale: 1 }}
+                initial={isMobile ? false : { opacity: 0, scale: 0.75 }}
+                animate={isMobile ? undefined : { opacity: 1, scale: 1 }}
                 transition={{
                   duration: 0.6,
                   delay: 0.55 + index * 0.12,
@@ -95,19 +97,20 @@ function NetworkStage() {
 
 export function HeroSection() {
   const { t, lang } = useLanguage();
+  const isMobile = useIsMobileImmediate();
 
   const title1 = t("hero.title1").trim();
   const title2 = t("hero.title2").trim();
 
   return (
     <section className="relative flex min-h-[100svh] items-center overflow-hidden pb-16 pt-32 md:pb-20 md:pt-36">
-      <div className="landing-hero-glow pointer-events-none absolute left-[12%] top-[18%] h-72 w-72 rounded-full bg-primary/10 blur-[100px]" />
+      <div className="landing-hero-glow pointer-events-none absolute left-[12%] top-[18%] hidden h-72 w-72 rounded-full bg-primary/10 blur-[100px] md:block" />
 
       <div className="relative z-10 mx-auto grid w-full max-w-[1400px] items-center gap-12 px-5 md:px-8 lg:grid-cols-[1.04fr_0.96fr] lg:gap-14">
         <div className="max-w-[760px]">
           <motion.div
-            initial={{ opacity: 0, y: 14 }}
-            animate={{ opacity: 1, y: 0 }}
+            initial={isMobile ? false : { opacity: 0, y: 14 }}
+            animate={isMobile ? undefined : { opacity: 1, y: 0 }}
             transition={{ duration: 0.7 }}
             className="landing-kicker mb-7 inline-flex items-center gap-3 rounded-full border border-primary/20 bg-primary/[0.06] px-4 py-2"
           >
@@ -117,8 +120,8 @@ export function HeroSection() {
           </motion.div>
 
           <motion.h1
-            initial={{ opacity: 0, y: 30 }}
-            animate={{ opacity: 1, y: 0 }}
+            initial={isMobile ? false : { opacity: 0, y: 30 }}
+            animate={isMobile ? undefined : { opacity: 1, y: 0 }}
             transition={{
               duration: 0.9,
               delay: 0.08,
@@ -136,8 +139,8 @@ export function HeroSection() {
           </motion.h1>
 
           <motion.p
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
+            initial={isMobile ? false : { opacity: 0, y: 20 }}
+            animate={isMobile ? undefined : { opacity: 1, y: 0 }}
             transition={{
               duration: 0.8,
               delay: 0.2,
@@ -154,8 +157,8 @@ export function HeroSection() {
           </motion.p>
 
           <motion.div
-            initial={{ opacity: 0, y: 18 }}
-            animate={{ opacity: 1, y: 0 }}
+            initial={isMobile ? false : { opacity: 0, y: 18 }}
+            animate={isMobile ? undefined : { opacity: 1, y: 0 }}
             transition={{
               duration: 0.8,
               delay: 0.3,

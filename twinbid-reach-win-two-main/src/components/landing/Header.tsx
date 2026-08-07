@@ -28,7 +28,7 @@ export function Header() {
   return (
     <header className="fixed inset-x-0 top-0 z-50 px-3 pt-3 md:px-6 md:pt-5">
       <div
-        className={`mx-auto max-w-[1320px] rounded-[22px] border transition-all duration-500 ${
+        className={`landing-header-panel mx-auto max-w-[1320px] rounded-[22px] border transition-all duration-500 ${
           solid
             ? "border-white/10 bg-[hsl(200_18%_7%/0.9)] shadow-[0_18px_70px_rgba(0,0,0,0.4)] backdrop-blur-xl"
             : "border-white/[0.07] bg-background/45 backdrop-blur-md"
@@ -73,7 +73,7 @@ export function Header() {
         </div>
 
         {isMenuOpen && (
-          <div className="animate-fade-in border-t border-white/10 px-3 py-3 md:hidden">
+          <div className="border-t border-white/10 px-3 py-3 md:hidden">
             <nav className="flex flex-col gap-1">
               {navLinks.map((link) => (
                 <a key={link.href} href={link.href} className="rounded-xl px-4 py-3 text-[15px] text-muted-foreground hover:bg-white/[0.05] hover:text-foreground" onClick={() => setIsMenuOpen(false)}>

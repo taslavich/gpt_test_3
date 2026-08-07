@@ -2,6 +2,7 @@ import { DollarSign, TrendingUp, Zap } from "lucide-react";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { motion } from "framer-motion";
 import { WordsReveal, LineReveal } from "./CinematicReveal";
+import { useIsMobileImmediate } from "@/hooks/use-mobile";
 
 const tiers = [
   { min: 1000, percent: 3, icon: DollarSign },
@@ -11,6 +12,7 @@ const tiers = [
 
 export function CashbackSection() {
   const { t } = useLanguage();
+  const isMobile = useIsMobileImmediate();
 
   return (
     <section className="landing-section relative">
@@ -38,8 +40,8 @@ export function CashbackSection() {
             {tiers.map((tier, i) => (
               <motion.div
                 key={tier.min}
-                initial={{ opacity: 0, y: 30 }}
-                whileInView={{ opacity: 1, y: 0 }}
+                initial={isMobile ? false : { opacity: 0, y: 30 }}
+                whileInView={isMobile ? undefined : { opacity: 1, y: 0 }}
                 viewport={{ once: true, margin: "-60px" }}
                 transition={{ duration: 0.8, delay: i * 0.1, ease: [0.22, 1, 0.36, 1] }}
                 className={`group rounded-[26px] border border-white/10 bg-background/70 p-7 backdrop-blur-sm transition-transform duration-500 hover:-translate-y-1 md:p-9 ${i === 1 ? "md:translate-y-5" : i === 2 ? "md:translate-y-10" : ""}`}

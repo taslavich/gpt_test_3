@@ -2,6 +2,7 @@ import { Crop, Eye, Image as ImageIcon, Monitor, Move, Scan, Smartphone } from "
 import { motion } from "framer-motion";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { LineReveal, WordsReveal } from "./CinematicReveal";
+import { useIsMobileImmediate } from "@/hooks/use-mobile";
 
 function CropperMock() {
   return (
@@ -76,6 +77,7 @@ function PreviewMock() {
 
 export function CreativeToolsSection() {
   const { t } = useLanguage();
+  const isMobile = useIsMobileImmediate();
 
   const tools = [
     {
@@ -121,8 +123,8 @@ export function CreativeToolsSection() {
             {tools.map(({ icon: Icon, badge, title, description, Mock }, index) => (
               <motion.article
                 key={badge}
-                initial={{ opacity: 0, y: 30 }}
-                whileInView={{ opacity: 1, y: 0 }}
+                initial={isMobile ? false : { opacity: 0, y: 30 }}
+                whileInView={isMobile ? undefined : { opacity: 1, y: 0 }}
                 viewport={{ once: true, margin: "-60px" }}
                 transition={{ duration: 0.8, delay: index * 0.1, ease: [0.22, 1, 0.36, 1] }}
                 className={`landing-card group p-5 transition-transform duration-500 hover:-translate-y-1 md:p-7 ${index === 1 ? "md:mt-16" : ""}`}

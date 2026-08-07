@@ -4,7 +4,11 @@ import { cn } from "@/lib/utils";
 
 /** True on touch/small screens or when user prefers reduced motion. */
 function useLightMode() {
-  const [light, setLight] = useState(false);
+  const [light, setLight] = useState(() => {
+    if (typeof window === "undefined") return false;
+    return window.matchMedia("(max-width: 900px)").matches
+      || window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  });
   useEffect(() => {
     const mqMobile = window.matchMedia("(max-width: 900px)");
     const mqReduced = window.matchMedia("(prefers-reduced-motion: reduce)");

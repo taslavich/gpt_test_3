@@ -3,6 +3,7 @@ import { motion } from "framer-motion";
 import { AuthDialog } from "./AuthDialog";
 import { LineReveal, WordsReveal } from "./CinematicReveal";
 import { useLanguage } from "@/contexts/LanguageContext";
+import { useIsMobileImmediate } from "@/hooks/use-mobile";
 
 const copy = {
   ru: {
@@ -48,6 +49,7 @@ const metrics = [
 ];
 
 function CalculatorMock({ text }: { text: typeof copy.en }) {
+  const isMobile = useIsMobileImmediate();
   return (
     <div className="relative overflow-hidden rounded-[24px] border border-white/[0.09] bg-black/25 p-4 md:p-5">
       <div className="absolute inset-0 bg-[radial-gradient(circle_at_12%_10%,hsl(var(--primary)/0.14),transparent_42%)]" />
@@ -63,8 +65,8 @@ function CalculatorMock({ text }: { text: typeof copy.en }) {
         {metrics.map(({ key, value, icon: Icon }, index) => (
           <motion.div
             key={key}
-            initial={{ opacity: 0, y: 14 }}
-            whileInView={{ opacity: 1, y: 0 }}
+            initial={isMobile ? false : { opacity: 0, y: 14 }}
+            whileInView={isMobile ? undefined : { opacity: 1, y: 0 }}
             viewport={{ once: true }}
             transition={{ duration: 0.55, delay: index * 0.07 }}
             className="rounded-2xl border border-white/[0.075] bg-background/55 p-3.5 md:p-4"
@@ -78,7 +80,7 @@ function CalculatorMock({ text }: { text: typeof copy.en }) {
 
       <div className="relative mt-3 overflow-hidden rounded-2xl border border-white/[0.075] bg-background/45 px-4 py-4">
         <div className="flex items-center justify-between text-[10px] text-muted-foreground"><span>{text.received}</span><span>{text.potential}</span></div>
-        <div className="mt-3 h-2 overflow-hidden rounded-full bg-white/[0.06]"><motion.div initial={{ width: 0 }} whileInView={{ width: "24.3%" }} viewport={{ once: true }} transition={{ duration: 1, delay: 0.35 }} className="h-full rounded-full bg-primary shadow-[0_0_18px_hsl(var(--primary)/0.5)]" /></div>
+        <div className="mt-3 h-2 overflow-hidden rounded-full bg-white/[0.06]"><motion.div initial={isMobile ? { width: "24.3%" } : { width: 0 }} whileInView={isMobile ? undefined : { width: "24.3%" }} viewport={{ once: true }} transition={{ duration: 1, delay: 0.35 }} className="h-full rounded-full bg-primary shadow-[0_0_18px_hsl(var(--primary)/0.5)]" /></div>
       </div>
     </div>
   );
@@ -86,6 +88,7 @@ function CalculatorMock({ text }: { text: typeof copy.en }) {
 
 export function TrafficCalculatorSection() {
   const { lang } = useLanguage();
+  const isMobile = useIsMobileImmediate();
   const text = copy[lang] ?? copy.en;
 
   return (
@@ -101,8 +104,8 @@ export function TrafficCalculatorSection() {
           </div>
 
           <motion.div
-            initial={{ opacity: 0, y: 28 }}
-            whileInView={{ opacity: 1, y: 0 }}
+            initial={isMobile ? false : { opacity: 0, y: 28 }}
+            whileInView={isMobile ? undefined : { opacity: 1, y: 0 }}
             viewport={{ once: true, margin: "-60px" }}
             transition={{ duration: 0.8, ease: [0.22, 1, 0.36, 1] }}
             className="landing-panel landing-panel-mint mt-14 overflow-hidden p-5 md:p-8 lg:p-10"

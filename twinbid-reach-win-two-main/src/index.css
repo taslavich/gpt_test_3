@@ -649,6 +649,22 @@
   .landing-button:hover { transform: none; }
 }
 
+/* iOS/Android: fixed backdrop filters and large CSS blurs are expensive while
+   scrolling. Content and the intentional marquee/orbit motion stay intact. */
+@media (max-width: 767px) {
+  .landing-shell .backdrop-blur-sm,
+  .landing-shell .backdrop-blur-md,
+  .landing-shell .backdrop-blur-xl {
+    -webkit-backdrop-filter: none !important;
+    backdrop-filter: none !important;
+  }
+
+  .landing-header-panel {
+    background-color: hsl(200 18% 7% / 0.96) !important;
+    transition-duration: 150ms !important;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .landing-orbit,
   .landing-format-orbit,

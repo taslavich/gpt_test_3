@@ -76,6 +76,13 @@ export function getTransactionChannel(transaction: Pick<ApiUserTransaction, "pay
   return transaction.payment_channel === "passimpay_invoice" ? "passimpay_invoice" : "static_wallet";
 }
 
+export function isUnfinishedStaticWalletTransaction(
+  transaction: Pick<ApiUserTransaction, "payment_channel" | "status">,
+): boolean {
+  return getTransactionChannel(transaction) === "static_wallet"
+    && (transaction.status === "draft" || transaction.status === "pending");
+}
+
 export function isTransactionCredited(
   transaction: Pick<ApiUserTransaction, "status" | "credited_at">,
 ): boolean {

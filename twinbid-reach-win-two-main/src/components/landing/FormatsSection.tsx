@@ -2,6 +2,7 @@ import { Layers, FileText, LayoutGrid, Bell, X } from "lucide-react";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { motion } from "framer-motion";
 import { WordsReveal, LineReveal } from "./CinematicReveal";
+import { useIsMobileImmediate } from "@/hooks/use-mobile";
 
 const formatIcons = [Layers, FileText, LayoutGrid, Bell];
 const formatNames = ["Popunder", "Native", "Banner", "In-page Push"];
@@ -149,6 +150,7 @@ const mockups = [PopunderMock, NativeMock, BannerMock, PushMock];
 
 export function FormatsSection() {
   const { t } = useLanguage();
+  const isMobile = useIsMobileImmediate();
 
   return (
     <section id="formats" className="landing-section landing-section-grid relative">
@@ -178,8 +180,8 @@ export function FormatsSection() {
               return (
                 <motion.div
                   key={index}
-                  initial={{ opacity: 0, y: 30 }}
-                  whileInView={{ opacity: 1, y: 0 }}
+                  initial={isMobile ? false : { opacity: 0, y: 30 }}
+                  whileInView={isMobile ? undefined : { opacity: 1, y: 0 }}
                   viewport={{ once: true, margin: "-60px" }}
                   transition={{ duration: 0.8, delay: index * 0.08, ease: [0.22, 1, 0.36, 1] }}
                   className={`landing-card group relative overflow-hidden p-6 transition-transform duration-500 hover:-translate-y-1 md:p-8 ${index % 2 === 1 ? "sm:translate-y-10" : ""}`}

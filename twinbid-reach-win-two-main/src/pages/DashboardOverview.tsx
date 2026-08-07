@@ -6,7 +6,7 @@ import { useLanguage } from "@/contexts/LanguageContext";
 import { useCampaigns } from "@/contexts/CampaignContext";
 import { Eye, MousePointer, Target } from "lucide-react";
 import { useCampaignStats, statOf } from "@/hooks/use-campaign-stats";
-import { formatNumberWithDot, formatStatisticInteger } from "@/lib/numberFormat";
+import { formatStatisticInteger, formatStatisticSpend } from "@/lib/numberFormat";
 import { CampaignIdPopover } from "@/components/dashboard/CampaignIdPopover";
 
 export default function DashboardOverview() {
@@ -88,7 +88,7 @@ export default function DashboardOverview() {
                     </div>
                     <div>
                       <p className="text-xs text-muted-foreground">{t("overview.spent")}</p>
-                      <p className="mt-1 text-sm font-medium">${formatNumberWithDot(stats.spent)}</p>
+                      <p className="mt-1 text-sm font-medium">${formatStatisticSpend(stats.spent)}</p>
                     </div>
                   </div>
                 </article>
@@ -124,7 +124,7 @@ export default function DashboardOverview() {
                       </td>
                       <td className="py-3 px-4">{formatStatisticInteger(s.impressions)}</td>
                       <td className="py-3 px-4">{formatStatisticInteger(s.clicks)}</td>
-                      <td className="py-3 px-4">${formatNumberWithDot(s.spent)}</td>
+                      <td className="py-3 px-4">${formatStatisticSpend(s.spent)}</td>
                     </tr>
                   );
                 })}

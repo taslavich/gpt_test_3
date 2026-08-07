@@ -7,6 +7,7 @@ import {
   getTransactionBonusAmount,
   isPassimPayPartial,
   isTransactionCredited,
+  isUnfinishedStaticWalletTransaction,
   parseTopupAmount,
   validatePromocodeForTopup,
 } from "@/lib/topup";
@@ -88,6 +89,25 @@ describe("top-up request contract", () => {
       status: "approved",
       amount_paid: 100,
       credited_at: "2026-08-05T00:05:00Z",
+    }))).toBe(false);
+  });
+
+  it("blocks a new static-wallet payment only for unfinished static-wallet transactions", () => {
+    expect(isUnfinishedStaticWalletTransaction(transaction({
+      payment_channel: "static_wallet",
+      status: "draft",
+    }))).toBe(true);
+    expect(isUnfinishedStaticWalletTransaction(transaction({
+      payment_channel: "static_wallet",
+      status: "pending",
+    }))).toBe(true);
+    expect(isUnfinishedStaticWalletTransaction(transaction({
+      payment_channel: "passimpay_invoice",
+      status: "pending",
+    }))).toBe(false);
+    expect(isUnfinishedStaticWalletTransaction(transaction({
+      payment_channel: "static_wallet",
+      status: "approved",
     }))).toBe(false);
   });
 });

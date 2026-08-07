@@ -2,11 +2,13 @@ import { UserPlus, Target, Wallet, Rocket } from "lucide-react";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { motion } from "framer-motion";
 import { WordsReveal, LineReveal } from "./CinematicReveal";
+import { useIsMobileImmediate } from "@/hooks/use-mobile";
 
 const stepIcons = [UserPlus, Target, Wallet, Rocket];
 
 export function StepsSection() {
   const { t } = useLanguage();
+  const isMobile = useIsMobileImmediate();
 
   const steps = stepIcons.map((icon, i) => ({
     icon,
@@ -42,8 +44,8 @@ export function StepsSection() {
             {steps.map((step, index) => (
               <motion.div
                 key={index}
-                initial={{ opacity: 0, y: 30 }}
-                whileInView={{ opacity: 1, y: 0 }}
+                initial={isMobile ? false : { opacity: 0, y: 30 }}
+                whileInView={isMobile ? undefined : { opacity: 1, y: 0 }}
                 viewport={{ once: true, margin: "-80px" }}
                 transition={{ duration: 0.8, delay: index * 0.08, ease: [0.22, 1, 0.36, 1] }}
                 className="landing-card group relative min-h-[310px] overflow-hidden p-7 md:p-9"

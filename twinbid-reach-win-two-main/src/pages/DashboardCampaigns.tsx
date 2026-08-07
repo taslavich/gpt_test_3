@@ -21,7 +21,7 @@ import { toast } from "sonner";
 import { useCampaigns, type Campaign } from "@/contexts/CampaignContext";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { useCampaignStats, statOf } from "@/hooks/use-campaign-stats";
-import { formatNumberWithDot, formatStatisticInteger } from "@/lib/numberFormat";
+import { formatNumberWithDot, formatStatisticInteger, formatStatisticSpend } from "@/lib/numberFormat";
 import { CampaignIdPopover } from "@/components/dashboard/CampaignIdPopover";
 
 function isDraftComplete(c: Campaign): boolean {
@@ -326,7 +326,7 @@ export default function DashboardCampaigns() {
           <Card className="min-w-0 bg-card border-border"><CardContent className="p-4"><p className="text-sm text-muted-foreground">{t("campaigns.total")}</p><p className="mt-1 truncate text-2xl font-bold">{totalCount}</p></CardContent></Card>
           <Card className="min-w-0 bg-card border-border"><CardContent className="p-4"><p className="text-sm text-muted-foreground">{t("campaigns.activeCount")}</p><p className="mt-1 truncate text-2xl font-bold text-green-500">{activeCount}</p></CardContent></Card>
           <Card className="min-w-0 bg-card border-border"><CardContent className="p-4"><p className="text-sm text-muted-foreground">{t("campaigns.budget")}</p><p className="mt-1 truncate text-2xl font-bold">${formatNumberWithDot(totalBudget, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p></CardContent></Card>
-          <Card className="min-w-0 bg-card border-border"><CardContent className="p-4"><p className="text-sm text-muted-foreground">{t("overview.spent")}</p><p className="mt-1 truncate text-2xl font-bold">${formatNumberWithDot(totalSpent, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p></CardContent></Card>
+          <Card className="min-w-0 bg-card border-border"><CardContent className="p-4"><p className="text-sm text-muted-foreground">{t("overview.spent")}</p><p className="mt-1 truncate text-2xl font-bold">${formatStatisticSpend(totalSpent)}</p></CardContent></Card>
         </div>
 
         <Card className="bg-card border-border">
@@ -361,7 +361,7 @@ export default function DashboardCampaigns() {
                       </div>
                       <div className="col-span-2">
                         <p className="text-xs text-muted-foreground">{t("overview.spent")}</p>
-                        <p className="mt-1 text-lg font-semibold">${formatNumberWithDot(cs.spent)}</p>
+                        <p className="mt-1 text-lg font-semibold">${formatStatisticSpend(cs.spent)}</p>
                       </div>
                     </div>
 
@@ -436,7 +436,7 @@ export default function DashboardCampaigns() {
                       <td className="py-4 px-4"><Badge variant="outline" className={cn("font-normal", statusConfig[campaign.status]?.className)}>{statusConfig[campaign.status]?.label}</Badge></td>
                       <td className="py-4 px-4 text-muted-foreground">{campaign.format}</td>
                       <td className="py-4 px-4">${formatNumberWithDot(campaign.budget)}</td>
-                      <td className="py-4 px-4">${formatNumberWithDot(cs.spent)}</td>
+                      <td className="py-4 px-4">${formatStatisticSpend(cs.spent)}</td>
                       <td className="py-4 px-4">{formatStatisticInteger(cs.impressions)}</td>
                       <td className="py-4 px-4">{formatStatisticInteger(cs.clicks)}</td>
                       <td className="py-4 px-4">{cs.ctr}%</td>
@@ -481,7 +481,7 @@ export default function DashboardCampaigns() {
                 [t("overview.status"), <Badge variant="outline" className={cn("font-normal", statusConfig[viewCampaign.status]?.className)}>{statusConfig[viewCampaign.status]?.label}</Badge>],
                 [t("campaigns.format"), viewCampaign.format],
                 [t("campaigns.budget"), `$${formatNumberWithDot(viewCampaign.budget)}`],
-                [t("overview.spent"), `$${formatNumberWithDot(vs.spent)}`],
+                [t("overview.spent"), `$${formatStatisticSpend(vs.spent)}`],
                 [t("overview.impressions"), formatStatisticInteger(vs.impressions)],
                 [t("stats.clicks"), formatStatisticInteger(vs.clicks)],
                 ["CTR", `${vs.ctr}%`],

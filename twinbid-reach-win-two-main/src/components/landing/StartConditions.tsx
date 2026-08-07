@@ -3,9 +3,11 @@ import { AuthDialog } from "./AuthDialog";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { WordsReveal, LineReveal } from "./CinematicReveal";
 import { motion } from "framer-motion";
+import { useIsMobileImmediate } from "@/hooks/use-mobile";
 
 export function StartConditions() {
   const { t } = useLanguage();
+  const isMobile = useIsMobileImmediate();
 
   return (
     <section className="landing-section relative">
@@ -13,13 +15,13 @@ export function StartConditions() {
         <div className="max-w-[1280px] mx-auto">
           <div className="landing-panel landing-panel-mint grid overflow-hidden md:grid-cols-12">
             <div className="relative border-b border-white/[0.08] p-7 md:col-span-7 md:border-b-0 md:border-r md:p-12 lg:p-16">
-              <div className="pointer-events-none absolute right-0 top-0 h-56 w-56 rounded-full bg-primary/10 blur-[80px]" />
+              <div className="pointer-events-none absolute right-0 top-0 hidden h-56 w-56 rounded-full bg-primary/10 blur-[80px] md:block" />
               <LineReveal>
                 <div className="landing-kicker mb-12">01 / {t("start.conditionsLabel")}</div>
               </LineReveal>
               <motion.div
-                initial={{ opacity: 0, scale: 0.96 }}
-                whileInView={{ opacity: 1, scale: 1 }}
+                initial={isMobile ? false : { opacity: 0, scale: 0.96 }}
+                whileInView={isMobile ? undefined : { opacity: 1, scale: 1 }}
                 viewport={{ once: true, margin: "-100px" }}
                 transition={{ duration: 1.1, ease: [0.22, 1, 0.36, 1] }}
                 className="relative font-display font-extralight text-foreground leading-[0.82] tracking-tight"
@@ -37,8 +39,8 @@ export function StartConditions() {
 
             <div className="flex items-stretch p-4 md:col-span-5 md:p-6 lg:p-8">
               <motion.div
-                initial={{ opacity: 0, y: 30 }}
-                whileInView={{ opacity: 1, y: 0 }}
+                initial={isMobile ? false : { opacity: 0, y: 30 }}
+                whileInView={isMobile ? undefined : { opacity: 1, y: 0 }}
                 viewport={{ once: true, margin: "-80px" }}
                 transition={{ duration: 0.9, delay: 0.2, ease: [0.22, 1, 0.36, 1] }}
                 className="flex w-full flex-col justify-between rounded-[28px] border border-white/10 bg-black/20 p-7 shadow-[inset_0_1px_0_rgba(255,255,255,0.05)] md:p-9"

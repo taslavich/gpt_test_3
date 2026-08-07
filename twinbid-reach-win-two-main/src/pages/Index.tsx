@@ -12,12 +12,12 @@ import { Footer } from "@/components/landing/Footer";
 import { Marquee } from "@/components/landing/LiveCanvas";
 import { AnimatedBackground } from "@/components/landing/AnimatedBackground";
 import { useLanguage } from "@/contexts/LanguageContext";
-import { useIsMobile } from "@/hooks/use-mobile";
+import { useIsMobileImmediate } from "@/hooks/use-mobile";
 import { MotionConfig } from "framer-motion";
 
 const Index = () => {
   const { t } = useLanguage();
-  const isMobile = useIsMobile();
+  const isMobile = useIsMobileImmediate();
   const marquee1Items = [t("marquee.tryTwinBid"), t("marquee.registerNow")];
   return (
     <MotionConfig reducedMotion={isMobile ? "always" : "never"}>
