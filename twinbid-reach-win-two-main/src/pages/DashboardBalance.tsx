@@ -18,6 +18,7 @@ import type { ApiUserTransaction, PaymentChannel } from "@/api/types";
 import { PAYMENT_METHODS } from "@/lib/paymentMethods";
 import { formatCurrencyAmount } from "@/lib/numberFormat";
 import { PassimPayBrand } from "@/components/dashboard/PassimPayBrand";
+import { rememberTopupForGoal, trackBalanceTopupSuccess } from "@/lib/yandexMetrikaTopup";
 import {
   buildPassimPayTopup,
   buildStaticWalletTopup,
@@ -69,7 +70,9 @@ export default function DashboardBalance() {
     setLoadingRequests(true);
     try {
       const res = await api.listTransactions();
-      setTopupRequests(Array.isArray(res?.items) ? res.items : []);
+      const items = Array.isArray(res?.items) ? res.items : [];
+      items.forEach(trackBalanceTopupSuccess);
+      setTopupRequests(items);
     } catch (e) {
       console.error("Topups fetch error:", e);
       setTopupRequests([]);
@@ -195,6 +198,9 @@ export default function DashboardBalance() {
       const transactionRowId = created.id;
       const transactionChannel = created.payment_channel || selectedChannel;
       const bonusAmount = getTransactionBonusAmount(created);
+
+      rememberTopupForGoal(transactionRowId);
+      trackBalanceTopupSuccess(created);
 
       if (transactionRowId && appliedPromo) {
         try {

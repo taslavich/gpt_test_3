@@ -4,6 +4,7 @@ import { CheckCircle2, AlertTriangle, XCircle, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { api, ApiError } from "@/api";
+import { trackRegistrationSuccess } from "@/lib/yandexMetrika";
 
 type VerifyState = "loading" | "success" | "already" | "invalid";
 
@@ -22,6 +23,7 @@ export default function Verify() {
     (async () => {
       try {
         await api.verifyEmail({ token });
+        trackRegistrationSuccess();
         if (!cancelled) setState("success");
       } catch (e) {
         if (cancelled) return;

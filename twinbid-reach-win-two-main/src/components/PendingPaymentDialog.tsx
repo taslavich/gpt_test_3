@@ -13,6 +13,7 @@ import { useProfile } from "@/contexts/ProfileContext";
 import { usePendingPayment, type PendingPaymentData } from "@/contexts/PendingPaymentContext";
 import { PAYMENT_METHODS } from "@/lib/paymentMethods";
 import { getPassimPayChargeAmount, getPassimPayFee, getTransactionBonusAmount, getTransactionChannel } from "@/lib/topup";
+import { trackBalanceTopupSuccess } from "@/lib/yandexMetrikaTopup";
 import type { ApiUserTransaction } from "@/api/types";
 
 import { api, ApiError } from "@/api";
@@ -251,6 +252,7 @@ export function PendingPaymentDialog() {
         && approvedHandledRef.current !== transaction.id
       ) {
         approvedHandledRef.current = transaction.id;
+        trackBalanceTopupSuccess(transaction);
         await refetchProfile();
         triggerRefresh();
         toast.success(t("balance.passimpay.paid"));

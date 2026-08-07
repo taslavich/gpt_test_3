@@ -1,13 +1,6 @@
 import { useEffect, useRef } from "react";
 import { useLocation } from "react-router-dom";
-
-declare global {
-  interface Window {
-    ym?: (counterId: number, method: string, ...args: unknown[]) => void;
-  }
-}
-
-const YANDEX_METRIKA_ID = 111369515;
+import { YANDEX_METRIKA_ID } from "@/lib/yandexMetrika";
 
 export function YandexMetrikaTracker() {
   const location = useLocation();
