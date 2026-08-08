@@ -29,7 +29,24 @@ func WriteBytesToRedis(ctx context.Context, redisClients []*redis.Client, uuid, 
 	pipe.Expire(ctx, uuid, RedisKeyTTL)
 
 	if _, err := pipe.Exec(ctx); err != nil {
-		return fmt.Errorf("failed to write bytes to Redis (uuid=%s, column=%s, shard=%d): %w", uuid, column, idx, err)
+		stats := client.PoolStats()
+
+		return fmt.Errorf(
+			"failed to write bytes to Redis "+
+				"(uuid=%s, column=%s, shard=%d, "+
+				"pool_total=%d, pool_idle=%d, pool_used=%d, "+
+				"pool_hits=%d, pool_misses=%d, pool_timeouts=%d): %w",
+			uuid,
+			column,
+			idx,
+			stats.TotalConns,
+			stats.IdleConns,
+			stats.TotalConns-stats.IdleConns,
+			stats.Hits,
+			stats.Misses,
+			stats.Timeouts,
+			err,
+		)
 	}
 
 	return nil
