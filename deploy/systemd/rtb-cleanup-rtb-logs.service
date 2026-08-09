@@ -1,0 +1,6 @@
+[Unit]
+Description=Cleanup RTB logs
+
+[Service]
+Type=oneshot
+ExecStart=/bin/sh -c 'truncate -s 0 /var/log/rtb/*.log'

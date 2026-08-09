@@ -1,0 +1,7 @@
+[Unit]
+Description=Cleanup HAProxy logs
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/truncate -s 0 /var/log/haproxy/edge8086.log
+ExecStart=/usr/bin/truncate -s 0 /var/log/haproxy.log
