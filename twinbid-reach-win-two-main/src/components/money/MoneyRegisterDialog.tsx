@@ -9,7 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { PasswordInput } from "@/components/ui/password-input";
 import { useAuth } from "@/contexts/AuthContext";
-import { useLanguage } from "@/contexts/LanguageContext";
+import type { Lang } from "@/contexts/LanguageContext";
 
 const AUTH_COPY = {
   en: {
@@ -26,11 +26,11 @@ const AUTH_COPY = {
 interface MoneyRegisterDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  lang: Lang;
 }
 
-export function MoneyRegisterDialog({ open, onOpenChange }: MoneyRegisterDialogProps) {
+export function MoneyRegisterDialog({ open, onOpenChange, lang }: MoneyRegisterDialogProps) {
   const { signUp } = useAuth();
-  const { lang } = useLanguage();
   const copy = AUTH_COPY[lang];
   const [loading, setLoading] = useState(false);
   const [name, setName] = useState("");

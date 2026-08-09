@@ -11,7 +11,6 @@ describe("TwinBid money pre-landing", () => {
   const renderPage = () => render(<LanguageProvider><TwinBidMoney /></LanguageProvider>);
 
   it("renders the direct-response funnel and opens registration", () => {
-    window.localStorage.setItem("twinbid_lang", "en");
     renderPage();
 
     expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent("Turn Internet Traffic Into Profit");
@@ -23,7 +22,6 @@ describe("TwinBid money pre-landing", () => {
   });
 
   it("recalculates the campaign model when a control changes", () => {
-    window.localStorage.setItem("twinbid_lang", "en");
     renderPage();
     const sliders = screen.getAllByRole("slider");
 
@@ -33,7 +31,6 @@ describe("TwinBid money pre-landing", () => {
   });
 
   it("switches the pre-landing between Russian and Spanish", () => {
-    window.localStorage.setItem("twinbid_lang", "en");
     renderPage();
 
     fireEvent.click(screen.getByRole("button", { name: "RU" }));

@@ -20,7 +20,7 @@ import {
   Zap,
 } from "lucide-react";
 import { MoneyRegisterDialog } from "@/components/money/MoneyRegisterDialog";
-import { useLanguage } from "@/contexts/LanguageContext";
+import type { Lang } from "@/contexts/LanguageContext";
 import { moneyText } from "./twinBidMoneyTranslations";
 import "./twinbid-money.css";
 
@@ -122,7 +122,7 @@ const scenarios = [
 ];
 
 export default function TwinBidMoney() {
-  const { lang, setLang } = useLanguage();
+  const [lang, setLang] = useState<Lang>("en");
   const tr = (text: string) => moneyText(lang, text);
   const [registerOpen, setRegisterOpen] = useState(false);
   const [budget, setBudget] = useState(100);
@@ -451,7 +451,7 @@ export default function TwinBidMoney() {
         <div><a href="/legal#terms" target="_blank" rel="noreferrer">{tr("Terms")}</a><a href="/legal#privacy" target="_blank" rel="noreferrer">{tr("Privacy")}</a></div>
       </footer>
 
-      <MoneyRegisterDialog open={registerOpen} onOpenChange={setRegisterOpen} />
+      <MoneyRegisterDialog open={registerOpen} onOpenChange={setRegisterOpen} lang={lang} />
     </div>
   );
 }
