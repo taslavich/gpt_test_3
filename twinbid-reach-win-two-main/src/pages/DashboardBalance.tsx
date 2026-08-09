@@ -163,7 +163,7 @@ export default function DashboardBalance() {
       && (!user || tx.user_id === user.id),
   );
   const hasPendingStaticWalletDialog = !!pendingPayment
-    && pendingPayment.channel !== "passimpay_invoice";
+    && pendingPayment.channel === "static_wallet";
   const isTopUpBlocked = selectedChannel === "static_wallet"
     && (hasPendingStaticWalletDialog || hasUnfinishedStaticWallet);
 

@@ -84,7 +84,7 @@ export function getTransactionChannel(transaction: Pick<ApiUserTransaction, "pay
 export function isUnfinishedStaticWalletTransaction(
   transaction: Pick<ApiUserTransaction, "payment_channel" | "status">,
 ): boolean {
-  return getTransactionChannel(transaction) === "static_wallet"
+  return transaction.payment_channel === "static_wallet"
     && (transaction.status === "draft" || transaction.status === "pending");
 }
 

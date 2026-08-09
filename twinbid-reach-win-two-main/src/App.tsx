@@ -24,6 +24,7 @@ const CreateCampaign = lazy(() => import("./pages/CreateCampaign"));
 const EditCampaign = lazy(() => import("./pages/EditCampaign"));
 const Verify = lazy(() => import("./pages/Verify"));
 const Legal = lazy(() => import("./pages/Legal"));
+const TwinBidMoney = lazy(() => import("./pages/TwinBidMoney"));
 
 const queryClient = new QueryClient();
 
@@ -45,6 +46,7 @@ const App = () => (
             <Suspense fallback={<RouteFallback />}>
               <Routes>
                 <Route path="/" element={<Index />} />
+                <Route path="/twinbid_money" element={<TwinBidMoney />} />
                 <Route path="/verify" element={<Verify />} />
                 <Route path="/legal" element={<Legal />} />
                 <Route path="/dashboard" element={<ProtectedRoute><DashboardProviders /></ProtectedRoute>}>

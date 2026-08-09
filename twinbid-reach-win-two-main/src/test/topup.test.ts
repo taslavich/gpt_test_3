@@ -109,6 +109,10 @@ describe("top-up request contract", () => {
       status: "pending",
     }))).toBe(false);
     expect(isUnfinishedStaticWalletTransaction(transaction({
+      payment_channel: "another_provider" as ApiUserTransaction["payment_channel"],
+      status: "pending",
+    }))).toBe(false);
+    expect(isUnfinishedStaticWalletTransaction(transaction({
       payment_channel: "static_wallet",
       status: "approved",
     }))).toBe(false);
