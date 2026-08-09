@@ -227,6 +227,64 @@ func cloneFloat64Map(input map[string]float64) map[string]float64 {
 	return output
 }
 
+func bidResponseImpIDs(response *ortb_V2_5.BidResponse) map[string]struct{} {
+	result := make(map[string]struct{})
+	if response == nil {
+		return result
+	}
+	for _, seat := range response.GetSeatbid() {
+		if seat == nil {
+			continue
+		}
+		for _, bid := range seat.GetBid() {
+			if bid == nil || strings.TrimSpace(bid.GetImpid()) == "" {
+				continue
+			}
+			result[bid.GetImpid()] = struct{}{}
+		}
+	}
+	return result
+}
+
+// buildDSPFallbackBidRequest keeps the full request context but removes every
+// impression already won by ADV. The returned UUID map is narrowed to exactly
+// the impressions that are really sent downstream.
+func buildDSPFallbackBidRequest(
+	source *ortb_V2_5.BidRequest,
+	impIDUUID map[string]string,
+	readyADVResponse *ortb_V2_5.BidResponse,
+) (*ortb_V2_5.BidRequest, map[string]string, error) {
+	if source == nil {
+		return nil, nil, fmt.Errorf("DSP fallback bid request is nil")
+	}
+	cloned, ok := proto.Clone(source).(*ortb_V2_5.BidRequest)
+	if !ok || cloned == nil {
+		return nil, nil, fmt.Errorf("cannot clone DSP fallback bid request")
+	}
+
+	resolvedByADV := bidResponseImpIDs(readyADVResponse)
+	fallbackImps := make([]*ortb_V2_5.Imp, 0, len(cloned.GetImp()))
+	fallbackUUIDs := make(map[string]string, len(impIDUUID))
+	for _, imp := range cloned.GetImp() {
+		// Preserve malformed/empty impressions on the DSP fallback path exactly
+		// as the legacy full-request flow did; only a concrete ADV-winning imp ID
+		// is removed.
+		if imp == nil || strings.TrimSpace(imp.GetId()) == "" {
+			fallbackImps = append(fallbackImps, imp)
+			continue
+		}
+		if _, resolved := resolvedByADV[imp.GetId()]; resolved {
+			continue
+		}
+		fallbackImps = append(fallbackImps, imp)
+		if uuid, exists := impIDUUID[imp.GetId()]; exists {
+			fallbackUUIDs[imp.GetId()] = uuid
+		}
+	}
+	cloned.Imp = fallbackImps
+	return cloned, fallbackUUIDs, nil
+}
+
 func (s *Server) GetBids_V2_5(
 	ctx context.Context,
 	req *dspRouterGrpc.DspRouterRequest_V2_5,
@@ -267,20 +325,6 @@ func (s *Server) GetBids_V2_5(
 	req.BidRequest.Tmax = &newTmax
 	if req.BidRequest.Device != nil && req.BidRequest.Device.Ip == nil && req.BidRequest.Device.Ipv6 != nil {
 		req.BidRequest.Device.Ip = req.BidRequest.Device.Ipv6
-	}
-
-	jsonData, err := jsoniter.Marshal(req.BidRequest)
-	if err != nil {
-		newErr := fmt.Errorf("Can not marshal in GetBids_V_2_5 because got uknown error: %v", err)
-
-		grpcCode := codes.Unknown
-
-		if st, ok := status.FromError(err); ok {
-			grpcCode = st.Code()
-			newErr = fmt.Errorf("Can not marshal in GetBids_V_2_5 because got error: %v", st.Err())
-		}
-
-		return nil, status.Error(grpcCode, newErr.Error())
 	}
 
 	var (
@@ -380,18 +424,39 @@ func (s *Server) GetBids_V2_5(
 			)
 		}
 	}
+	var readyADVForBidEngine *ortb_V2_5.BidResponse
+	winnerUserIDs := map[string]string{}
+	winnerBasePrices := map[string]float64{}
 	if advErr != nil {
-		// ADV errors always fall through to the DSP path, even if a response
-		// object was returned together with the error.
+		// ADV errors always fall through with the full request. Ignore any
+		// response object returned together with the error, preserving the
+		// previous error semantics.
 		log.Printf("ADV auction failed, falling back to DSP: %v", advErr)
-	} else if readyADVResponse != nil {
+		readyADVResponse = nil
+	} else if len(bidResponseImpIDs(readyADVResponse)) > 0 {
+		readyADVForBidEngine = readyADVResponse
+		winnerUserIDs = cloneStringMap(advResponse.GetWinnerUserIds())
+		winnerBasePrices = cloneFloat64Map(advResponse.GetWinnerBasePrices())
+	}
+
+	dspBidRequest, dspImpIdUuid, err := buildDSPFallbackBidRequest(
+		req.GetBidRequest(),
+		req.GetImpIdUuid(),
+		readyADVForBidEngine,
+	)
+	if err != nil {
+		return nil, status.Error(codes.Internal, err.Error())
+	}
+
+	if len(dspBidRequest.GetImp()) == 0 && readyADVForBidEngine != nil {
 		if traceRequest {
 			log.Printf(
-				"[ROUTER][ADV_SELECTED] request_id=%q ssp_domain=%q format=%q winner_user_ids=%d",
+				"[ROUTER][ADV_SELECTED] request_id=%q ssp_domain=%q format=%q winner_user_ids=%d resolved_impressions=%d",
 				req.GetBidRequest().GetId(),
 				req.GetSspDomain(),
 				req.GetFormat(),
-				len(advResponse.GetWinnerUserIds()),
+				len(winnerUserIDs),
+				len(bidResponseImpIDs(readyADVForBidEngine)),
 			)
 		}
 		return &dspRouterGrpc.DspRouterResponse_V2_5{
@@ -400,21 +465,50 @@ func (s *Server) GetBids_V2_5(
 			SspDomain:        req.GetSspDomain(),
 			Code:             http.StatusOK,
 			Rekl:             true,
-			ReadyBidResponse: readyADVResponse,
-			WinnerUserIds:    cloneStringMap(advResponse.GetWinnerUserIds()),
+			ReadyBidResponse: readyADVForBidEngine,
+			WinnerUserIds:    winnerUserIDs,
 			ImpIdUuid:        cloneStringMap(req.GetImpIdUuid()),
-			WinnerBasePrices: cloneFloat64Map(advResponse.GetWinnerBasePrices()),
+			WinnerBasePrices: winnerBasePrices,
 		}, nil
 	}
 
 	if traceRequest {
-		log.Printf(
-			"[ROUTER][ADV_NO_BID_FALLBACK_DSP] request_id=%q ssp_domain=%q format=%q dsp_endpoints=%d",
-			req.GetBidRequest().GetId(),
-			req.GetSspDomain(),
-			req.GetFormat(),
-			len(dspList),
-		)
+		if readyADVForBidEngine != nil {
+			log.Printf(
+				"[ROUTER][ADV_PARTIAL_FALLBACK_DSP] request_id=%q ssp_domain=%q format=%q adv_resolved=%d dsp_impressions=%d dsp_endpoints=%d",
+				req.GetBidRequest().GetId(),
+				req.GetSspDomain(),
+				req.GetFormat(),
+				len(bidResponseImpIDs(readyADVForBidEngine)),
+				len(dspBidRequest.GetImp()),
+				len(dspList),
+			)
+		} else {
+			log.Printf(
+				"[ROUTER][ADV_NO_BID_FALLBACK_DSP] request_id=%q ssp_domain=%q format=%q dsp_endpoints=%d",
+				req.GetBidRequest().GetId(),
+				req.GetSspDomain(),
+				req.GetFormat(),
+				len(dspList),
+			)
+		}
+	}
+
+	jsonData, err := jsoniter.Marshal(dspBidRequest)
+	if err != nil {
+		newErr := fmt.Errorf("Can not marshal in GetBids_V_2_5 because got uknown error: %v", err)
+		grpcCode := codes.Unknown
+		if st, ok := status.FromError(err); ok {
+			grpcCode = st.Code()
+			newErr = fmt.Errorf("Can not marshal in GetBids_V_2_5 because got error: %v", st.Err())
+		}
+		return nil, status.Error(grpcCode, newErr.Error())
+	}
+
+	globalUuid = ""
+	for _, value := range dspImpIdUuid {
+		globalUuid = value
+		break
 	}
 
 	for endpoint, domain := range dspList {
@@ -433,7 +527,7 @@ func (s *Server) GetBids_V2_5(
 			continue
 		}
 
-		if !s.processor.ProcessRequestForDSPV25(DeletePrefix(domain), req.BidRequest).Allowed {
+		if !s.processor.ProcessRequestForDSPV25(DeletePrefix(domain), dspBidRequest).Allowed {
 			//log.Println("Gor DSP filter")
 			codesCh <- &dspDomainCode{
 				domain: domain,
@@ -442,7 +536,7 @@ func (s *Server) GetBids_V2_5(
 			continue
 		}
 
-		if !Allowed(domain, req.BidRequest, s.ranger) {
+		if !Allowed(domain, dspBidRequest, s.ranger) {
 			//log.Println("Gor DSP filter")
 			codesCh <- &dspDomainCode{
 				domain: domain,
@@ -451,7 +545,7 @@ func (s *Server) GetBids_V2_5(
 			continue
 		}
 
-		if filters != nil && !filters.Allowed(req.BidRequest, domain, false) {
+		if filters != nil && !filters.Allowed(dspBidRequest, domain, false) {
 			//log.Println("Gor DSP filter")
 			codesCh <- &dspDomainCode{
 				domain: domain,
@@ -466,10 +560,10 @@ func (s *Server) GetBids_V2_5(
 		}*/
 
 		jsonDataTmp := jsonData
-		mainRequest := req.BidRequest
+		mainRequest := dspBidRequest
 
 		if strings.HasSuffix(domain, constants.BUYMEDIA) {
-			newBidRequest := proto.Clone(req.BidRequest).(*ortb_V2_5.BidRequest)
+			newBidRequest := proto.Clone(dspBidRequest).(*ortb_V2_5.BidRequest)
 			var mockBidfloor float32 = 0
 			var mockSecure int32 = 1
 			var mockBidfloorcur string = "USD"
@@ -617,7 +711,7 @@ func (s *Server) GetBids_V2_5(
 		clickResponses[c.domain] = c.code
 	}
 
-	for _, uuid := range req.ImpIdUuid {
+	for _, uuid := range dspImpIdUuid {
 		if err := writeBidResponsesToRedis(s.redisClients, uuid, clickResponses, req.Logged); err != nil {
 			log.Printf("failed to write bid responses to Redis: %v", err)
 			if s.redisWriteErrorMonitor != nil {
@@ -632,11 +726,14 @@ func (s *Server) GetBids_V2_5(
 	}
 
 	return &dspRouterGrpc.DspRouterResponse_V2_5{
-		BidRequest:   req.GetBidRequest(),
-		BidResponses: responses,
-		SspDomain:    req.GetSspDomain(),
-		Rekl:         false,
-		ImpIdUuid:    cloneStringMap(req.GetImpIdUuid()),
+		BidRequest:       req.GetBidRequest(),
+		BidResponses:     responses,
+		SspDomain:        req.GetSspDomain(),
+		Rekl:             false,
+		ReadyBidResponse: readyADVForBidEngine,
+		WinnerUserIds:    winnerUserIDs,
+		ImpIdUuid:        cloneStringMap(req.GetImpIdUuid()),
+		WinnerBasePrices: winnerBasePrices,
 	}, nil
 }
 

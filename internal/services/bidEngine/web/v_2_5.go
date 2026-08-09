@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"log"
-	"math"
 	"net/http"
 	"runtime/debug"
 	"time"
@@ -15,12 +14,10 @@ import (
 	"gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/proto/types/ortb_V2_5"
 	utils "gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/utils_grpc"
 	services "gitlab.com/twinbid-exchange/RTB-exchange/internal/services"
-	bidEngine "gitlab.com/twinbid-exchange/RTB-exchange/internal/services/bidEngine/service"
 	"gitlab.com/twinbid-exchange/RTB-exchange/internal/types"
 	clickhouse_types "gitlab.com/twinbid-exchange/RTB-exchange/internal/types/clickhouse"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
-	"google.golang.org/protobuf/proto"
 )
 
 type Server struct {
@@ -118,13 +115,12 @@ func (s *Server) GetWinnerBid_V2_5(
 	if req == nil || req.GetBidRequest() == nil {
 		return nil, status.Error(codes.InvalidArgument, "bid engine request is empty")
 	}
-	if req.GetRekl() {
-		return s.handleReadyADVResponse(ctx, req), nil
-	}
 	if s.GetWinnerBidInternal_V_2_5 == nil {
 		return nil, status.Error(codes.Internal, "bid engine auction function is nil")
 	}
 
+	// ADV and DSP winners are now finalized by one per-impression path inside
+	// GetWinnerBidInternal_V_2_5. Rekl is no longer a routing switch here.
 	bidResponse, clickhouseBid, burlUUIDs, admUUIDs := s.GetWinnerBidInternal_V_2_5(
 		ctx,
 		req,
@@ -137,6 +133,9 @@ func (s *Server) GetWinnerBid_V2_5(
 		s.admDomain,
 	)
 
+	// These UUID sets belong to the downstream DSP callback path. ADV callback
+	// semantics stay unchanged: its prepared callbacks are finalized in the
+	// internal function without adding DSP ADM/BURL tracking keys here.
 	for _, uuid := range admUUIDs {
 		if err := utils.WriteUUIDKeyToRedis(ctx, s.redisAdmClient, uuid, s.redisUUIDKeyTTL); err != nil {
 			log.Printf("failed to write ADM UUID key in GetWinnerBidInternal: %v", err)
@@ -155,36 +154,92 @@ func (s *Server) GetWinnerBid_V2_5(
 		}
 	}
 
+	advImpIDs := bidResponseImpIDSet(req.GetReadyBidResponse())
+	finalImpIDs := bidResponseImpIDSet(bidResponse)
+	allADV := allRequestImpressionsInSet(req.GetBidRequest(), advImpIDs)
+
 	impIdUuidClone := make(map[string]string, len(req.ImpIdUuid))
-	for impID, uuid := range req.ImpIdUuid {
-		impIdUuidClone[impID] = uuid
+	winnerUsers := make(map[string]string, len(advImpIDs))
+	failedImpIds := make([]string, 0)
+	failedSet := make(map[string]struct{})
+	appendFailed := func(impID string) {
+		if impID == "" {
+			return
+		}
+		if _, exists := failedSet[impID]; exists {
+			return
+		}
+		failedSet[impID] = struct{}{}
+		failedImpIds = append(failedImpIds, impID)
 	}
 
-	failedImpIds := make([]string, 0)
-	for impID, uuid := range req.ImpIdUuid {
+	// Legacy ADV handling marked a selected ADV impression as failed when its
+	// UUID mapping was missing. Keep that behavior even though the common stats
+	// loop is keyed by ImpIdUuid.
+	for impID := range advImpIDs {
+		if _, exists := req.GetImpIdUuid()[impID]; !exists {
+			appendFailed(impID)
+		}
+	}
+
+	for impID, uuid := range req.GetImpIdUuid() {
+		_, isADV := advImpIDs[impID]
+		if allADV && !isADV {
+			continue
+		}
+		if isADV {
+			// Preserve legacy ADV behavior: only a successfully finalized ADV bid
+			// gets winner stats and enters ImpIdUuidClone. Invalid ADV winners are
+			// failed rather than silently converted into a DSP winner here.
+			if _, finalized := finalImpIDs[impID]; !finalized {
+				appendFailed(impID)
+				continue
+			}
+			if err := utils.WriteWinStats(ctx, s.redisClients, uuid, clickhouseBid[uuid], req.Logged); err != nil {
+				log.Printf("failed to WriteWinStats for ADV bid: %v", err)
+				if s.redisWriteErrorMonitor != nil {
+					s.redisWriteErrorMonitor.RecordForURL(err, req.SspUrl)
+				}
+				appendFailed(impID)
+				continue
+			}
+			impIdUuidClone[impID] = uuid
+			winnerUsers[impID] = req.GetWinnerUserIds()[impID]
+			continue
+		}
+
+		// Preserve the legacy DSP path: winner stats (including the empty winner
+		// record when no DSP bid survives) are written for every fallback imp.
 		if err := utils.WriteWinStats(ctx, s.redisClients, uuid, clickhouseBid[uuid], req.Logged); err != nil {
 			log.Printf("failed to WriteJsonToRedis Bid BID_RESPONSE_WINNER in GetWinnerBidInternal: %v", err)
 			if s.redisWriteErrorMonitor != nil {
 				s.redisWriteErrorMonitor.RecordForURL(err, req.SspUrl)
 			}
-			failedImpIds = append(failedImpIds, impID)
-			delete(impIdUuidClone, impID)
+			appendFailed(impID)
 			continue
 		}
+		impIdUuidClone[impID] = uuid
 	}
 
 	if len(impIdUuidClone) == 0 {
-		return &bidEngineGrpc.BidEngineResponse_V2_5{
-			BidResponse: nil,
-			Code:        http.StatusNoContent,
-		}, nil
+		response := &bidEngineGrpc.BidEngineResponse_V2_5{
+			BidResponse:   nil,
+			Code:          http.StatusNoContent,
+			Rekl:          allADV,
+			WinnerUserIds: winnerUsers,
+		}
+		if allADV {
+			response.FailedImpIds = failedImpIds
+		}
+		return response, nil
 	}
 
 	if !bidResponseHasBids(bidResponse) {
 		return &bidEngineGrpc.BidEngineResponse_V2_5{
-			BidResponse: nil,
-			Code:        http.StatusNoContent,
-			Rekl:        false,
+			BidResponse:   nil,
+			Code:          http.StatusNoContent,
+			Rekl:          allADV,
+			WinnerUserIds: winnerUsers,
 		}, nil
 	}
 
@@ -193,27 +248,17 @@ func (s *Server) GetWinnerBid_V2_5(
 		Code:           http.StatusOK,
 		FailedImpIds:   failedImpIds,
 		ImpIdUuidClone: impIdUuidClone,
-		Rekl:           false,
-		WinnerUserIds:  map[string]string{},
+		Rekl:           allADV,
+		WinnerUserIds:  winnerUsers,
 	}, nil
 }
 
-func (s *Server) handleReadyADVResponse(ctx context.Context, req *bidEngineGrpc.BidEngineRequest_V2_5) *bidEngineGrpc.BidEngineResponse_V2_5 {
-	ready := req.GetReadyBidResponse()
-	if !bidResponseHasBids(ready) {
-		return &bidEngineGrpc.BidEngineResponse_V2_5{Code: http.StatusNoContent, Rekl: true, WinnerUserIds: map[string]string{}}
+func bidResponseImpIDSet(response *ortb_V2_5.BidResponse) map[string]struct{} {
+	result := make(map[string]struct{})
+	if response == nil {
+		return result
 	}
-	cloned, ok := proto.Clone(ready).(*ortb_V2_5.BidResponse)
-	if !ok || cloned == nil {
-		return &bidEngineGrpc.BidEngineResponse_V2_5{Code: http.StatusNoContent, Rekl: true, WinnerUserIds: map[string]string{}}
-	}
-	resultSeat := &ortb_V2_5.SeatBid{Bid: []*ortb_V2_5.Bid{}}
-	impUUID := make(map[string]string)
-	winnerUsers := make(map[string]string)
-	failed := make([]string, 0)
-	advDomain := "adv"
-
-	for _, seat := range cloned.GetSeatbid() {
+	for _, seat := range response.GetSeatbid() {
 		if seat == nil {
 			continue
 		}
@@ -221,65 +266,27 @@ func (s *Server) handleReadyADVResponse(ctx context.Context, req *bidEngineGrpc.
 			if bid == nil || bid.GetImpid() == "" {
 				continue
 			}
-			impID := bid.GetImpid()
-			uuid := req.GetImpIdUuid()[impID]
-			userID := req.GetWinnerUserIds()[impID]
-			if uuid == "" || userID == "" {
-				failed = append(failed, impID)
-				continue
-			}
-			finalBid, ok := bidEngine.FinalizeADVCallbacks(
-				bid,
-				s.admDomain,
-				uuid,
-				req.GetSspDomain(),
-				req.GetFormat(),
-			)
-			if !ok {
-				failed = append(failed, impID)
-				continue
-			}
-			effectivePrice := finalBid.GetPrice()
-			basePriceValue, basePriceExists := req.GetWinnerBasePrices()[impID]
-			if !basePriceExists || basePriceValue <= 0 || math.IsNaN(basePriceValue) || math.IsInf(basePriceValue, 0) {
-				failed = append(failed, impID)
-				continue
-			}
-			basePrice := float32(basePriceValue)
-			cid, crid := finalBid.GetCid(), finalBid.GetCrid()
-			clickhouseBid := &clickhouse_types.Bid{
-				WinDspDomain: &advDomain,
-				WinPrice:     &effectivePrice,
-				WinDspPrice:  &basePrice,
-				WinCid:       &cid,
-				WinCrid:      &crid,
-				WinUserId:    &userID,
-			}
-			if err := utils.WriteWinStats(ctx, s.redisClients, uuid, clickhouseBid, req.GetLogged()); err != nil {
-				log.Printf("failed to WriteWinStats for ADV bid: %v", err)
-				if s.redisWriteErrorMonitor != nil {
-					s.redisWriteErrorMonitor.RecordForURL(err, req.GetSspUrl())
-				}
-				failed = append(failed, impID)
-				continue
-			}
-			resultSeat.Bid = append(resultSeat.Bid, finalBid)
-			impUUID[impID] = uuid
-			winnerUsers[impID] = userID
+			result[bid.GetImpid()] = struct{}{}
 		}
 	}
-	if len(resultSeat.Bid) == 0 {
-		return &bidEngineGrpc.BidEngineResponse_V2_5{Code: http.StatusNoContent, Rekl: true, FailedImpIds: failed, WinnerUserIds: map[string]string{}}
+	return result
+}
+
+func allRequestImpressionsInSet(request *ortb_V2_5.BidRequest, impIDs map[string]struct{}) bool {
+	if request == nil || len(request.GetImp()) == 0 {
+		return false
 	}
-	cloned.Seatbid = []*ortb_V2_5.SeatBid{resultSeat}
-	return &bidEngineGrpc.BidEngineResponse_V2_5{
-		BidResponse:    cloned,
-		Code:           http.StatusOK,
-		FailedImpIds:   failed,
-		ImpIdUuidClone: impUUID,
-		Rekl:           true,
-		WinnerUserIds:  winnerUsers,
+	seen := 0
+	for _, imp := range request.GetImp() {
+		if imp == nil || imp.GetId() == "" {
+			continue
+		}
+		seen++
+		if _, exists := impIDs[imp.GetId()]; !exists {
+			return false
+		}
 	}
+	return seen > 0
 }
 
 func bidResponseHasBids(response *ortb_V2_5.BidResponse) bool {

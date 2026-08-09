@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"math"
 	"sort"
 	"strings"
 
@@ -31,21 +32,10 @@ func GetWinnerBidInternal_V_2_5(
 	if req == nil || req.GetBidRequest() == nil {
 		return &ortb_V2_5.BidResponse{Seatbid: []*ortb_V2_5.SeatBid{{Bid: []*ortb_V2_5.Bid{}}}}, clickhouse_types.GetEmpty(ImpIdUuid), nil, nil
 	}
-	for l := range req.ImpIdUuid {
-		if strings.TrimSpace(req.ImpIdUuid[l]) == "" {
+	for impID := range req.ImpIdUuid {
+		if strings.TrimSpace(req.ImpIdUuid[impID]) == "" {
 			log.Printf("Empty uuid jjj")
 		}
-	}
-
-	if len(req.BidResponses) == 0 {
-		return &ortb_V2_5.BidResponse{
-			Id: req.BidRequest.Id,
-			Seatbid: []*ortb_V2_5.SeatBid{
-				{
-					Bid: []*ortb_V2_5.Bid{},
-				},
-			},
-		}, clickhouse_types.GetEmpty(ImpIdUuid), nil, nil
 	}
 
 	type bidWithDomain struct {
@@ -54,6 +44,32 @@ func GetWinnerBidInternal_V_2_5(
 		domain     string
 	}
 
+	// ADV has already run its own auction in the Router. Keep the selected ADV
+	// bid by impression here; BidEngine only finalizes that winner and never
+	// compares it by price with downstream DSPs.
+	advBids := make(map[string]*ortb_V2_5.Bid)
+	if ready := req.GetReadyBidResponse(); ready != nil {
+		for _, seat := range ready.GetSeatbid() {
+			if seat == nil {
+				continue
+			}
+			for _, bid := range seat.GetBid() {
+				if bid == nil || strings.TrimSpace(bid.GetImpid()) == "" {
+					continue
+				}
+				// ADV is expected to return at most one selected bid per impression.
+				// Keep the first one if malformed input contains duplicates.
+				if _, exists := advBids[bid.GetImpid()]; !exists {
+					advBids[bid.GetImpid()] = bid
+				}
+			}
+		}
+	}
+
+	// Group downstream DSP bids by impression exactly as before. The Router
+	// sends DSPs only impressions that did not receive an ADV winner, but the
+	// ADV lookup below is still authoritative if a bad DSP responds for another
+	// impression.
 	impBids := make(map[string][]*bidWithDomain)
 	for domain, bidResponse := range req.BidResponses {
 		if bidResponse == nil || bidResponse.Seatbid == nil {
@@ -79,70 +95,96 @@ func GetWinnerBidInternal_V_2_5(
 		}
 	}
 
-	if len(impBids) == 0 {
+	if len(req.BidResponses) > 0 && len(impBids) == 0 {
 		jsonData, err := json.MarshalIndent(req.BidResponses, "", "  ")
 		if err != nil {
 			log.Printf("Got len of impBids = 0, Error marshaling: %v", err)
 		}
-
-		globalUuid := func() string {
-			for _, uuid := range ImpIdUuid {
-				return uuid
-			}
-
-			return ""
-		}()
-
+		globalUuid := ""
+		for _, uuid := range ImpIdUuid {
+			globalUuid = uuid
+			break
+		}
 		log.Printf("Got len of impBids = 0, global id %s, bid responses %s", globalUuid, string(jsonData))
-		return &ortb_V2_5.BidResponse{
-			Id: req.BidRequest.Id,
-			Seatbid: []*ortb_V2_5.SeatBid{
-				{
-					Bid: []*ortb_V2_5.Bid{},
-				},
-			},
-		}, clickhouse_types.GetEmpty(ImpIdUuid), nil, nil
 	}
 
-	seatBid := []*ortb_V2_5.SeatBid{
-		{
-			Bid: []*ortb_V2_5.Bid{},
-		},
-	}
+	seatBid := []*ortb_V2_5.SeatBid{{Bid: []*ortb_V2_5.Bid{}}}
 	clickhouseSeatBid := clickhouse_types.GetEmpty(ImpIdUuid)
 	burlUUIDs := make([]string, 0, len(ImpIdUuid))
 	admUUIDs := make([]string, 0, len(ImpIdUuid))
 
-	for impID, bids := range impBids {
+	var percentMap map[string]map[string]map[string]*types.PercentAndBidfloor
+	switch typic {
+	case sppAdapterWeb.ADULT:
+		if percentMapAdult != nil {
+			percentMap = *percentMapAdult
+		}
+	case sppAdapterWeb.MAINSTREAM:
+		if percentMapMainstream != nil {
+			percentMap = *percentMapMainstream
+		}
+	}
+	country := ""
+	if req.GetBidRequest().GetDevice() != nil && req.GetBidRequest().GetDevice().GetGeo() != nil {
+		country = req.GetBidRequest().GetDevice().GetGeo().GetCountry()
+	}
+	advDomain := "adv"
+
+	for _, imp := range req.GetBidRequest().GetImp() {
+		if imp == nil || strings.TrimSpace(imp.GetId()) == "" {
+			continue
+		}
+		impID := imp.GetId()
+
+		// ADV is a per-impression priority winner. If it exists, do not run the
+		// downstream DSP auction for this impression.
+		if advBid := advBids[impID]; advBid != nil {
+			uuid := ImpIdUuid[impID]
+			userID := req.GetWinnerUserIds()[impID]
+			if strings.TrimSpace(uuid) == "" || strings.TrimSpace(userID) == "" {
+				continue
+			}
+
+			basePriceValue, basePriceExists := req.GetWinnerBasePrices()[impID]
+			if !basePriceExists || basePriceValue <= 0 || math.IsNaN(basePriceValue) || math.IsInf(basePriceValue, 0) {
+				continue
+			}
+
+			finalBid, ok := FinalizeADVCallbacks(
+				advBid,
+				admDomain,
+				uuid,
+				req.GetSspDomain(),
+				req.GetFormat(),
+			)
+			if !ok || finalBid == nil {
+				continue
+			}
+
+			effectivePrice := finalBid.GetPrice()
+			basePrice := float32(basePriceValue)
+			cid, crid := finalBid.GetCid(), finalBid.GetCrid()
+			clickhouseSeatBid[uuid] = &clickhouse_types.Bid{
+				WinDspDomain: &advDomain,
+				WinPrice:     &effectivePrice,
+				WinDspPrice:  &basePrice,
+				WinCid:       &cid,
+				WinCrid:      &crid,
+				WinUserId:    &userID,
+			}
+			seatBid[0].Bid = append(seatBid[0].Bid, finalBid)
+			continue
+		}
+
+		// No ADV winner for this impression: run the existing DSP auction with
+		// the same bidfloor/percent/finalPrice selection logic as before.
+		bids := impBids[impID]
 		if len(bids) == 0 {
-			continue // добавляем защиту
+			continue
 		}
 
-		var bidFloor float32 = 0
-		for _, imp := range req.BidRequest.Imp {
-			if imp.GetId() == impID {
-				bidFloor = imp.GetBidfloor()
-				break
-			}
-		}
-
-		var percentMap map[string]map[string]map[string]*types.PercentAndBidfloor
-		switch typic {
-		case sppAdapterWeb.ADULT:
-			if percentMapAdult != nil {
-				percentMap = *percentMapAdult
-			}
-		case sppAdapterWeb.MAINSTREAM:
-			if percentMapMainstream != nil {
-				percentMap = *percentMapMainstream
-			}
-		}
-		country := ""
-		if req.GetBidRequest().GetDevice() != nil && req.GetBidRequest().GetDevice().GetGeo() != nil {
-			country = req.GetBidRequest().GetDevice().GetGeo().GetCountry()
-		}
-
-		newBids := make([]*bidWithDomain, 0)
+		bidFloor := imp.GetBidfloor()
+		newBids := make([]*bidWithDomain, 0, len(bids))
 		for k := range bids {
 			value := utils.GetValueFomSspGeoDspMap(req.SspDomain, country, bids[k].domain, percentMap, &types.PercentAndBidfloor{
 				Percent:  profitPercent,
@@ -161,7 +203,6 @@ func GetWinnerBidInternal_V_2_5(
 
 			bids[k].finalPrice = finalPrice
 			newBids = append(newBids, bids[k])
-
 		}
 
 		if len(newBids) == 0 {
@@ -170,7 +211,6 @@ func GetWinnerBidInternal_V_2_5(
 		sort.Slice(newBids, func(i, j int) bool {
 			return newBids[i].finalPrice > newBids[j].finalPrice
 		})
-
 		winner := newBids[0]
 
 		baseBid := &ortb_V2_5.Bid{
@@ -225,12 +265,36 @@ func GetWinnerBidInternal_V_2_5(
 		}
 	}
 
-	bidResponse := &ortb_V2_5.BidResponse{
-		Id:      req.BidRequest.Id,
-		Seatbid: seatBid,
+	// Preserve the legacy ADV-only response envelope. In mixed or DSP-only
+	// requests the response envelope remains the legacy BidEngine one.
+	if allRequestedImpressionsHaveADV(req.GetBidRequest(), advBids) && req.GetReadyBidResponse() != nil {
+		if cloned, ok := proto.Clone(req.GetReadyBidResponse()).(*ortb_V2_5.BidResponse); ok && cloned != nil {
+			cloned.Seatbid = seatBid
+			return cloned, clickhouseSeatBid, burlUUIDs, admUUIDs
+		}
 	}
 
-	return bidResponse, clickhouseSeatBid, burlUUIDs, admUUIDs
+	return &ortb_V2_5.BidResponse{
+		Id:      req.BidRequest.Id,
+		Seatbid: seatBid,
+	}, clickhouseSeatBid, burlUUIDs, admUUIDs
+}
+
+func allRequestedImpressionsHaveADV(request *ortb_V2_5.BidRequest, advBids map[string]*ortb_V2_5.Bid) bool {
+	if request == nil || len(request.GetImp()) == 0 {
+		return false
+	}
+	seen := 0
+	for _, imp := range request.GetImp() {
+		if imp == nil || strings.TrimSpace(imp.GetId()) == "" {
+			continue
+		}
+		seen++
+		if advBids[imp.GetId()] == nil {
+			return false
+		}
+	}
+	return seen > 0
 }
 
 // FinalizeBidCallbacks is the single BidEngine callback-finalization path for
