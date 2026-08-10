@@ -293,7 +293,9 @@ Frontend синхронизирует креативы по ID: изменённ
    и `provider_status`. Если `provider_status=create_unknown`, frontend не создаёт
    повторную транзакцию, а опрашивает существующую по `data.id`.
 
-   Cryptomus Invoice Link работает по той же схеме без комиссии:
+   Cryptomus Invoice Link работает по той же схеме с комиссией 2,5%. Frontend
+   показывает пользователю итоговую сумму с комиссией, но в `deposit_amount`
+   передаёт исходную сумму пополнения без комиссии:
    ```json
    {
      "provider": "cryptomus",

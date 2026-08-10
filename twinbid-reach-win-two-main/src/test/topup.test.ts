@@ -6,6 +6,8 @@ import {
   buildStaticWalletTopup,
   DEFAULT_HISTORY_REFRESH_MS,
   getInvoiceChargeAmount,
+  getCryptomusChargeAmount,
+  getCryptomusFee,
   getPassimPayChargeAmount,
   getPassimPayFee,
   getTransactionHistoryRefreshInterval,
@@ -59,14 +61,16 @@ describe("top-up request contract", () => {
     });
   });
 
-  it("creates a zero-fee Cryptomus invoice with the same promo contract", () => {
+  it("creates a Cryptomus invoice with the original deposit amount and a 2.5% visible fee", () => {
     expect(buildCryptomusTopup({ depositAmount: 100.25, promoCode: "BONUS25" })).toEqual({
       provider: "cryptomus",
       deposit_amount: 100.25,
       currency: "USD",
       promocode_id: "BONUS25",
     });
-    expect(getInvoiceChargeAmount("cryptomus_invoice", 100.25)).toBe(100.25);
+    expect(getCryptomusFee(100)).toBe(2.5);
+    expect(getCryptomusChargeAmount(100)).toBe(102.5);
+    expect(getInvoiceChargeAmount("cryptomus_invoice", 100.25)).toBe(102.76);
     expect(isInvoicePaymentChannel("cryptomus_invoice")).toBe(true);
     expect(getTransactionChannel(transaction({ payment_channel: "cryptomus_invoice" }))).toBe("cryptomus_invoice");
   });

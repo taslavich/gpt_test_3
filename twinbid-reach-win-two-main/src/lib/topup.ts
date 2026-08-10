@@ -1,7 +1,7 @@
 import type { ApiCreateTransactionRequest, ApiPromocode, ApiUserTransaction, PaymentChannel } from "@/api/types";
 
 export const PASSIMPAY_FEE_PERCENT = 1;
-export const CRYPTOMUS_FEE_PERCENT = 0;
+export const CRYPTOMUS_FEE_PERCENT = 2.5;
 export const PENDING_INVOICE_HISTORY_REFRESH_MS = 5_000;
 export const DEFAULT_HISTORY_REFRESH_MS = 5 * 60 * 1_000;
 export type PromocodeValidationFailure = "expired" | "limit" | "already_used";
@@ -24,9 +24,18 @@ export function getPassimPayFee(depositAmount: number): number {
   return roundMoney(depositAmount * PASSIMPAY_FEE_PERCENT / 100);
 }
 
+export function getCryptomusFee(depositAmount: number): number {
+  return roundMoney(depositAmount * CRYPTOMUS_FEE_PERCENT / 100);
+}
+
 /** Amount shown to the user and charged by PassimPay: deposit + TwinBid fee. */
 export function getPassimPayChargeAmount(depositAmount: number): number {
   return roundMoney(depositAmount + getPassimPayFee(depositAmount));
+}
+
+/** Amount shown to the user and charged by Cryptomus: deposit + TwinBid fee. */
+export function getCryptomusChargeAmount(depositAmount: number): number {
+  return roundMoney(depositAmount + getCryptomusFee(depositAmount));
 }
 
 export function validatePromocodeForTopup(params: {
@@ -97,7 +106,15 @@ export function isInvoicePaymentChannel(channel?: PaymentChannel | null): boolea
 }
 
 export function getInvoiceChargeAmount(channel: PaymentChannel | undefined, depositAmount: number): number {
-  return channel === "passimpay_invoice" ? getPassimPayChargeAmount(depositAmount) : roundMoney(depositAmount);
+  if (channel === "passimpay_invoice") return getPassimPayChargeAmount(depositAmount);
+  if (channel === "cryptomus_invoice") return getCryptomusChargeAmount(depositAmount);
+  return roundMoney(depositAmount);
+}
+
+export function getInvoiceFee(channel: PaymentChannel | undefined, depositAmount: number): number {
+  if (channel === "passimpay_invoice") return getPassimPayFee(depositAmount);
+  if (channel === "cryptomus_invoice") return getCryptomusFee(depositAmount);
+  return 0;
 }
 
 export function getTransactionChannel(transaction: Pick<ApiUserTransaction, "payment_channel">): PaymentChannel {

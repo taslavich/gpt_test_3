@@ -14,7 +14,7 @@ import { usePendingPayment, type PendingPaymentData } from "@/contexts/PendingPa
 import { PAYMENT_METHODS } from "@/lib/paymentMethods";
 import {
   getInvoiceChargeAmount,
-  getPassimPayFee,
+  getInvoiceFee,
   getTransactionBonusAmount,
   getTransactionChannel,
   isInvoicePaymentChannel,
@@ -536,7 +536,7 @@ export function PendingPaymentDialog() {
                     {t(isCryptomus ? "balance.cryptomus.fee" : "balance.passimpay.fee")}
                   </span>
                   <span className={isCryptomus ? "font-medium text-primary" : "font-medium text-orange-500"}>
-                    ${(isCryptomus ? 0 : getPassimPayFee(pendingPayment?.amount || 0)).toLocaleString()}
+                    ${getInvoiceFee(pendingPayment?.channel, pendingPayment?.amount || 0).toLocaleString()}
                   </span>
                 </div>
                 <div className="border-t border-primary/20 pt-2">
