@@ -18,6 +18,7 @@ import {
   getTransactionBonusAmount,
   getTransactionChannel,
   isInvoicePaymentChannel,
+  openFreshInvoicePayment,
 } from "@/lib/topup";
 import { trackBalanceTopupSuccess } from "@/lib/yandexMetrikaTopup";
 import type { ApiUserTransaction } from "@/api/types";
@@ -247,23 +248,27 @@ export function PendingPaymentDialog() {
     }
   };
 
+  const handleInvoiceCredited = useCallback(async (transaction: ApiUserTransaction) => {
+    if (
+      transaction.status === "approved"
+      && transaction.credited_at
+      && approvedHandledRef.current !== transaction.id
+    ) {
+      approvedHandledRef.current = transaction.id;
+      trackBalanceTopupSuccess(transaction);
+      await refetchProfile();
+      triggerRefresh();
+      toast.success(t("balance.passimpay.paid"));
+    }
+  }, [refetchProfile, t, triggerRefresh]);
+
   const refreshInvoice = useCallback(async (transactionRowId: string, showSpinner = false) => {
     if (showSpinner) setCheckingInvoice(true);
     try {
       const transaction = await api.getTransaction(transactionRowId);
       setPollingError(null);
       setPendingPayment(previous => pendingFromTransaction(transaction, previous?.promo));
-      if (
-        transaction.status === "approved"
-        && transaction.credited_at
-        && approvedHandledRef.current !== transaction.id
-      ) {
-        approvedHandledRef.current = transaction.id;
-        trackBalanceTopupSuccess(transaction);
-        await refetchProfile();
-        triggerRefresh();
-        toast.success(t("balance.passimpay.paid"));
-      }
+      await handleInvoiceCredited(transaction);
       return { transaction, stopPolling: false };
     } catch (error) {
       const stopPolling = error instanceof ApiError && (error.status === 404 || error.status === 503);
@@ -281,7 +286,39 @@ export function PendingPaymentDialog() {
     } finally {
       if (showSpinner) setCheckingInvoice(false);
     }
-  }, [refetchProfile, setPendingPayment, t, triggerRefresh]);
+  }, [handleInvoiceCredited, setPendingPayment, t]);
+
+  const handleOpenInvoicePayment = useCallback(async () => {
+    const transactionRowId = pendingPayment?.transactionRowId;
+    if (!transactionRowId) return;
+
+    setCheckingInvoice(true);
+    setPollingError(null);
+    try {
+      const result = await openFreshInvoicePayment({
+        transactionRowId,
+        getTransaction: id => api.getTransaction(id),
+        openWindow: () => window.open("", "_blank"),
+        onFreshTransaction: transaction => {
+          setPendingPayment(previous => pendingFromTransaction(transaction, previous?.promo));
+          triggerRefresh();
+        },
+      });
+      await handleInvoiceCredited(result.transaction);
+    } catch (error) {
+      const message = error instanceof ApiError && error.status === 503
+        ? t("balance.passimpay.unavailable")
+        : error instanceof ApiError && error.status === 404
+          ? t("balance.passimpay.notFound")
+          : error instanceof Error
+            ? error.message
+            : t("balance.toast.submitError");
+      setPollingError(message);
+      notifyError(t("balance.toast.submitError"), error);
+    } finally {
+      setCheckingInvoice(false);
+    }
+  }, [handleInvoiceCredited, pendingPayment?.transactionRowId, setPendingPayment, t, triggerRefresh]);
 
   useEffect(() => {
     const transactionRowId = pendingPayment?.transactionRowId;
@@ -568,12 +605,8 @@ export function PendingPaymentDialog() {
                   <Button
                     type="button"
                     className="w-full"
-                    disabled={!pendingPayment?.payment_url}
-                    onClick={() => {
-                      if (pendingPayment?.payment_url) {
-                        window.open(pendingPayment.payment_url, "_blank", "noopener,noreferrer");
-                      }
-                    }}
+                    disabled={!pendingPayment?.payment_url || checkingInvoice}
+                    onClick={() => void handleOpenInvoicePayment()}
                   >
                     <ExternalLink className="mr-2 h-4 w-4" />
                     {pendingPayment?.payment_url

@@ -4,13 +4,16 @@ import {
   buildCryptomusTopup,
   buildPassimPayTopup,
   buildStaticWalletTopup,
+  DEFAULT_HISTORY_REFRESH_MS,
   getInvoiceChargeAmount,
   getPassimPayChargeAmount,
   getPassimPayFee,
+  getTransactionHistoryRefreshInterval,
   getTransactionBonusAmount,
   getTransactionChannel,
   isInvoicePaymentChannel,
   isInvoicePartial,
+  PENDING_INVOICE_HISTORY_REFRESH_MS,
   isTransactionCredited,
   isUnfinishedStaticWalletTransaction,
   parseTopupAmount,
@@ -136,6 +139,33 @@ describe("top-up request contract", () => {
       payment_channel: "static_wallet",
       status: "approved",
     }))).toBe(false);
+  });
+
+  it.each(["passimpay_invoice", "cryptomus_invoice"] as const)(
+    "refreshes history every 5 seconds for an unfinished %s payment",
+    paymentChannel => {
+      expect(getTransactionHistoryRefreshInterval([
+        transaction({ payment_channel: paymentChannel, status: "pending", credited_at: null }),
+      ])).toBe(PENDING_INVOICE_HISTORY_REFRESH_MS);
+    },
+  );
+
+  it("refreshes history every 5 minutes when no unfinished invoice exists", () => {
+    expect(getTransactionHistoryRefreshInterval([])).toBe(DEFAULT_HISTORY_REFRESH_MS);
+    expect(getTransactionHistoryRefreshInterval([
+      transaction({
+        payment_channel: "passimpay_invoice",
+        status: "approved",
+        credited_at: "2026-08-05T00:05:00Z",
+      }),
+      transaction({ payment_channel: "cryptomus_invoice", status: "cancelled" }),
+    ])).toBe(DEFAULT_HISTORY_REFRESH_MS);
+  });
+
+  it("does not enable 5-second history polling for static-wallet payments", () => {
+    expect(getTransactionHistoryRefreshInterval([
+      transaction({ payment_channel: "static_wallet", status: "pending", credited_at: null }),
+    ])).toBe(DEFAULT_HISTORY_REFRESH_MS);
   });
 });
 

@@ -2,6 +2,8 @@ import type { ApiCreateTransactionRequest, ApiPromocode, ApiUserTransaction, Pay
 
 export const PASSIMPAY_FEE_PERCENT = 1;
 export const CRYPTOMUS_FEE_PERCENT = 0;
+export const PENDING_INVOICE_HISTORY_REFRESH_MS = 5_000;
+export const DEFAULT_HISTORY_REFRESH_MS = 5 * 60 * 1_000;
 export type PromocodeValidationFailure = "expired" | "limit" | "already_used";
 
 const roundMoney = (value: number) => Math.round((value + Number.EPSILON) * 100) / 100;
@@ -115,6 +117,73 @@ export function isTransactionCredited(
   transaction: Pick<ApiUserTransaction, "status" | "credited_at">,
 ): boolean {
   return transaction.status === "approved" && transaction.credited_at != null;
+}
+
+export function isPendingInvoiceTransaction(
+  transaction: Pick<ApiUserTransaction, "payment_channel" | "status" | "credited_at" | "provider_status">,
+): boolean {
+  return isInvoicePaymentChannel(transaction.payment_channel)
+    && transaction.status !== "cancelled"
+    && transaction.status !== "rejected"
+    && transaction.provider_status !== "error"
+    && !isTransactionCredited(transaction);
+}
+
+export function getTransactionHistoryRefreshInterval(
+  transactions: Array<Pick<ApiUserTransaction, "payment_channel" | "status" | "credited_at" | "provider_status">>,
+): number {
+  return transactions.some(isPendingInvoiceTransaction)
+    ? PENDING_INVOICE_HISTORY_REFRESH_MS
+    : DEFAULT_HISTORY_REFRESH_MS;
+}
+
+export function canOpenFreshInvoicePayment(
+  transaction: Pick<ApiUserTransaction, "status" | "credited_at" | "provider_status" | "payment_url">,
+): transaction is typeof transaction & { payment_url: string } {
+  return transaction.status !== "cancelled"
+    && transaction.status !== "rejected"
+    && transaction.provider_status !== "error"
+    && !isTransactionCredited(transaction)
+    && typeof transaction.payment_url === "string"
+    && transaction.payment_url.length > 0;
+}
+
+export interface InvoicePaymentWindow {
+  closed: boolean;
+  opener: unknown;
+  location: { href: string };
+  close: () => void;
+}
+
+export async function openFreshInvoicePayment(params: {
+  transactionRowId: string;
+  getTransaction: (transactionRowId: string) => Promise<ApiUserTransaction>;
+  openWindow: () => InvoicePaymentWindow | null;
+  onFreshTransaction: (transaction: ApiUserTransaction) => void;
+}): Promise<{ transaction: ApiUserTransaction; opened: boolean }> {
+  let paymentWindow: InvoicePaymentWindow | null = null;
+  try {
+    paymentWindow = params.openWindow();
+    if (paymentWindow) paymentWindow.opener = null;
+  } catch {
+    paymentWindow = null;
+  }
+
+  try {
+    const transaction = await params.getTransaction(params.transactionRowId);
+    params.onFreshTransaction(transaction);
+
+    if (!canOpenFreshInvoicePayment(transaction) || !paymentWindow || paymentWindow.closed) {
+      if (paymentWindow && !paymentWindow.closed) paymentWindow.close();
+      return { transaction, opened: false };
+    }
+
+    paymentWindow.location.href = transaction.payment_url;
+    return { transaction, opened: true };
+  } catch (error) {
+    if (paymentWindow && !paymentWindow.closed) paymentWindow.close();
+    throw error;
+  }
 }
 
 export function isInvoicePartial(

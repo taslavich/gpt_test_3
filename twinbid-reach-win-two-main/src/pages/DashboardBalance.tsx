@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -27,6 +27,7 @@ import {
   CRYPTOMUS_FEE_PERCENT,
   getInvoiceChargeAmount,
   getPassimPayFee,
+  getTransactionHistoryRefreshInterval,
   getTransactionBonusAmount,
   isInvoicePaymentChannel,
   isInvoicePartial,
@@ -69,9 +70,9 @@ export default function DashboardBalance() {
 
   const balance = profile?.balance ?? 0;
 
-  const fetchTopupRequests = async () => {
+  const fetchTopupRequests = useCallback(async (showLoading = true) => {
     if (!user) return;
-    setLoadingRequests(true);
+    if (showLoading) setLoadingRequests(true);
     try {
       const res = await api.listTransactions();
       const items = Array.isArray(res?.items) ? res.items : [];
@@ -79,13 +80,12 @@ export default function DashboardBalance() {
       setTopupRequests(items);
     } catch (e) {
       console.error("Topups fetch error:", e);
-      setTopupRequests([]);
     } finally {
-      setLoadingRequests(false);
+      if (showLoading) setLoadingRequests(false);
     }
-  };
+  }, [user]);
 
-  useEffect(() => { fetchTopupRequests(); }, [user]);
+  useEffect(() => { void fetchTopupRequests(); }, [fetchTopupRequests]);
 
   // Resolve promo code names (id → code text) for transactions that reference one.
   useEffect(() => {
@@ -109,20 +109,21 @@ export default function DashboardBalance() {
     })();
   }, [topupRequests]);
 
-  // Auto-refresh: poll every 5 minutes and on window focus / page show.
-  // (Previously 15s, which was too aggressive.)
+  const historyRefreshInterval = getTransactionHistoryRefreshInterval(topupRequests);
+
+  // Keep active invoice statuses fresh; otherwise retain the normal 5-minute refresh.
   useEffect(() => {
     if (!user) return;
-    const interval = setInterval(fetchTopupRequests, 5 * 60 * 1000);
-    const onFocus = () => fetchTopupRequests();
+    const interval = setInterval(() => void fetchTopupRequests(false), historyRefreshInterval);
+    const onFocus = () => void fetchTopupRequests(false);
     window.addEventListener("focus", onFocus);
     return () => { clearInterval(interval); window.removeEventListener("focus", onFocus); };
-  }, [user]);
+  }, [user, historyRefreshInterval, fetchTopupRequests]);
 
   // Allow the global dialog to refresh our history after submission
   useEffect(() => {
-    registerRefreshHandler(fetchTopupRequests);
-  }, [registerRefreshHandler, user]);
+    registerRefreshHandler(() => void fetchTopupRequests(false));
+  }, [fetchTopupRequests, registerRefreshHandler]);
 
   const finalAmount = customAmount ? parseTopupAmount(customAmount) : selectedAmount;
   const promoPreviewBonus = finalAmount && appliedPromo
