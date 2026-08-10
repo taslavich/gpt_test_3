@@ -208,11 +208,11 @@ describe("transaction HTTP contract", () => {
     });
   });
 
-  it("creates PassimPay invoices without provider or calculated fields", async () => {
+  it("creates PassimPay invoices using provider without payment_channel or calculated fields", async () => {
     const fetchMock = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
       expect(init?.method).toBe("POST");
       expect(JSON.parse(String(init?.body))).toEqual({
-        payment_channel: "passimpay_invoice",
+        provider: "passimpay",
         deposit_amount: 100,
         currency: "USD",
         promocode_id: "WELCOME10",
@@ -222,7 +222,28 @@ describe("transaction HTTP contract", () => {
     vi.stubGlobal("fetch", fetchMock);
 
     await httpProvider.createTransaction({
-      payment_channel: "passimpay_invoice",
+      provider: "passimpay",
+      deposit_amount: 100,
+      currency: "USD",
+      promocode_id: "WELCOME10",
+    });
+  });
+
+  it("creates Cryptomus invoices using provider without payment_channel or calculated fields", async () => {
+    const fetchMock = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+      expect(init?.method).toBe("POST");
+      expect(JSON.parse(String(init?.body))).toEqual({
+        provider: "cryptomus",
+        deposit_amount: 100,
+        currency: "USD",
+        promocode_id: "WELCOME10",
+      });
+      return jsonResponse({ success: true, errorMsg: "", data: {} });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await httpProvider.createTransaction({
+      provider: "cryptomus",
       deposit_amount: 100,
       currency: "USD",
       promocode_id: "WELCOME10",

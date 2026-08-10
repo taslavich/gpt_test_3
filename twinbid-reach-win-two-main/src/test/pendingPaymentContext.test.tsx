@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { PendingPaymentProvider, usePendingPayment } from "@/contexts/PendingPaymentContext";
 
 function Harness() {
-  const { pendingPayment, openPayment, restorePaymentAfterPassimPay } = usePendingPayment();
+  const { pendingPayment, openPayment, restorePaymentAfterInvoice } = usePendingPayment();
   return (
     <>
       <div data-testid="channel">{pendingPayment?.channel || "none"}</div>
@@ -13,7 +13,10 @@ function Harness() {
       <button onClick={() => openPayment({ amount: 100, method: "passimpay", channel: "passimpay_invoice" })}>
         passim
       </button>
-      <button onClick={restorePaymentAfterPassimPay}>restore</button>
+      <button onClick={() => openPayment({ amount: 100, method: "cryptomus", channel: "cryptomus_invoice" })}>
+        cryptomus
+      </button>
+      <button onClick={restorePaymentAfterInvoice}>restore</button>
     </>
   );
 }
@@ -27,6 +30,17 @@ describe("pending payment context", () => {
 
     fireEvent.click(screen.getByText("passim"));
     expect(screen.getByTestId("channel")).toHaveTextContent("passimpay_invoice");
+
+    fireEvent.click(screen.getByText("restore"));
+    expect(screen.getByTestId("channel")).toHaveTextContent("static_wallet");
+  });
+
+  it("restores an unfinished static payment after viewing Cryptomus", () => {
+    render(<PendingPaymentProvider><Harness /></PendingPaymentProvider>);
+
+    fireEvent.click(screen.getByText("static"));
+    fireEvent.click(screen.getByText("cryptomus"));
+    expect(screen.getByTestId("channel")).toHaveTextContent("cryptomus_invoice");
 
     fireEvent.click(screen.getByText("restore"));
     expect(screen.getByTestId("channel")).toHaveTextContent("static_wallet");

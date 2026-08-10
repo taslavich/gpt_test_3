@@ -7,7 +7,8 @@ export type PricingModel = "cpm" | "cpc";
 export type TrafficType = "mainstream" | "adult" | "mixed";
 export type FormatType = "banner" | "popunder" | "native" | "push";
 export type TopupStatus = "draft" | "pending" | "approved" | "rejected" | "cancelled";
-export type PaymentChannel = "static_wallet" | "passimpay_invoice";
+export type PaymentChannel = "static_wallet" | "passimpay_invoice" | "cryptomus_invoice";
+export type PaymentProvider = "passimpay" | "cryptomus";
 export type NotificationType = "incomplete_topup" | "low_balance" | "campaign_status" | "other";
 export type NotificationStatus = "active" | "inactive";
 
@@ -139,13 +140,34 @@ export interface ApiUserTransaction {
   updated_at?: string;
 }
 
-export interface ApiCreateTransactionRequest {
-  payment_channel: PaymentChannel;
-  payment_method?: string;
+interface ApiCreateTransactionCommon {
   deposit_amount: number;
   currency: string;
   promocode_id?: string | null;
 }
+
+/**
+ * Invoice transactions are selected by `provider`; the backend derives their
+ * response `payment_channel`. Static-wallet payments explicitly select their
+ * channel and network and never send a provider.
+ */
+export type ApiCreateTransactionRequest = ApiCreateTransactionCommon & (
+  | {
+      payment_channel: "static_wallet";
+      payment_method: string;
+      provider?: never;
+    }
+  | {
+      provider: "passimpay";
+      payment_channel?: never;
+      payment_method?: never;
+    }
+  | {
+      provider: "cryptomus";
+      payment_channel?: never;
+      payment_method?: never;
+    }
+);
 
 /** The user-facing PATCH is intentionally limited to a static-wallet txhash. */
 export interface ApiPatchTransactionRequest {

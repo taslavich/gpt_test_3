@@ -217,7 +217,7 @@ const translations: Record<string, Record<"ru" | "en", string>> = {
 
   // Balance page
   "balance.title": { ru: "Баланс и платежи", en: "Balance & Payments" },
-  "balance.subtitle": { ru: "Пополнение через TwinBid Crypto и PassimPay", en: "Top up with TwinBid Crypto or PassimPay" },
+  "balance.subtitle": { ru: "Пополнение через TwinBid Crypto, PassimPay и Cryptomus", en: "Top up with TwinBid Crypto, PassimPay or Cryptomus" },
   "balance.current": { ru: "Текущий баланс", en: "Current balance" },
   "balance.spentToday": { ru: "Потрачено сегодня", en: "Spent today" },
   "balance.spentWeek": { ru: "Потрачено за неделю", en: "Spent this week" },
@@ -289,6 +289,13 @@ const translations: Record<string, Record<"ru" | "en", string>> = {
   "balance.passimpay.error": { ru: "Ошибка платежа", en: "Payment error" },
   "balance.passimpay.unavailable": { ru: "Платёжный сервис временно недоступен. Попробуйте позднее или выберите TwinBid Crypto.", en: "The payment service is temporarily unavailable. Try again later or choose TwinBid Crypto." },
   "balance.passimpay.notFound": { ru: "Транзакция не найдена или недоступна.", en: "The transaction was not found or is unavailable." },
+  "balance.cryptomus.feeHint": { ru: "Комиссия Cryptomus — 0%. Оплата откроется в защищённом окне Cryptomus.", en: "Cryptomus fee is 0%. Payment will open in a secure Cryptomus window." },
+  "balance.cryptomus.create": { ru: "Оплатить через Cryptomus", en: "Pay with Cryptomus" },
+  "balance.cryptomus.title": { ru: "Оплата через Cryptomus", en: "Cryptomus payment" },
+  "balance.cryptomus.description": { ru: "Оплатите счёт в защищённом окне Cryptomus. Баланс обновится после подтверждения оплаты.", en: "Pay the invoice in the secure Cryptomus window. Your balance will update after confirmation." },
+  "balance.cryptomus.fee": { ru: "Комиссия (0%)", en: "Fee (0%)" },
+  "balance.cryptomus.view": { ru: "Открыть платёж", en: "Open payment" },
+  "balance.cryptomus.unavailable": { ru: "Cryptomus временно недоступен. Попробуйте позднее или выберите другой способ оплаты.", en: "Cryptomus is temporarily unavailable. Try again later or choose another payment method." },
 
   // Balance toasts
   "balance.toast.pendingExists": { ru: "У вас есть незавершённая оплата. Завершите или отмените её.", en: "You have a pending payment. Complete or cancel it." },

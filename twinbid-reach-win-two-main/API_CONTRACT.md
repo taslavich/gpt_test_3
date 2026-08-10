@@ -255,8 +255,8 @@ Frontend синхронизирует креативы по ID: изменённ
   "user_id": "uuid",
   "transaction_time": "iso",
   "transaction_id": "string",
-  "payment_channel": "static_wallet | passimpay_invoice",
-  "payment_method": "usdc_erc20 | usdt_trc20 | usdt_erc20 | passimpay",
+  "payment_channel": "static_wallet | passimpay_invoice | cryptomus_invoice",
+  "payment_method": "usdc_erc20 | usdt_trc20 | usdt_erc20 | passimpay | cryptomus",
   "bonus_amount": 25,
   "promocode_id": "uuid?",
   "transaction_hash": "string?",
@@ -275,12 +275,12 @@ Frontend синхронизирует креативы по ID: изменённ
 ```
 
 ### Поток пополнения
-1. `POST /api/transactions` создаёт оба канала оплаты.
+1. `POST /api/transactions` создаёт все каналы оплаты.
 
    PassimPay Invoice Link:
    ```json
    {
-     "payment_channel": "passimpay_invoice",
+     "provider": "passimpay",
      "deposit_amount": 100,
      "currency": "USD",
      "promocode_id": "PROMOCODE_OR_NULL"
@@ -293,6 +293,16 @@ Frontend синхронизирует креативы по ID: изменённ
    и `provider_status`. Если `provider_status=create_unknown`, frontend не создаёт
    повторную транзакцию, а опрашивает существующую по `data.id`.
 
+   Cryptomus Invoice Link работает по той же схеме без комиссии:
+   ```json
+   {
+     "provider": "cryptomus",
+     "deposit_amount": 100,
+     "currency": "USD",
+     "promocode_id": "PROMOCODE_OR_NULL"
+   }
+   ```
+
    Статический криптокошелёк:
    ```json
    {
@@ -303,8 +313,10 @@ Frontend синхронизирует креативы по ID: изменённ
      "promocode_id": "PROMOCODE_OR_NULL"
    }
    ```
-   Без `payment_channel` backend также считает платёж `static_wallet`, поэтому
-   старые клиенты остаются совместимыми.
+   Для invoice frontend передаёт только `provider`; `payment_channel` в ответе
+   определяет backend. Для статического кошелька frontend явно передаёт
+   `payment_channel: "static_wallet"` и не передаёт `provider`. Отсутствие и
+   `provider`, и `payment_channel` является ошибкой.
 
 2. `PATCH /api/transactions/:id` разрешён только для статического кошелька и
    принимает только blockchain hash:
@@ -313,19 +325,19 @@ Frontend синхронизирует креативы по ID: изменённ
      "transaction_hash": "0x..."
    }
    ```
-3. `GET /api/transactions/:id` возвращает актуальную транзакцию. Для PassimPay
+3. `GET /api/transactions/:id` возвращает актуальную транзакцию. Для PassimPay и Cryptomus
    frontend опрашивает эту ручку каждые 5 секунд первые 2 минуты, затем каждые
    15 секунд, пока открыт экран оплаты.
 4. `POST /api/transactions/:id/cancel` → `cancelled`. Кнопка отмены показывается
    только для `static_wallet`.
-5. `GET /api/transactions?status=&limit=&offset=` → единая история обоих каналов.
+5. `GET /api/transactions?status=&limit=&offset=` → единая история всех каналов.
 
 Во всех URL `/api/transactions/:id` frontend использует только `data.id` — внутренний
 ID строки. Поле `data.transaction_id` является публичным order ID провайдера и в URL
 TwinBid API не подставляется. В локальном состоянии `data.id` хранится под именем
 `transactionRowId`.
 
-Успешное зачисление PassimPay определяется только сочетанием:
+Успешное зачисление invoice-платежа (PassimPay / Cryptomus) определяется только сочетанием:
 ```json
 {
   "status": "approved",
@@ -368,7 +380,7 @@ TwinBid API не подставляется. В локальном состоя�
 ### POST `/api/notifications` body `{ type, text, transaction_id?, campaign_id?, deposit_amount? }` → `Notification` (создание с фронта, например для незавершённой транзакции).
 ### PATCH `/api/notifications/:id` body `{ status }` → `Notification` (отметка как `inactive`).
 
-> Для `static_wallet` уведомление о незавершённой транзакции переводится в `inactive` после отмены или успешной отправки hash. Для `passimpay_invoice` отмена с фронта не предлагается: уведомление закрывается после `status=approved` вместе с `credited_at` либо скрывается самим пользователем без отмены инвойса.
+> Для `static_wallet` уведомление о незавершённой транзакции переводится в `inactive` после отмены или успешной отправки hash. Для invoice-платежей (`passimpay_invoice`, `cryptomus_invoice`) отмена с фронта не предлагается: статус приходит с backend.
 
 ---
 

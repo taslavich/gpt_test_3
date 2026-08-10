@@ -1,12 +1,16 @@
 import { describe, expect, it } from "vitest";
 import type { ApiPromocode, ApiUserTransaction } from "@/api/types";
 import {
+  buildCryptomusTopup,
   buildPassimPayTopup,
   buildStaticWalletTopup,
+  getInvoiceChargeAmount,
   getPassimPayChargeAmount,
   getPassimPayFee,
   getTransactionBonusAmount,
-  isPassimPayPartial,
+  getTransactionChannel,
+  isInvoicePaymentChannel,
+  isInvoicePartial,
   isTransactionCredited,
   isUnfinishedStaticWalletTransaction,
   parseTopupAmount,
@@ -45,11 +49,23 @@ const transaction = (overrides: Partial<ApiUserTransaction> = {}): ApiUserTransa
 describe("top-up request contract", () => {
   it("keeps the entered PassimPay amount separate from the promo bonus", () => {
     expect(buildPassimPayTopup({ depositAmount: 100.25, promoCode: "BONUS25" })).toEqual({
-      payment_channel: "passimpay_invoice",
+      provider: "passimpay",
       deposit_amount: 100.25,
       currency: "USD",
       promocode_id: "BONUS25",
     });
+  });
+
+  it("creates a zero-fee Cryptomus invoice with the same promo contract", () => {
+    expect(buildCryptomusTopup({ depositAmount: 100.25, promoCode: "BONUS25" })).toEqual({
+      provider: "cryptomus",
+      deposit_amount: 100.25,
+      currency: "USD",
+      promocode_id: "BONUS25",
+    });
+    expect(getInvoiceChargeAmount("cryptomus_invoice", 100.25)).toBe(100.25);
+    expect(isInvoicePaymentChannel("cryptomus_invoice")).toBe(true);
+    expect(getTransactionChannel(transaction({ payment_channel: "cryptomus_invoice" }))).toBe("cryptomus_invoice");
   });
 
   it("sends the minimal static-wallet payload required by the backend", () => {
@@ -87,8 +103,8 @@ describe("top-up request contract", () => {
   });
 
   it("detects partial PassimPay payments without marking them credited", () => {
-    expect(isPassimPayPartial(transaction({ amount_paid: 45 }))).toBe(true);
-    expect(isPassimPayPartial(transaction({
+    expect(isInvoicePartial(transaction({ amount_paid: 45 }))).toBe(true);
+    expect(isInvoicePartial(transaction({
       status: "approved",
       amount_paid: 100,
       credited_at: "2026-08-05T00:05:00Z",
@@ -106,6 +122,10 @@ describe("top-up request contract", () => {
     }))).toBe(true);
     expect(isUnfinishedStaticWalletTransaction(transaction({
       payment_channel: "passimpay_invoice",
+      status: "pending",
+    }))).toBe(false);
+    expect(isUnfinishedStaticWalletTransaction(transaction({
+      payment_channel: "cryptomus_invoice",
       status: "pending",
     }))).toBe(false);
     expect(isUnfinishedStaticWalletTransaction(transaction({

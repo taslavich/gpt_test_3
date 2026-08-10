@@ -263,7 +263,12 @@ export const mockProvider = {
     return transaction ? ok(transaction) : fail("Transaction not found");
   },
   async createTransaction(body: ApiCreateTransactionRequest): Promise<ApiEnvelope<ApiUserTransaction>> {
-    const channel = body.payment_channel === "passimpay_invoice" ? "passimpay_invoice" : "static_wallet";
+    const channel = body.provider === "passimpay"
+      ? "passimpay_invoice"
+      : body.provider === "cryptomus"
+        ? "cryptomus_invoice"
+        : "static_wallet";
+    const isInvoice = channel === "passimpay_invoice" || channel === "cryptomus_invoice";
     const promoCode = String(body.promocode_id || "").trim().toUpperCase();
     const promo = promoFixtures[promoCode];
     const bonusAmount = promo
@@ -276,7 +281,8 @@ export const mockProvider = {
       transaction_time: now(),
       transaction_id: uid(),
       payment_channel: channel,
-      payment_method: body.payment_method || (channel === "passimpay_invoice" ? "passimpay" : ""),
+      payment_method: body.payment_method
+        || (channel === "passimpay_invoice" ? "passimpay" : channel === "cryptomus_invoice" ? "cryptomus" : ""),
       bonus_amount: bonusAmount,
       promocode_id: promo?.id || body.promocode_id || null,
       transaction_hash: null,
@@ -284,8 +290,12 @@ export const mockProvider = {
       total_balance_increase: body.deposit_amount + bonusAmount,
       status: channel === "static_wallet" ? "draft" : "pending",
       currency: body.currency,
-      payment_url: channel === "passimpay_invoice" ? `https://pay.passimpay.io/invoice/${id}` : null,
-      provider_status: channel === "passimpay_invoice" ? "waiting" : null,
+      payment_url: isInvoice
+        ? channel === "cryptomus_invoice"
+          ? `https://pay.cryptomus.com/invoice/${id}`
+          : `https://pay.passimpay.io/invoice/${id}`
+        : null,
+      provider_status: isInvoice ? "waiting" : null,
       amount_paid: 0,
       amount_credited: 0,
       credited_at: null,
@@ -299,8 +309,8 @@ export const mockProvider = {
   async patchTransaction(id: string, patch: ApiPatchTransactionRequest): Promise<ApiEnvelope<ApiUserTransaction>> {
     const i = state.transactions.findIndex(t => t.id === id);
     if (i < 0) return fail("Transaction not found");
-    if (state.transactions[i].payment_channel === "passimpay_invoice") {
-      return fail("PassimPay invoice cannot be changed from frontend");
+    if (state.transactions[i].payment_channel !== "static_wallet") {
+      return fail("Invoice payment cannot be changed from frontend");
     }
     state.transactions[i] = {
       ...state.transactions[i],

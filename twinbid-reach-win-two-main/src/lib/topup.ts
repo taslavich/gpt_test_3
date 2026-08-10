@@ -1,6 +1,7 @@
 import type { ApiCreateTransactionRequest, ApiPromocode, ApiUserTransaction, PaymentChannel } from "@/api/types";
 
 export const PASSIMPAY_FEE_PERCENT = 1;
+export const CRYPTOMUS_FEE_PERCENT = 0;
 export type PromocodeValidationFailure = "expired" | "limit" | "already_used";
 
 const roundMoney = (value: number) => Math.round((value + Number.EPSILON) * 100) / 100;
@@ -70,15 +71,37 @@ export function buildPassimPayTopup(params: {
   promoCode?: string | null;
 }): ApiCreateTransactionRequest {
   return {
-    payment_channel: "passimpay_invoice",
+    provider: "passimpay",
     deposit_amount: params.depositAmount,
     currency: "USD",
     promocode_id: params.promoCode || null,
   };
 }
 
+export function buildCryptomusTopup(params: {
+  depositAmount: number;
+  promoCode?: string | null;
+}): ApiCreateTransactionRequest {
+  return {
+    provider: "cryptomus",
+    deposit_amount: params.depositAmount,
+    currency: "USD",
+    promocode_id: params.promoCode || null,
+  };
+}
+
+export function isInvoicePaymentChannel(channel?: PaymentChannel | null): boolean {
+  return channel === "passimpay_invoice" || channel === "cryptomus_invoice";
+}
+
+export function getInvoiceChargeAmount(channel: PaymentChannel | undefined, depositAmount: number): number {
+  return channel === "passimpay_invoice" ? getPassimPayChargeAmount(depositAmount) : roundMoney(depositAmount);
+}
+
 export function getTransactionChannel(transaction: Pick<ApiUserTransaction, "payment_channel">): PaymentChannel {
-  return transaction.payment_channel === "passimpay_invoice" ? "passimpay_invoice" : "static_wallet";
+  if (transaction.payment_channel === "passimpay_invoice") return "passimpay_invoice";
+  if (transaction.payment_channel === "cryptomus_invoice") return "cryptomus_invoice";
+  return "static_wallet";
 }
 
 export function isUnfinishedStaticWalletTransaction(
@@ -94,7 +117,7 @@ export function isTransactionCredited(
   return transaction.status === "approved" && transaction.credited_at != null;
 }
 
-export function isPassimPayPartial(
+export function isInvoicePartial(
   transaction: Pick<ApiUserTransaction, "status" | "credited_at" | "amount_paid">,
 ): boolean {
   return Number(transaction.amount_paid) > 0 && !isTransactionCredited(transaction);

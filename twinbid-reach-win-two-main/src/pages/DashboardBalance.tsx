@@ -18,14 +18,18 @@ import type { ApiUserTransaction, PaymentChannel } from "@/api/types";
 import { PAYMENT_METHODS } from "@/lib/paymentMethods";
 import { formatCurrencyAmount } from "@/lib/numberFormat";
 import { PassimPayBrand } from "@/components/dashboard/PassimPayBrand";
+import { CryptomusBrand } from "@/components/dashboard/CryptomusBrand";
 import { rememberTopupForGoal, trackBalanceTopupSuccess } from "@/lib/yandexMetrikaTopup";
 import {
+  buildCryptomusTopup,
   buildPassimPayTopup,
   buildStaticWalletTopup,
-  getPassimPayChargeAmount,
+  CRYPTOMUS_FEE_PERCENT,
+  getInvoiceChargeAmount,
   getPassimPayFee,
   getTransactionBonusAmount,
-  isPassimPayPartial,
+  isInvoicePaymentChannel,
+  isInvoicePartial,
   isTransactionCredited,
   isUnfinishedStaticWalletTransaction,
   parseTopupAmount,
@@ -125,7 +129,9 @@ export default function DashboardBalance() {
     ? Math.round((finalAmount * appliedPromo.bonus + Number.EPSILON)) / 100
     : 0;
   const passimPayFee = finalAmount ? getPassimPayFee(finalAmount) : 0;
-  const passimPayChargeAmount = finalAmount ? getPassimPayChargeAmount(finalAmount) : 0;
+  const selectedInvoiceChargeAmount = finalAmount
+    ? getInvoiceChargeAmount(selectedChannel ?? undefined, finalAmount)
+    : 0;
 
   const handleApplyPromo = async () => {
     const code = promoCode.trim().toUpperCase();
@@ -177,7 +183,7 @@ export default function DashboardBalance() {
     setSubmittingTopup(true);
     setTopupError(null);
     let paymentWindow: Window | null = null;
-    if (selectedChannel === "passimpay_invoice") {
+    if (isInvoicePaymentChannel(selectedChannel)) {
       try {
         paymentWindow = window.open("", "_blank");
         if (paymentWindow) paymentWindow.opener = null;
@@ -189,7 +195,9 @@ export default function DashboardBalance() {
     try {
       const body = selectedChannel === "passimpay_invoice"
         ? buildPassimPayTopup({ depositAmount: finalAmount, promoCode: promoCodeText })
-        : buildStaticWalletTopup({
+        : selectedChannel === "cryptomus_invoice"
+          ? buildCryptomusTopup({ depositAmount: finalAmount, promoCode: promoCodeText })
+          : buildStaticWalletTopup({
             paymentMethod: selectedMethod,
             depositAmount: finalAmount,
             promoCode: promoCodeText,
@@ -213,7 +221,12 @@ export default function DashboardBalance() {
 
       openPayment({
         amount: Number(created.deposit_amount) || finalAmount,
-        method: created.payment_method || (transactionChannel === "passimpay_invoice" ? "passimpay" : selectedMethod),
+        method: created.payment_method
+          || (transactionChannel === "passimpay_invoice"
+            ? "passimpay"
+            : transactionChannel === "cryptomus_invoice"
+              ? "cryptomus"
+              : selectedMethod),
         channel: transactionChannel,
         promo: appliedPromo?.code,
         bonus: appliedPromo?.bonus,
@@ -230,7 +243,7 @@ export default function DashboardBalance() {
       });
       setAppliedPromo(null);
       setPromoCode("");
-      if (transactionChannel === "passimpay_invoice" && created.payment_url) {
+      if (isInvoicePaymentChannel(transactionChannel) && created.payment_url) {
         if (paymentWindow && !paymentWindow.closed) {
           try {
             paymentWindow.location.href = created.payment_url;
@@ -244,8 +257,8 @@ export default function DashboardBalance() {
       void fetchTopupRequests();
     } catch (e: unknown) {
       if (paymentWindow && !paymentWindow.closed) paymentWindow.close();
-      const message = selectedChannel === "passimpay_invoice" && e instanceof ApiError && e.status === 503
-        ? t("balance.passimpay.unavailable")
+      const message = isInvoicePaymentChannel(selectedChannel) && e instanceof ApiError && e.status === 503
+        ? t(selectedChannel === "cryptomus_invoice" ? "balance.cryptomus.unavailable" : "balance.passimpay.unavailable")
         : e instanceof Error
           ? e.message
           : t("balance.toast.submitError");
@@ -271,7 +284,7 @@ export default function DashboardBalance() {
     cancelled: { label: t("balance.cancelled"), className: "text-muted-foreground border-border" },
   };
 
-  const openPassimPayFromHistory = (transaction: ApiUserTransaction) => {
+  const openInvoiceFromHistory = (transaction: ApiUserTransaction) => {
     const amount = Number(transaction.deposit_amount) || 0;
     const bonusAmount = getTransactionBonusAmount(transaction);
     let promoName = transaction.promocode_id ? promoNames[transaction.promocode_id] : undefined;
@@ -284,8 +297,8 @@ export default function DashboardBalance() {
 
     openPayment({
       amount,
-      method: transaction.payment_method || "passimpay",
-      channel: "passimpay_invoice",
+      method: transaction.payment_method || (transaction.payment_channel === "cryptomus_invoice" ? "cryptomus" : "passimpay"),
+      channel: transaction.payment_channel === "cryptomus_invoice" ? "cryptomus_invoice" : "passimpay_invoice",
       promo: promoName,
       bonus: amount > 0 && bonusAmount > 0 ? bonusAmount / amount * 100 : undefined,
       bonus_amount: bonusAmount,
@@ -361,7 +374,7 @@ export default function DashboardBalance() {
 
             <div className="space-y-3">
               <Label>{t("balance.paymentMethod")}</Label>
-              <div className="grid gap-3 sm:grid-cols-2">
+              <div className="grid gap-3 sm:grid-cols-3">
                 <button
                   type="button"
                   onClick={() => {
@@ -405,6 +418,25 @@ export default function DashboardBalance() {
                     {PASSIMPAY_FEE_PERCENT}%
                   </Badge>
                 </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSelectedChannel("cryptomus_invoice");
+                    setTopupError(null);
+                  }}
+                  className={cn(
+                    "relative flex min-h-24 items-center rounded-xl border p-4 pr-16 text-left transition-colors",
+                    selectedChannel === "cryptomus_invoice"
+                      ? "border-primary bg-primary/10"
+                      : "border-border bg-background hover:border-primary/50",
+                  )}
+                >
+                  <CryptomusBrand />
+                  <Badge className="absolute right-3 top-3 border-primary/30 bg-primary/15 px-2.5 py-1 text-sm font-bold text-primary hover:bg-primary/15">
+                    {CRYPTOMUS_FEE_PERCENT}%
+                  </Badge>
+                </button>
               </div>
 
               {selectedChannel === "static_wallet" ? (
@@ -427,6 +459,11 @@ export default function DashboardBalance() {
                       .replace("{amount}", finalAmount ? `$${fmtMoney(finalAmount)}` : "—")
                       .replace("{fee}", finalAmount ? `$${fmtMoney(passimPayFee)}` : "—")}
                   </p>
+                </div>
+              ) : selectedChannel === "cryptomus_invoice" ? (
+                <div className="flex items-start gap-3 rounded-xl border border-primary/20 bg-primary/5 p-3 text-sm">
+                  <CreditCard className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
+                  <p className="text-muted-foreground">{t("balance.cryptomus.feeHint")}</p>
                 </div>
               ) : null}
             </div>
@@ -468,8 +505,10 @@ export default function DashboardBalance() {
                   ? t("balance.payment.creating")
                   : selectedChannel === "passimpay_invoice"
                     ? t("balance.passimpay.create")
+                    : selectedChannel === "cryptomus_invoice"
+                      ? t("balance.cryptomus.create")
                     : t("balance.topUpBtn")} {finalAmount
-                      ? `$${fmtMoney(selectedChannel === "passimpay_invoice" ? passimPayChargeAmount : finalAmount)}`
+                      ? `$${fmtMoney(isInvoicePaymentChannel(selectedChannel) ? selectedInvoiceChargeAmount : finalAmount)}`
                       : ""}
                 {appliedPromo && finalAmount ? ` (+${fmtMoney(promoPreviewBonus)}$ ${t("balance.promo.bonusShort")})` : ""}
               </Button>
@@ -527,21 +566,24 @@ export default function DashboardBalance() {
                 </thead>
                 <tbody>
                   {visible.map((req) => {
+                    const isInvoice = isInvoicePaymentChannel(req.payment_channel);
                     const methodLabel = req.payment_channel === "passimpay_invoice"
                       ? "PassimPay"
-                      : "TwinBid Crypto";
+                      : req.payment_channel === "cryptomus_invoice"
+                        ? "Cryptomus"
+                        : "TwinBid Crypto";
                     const credited = isTransactionCredited(req);
-                    const partial = req.payment_channel === "passimpay_invoice"
+                    const partial = isInvoice
                       && req.status === "pending"
                       && req.provider_status !== "error"
-                      && isPassimPayPartial(req);
+                      && isInvoicePartial(req);
                     const historyStatus = credited
                       ? "approved"
                       : req.status === "approved"
                         ? "pending"
                         : req.status;
                     const baseStatus = statusMap[historyStatus] || statusMap.pending;
-                    const providerStatus = req.payment_channel === "passimpay_invoice"
+                    const providerStatus = isInvoice
                       && req.status === "pending"
                       && !credited
                       ? partial
@@ -589,7 +631,7 @@ export default function DashboardBalance() {
                             <Badge variant="outline" className={cn("font-normal", st.className)}>
                               {st.label}
                             </Badge>
-                            {req.payment_channel === "passimpay_invoice"
+                            {isInvoice
                               && !credited
                               && req.status !== "rejected"
                               && req.status !== "cancelled"
@@ -599,10 +641,10 @@ export default function DashboardBalance() {
                                   variant="outline"
                                   size="sm"
                                   className="h-8 whitespace-nowrap border-border"
-                                  onClick={() => openPassimPayFromHistory(req)}
+                                  onClick={() => openInvoiceFromHistory(req)}
                                 >
                                   <ExternalLink className="mr-1.5 h-3.5 w-3.5" />
-                                  {t("balance.passimpay.view")}
+                                  {t(req.payment_channel === "cryptomus_invoice" ? "balance.cryptomus.view" : "balance.passimpay.view")}
                                 </Button>
                               )}
                           </div>

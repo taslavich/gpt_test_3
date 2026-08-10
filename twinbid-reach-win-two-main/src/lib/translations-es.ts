@@ -188,7 +188,7 @@ export const ES_TRANSLATIONS: Record<string, string> = {
 
   // Balance page
   "balance.title": "Saldo y pagos",
-  "balance.subtitle": "Recarga con TwinBid Crypto o PassimPay",
+  "balance.subtitle": "Recarga con TwinBid Crypto, PassimPay o Cryptomus",
   "balance.current": "Saldo actual",
   "balance.spentToday": "Gastado hoy",
   "balance.spentWeek": "Gastado esta semana",
@@ -260,6 +260,13 @@ export const ES_TRANSLATIONS: Record<string, string> = {
   "balance.passimpay.error": "Error de pago",
   "balance.passimpay.unavailable": "El servicio de pago no está disponible temporalmente. Inténtalo más tarde o elige TwinBid Crypto.",
   "balance.passimpay.notFound": "La transacción no se encontró o no está disponible.",
+  "balance.cryptomus.feeHint": "La comisión de Cryptomus es del 0%. El pago se abrirá en una ventana segura de Cryptomus.",
+  "balance.cryptomus.create": "Pagar con Cryptomus",
+  "balance.cryptomus.title": "Pago con Cryptomus",
+  "balance.cryptomus.description": "Paga la factura en la ventana segura de Cryptomus. El saldo se actualizará tras la confirmación.",
+  "balance.cryptomus.fee": "Comisión (0%)",
+  "balance.cryptomus.view": "Abrir pago",
+  "balance.cryptomus.unavailable": "Cryptomus no está disponible temporalmente. Inténtalo más tarde o elige otro método de pago.",
 
   // Balance toasts
   "balance.toast.pendingExists": "Tienes un pago pendiente. Complétalo o cancélalo.",
