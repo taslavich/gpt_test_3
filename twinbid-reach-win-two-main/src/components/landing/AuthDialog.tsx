@@ -10,6 +10,7 @@ import { Link, useNavigate } from "react-router-dom";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "sonner";
+import { MailCheck } from "lucide-react";
 
 interface AuthDialogProps {
   trigger?: React.ReactNode;
@@ -21,6 +22,7 @@ export function AuthDialog({ trigger, defaultTab = "login" }: AuthDialogProps) {
   const [loading, setLoading] = useState(false);
   const [loginEmail, setLoginEmail] = useState("");
   const [loginPassword, setLoginPassword] = useState("");
+  const [emailConfirmationRequired, setEmailConfirmationRequired] = useState(false);
   const [regName, setRegName] = useState("");
   const [regTelegram, setRegTelegram] = useState("");
   const [regEmail, setRegEmail] = useState("");
@@ -33,10 +35,14 @@ export function AuthDialog({ trigger, defaultTab = "login" }: AuthDialogProps) {
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
+    setEmailConfirmationRequired(false);
     setLoading(true);
     const { error } = await signIn(loginEmail, loginPassword);
     setLoading(false);
     if (error) {
+      if (error === t("auth.error.confirmEmail")) {
+        setEmailConfirmationRequired(true);
+      }
       toast.error(error);
       return;
     }
@@ -94,14 +100,23 @@ export function AuthDialog({ trigger, defaultTab = "login" }: AuthDialogProps) {
               <div className="space-y-2">
                 <Label htmlFor="email-login">{t("auth.email")}</Label>
                 <Input id="email-login" type="email" placeholder="your@email.com" className="bg-background border-border"
-                  value={loginEmail} onChange={(e) => setLoginEmail(e.target.value)} required />
+                  value={loginEmail} onChange={(e) => { setLoginEmail(e.target.value); setEmailConfirmationRequired(false); }} required />
               </div>
               <div className="space-y-2">
                 <Label htmlFor="password-login">{t("auth.password")}</Label>
                 <PasswordInput id="password-login" placeholder="••••••••" className="bg-background border-border"
-                  value={loginPassword} onChange={(e) => setLoginPassword(e.target.value)} required />
+                  value={loginPassword} onChange={(e) => { setLoginPassword(e.target.value); setEmailConfirmationRequired(false); }} required />
                 <p className="text-xs text-muted-foreground">{t("auth.passwordResetSupport")}</p>
               </div>
+              {emailConfirmationRequired && (
+                <div role="alert" className="flex gap-3 rounded-xl border border-primary/25 bg-primary/10 p-3.5 text-left">
+                  <MailCheck className="mt-0.5 h-5 w-5 shrink-0 text-primary" />
+                  <div>
+                    <p className="text-sm font-semibold text-foreground">{t("auth.error.confirmEmailTitle")}</p>
+                    <p className="mt-1 text-xs leading-5 text-muted-foreground">{t("auth.error.confirmEmail")}</p>
+                  </div>
+                </div>
+              )}
               <Button type="submit" className="w-full bg-primary hover:bg-primary/90" disabled={loading}>
                 {loading ? "..." : t("auth.loginBtn")}
               </Button>

@@ -127,7 +127,8 @@ const translations: Record<string, Record<"ru" | "en", string>> = {
   "auth.passwordMismatch": { ru: "Пароли не совпадают", en: "Passwords do not match" },
   "auth.passwordTooShort": { ru: "Пароль должен содержать минимум 6 символов", en: "Password must be at least 6 characters" },
   "auth.checkEmail": { ru: "Проверьте вашу почту для подтверждения аккаунта", en: "Check your email to confirm your account" },
-  "auth.error.confirmEmail": { ru: "Подтвердите email", en: "Please confirm your email" },
+  "auth.error.confirmEmailTitle": { ru: "Подтвердите почту", en: "Confirm your email" },
+  "auth.error.confirmEmail": { ru: "Чтобы войти, откройте письмо от TwinBid и перейдите по ссылке подтверждения. После этого повторите вход.", en: "To sign in, open the email from TwinBid and follow the confirmation link. Then try signing in again." },
   "auth.error.invalidCredentials": { ru: "Неверный email или пароль", en: "Invalid email or password" },
   "auth.error.loginFailed": { ru: "Не удалось войти", en: "Sign in failed" },
   "auth.consent": {

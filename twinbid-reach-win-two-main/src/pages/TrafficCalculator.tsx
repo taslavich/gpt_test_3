@@ -599,8 +599,24 @@ function SiteChoice({ label, text, mode, values, onModeChange, onChange }: {
   );
 }
 
+function metricValueSize(value: string, featured: boolean) {
+  const length = Array.from(value).length;
+
+  if (featured) {
+    if (length <= 8) return "text-4xl sm:text-5xl";
+    if (length <= 11) return "text-3xl sm:text-4xl";
+    if (length <= 14) return "text-[1.75rem] sm:text-[2rem]";
+    if (length <= 18) return "text-2xl sm:text-[1.65rem]";
+    return "text-xl sm:text-2xl";
+  }
+
+  if (length > 18) return "text-lg";
+  if (length > 13) return "text-xl";
+  return "text-2xl";
+}
+
 function Metric({ icon: Icon, label, value, hint, featured = false }: { icon: typeof Target; label: string; value: string; hint: string; featured?: boolean }) {
-  return <Card className={cn("min-w-0 overflow-hidden p-4", featured && "md:col-span-2")}><span className="inline-flex rounded-lg bg-primary/10 p-2"><Icon className="h-4 w-4 text-primary" /></span><p className="mt-4 text-xs text-muted-foreground">{label}</p><p className={cn("mt-1 min-w-0 font-bold tabular-nums tracking-tight", featured ? "break-words text-[clamp(1.35rem,7vw,3rem)] sm:whitespace-nowrap sm:text-[clamp(1.75rem,3.4vw,3rem)]" : "break-words text-2xl")}>{value}</p><p className="mt-1 text-[11px] text-muted-foreground">{hint}</p></Card>;
+  return <Card className={cn("min-w-0 overflow-hidden p-4", featured && "md:col-span-2")}><span className="inline-flex rounded-lg bg-primary/10 p-2"><Icon className="h-4 w-4 text-primary" /></span><p className="mt-4 text-xs text-muted-foreground">{label}</p><p title={value} className={cn("mt-1 min-w-0 whitespace-nowrap font-bold leading-tight tabular-nums tracking-tight", metricValueSize(value, featured))}>{value}</p><p className="mt-1 text-[11px] text-muted-foreground">{hint}</p></Card>;
 }
 
 function FormatMark({ format }: { format: string }) {

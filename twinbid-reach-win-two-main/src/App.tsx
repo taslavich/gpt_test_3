@@ -24,6 +24,7 @@ const CreateCampaign = lazy(() => import("./pages/CreateCampaign"));
 const EditCampaign = lazy(() => import("./pages/EditCampaign"));
 const Verify = lazy(() => import("./pages/Verify"));
 const Legal = lazy(() => import("./pages/Legal"));
+const TwinBidMoney = lazy(() => import("./pages/TwinBidMoney"));
 
 const queryClient = new QueryClient();
 
@@ -47,6 +48,8 @@ const App = () => (
                 <Route path="/" element={<Index />} />
                 <Route path="/verify" element={<Verify />} />
                 <Route path="/legal" element={<Legal />} />
+                <Route path="/twinbid_money" element={<TwinBidMoney />} />
+                <Route path="/twinbid/twinbid_money" element={<TwinBidMoney />} />
                 <Route path="/dashboard" element={<ProtectedRoute><DashboardProviders /></ProtectedRoute>}>
                   <Route index element={<DashboardOverview />} />
                   <Route path="campaigns" element={<DashboardCampaigns />} />

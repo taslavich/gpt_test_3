@@ -4,6 +4,7 @@ import { ACCESS_TOKEN_KEY, REFRESH_TOKEN_KEY, API_BASE_URL } from "@/api/config"
 import { DEFAULT_MANAGER_TELEGRAM } from "@/lib/constants";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { getStoredUtmSource } from "@/lib/utmSource";
+import { isEmailConfirmationRequired } from "@/lib/authErrors";
 
 /** Minimal user shape consumed by the rest of the UI. */
 export interface AuthUser {
@@ -113,8 +114,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setUser({ id: "mock-user", email: res.user.mail, full_name: res.user.name });
       return { error: null };
     } catch (e: any) {
+      if (isEmailConfirmationRequired(e)) {
+        return { error: t("auth.error.confirmEmail") };
+      }
       if (e instanceof ApiError) {
-        if (e.status === 403) return { error: t("auth.error.confirmEmail") };
         if (e.status === 401 || e.status === 404) return { error: t("auth.error.invalidCredentials") };
       }
       return { error: e?.message || t("auth.error.loginFailed") };
