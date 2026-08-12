@@ -2,12 +2,13 @@ import { createContext, useContext, useState, useCallback, useEffect, type React
 import { setErrorTranslator } from "@/lib/apiStatus";
 import { translateServerError } from "@/lib/serverErrors";
 
-export type Lang = "en" | "ru" | "es";
+export type Lang = "en" | "ru" | "es" | "fr";
 
 export const LANGUAGE_OPTIONS: { code: Lang; label: string; name: string }[] = [
   { code: "en", label: "EN", name: "English" },
   { code: "ru", label: "RU", name: "Russian" },
   { code: "es", label: "ES", name: "Spanish" },
+  { code: "fr", label: "FR", name: "Français" },
 ];
 
 const translations: Record<string, Record<"ru" | "en", string>> = {
@@ -856,6 +857,7 @@ const translations: Record<string, Record<"ru" | "en", string>> = {
 
 
 import { ES_TRANSLATIONS } from "@/lib/translations-es";
+import { FR_TRANSLATIONS } from "@/lib/translations-fr";
 
 interface LanguageContextType {
   lang: Lang;
@@ -869,8 +871,10 @@ export function LanguageProvider({ children }: { children: ReactNode }) {
   const [lang, setLang] = useState<Lang>(() => {
     try {
       const stored = localStorage.getItem("twinbid_lang");
-      if (stored === "en" || stored === "ru" || stored === "es") return stored;
-    } catch {}
+      if (stored === "en" || stored === "ru" || stored === "es" || stored === "fr") return stored;
+    } catch {
+      // localStorage can be unavailable in privacy-restricted browser contexts.
+    }
     return "ru";
   });
 
@@ -883,6 +887,10 @@ export function LanguageProvider({ children }: { children: ReactNode }) {
     if (lang === "es") {
       const es = ES_TRANSLATIONS[key];
       if (es !== undefined) return es;
+    }
+    if (lang === "fr") {
+      const fr = FR_TRANSLATIONS[key];
+      if (fr !== undefined) return fr;
     }
     const entry = translations[key];
     if (!entry) return key;

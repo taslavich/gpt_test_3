@@ -39,6 +39,17 @@ const copy = {
     description: "Selecciona una campaña o configura la segmentación. La calculadora muestra el volumen de impresiones disponible, qué cuota recibió la campaña y permite actualizar la puja al instante.",
     cta: "Abrir calculadora",
   },
+  fr: {
+    title: "Découvrez le trafic qui vous échappe",
+    subtitle: "TwinBid affiche le volume disponible lors de la dernière journée complète, le compare aux résultats de votre campagne et révèle son potentiel de développement.",
+    potential: "Impressions disponibles",
+    received: "Impressions de la campagne",
+    share: "Part obtenue",
+    bid: "Enchère actuelle",
+    insight: "Voyez plus que le trafic déjà acheté",
+    description: "Sélectionnez une campagne ou définissez manuellement le ciblage. Le calculateur affiche le volume d’impressions disponible, la part obtenue par la campagne et vous permet d’ajuster immédiatement l’enchère.",
+    cta: "Ouvrir le calculateur",
+  },
 };
 
 const metrics = [
@@ -48,7 +59,7 @@ const metrics = [
   { key: "bid" as const, value: "$0.034", icon: CircleDollarSign },
 ];
 
-function CalculatorMock({ text }: { text: typeof copy.en }) {
+function CalculatorMock({ text }: { text: (typeof copy)[keyof typeof copy] }) {
   const isMobile = useIsMobileImmediate();
   return (
     <div className="relative overflow-hidden rounded-[24px] border border-white/[0.09] bg-black/25 p-4 md:p-5">

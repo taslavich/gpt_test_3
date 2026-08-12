@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useMemo } from "react";
+import { memo, useCallback, useState, useRef, useEffect, useMemo } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -13,6 +13,7 @@ import { formatTargetingDimensionLabel } from "@/lib/targetingDimensions";
 import {
   BROWSER_FILTER_KEYS, OS_FILTER_KEYS, DEVICE_FILTER_KEYS, OTHER_KEY,
 } from "@/lib/statFilters";
+import { useIsMobileImmediate } from "@/hooks/use-mobile";
 
 const withoutOther = (keys: string[]) => keys.filter(k => k !== OTHER_KEY);
 
@@ -38,7 +39,7 @@ interface TargetingSectionProps {
   onUpdate: (key: string, updates: Partial<TargetingState>) => void;
 }
 
-function AutocompleteInput({
+const AutocompleteInput = memo(function AutocompleteInput({
   options, value, onChange, onAdd, existingItems, placeholder, t, lang,
 }: {
   options: string[];
@@ -55,17 +56,17 @@ function AutocompleteInput({
   const inputRef = useRef<HTMLInputElement>(null);
   const keepOpenRef = useRef(false);
 
-  const getDisplayLabel = (option: string) => {
-    return formatTargetingDimensionLabel(option, lang);
-  };
-
-
-  const filtered = options
-    .filter(o => {
-      const display = getDisplayLabel(o);
-      return display.toLowerCase().includes(value.toLowerCase()) && !existingItems.includes(o);
-    })
-    .sort((a, b) => getDisplayLabel(a).localeCompare(getDisplayLabel(b), lang));
+  const getDisplayLabel = useCallback(
+    (option: string) => formatTargetingDimensionLabel(option, lang),
+    [lang],
+  );
+  const existingSet = useMemo(() => new Set(existingItems), [existingItems]);
+  const filtered = useMemo(() => {
+    const query = value.toLowerCase();
+    return options
+      .filter(option => getDisplayLabel(option).toLowerCase().includes(query) && !existingSet.has(option))
+      .sort((a, b) => getDisplayLabel(a).localeCompare(getDisplayLabel(b), lang));
+  }, [existingSet, getDisplayLabel, lang, options, value]);
 
   useEffect(() => {
     const handler = (e: MouseEvent) => {
@@ -115,16 +116,17 @@ function AutocompleteInput({
       )}
     </div>
   );
-}
+});
 
 // Schedule: items are stored as "monday:0", "monday:5", "tuesday:23", etc.
 // Table-based UI: days on vertical axis, hours on horizontal axis
 const DAY_SHORT: Record<string, Record<string, string>> = {
   ru: { monday: "Пн", tuesday: "Вт", wednesday: "Ср", thursday: "Чт", friday: "Пт", saturday: "Сб", sunday: "Вс" },
   en: { monday: "Mo", tuesday: "Tu", wednesday: "We", thursday: "Th", friday: "Fr", saturday: "Sa", sunday: "Su" },
+  fr: { monday: "Lu", tuesday: "Ma", wednesday: "Me", thursday: "Je", friday: "Ve", saturday: "Sa", sunday: "Di" },
 };
 
-function SchedulePicker({ items, onUpdate, t }: { items: string[]; onUpdate: (items: string[]) => void; t: (key: string) => string }) {
+const SchedulePicker = memo(function SchedulePicker({ items, onUpdate, t }: { items: string[]; onUpdate: (items: string[]) => void; t: (key: string) => string }) {
   const { lang } = useLanguage();
   const [isMouseDown, setIsMouseDown] = useState(false);
   const [selectMode, setSelectMode] = useState(true);
@@ -255,7 +257,7 @@ function SchedulePicker({ items, onUpdate, t }: { items: string[]; onUpdate: (it
       </div>
     </div>
   );
-}
+});
 
 // Sites input with validation
 function SitesInput({ items, onAdd, t }: { items: string[]; onAdd: (items: string[]) => void; t: (key: string) => string }) {
@@ -330,18 +332,26 @@ function IpInput({ items, onAdd, t }: { items: string[]; onAdd: (newItems: strin
   );
 }
 
-function ListItem({ config, list: rawList, onUpdate }: {
+const MOBILE_VISIBLE_ITEMS = 60;
+
+const ListItem = memo(function ListItem({ config, list: rawList, onUpdate }: {
   config: typeof targetingConfigs[0];
   list: TargetingState;
-  onUpdate: (updates: Partial<TargetingState>) => void;
+  onUpdate: (key: string, updates: Partial<TargetingState>) => void;
 }) {
   const list = { mode: rawList?.mode ?? "none", items: rawList?.items ?? [] };
   const { t, lang } = useLanguage();
+  const isMobile = useIsMobileImmediate();
   const [inputValue, setInputValue] = useState("");
+  const [showAllItems, setShowAllItems] = useState(false);
   const options = targetingOptions[config.key] || [];
   const isSchedule = config.key === "schedule";
   const isSites = config.key === "sites";
   const isIp = config.key === "ip";
+  const commitUpdates = useCallback(
+    (updates: Partial<TargetingState>) => onUpdate(config.key, updates),
+    [config.key, onUpdate],
+  );
 
   const getDisplayLabel = (item: string) => {
     return formatTargetingDimensionLabel(item, lang);
@@ -350,18 +360,22 @@ function ListItem({ config, list: rawList, onUpdate }: {
 
   const addItem = (item: string) => {
     if (item && !list.items.includes(item)) {
-      onUpdate({ items: [...list.items, item] });
+      commitUpdates({ items: [...list.items, item] });
     }
   };
 
   const removeItem = (item: string) => {
-    onUpdate({ items: list.items.filter(i => i !== item) });
+    commitUpdates({ items: list.items.filter(i => i !== item) });
   };
 
   const clearItems = () => {
     setInputValue("");
-    onUpdate({ items: [] });
+    commitUpdates({ items: [] });
   };
+
+  const visibleItems = isMobile && !showAllItems
+    ? list.items.slice(0, MOBILE_VISIBLE_ITEMS)
+    : list.items;
 
   // For schedule, the picker is always active (no off switch).
   const modeButtons = isSchedule
@@ -375,7 +389,7 @@ function ListItem({ config, list: rawList, onUpdate }: {
         <div className="flex flex-wrap gap-1.5">
           {modeButtons.length > 0 && modeButtons.map((m) => (
               <Button key={m} type="button" size="sm" variant="outline"
-                onClick={() => onUpdate({ mode: m })}
+                onClick={() => commitUpdates({ mode: m })}
                 className={
                   list.mode === m
                     ? m === "white" ? "bg-green-600 text-white border-green-600 hover:bg-green-700 hover:text-white"
@@ -402,11 +416,11 @@ function ListItem({ config, list: rawList, onUpdate }: {
       {(isSchedule || list.mode !== "none") && (
         <div className="space-y-2">
           {isSchedule ? (
-            <SchedulePicker items={list.items} onUpdate={(items) => onUpdate({ items })} t={t} />
+            <SchedulePicker items={list.items} onUpdate={(items) => commitUpdates({ items })} t={t} />
           ) : isSites ? (
-            <SitesInput items={list.items} onAdd={(newItems) => onUpdate({ items: [...list.items, ...newItems] })} t={t} />
+            <SitesInput items={list.items} onAdd={(newItems) => commitUpdates({ items: [...list.items, ...newItems] })} t={t} />
           ) : isIp ? (
-            <IpInput items={list.items} onAdd={(newItems) => onUpdate({ items: [...list.items, ...newItems] })} t={t} />
+            <IpInput items={list.items} onAdd={(newItems) => commitUpdates({ items: [...list.items, ...newItems] })} t={t} />
           ) : (
             <AutocompleteInput
               options={options} value={inputValue} onChange={setInputValue}
@@ -416,42 +430,56 @@ function ListItem({ config, list: rawList, onUpdate }: {
           )}
           {list.items.length > 0 && !isSchedule && (
             <div className="flex flex-wrap gap-1.5">
-              {list.items.map((item) => (
+              {visibleItems.map((item) => (
                 <Badge key={item} variant="outline"
                   className={`gap-1 ${list.mode === "white" ? "border-green-500/30 text-green-400" : "border-red-500/30 text-red-400"}`}>
                   {getDisplayLabel(item)}<X className="h-3 w-3 cursor-pointer" onClick={() => removeItem(item)} />
                 </Badge>
               ))}
+              {isMobile && list.items.length > MOBILE_VISIBLE_ITEMS && (
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  onClick={() => setShowAllItems(previous => !previous)}
+                  className="h-6 border-border px-2 text-xs"
+                >
+                  {showAllItems ? "−" : `+${list.items.length - MOBILE_VISIBLE_ITEMS}`}
+                </Button>
+              )}
             </div>
           )}
         </div>
       )}
     </div>
   );
-}
+});
 
 export function TargetingSection({ lists, onUpdate }: TargetingSectionProps) {
   const { t } = useLanguage();
 
   // Migrate old dayOfWeek/hour data to schedule format and force schedule always on.
-  const effectiveLists = { ...lists };
-  if ((lists.dayOfWeek?.mode !== "none" && lists.dayOfWeek?.items?.length) || (lists.hour?.mode !== "none" && lists.hour?.items?.length)) {
-    if (!lists.schedule || lists.schedule.mode === "none") {
-      const days = lists.dayOfWeek?.items?.length ? lists.dayOfWeek.items.map(d => d.replace("day.", "")) : DAYS.slice();
-      const hours = lists.hour?.items?.length ? lists.hour.items : Array.from({ length: 24 }, (_, i) => String(i));
-      const scheduleItems: string[] = [];
-      for (const day of days) {
-        for (const h of hours) {
-          scheduleItems.push(`${day}:${h}`);
+  const effectiveLists = useMemo(() => {
+    const effective = { ...lists };
+    if ((lists.dayOfWeek?.mode !== "none" && lists.dayOfWeek?.items?.length) || (lists.hour?.mode !== "none" && lists.hour?.items?.length)) {
+      if (!lists.schedule || lists.schedule.mode === "none") {
+        const days = lists.dayOfWeek?.items?.length ? lists.dayOfWeek.items.map(d => d.replace("day.", "")) : DAYS.slice();
+        const hours = lists.hour?.items?.length ? lists.hour.items : Array.from({ length: 24 }, (_, i) => String(i));
+        const scheduleItems: string[] = [];
+        for (const day of days) {
+          for (const h of hours) {
+            scheduleItems.push(`${day}:${h}`);
+          }
         }
+        effective.schedule = { mode: "white", items: scheduleItems };
       }
-      effectiveLists.schedule = { mode: "white", items: scheduleItems };
     }
-  }
-  // Ensure schedule entry exists (mode always "white"); don't refill when user cleared it.
-  if (!effectiveLists.schedule || effectiveLists.schedule.mode === "none") {
-    effectiveLists.schedule = { mode: "white", items: effectiveLists.schedule?.items ?? [] };
-  }
+    // Ensure schedule entry exists (mode always "white"); don't refill when user cleared it.
+    if (!effective.schedule || effective.schedule.mode === "none") {
+      effective.schedule = { mode: "white", items: effective.schedule?.items ?? [] };
+    }
+    return effective;
+  }, [lists]);
 
   return (
     <div className="space-y-3">
@@ -461,7 +489,7 @@ export function TargetingSection({ lists, onUpdate }: TargetingSectionProps) {
           key={config.key}
           config={config}
           list={effectiveLists[config.key] || { mode: "none", items: [] }}
-          onUpdate={(updates) => onUpdate(config.key, updates)}
+          onUpdate={onUpdate}
         />
       ))}
     </div>

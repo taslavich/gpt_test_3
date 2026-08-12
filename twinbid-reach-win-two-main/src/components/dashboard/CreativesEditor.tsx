@@ -24,15 +24,6 @@ import {
 } from "@/lib/creativeApi";
 import { createBannerSizeVariants } from "@/lib/bannerCreativeVariants";
 
-function readFileAsDataUrl(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(String(reader.result));
-    reader.onerror = () => reject(reader.error);
-    reader.readAsDataURL(file);
-  });
-}
-
 function loadImageDims(dataUrl: string): Promise<{ w: number; h: number }> {
   return new Promise((resolve, reject) => {
     const img = new Image();
@@ -249,6 +240,12 @@ export const CreativesEditor = forwardRef<CreativesEditorHandle, CreativesEditor
   const { t } = useLanguage();
   const fileInputRefs = useRef<Record<string, HTMLInputElement | null>>({});
   const htmlFileInputRefs = useRef<Record<string, HTMLInputElement | null>>({});
+  const ownedPreviewUrlsRef = useRef(new Set<string>());
+
+  useEffect(() => () => {
+    ownedPreviewUrlsRef.current.forEach(url => URL.revokeObjectURL(url));
+    ownedPreviewUrlsRef.current.clear();
+  }, []);
 
   const MAX_HTML_BYTES = 1 * 1024 * 1024;
   const handleHtmlFileUpload = async (creativeId: string, e: React.ChangeEvent<HTMLInputElement>) => {
@@ -436,7 +433,8 @@ export const CreativesEditor = forwardRef<CreativesEditorHandle, CreativesEditor
     const video = validation.mediaType === "video";
     setUploadingId(creativeId);
     try {
-      const dataUrl = await readFileAsDataUrl(file);
+      const dataUrl = URL.createObjectURL(file);
+      ownedPreviewUrlsRef.current.add(dataUrl);
       const { w, h } = video ? await loadVideoDims(dataUrl) : await loadImageDims(dataUrl);
       const isGif = file.type === "image/gif" || ext === ".gif";
       const currentCreative = creativesRef.current.find(c => c.id === creativeId);
@@ -1221,6 +1219,7 @@ export const CreativesEditor = forwardRef<CreativesEditorHandle, CreativesEditor
       onClose={() => setCropperCreativeId(null)}
       onSave={(file, dataUrl, dimensions) => {
         if (!cropperCreativeId) return;
+        if (dataUrl.startsWith("blob:")) ownedPreviewUrlsRef.current.add(dataUrl);
         const isVideo = file.type === "video/mp4" || /\.mp4$/i.test(file.name);
         const isGif = !isVideo && (file.type === "image/gif" || /\.gif$/i.test(file.name));
         updateCreative(cropperCreativeId, {

@@ -15,6 +15,7 @@ import {
   type BidRecommendation,
 } from "@/lib/bidRecommendation";
 import { convertRecommendationToModel, getBidLimits, getMaximumBid } from "@/lib/bidLimits";
+import { useEffect } from "react";
 
 function getAvailableModels(formatKey: string): PricingModel[] {
   if (formatKey === "popunder") return ["cpm", "cpc"];
@@ -60,6 +61,7 @@ export function BudgetSection({
 }: BudgetSectionProps) {
   const { t } = useLanguage();
   const availableModels = getAvailableModels(formatKey);
+  const enforcedPricingModel = availableModels.length === 1 ? availableModels[0] : null;
   const bidLimits = getBidLimits(formatKey, trafficQuality, pricingModel);
   const limits = { min: bidLimits.min, rec: bidLimits.recommended };
   const priceNum = parseNumericValue(priceValue);
@@ -100,9 +102,11 @@ export function BudgetSection({
     ultra: { label: "Ultra High Quality", desc: t("budget.trafficUltra") },
   };
 
-  if (availableModels.length === 1 && pricingModel !== availableModels[0]) {
-    setPricingModel(availableModels[0]);
-  }
+  useEffect(() => {
+    if (enforcedPricingModel && pricingModel !== enforcedPricingModel) {
+      setPricingModel(enforcedPricingModel);
+    }
+  }, [enforcedPricingModel, pricingModel, setPricingModel]);
 
   const startDateObj = startDate ? new Date(startDate + "T00:00:00") : undefined;
   const endDateObj = endDate ? new Date(endDate + "T00:00:00") : undefined;

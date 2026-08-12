@@ -29,5 +29,7 @@ describe("shared campaign and calculator targeting dimensions", () => {
   it("uses the same formatter for campaign and calculator labels", () => {
     expect(formatTargetingDimensionLabel("GB", "en")).toBe("United Kingdom (GB)");
     expect(formatTargetingDimensionLabel("en", "es")).toBe("Inglés (en)");
+    expect(formatTargetingDimensionLabel("FR", "fr")).toBe("France (FR)");
+    expect(formatTargetingDimensionLabel("fr", "fr")).toBe("français (fr)");
   });
 });

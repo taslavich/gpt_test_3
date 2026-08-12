@@ -8,6 +8,13 @@ export const COUNTRY_NAMES: Record<string, { en: string; ru: string; es: string 
 export function formatCountryLabel(code: string, lang: Lang): string {
   const entry = COUNTRY_NAMES[code];
   if (!entry) return code;
-  const name = lang === "ru" ? entry.ru : lang === "es" ? entry.es : entry.en;
+  let name = lang === "ru" ? entry.ru : lang === "es" ? entry.es : entry.en;
+  if (lang === "fr") {
+    try {
+      name = new Intl.DisplayNames(["fr"], { type: "region" }).of(code) || entry.en;
+    } catch {
+      name = entry.en;
+    }
+  }
   return `${name} (${code})`;
 }

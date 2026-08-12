@@ -11,8 +11,8 @@ export default function Legal() {
   const { lang, t } = useLanguage();
   const navigate = useNavigate();
   const { hash } = useLocation();
-  // Legal documents are not yet professionally translated to Spanish — fall back to English.
-  const content = LEGAL_CONTENT[lang === "es" ? "en" : lang];
+  // Legal documents are currently available in Russian and English; other UI languages use English.
+  const content = LEGAL_CONTENT[lang === "ru" ? "ru" : "en"];
 
   useEffect(() => {
     if (hash) {

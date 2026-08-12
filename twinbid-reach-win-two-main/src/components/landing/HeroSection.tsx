@@ -128,7 +128,11 @@ export function HeroSection() {
               ease: [0.22, 1, 0.36, 1],
             }}
             className={`landing-hero-title text-foreground ${
-              lang === "ru" ? "landing-hero-title-ru" : ""
+              lang === "ru"
+                ? "landing-hero-title-ru"
+                : lang === "fr"
+                  ? "landing-hero-title-fr"
+                  : ""
             }`}
           >
             <span className="block">{title1}</span>

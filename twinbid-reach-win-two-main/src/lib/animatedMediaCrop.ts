@@ -26,15 +26,6 @@ interface CroppedMedia {
   dimensions: { w: number; h: number };
 }
 
-function readFileAsDataUrl(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(String(reader.result));
-    reader.onerror = () => reject(reader.error);
-    reader.readAsDataURL(file);
-  });
-}
-
 function putPatch(
   context: CanvasRenderingContext2D,
   patch: Uint8ClampedArray,
@@ -168,7 +159,7 @@ export async function cropAnimatedGif(
   );
   return {
     file,
-    dataUrl: await readFileAsDataUrl(file),
+    dataUrl: URL.createObjectURL(file),
     dimensions: { w: crop.outW, h: crop.outH },
   };
 }
@@ -248,7 +239,7 @@ export async function cropMp4Video(
     );
     return {
       file,
-      dataUrl: await readFileAsDataUrl(file),
+      dataUrl: URL.createObjectURL(file),
       dimensions: { w: outW, h: outH },
     };
   } finally {

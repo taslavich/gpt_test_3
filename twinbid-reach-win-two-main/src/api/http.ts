@@ -153,10 +153,11 @@ export async function http<T>(path: string, opts: RequestOptions = {}): Promise<
     // Localized message for expired/invalid sessions when refresh is unavailable or failed.
     if (res.status === 401 && auth) {
       const nav = (typeof navigator !== "undefined" && navigator.language || "").toLowerCase();
-      const lang: "ru" | "es" | "en" = nav.startsWith("ru") ? "ru" : nav.startsWith("es") ? "es" : "en";
+      const lang: "ru" | "es" | "fr" | "en" = nav.startsWith("ru") ? "ru" : nav.startsWith("es") ? "es" : nav.startsWith("fr") ? "fr" : "en";
       const message =
         lang === "ru" ? "Сессия устарела, пожалуйста, войдите заново"
         : lang === "es" ? "Tu sesión ha caducado, vuelve a iniciar sesión"
+        : lang === "fr" ? "Votre session a expiré, veuillez vous reconnecter"
         : "Your session has expired, please sign in again";
       const code = typeof err?.code === "string" ? err.code : "SESSION_EXPIRED";
       const fields = asRecord(err?.fields);

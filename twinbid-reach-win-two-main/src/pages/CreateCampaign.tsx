@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { startTransition, useState, useEffect, useRef, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -76,11 +76,12 @@ export default function CreateCampaign() {
   const creativesEditorRef = useRef<CreativesEditorHandle>(null);
   const [bidRecommendation, setBidRecommendation] = useState<BidRecommendation | null>(null);
 
-  const clearError = (...keys: string[]) => setErrors(prev => {
+  const clearError = useCallback((...keys: string[]) => setErrors(prev => {
+    if (!keys.some(key => key in prev)) return prev;
     const next = { ...prev };
     keys.forEach(k => delete next[k]);
     return next;
-  });
+  }), []);
 
   // Reactively clear budget/date/price errors
   useEffect(() => { if (totalBudget && parseNum(totalBudget) >= 1) clearError("totalBudget"); }, [totalBudget]);
@@ -95,9 +96,24 @@ export default function CreateCampaign() {
     }
   }, [priceValue, pricingModel, trafficQuality, adFormat]);
 
-  const updateList = (key: string, updates: Partial<TargetingState>) => {
+  const updateList = useCallback((key: string, updates: Partial<TargetingState>) => {
     setLists(prev => ({ ...prev, [key]: { ...prev[key], ...updates } }));
-  };
+  }, []);
+
+  const handleFormatChange = useCallback((nextFormat: string) => {
+    // Some mobile WebViews may deliver the selected value more than once.
+    // Keep the existing editor mounted when the effective format did not change.
+    if (nextFormat === adFormat) return;
+    startTransition(() => {
+      setAdFormat(nextFormat);
+      clearError("adFormat");
+      setCreatives([{
+        id: generateId(),
+        url: "",
+        creativeType: nextFormat === "banner" ? "image" : undefined,
+      }]);
+    });
+  }, [adFormat, clearError]);
 
   const showBrandName = adFormat === "native" || adFormat === "push";
 
@@ -320,7 +336,7 @@ export default function CreateCampaign() {
   return (
     <div className="relative max-w-3xl min-w-0 space-y-6">
       <div className="flex items-center gap-4">
-        <Button variant="ghost" size="icon" onClick={handleBack} disabled={isCreating}><ArrowLeft className="h-5 w-5" /></Button>
+        <Button type="button" variant="ghost" size="icon" onClick={handleBack} disabled={isCreating}><ArrowLeft className="h-5 w-5" /></Button>
         <div>
           <h2 className="text-2xl font-bold">{t("create.title")}</h2>
           <p className="text-muted-foreground text-sm">{t("create.step")} {step} {t("create.of")} 4</p>
@@ -390,7 +406,7 @@ export default function CreateCampaign() {
               </div>
               <div className="space-y-2">
                 <Label>{t("create.adFormat")}</Label>
-                <Select value={adFormat} onValueChange={(v) => { setAdFormat(v); clearError("adFormat"); setCreatives([{ id: generateId(), url: "" }]); }}>
+                <Select value={adFormat} onValueChange={handleFormatChange}>
                   <SelectTrigger className={`bg-background border-border ${errors.adFormat ? "border-destructive" : ""}`}>
                     <SelectValue placeholder={t("create.selectFormat")} />
                   </SelectTrigger>
@@ -456,9 +472,9 @@ export default function CreateCampaign() {
 
       <div className="flex items-center justify-between gap-3">
         {step > 1 ? (
-          <Button variant="outline" disabled={isCreating} onClick={() => { setStep(step - 1); setErrors({}); }} className="border-border">{t("create.back")}</Button>
+          <Button type="button" variant="outline" disabled={isCreating} onClick={() => { setStep(step - 1); setErrors({}); }} className="border-border">{t("create.back")}</Button>
         ) : <div />}
-        <Button onClick={handleNext}
+        <Button type="button" onClick={handleNext}
           disabled={isCreating}
           className={step < 4 ? "bg-primary hover:bg-primary/90 text-primary-foreground" : "bg-accent hover:bg-accent/90 text-accent-foreground"}>
           {step < 4 ? t("create.next") : t("create.createBtn")}

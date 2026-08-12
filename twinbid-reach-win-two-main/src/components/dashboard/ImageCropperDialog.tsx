@@ -6,11 +6,7 @@ import { Loader2, Minus, Plus } from "lucide-react";
 import { toast } from "sonner";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { buildDerivedCreativeFilename } from "@/lib/creativeApi";
-import {
-  cropAnimatedGif,
-  cropMp4Video,
-  type MediaCropRect,
-} from "@/lib/animatedMediaCrop";
+import type { MediaCropRect } from "@/lib/animatedMediaCrop";
 import {
   inferCropMediaKind,
   resolveCropMediaKind,
@@ -177,6 +173,7 @@ export function ImageCropperDialog({ open, source, target, fileNameHint, onSave,
       );
 
       if (outputMediaKind === "gif") {
+        const { cropAnimatedGif } = await import("@/lib/animatedMediaCrop");
         const result = await cropAnimatedGif(source.dataUrl, crop, fileNameHint);
         onSave(result.file, result.dataUrl, result.dimensions);
         setSaving(false);
@@ -184,6 +181,7 @@ export function ImageCropperDialog({ open, source, target, fileNameHint, onSave,
       }
 
       if (outputMediaKind === "video") {
+        const { cropMp4Video } = await import("@/lib/animatedMediaCrop");
         const result = await cropMp4Video(source.dataUrl, crop, fileNameHint);
         onSave(result.file, result.dataUrl, result.dimensions);
         setSaving(false);
@@ -222,13 +220,8 @@ export function ImageCropperDialog({ open, source, target, fileNameHint, onSave,
         buildDerivedCreativeFilename(fileNameHint, "cropped", ext),
         { type: mime },
       );
-      const reader = new FileReader();
-      reader.onload = () => {
-        onSave(file, String(reader.result), { w: outW, h: outH });
-        setSaving(false);
-      };
-      reader.onerror = () => { toast.error("Failed to read output"); setSaving(false); };
-      reader.readAsDataURL(file);
+      onSave(file, URL.createObjectURL(file), { w: outW, h: outH });
+      setSaving(false);
     } catch (err) {
       console.error(err);
       const reason = err instanceof Error ? err.message : "";
