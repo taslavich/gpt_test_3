@@ -1,4 +1,4 @@
-import { startTransition, useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -27,6 +27,7 @@ import {
   isCreativeImageUploadError,
   isValidCreativeUrl,
 } from "@/lib/creativeApi";
+import { useIsMobileImmediate } from "@/hooks/use-mobile";
 
 const formatLabels: Record<string, string> = {
   banner: "Banner", popunder: "Popunder", native: "Native", push: "In-page Push",
@@ -53,6 +54,7 @@ export default function CreateCampaign() {
   const { campaigns, addCampaign, updateCampaign, refetch } = useCampaigns();
   const { t } = useLanguage();
   const { addNotification } = useNotifications();
+  const isMobile = useIsMobileImmediate();
   const [step, setStep] = useState(1);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [trafficType, setTrafficType] = useState<TrafficType>("mainstream");
@@ -101,18 +103,17 @@ export default function CreateCampaign() {
   }, []);
 
   const handleFormatChange = useCallback((nextFormat: string) => {
-    // Some mobile WebViews may deliver the selected value more than once.
-    // Keep the existing editor mounted when the effective format did not change.
+    // Keep this update synchronous. Delaying it with startTransition while a
+    // mobile select is closing can leave some Android WebViews in a locked
+    // overlay state. Duplicate values are ignored so existing input is kept.
     if (nextFormat === adFormat) return;
-    startTransition(() => {
-      setAdFormat(nextFormat);
-      clearError("adFormat");
-      setCreatives([{
-        id: generateId(),
-        url: "",
-        creativeType: nextFormat === "banner" ? "image" : undefined,
-      }]);
-    });
+    setAdFormat(nextFormat);
+    clearError("adFormat");
+    setCreatives([{
+      id: generateId(),
+      url: "",
+      creativeType: nextFormat === "banner" ? "image" : undefined,
+    }]);
   }, [adFormat, clearError]);
 
   const showBrandName = adFormat === "native" || adFormat === "push";
@@ -334,7 +335,10 @@ export default function CreateCampaign() {
   useEffect(() => { return () => {}; }, []);
 
   return (
-    <div className="relative max-w-3xl min-w-0 space-y-6">
+    <div
+      className="notranslate relative max-w-3xl min-w-0 space-y-6"
+      translate="no"
+    >
       <div className="flex items-center gap-4">
         <Button type="button" variant="ghost" size="icon" onClick={handleBack} disabled={isCreating}><ArrowLeft className="h-5 w-5" /></Button>
         <div>
@@ -406,16 +410,40 @@ export default function CreateCampaign() {
               </div>
               <div className="space-y-2">
                 <Label>{t("create.adFormat")}</Label>
-                <Select value={adFormat} onValueChange={handleFormatChange}>
-                  <SelectTrigger className={`bg-background border-border ${errors.adFormat ? "border-destructive" : ""}`}>
-                    <SelectValue placeholder={t("create.selectFormat")} />
-                  </SelectTrigger>
-                  <SelectContent className="bg-card border-border">
-                    {Object.entries(formatLabels).map(([val, label]) => (
-                      <SelectItem key={val} value={val}>{label}</SelectItem>
+                {isMobile ? (
+                  <select
+                    aria-label={t("create.adFormat")}
+                    value={adFormat}
+                    onChange={(event) => handleFormatChange(event.target.value)}
+                    className={`flex h-10 w-full appearance-none rounded-md border bg-background px-3 py-2 text-base text-foreground outline-none ring-offset-background focus:ring-2 focus:ring-ring focus:ring-offset-2 ${
+                      errors.adFormat ? "border-destructive" : "border-border"
+                    }`}
+                    style={{
+                      backgroundImage:
+                        "linear-gradient(45deg, transparent 50%, currentColor 50%), linear-gradient(135deg, currentColor 50%, transparent 50%)",
+                      backgroundPosition:
+                        "calc(100% - 17px) 50%, calc(100% - 12px) 50%",
+                      backgroundSize: "5px 5px, 5px 5px",
+                      backgroundRepeat: "no-repeat",
+                    }}
+                  >
+                    <option value="" disabled>{t("create.selectFormat")}</option>
+                    {Object.entries(formatLabels).map(([value, label]) => (
+                      <option key={value} value={value}>{label}</option>
                     ))}
-                  </SelectContent>
-                </Select>
+                  </select>
+                ) : (
+                  <Select value={adFormat} onValueChange={handleFormatChange}>
+                    <SelectTrigger className={`bg-background border-border ${errors.adFormat ? "border-destructive" : ""}`}>
+                      <SelectValue placeholder={t("create.selectFormat")} />
+                    </SelectTrigger>
+                    <SelectContent className="bg-card border-border">
+                      {Object.entries(formatLabels).map(([val, label]) => (
+                        <SelectItem key={val} value={val}>{label}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
                 {errors.adFormat && <p className="text-xs text-destructive">{errors.adFormat}</p>}
               </div>
 

@@ -47,4 +47,25 @@ describe("creative URL macros", () => {
     expect(screen.getByText("81/80")).toHaveClass("text-destructive");
     expect(screen.getAllByText("We recommend no more than 80 characters")).toHaveLength(2);
   });
+
+  it("mounts the banner editor without requiring unsupported browser APIs", () => {
+    const originalMatchAll = String.prototype.matchAll;
+    Object.defineProperty(String.prototype, "matchAll", {
+      configurable: true,
+      value: undefined,
+    });
+
+    try {
+      render(<Harness formatKey="banner" />);
+
+      expect(screen.getByText(/Banner size/)).toBeInTheDocument();
+      expect(screen.getByText("Creative type")).toBeInTheDocument();
+      expect(screen.getByPlaceholderText("https://example.com/landing")).toBeInTheDocument();
+    } finally {
+      Object.defineProperty(String.prototype, "matchAll", {
+        configurable: true,
+        value: originalMatchAll,
+      });
+    }
+  });
 });

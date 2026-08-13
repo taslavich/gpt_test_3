@@ -61,8 +61,12 @@ function getHighlightedUrlSegments(url: string): Array<{ text: string; highlight
   const segments: Array<{ text: string; highlighted: boolean }> = [];
   const pattern = new RegExp(`([?&])([^?&=#]+)(=\\{(${URL_MACROS.join("|")})\\})`, "g");
   let cursor = 0;
-  for (const match of url.matchAll(pattern)) {
-    const index = match.index ?? 0;
+  // RegExp#exec is intentionally used instead of String#matchAll here. Some
+  // older Android WebViews do not implement matchAll and this input is first
+  // mounted immediately after the Banner format is selected.
+  let match: RegExpExecArray | null;
+  while ((match = pattern.exec(url)) !== null) {
+    const index = match.index;
     if (index > cursor) segments.push({ text: url.slice(cursor, index), highlighted: false });
     segments.push({ text: match[1], highlighted: false });
     segments.push({ text: match[2], highlighted: match[2] === match[4] });
