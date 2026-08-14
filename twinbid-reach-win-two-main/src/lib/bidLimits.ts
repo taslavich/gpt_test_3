@@ -1,6 +1,13 @@
 import type { PricingModel, TrafficQuality } from "@/contexts/CampaignContext";
 
-const FORMAT_BID_LIMITS: Record<string, Record<TrafficQuality, { min: number; recommended: number }>> = {
+interface BidLimitConfig {
+  min: number;
+  recommended: number;
+  /** Historical minimum used only when calculating recommendation fallbacks. */
+  recommendationMin?: number;
+}
+
+const FORMAT_BID_LIMITS: Record<string, Record<TrafficQuality, BidLimitConfig>> = {
   banner: {
     common: { min: 0.01, recommended: 0.05 },
     high: { min: 0.01, recommended: 0.07 },
@@ -17,9 +24,9 @@ const FORMAT_BID_LIMITS: Record<string, Record<TrafficQuality, { min: number; re
     ultra: { min: 0.005, recommended: 0.035 },
   },
   popunder: {
-    common: { min: 0.3, recommended: 1.8 },
-    high: { min: 0.7, recommended: 3.0 },
-    ultra: { min: 0.9, recommended: 4.7 },
+    common: { min: 0.05, recommendationMin: 0.3, recommended: 1.8 },
+    high: { min: 0.05, recommendationMin: 0.7, recommended: 3.0 },
+    ultra: { min: 0.05, recommendationMin: 0.9, recommended: 4.7 },
   },
 };
 
@@ -27,9 +34,17 @@ export const CPC_FROM_CPM_MULTIPLIER = 1.7 / 1000;
 
 export function getBidLimits(formatKey: string, quality: TrafficQuality, model: PricingModel) {
   const limits = (FORMAT_BID_LIMITS[formatKey] || FORMAT_BID_LIMITS.banner)[quality];
-  if (model === "cpm" || formatKey === "push") return limits;
+  const recommendationMin = limits.recommendationMin ?? limits.min;
+  if (model === "cpm" || formatKey === "push") {
+    return {
+      min: limits.min,
+      recommendationMin,
+      recommended: limits.recommended,
+    };
+  }
   return {
     min: Number((limits.min * CPC_FROM_CPM_MULTIPLIER).toFixed(5)),
+    recommendationMin: Number((recommendationMin * CPC_FROM_CPM_MULTIPLIER).toFixed(5)),
     recommended: Number((limits.recommended * CPC_FROM_CPM_MULTIPLIER).toFixed(5)),
   };
 }

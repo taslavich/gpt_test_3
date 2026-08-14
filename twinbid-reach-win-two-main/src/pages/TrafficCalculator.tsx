@@ -37,6 +37,7 @@ import { BROWSER_FILTER_KEYS, DEVICE_FILTER_KEYS, OS_FILTER_KEYS, OTHER_KEY } fr
 import { getTargetingDimensionOptions } from "@/lib/targetingDimensions";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
+import { useTouchScrollSelectionGuard } from "@/hooks/use-touch-scroll-selection-guard";
 
 const copy = {
   ru: {
@@ -320,6 +321,7 @@ const money = (value: number, model: PricingModel) => `$${value.toLocaleString("
 }).replace(/,/g, "\u00a0")}`;
 
 export default function TrafficCalculator() {
+  useTouchScrollSelectionGuard();
   const { lang } = useLanguage();
   const text = copy[lang] ?? copy.en;
   const { campaigns, loading: campaignsLoading, updateCampaign } = useCampaigns();
@@ -448,7 +450,7 @@ export default function TrafficCalculator() {
         : "";
 
   return (
-    <div className="mx-auto max-w-[1440px] space-y-6">
+    <div data-traffic-calculator-root className="mx-auto max-w-[1440px] space-y-6">
       <div>
         <h1 className="text-2xl font-bold">{text.title}</h1>
         <p className="mt-1 max-w-3xl text-sm text-muted-foreground">{text.subtitle}</p>
@@ -477,7 +479,7 @@ export default function TrafficCalculator() {
             ))}
           </div>
           {campaigns.length > 7 && (
-            <div className="mt-3"><Select value={selectedId} onValueChange={(id) => { const campaign = campaigns.find((item) => item.id === id); if (campaign) selectCampaign(campaign); }}><SelectTrigger className="w-full max-w-md"><SelectValue placeholder={text.otherCampaign} /></SelectTrigger><SelectContent>{campaigns.map((campaign) => <SelectItem key={campaign.id} value={campaign.id}>{campaign.name} · {campaign.formatKey}</SelectItem>)}</SelectContent></Select></div>
+            <div className="mt-3"><Select value={selectedId} onValueChange={(id) => { const campaign = campaigns.find((item) => item.id === id); if (campaign) selectCampaign(campaign); }}><SelectTrigger className="w-full max-w-md"><SelectValue placeholder={text.otherCampaign} /></SelectTrigger><SelectContent data-traffic-calculator-menu>{campaigns.map((campaign) => <SelectItem key={campaign.id} value={campaign.id}>{campaign.name} · {campaign.formatKey}</SelectItem>)}</SelectContent></Select></div>
           )}
         </div>
       </Card>
@@ -486,8 +488,8 @@ export default function TrafficCalculator() {
         <Card className="min-w-0 p-4 sm:p-5">
           <div className="mb-5"><h2 className="font-semibold">{text.parameters}</h2><p className="mt-1 text-xs text-muted-foreground">{selected ? text.campaignParameters : text.allTraffic}</p></div>
           <div className="grid gap-4 sm:grid-cols-2">
-            <Field label={text.format}><Select value={filters.format} onValueChange={(format) => updateFilters({ format })}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{formats.map((format) => <SelectItem key={format.value} value={format.value}>{format.label}</SelectItem>)}</SelectContent></Select></Field>
-            <Field label={text.trafficType}><Select value={filters.trafficType} onValueChange={(trafficType: FilterState["trafficType"]) => updateFilters({ trafficType })}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="mainstream">Mainstream</SelectItem><SelectItem value="adult">Adult</SelectItem><SelectItem value="mixed">Mixed</SelectItem></SelectContent></Select></Field>
+            <Field label={text.format}><Select value={filters.format} onValueChange={(format) => updateFilters({ format })}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent data-traffic-calculator-menu>{formats.map((format) => <SelectItem key={format.value} value={format.value}>{format.label}</SelectItem>)}</SelectContent></Select></Field>
+            <Field label={text.trafficType}><Select value={filters.trafficType} onValueChange={(trafficType: FilterState["trafficType"]) => updateFilters({ trafficType })}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent data-traffic-calculator-menu><SelectItem value="mainstream">Mainstream</SelectItem><SelectItem value="adult">Adult</SelectItem><SelectItem value="mixed">Mixed</SelectItem></SelectContent></Select></Field>
           </div>
           <div className="mt-5 grid gap-3 sm:grid-cols-2">
             <MultiChoice label={text.countries} text={text} mode={filters.countryMode} values={filters.country} options={countryOptions} onModeChange={(countryMode) => updateFilters({ countryMode })} onChange={(country) => updateFilters({ country })} />
@@ -555,7 +557,7 @@ function MultiChoice({ label, text, mode, values, options, onModeChange, onChang
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild><Button variant="outline" className="h-auto min-h-10 w-full min-w-0 justify-between px-3 font-normal"><span className="min-w-0 truncate text-left"><span className="text-muted-foreground">{label}:</span> {summary}</span><ChevronDown className="ml-2 h-4 w-4 shrink-0 text-muted-foreground" /></Button></DropdownMenuTrigger>
-      <DropdownMenuContent className="max-h-72 w-[min(16rem,calc(100vw-1rem))] overflow-y-auto"><DropdownMenuLabel>{label}</DropdownMenuLabel><div className="flex gap-1 px-2 pb-2"><button type="button" onClick={(event) => { event.preventDefault(); onModeChange("include"); }} className={cn("flex-1 rounded-md px-2 py-1.5 text-xs", mode === "include" ? "bg-primary/15 text-primary" : "bg-muted text-muted-foreground")}>{text.include}</button><button type="button" onClick={(event) => { event.preventDefault(); onModeChange("exclude"); }} className={cn("flex-1 rounded-md px-2 py-1.5 text-xs", mode === "exclude" ? "bg-primary/15 text-primary" : "bg-muted text-muted-foreground")}>{text.exclude}</button></div>{values.length > 0 && <><DropdownMenuCheckboxItem checked={false} onCheckedChange={() => onChange([])}>{text.clear}</DropdownMenuCheckboxItem><DropdownMenuSeparator /></>}{options.map((option) => <DropdownMenuCheckboxItem key={option.value} checked={values.includes(option.value)} onCheckedChange={(checked) => onChange(checked ? [...values, option.value] : values.filter((value) => value !== option.value))}>{option.label}</DropdownMenuCheckboxItem>)}</DropdownMenuContent>
+      <DropdownMenuContent data-traffic-calculator-menu className="max-h-72 w-[min(16rem,calc(100vw-1rem))] overflow-y-auto"><DropdownMenuLabel>{label}</DropdownMenuLabel><div className="flex gap-1 px-2 pb-2"><button type="button" onClick={(event) => { event.preventDefault(); onModeChange("include"); }} className={cn("flex-1 rounded-md px-2 py-1.5 text-xs", mode === "include" ? "bg-primary/15 text-primary" : "bg-muted text-muted-foreground")}>{text.include}</button><button type="button" onClick={(event) => { event.preventDefault(); onModeChange("exclude"); }} className={cn("flex-1 rounded-md px-2 py-1.5 text-xs", mode === "exclude" ? "bg-primary/15 text-primary" : "bg-muted text-muted-foreground")}>{text.exclude}</button></div>{values.length > 0 && <><DropdownMenuCheckboxItem checked={false} onCheckedChange={() => onChange([])}>{text.clear}</DropdownMenuCheckboxItem><DropdownMenuSeparator /></>}{options.map((option) => <DropdownMenuCheckboxItem key={option.value} checked={values.includes(option.value)} onCheckedChange={(checked) => onChange(checked ? [...values, option.value] : values.filter((value) => value !== option.value))}>{option.label}</DropdownMenuCheckboxItem>)}</DropdownMenuContent>
     </DropdownMenu>
   );
 }

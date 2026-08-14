@@ -63,7 +63,11 @@ export function BudgetSection({
   const availableModels = getAvailableModels(formatKey);
   const enforcedPricingModel = availableModels.length === 1 ? availableModels[0] : null;
   const bidLimits = getBidLimits(formatKey, trafficQuality, pricingModel);
-  const limits = { min: bidLimits.min, rec: bidLimits.recommended };
+  const limits = {
+    min: bidLimits.min,
+    recommendationMin: bidLimits.recommendationMin,
+    rec: bidLimits.recommended,
+  };
   const priceNum = parseNumericValue(priceValue);
   const maxPrice = getMaximumBid(formatKey, pricingModel);
   const displayedRecommendation = bidRecommendation
@@ -78,7 +82,7 @@ export function BudgetSection({
           formatKey,
           pricingModel,
         ),
-        hardcodedMinimum: limits.min,
+        hardcodedMinimum: limits.recommendationMin,
         hardcodedRecommended: limits.rec,
       })
     : null;
