@@ -21,20 +21,20 @@ import (
 )
 
 type Server struct {
-	ProfitPercent              float32
-	redisClients               []*redis.Client
-	redisAdmClient             *redis.Client
-	redisBurlClient            *redis.Client
-	redisUUIDKeyTTL            time.Duration
-	redisSetOrtb               string
-	timeout                    time.Duration
-	percentFilename_adult      string
-	percentFilename_mainstream string
-	percentMap_adult           *map[string]map[string]map[string]*types.PercentAndBidfloor
-	percentMap_mainstream      *map[string]map[string]map[string]*types.PercentAndBidfloor
-	admDomain                  string
-	redisWriteErrorMonitor     *services.RedisWriteErrorMonitor
+	ProfitPercent          float32
+	redisClients           []*redis.Client
+	redisAdmClient         *redis.Client
+	redisBurlClient        *redis.Client
+	redisUUIDKeyTTL        time.Duration
+	redisSetOrtb           string
+	timeout                time.Duration
+	percentRoutes          *types.FormatPercentRoutesV25
+	admDomain              string
+	redisWriteErrorMonitor *services.RedisWriteErrorMonitor
 
+	// Legacy shared-map function is retained so existing in-process tests/callers
+	// can keep constructing Server directly. Production uses the route-aware
+	// function below.
 	GetWinnerBidInternal_V_2_5 func(
 		ctx context.Context,
 		req *bidEngineGrpc.BidEngineRequest_V2_5,
@@ -42,6 +42,17 @@ type Server struct {
 		ImpIdUuid map[string]string,
 		percentMapAdult *map[string]map[string]map[string]*types.PercentAndBidfloor,
 		percentMapMainstream *map[string]map[string]map[string]*types.PercentAndBidfloor,
+		logged bool,
+		typic string,
+		admDomain string,
+	) (*ortb_V2_5.BidResponse, clickhouse_types.UuidImpBidResponse, []string, []string)
+
+	GetWinnerBidInternalWithRoutes_V_2_5 func(
+		ctx context.Context,
+		req *bidEngineGrpc.BidEngineRequest_V2_5,
+		profitPercent float32,
+		ImpIdUuid map[string]string,
+		percentRoutes *types.FormatPercentRoutesV25,
 		logged bool,
 		typic string,
 		admDomain string,
@@ -57,40 +68,32 @@ func NewServer(
 	redisBurlClient *redis.Client,
 	redisUUIDKeyTTL time.Duration,
 	redisSetOrtb string,
-	GetWinnerBidInternal_V_2_5 func(
+	GetWinnerBidInternalWithRoutes_V_2_5 func(
 		ctx context.Context,
 		req *bidEngineGrpc.BidEngineRequest_V2_5,
 		profitPercent float32,
 		ImpIdUuid map[string]string,
-		percentMapAdult *map[string]map[string]map[string]*types.PercentAndBidfloor,
-		percentMapMainstream *map[string]map[string]map[string]*types.PercentAndBidfloor,
+		percentRoutes *types.FormatPercentRoutesV25,
 		logged bool,
 		typic string,
 		admDomain string,
 	) (*ortb_V2_5.BidResponse, clickhouse_types.UuidImpBidResponse, []string, []string),
-	percentFilename_adult string,
-	percentMap_adult *map[string]map[string]map[string]*types.PercentAndBidfloor,
-
-	percentFilename_mainstream string,
-	percentMap_mainstream *map[string]map[string]map[string]*types.PercentAndBidfloor,
+	percentRoutes *types.FormatPercentRoutesV25,
 
 	admDomain string,
 	redisWriteErrorMonitor *services.RedisWriteErrorMonitor,
 ) *Server {
 	return &Server{
-		ProfitPercent:              ProfitPercent,
-		redisClients:               redisClients,
-		redisAdmClient:             redisAdmClient,
-		redisBurlClient:            redisBurlClient,
-		redisUUIDKeyTTL:            redisUUIDKeyTTL,
-		redisSetOrtb:               redisSetOrtb,
-		GetWinnerBidInternal_V_2_5: GetWinnerBidInternal_V_2_5,
-		percentFilename_adult:      percentFilename_adult,
-		percentFilename_mainstream: percentFilename_mainstream,
-		percentMap_adult:           percentMap_adult,
-		percentMap_mainstream:      percentMap_mainstream,
-		admDomain:                  admDomain,
-		redisWriteErrorMonitor:     redisWriteErrorMonitor,
+		ProfitPercent:                        ProfitPercent,
+		redisClients:                         redisClients,
+		redisAdmClient:                       redisAdmClient,
+		redisBurlClient:                      redisBurlClient,
+		redisUUIDKeyTTL:                      redisUUIDKeyTTL,
+		redisSetOrtb:                         redisSetOrtb,
+		GetWinnerBidInternalWithRoutes_V_2_5: GetWinnerBidInternalWithRoutes_V_2_5,
+		percentRoutes:                        percentRoutes,
+		admDomain:                            admDomain,
+		redisWriteErrorMonitor:               redisWriteErrorMonitor,
 	}
 }
 
@@ -115,23 +118,24 @@ func (s *Server) GetWinnerBid_V2_5(
 	if req == nil || req.GetBidRequest() == nil {
 		return nil, status.Error(codes.InvalidArgument, "bid engine request is empty")
 	}
-	if s.GetWinnerBidInternal_V_2_5 == nil {
+	if s.GetWinnerBidInternalWithRoutes_V_2_5 == nil && s.GetWinnerBidInternal_V_2_5 == nil {
 		return nil, status.Error(codes.Internal, "bid engine auction function is nil")
 	}
 
-	// ADV and DSP winners are now finalized by one per-impression path inside
-	// GetWinnerBidInternal_V_2_5. Rekl is no longer a routing switch here.
-	bidResponse, clickhouseBid, burlUUIDs, admUUIDs := s.GetWinnerBidInternal_V_2_5(
-		ctx,
-		req,
-		s.ProfitPercent,
-		req.ImpIdUuid,
-		s.percentMap_adult,
-		s.percentMap_mainstream,
-		req.Logged,
-		req.Typic,
-		s.admDomain,
-	)
+	// ADV and DSP winners are finalized by one per-impression path. Production
+	// selects FORMAT x traffic percent maps; the legacy branch keeps the old shared maps.
+	var bidResponse *ortb_V2_5.BidResponse
+	var clickhouseBid clickhouse_types.UuidImpBidResponse
+	var burlUUIDs, admUUIDs []string
+	if s.GetWinnerBidInternalWithRoutes_V_2_5 != nil {
+		bidResponse, clickhouseBid, burlUUIDs, admUUIDs = s.GetWinnerBidInternalWithRoutes_V_2_5(
+			ctx, req, s.ProfitPercent, req.ImpIdUuid, s.percentRoutes, req.Logged, req.Typic, s.admDomain,
+		)
+	} else {
+		bidResponse, clickhouseBid, burlUUIDs, admUUIDs = s.GetWinnerBidInternal_V_2_5(
+			ctx, req, s.ProfitPercent, req.ImpIdUuid, nil, nil, req.Logged, req.Typic, s.admDomain,
+		)
+	}
 
 	// These UUID sets belong to the downstream DSP callback path. ADV callback
 	// semantics stay unchanged: its prepared callbacks are finalized in the

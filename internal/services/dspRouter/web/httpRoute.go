@@ -37,7 +37,8 @@ const (
 )
 
 type getSspGeoDspLinksRequest_V2_5 struct {
-	Typic string `in:"query=typic" required:"true"`
+	Typic  string `in:"query=typic" required:"true"`
+	Format string `in:"query=format"`
 }
 
 type getDspFiltersMapRequest_V2_5 struct {
@@ -50,8 +51,9 @@ type putDspFiltersMapRequest struct {
 }
 
 type putSspGeoDspLinksRequest_V2_5 struct {
-	Typic string                                `in:"query=typic" required:"true"`
-	Mapa  map[string]map[string]map[string]bool `in:"body=json"`
+	Typic  string        `in:"query=typic" required:"true"`
+	Format string        `in:"query=format"`
+	Mapa   GeoDspLinkMap `in:"body=json"`
 }
 
 type getDspChangersMapRequest_V2_5 struct {
@@ -74,11 +76,7 @@ type putDspFiltersCidMapRequest struct {
 
 func InitHttpRoutes(
 	httpRouter *chi.Mux,
-	linkFilename_adult string,
-	linkFilename_mainstream string,
-
-	linkMap_adult,
-	linkMap_mainstream *map[string]map[string]map[string]bool,
+	formatRoutes *FormatRoutesV25,
 
 	filtersAdlFilename string,
 	filtersMcFilename string,
@@ -103,19 +101,19 @@ func InitHttpRoutes(
 	httpRouter.With(
 		httpin.NewInput(getSspGeoDspLinksRequest_V2_5{}),
 	).Get(GetSspGeoDspLinksMapUrl, func(w http.ResponseWriter, r *http.Request) {
-		getSspGeoLinksMap(w, r, linkFilename_adult, linkFilename_mainstream)
+		getSspGeoLinksMap(w, r, formatRoutes)
 	})
 
 	httpRouter.With(
 		httpin.NewInput(getSspGeoDspLinksRequest_V2_5{}),
 	).Get(GetDebugSspGeoDspLinksMapUrl, func(w http.ResponseWriter, r *http.Request) {
-		getSspGeoLinksMapDebug(w, r, linkMap_adult, linkMap_mainstream)
+		getSspGeoLinksMapDebug(w, r, formatRoutes)
 	})
 
 	httpRouter.With(
 		httpin.NewInput(putSspGeoDspLinksRequest_V2_5{}),
 	).Put(PutSspGeoDspLinksMapUrl, func(w http.ResponseWriter, r *http.Request) {
-		putSspGeoLinksMap(w, r, linkFilename_adult, linkFilename_mainstream, linkMap_adult, linkMap_mainstream)
+		putSspGeoLinksMap(w, r, formatRoutes)
 	})
 
 	httpRouter.With(

@@ -8,6 +8,7 @@ import (
 	"gitlab.com/twinbid-exchange/RTB-exchange/internal/constants"
 	bidEngineGrpc "gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/proto/services/bidEngine"
 	ortb "gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/proto/types/ortb_V2_5"
+	"gitlab.com/twinbid-exchange/RTB-exchange/internal/types"
 )
 
 func TestGetWinnerBidInternalAllADVDoesNotRequireDSPResponses(t *testing.T) {
@@ -142,5 +143,75 @@ func TestGetWinnerBidInternalMixedADVPriorityAndDSPFallback(t *testing.T) {
 	}
 	if len(burlUUIDs) != 1 || burlUUIDs[0] != uuidDSP {
 		t.Fatalf("only DSP fallback must create DSP BURL tracking UUID, got %v", burlUUIDs)
+	}
+}
+
+func TestGetWinnerBidInternalUsesFormatSpecificPercentMap(t *testing.T) {
+	requestID, impID, uuid := "req-nat-percent", "imp-nat", "uuid-nat"
+	price := float32(1.0)
+	adm := `{"native":{"ver":"1.2","link":{"url":"https://landing.example"}}}`
+	country := "US"
+	req := &bidEngineGrpc.BidEngineRequest_V2_5{
+		BidRequest: &ortb.BidRequest{
+			Id:     &requestID,
+			Imp:    []*ortb.Imp{{Id: &impID, Native: &ortb.Native{}}},
+			Device: &ortb.Device{Geo: &ortb.Geo{Country: &country}},
+		},
+		BidResponses: map[string]*ortb.BidResponse{
+			"dsp-main": {Seatbid: []*ortb.SeatBid{{Bid: []*ortb.Bid{{Impid: &impID, Price: &price, Adm: &adm}}}}},
+		},
+		ImpIdUuid: map[string]string{impID: uuid},
+		SspDomain: "ssp.example",
+		Format:    constants.NAT,
+	}
+
+	popPercent := &types.PercentAndBidfloor{Percent: 0.10, Bidfloor: true}
+	natPercent := &types.PercentAndBidfloor{Percent: 0.50, Bidfloor: true}
+	popMap := types.GeoDspPercentMap{"ALL": {"ALL": {"dsp-main": popPercent}}}
+	natMap := types.GeoDspPercentMap{"ALL": {"ALL": {"dsp-main": natPercent}}}
+	routes := &types.FormatPercentRoutesV25{
+		POP: types.FormatPercentRouteV25{AdultMap: &popMap},
+		NAT: types.FormatPercentRouteV25{AdultMap: &natMap},
+	}
+
+	response, _, _, _ := GetWinnerBidInternalWithRoutes_V_2_5(
+		context.Background(), req, 0.20, req.ImpIdUuid, routes, false, "ADULT", "callbacks.example",
+	)
+	bids := response.GetSeatbid()[0].GetBid()
+	if len(bids) != 1 {
+		t.Fatalf("winners=%d want 1", len(bids))
+	}
+	if got, want := bids[0].GetPrice(), float32(0.50); math.Abs(float64(got-want)) > 1e-6 {
+		t.Fatalf("NAT final price=%f want %f; POP map must not be used", got, want)
+	}
+}
+
+func TestGetWinnerBidInternalDSPTieBreakIsDeterministic(t *testing.T) {
+	requestID, impID, uuid := "req-tie", "imp-tie", "uuid-tie"
+	price := float32(1.0)
+	adm := "https://dsp.example/adm"
+	bidA, bidB := "bid-a", "bid-b"
+	req := &bidEngineGrpc.BidEngineRequest_V2_5{
+		BidRequest: &ortb.BidRequest{Id: &requestID, Imp: []*ortb.Imp{{Id: &impID}}},
+		BidResponses: map[string]*ortb.BidResponse{
+			"z-dsp": {Seatbid: []*ortb.SeatBid{{Bid: []*ortb.Bid{{Id: &bidB, Impid: &impID, Price: &price, Adm: &adm}}}}},
+			"a-dsp": {Seatbid: []*ortb.SeatBid{{Bid: []*ortb.Bid{{Id: &bidA, Impid: &impID, Price: &price, Adm: &adm}}}}},
+		},
+		ImpIdUuid: map[string]string{impID: uuid},
+		SspDomain: "ssp.example",
+		Format:    constants.POP,
+	}
+
+	for i := 0; i < 20; i++ {
+		response, clickhouse, _, _ := GetWinnerBidInternal_V_2_5(
+			context.Background(), req, 0, req.ImpIdUuid, nil, nil, false, "", "callbacks.example",
+		)
+		bids := response.GetSeatbid()[0].GetBid()
+		if len(bids) != 1 || bids[0].GetId() != bidA {
+			t.Fatalf("iteration %d winner=%+v want a-dsp/%s", i, bids, bidA)
+		}
+		if got := clickhouse[uuid].WinDspDomain; got == nil || *got != "a-dsp" {
+			t.Fatalf("iteration %d winner domain=%v want a-dsp", i, got)
+		}
 	}
 }

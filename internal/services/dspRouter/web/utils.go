@@ -63,28 +63,18 @@ func getSspTimeout(sspDomain string, configTimeouts config.MapStringToDuration) 
 	return timeout
 }
 
-func InitSspHttpClients(
-	dspEndpoints_v_2_5 config.MapStringToString,
-	dspEndpoints_mainstream_v_2_5 config.MapStringToString,
-) map[string]*http.Client {
-	timeouts := make(map[string]*http.Client)
-	for _, domain := range dspEndpoints_v_2_5 {
-		if _, ok := timeouts[domain]; !ok {
-			client := NewFastHTTPClient()
-			timeouts[domain] = client
+func InitSspHttpClients(endpointSets ...config.MapStringToString) map[string]*http.Client {
+	clients := make(map[string]*http.Client)
+	for _, endpoints := range endpointSets {
+		for _, domain := range endpoints {
+			if _, ok := clients[domain]; ok {
+				continue
+			}
+			clients[domain] = NewFastHTTPClient()
 		}
 	}
-
-	for _, domain := range dspEndpoints_mainstream_v_2_5 {
-		if _, ok := timeouts[domain]; !ok {
-			client := NewFastHTTPClient()
-			timeouts[domain] = client
-		}
-	}
-
-	timeouts[DEFAULT] = NewFastHTTPClient()
-
-	return timeouts
+	clients[DEFAULT] = NewFastHTTPClient()
+	return clients
 }
 
 func getDspHttpClients(dspDomain string, clients map[string]*http.Client) *http.Client {

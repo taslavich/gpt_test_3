@@ -1,6 +1,7 @@
 package bidEngine
 
 import (
+	"context"
 	"encoding/json"
 	"html"
 	"net/url"
@@ -8,6 +9,7 @@ import (
 	"testing"
 
 	"gitlab.com/twinbid-exchange/RTB-exchange/internal/constants"
+	bidEngineGrpc "gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/proto/services/bidEngine"
 	ortb "gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/proto/types/ortb_V2_5"
 )
 
@@ -217,5 +219,104 @@ func assertQueryMissing(t *testing.T, raw, key string) {
 	}
 	if _, exists := parsed.Query()[key]; exists {
 		t.Fatalf("callback %q unexpectedly contains query key %q", raw, key)
+	}
+}
+
+func TestDSPBannerKeepsRawADMAndUsesExchangeBURL(t *testing.T) {
+	requestID, impID, uuid := "req-ban", "imp-ban", "uuid-ban"
+	price := float32(1.0)
+	adm := `<a href="https://landing.example"><img src="https://cdn.example/a.png"></a>`
+	nurl := "https://dsp.example/win?x=1"
+	dspBurl := "https://dsp.example/bill"
+
+	req := &bidEngineGrpc.BidEngineRequest_V2_5{
+		BidRequest: &ortb.BidRequest{Id: &requestID, Imp: []*ortb.Imp{{Id: &impID, Banner: &ortb.Banner{}}}},
+		BidResponses: map[string]*ortb.BidResponse{
+			"dsp-banner": {Seatbid: []*ortb.SeatBid{{Bid: []*ortb.Bid{{Impid: &impID, Price: &price, Adm: &adm, Nurl: &nurl, Burl: &dspBurl}}}}},
+		},
+		ImpIdUuid: map[string]string{impID: uuid},
+		SspDomain: "ssp.example",
+		Format:    constants.BAN,
+		Logged:    true,
+	}
+
+	response, _, burlUUIDs, admUUIDs := GetWinnerBidInternalWithRoutes_V_2_5(
+		context.Background(), req, 0.1, req.ImpIdUuid, nil, true, "ADULT", "callbacks.example",
+	)
+	bids := response.GetSeatbid()[0].GetBid()
+	if len(bids) != 1 {
+		t.Fatalf("banner DSP winners=%d want 1", len(bids))
+	}
+	got := bids[0]
+	if got.GetAdm() != adm {
+		t.Fatalf("banner ADM changed: got %q want %q", got.GetAdm(), adm)
+	}
+	assertCallbackQuery(t, got.GetNurl(), "/nurl", map[string]string{
+		"id": uuid, "s": "ssp.example", "url": nurl, "f": constants.FormatToCodes[constants.BAN],
+	})
+	assertCallbackQuery(t, got.GetBurl(), "/burl", map[string]string{
+		"id": uuid, "f": constants.FormatToCodes[constants.BAN],
+	})
+	assertQueryMissing(t, got.GetBurl(), "url")
+	if len(admUUIDs) != 0 {
+		t.Fatalf("raw banner ADM must not allocate /adm UUIDs: %v", admUUIDs)
+	}
+	if len(burlUUIDs) != 1 || burlUUIDs[0] != uuid {
+		t.Fatalf("banner BURL UUIDs=%v want [%s]", burlUUIDs, uuid)
+	}
+}
+
+func TestDSPNativeAndIPPKeepsValidRawJSONADM(t *testing.T) {
+	for _, format := range []string{constants.NAT, constants.IPP} {
+		t.Run(format, func(t *testing.T) {
+			requestID, impID, uuid := "req-"+format, "imp-"+format, "uuid-"+format
+			price := float32(1.0)
+			adm := `{"native":{"ver":"1.2","link":{"url":"https://landing.example"},"assets":[{"id":100,"title":{"text":"x"}}]}}`
+			req := &bidEngineGrpc.BidEngineRequest_V2_5{
+				BidRequest: &ortb.BidRequest{Id: &requestID, Imp: []*ortb.Imp{{Id: &impID, Native: &ortb.Native{}}}},
+				BidResponses: map[string]*ortb.BidResponse{
+					"dsp-native": {Seatbid: []*ortb.SeatBid{{Bid: []*ortb.Bid{{Impid: &impID, Price: &price, Adm: &adm}}}}},
+				},
+				ImpIdUuid: map[string]string{impID: uuid},
+				SspDomain: "ssp.example",
+				Format:    format,
+				Logged:    true,
+			}
+			response, _, burlUUIDs, admUUIDs := GetWinnerBidInternalWithRoutes_V_2_5(
+				context.Background(), req, 0.1, req.ImpIdUuid, nil, true, "MAINSTREAM", "callbacks.example",
+			)
+			bids := response.GetSeatbid()[0].GetBid()
+			if len(bids) != 1 || bids[0].GetAdm() != adm {
+				t.Fatalf("%s raw Native ADM was not preserved: %+v", format, bids)
+			}
+			if len(admUUIDs) != 0 || len(burlUUIDs) != 1 || burlUUIDs[0] != uuid {
+				t.Fatalf("%s callback UUIDs: burl=%v adm=%v", format, burlUUIDs, admUUIDs)
+			}
+		})
+	}
+}
+
+func TestDSPNativeRejectsMalformedADMJSON(t *testing.T) {
+	requestID, impID, uuid := "req-nat-bad", "imp-nat-bad", "uuid-nat-bad"
+	price := float32(1.0)
+	adm := `{"native":`
+	req := &bidEngineGrpc.BidEngineRequest_V2_5{
+		BidRequest: &ortb.BidRequest{Id: &requestID, Imp: []*ortb.Imp{{Id: &impID, Native: &ortb.Native{}}}},
+		BidResponses: map[string]*ortb.BidResponse{
+			"dsp-native": {Seatbid: []*ortb.SeatBid{{Bid: []*ortb.Bid{{Impid: &impID, Price: &price, Adm: &adm}}}}},
+		},
+		ImpIdUuid: map[string]string{impID: uuid},
+		SspDomain: "ssp.example",
+		Format:    constants.NAT,
+		Logged:    true,
+	}
+	response, _, burlUUIDs, admUUIDs := GetWinnerBidInternalWithRoutes_V_2_5(
+		context.Background(), req, 0.1, req.ImpIdUuid, nil, true, "ADULT", "callbacks.example",
+	)
+	if len(response.GetSeatbid()[0].GetBid()) != 0 {
+		t.Fatal("malformed Native ADM must be rejected")
+	}
+	if len(burlUUIDs) != 0 || len(admUUIDs) != 0 {
+		t.Fatalf("malformed Native ADM created callback UUIDs: burl=%v adm=%v", burlUUIDs, admUUIDs)
 	}
 }

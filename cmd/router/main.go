@@ -111,20 +111,47 @@ func main() {
 
 	processor := filter.NewOptimizedFilterProcessor(ruleManager)
 
-	sspGeoDspMapAdult, err := utils.InitSspGeoDspMap[bool](cfg.SspGeoDspLinksAdultFilePath)
-	if err != nil {
-		log.Fatalf("Failed to InitSspGeoPercentsLogic: %v", err)
+	initLinkMap := func(path string) dspRouterWeb.GeoDspLinkMap {
+		value, err := utils.InitSspGeoDspMap[bool](path)
+		if err != nil {
+			log.Fatalf("Failed to initialize SSP/GEO/DSP links from %s: %v", path, err)
+		}
+		return dspRouterWeb.GeoDspLinkMap(value)
 	}
 
-	sspGeoDspMapMainstream, err := utils.InitSspGeoDspMap[bool](cfg.SspGeoDspLinksMainstreamFilePath)
-	if err != nil {
-		log.Fatalf("Failed to InitSspGeoPercentsLogic: %v", err)
+	popAdultLinks := initLinkMap(cfg.SspGeoDspLinksAdultFilePath)
+	popMainstreamLinks := initLinkMap(cfg.SspGeoDspLinksMainstreamFilePath)
+	banAdultLinks := initLinkMap(cfg.SspGeoDspLinksBanAdultFilePath)
+	banMainstreamLinks := initLinkMap(cfg.SspGeoDspLinksBanMainstreamFilePath)
+	natAdultLinks := initLinkMap(cfg.SspGeoDspLinksNatAdultFilePath)
+	natMainstreamLinks := initLinkMap(cfg.SspGeoDspLinksNatMainstreamFilePath)
+	ippAdultLinks := initLinkMap(cfg.SspGeoDspLinksIppAdultFilePath)
+	ippMainstreamLinks := initLinkMap(cfg.SspGeoDspLinksIppMainstreamFilePath)
+
+	formatRoutes := &dspRouterWeb.FormatRoutesV25{
+		POP: dspRouterWeb.FormatRouteV25{
+			AdultEndpoints: cfg.DSPEndpointsAdult_v_2_5, MainstreamEndpoints: cfg.DSPEndpointsMainstream_v_2_5,
+			AdultLinkFilename: cfg.SspGeoDspLinksAdultFilePath, MainstreamLinkFilename: cfg.SspGeoDspLinksMainstreamFilePath,
+			AdultLinkMap: &popAdultLinks, MainstreamLinkMap: &popMainstreamLinks,
+		},
+		BAN: dspRouterWeb.FormatRouteV25{
+			AdultEndpoints: cfg.DSPEndpointsBanAdultV25, MainstreamEndpoints: cfg.DSPEndpointsBanMainstreamV25,
+			AdultLinkFilename: cfg.SspGeoDspLinksBanAdultFilePath, MainstreamLinkFilename: cfg.SspGeoDspLinksBanMainstreamFilePath,
+			AdultLinkMap: &banAdultLinks, MainstreamLinkMap: &banMainstreamLinks,
+		},
+		NAT: dspRouterWeb.FormatRouteV25{
+			AdultEndpoints: cfg.DSPEndpointsNatAdultV25, MainstreamEndpoints: cfg.DSPEndpointsNatMainstreamV25,
+			AdultLinkFilename: cfg.SspGeoDspLinksNatAdultFilePath, MainstreamLinkFilename: cfg.SspGeoDspLinksNatMainstreamFilePath,
+			AdultLinkMap: &natAdultLinks, MainstreamLinkMap: &natMainstreamLinks,
+		},
+		IPP: dspRouterWeb.FormatRouteV25{
+			AdultEndpoints: cfg.DSPEndpointsIppAdultV25, MainstreamEndpoints: cfg.DSPEndpointsIppMainstreamV25,
+			AdultLinkFilename: cfg.SspGeoDspLinksIppAdultFilePath, MainstreamLinkFilename: cfg.SspGeoDspLinksIppMainstreamFilePath,
+			AdultLinkMap: &ippAdultLinks, MainstreamLinkMap: &ippMainstreamLinks,
+		},
 	}
 
-	clients := dspRouterWeb.InitSspHttpClients(
-		cfg.DSPEndpointsAdult_v_2_5,
-		cfg.DSPEndpointsMainstream_v_2_5,
-	)
+	clients := dspRouterWeb.InitSspHttpClients(formatRoutes.EndpointSets()...)
 
 	filtersAdl, err := filter.NewFiltersBox(cfg.DspFiltersAdlFilePath)
 	if err != nil {
@@ -186,12 +213,9 @@ func main() {
 		ruleManager,
 		fileLoader,
 		processor,
-		cfg.DSPEndpointsAdult_v_2_5,
-		cfg.DSPEndpointsMainstream_v_2_5,
+		formatRoutes,
 		redisClients.Ortb,
 		cfg.BidResponsesTimeout,
-		&sspGeoDspMapAdult,
-		&sspGeoDspMapMainstream,
 		clients,
 		filtersAdl,
 		filtersMc,
@@ -216,10 +240,7 @@ func main() {
 	router := httpServer.InitHttpRouter(chi.NewRouter())
 	dspRouterWeb.InitHttpRoutes(
 		router,
-		cfg.SspGeoDspLinksAdultFilePath,
-		cfg.SspGeoDspLinksMainstreamFilePath,
-		&sspGeoDspMapAdult,
-		&sspGeoDspMapMainstream,
+		formatRoutes,
 		cfg.DspFiltersAdlFilePath,
 		cfg.DspFiltersMcFilePath,
 		filtersAdl,

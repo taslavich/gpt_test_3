@@ -9,15 +9,18 @@ import (
 	"sort"
 	"strings"
 
+	"gitlab.com/twinbid-exchange/RTB-exchange/internal/constants"
 	bidEngineGrpc "gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/proto/services/bidEngine"
 	"gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/proto/types/ortb_V2_5"
 	utils "gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/utils_grpc"
-	sppAdapterWeb "gitlab.com/twinbid-exchange/RTB-exchange/internal/services/sspAdapter/web"
 	"gitlab.com/twinbid-exchange/RTB-exchange/internal/types"
 	clickhouse_types "gitlab.com/twinbid-exchange/RTB-exchange/internal/types/clickhouse"
 	"google.golang.org/protobuf/proto"
 )
 
+// GetWinnerBidInternal_V_2_5 preserves the legacy shared ADULT/MAINSTREAM
+// percent maps for tests and older in-process callers. Production uses the
+// format-aware variant below.
 func GetWinnerBidInternal_V_2_5(
 	ctx context.Context,
 	req *bidEngineGrpc.BidEngineRequest_V2_5,
@@ -25,6 +28,51 @@ func GetWinnerBidInternal_V_2_5(
 	ImpIdUuid map[string]string,
 	percentMapAdult *map[string]map[string]map[string]*types.PercentAndBidfloor,
 	percentMapMainstream *map[string]map[string]map[string]*types.PercentAndBidfloor,
+	logged bool,
+	typic string,
+	admDomain string,
+) (*ortb_V2_5.BidResponse, clickhouse_types.UuidImpBidResponse, []string, []string) {
+	var adult, mainstream types.GeoDspPercentMap
+	var adultPtr, mainstreamPtr *types.GeoDspPercentMap
+	if percentMapAdult != nil {
+		adult = types.GeoDspPercentMap(*percentMapAdult)
+		adultPtr = &adult
+	}
+	if percentMapMainstream != nil {
+		mainstream = types.GeoDspPercentMap(*percentMapMainstream)
+		mainstreamPtr = &mainstream
+	}
+	legacyRoute := types.FormatPercentRouteV25{AdultMap: adultPtr, MainstreamMap: mainstreamPtr}
+	routes := &types.FormatPercentRoutesV25{
+		POP: legacyRoute,
+		BAN: legacyRoute,
+		NAT: legacyRoute,
+		IPP: legacyRoute,
+	}
+	return getWinnerBidInternalV25(ctx, req, profitPercent, ImpIdUuid, routes, logged, typic, admDomain)
+}
+
+// GetWinnerBidInternalWithRoutes_V_2_5 selects DSP margin/bidfloor overrides
+// from an independent FORMAT x ADULT/MAINSTREAM map.
+func GetWinnerBidInternalWithRoutes_V_2_5(
+	ctx context.Context,
+	req *bidEngineGrpc.BidEngineRequest_V2_5,
+	profitPercent float32,
+	ImpIdUuid map[string]string,
+	percentRoutes *types.FormatPercentRoutesV25,
+	logged bool,
+	typic string,
+	admDomain string,
+) (*ortb_V2_5.BidResponse, clickhouse_types.UuidImpBidResponse, []string, []string) {
+	return getWinnerBidInternalV25(ctx, req, profitPercent, ImpIdUuid, percentRoutes, logged, typic, admDomain)
+}
+
+func getWinnerBidInternalV25(
+	ctx context.Context,
+	req *bidEngineGrpc.BidEngineRequest_V2_5,
+	profitPercent float32,
+	ImpIdUuid map[string]string,
+	percentRoutes *types.FormatPercentRoutesV25,
 	logged bool,
 	typic string,
 	admDomain string,
@@ -114,14 +162,10 @@ func GetWinnerBidInternal_V_2_5(
 	admUUIDs := make([]string, 0, len(ImpIdUuid))
 
 	var percentMap map[string]map[string]map[string]*types.PercentAndBidfloor
-	switch typic {
-	case sppAdapterWeb.ADULT:
-		if percentMapAdult != nil {
-			percentMap = *percentMapAdult
-		}
-	case sppAdapterWeb.MAINSTREAM:
-		if percentMapMainstream != nil {
-			percentMap = *percentMapMainstream
+	if percentRoutes != nil {
+		_, selected := percentRoutes.Select(req.GetFormat(), typic)
+		if selected != nil {
+			percentMap = map[string]map[string]map[string]*types.PercentAndBidfloor(*selected)
 		}
 	}
 	country := ""
@@ -209,7 +253,13 @@ func GetWinnerBidInternal_V_2_5(
 			continue
 		}
 		sort.Slice(newBids, func(i, j int) bool {
-			return newBids[i].finalPrice > newBids[j].finalPrice
+			if newBids[i].finalPrice != newBids[j].finalPrice {
+				return newBids[i].finalPrice > newBids[j].finalPrice
+			}
+			if newBids[i].domain != newBids[j].domain {
+				return newBids[i].domain < newBids[j].domain
+			}
+			return newBids[i].bid.GetId() < newBids[j].bid.GetId()
 		})
 		winner := newBids[0]
 
@@ -224,13 +274,17 @@ func GetWinnerBidInternal_V_2_5(
 			Crid:  winner.bid.Crid,
 			Ext:   winner.bid.Ext,
 		}
+		wrapDSPADM := shouldWrapDSPADM(req.GetFormat())
+		if !wrapDSPADM && !validRawDSPADM(req.GetFormat(), baseBid.GetAdm()) {
+			continue
+		}
 		finalBid, ok := FinalizeBidCallbacks(
 			baseBid,
 			admDomain,
 			ImpIdUuid[impID],
 			req.SspDomain,
 			req.Format,
-			logged,
+			wrapDSPADM && logged,
 			true,
 		)
 		if !ok {
@@ -260,7 +314,7 @@ func GetWinnerBidInternal_V_2_5(
 		seatBid[0].Bid = append(seatBid[0].Bid, finalBid)
 		clickhouseSeatBid[uuid] = clickhouseBid
 		burlUUIDs = append(burlUUIDs, uuid)
-		if logged {
+		if logged && wrapDSPADM {
 			admUUIDs = append(admUUIDs, uuid)
 		}
 	}
@@ -295,6 +349,32 @@ func allRequestedImpressionsHaveADV(request *ortb_V2_5.BidRequest, advBids map[s
 		}
 	}
 	return seen > 0
+}
+
+func shouldWrapDSPADM(format string) bool {
+	switch strings.ToUpper(strings.TrimSpace(format)) {
+	case constants.BAN, constants.NAT, constants.IPP:
+		return false
+	default:
+		// Preserve legacy POP/unknown behavior.
+		return true
+	}
+}
+
+func validRawDSPADM(format, adm string) bool {
+	if strings.TrimSpace(adm) == "" {
+		return false
+	}
+	switch strings.ToUpper(strings.TrimSpace(format)) {
+	case constants.BAN:
+		// Banner ADM is markup and must be returned byte-for-byte.
+		return true
+	case constants.NAT, constants.IPP:
+		// Native/IPP DSP ADM is a Native response JSON payload, not a URL.
+		return json.Valid([]byte(adm))
+	default:
+		return false
+	}
 }
 
 // FinalizeBidCallbacks is the single BidEngine callback-finalization path for

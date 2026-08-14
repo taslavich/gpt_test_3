@@ -6,33 +6,38 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"strings"
 
 	"github.com/ggicci/httpin"
+	"gitlab.com/twinbid-exchange/RTB-exchange/internal/constants"
 	"gitlab.com/twinbid-exchange/RTB-exchange/internal/filter"
 	utils "gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/utils_grpc"
 	sppAdapterWeb "gitlab.com/twinbid-exchange/RTB-exchange/internal/services/sspAdapter/web"
 )
 
+func requestedGeoFormat(value string) string {
+	if strings.TrimSpace(value) == "" {
+		return constants.POP
+	}
+	return normalizeDSPFormat(value)
+}
+
 func getSspGeoLinksMapDebug(
 	w http.ResponseWriter,
 	r *http.Request,
-	linkMap_adult *map[string]map[string]map[string]bool,
-	linkMap_mainstream *map[string]map[string]map[string]bool,
+	routes *FormatRoutesV25,
 ) {
-	var mapa map[string]map[string]map[string]bool
-	input := r.Context().Value(httpin.Input).(*getSspGeoDspLinksRequest_V2_5)
-
-	switch input.Typic {
-	case sppAdapterWeb.ADULT:
-		mapa = *linkMap_adult
-	case sppAdapterWeb.MAINSTREAM:
-		mapa = *linkMap_mainstream
-	default:
-		http.Error(w, "Invalid Typic value", http.StatusBadRequest)
+	if routes == nil {
+		http.Error(w, "Format routes are not configured", http.StatusInternalServerError)
 		return
 	}
-
-	if err := rnr.JSON(w, http.StatusOK, mapa); err != nil {
+	input := r.Context().Value(httpin.Input).(*getSspGeoDspLinksRequest_V2_5)
+	_, mapa := routes.selectConfig(requestedGeoFormat(input.Format), input.Typic)
+	if mapa == nil {
+		http.Error(w, "Invalid format/typic value", http.StatusBadRequest)
+		return
+	}
+	if err := rnr.JSON(w, http.StatusOK, *mapa); err != nil {
 		log.Printf("Cannot make HTTP response back: %v\n", err)
 	}
 }
@@ -40,19 +45,16 @@ func getSspGeoLinksMapDebug(
 func getSspGeoLinksMap(
 	w http.ResponseWriter,
 	r *http.Request,
-	linkMap_adult string,
-	linkMap_mainstream string,
+	routes *FormatRoutesV25,
 ) {
-	var filename string
+	if routes == nil {
+		http.Error(w, "Format routes are not configured", http.StatusInternalServerError)
+		return
+	}
 	input := r.Context().Value(httpin.Input).(*getSspGeoDspLinksRequest_V2_5)
-
-	switch input.Typic {
-	case sppAdapterWeb.ADULT:
-		filename = linkMap_adult
-	case sppAdapterWeb.MAINSTREAM:
-		filename = linkMap_mainstream
-	default:
-		http.Error(w, "Invalid Typic value", http.StatusBadRequest)
+	filename, _ := routes.selectConfig(requestedGeoFormat(input.Format), input.Typic)
+	if strings.TrimSpace(filename) == "" {
+		http.Error(w, "Invalid format/typic value", http.StatusBadRequest)
 		return
 	}
 
@@ -62,9 +64,8 @@ func getSspGeoLinksMap(
 		return
 	}
 
-	var mapa map[string]map[string]map[string]bool
-	err = json.Unmarshal(data, &mapa)
-	if err != nil {
+	var mapa GeoDspLinkMap
+	if err := json.Unmarshal(data, &mapa); err != nil {
 		http.Error(w, "Cannot Unmarshal", http.StatusInternalServerError)
 		return
 	}
@@ -77,33 +78,28 @@ func getSspGeoLinksMap(
 func putSspGeoLinksMap(
 	w http.ResponseWriter,
 	r *http.Request,
-	linkFilename_adult string,
-	linkFilename_mainstream string,
-	linkMap_adult *map[string]map[string]map[string]bool,
-	linkMap_mainstream *map[string]map[string]map[string]bool) {
-	var err error
-
-	input := r.Context().Value(httpin.Input).(*putSspGeoDspLinksRequest_V2_5)
-
-	switch input.Typic {
-	case sppAdapterWeb.ADULT:
-		*linkMap_adult, err = utils.RewriteSspGeoDspFileNextVer[bool](
-			input.Mapa,
-			linkFilename_adult,
-		)
-	case sppAdapterWeb.MAINSTREAM:
-		*linkMap_mainstream, err = utils.RewriteSspGeoDspFileNextVer[bool](
-			input.Mapa,
-			linkFilename_mainstream,
-		)
-	default:
-		http.Error(w, "Invalid Typic value", http.StatusBadRequest)
+	routes *FormatRoutesV25,
+) {
+	if routes == nil {
+		http.Error(w, "Format routes are not configured", http.StatusInternalServerError)
 		return
 	}
+	input := r.Context().Value(httpin.Input).(*putSspGeoDspLinksRequest_V2_5)
+	filename, mapa := routes.selectConfig(requestedGeoFormat(input.Format), input.Typic)
+	if strings.TrimSpace(filename) == "" || mapa == nil {
+		http.Error(w, "Invalid format/typic value", http.StatusBadRequest)
+		return
+	}
+
+	updated, err := utils.RewriteSspGeoDspFileNextVer[bool](
+		map[string]map[string]map[string]bool(input.Mapa),
+		filename,
+	)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
+	*mapa = GeoDspLinkMap(updated)
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusNoContent)

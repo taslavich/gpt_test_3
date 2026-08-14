@@ -36,8 +36,11 @@ type Server struct {
 	fileLoader  *filter.FileRuleLoader
 	processor   *filter.OptimizedFilterProcessor
 
+	// Legacy POP fields are retained for tests/backwards compatibility. New code
+	// uses formatRoutes, which isolates every FORMAT x traffic-type route.
 	dspEndpoints_adult_v_2_5      config.MapStringToString
 	dspEndpoints_mainstream_v_2_5 config.MapStringToString
+	formatRoutes                  *FormatRoutesV25
 
 	redisClients           []*redis.Client
 	redisWriteErrorMonitor *services.RedisWriteErrorMonitor
@@ -73,12 +76,9 @@ func NewServer(
 	ruleManager *filter.RuleManager,
 	fileLoader *filter.FileRuleLoader,
 	processor *filter.OptimizedFilterProcessor,
-	dspEndpoints_v_2_5,
-	dspEndpoints_mainstream_v_2_5 config.MapStringToString,
+	formatRoutes *FormatRoutesV25,
 	redisClients []*redis.Client,
 	timeout time.Duration,
-	linkMap_adult *map[string]map[string]map[string]bool,
-	linkMap_mainstream *map[string]map[string]map[string]bool,
 	clients map[string]*http.Client,
 	filtersAdl *filter.FiltersBox,
 	filtersMc *filter.FiltersBox,
@@ -92,24 +92,25 @@ func NewServer(
 ) *Server {
 	rang := cidranger.NewPCTrieRanger()
 
-	return &Server{
-		ruleManager:                   ruleManager,
-		fileLoader:                    fileLoader,
-		processor:                     processor,
-		dspEndpoints_adult_v_2_5:      dspEndpoints_v_2_5,
-		dspEndpoints_mainstream_v_2_5: dspEndpoints_mainstream_v_2_5,
-		redisClients:                  redisClients,
-		redisWriteErrorMonitor:        redisWriteErrorMonitor,
-		clients:                       clients,
-		timeout:                       timeout,
+	if formatRoutes != nil {
+		formatRoutes.prepare(processor)
+	}
+
+	server := &Server{
+		ruleManager:            ruleManager,
+		fileLoader:             fileLoader,
+		processor:              processor,
+		formatRoutes:           formatRoutes,
+		redisClients:           redisClients,
+		redisWriteErrorMonitor: redisWriteErrorMonitor,
+		clients:                clients,
+		timeout:                timeout,
 		bufferPool: sync.Pool{
 			New: func() interface{} {
 				return bytes.NewBuffer(make([]byte, 0, 2048))
 			},
 		},
 		ranger:              rang,
-		linkMap_adult:       linkMap_adult,
-		linkMap_mainstream:  linkMap_mainstream,
 		filtersAdl:          filtersAdl,
 		filtersMc:           filtersMc,
 		filtersCidAdl:       filtersCidAdl,
@@ -119,6 +120,19 @@ func NewServer(
 		configTimeouts:      configTimeouts,
 		advClient:           advClient,
 	}
+	if formatRoutes != nil {
+		server.dspEndpoints_adult_v_2_5 = formatRoutes.POP.AdultEndpoints
+		server.dspEndpoints_mainstream_v_2_5 = formatRoutes.POP.MainstreamEndpoints
+		if formatRoutes.POP.AdultLinkMap != nil {
+			legacy := map[string]map[string]map[string]bool(*formatRoutes.POP.AdultLinkMap)
+			server.linkMap_adult = &legacy
+		}
+		if formatRoutes.POP.MainstreamLinkMap != nil {
+			legacy := map[string]map[string]map[string]bool(*formatRoutes.POP.MainstreamLinkMap)
+			server.linkMap_mainstream = &legacy
+		}
+	}
+	return server
 }
 
 type dspDomainResp struct {
@@ -327,39 +341,48 @@ func (s *Server) GetBids_V2_5(
 		req.BidRequest.Device.Ip = req.BidRequest.Device.Ipv6
 	}
 
-	var (
-		wg sync.WaitGroup
-	)
+	var wg sync.WaitGroup
 
-	codesCh := make(chan *dspDomainCode, len(s.dspEndpoints_adult_v_2_5))
-	responsesCh := make(chan *dspDomainResp, len(s.dspEndpoints_adult_v_2_5))
+	trafficType := trafficTypeFromDspRouterRequest(req)
+	requestFormat := normalizeDSPFormat(req.GetFormat())
 
-	var dspList config.MapStringToString
-	var linkMap map[string]map[string]map[string]bool
-	var filters *filter.FiltersBox
-	var filtersCid *filter.FilterCidBoxType
-	var filterBoxChanger *filter.ChangersBoxChanger
-	switch trafficTypeFromDspRouterRequest(req) {
-	case sppAdapterWeb.ADULT:
-		filters = s.filtersAdl
-		filtersCid = s.filtersCidAdl
-		filterBoxChanger = s.filterBoxChangerAdl
-		if req.GetFormat() == constants.POP {
-			dspList = s.dspEndpoints_adult_v_2_5
+	var dspList []DSPEndpointV25
+	var linkMap GeoDspLinkMap
+	var nativeMask filter.NativeFieldMask
+	if s.formatRoutes != nil {
+		dspList, linkMap, nativeMask = s.formatRoutes.selectRuntime(requestFormat, trafficType)
+	} else if requestFormat == constants.POP {
+		// Backwards-compatible fallback used by older tests/constructors. Sorting
+		// here is test/legacy-only; production routes are precompiled at startup.
+		switch trafficType {
+		case sppAdapterWeb.ADULT:
+			dspList = orderedEndpoints(s.dspEndpoints_adult_v_2_5)
 			if s.linkMap_adult != nil {
 				linkMap = *s.linkMap_adult
 			}
-		}
-	case sppAdapterWeb.MAINSTREAM:
-		filters = s.filtersMc
-		filtersCid = s.filtersCidMc
-		filterBoxChanger = s.filterBoxChangerMc
-		if req.GetFormat() == constants.POP {
-			dspList = s.dspEndpoints_mainstream_v_2_5
+		case sppAdapterWeb.MAINSTREAM:
+			dspList = orderedEndpoints(s.dspEndpoints_mainstream_v_2_5)
 			if s.linkMap_mainstream != nil {
 				linkMap = *s.linkMap_mainstream
 			}
 		}
+	}
+
+	codesCh := make(chan *dspDomainCode, len(dspList))
+	responsesCh := make(chan *dspDomainResp, len(dspList))
+
+	var filters *filter.FiltersBox
+	var filtersCid *filter.FilterCidBoxType
+	var filterBoxChanger *filter.ChangersBoxChanger
+	switch trafficType {
+	case sppAdapterWeb.ADULT:
+		filters = s.filtersAdl
+		filtersCid = s.filtersCidAdl
+		filterBoxChanger = s.filterBoxChangerAdl
+	case sppAdapterWeb.MAINSTREAM:
+		filters = s.filtersMc
+		filtersCid = s.filtersCidMc
+		filterBoxChanger = s.filterBoxChangerMc
 	}
 
 	if filters != nil && !filters.Allowed(req.BidRequest, "", true) {
@@ -511,9 +534,14 @@ func (s *Server) GetBids_V2_5(
 		break
 	}
 
-	for endpoint, domain := range dspList {
-		endpoint := endpoint
-		domain := domain
+	var dspFilterCtx *filter.V25RequestContext
+	if s.processor != nil {
+		dspFilterCtx = filter.NewV25RequestContext(dspBidRequest, requestFormat, nativeMask)
+	}
+
+	for _, dspEndpoint := range dspList {
+		endpoint := dspEndpoint.Endpoint
+		domain := dspEndpoint.Domain
 
 		country := ""
 		if req.GetBidRequest().GetDevice() != nil && req.GetBidRequest().GetDevice().GetGeo() != nil {
@@ -527,8 +555,7 @@ func (s *Server) GetBids_V2_5(
 			continue
 		}
 
-		if !s.processor.ProcessRequestForDSPV25(DeletePrefix(domain), dspBidRequest).Allowed {
-			//log.Println("Gor DSP filter")
+		if s.processor != nil && !s.processor.ProcessRequestContextForDSPV25(DeletePrefix(domain), dspFilterCtx).Allowed {
 			codesCh <- &dspDomainCode{
 				domain: domain,
 				code:   "-3",

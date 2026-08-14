@@ -130,14 +130,23 @@ type RedisWriteErrorMonitorConfig struct {
 
 type BiddingEngineConfig struct {
 	AntiperekrutControlConfig
-	HttpServer                          HttpServer
-	GrpcServer                          GrpcServer
-	ProfitPercent                       float32 `yaml:"PROFIT_PERCENT" env:"PROFIT_PERCENT" env-default:"0.2"`
-	SspGeoDspPercentsAdultFilePath      string  `yaml:"SSP_GEO_DSP_PERCENTS_ADULT_FILE_PATH" env:"SSP_GEO_DSP_PERCENTS_ADULT_FILE_PATH"`
-	SspGeoDspPercentsMainstreamFilePath string  `yaml:"SSP_GEO_DSP_PERCENTS_MAINSTREAM_FILE_PATH" env:"SSP_GEO_DSP_PERCENTS_MAINSTREAM_FILE_PATH"`
-	AdmDomain                           string  `yaml:"ADM_DOMAIN" env:"ADM_DOMAIN"`
-	BotBaseURL                          string  `yaml:"BOT_BASE_URL" env:"BOT_BASE_URL"`
-	BotInternalSecret                   string  `yaml:"BOT_INTERNAL_SECRET" env:"BOT_INTERNAL_SECRET"`
+	HttpServer    HttpServer
+	GrpcServer    GrpcServer
+	ProfitPercent float32 `yaml:"PROFIT_PERCENT" env:"PROFIT_PERCENT" env-default:"0.2"`
+
+	// Legacy POP paths are intentionally kept unchanged for backwards-compatible deployment.
+	SspGeoDspPercentsAdultFilePath      string `yaml:"SSP_GEO_DSP_PERCENTS_ADULT_FILE_PATH" env:"SSP_GEO_DSP_PERCENTS_ADULT_FILE_PATH"`
+	SspGeoDspPercentsMainstreamFilePath string `yaml:"SSP_GEO_DSP_PERCENTS_MAINSTREAM_FILE_PATH" env:"SSP_GEO_DSP_PERCENTS_MAINSTREAM_FILE_PATH"`
+
+	SspGeoDspPercentsBanAdultFilePath      string `yaml:"SSP_GEO_DSP_PERCENTS_BAN_ADULT_FILE_PATH" env:"SSP_GEO_DSP_PERCENTS_BAN_ADULT_FILE_PATH"`
+	SspGeoDspPercentsBanMainstreamFilePath string `yaml:"SSP_GEO_DSP_PERCENTS_BAN_MAINSTREAM_FILE_PATH" env:"SSP_GEO_DSP_PERCENTS_BAN_MAINSTREAM_FILE_PATH"`
+	SspGeoDspPercentsNatAdultFilePath      string `yaml:"SSP_GEO_DSP_PERCENTS_NAT_ADULT_FILE_PATH" env:"SSP_GEO_DSP_PERCENTS_NAT_ADULT_FILE_PATH"`
+	SspGeoDspPercentsNatMainstreamFilePath string `yaml:"SSP_GEO_DSP_PERCENTS_NAT_MAINSTREAM_FILE_PATH" env:"SSP_GEO_DSP_PERCENTS_NAT_MAINSTREAM_FILE_PATH"`
+	SspGeoDspPercentsIppAdultFilePath      string `yaml:"SSP_GEO_DSP_PERCENTS_IPP_ADULT_FILE_PATH" env:"SSP_GEO_DSP_PERCENTS_IPP_ADULT_FILE_PATH"`
+	SspGeoDspPercentsIppMainstreamFilePath string `yaml:"SSP_GEO_DSP_PERCENTS_IPP_MAINSTREAM_FILE_PATH" env:"SSP_GEO_DSP_PERCENTS_IPP_MAINSTREAM_FILE_PATH"`
+	AdmDomain                              string `yaml:"ADM_DOMAIN" env:"ADM_DOMAIN"`
+	BotBaseURL                             string `yaml:"BOT_BASE_URL" env:"BOT_BASE_URL"`
+	BotInternalSecret                      string `yaml:"BOT_INTERNAL_SECRET" env:"BOT_INTERNAL_SECRET"`
 	RedisWriteErrorMonitorConfig
 
 	RedisConfig
@@ -145,17 +154,34 @@ type BiddingEngineConfig struct {
 
 type RouterConfig struct {
 	AntiperekrutControlConfig
-	GrpcServer                   GrpcServer
-	HttpServer                   HttpServer
+	GrpcServer GrpcServer
+	HttpServer HttpServer
+
+	// Legacy endpoint names remain POP to avoid changing the current deployment.
 	DSPEndpointsAdult_v_2_5      MapStringToString `yaml:"DSP_ENDPOINTS_ADULT_V_2_5" env:"DSP_ENDPOINTS_ADULT_V_2_5"`
 	DSPEndpointsMainstream_v_2_5 MapStringToString `yaml:"DSP_ENDPOINTS_MAINSTREAM_V_2_5" env:"DSP_ENDPOINTS_MAINSTREAM_V_2_5"`
+
+	DSPEndpointsBanAdultV25      MapStringToString `yaml:"DSP_ENDPOINTS_BAN_ADULT_V_2_5" env:"DSP_ENDPOINTS_BAN_ADULT_V_2_5"`
+	DSPEndpointsBanMainstreamV25 MapStringToString `yaml:"DSP_ENDPOINTS_BAN_MAINSTREAM_V_2_5" env:"DSP_ENDPOINTS_BAN_MAINSTREAM_V_2_5"`
+	DSPEndpointsNatAdultV25      MapStringToString `yaml:"DSP_ENDPOINTS_NAT_ADULT_V_2_5" env:"DSP_ENDPOINTS_NAT_ADULT_V_2_5"`
+	DSPEndpointsNatMainstreamV25 MapStringToString `yaml:"DSP_ENDPOINTS_NAT_MAINSTREAM_V_2_5" env:"DSP_ENDPOINTS_NAT_MAINSTREAM_V_2_5"`
+	DSPEndpointsIppAdultV25      MapStringToString `yaml:"DSP_ENDPOINTS_IPP_ADULT_V_2_5" env:"DSP_ENDPOINTS_IPP_ADULT_V_2_5"`
+	DSPEndpointsIppMainstreamV25 MapStringToString `yaml:"DSP_ENDPOINTS_IPP_MAINSTREAM_V_2_5" env:"DSP_ENDPOINTS_IPP_MAINSTREAM_V_2_5"`
 
 	DspRulesConfigPathV25 string `yaml:"DSP_RULES_CONFIG_PATH" env:"DSP_RULES_CONFIG_PATH_V_25"`
 	SppRulesConfigPathV25 string `yaml:"SPP_RULES_CONFIG_PATH" env:"SPP_RULES_CONFIG_PATH_V_25"`
 
-	AllowedIpDbPath                  string `yaml:"ALLOWED_IP_DB_PATH" env:"ALLOWED_IP_DB_PATH"`
-	SspGeoDspLinksAdultFilePath      string `yaml:"SSP_GEO_DSP_LINKS_ADULT_FILE_PATH" env:"SSP_GEO_DSP_LINKS_ADULT_FILE_PATH"`
-	SspGeoDspLinksMainstreamFilePath string `yaml:"SSP_GEO_DSP_LINKS_MAINSTREAM_FILE_PATH" env:"SSP_GEO_DSP_LINKS_MAINSTREAM_FILE_PATH"`
+	AllowedIpDbPath string `yaml:"ALLOWED_IP_DB_PATH" env:"ALLOWED_IP_DB_PATH"`
+
+	// Legacy link paths remain POP. New formats get an independent ADL/MC file each.
+	SspGeoDspLinksAdultFilePath         string `yaml:"SSP_GEO_DSP_LINKS_ADULT_FILE_PATH" env:"SSP_GEO_DSP_LINKS_ADULT_FILE_PATH"`
+	SspGeoDspLinksMainstreamFilePath    string `yaml:"SSP_GEO_DSP_LINKS_MAINSTREAM_FILE_PATH" env:"SSP_GEO_DSP_LINKS_MAINSTREAM_FILE_PATH"`
+	SspGeoDspLinksBanAdultFilePath      string `yaml:"SSP_GEO_DSP_LINKS_BAN_ADULT_FILE_PATH" env:"SSP_GEO_DSP_LINKS_BAN_ADULT_FILE_PATH"`
+	SspGeoDspLinksBanMainstreamFilePath string `yaml:"SSP_GEO_DSP_LINKS_BAN_MAINSTREAM_FILE_PATH" env:"SSP_GEO_DSP_LINKS_BAN_MAINSTREAM_FILE_PATH"`
+	SspGeoDspLinksNatAdultFilePath      string `yaml:"SSP_GEO_DSP_LINKS_NAT_ADULT_FILE_PATH" env:"SSP_GEO_DSP_LINKS_NAT_ADULT_FILE_PATH"`
+	SspGeoDspLinksNatMainstreamFilePath string `yaml:"SSP_GEO_DSP_LINKS_NAT_MAINSTREAM_FILE_PATH" env:"SSP_GEO_DSP_LINKS_NAT_MAINSTREAM_FILE_PATH"`
+	SspGeoDspLinksIppAdultFilePath      string `yaml:"SSP_GEO_DSP_LINKS_IPP_ADULT_FILE_PATH" env:"SSP_GEO_DSP_LINKS_IPP_ADULT_FILE_PATH"`
+	SspGeoDspLinksIppMainstreamFilePath string `yaml:"SSP_GEO_DSP_LINKS_IPP_MAINSTREAM_FILE_PATH" env:"SSP_GEO_DSP_LINKS_IPP_MAINSTREAM_FILE_PATH"`
 
 	CidSspDspLinksAdultFilePath      string `yaml:"CID_SSP_DSP_LINKS_ADULT_FILE_PATH" env:"CID_SSP_DSP_LINKS_ADULT_FILE_PATH"`
 	CidSspDspLinksMainstreamFilePath string `yaml:"CID_SSP_DSP_LINKS_MAINSTREAM_FILE_PATH" env:"CID_SSP_DSP_LINKS_MAINSTREAM_FILE_PATH"`

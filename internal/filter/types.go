@@ -37,6 +37,27 @@ const (
 
 	FieldImpID FieldType = "imp.id"
 
+	// OpenRTB impression-format fields used by DSP request filters.
+	FieldImpBanner      FieldType = "imp.banner"
+	FieldBannerW        FieldType = "imp.banner.w"
+	FieldBannerH        FieldType = "imp.banner.h"
+	FieldBannerFormatW  FieldType = "imp.banner.format.w"
+	FieldBannerFormatH  FieldType = "imp.banner.format.h"
+	FieldBannerMimes    FieldType = "imp.banner.mimes"
+	FieldImpNative      FieldType = "imp.native"
+	FieldNativeRequest  FieldType = "imp.native.request"
+	FieldNativeVer      FieldType = "imp.native.ver"
+	FieldNativeAssetID  FieldType = "imp.native.assets.id"
+	FieldNativeRequired FieldType = "imp.native.assets.required"
+	FieldNativeTitleLen FieldType = "imp.native.assets.title.len"
+	FieldNativeDataType FieldType = "imp.native.assets.data.type"
+	FieldNativeDataLen  FieldType = "imp.native.assets.data.len"
+	FieldNativeImgType  FieldType = "imp.native.assets.img.type"
+	FieldNativeImgW     FieldType = "imp.native.assets.img.w"
+	FieldNativeImgH     FieldType = "imp.native.assets.img.h"
+	FieldNativeImgWMin  FieldType = "imp.native.assets.img.wmin"
+	FieldNativeImgHMin  FieldType = "imp.native.assets.img.hmin"
+
 	// Новые поля для Site
 	FieldSiteName FieldType = "site.name"
 	FieldSiteRef  FieldType = "site.ref"
@@ -73,12 +94,18 @@ const (
 )
 
 type FieldValue struct {
-	Type   ValueType
-	Int    int
-	Float  float64
-	String string
+	Type          ValueType
+	Int           int
+	Float         float64
+	String        string
+	Ints          []int
+	Strings       []string
+	Present       bool
+	PresenceAware bool
 }
 
+// Legacy scalar constructors intentionally preserve the original filter
+// semantics for existing POP/common fields.
 func NewIntValue(value int) FieldValue {
 	return FieldValue{Type: ValueTypeInt, Int: value}
 }
@@ -89,6 +116,38 @@ func NewFloatValue(value float64) FieldValue {
 
 func NewStringValue(value string) FieldValue {
 	return FieldValue{Type: ValueTypeString, String: value}
+}
+
+// Presence-aware constructors are used only for the new OpenRTB format fields.
+// They distinguish a missing numeric field from an explicitly present zero.
+func NewPresentIntValue(value int) FieldValue {
+	return FieldValue{Type: ValueTypeInt, Int: value, Present: true, PresenceAware: true}
+}
+
+func NewPresentIntValues(values []int) FieldValue {
+	if len(values) == 0 {
+		return MissingValue(ValueTypeInt)
+	}
+	return FieldValue{Type: ValueTypeInt, Int: values[0], Ints: values, Present: true, PresenceAware: true}
+}
+
+func NewPresentStringValue(value string) FieldValue {
+	return FieldValue{Type: ValueTypeString, String: value, Present: true, PresenceAware: true}
+}
+
+func NewPresentStringValues(values []string) FieldValue {
+	if len(values) == 0 {
+		return MissingValue(ValueTypeString)
+	}
+	return FieldValue{Type: ValueTypeString, String: values[0], Strings: values, Present: true, PresenceAware: true}
+}
+
+func PresentValue() FieldValue {
+	return FieldValue{Present: true, PresenceAware: true}
+}
+
+func MissingValue(valueType ValueType) FieldValue {
+	return FieldValue{Type: valueType, PresenceAware: true}
 }
 
 type ConditionValue interface {

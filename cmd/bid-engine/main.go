@@ -109,14 +109,40 @@ func main() {
 	}
 	log.Println("✅ Connected to ADM/BURL Redis")
 
-	sspGeoDspMapAdult, err := utils.InitSspGeoDspMap[*types.PercentAndBidfloor](cfg.SspGeoDspPercentsAdultFilePath)
-	if err != nil {
-		log.Fatalf("Failed to InitSspGeoPercentsLogic: %v", err)
+	initPercentMap := func(path string) types.GeoDspPercentMap {
+		value, err := utils.InitSspGeoDspMap[*types.PercentAndBidfloor](path)
+		if err != nil {
+			log.Fatalf("Failed to initialize SSP/GEO/DSP percents from %s: %v", path, err)
+		}
+		return types.GeoDspPercentMap(value)
 	}
 
-	sspGeoDspMapMainstream, err := utils.InitSspGeoDspMap[*types.PercentAndBidfloor](cfg.SspGeoDspPercentsMainstreamFilePath)
-	if err != nil {
-		log.Fatalf("Failed to InitSspGeoPercentsLogic: %v", err)
+	popAdultPercents := initPercentMap(cfg.SspGeoDspPercentsAdultFilePath)
+	popMainstreamPercents := initPercentMap(cfg.SspGeoDspPercentsMainstreamFilePath)
+	banAdultPercents := initPercentMap(cfg.SspGeoDspPercentsBanAdultFilePath)
+	banMainstreamPercents := initPercentMap(cfg.SspGeoDspPercentsBanMainstreamFilePath)
+	natAdultPercents := initPercentMap(cfg.SspGeoDspPercentsNatAdultFilePath)
+	natMainstreamPercents := initPercentMap(cfg.SspGeoDspPercentsNatMainstreamFilePath)
+	ippAdultPercents := initPercentMap(cfg.SspGeoDspPercentsIppAdultFilePath)
+	ippMainstreamPercents := initPercentMap(cfg.SspGeoDspPercentsIppMainstreamFilePath)
+
+	percentRoutes := &types.FormatPercentRoutesV25{
+		POP: types.FormatPercentRouteV25{
+			AdultFilename: cfg.SspGeoDspPercentsAdultFilePath, MainstreamFilename: cfg.SspGeoDspPercentsMainstreamFilePath,
+			AdultMap: &popAdultPercents, MainstreamMap: &popMainstreamPercents,
+		},
+		BAN: types.FormatPercentRouteV25{
+			AdultFilename: cfg.SspGeoDspPercentsBanAdultFilePath, MainstreamFilename: cfg.SspGeoDspPercentsBanMainstreamFilePath,
+			AdultMap: &banAdultPercents, MainstreamMap: &banMainstreamPercents,
+		},
+		NAT: types.FormatPercentRouteV25{
+			AdultFilename: cfg.SspGeoDspPercentsNatAdultFilePath, MainstreamFilename: cfg.SspGeoDspPercentsNatMainstreamFilePath,
+			AdultMap: &natAdultPercents, MainstreamMap: &natMainstreamPercents,
+		},
+		IPP: types.FormatPercentRouteV25{
+			AdultFilename: cfg.SspGeoDspPercentsIppAdultFilePath, MainstreamFilename: cfg.SspGeoDspPercentsIppMainstreamFilePath,
+			AdultMap: &ippAdultPercents, MainstreamMap: &ippMainstreamPercents,
+		},
 	}
 
 	lis, err := net.Listen(
@@ -153,24 +179,15 @@ func main() {
 			redisBurlClient,
 			cfg.RedisUUIDKeyTTL,
 			cfg.RedisSetOrtb,
-			bidEngine.GetWinnerBidInternal_V_2_5,
-			cfg.SspGeoDspPercentsAdultFilePath,
-			&sspGeoDspMapAdult,
-			cfg.SspGeoDspPercentsMainstreamFilePath,
-			&sspGeoDspMapMainstream,
+			bidEngine.GetWinnerBidInternalWithRoutes_V_2_5,
+			percentRoutes,
 			cfg.AdmDomain,
 			redisWriteErrorMonitor,
 		),
 	)
 
 	router := httpServer.InitHttpRouter(chi.NewRouter())
-	bidEngineWeb.InitHttpRoutes(
-		router,
-		cfg.SspGeoDspPercentsAdultFilePath,
-		cfg.SspGeoDspPercentsMainstreamFilePath,
-		&sspGeoDspMapAdult,
-		&sspGeoDspMapMainstream,
-	)
+	bidEngineWeb.InitHttpRoutes(router, percentRoutes)
 	log.Println("HTTP routes initialized")
 
 	if cfg.AntiperekrutEnabled {

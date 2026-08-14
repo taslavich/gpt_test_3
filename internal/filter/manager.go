@@ -11,9 +11,12 @@ type CompiledRuleNode struct {
 }
 
 type CompiledRuleSet struct {
-	rootNodes      []*CompiledRuleNode
-	requiredFields []FieldType
-	fieldRules     map[FieldType][]*FilterRule
+	rootNodes         []*CompiledRuleNode
+	requiredFields    []FieldType
+	fieldRules        map[FieldType][]*FilterRule
+	nativeMask        NativeFieldMask
+	usesBannerFormatW bool
+	usesBannerFormatH bool
 }
 
 type RuleManager struct {
@@ -65,6 +68,16 @@ func (rm *RuleManager) GetCompiledRulesForDSP(dspID string) *CompiledRuleSet {
 	return rm.dspRules[dspID]
 }
 
+func (rm *RuleManager) GetNativeMaskForDSP(dspID string) NativeFieldMask {
+	rm.mu.RLock()
+	defer rm.mu.RUnlock()
+
+	if ruleSet := rm.dspRules[dspID]; ruleSet != nil {
+		return ruleSet.nativeMask
+	}
+	return 0
+}
+
 func (rm *RuleManager) GetCompiledRulesForSPP(sppID string) *CompiledRuleSet {
 	rm.mu.RLock()
 	defer rm.mu.RUnlock()
@@ -102,9 +115,18 @@ func (rm *RuleManager) compileRules(rootNodes []*CompiledRuleNode, allRules []*F
 	fieldsSet := make(map[FieldType]struct{}, len(allRules))
 	fieldRules := make(map[FieldType][]*FilterRule)
 
+	var nativeMask NativeFieldMask
+	var usesBannerFormatW, usesBannerFormatH bool
 	for _, rule := range allRules {
 		fieldsSet[rule.Field] = struct{}{}
 		fieldRules[rule.Field] = append(fieldRules[rule.Field], rule)
+		nativeMask |= NativeMaskForField(rule.Field)
+		switch string(rule.Field) {
+		case string(FieldBannerFormatW), "banner.format.w":
+			usesBannerFormatW = true
+		case string(FieldBannerFormatH), "banner.format.h":
+			usesBannerFormatH = true
+		}
 	}
 
 	requiredFields := make([]FieldType, 0, len(fieldsSet))
@@ -113,9 +135,12 @@ func (rm *RuleManager) compileRules(rootNodes []*CompiledRuleNode, allRules []*F
 	}
 
 	return &CompiledRuleSet{
-		rootNodes:      rootNodes,
-		requiredFields: requiredFields,
-		fieldRules:     fieldRules,
+		rootNodes:         rootNodes,
+		requiredFields:    requiredFields,
+		fieldRules:        fieldRules,
+		nativeMask:        nativeMask,
+		usesBannerFormatW: usesBannerFormatW,
+		usesBannerFormatH: usesBannerFormatH,
 	}
 }
 
