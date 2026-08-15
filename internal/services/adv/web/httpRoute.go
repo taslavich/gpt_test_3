@@ -23,9 +23,14 @@ const (
 	PutSspGeoDspPercentsMapURL      = "/filter/ssp_geo_dsp_percents_map"
 	GetDebugSspGeoDspPercentsMapURL = "/filter/debug_ssp_geo_dsp_percents_map"
 
-	GetQualityMapURL                 = "/filter/quality_map"
-	PutQualityMapURL                 = "/filter/quality_map"
-	GetDebugQualityMapURL            = "/filter/debug_quality_map"
+	GetQualityMapURL      = "/filter/quality_map"
+	PutQualityMapURL      = "/filter/quality_map"
+	GetDebugQualityMapURL = "/filter/debug_quality_map"
+
+	GetSiteIDQualityMapURL      = "/filter/site_id_quality_map"
+	PutSiteIDQualityMapURL      = "/filter/site_id_quality_map"
+	GetDebugSiteIDQualityMapURL = "/filter/debug_site_id_quality_map"
+
 	WorkStatusURL                    = "/work_status"
 	AntiPerekrutRestartURL           = "/internal/antiperekrut/restart"
 	GetAntiPerekrutTrafficPercentURL = "/internal/antiperekrut/traffic-percent"
@@ -52,7 +57,7 @@ type antiPerekrutRestartRequest struct {
 	Reason         string `json:"reason"`
 }
 
-func InitHttpRoutes(httpRouter *chi.Mux, percentStore *auction.PercentStore, qualityStore *auction.QualityStore, work *WorkController, antiConfig ...AntiPerekrutHTTPConfig) {
+func InitHttpRoutes(httpRouter *chi.Mux, percentStore *auction.PercentStore, qualityStore *auction.QualityStore, siteIDQualityStore *auction.SiteIDQualityStore, work *WorkController, antiConfig ...AntiPerekrutHTTPConfig) {
 	getPercentMap := func(w http.ResponseWriter, _ *http.Request) {
 		if percentStore == nil {
 			http.Error(w, "percent store is unavailable", http.StatusServiceUnavailable)
@@ -188,6 +193,47 @@ func InitHttpRoutes(httpRouter *chi.Mux, percentStore *auction.PercentStore, qua
 		}
 		if err := qualityStore.Update(segment, input); err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
+	})
+
+	httpRouter.Get(GetSiteIDQualityMapURL, func(w http.ResponseWriter, _ *http.Request) {
+		if siteIDQualityStore == nil {
+			writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "site ID quality store is unavailable"})
+			return
+		}
+		value, err := siteIDQualityStore.Saved()
+		if err != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+			return
+		}
+		writeJSON(w, http.StatusOK, value)
+	})
+	httpRouter.Get(GetDebugSiteIDQualityMapURL, func(w http.ResponseWriter, _ *http.Request) {
+		if siteIDQualityStore == nil {
+			writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "site ID quality store is unavailable"})
+			return
+		}
+		writeJSON(w, http.StatusOK, siteIDQualityStore.Memory())
+	})
+	httpRouter.Put(PutSiteIDQualityMapURL, func(w http.ResponseWriter, r *http.Request) {
+		if siteIDQualityStore == nil {
+			writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "site ID quality store is unavailable"})
+			return
+		}
+		defer r.Body.Close()
+		data, err := io.ReadAll(http.MaxBytesReader(w, r.Body, 16<<20))
+		if err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+			return
+		}
+		if err := auction.ValidateSiteIDQualityMapsJSON(data); err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+			return
+		}
+		if err := siteIDQualityStore.UpdateJSON(data); err != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 			return
 		}
 		w.WriteHeader(http.StatusNoContent)

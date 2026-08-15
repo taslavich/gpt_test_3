@@ -41,6 +41,7 @@ const (
 	diagAntiPerekrutCampaignBlockedUnknown
 	diagAntiPerekrutHashGateRejected
 	diagQualityMismatch
+	diagSiteIDQualityMismatch
 	diagInvalidChargePrice
 	diagCampaignSpentReadFailed
 	diagCampaignBalanceInsufficient
@@ -125,6 +126,7 @@ const (
 	diagGlobalWinnerStoreUnavailable
 	diagGlobalPercentStoreUnavailable
 	diagGlobalQualityStoreUnavailable
+	diagGlobalSiteIDQualityStoreUnavailable
 	diagGlobalCampaignSnapshotUnavailable
 	diagGlobalAntiPerekrutManagerUnavailable
 	diagGlobalAntiPerekrutStateUnavailable
@@ -177,6 +179,7 @@ var diagnosticDefinitions = [diagnosticReasonCount]diagnosticDefinition{
 	diagAntiPerekrutCampaignBlockedUnknown: {Code: 326, Name: "antiperekrut_campaign_blocked_unknown", Description: "AntiPerekrut rejected the campaign but the published state does not expose a more specific reason", Scope: diagnosticScopeCampaign},
 	diagAntiPerekrutHashGateRejected:       {Code: 327, Name: "antiperekrut_hash_gate_rejected", Description: "campaign did not pass the AntiPerekrut traffic-percent hash gate", Scope: diagnosticScopeCampaign},
 	diagQualityMismatch:                    {Code: 309, Name: "quality_mismatch", Description: "SSP domain is absent from the campaign quality segment", Scope: diagnosticScopeCampaign},
+	diagSiteIDQualityMismatch:              {Code: 328, Name: "site_id_quality_mismatch", Description: "request site.id failed the second quality-map stage for the campaign quality segment", Scope: diagnosticScopeCampaign},
 	diagInvalidChargePrice:                 {Code: 310, Name: "invalid_charge_price", Description: "calculated charge price is non-positive or non-finite", Scope: diagnosticScopeCampaign},
 	diagCampaignSpentReadFailed:            {Code: 311, Name: "campaign_spent_read_failed", Description: "campaign spend could not be read from runtime Redis", Scope: diagnosticScopeCampaign},
 	diagCampaignBalanceInsufficient:        {Code: 312, Name: "campaign_balance_insufficient", Description: "campaign remaining budget is smaller than charge price", Scope: diagnosticScopeCampaign},
@@ -254,6 +257,7 @@ var diagnosticDefinitions = [diagnosticReasonCount]diagnosticDefinition{
 	diagGlobalWinnerStoreUnavailable:         {Code: 909, Name: "winner_store_unavailable", Description: "ADV winner store is not initialized", Scope: diagnosticScopeGlobalRequest},
 	diagGlobalPercentStoreUnavailable:        {Code: 910, Name: "percent_store_unavailable", Description: "ADV percent store is not initialized", Scope: diagnosticScopeGlobalRequest},
 	diagGlobalQualityStoreUnavailable:        {Code: 911, Name: "quality_store_unavailable", Description: "ADV quality store is not initialized", Scope: diagnosticScopeGlobalRequest},
+	diagGlobalSiteIDQualityStoreUnavailable:  {Code: 916, Name: "site_id_quality_store_unavailable", Description: "ADV site ID quality store is not initialized", Scope: diagnosticScopeGlobalRequest},
 	diagGlobalCampaignSnapshotUnavailable:    {Code: 912, Name: "campaign_snapshot_unavailable", Description: "campaign snapshot is unavailable", Scope: diagnosticScopeGlobalRequest},
 	diagGlobalAntiPerekrutManagerUnavailable: {Code: 913, Name: "antiperekrut_manager_unavailable", Description: "AntiPerekrut manager is unavailable while enabled", Scope: diagnosticScopeGlobalRequest},
 	diagGlobalAntiPerekrutStateUnavailable:   {Code: 914, Name: "antiperekrut_state_unavailable", Description: "AntiPerekrut state is unavailable or not loaded", Scope: diagnosticScopeGlobalRequest},

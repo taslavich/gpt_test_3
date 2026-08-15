@@ -288,18 +288,19 @@ type AdvConfig struct {
 	RedisConfig
 	ClickhouseConfig
 
-	AdvPercentMapFilePath   string        `yaml:"ADV_PERCENT_MAP_FILE_PATH" env:"ADV_PERCENT_MAP_FILE_PATH"`
-	AdvQualityMapFilePath   string        `yaml:"ADV_QUALITY_MAP_FILE_PATH" env:"ADV_QUALITY_MAP_FILE_PATH"`
-	PostgresDSN             string        `yaml:"POSTGRES_DSN" env:"POSTGRES_DSN"`
-	CampaignRefreshInterval time.Duration `yaml:"CAMPAIGN_REFRESH_INTERVAL" env:"CAMPAIGN_REFRESH_INTERVAL" env-default:"30s"`
-	AdvWinnerTTL            time.Duration `yaml:"ADV_WINNER_TTL" env:"ADV_WINNER_TTL" env-default:"45m"`
-	AdvPacingTickInterval   time.Duration `yaml:"ADV_PACING_TICK_INTERVAL" env:"ADV_PACING_TICK_INTERVAL" env-default:"5s"`
-	AdvPacingCurrentTTL     time.Duration `yaml:"ADV_PACING_CURRENT_TTL" env:"ADV_PACING_CURRENT_TTL" env-default:"10m"`
-	AdvPacingSlotTTL        time.Duration `yaml:"ADV_PACING_SLOT_TTL" env:"ADV_PACING_SLOT_TTL" env-default:"48h"`
-	AntiperekrutTickOffset  time.Duration `yaml:"ANTIPEREKRUT_TICK_OFFSET" env:"ANTIPEREKRUT_TICK_OFFSET" env-default:"8s"`
-	AntiperekrutAutoMigrate bool          `yaml:"ANTIPEREKRUT_AUTO_MIGRATE" env:"ANTIPEREKRUT_AUTO_MIGRATE" env-default:"false"`
-	BotBaseURL              string        `yaml:"BOT_BASE_URL" env:"BOT_BASE_URL"`
-	BotInternalSecret       string        `yaml:"BOT_INTERNAL_SECRET" env:"BOT_INTERNAL_SECRET"`
+	AdvPercentMapFilePath       string        `yaml:"ADV_PERCENT_MAP_FILE_PATH" env:"ADV_PERCENT_MAP_FILE_PATH"`
+	AdvQualityMapFilePath       string        `yaml:"ADV_QUALITY_MAP_FILE_PATH" env:"ADV_QUALITY_MAP_FILE_PATH"`
+	AdvSiteIDQualityMapFilePath string        `yaml:"ADV_SITE_ID_QUALITY_MAP_FILE_PATH" env:"ADV_SITE_ID_QUALITY_MAP_FILE_PATH"`
+	PostgresDSN                 string        `yaml:"POSTGRES_DSN" env:"POSTGRES_DSN"`
+	CampaignRefreshInterval     time.Duration `yaml:"CAMPAIGN_REFRESH_INTERVAL" env:"CAMPAIGN_REFRESH_INTERVAL" env-default:"30s"`
+	AdvWinnerTTL                time.Duration `yaml:"ADV_WINNER_TTL" env:"ADV_WINNER_TTL" env-default:"45m"`
+	AdvPacingTickInterval       time.Duration `yaml:"ADV_PACING_TICK_INTERVAL" env:"ADV_PACING_TICK_INTERVAL" env-default:"5s"`
+	AdvPacingCurrentTTL         time.Duration `yaml:"ADV_PACING_CURRENT_TTL" env:"ADV_PACING_CURRENT_TTL" env-default:"10m"`
+	AdvPacingSlotTTL            time.Duration `yaml:"ADV_PACING_SLOT_TTL" env:"ADV_PACING_SLOT_TTL" env-default:"48h"`
+	AntiperekrutTickOffset      time.Duration `yaml:"ANTIPEREKRUT_TICK_OFFSET" env:"ANTIPEREKRUT_TICK_OFFSET" env-default:"8s"`
+	AntiperekrutAutoMigrate     bool          `yaml:"ANTIPEREKRUT_AUTO_MIGRATE" env:"ANTIPEREKRUT_AUTO_MIGRATE" env-default:"false"`
+	BotBaseURL                  string        `yaml:"BOT_BASE_URL" env:"BOT_BASE_URL"`
+	BotInternalSecret           string        `yaml:"BOT_INTERNAL_SECRET" env:"BOT_INTERNAL_SECRET"`
 }
 
 type KafkaLoaderConfig struct {

@@ -1,0 +1,14 @@
+{
+  "usual": {
+    "isWhiteList": false,
+    "siteIds": []
+  },
+  "high": {
+    "isWhiteList": false,
+    "siteIds": []
+  },
+  "ultra": {
+    "isWhiteList": false,
+    "siteIds": []
+  }
+}

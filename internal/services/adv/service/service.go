@@ -153,23 +153,25 @@ type AuctionService struct {
 	// operations even if the service is ever built for a 32-bit architecture.
 	requestCounter uint64
 
-	snapshot atomic.Pointer[Snapshot]
-	runtime  *RuntimeStore
-	winners  *WinnerStore
-	percents *PercentStore
-	quality  *QualityStore
+	snapshot      atomic.Pointer[Snapshot]
+	runtime       *RuntimeStore
+	winners       *WinnerStore
+	percents      *PercentStore
+	quality       *QualityStore
+	siteIDQuality *SiteIDQualityStore
 
 	antiperekrut        *AntiPerekrutManager
 	antiperekrutEnabled bool
 	diagnostics         *AuctionDiagnostics
 }
 
-func NewAuctionService(runtime *RuntimeStore, winners *WinnerStore, percents *PercentStore, quality *QualityStore) *AuctionService {
+func NewAuctionService(runtime *RuntimeStore, winners *WinnerStore, percents *PercentStore, quality *QualityStore, siteIDQuality *SiteIDQualityStore) *AuctionService {
 	s := &AuctionService{
 		runtime:             runtime,
 		winners:             winners,
 		percents:            percents,
 		quality:             quality,
+		siteIDQuality:       siteIDQuality,
 		antiperekrutEnabled: true,
 		diagnostics:         NewAuctionDiagnostics(time.Now().UTC()),
 	}
@@ -497,7 +499,7 @@ func (s *AuctionService) auctionCore(
 		)
 		return nil, ErrInvalidAuctionRequest
 	}
-	if s.runtime == nil || s.winners == nil || s.percents == nil || s.quality == nil {
+	if s.runtime == nil || s.winners == nil || s.percents == nil || s.quality == nil || s.siteIDQuality == nil {
 		if recorder != nil {
 			switch {
 			case s.runtime == nil:
@@ -508,15 +510,18 @@ func (s *AuctionService) auctionCore(
 				recorder.RecordGlobalRequest(diagGlobalPercentStoreUnavailable)
 			case s.quality == nil:
 				recorder.RecordGlobalRequest(diagGlobalQualityStoreUnavailable)
+			case s.siteIDQuality == nil:
+				recorder.RecordGlobalRequest(diagGlobalSiteIDQualityStoreUnavailable)
 			}
 		}
 		logf(
-			"[ADV][AUCTION_ERROR] request_id=%q reason=dependencies_not_initialized runtime_nil=%t winners_nil=%t percents_nil=%t quality_nil=%t",
+			"[ADV][AUCTION_ERROR] request_id=%q reason=dependencies_not_initialized runtime_nil=%t winners_nil=%t percents_nil=%t quality_nil=%t site_id_quality_nil=%t",
 			requestID,
 			s.runtime == nil,
 			s.winners == nil,
 			s.percents == nil,
 			s.quality == nil,
+			s.siteIDQuality == nil,
 		)
 		return nil, errors.New("auction dependencies are not initialized")
 	}
@@ -543,6 +548,11 @@ func (s *AuctionService) auctionCore(
 			sspDomain,
 		)
 		return nil, ErrInvalidAuctionRequest
+	}
+
+	siteIDQualityValue := ""
+	if site := req.GetSite(); site != nil {
+		siteIDQualityValue = normalizeSiteID(site.GetId())
 	}
 
 	mode, auctionPosition := s.nextAuctionMode()
@@ -671,6 +681,7 @@ func (s *AuctionService) auctionCore(
 				requestedFormat,
 				trafficType,
 				sspDomain,
+				siteIDQualityValue,
 				winnerUUID,
 				antiState,
 				durableUserBlocked,
@@ -1302,7 +1313,7 @@ func (s *AuctionService) evaluateCampaign(
 	req *ortb.BidRequest,
 	imp *ortb.Imp,
 	now time.Time,
-	requestedFormat, trafficType, sspDomain string,
+	requestedFormat, trafficType, sspDomain, siteIDQualityValue string,
 	hashFallback string,
 	antiState *AntiPerekrutState,
 	durableUserBlocked bool,
@@ -1391,6 +1402,13 @@ func (s *AuctionService) evaluateCampaign(
 	if !s.quality.Contains(campaign.QualitySegment, sspDomain) {
 		logf("[ADV][CAMPAIGN_REJECT] request_id=%q imp_id=%q format=%q campaign_id=%q user_id=%q reason=quality_mismatch campaign_quality=%q ssp_domain=%q", requestID, impID, requestedFormat, campaignID, userID, campaign.QualitySegment, sspDomain)
 		return candidate{}, false, diagQualityMismatch, nil
+	}
+
+	// Stage 2 quality filter: use the same campaign quality segment, but match
+	// against OpenRTB site.id. A missing/blank site.id intentionally passes.
+	if !s.siteIDQuality.allowsNormalized(campaign.QualitySegment, siteIDQualityValue) {
+		logf("[ADV][CAMPAIGN_REJECT] request_id=%q imp_id=%q format=%q campaign_id=%q user_id=%q reason=site_id_quality_mismatch campaign_quality=%q site_id=%q", requestID, impID, requestedFormat, campaignID, userID, campaign.QualitySegment, siteIDQualityValue)
+		return candidate{}, false, diagSiteIDQualityMismatch, nil
 	}
 
 	chargePrice := CalculateChargePrice(campaign.BasePrice, campaign.PricingModel, requestedFormat)

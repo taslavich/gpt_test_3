@@ -11,9 +11,9 @@ import (
 )
 
 func TestAuctionDiagnosticsRoutesReturnLocalSnapshotAndToggleState(t *testing.T) {
-	service := auction.NewAuctionService(nil, nil, nil, nil)
+	service := auction.NewAuctionService(nil, nil, nil, nil, nil)
 	router := chi.NewRouter()
-	InitHttpRoutes(router, nil, nil, NewWorkController(), AntiPerekrutHTTPConfig{AuctionService: service})
+	InitHttpRoutes(router, nil, nil, nil, NewWorkController(), AntiPerekrutHTTPConfig{AuctionService: service})
 
 	recorder := httptest.NewRecorder()
 	request := httptest.NewRequest(http.MethodGet, GetAuctionDiagnosticsURL, nil)

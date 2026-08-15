@@ -69,6 +69,10 @@ func main() {
 	if err != nil {
 		log.Fatalf("cannot initialize ADV quality map: %v", err)
 	}
+	siteIDQualityStore, err := auction.NewSiteIDQualityStore(cfg.AdvSiteIDQualityMapFilePath)
+	if err != nil {
+		log.Fatalf("[ADV][SITE_ID_QUALITY_MAP][startup] initialization failed: %v", err)
+	}
 
 	if strings.TrimSpace(cfg.PostgresDSN) == "" {
 		log.Fatal("POSTGRES_DSN is required for ADV")
@@ -83,7 +87,7 @@ func main() {
 	}
 	runtimeStore := auction.NewRuntimeStore(runtimeRedis, cfg.AdvPacingCurrentTTL, cfg.AdvPacingSlotTTL)
 	winnerStore := auction.NewWinnerStore(winnerRedis, cfg.AdvWinnerTTL)
-	auctionService := auction.NewAuctionService(runtimeStore, winnerStore, percentStore, qualityStore)
+	auctionService := auction.NewAuctionService(runtimeStore, winnerStore, percentStore, qualityStore, siteIDQualityStore)
 	auctionService.SetAntiPerekrutEnabled(cfg.AntiperekrutEnabled)
 	auctionService.StartDiagnostics(ctx)
 	diagnosticsEnabled, err := boolEnvironment("AUCTION_DIAGNOSTICS_ENABLED", false)
@@ -181,7 +185,7 @@ func main() {
 	advGrpc.RegisterAdvServiceServer(grpcServer, advWeb.NewServer(auctionService, workController))
 
 	router := httpServer.InitHttpRouter(chi.NewRouter())
-	advWeb.InitHttpRoutes(router, percentStore, qualityStore, workController, advWeb.AntiPerekrutHTTPConfig{
+	advWeb.InitHttpRoutes(router, percentStore, qualityStore, siteIDQualityStore, workController, advWeb.AntiPerekrutHTTPConfig{
 		Manager:        antiManager,
 		AuctionService: auctionService,
 	})
@@ -250,6 +254,9 @@ func validateConfig(cfg *config.AdvConfig) error {
 	}
 	if strings.TrimSpace(cfg.AdvQualityMapFilePath) == "" {
 		return fmt.Errorf("ADV_QUALITY_MAP_FILE_PATH is required")
+	}
+	if strings.TrimSpace(cfg.AdvSiteIDQualityMapFilePath) == "" {
+		return fmt.Errorf("ADV_SITE_ID_QUALITY_MAP_FILE_PATH is required")
 	}
 	if strings.TrimSpace(cfg.PostgresDSN) == "" {
 		return fmt.Errorf("POSTGRES_DSN is required")

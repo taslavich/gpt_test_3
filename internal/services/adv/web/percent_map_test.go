@@ -23,7 +23,7 @@ func TestADVPercentMapRoutesUseOneFlatMapWithoutTypic(t *testing.T) {
 	}
 
 	router := chi.NewRouter()
-	InitHttpRoutes(router, store, nil, NewWorkController())
+	InitHttpRoutes(router, store, nil, nil, NewWorkController())
 
 	put := httptest.NewRequest(http.MethodPut, GetADVPercentMapURL, strings.NewReader(`{" USER-ID ":0.25}`))
 	putRecorder := httptest.NewRecorder()
