@@ -8,11 +8,13 @@ import (
 	"log"
 	"math"
 	"math/rand"
+	"net/netip"
 	"net/url"
 	"regexp"
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -105,6 +107,7 @@ type Campaign struct {
 	BrowserFilter    *filterV2.Filters
 	SiteIDFilter     *filterV2.Filters
 	IPFilter         *filterV2.Filters
+	IPCIDRPrefixes   []netip.Prefix
 
 	Creatives []*Creative
 
@@ -163,6 +166,10 @@ type AuctionService struct {
 	antiperekrut        *AntiPerekrutManager
 	antiperekrutEnabled bool
 	diagnostics         *AuctionDiagnostics
+
+	snapshotWarningMu       sync.Mutex
+	snapshotWarningSeen     map[string]struct{}
+	snapshotWarningNotifier func(context.Context, string) error
 }
 
 func NewAuctionService(runtime *RuntimeStore, winners *WinnerStore, percents *PercentStore, quality *QualityStore, siteIDQuality *SiteIDQualityStore) *AuctionService {
@@ -174,6 +181,7 @@ func NewAuctionService(runtime *RuntimeStore, winners *WinnerStore, percents *Pe
 		siteIDQuality:       siteIDQuality,
 		antiperekrutEnabled: true,
 		diagnostics:         NewAuctionDiagnostics(time.Now().UTC()),
+		snapshotWarningSeen: make(map[string]struct{}),
 	}
 	s.snapshot.Store(&Snapshot{Campaigns: []*Campaign{}, UserGoals: map[string]float64{}, UserAntiPerekrutBlocked: map[string]bool{}})
 	return s
@@ -182,6 +190,14 @@ func NewAuctionService(runtime *RuntimeStore, winners *WinnerStore, percents *Pe
 func (s *AuctionService) SetAntiPerekrutManager(manager *AntiPerekrutManager) {
 	if s != nil {
 		s.antiperekrut = manager
+	}
+}
+
+func (s *AuctionService) SetSnapshotWarningNotifier(notifier func(context.Context, string) error) {
+	if s != nil {
+		s.snapshotWarningMu.Lock()
+		s.snapshotWarningNotifier = notifier
+		s.snapshotWarningMu.Unlock()
 	}
 }
 
@@ -338,6 +354,7 @@ func cloneAndValidateSnapshot(src *Snapshot) (*Snapshot, error) {
 		clone.BrowserFilter = cloneFilter(campaign.BrowserFilter)
 		clone.SiteIDFilter = cloneFilter(campaign.SiteIDFilter)
 		clone.IPFilter = cloneFilter(campaign.IPFilter)
+		clone.IPCIDRPrefixes = append([]netip.Prefix(nil), campaign.IPCIDRPrefixes...)
 		clone.Creatives = make([]*Creative, 0, len(campaign.Creatives))
 		creativeIDs := make(map[string]struct{}, len(campaign.Creatives))
 		for _, creative := range campaign.Creatives {
@@ -392,6 +409,17 @@ func cloneFilter(src *filterV2.Filters) *filterV2.Filters {
 		objects[key] = value
 	}
 	return &filterV2.Filters{Apply: src.Apply, IsWhiteList: src.IsWhiteList, Objects: objects}
+}
+
+func cloneFloatMap(src map[string]float64) map[string]float64 {
+	if len(src) == 0 {
+		return nil
+	}
+	out := make(map[string]float64, len(src))
+	for key, value := range src {
+		out[key] = value
+	}
+	return out
 }
 
 func cloneBoolMap(src map[string]bool) map[string]bool {
@@ -2389,7 +2417,6 @@ func campaignPassesFiltersWithDebug(
 		{name: "os", filter: c.OSFilter, value: values.osName},
 		{name: "browser", filter: c.BrowserFilter, value: values.browser},
 		{name: "site_id", filter: c.SiteIDFilter, value: values.siteID},
-		{name: "ip", filter: c.IPFilter, value: values.ip},
 	}
 
 	allAllowed := true
@@ -2432,6 +2459,38 @@ func campaignPassesFiltersWithDebug(
 		)
 	}
 
+	ipAllowed, ipMatched := ipv4CampaignFilterAllowed(c.IPFilter, c.IPCIDRPrefixes, values.ip)
+	if !ipAllowed {
+		allAllowed = false
+		value := "<nil>"
+		if values.ip != nil {
+			value = *values.ip
+		}
+		mode := "disabled"
+		configuredObjects := len(c.IPCIDRPrefixes)
+		if c.IPFilter != nil {
+			configuredObjects += len(c.IPFilter.Objects)
+			if c.IPFilter.IsWhiteList {
+				mode = "whitelist"
+			} else {
+				mode = "blacklist"
+			}
+		}
+		logf(
+			"[ADV][FILTER_REJECT] request_id=%q imp_id=%q format=%q campaign_id=%q user_id=%q filter=%q value=%q mode=%q listed=%t configured_objects=%d",
+			requestID,
+			impID,
+			normalizeFormat(c.Format),
+			c.ID,
+			c.UserID,
+			"ip",
+			value,
+			mode,
+			ipMatched,
+			configuredObjects,
+		)
+	}
+
 	if !allAllowed {
 		logf(
 			"[ADV][CAMPAIGN_REJECT] request_id=%q imp_id=%q format=%q campaign_id=%q user_id=%q reason=filter_rejected",
@@ -2469,7 +2528,6 @@ func campaignFilterRejectionWithDebug(
 		{name: "os", filter: c.OSFilter, value: values.osName, reason: diagOSFilterRejected},
 		{name: "browser", filter: c.BrowserFilter, value: values.browser, reason: diagBrowserFilterRejected},
 		{name: "site_id", filter: c.SiteIDFilter, value: values.siteID, reason: diagSiteIDFilterRejected},
-		{name: "ip", filter: c.IPFilter, value: values.ip, reason: diagIPFilterRejected},
 	}
 
 	for _, check := range checks {
@@ -2520,7 +2578,49 @@ func campaignFilterRejectionWithDebug(
 		)
 		return check.reason
 	}
-	return diagNone
+
+	ipAllowed, ipMatched := ipv4CampaignFilterAllowed(c.IPFilter, c.IPCIDRPrefixes, values.ip)
+	if ipAllowed {
+		return diagNone
+	}
+	value := "<nil>"
+	if values.ip != nil {
+		value = *values.ip
+	}
+	mode := "disabled"
+	configuredObjects := len(c.IPCIDRPrefixes)
+	if c.IPFilter != nil {
+		configuredObjects += len(c.IPFilter.Objects)
+		if c.IPFilter.IsWhiteList {
+			mode = "whitelist"
+		} else {
+			mode = "blacklist"
+		}
+	}
+	logf(
+		"[ADV][FILTER_REJECT] request_id=%q imp_id=%q format=%q campaign_id=%q user_id=%q filter=%q value=%q mode=%q listed=%t configured_objects=%d diagnostic_code=%d",
+		requestID,
+		impID,
+		normalizeFormat(c.Format),
+		c.ID,
+		c.UserID,
+		"ip",
+		value,
+		mode,
+		ipMatched,
+		configuredObjects,
+		diagnosticDefinitions[diagIPFilterRejected].Code,
+	)
+	logf(
+		"[ADV][CAMPAIGN_REJECT] request_id=%q imp_id=%q format=%q campaign_id=%q user_id=%q reason=%q",
+		requestID,
+		impID,
+		normalizeFormat(c.Format),
+		c.ID,
+		c.UserID,
+		diagnosticReasonName(diagIPFilterRejected),
+	)
+	return diagIPFilterRejected
 }
 
 func allowed(filter *filterV2.Filters, value *string) bool {

@@ -97,6 +97,7 @@ func main() {
 	auctionService.SetDiagnosticsEnabled(diagnosticsEnabled)
 
 	botNotifier := utils.NewBotMessageWithTimeout(cfg.BotBaseURL, cfg.BotInternalSecret, cfg.AntiperekrutControlTimeout)
+	auctionService.SetSnapshotWarningNotifier(botNotifier.SendTextMessageToBot)
 	var antiManager *auction.AntiPerekrutManager
 	var startupEvent antiControl.StartupEvent
 

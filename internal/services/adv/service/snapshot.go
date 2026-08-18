@@ -103,12 +103,95 @@ func maxTime(a, b time.Time) time.Time {
 	return b
 }
 
+type snapshotLoadWarning struct {
+	campaignID string
+	key        string
+	message    string
+}
+
 func (s *AuctionService) RefreshFromPostgres(ctx context.Context, db *sql.DB) error {
-	snapshot, err := LoadSnapshotFromPostgres(ctx, db)
+	snapshot, warnings, err := loadSnapshotFromPostgres(ctx, db)
+	s.reportSnapshotWarnings(ctx, warnings)
 	if err != nil {
+		s.excludeInvalidIPCampaignsFromCurrentSnapshot(warnings)
 		return err
 	}
 	return s.PublishSnapshot(snapshot)
+}
+
+func (s *AuctionService) reportSnapshotWarnings(ctx context.Context, warnings []snapshotLoadWarning) {
+	if s == nil {
+		return
+	}
+
+	current := make(map[string]struct{}, len(warnings))
+	for _, warning := range warnings {
+		current[warning.key] = struct{}{}
+	}
+
+	s.snapshotWarningMu.Lock()
+	notifier := s.snapshotWarningNotifier
+	newWarnings := make([]snapshotLoadWarning, 0, len(warnings))
+	for _, warning := range warnings {
+		if _, alreadyReported := s.snapshotWarningSeen[warning.key]; !alreadyReported {
+			newWarnings = append(newWarnings, warning)
+		}
+	}
+	s.snapshotWarningSeen = current
+	s.snapshotWarningMu.Unlock()
+
+	if notifier == nil {
+		return
+	}
+	for _, warning := range newWarnings {
+		if err := notifier(ctx, warning.message); err != nil {
+			log.Printf("ADV snapshot: failed to send bot warning %q: %v", warning.key, err)
+		}
+	}
+}
+
+func (s *AuctionService) excludeInvalidIPCampaignsFromCurrentSnapshot(warnings []snapshotLoadWarning) {
+	if s == nil || len(warnings) == 0 {
+		return
+	}
+	blocked := make(map[string]struct{}, len(warnings))
+	for _, warning := range warnings {
+		if warning.campaignID != "" {
+			blocked[warning.campaignID] = struct{}{}
+		}
+	}
+	if len(blocked) == 0 {
+		return
+	}
+
+	current := s.snapshot.Load()
+	if current == nil {
+		return
+	}
+	filtered := &Snapshot{
+		Campaigns:               make([]*Campaign, 0, len(current.Campaigns)),
+		UserGoals:               cloneFloatMap(current.UserGoals),
+		UserAntiPerekrutBlocked: cloneBoolMap(current.UserAntiPerekrutBlocked),
+		LoadedAt:                current.LoadedAt,
+	}
+	removed := 0
+	for _, campaign := range current.Campaigns {
+		if campaign != nil {
+			if _, reject := blocked[campaign.ID]; reject {
+				removed++
+				continue
+			}
+		}
+		filtered.Campaigns = append(filtered.Campaigns, campaign)
+	}
+	if removed == 0 {
+		return
+	}
+	if err := s.PublishSnapshot(filtered); err != nil {
+		log.Printf("ADV snapshot: failed to fail-close %d invalid IP campaign(s) after refresh error: %v", removed, err)
+		return
+	}
+	log.Printf("ADV snapshot: fail-closed %d campaign(s) with invalid IP targeting while retaining the rest of the previous snapshot", removed)
 }
 
 func (s *AuctionService) StartPostgresRefreshTicker(ctx context.Context, db *sql.DB, interval time.Duration, onError func(error)) {
@@ -132,9 +215,15 @@ func (s *AuctionService) StartPostgresRefreshTicker(ctx context.Context, db *sql
 }
 
 func LoadSnapshotFromPostgres(ctx context.Context, db *sql.DB) (*Snapshot, error) {
+	snapshot, _, err := loadSnapshotFromPostgres(ctx, db)
+	return snapshot, err
+}
+
+func loadSnapshotFromPostgres(ctx context.Context, db *sql.DB) (*Snapshot, []snapshotLoadWarning, error) {
 	loadedAt := time.Now().UTC()
+	warnings := make([]snapshotLoadWarning, 0)
 	if db == nil {
-		return nil, errors.New("postgres db is nil")
+		return nil, warnings, errors.New("postgres db is nil")
 	}
 	query := `
 	SELECT
@@ -166,7 +255,7 @@ func LoadSnapshotFromPostgres(ctx context.Context, db *sql.DB) (*Snapshot, error
 `
 	rows, err := db.QueryContext(ctx, query)
 	if err != nil {
-		return nil, fmt.Errorf("query active campaigns: %w", err)
+		return nil, warnings, fmt.Errorf("query active campaigns: %w", err)
 	}
 	defer rows.Close()
 
@@ -174,6 +263,7 @@ func LoadSnapshotFromPostgres(ctx context.Context, db *sql.DB) (*Snapshot, error
 	campaignByID := make(map[string]*Campaign)
 	userSet := make(map[string]struct{})
 	activeRows := 0
+	invalidIPRows := 0
 	for rows.Next() {
 		activeRows++
 		var row campaignDBRow
@@ -185,11 +275,34 @@ func LoadSnapshotFromPostgres(ctx context.Context, db *sql.DB) (*Snapshot, error
 			&row.GoalTotalDollars,
 			&row.TrafficResetVersion, &row.UpdatedAt, &row.BrandName,
 		); err != nil {
-			return nil, fmt.Errorf("scan active campaign: %w", err)
+			return nil, warnings, fmt.Errorf("scan active campaign: %w", err)
 		}
 		campaign, err := row.campaign()
 		if err != nil {
 			log.Printf("ADV snapshot: skipping invalid active campaign: %v", err)
+			var ipErr *InvalidCampaignIPFilterError
+			if errors.As(err, &ipErr) {
+				invalidIPRows++
+				campaignID := strings.TrimSpace(row.CampaignID.String)
+				userID := strings.TrimSpace(row.UserID.String)
+				invalidValue := ipErr.Value
+				if invalidValue == "" {
+					invalidValue = "<filter-json>"
+				}
+				cause := "invalid IP filter"
+				if ipErr.Cause != nil {
+					cause = ipErr.Cause.Error()
+				}
+				key := campaignID + "\x00" + invalidValue + "\x00" + cause
+				warnings = append(warnings, snapshotLoadWarning{
+					campaignID: campaignID,
+					key:        key,
+					message: fmt.Sprintf(
+						"[ADV][CAMPAIGN_IP_FILTER_INVALID] campaign_id=%q user_id=%q invalid_value=%q error=%q campaign_excluded_from_auction=true",
+						campaignID, userID, invalidValue, cause,
+					),
+				})
+			}
 			continue
 		}
 		if _, duplicate := campaignByID[campaign.ID]; duplicate {
@@ -201,7 +314,7 @@ func LoadSnapshotFromPostgres(ctx context.Context, db *sql.DB) (*Snapshot, error
 		userSet[campaign.UserID] = struct{}{}
 	}
 	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("iterate active campaigns: %w", err)
+		return nil, warnings, fmt.Errorf("iterate active campaigns: %w", err)
 	}
 
 	campaignIDs := make([]string, 0, len(campaignByID))
@@ -209,7 +322,7 @@ func LoadSnapshotFromPostgres(ctx context.Context, db *sql.DB) (*Snapshot, error
 		campaignIDs = append(campaignIDs, id)
 	}
 	if err := loadCreativesBatch(ctx, db, campaignIDs, campaignByID); err != nil {
-		return nil, err
+		return nil, warnings, err
 	}
 
 	userIDs := make([]string, 0, len(userSet))
@@ -218,7 +331,7 @@ func LoadSnapshotFromPostgres(ctx context.Context, db *sql.DB) (*Snapshot, error
 	}
 	userGoals, userAntiPerekrutBlocked, err := loadUsersBatch(ctx, db, userIDs)
 	if err != nil {
-		return nil, err
+		return nil, warnings, err
 	}
 	validCampaigns := make([]*Campaign, 0, len(campaigns))
 	for _, campaign := range campaigns {
@@ -235,10 +348,10 @@ func LoadSnapshotFromPostgres(ctx context.Context, db *sql.DB) (*Snapshot, error
 		}
 		validCampaigns = append(validCampaigns, campaign)
 	}
-	if activeRows > 0 && len(validCampaigns) == 0 {
-		return nil, fmt.Errorf("all %d active campaign rows were invalid; previous snapshot must be retained", activeRows)
+	if activeRows > 0 && len(validCampaigns) == 0 && invalidIPRows != activeRows {
+		return nil, warnings, fmt.Errorf("all %d active campaign rows were invalid; previous snapshot must be retained", activeRows)
 	}
-	return &Snapshot{Campaigns: validCampaigns, UserGoals: userGoals, UserAntiPerekrutBlocked: userAntiPerekrutBlocked, LoadedAt: loadedAt}, nil
+	return &Snapshot{Campaigns: validCampaigns, UserGoals: userGoals, UserAntiPerekrutBlocked: userAntiPerekrutBlocked, LoadedAt: loadedAt}, warnings, nil
 }
 
 type campaignDBRow struct {
@@ -356,9 +469,9 @@ func (r campaignDBRow) campaign() (*Campaign, error) {
 	if err != nil {
 		return nil, err
 	}
-	ip, err := parseFilter(r.IP, "ip")
+	ip, ipCIDRPrefixes, err := parseIPv4CampaignFilter(r.IP)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("campaign %s ip filter: %w", id, err)
 	}
 
 	return &Campaign{
@@ -370,6 +483,7 @@ func (r campaignDBRow) campaign() (*Campaign, error) {
 		StartTS: r.StartTS.Time.UTC(), EndTS: r.EndTS.Time.UTC(), ActiveIntervals: activeIntervals,
 		CountryFilter: country, LanguageFilter: language, DeviceTypeFilter: deviceType,
 		OSFilter: osFilter, BrowserFilter: browser, SiteIDFilter: siteID, IPFilter: ip,
+		IPCIDRPrefixes:      ipCIDRPrefixes,
 		Creatives:           []*Creative{},
 		TrafficResetVersion: r.TrafficResetVersion.Int64,
 		UpdatedAt: func() time.Time {
