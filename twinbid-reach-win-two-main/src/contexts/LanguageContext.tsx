@@ -693,6 +693,7 @@ const translations: Record<string, Record<"ru" | "en", string>> = {
   "targeting.on": { ru: "Вкл", en: "On" },
   "targeting.freeTextPlaceholder": { ru: "Введите значение...", en: "Enter value..." },
   "targeting.autocompletePlaceholder": { ru: "Начните вводить...", en: "Start typing..." },
+  "targeting.selectPlaceholder": { ru: "Выберите значение", en: "Select a value" },
   "targeting.addCustom": { ru: "Добавить", en: "Add" },
   "targeting.sitesHint": { ru: "Добавляйте ID сайтов по одному или через запятую без пробелов (например: 12345,abdjhx)", en: "Add site IDs one by one or separated by commas without spaces (e.g.: 12345,abdjhx)" },
   "targeting.sitesFormatError": { ru: "Неверный формат. Используйте значения через запятую без пробелов", en: "Invalid format. Use comma-separated values without spaces" },
@@ -714,8 +715,8 @@ const translations: Record<string, Record<"ru" | "en", string>> = {
   "targetingImport.import": { ru: "Перенести таргетинги", en: "Import targeting" },
   "targetingImport.success": { ru: "Перенесено групп: {groups}, значений: {values}", en: "Imported groups: {groups}, values: {values}" },
   "targeting.scheduleRequired": { ru: "Выберите хотя бы один активный час в расписании", en: "Select at least one active hour in the schedule" },
-  "targeting.ipHint": { ru: "Введите IPv4 адреса через запятую", en: "Enter IPv4 addresses, comma-separated" },
-  "targeting.ipFormatError": { ru: "Неверный формат IP. Допускаются только IPv4 адреса", en: "Invalid IP format. Only IPv4 addresses are allowed" },
+  "targeting.ipHint": { ru: "Введите IPv4-адреса или CIDR-подсети через запятую (например, 10.0.0.0/24)", en: "Enter IPv4 addresses or CIDR subnets, comma-separated (for example, 10.0.0.0/24)" },
+  "targeting.ipFormatError": { ru: "Неверный формат. Допускаются IPv4-адреса и CIDR-подсети", en: "Invalid format. IPv4 addresses and CIDR subnets are allowed" },
 
   // Days of week
   "day.monday": { ru: "Понедельник", en: "Monday" },

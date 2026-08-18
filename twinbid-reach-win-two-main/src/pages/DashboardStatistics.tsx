@@ -190,7 +190,8 @@ export default function DashboardStatistics() {
 
   const groupLabels: Record<GroupBy, string> = {
     dates: t("stats.byDates"), hours: t("stats.byHours"), browsers: t("stats.byBrowsers"),
-    siteid: t("stats.bySiteId"), devices: t("stats.byDevices"), os: t("stats.byOS"), country: t("stats.byCountry"),
+    siteid: t("stats.bySiteId"), devices: t("stats.byDevices"), os: t("stats.byOS"),
+    country: t("stats.byCountry"),
   };
 
   // Statistics are available for every campaign shown in the campaigns
@@ -749,7 +750,13 @@ export default function DashboardStatistics() {
     confirmedIncome: sortedData.reduce((s, r) => s + r.confirmedIncome, 0),
   }), [sortedData]);
 
-  const labelHeader = appliedGroupBy === "dates" ? t("stats.date") : appliedGroupBy === "hours" ? t("stats.dateAndHour") : appliedGroupBy === "browsers" ? t("stats.browser") : appliedGroupBy === "siteid" ? "SiteID" : appliedGroupBy === "os" ? t("stats.os") : appliedGroupBy === "country" ? t("stats.country") : t("stats.device");
+  const labelHeader = appliedGroupBy === "dates" ? t("stats.date")
+    : appliedGroupBy === "hours" ? t("stats.dateAndHour")
+      : appliedGroupBy === "browsers" ? t("stats.browser")
+        : appliedGroupBy === "siteid" ? "SiteID"
+          : appliedGroupBy === "os" ? t("stats.os")
+            : appliedGroupBy === "country" ? t("stats.country")
+              : t("stats.device");
   const canSortByLabel = appliedGroupBy === "dates" || appliedGroupBy === "hours";
 
   const handleDownloadCsv = useCallback(() => {

@@ -342,7 +342,6 @@ export default function TrafficCalculator() {
     () => getTargetingDimensionOptions("language", lang),
     [lang],
   );
-
   const resetResult = () => {
     setResult(null);
     setActual(null);

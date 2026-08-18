@@ -48,4 +48,5 @@ describe("buildRecommendBidRequest", () => {
     expect(request.site_id).toEqual(["12345", "abdjhx"]);
     expect(request.site_id_mode).toBe("exclude");
   });
+
 });

@@ -574,6 +574,7 @@ export const FR_TRANSLATIONS: Record<string, string> = {
   "targeting.on": "Activé",
   "targeting.freeTextPlaceholder": "Saisissez une valeur…",
   "targeting.autocompletePlaceholder": "Commencez à saisir…",
+  "targeting.selectPlaceholder": "Sélectionnez une valeur",
   "targeting.addCustom": "Ajouter",
   "targeting.sitesHint": "Ajoutez les ID de site un par un ou séparés par des virgules, sans espaces (ex. : 12345,abdjhx)",
   "targeting.sitesFormatError": "Format non valide. Utilisez des valeurs séparées par des virgules, sans espaces",
@@ -595,8 +596,8 @@ export const FR_TRANSLATIONS: Record<string, string> = {
   "targetingImport.import": "Importer le ciblage",
   "targetingImport.success": "Groupes importés : {groups}, valeurs : {values}",
   "targeting.scheduleRequired": "Sélectionnez au moins une heure active dans le calendrier",
-  "targeting.ipHint": "Saisissez des adresses IPv4 séparées par des virgules",
-  "targeting.ipFormatError": "Format d’adresse IP non valide. Seules les adresses IPv4 sont acceptées",
+  "targeting.ipHint": "Saisissez des adresses IPv4 ou des sous-réseaux CIDR séparés par des virgules (par exemple 10.0.0.0/24)",
+  "targeting.ipFormatError": "Format non valide. Les adresses IPv4 et les sous-réseaux CIDR sont acceptés",
 
   // Days
   "day.monday": "Lundi",

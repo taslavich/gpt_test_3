@@ -45,4 +45,18 @@ describe("targeting list controls", () => {
     expect(within(countriesCard as HTMLElement).queryByText("Germany (DE)")).not.toBeInTheDocument();
     expect(within(countriesCard as HTMLElement).getByRole("button", { name: "White" })).toHaveClass("bg-green-600");
   });
+
+  it("accepts IPv4 CIDR subnets in IP targeting", () => {
+    render(<Harness />);
+
+    const ipCard = screen.getByText("IP addresses").closest("div.rounded-lg");
+    expect(ipCard).not.toBeNull();
+    fireEvent.click(within(ipCard as HTMLElement).getByRole("button", { name: "White" }));
+
+    const input = within(ipCard as HTMLElement).getByPlaceholderText("192.168.1.1, 10.0.0.0/24");
+    fireEvent.change(input, { target: { value: "10.20.0.0/16" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+
+    expect(within(ipCard as HTMLElement).getByText("10.20.0.0/16")).toBeInTheDocument();
+  });
 });

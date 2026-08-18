@@ -11,6 +11,7 @@ import { useLanguage } from "@/contexts/LanguageContext";
 import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "sonner";
 import { MailCheck } from "lucide-react";
+import { requestLoginIntro } from "@/lib/loginIntro";
 
 interface AuthDialogProps {
   trigger?: React.ReactNode;
@@ -46,6 +47,7 @@ export function AuthDialog({ trigger, defaultTab = "login" }: AuthDialogProps) {
       toast.error(error);
       return;
     }
+    requestLoginIntro();
     setOpen(false);
     navigate("/dashboard");
   };

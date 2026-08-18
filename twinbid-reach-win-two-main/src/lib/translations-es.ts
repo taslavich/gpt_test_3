@@ -586,6 +586,7 @@ export const ES_TRANSLATIONS: Record<string, string> = {
   "targeting.on": "On",
   "targeting.freeTextPlaceholder": "Introduce un valor...",
   "targeting.autocompletePlaceholder": "Empieza a escribir...",
+  "targeting.selectPlaceholder": "Selecciona un valor",
   "targeting.addCustom": "Añadir",
   "targeting.sitesHint": "Añade IDs de sitio uno por uno o separados por coma sin espacios (ej.: 12345,abdjhx)",
   "targeting.sitesFormatError": "Formato no válido. Usa valores separados por coma sin espacios",
@@ -607,8 +608,8 @@ export const ES_TRANSLATIONS: Record<string, string> = {
   "targetingImport.import": "Importar segmentación",
   "targetingImport.success": "Grupos importados: {groups}, valores: {values}",
   "targeting.scheduleRequired": "Selecciona al menos una hora activa en el horario",
-  "targeting.ipHint": "Introduce direcciones IPv4 separadas por coma",
-  "targeting.ipFormatError": "Formato de IP no válido. Solo se permiten IPv4",
+  "targeting.ipHint": "Introduce direcciones IPv4 o subredes CIDR separadas por comas (por ejemplo, 10.0.0.0/24)",
+  "targeting.ipFormatError": "Formato no válido. Se permiten direcciones IPv4 y subredes CIDR",
 
   // Days of week
   "day.monday": "Lunes",

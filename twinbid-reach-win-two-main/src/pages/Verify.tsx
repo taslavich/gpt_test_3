@@ -23,11 +23,6 @@ export default function Verify() {
     (async () => {
       try {
         await api.verifyEmail({ token });
-        (window as typeof window & { gtag?: (...args: unknown[]) => void }).gtag?.(
-          "event",
-          "conversion",
-          { send_to: "AW-18391559379/BM7rCIT9k-IcENPZ48FE" },
-        );
         trackRegistrationSuccess();
         if (!cancelled) setState("success");
       } catch (e) {

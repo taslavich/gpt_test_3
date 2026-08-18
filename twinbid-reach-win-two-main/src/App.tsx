@@ -8,6 +8,7 @@ import { LanguageProvider } from "./contexts/LanguageContext";
 import { AuthProvider } from "./contexts/AuthContext";
 import { ProtectedRoute } from "./components/ProtectedRoute";
 import { YandexMetrikaTracker } from "./components/YandexMetrikaTracker";
+import { LoginIntroOverlay } from "./components/dashboard/LoginIntroOverlay";
 import Index from "./pages/Index";
 
 // Keep the public landing lightweight. Dashboard pages (including media
@@ -43,6 +44,7 @@ const App = () => (
         <YandexMetrikaTracker />
         <LanguageProvider>
           <AuthProvider>
+            <LoginIntroOverlay />
             <Suspense fallback={<RouteFallback />}>
               <Routes>
                 <Route path="/" element={<Index />} />
