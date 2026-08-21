@@ -399,7 +399,7 @@ function RegisterButton({ children, className = "" }: { children: string; classN
     <AuthDialog
       defaultTab="register"
       trigger={
-        <button className={`group inline-flex min-h-14 items-center justify-center gap-3 rounded-full bg-primary px-6 py-4 text-sm font-bold text-primary-foreground shadow-[0_16px_50px_hsl(var(--primary)/0.16)] transition duration-300 hover:-translate-y-0.5 hover:shadow-[0_18px_60px_hsl(var(--primary)/0.28)] sm:px-8 ${className}`}>
+        <button className={`landing-button landing-button-primary group inline-flex min-h-14 items-center justify-center gap-3 px-6 py-4 text-sm font-semibold shadow-[0_16px_50px_hsl(var(--primary)/0.12)] transition duration-300 hover:-translate-y-0.5 hover:shadow-[0_18px_60px_hsl(var(--primary)/0.24)] sm:px-8 ${className}`}>
           {children}<ArrowRight className="h-4 w-4 shrink-0 transition-transform group-hover:translate-x-1" />
         </button>
       }
@@ -417,7 +417,7 @@ function CalculatorControl({ label, value, display, min, max, step, onChange }: 
   onChange: (value: number) => void;
 }) {
   return (
-    <label className="block rounded-2xl border border-white/[0.07] bg-white/[0.025] p-4 sm:p-5">
+    <label className="block border border-white/[0.08] bg-white/[0.025] p-4 transition-colors focus-within:border-primary/35 sm:p-5">
       <span className="mb-4 flex items-center justify-between gap-4">
         <span className="text-sm text-slate-400">{label}</span>
         <strong className="font-mono text-base font-medium text-white sm:text-lg">{display}</strong>
@@ -467,26 +467,26 @@ export default function TwinBidMoney() {
   }, [budget, visitorCost, conversionRate, payout]);
 
   return (
-    <div className="min-h-screen overflow-x-hidden bg-[#070c0d] text-white selection:bg-primary/30">
-      <div className="pointer-events-none fixed inset-0 opacity-80" aria-hidden>
-        <div className="absolute left-1/2 top-[-28rem] h-[56rem] w-[56rem] -translate-x-1/2 rounded-full bg-primary/[0.11] blur-[150px]" />
-        <div className="absolute left-0 top-0 h-full w-full bg-[linear-gradient(rgba(255,255,255,0.018)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.018)_1px,transparent_1px)] bg-[size:64px_64px] [mask-image:linear-gradient(to_bottom,black,transparent_72%)]" />
+    <div className="landing-shell twinbid-money-shell min-h-screen overflow-x-hidden bg-background text-foreground selection:bg-primary/30">
+      <div className="pointer-events-none fixed inset-0 opacity-80" aria-hidden="true">
+        <div className="absolute left-1/2 top-[-28rem] h-[56rem] w-[56rem] -translate-x-1/2 rounded-full bg-primary/[0.1] blur-[150px]" />
+        <div className="absolute inset-x-0 top-0 h-[46rem] bg-[linear-gradient(180deg,hsl(200_18%_5%/0.16),transparent)]" />
       </div>
 
-      <header className="fixed inset-x-0 top-0 z-50 px-3 pt-3 sm:px-5 sm:pt-5">
-        <div className="mx-auto flex h-16 max-w-7xl items-center justify-between rounded-2xl border border-white/[0.09] bg-[#091011]/90 px-3 shadow-[0_18px_70px_rgba(0,0,0,0.35)] backdrop-blur-xl sm:px-5">
+      <header className="fixed inset-x-0 top-0 z-50 px-3 pt-3 md:px-6 md:pt-5">
+        <div className="landing-header-panel mx-auto flex h-[60px] max-w-[1320px] items-center justify-between rounded-[14px] border border-white/[0.09] bg-[hsl(200_18%_7%/0.92)] px-4 shadow-[0_18px_70px_rgba(0,0,0,0.4)] backdrop-blur-xl md:px-5">
           <a href="/twinbid_money" className="shrink-0" aria-label="TwinBid Money">
             <img src={twinbidLogo} alt="TwinBid" className="h-8 sm:h-9" />
           </a>
           <nav className="hidden items-center gap-1 lg:flex">
-            <a href="#how" className="rounded-full px-3 py-2 text-xs text-slate-400 hover:bg-white/5 hover:text-white">{text.nav.how}</a>
-            <a href="#example" className="rounded-full px-3 py-2 text-xs text-slate-400 hover:bg-white/5 hover:text-white">{text.nav.example}</a>
-            <a href="#benefits" className="rounded-full px-3 py-2 text-xs text-slate-400 hover:bg-white/5 hover:text-white">{text.nav.benefits}</a>
-            <a href="#calculator" className="rounded-full px-3 py-2 text-xs text-slate-400 hover:bg-white/5 hover:text-white">{text.nav.calculator}</a>
+            <a href="#how" className="landing-header-nav-link">{text.nav.how}</a>
+            <a href="#example" className="landing-header-nav-link">{text.nav.example}</a>
+            <a href="#benefits" className="landing-header-nav-link">{text.nav.benefits}</a>
+            <a href="#calculator" className="landing-header-nav-link">{text.nav.calculator}</a>
           </nav>
           <div className="flex items-center gap-2">
             <div className="relative">
-              <button onClick={() => setLanguageOpen((value) => !value)} className="flex h-10 items-center gap-1 rounded-full border border-white/10 px-3 text-xs font-semibold transition hover:border-white/20 hover:bg-white/5" aria-expanded={languageOpen}>
+              <button onClick={() => setLanguageOpen((value) => !value)} className="landing-language-trigger flex h-10 items-center gap-1 px-3 text-xs font-semibold" aria-expanded={languageOpen}>
                 {lang.toUpperCase()}<ChevronDown className="h-3.5 w-3.5" />
               </button>
               {languageOpen && (
@@ -499,7 +499,7 @@ export default function TwinBidMoney() {
                 </div>
               )}
             </div>
-            <AuthDialog defaultTab="register" trigger={<button className="hidden h-10 rounded-full bg-primary px-5 text-xs font-bold text-primary-foreground sm:block">{text.nav.start}</button>} />
+            <AuthDialog defaultTab="register" trigger={<button className="landing-button landing-button-primary hidden h-10 px-5 text-xs font-semibold sm:block">{text.nav.start}</button>} />
           </div>
         </div>
       </header>
@@ -508,10 +508,10 @@ export default function TwinBidMoney() {
         <section className="mx-auto flex min-h-[100svh] max-w-7xl items-center px-4 pb-14 pt-28 sm:px-6 sm:pt-32">
           <div className="grid w-full items-center gap-12 lg:grid-cols-[1.03fr_0.97fr] lg:gap-16">
             <div>
-              <div className="mb-7 inline-flex items-center gap-2.5 rounded-full border border-primary/20 bg-primary/[0.07] px-4 py-2 text-[10px] font-semibold uppercase tracking-[0.2em] text-primary sm:text-xs">
+              <div className="mb-7 inline-flex items-center gap-2.5 border border-primary/20 bg-primary/[0.07] px-4 py-2 text-[10px] font-semibold uppercase tracking-[0.2em] text-primary sm:text-xs">
                 <span className="relative flex h-2 w-2"><span className="absolute inline-flex h-full w-full rounded-full bg-primary opacity-40" /><span className="relative inline-flex h-2 w-2 rounded-full bg-primary" /></span>{text.hero.badge}
               </div>
-              <h1 className="max-w-4xl text-balance text-[clamp(3.25rem,7vw,6.6rem)] font-light leading-[0.91] tracking-[-0.065em]">{text.hero.title}</h1>
+              <h1 className="max-w-4xl text-balance text-[clamp(3.25rem,7vw,6.6rem)] font-medium leading-[0.91] tracking-[-0.065em]">{text.hero.title}</h1>
               <p className="mt-7 max-w-2xl text-base leading-7 text-slate-300 sm:text-xl sm:leading-8">{text.hero.subtitle}</p>
               <div className="mt-9 flex flex-col items-start gap-3 sm:flex-row sm:items-center sm:gap-5">
                 <RegisterButton>{text.hero.cta}</RegisterButton>
@@ -521,27 +521,27 @@ export default function TwinBidMoney() {
 
             <div className="relative mx-auto w-full max-w-[35rem]">
               <div className="absolute inset-10 rounded-full bg-primary/[0.16] blur-[100px]" />
-              <div className="relative overflow-hidden rounded-[2rem] border border-white/[0.11] bg-[#0a1213]/95 p-4 shadow-[0_35px_110px_rgba(0,0,0,0.55)] sm:p-6">
+              <div className="relative overflow-hidden border border-white/[0.11] bg-[#0a1213]/95 p-4 shadow-[0_35px_110px_rgba(0,0,0,0.55)] sm:p-6">
                 <div className="flex items-center justify-between border-b border-white/[0.07] pb-5">
                   <div><div className="font-mono text-[9px] uppercase tracking-[0.22em] text-slate-500">TwinBid Money</div><div className="mt-1 text-sm font-medium text-slate-200">{ui.model}</div></div>
                   <span className="flex items-center gap-2 rounded-full border border-emerald-400/15 bg-emerald-400/[0.07] px-3 py-1.5 text-xs font-semibold text-emerald-300"><TrendingUp className="h-3.5 w-3.5" />+270%</span>
                 </div>
 
                 <div className="mt-5 grid gap-3 sm:grid-cols-2">
-                  <div className="rounded-2xl border border-white/[0.07] bg-white/[0.025] p-5">
+                  <div className="border border-white/[0.07] bg-white/[0.025] p-5">
                     <div className="text-xs text-slate-500">{ui.input}</div><div className="mt-2 text-4xl font-light tracking-[-0.05em]">$100</div><div className="mt-4 h-1.5 rounded-full bg-white/[0.05]"><div className="h-full w-[27%] rounded-full bg-slate-500" /></div>
                   </div>
-                  <div className="rounded-2xl border border-primary/20 bg-primary/[0.065] p-5">
+                  <div className="border border-primary/20 bg-primary/[0.065] p-5">
                     <div className="text-xs text-primary/70">{ui.output}</div><div className="mt-2 text-4xl font-light tracking-[-0.05em] text-primary">$370</div><div className="mt-4 h-1.5 rounded-full bg-white/[0.06]"><div className="h-full w-full rounded-full bg-primary" /></div>
                   </div>
                 </div>
 
-                <div className="mt-3 rounded-2xl border border-emerald-400/15 bg-emerald-400/[0.045] p-5 sm:p-6">
+                <div className="mt-3 border border-emerald-400/15 bg-emerald-400/[0.045] p-5 sm:p-6">
                   <div className="flex items-start justify-between gap-5"><div><div className="text-xs text-emerald-200/55">{ui.netResult}</div><div className="mt-2 text-5xl font-light tracking-[-0.055em] text-emerald-300 sm:text-6xl">+$270</div></div><CircleDollarSign className="h-8 w-8 text-emerald-300/50" /></div>
                   <div className="mt-5 flex items-center gap-2 font-mono text-[10px] text-slate-500"><span>$370</span><span>−</span><span>$100</span><span>=</span><span className="text-emerald-300">+$270</span></div>
                 </div>
 
-                <div className="mt-3 grid grid-cols-[1fr_auto_1fr_auto_1fr] items-center gap-2 rounded-2xl border border-white/[0.06] bg-black/20 p-3 text-center">
+                <div className="mt-3 grid grid-cols-[1fr_auto_1fr_auto_1fr] items-center gap-2 border border-white/[0.06] bg-black/20 p-3 text-center">
                   <div><div className="text-sm font-semibold">$100</div><div className="mt-1 text-[8px] uppercase tracking-wider text-slate-600">{text.hero.spend}</div></div><ArrowRight className="h-3.5 w-3.5 text-slate-600" /><div><Target className="mx-auto h-4 w-4 text-primary" /><div className="mt-1 text-[8px] uppercase tracking-wider text-slate-600">{ui.offer}</div></div><ArrowRight className="h-3.5 w-3.5 text-slate-600" /><div><div className="text-sm font-semibold text-emerald-300">$370</div><div className="mt-1 text-[8px] uppercase tracking-wider text-slate-600">{text.hero.revenue}</div></div>
                 </div>
               </div>
@@ -571,7 +571,7 @@ export default function TwinBidMoney() {
               <div className="absolute left-[16.7%] right-[16.7%] top-12 hidden h-px bg-gradient-to-r from-transparent via-primary/35 to-transparent md:block" />
               {text.how.steps.map((step, index) => {
                 const Icon = stepIcons[index];
-                return <article key={step.title} className="relative overflow-hidden rounded-[1.75rem] border border-white/[0.08] bg-[#0a1112] p-6 sm:p-8"><div className="absolute right-5 top-4 font-mono text-xs text-white/20">0{index + 1}</div><div className="relative mb-7 flex h-12 w-12 items-center justify-center rounded-2xl border border-primary/20 bg-[#0a1112] text-primary shadow-[0_0_35px_hsl(var(--primary)/0.1)]"><Icon className="h-5 w-5" /></div><h3 className="text-xl font-medium">{step.title}</h3><p className="mt-3 min-h-[4.5rem] text-sm leading-6 text-slate-400">{step.text}</p><div className="mt-6 border-t border-white/[0.07] pt-5 font-mono text-xs font-medium text-primary">{step.metric}</div></article>;
+                return <article key={step.title} className="relative overflow-hidden border border-white/[0.08] bg-[#0a1112] p-6 sm:p-8"><div className="absolute right-5 top-4 font-mono text-xs text-white/20">0{index + 1}</div><div className="relative mb-7 flex h-12 w-12 items-center justify-center border border-primary/20 bg-[#0a1112] text-primary shadow-[0_0_35px_hsl(var(--primary)/0.1)]"><Icon className="h-5 w-5" /></div><h3 className="text-xl font-medium">{step.title}</h3><p className="mt-3 min-h-[4.5rem] text-sm leading-6 text-slate-400">{step.text}</p><div className="mt-6 border-t border-white/[0.07] pt-5 font-mono text-xs font-medium text-primary">{step.metric}</div></article>;
               })}
             </div>
             <div className="mx-auto mt-10 max-w-3xl text-center"><p className="text-lg leading-8 text-slate-200">{text.how.result}</p><div className="mt-7"><RegisterButton>{text.how.cta}</RegisterButton></div></div>
@@ -582,14 +582,14 @@ export default function TwinBidMoney() {
           <div className="mx-auto grid max-w-7xl items-center gap-12 lg:grid-cols-[0.82fr_1.18fr] lg:gap-16">
             <div>
               <SectionHeading kicker={text.example.kicker} title={text.example.title} subtitle={text.example.subtitle} align="left" />
-              <div className="flex flex-wrap items-center gap-3"><div className="rounded-2xl border border-white/[0.08] bg-white/[0.025] px-5 py-4"><div className="text-xs text-slate-500">{ui.input}</div><div className="mt-1 text-2xl font-medium">$100</div></div><ArrowRight className="h-5 w-5 text-primary" /><div className="rounded-2xl border border-emerald-400/15 bg-emerald-400/[0.045] px-5 py-4"><div className="text-xs text-emerald-200/50">{ui.output}</div><div className="mt-1 text-2xl font-medium text-emerald-300">$370</div></div></div>
+              <div className="flex flex-wrap items-center gap-3"><div className="border border-white/[0.08] bg-white/[0.025] px-5 py-4"><div className="text-xs text-slate-500">{ui.input}</div><div className="mt-1 text-2xl font-medium">$100</div></div><ArrowRight className="h-5 w-5 text-primary" /><div className="border border-emerald-400/15 bg-emerald-400/[0.045] px-5 py-4"><div className="text-xs text-emerald-200/50">{ui.output}</div><div className="mt-1 text-2xl font-medium text-emerald-300">$370</div></div></div>
               <p className="mt-6 text-sm leading-7 text-slate-400 sm:text-base">{text.example.text}</p>
             </div>
-            <div className="overflow-hidden rounded-[2rem] border border-white/[0.09] bg-[#0b1314] shadow-[0_30px_90px_rgba(0,0,0,0.3)]">
+            <div className="overflow-hidden border border-white/[0.09] bg-[#0b1314] shadow-[0_30px_90px_rgba(0,0,0,0.3)]">
               <div className="flex items-center justify-between border-b border-white/[0.07] px-5 py-4 sm:px-7"><div><div className="text-sm font-medium">{ui.campaignName}</div><div className="mt-1 font-mono text-[9px] uppercase tracking-[0.18em] text-slate-600">Popunder · Worldwide</div></div><span className="flex items-center gap-2 rounded-full bg-emerald-400/[0.07] px-3 py-1.5 text-xs text-emerald-300"><span className="h-1.5 w-1.5 rounded-full bg-emerald-300" />{ui.active}</span></div>
               <div className="grid gap-6 p-5 sm:p-7 md:grid-cols-[1fr_0.78fr]">
                 <div><div className="mb-5 text-xs text-slate-500">{ui.performance}</div><div className="divide-y divide-white/[0.06]">{text.example.metrics.map(([label, value], index) => <div key={label} className="flex items-center justify-between gap-4 py-3"><span className="text-sm text-slate-500">{label}</span><span className={`font-mono text-base font-medium ${index >= 4 ? "text-emerald-300" : "text-slate-200"}`}>{value}</span></div>)}</div></div>
-                <div className="flex min-h-[17rem] flex-col justify-between rounded-2xl border border-primary/15 bg-primary/[0.045] p-5"><div><div className="font-mono text-[9px] uppercase tracking-[0.2em] text-primary/60">ROI</div><div className="mt-2 text-6xl font-light tracking-[-0.06em] text-primary">+270%</div></div><svg viewBox="0 0 260 100" className="h-28 w-full" preserveAspectRatio="none" aria-hidden><defs><linearGradient id="campaign-chart" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopColor="hsl(var(--primary))" stopOpacity=".25"/><stop offset="1" stopColor="hsl(var(--primary))" stopOpacity="0"/></linearGradient></defs><path d="M0 86 C28 82 40 72 68 76 S108 61 130 64 S168 48 190 43 S228 27 260 10 L260 100 L0 100Z" fill="url(#campaign-chart)"/><path d="M0 86 C28 82 40 72 68 76 S108 61 130 64 S168 48 190 43 S228 27 260 10" fill="none" stroke="hsl(var(--primary))" strokeWidth="2.5"/></svg><div className="flex items-center justify-between border-t border-white/[0.07] pt-4"><span className="text-xs text-slate-500">{ui.netResult}</span><span className="font-mono text-xl text-emerald-300">+$270</span></div></div>
+                <div className="flex min-h-[17rem] flex-col justify-between border border-primary/15 bg-primary/[0.045] p-5"><div><div className="font-mono text-[9px] uppercase tracking-[0.2em] text-primary/60">ROI</div><div className="mt-2 text-6xl font-light tracking-[-0.06em] text-primary">+270%</div></div><svg viewBox="0 0 260 100" className="h-28 w-full" preserveAspectRatio="none" aria-hidden><defs><linearGradient id="campaign-chart" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopColor="hsl(var(--primary))" stopOpacity=".25"/><stop offset="1" stopColor="hsl(var(--primary))" stopOpacity="0"/></linearGradient></defs><path d="M0 86 C28 82 40 72 68 76 S108 61 130 64 S168 48 190 43 S228 27 260 10 L260 100 L0 100Z" fill="url(#campaign-chart)"/><path d="M0 86 C28 82 40 72 68 76 S108 61 130 64 S168 48 190 43 S228 27 260 10" fill="none" stroke="hsl(var(--primary))" strokeWidth="2.5"/></svg><div className="flex items-center justify-between border-t border-white/[0.07] pt-4"><span className="text-xs text-slate-500">{ui.netResult}</span><span className="font-mono text-xl text-emerald-300">+$270</span></div></div>
               </div>
             </div>
           </div>
@@ -598,7 +598,7 @@ export default function TwinBidMoney() {
         <section id="benefits" className="scroll-mt-24 px-4 py-20 sm:px-6 sm:py-28">
           <div className="mx-auto max-w-7xl">
             <SectionHeading kicker={text.benefits.kicker} title={text.benefits.title} subtitle={text.benefits.subtitle} />
-            <div className="grid overflow-hidden rounded-[2rem] border border-white/[0.08] bg-[#0a1112] sm:grid-cols-2 lg:grid-cols-3">{text.benefits.cards.map(([title, description], index) => { const Icon = benefitIcons[index]; return <article key={title} className="group border-b border-white/[0.07] p-6 last:border-b-0 sm:border-r sm:p-8 lg:[&:nth-child(3n)]:border-r-0 lg:[&:nth-last-child(-n+3)]:border-b-0"><div className="mb-7 flex items-center justify-between"><div className="flex h-11 w-11 items-center justify-center rounded-xl border border-primary/15 bg-primary/[0.06] text-primary"><Icon className="h-5 w-5" /></div><span className="font-mono text-[10px] text-white/15">0{index + 1}</span></div><h3 className="text-lg font-medium">{title}</h3><p className="mt-3 text-sm leading-6 text-slate-500">{description}</p></article>; })}</div>
+            <div className="grid overflow-hidden border border-white/[0.08] bg-[#0a1112] sm:grid-cols-2 lg:grid-cols-3">{text.benefits.cards.map(([title, description], index) => { const Icon = benefitIcons[index]; return <article key={title} className="group border-b border-white/[0.07] p-6 last:border-b-0 sm:border-r sm:p-8 lg:[&:nth-child(3n)]:border-r-0 lg:[&:nth-last-child(-n+3)]:border-b-0"><div className="mb-7 flex items-center justify-between"><div className="flex h-11 w-11 items-center justify-center border border-primary/15 bg-primary/[0.06] text-primary"><Icon className="h-5 w-5" /></div><span className="font-mono text-[10px] text-white/15">0{index + 1}</span></div><h3 className="text-lg font-medium">{title}</h3><p className="mt-3 text-sm leading-6 text-slate-500">{description}</p></article>; })}</div>
           </div>
         </section>
 
@@ -606,14 +606,14 @@ export default function TwinBidMoney() {
           <div className="mx-auto max-w-7xl">
             <div className="grid items-end gap-8 lg:grid-cols-[0.8fr_1.2fr] lg:gap-16">
               <div><div className="font-mono text-[11px] font-semibold uppercase tracking-[0.2em] text-primary">{text.simple.kicker}</div><h2 className="mt-4 text-balance text-3xl font-medium leading-[1.05] tracking-[-0.045em] sm:text-5xl">{text.simple.title}</h2><p className="mt-5 max-w-xl text-sm leading-7 text-slate-400 sm:text-base">{text.simple.text}</p><div className="mt-7"><RegisterButton>{text.simple.cta}</RegisterButton></div></div>
-              <div><div className="mb-5 text-sm font-medium text-slate-300">{ui.stepsTitle}</div><div className="overflow-hidden rounded-[1.75rem] border border-white/[0.08] bg-[#0a1112]">{text.simple.flow.map((item, index) => <div key={item} className="flex items-center gap-4 border-b border-white/[0.06] px-5 py-4 last:border-b-0 sm:px-6"><span className="font-mono text-xs text-primary">0{index + 1}</span><span className="font-medium">{item}</span>{index < text.simple.flow.length - 1 && <ArrowRight className="ml-auto h-4 w-4 text-slate-700" />}</div>)}</div></div>
+              <div><div className="mb-5 text-sm font-medium text-slate-300">{ui.stepsTitle}</div><div className="overflow-hidden border border-white/[0.08] bg-[#0a1112]">{text.simple.flow.map((item, index) => <div key={item} className="flex items-center gap-4 border-b border-white/[0.06] px-5 py-4 last:border-b-0 sm:px-6"><span className="font-mono text-xs text-primary">0{index + 1}</span><span className="font-medium">{item}</span>{index < text.simple.flow.length - 1 && <ArrowRight className="ml-auto h-4 w-4 text-slate-700" />}</div>)}</div></div>
             </div>
           </div>
         </section>
 
         <section id="calculator" className="scroll-mt-24 px-4 py-20 sm:px-6 sm:py-28">
           <div className="mx-auto max-w-7xl"><SectionHeading kicker={text.calculator.kicker} title={text.calculator.title} subtitle={text.calculator.subtitle} />
-            <div className="grid overflow-hidden rounded-[2rem] border border-white/[0.09] bg-[#0a1112] shadow-[0_35px_100px_rgba(0,0,0,0.25)] lg:grid-cols-[1.05fr_0.95fr]">
+            <div className="grid overflow-hidden border border-white/[0.09] bg-[#0a1112] shadow-[0_35px_100px_rgba(0,0,0,0.25)] lg:grid-cols-[1.05fr_0.95fr]">
               <div className="p-5 sm:p-8 lg:p-10">
                 <div className="mb-6 flex items-center gap-3 border-b border-white/[0.07] pb-5"><SlidersHorizontal className="h-4 w-4 text-primary" /><span className="text-sm font-medium">{ui.calculatorCaption}</span></div>
                 <div className="grid gap-3 sm:grid-cols-2">
@@ -625,8 +625,8 @@ export default function TwinBidMoney() {
               </div>
               <div className="flex flex-col justify-center border-t border-white/[0.08] bg-[radial-gradient(circle_at_top_right,hsl(var(--primary)/0.13),transparent_60%)] p-6 sm:p-10 lg:border-l lg:border-t-0">
                 <div className="mb-5 flex items-center justify-between"><div><div className="font-mono text-[9px] uppercase tracking-[0.2em] text-primary/70">{ui.liveResult}</div><div className="mt-1 text-sm font-medium">{ui.campaignReady}</div></div><Sparkles className="h-5 w-5 text-primary/60" /></div>
-                <div className="grid grid-cols-2 gap-3">{[[text.calculator.visitors, result.visitors.toLocaleString("en-US")], [text.calculator.conversions, result.conversions.toLocaleString("en-US")], [text.calculator.revenue, money(result.revenue)], [text.calculator.roi, `${result.roi >= 0 ? "+" : ""}${result.roi.toFixed(0)}%`]].map(([label, value]) => <div key={label} className="rounded-2xl border border-white/[0.08] bg-black/20 p-4"><div className="text-[9px] uppercase tracking-[0.14em] text-slate-600 sm:text-[10px]">{label}</div><div className="mt-2 break-words font-mono text-xl font-medium sm:text-2xl">{value}</div></div>)}</div>
-                <div className="mt-3 rounded-2xl border border-emerald-400/20 bg-emerald-400/[0.055] p-5 sm:p-6"><div className="text-xs text-emerald-200/55">{text.calculator.profit}</div><div className={`mt-2 break-words text-5xl font-light tracking-[-0.055em] sm:text-6xl ${result.profit >= 0 ? "text-emerald-300" : "text-red-400"}`}>{result.profit >= 0 ? "+" : ""}{money(result.profit)}</div></div>
+                <div className="grid grid-cols-2 gap-3">{[[text.calculator.visitors, result.visitors.toLocaleString("en-US")], [text.calculator.conversions, result.conversions.toLocaleString("en-US")], [text.calculator.revenue, money(result.revenue)], [text.calculator.roi, `${result.roi >= 0 ? "+" : ""}${result.roi.toFixed(0)}%`]].map(([label, value]) => <div key={label} className="border border-white/[0.08] bg-black/20 p-4"><div className="text-[9px] uppercase tracking-[0.14em] text-slate-600 sm:text-[10px]">{label}</div><div className="mt-2 break-words font-mono text-xl font-medium sm:text-2xl">{value}</div></div>)}</div>
+                <div className="mt-3 border border-emerald-400/20 bg-emerald-400/[0.055] p-5 sm:p-6"><div className="text-xs text-emerald-200/55">{text.calculator.profit}</div><div className={`mt-2 break-words text-5xl font-light tracking-[-0.055em] sm:text-6xl ${result.profit >= 0 ? "text-emerald-300" : "text-red-400"}`}>{result.profit >= 0 ? "+" : ""}{money(result.profit)}</div></div>
                 <div className="mt-6"><RegisterButton className="w-full">{text.calculator.cta}</RegisterButton></div>
               </div>
             </div>
@@ -636,14 +636,14 @@ export default function TwinBidMoney() {
         <section className="border-y border-white/[0.06] bg-[#091011] px-4 py-20 sm:px-6 sm:py-28">
           <div className="mx-auto max-w-7xl">
             <SectionHeading kicker={text.scenarios.kicker} title={text.scenarios.title} />
-            <div className="grid gap-4 md:grid-cols-3">{text.scenarios.cards.map((card, index) => <article key={card[0]} className={`relative overflow-hidden rounded-[1.75rem] border p-6 sm:p-8 ${index === 1 ? "border-primary/30 bg-primary/[0.065] shadow-[0_24px_70px_hsl(var(--primary)/0.07)]" : "border-white/[0.08] bg-[#0a1112]"}`}>{index === 1 && <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-primary to-transparent" />}<div className="flex items-center justify-between"><div className="text-sm font-medium text-slate-300">{card[0]}</div><span className="font-mono text-[10px] text-slate-600">0{index + 1}</span></div><div className="mt-7 space-y-3">{text.scenarios.labels.map((label, metricIndex) => <div key={label} className="flex justify-between gap-3 border-b border-white/[0.06] pb-3 last:border-b-0"><span className="text-sm text-slate-500">{label}</span><span className={`font-mono font-medium ${metricIndex >= 2 ? "text-emerald-300" : "text-slate-200"}`}>{card[metricIndex + 1]}</span></div>)}</div></article>)}</div>
+            <div className="grid gap-4 md:grid-cols-3">{text.scenarios.cards.map((card, index) => <article key={card[0]} className={`relative overflow-hidden border p-6 sm:p-8 ${index === 1 ? "border-primary/30 bg-primary/[0.065] shadow-[0_24px_70px_hsl(var(--primary)/0.07)]" : "border-white/[0.08] bg-[#0a1112]"}`}>{index === 1 && <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-primary to-transparent" />}<div className="flex items-center justify-between"><div className="text-sm font-medium text-slate-300">{card[0]}</div><span className="font-mono text-[10px] text-slate-600">0{index + 1}</span></div><div className="mt-7 space-y-3">{text.scenarios.labels.map((label, metricIndex) => <div key={label} className="flex justify-between gap-3 border-b border-white/[0.06] pb-3 last:border-b-0"><span className="text-sm text-slate-500">{label}</span><span className={`font-mono font-medium ${metricIndex >= 2 ? "text-emerald-300" : "text-slate-200"}`}>{card[metricIndex + 1]}</span></div>)}</div></article>)}</div>
           </div>
         </section>
 
         <section className="px-4 py-20 sm:px-6 sm:py-32">
-          <div className="relative mx-auto max-w-5xl overflow-hidden rounded-[2.25rem] border border-primary/20 bg-[#0a1213] px-5 py-16 text-center shadow-[0_35px_110px_rgba(0,0,0,0.38)] sm:px-12 sm:py-24">
+          <div className="relative mx-auto max-w-5xl overflow-hidden border border-primary/20 bg-[#0a1213] px-5 py-16 text-center shadow-[0_35px_110px_rgba(0,0,0,0.38)] sm:px-12 sm:py-24">
             <div className="pointer-events-none absolute left-1/2 top-0 h-72 w-72 -translate-x-1/2 -translate-y-1/2 rounded-full bg-primary/20 blur-[90px]" />
-            <div className="relative"><div className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl border border-primary/20 bg-primary/[0.07] text-primary"><Rocket className="h-5 w-5" /></div><div className="mt-6 font-mono text-[11px] font-semibold uppercase tracking-[0.2em] text-primary">{text.final.kicker}</div><h2 className="mx-auto mt-5 max-w-4xl text-balance text-4xl font-medium leading-[1.02] tracking-[-0.055em] sm:text-6xl">{text.final.title}</h2><p className="mx-auto mt-6 max-w-2xl text-sm leading-7 text-slate-400 sm:text-lg">{text.final.text}</p><div className="mt-8"><RegisterButton>{text.final.cta}</RegisterButton></div><p className="mt-3 text-xs text-slate-600">{text.final.note}</p></div>
+            <div className="relative"><div className="mx-auto flex h-12 w-12 items-center justify-center border border-primary/20 bg-primary/[0.07] text-primary"><Rocket className="h-5 w-5" /></div><div className="mt-6 font-mono text-[11px] font-semibold uppercase tracking-[0.2em] text-primary">{text.final.kicker}</div><h2 className="mx-auto mt-5 max-w-4xl text-balance text-4xl font-medium leading-[1.02] tracking-[-0.055em] sm:text-6xl">{text.final.title}</h2><p className="mx-auto mt-6 max-w-2xl text-sm leading-7 text-slate-400 sm:text-lg">{text.final.text}</p><div className="mt-8"><RegisterButton>{text.final.cta}</RegisterButton></div><p className="mt-3 text-xs text-slate-600">{text.final.note}</p></div>
           </div>
         </section>
       </main>

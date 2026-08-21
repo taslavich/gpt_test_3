@@ -18,7 +18,7 @@ export function Header() {
   }, []);
 
   const navLinks = [
-    { label: t("nav.benefits"), href: "#benefits" },
+    { label: t("nav.howWorks"), href: "#platform-story" },
     { label: t("nav.formats"), href: "#formats" },
     { label: t("nav.howToStart"), href: "#steps" },
   ];
@@ -34,7 +34,7 @@ export function Header() {
             : "border-white/[0.07] bg-background/45 backdrop-blur-md"
         }`}
       >
-        <div className="relative flex h-[66px] items-center justify-between px-4 md:px-5">
+        <div className="relative flex h-[60px] items-center justify-between px-4 md:px-5">
           <a href="#" className="flex items-center gap-2 shrink-0 relative z-10">
             <img src={twinbidLogo} alt="TwinBid" className="h-9 md:h-10" />
           </a>
@@ -44,7 +44,7 @@ export function Header() {
               <a
                 key={link.href}
                 href={link.href}
-                className="rounded-full px-4 py-2 text-[11px] font-mono-eyebrow uppercase tracking-[0.16em] text-muted-foreground transition-colors hover:bg-white/[0.05] hover:text-foreground"
+                className="landing-header-nav-link"
               >
                 {link.label}
               </a>
@@ -52,17 +52,17 @@ export function Header() {
           </nav>
 
           <div className="hidden items-center gap-2 md:flex">
-            <LanguageSelector className="text-[14px] h-9 px-2.5" />
+            <LanguageSelector className="landing-language-trigger" />
             <AuthDialog
               trigger={
-                <button className="rounded-full px-3 py-2 text-[11px] font-mono-eyebrow uppercase tracking-[0.16em] text-muted-foreground transition-colors hover:text-foreground">
+                <button className="landing-header-login">
                   {t("nav.login")}
                 </button>
               }
               defaultTab="login"
             />
             <AuthDialog
-              trigger={<button className="landing-button landing-button-primary px-5 py-2.5 text-[13px]">{t("nav.register")}</button>}
+              trigger={<button className="landing-button landing-button-primary landing-header-register">{t("nav.register")}</button>}
               defaultTab="register"
             />
           </div>
@@ -81,7 +81,7 @@ export function Header() {
                 </a>
               ))}
               <div className="mt-2 flex flex-col gap-2 border-t border-white/10 pt-3">
-                <LanguageSelector className="text-[14px] h-9 px-3 w-full justify-center" />
+                <LanguageSelector className="landing-language-trigger landing-language-trigger-mobile" />
                 <AuthDialog trigger={<button className="landing-button landing-button-ghost w-full justify-center text-[15px]">{t("nav.login")}</button>} defaultTab="login" />
                 <AuthDialog trigger={<button className="landing-button landing-button-primary w-full justify-center text-[15px]">{t("nav.register")}</button>} defaultTab="register" />
               </div>

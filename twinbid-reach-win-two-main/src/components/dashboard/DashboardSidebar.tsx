@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { LayoutDashboard, Megaphone, Wallet, Settings, LogOut, BarChart3, Calculator, Menu } from "lucide-react";
+import { LayoutDashboard, Megaphone, Wallet, Settings, LogOut, BarChart3, Calculator, Menu, Webhook } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useNavigate, useLocation } from "react-router-dom";
 import { useLanguage } from "@/contexts/LanguageContext";
@@ -21,6 +21,7 @@ function useDashboardNavigation() {
     { icon: Megaphone, label: t("sidebar.campaigns"), path: "/dashboard/campaigns" },
     { icon: BarChart3, label: t("sidebar.statistics"), path: "/dashboard/statistics" },
     { icon: Calculator, label: t("sidebar.trafficCalculator"), path: "/dashboard/traffic-calculator" },
+    { icon: Webhook, label: t("sidebar.postback"), path: "/dashboard/postback" },
     { icon: Wallet, label: t("sidebar.balance"), path: "/dashboard/balance" },
     { icon: Settings, label: t("sidebar.settings"), path: "/dashboard/settings" },
   ];

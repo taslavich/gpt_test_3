@@ -1,210 +1,159 @@
-import { Layers, FileText, LayoutGrid, Bell, X } from "lucide-react";
+import { ArrowUpRight } from "lucide-react";
 import { useLanguage } from "@/contexts/LanguageContext";
-import { motion } from "framer-motion";
-import { WordsReveal, LineReveal } from "./CinematicReveal";
-import { useIsMobileImmediate } from "@/hooks/use-mobile";
+import { usePinnedScene } from "./usePinnedScene";
 
-const formatIcons = [Layers, FileText, LayoutGrid, Bell];
-const formatNames = ["Popunder", "Native", "Banner", "In-page Push"];
-const formatDescKeys = ["formats.popunder.desc", "formats.native.desc", "formats.banner.desc", "formats.push.desc"];
+const formats = [
+  { id: "popunder", name: "Popunder", desc: "formats.popunder.desc" },
+  { id: "native", name: "Native", desc: "formats.native.desc" },
+  { id: "banner", name: "Banner", desc: "formats.banner.desc" },
+  { id: "inpage", name: "In-page Push", desc: "formats.push.desc" },
+] as const;
 
-function MockFrame({ children }: { children: React.ReactNode }) {
+const formatCopy = {
+  ru: {
+    section: "04 / ФОРМАТЫ",
+    subtitle: "Выберите формат под задачу кампании и привычки аудитории.",
+    title: "Форматы рекламы",
+    preview: "ПРЕДПРОСМОТР ФОРМАТА",
+    browser: "сайт площадки / статья",
+    ad: "РЕКЛАМНЫЙ ФОРМАТ",
+    sponsored: "РЕКЛАМА",
+    nativeHeadline: "Внутри материала",
+    nativeCopy: "Встраивается в страницу и воспринимается как часть материала.",
+    tags: { popunder: "МАКСИМАЛЬНЫЙ ОХВАТ", native: "ВНУТРИ КОНТЕНТА", banner: "МЕДИЙНЫЙ ФОРМАТ", inpage: "ПОВЕРХ СТРАНИЦЫ" },
+  },
+  en: {
+    section: "04 / AD FORMATS",
+    subtitle: "Match the format to the campaign goal and the way people consume content.",
+    title: "Advertising formats",
+    preview: "LIVE FORMAT PREVIEW",
+    browser: "publisher site / article",
+    ad: "AD FORMAT",
+    sponsored: "SPONSORED",
+    nativeHeadline: "Inside the story",
+    nativeCopy: "Follows the page structure and feels like part of the content.",
+    tags: { popunder: "FULL ATTENTION", native: "IN-CONTENT", banner: "DISPLAY REACH", inpage: "ON-PAGE MESSAGE" },
+  },
+  es: {
+    section: "04 / FORMATOS",
+    subtitle: "Elige el formato según el objetivo y la forma en que la audiencia consume el contenido.",
+    title: "Formatos publicitarios",
+    preview: "VISTA PREVIA DEL FORMATO",
+    browser: "sitio del publisher / artículo",
+    ad: "FORMATO PUBLICITARIO",
+    sponsored: "PUBLICIDAD",
+    nativeHeadline: "Dentro del artículo",
+    nativeCopy: "Respeta la estructura de la página y se integra en el contenido.",
+    tags: { popunder: "ATENCIÓN TOTAL", native: "DENTRO DEL CONTENIDO", banner: "ALCANCE DISPLAY", inpage: "MENSAJE EN PÁGINA" },
+  },
+  fr: {
+    section: "04 / FORMATS",
+    subtitle: "Choisissez le format selon l’objectif et la manière dont l’audience consulte le contenu.",
+    title: "Formats publicitaires",
+    preview: "APERÇU DU FORMAT",
+    browser: "site éditeur / article",
+    ad: "FORMAT PUBLICITAIRE",
+    sponsored: "SPONSORISÉ",
+    nativeHeadline: "Au cœur de l’article",
+    nativeCopy: "Reprend la structure de la page et s’intègre naturellement au contenu.",
+    tags: { popunder: "ATTENTION MAXIMALE", native: "DANS LE CONTENU", banner: "PORTÉE DISPLAY", inpage: "MESSAGE SUR LA PAGE" },
+  },
+};
+
+type Format = (typeof formats)[number];
+type Labels = (typeof formatCopy)[keyof typeof formatCopy];
+
+function FormatScene({ format, labels }: { format: Format; labels: Labels }) {
+  const { id: type, name } = format;
+
   return (
-    <div className="relative w-full aspect-[16/10] rounded-xl border border-border/70 bg-background/50 overflow-hidden mb-10">
-      {children}
+    <div className={`format-editorial-scene format-editorial-${type}`} aria-hidden="true">
+      <div className="format-editorial-browser">
+        <div className="format-editorial-browser-top"><i /><i /><i /><span>{labels.browser}</span></div>
+        <div className="format-editorial-page">
+          {type === "native" ? (
+            <>
+              <div className="format-editorial-copy-lines"><span /><span /><span /></div>
+              <div className="format-editorial-native-inline">
+                <div className="format-editorial-native-image"><span>T</span></div>
+                <div className="format-editorial-native-copy">
+                  <small>{labels.sponsored}</small>
+                  <strong>{labels.nativeHeadline}</strong>
+                  <p>{labels.nativeCopy}</p>
+                  <span>TwinBid <ArrowUpRight /></span>
+                </div>
+              </div>
+              <div className="format-editorial-copy-lines format-editorial-copy-lines-short"><span /><span /><span /></div>
+            </>
+          ) : (
+            <><i /><i /><i /><i /></>
+          )}
+        </div>
+      </div>
+      {type !== "native" ? (
+        <div className="format-editorial-ad">
+          <small>{type === "banner" ? "728 × 90" : type === "inpage" ? labels.sponsored : labels.ad}</small>
+          <strong>{name === "In-page Push" ? <>IN-PAGE<br />PUSH</> : name}</strong>
+          <span>TwinBid <ArrowUpRight /></span>
+        </div>
+      ) : null}
     </div>
   );
 }
 
-function PopunderMock() {
-  return (
-    <MockFrame>
-      {/* full-frame popunder rising behind */}
-      <div
-        className="absolute inset-0"
-        style={{
-          background:
-            "linear-gradient(135deg, hsl(var(--primary) / 0.32) 0%, hsl(var(--primary) / 0.10) 55%, transparent 100%)",
-        }}
-      />
-      {/* browser window on top-left */}
-      <div className="absolute top-4 left-4 w-[62%] h-[70%] rounded-md bg-background border border-border/70 p-2.5 shadow-lg">
-        <div className="flex items-center gap-2 mb-3">
-          <X className="w-3 h-3 text-muted-foreground/70" strokeWidth={1.5} />
-          <div className="h-[4px] w-[38%] rounded-full bg-muted-foreground/25" />
-        </div>
-        <div className="space-y-2">
-          <div className="h-[4px] w-[85%] rounded-full bg-muted-foreground/25" />
-          <div className="h-[4px] w-[55%] rounded-full bg-muted-foreground/20" />
-        </div>
-      </div>
-    </MockFrame>
-  );
-}
+export function FormatsSection() {
+  const { lang, t } = useLanguage();
+  const text = formatCopy[lang] ?? formatCopy.en;
+  const { active, sectionRef } = usePinnedScene(formats.length);
+  const current = formats[active];
 
-function NativeMock() {
   return (
-    <MockFrame>
-      <div className="absolute inset-0 p-4 flex flex-col gap-3">
-        {/* sponsored row */}
-        <div
-          className="flex items-center gap-3 rounded-md p-2.5"
-          style={{
-            background:
-              "linear-gradient(90deg, hsl(var(--primary) / 0.10), transparent 70%)",
-          }}
-        >
-          <div
-            className="w-9 h-9 rounded-sm flex-shrink-0"
-            style={{
-              background:
-                "linear-gradient(135deg, hsl(var(--primary) / 0.55), hsl(var(--primary) / 0.15))",
-            }}
-          />
-          <div className="flex-1 space-y-1.5">
-            <div className="h-[4px] w-[70%] rounded-full bg-muted-foreground/25" />
-            <span className="block font-mono-eyebrow text-[9px] tracking-[0.28em] text-primary">
-              SPONSORED
-            </span>
-          </div>
-        </div>
-        {/* neutral rows */}
-        {[0, 1].map((i) => (
-          <div key={i} className="flex items-center gap-3 p-2.5">
-            <div className="w-9 h-9 rounded-sm bg-muted-foreground/15 flex-shrink-0" />
-            <div className="flex-1 space-y-1.5">
-              <div className="h-[4px] w-[65%] rounded-full bg-muted-foreground/20" />
-              <div className="h-[4px] w-[45%] rounded-full bg-muted-foreground/15" />
+    <section ref={sectionRef} id="formats" className="formats-editorial pinned-formats" aria-labelledby="formats-editorial-title">
+      <div className="pinned-formats-frame">
+        <div className="landing-editorial-shell pinned-formats-grid">
+          <div className="pinned-formats-copy">
+            <div className="pinned-formats-heading">
+              <p className="landing-section-index">{text.section}</p>
+              <p>{text.subtitle}</p>
+            </div>
+            <div className="pinned-formats-active" aria-live="polite">
+              <span>0{active + 1} / {text.tags[current.id]}</span>
+              <h2 id="formats-editorial-title" key={`${current.id}-title`}>{current.name}</h2>
+              <p key={`${current.id}-copy`}>{t(current.desc)}</p>
+            </div>
+            <div className="pinned-story-progress" aria-hidden="true">
+              {formats.map((format, index) => (
+                <span className={index === active ? "is-active" : ""} key={format.id}><i />0{index + 1}</span>
+              ))}
             </div>
           </div>
+
+          <div className="formats-editorial-stage">
+            <div className="formats-editorial-stage-label">
+              <span>{text.preview}</span>
+              <strong>0{active + 1} / 04</strong>
+            </div>
+            <FormatScene key={`${lang}-${current.id}`} format={current} labels={text} />
+            <div className="formats-editorial-stage-foot">
+              <strong>{current.name}</strong>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div className="pinned-formats-mobile landing-editorial-shell">
+        <div className="pinned-story-mobile-heading">
+          <p className="landing-section-index">{text.section}</p>
+          <h2>{text.title}</h2>
+        </div>
+        {formats.map((format, index) => (
+          <article key={format.id}>
+            <div><span>0{index + 1}</span><small>{text.tags[format.id]}</small></div>
+            <h3>{format.name}</h3>
+            <p>{t(format.desc)}</p>
+            <div className="formats-editorial-mobile-scene"><FormatScene format={format} labels={text} /></div>
+          </article>
         ))}
-      </div>
-    </MockFrame>
-  );
-}
-
-function BannerMock() {
-  return (
-    <MockFrame>
-      {/* top leaderboard */}
-      <div
-        className="absolute top-4 left-4 right-4 h-9 rounded-md flex items-center justify-center"
-        style={{
-          background:
-            "linear-gradient(180deg, hsl(var(--primary) / 0.35), hsl(var(--primary) / 0.12))",
-        }}
-      >
-        <span className="font-mono-eyebrow text-[10px] tracking-[0.25em] text-foreground/85">
-          728 × 90 · BANNER
-        </span>
-      </div>
-      {/* article lines */}
-      <div className="absolute left-4 top-[70px] w-[48%] space-y-2">
-        <div className="h-[4px] w-[90%] rounded-full bg-muted-foreground/25" />
-        <div className="h-[4px] w-[75%] rounded-full bg-muted-foreground/20" />
-        <div className="h-[4px] w-[55%] rounded-full bg-muted-foreground/20" />
-      </div>
-      {/* sidebar 300x250 */}
-      <div
-        className="absolute bottom-4 right-4 w-[40%] h-[62%] rounded-md flex items-center justify-center"
-        style={{
-          background:
-            "linear-gradient(180deg, hsl(var(--primary) / 0.35), hsl(var(--primary) / 0.08))",
-        }}
-      >
-        <span className="font-mono-eyebrow text-[10px] tracking-[0.25em] text-foreground/75">
-          300 × 250
-        </span>
-      </div>
-    </MockFrame>
-  );
-}
-
-function PushMock() {
-  return (
-    <MockFrame>
-      {/* page content */}
-      <div className="absolute inset-0 p-4 space-y-2.5">
-        <div className="h-[4px] w-[65%] rounded-full bg-muted-foreground/20" />
-        <div className="h-[4px] w-[50%] rounded-full bg-muted-foreground/15" />
-      </div>
-      {/* push toast */}
-      <div className="absolute bottom-4 right-4 w-[70%] h-11 rounded-md border border-border/80 bg-background/95 flex items-center gap-2.5 pl-2 pr-2.5 shadow-lg">
-        <div
-          className="w-7 h-7 rounded-sm flex items-center justify-center flex-shrink-0"
-          style={{
-            background:
-              "linear-gradient(135deg, hsl(var(--primary) / 0.6), hsl(var(--primary) / 0.2))",
-          }}
-        >
-          <Bell className="w-3.5 h-3.5 text-foreground/80" strokeWidth={1.5} />
-        </div>
-        <div className="h-[4px] flex-1 rounded-full bg-muted-foreground/35" />
-        <X className="w-3 h-3 text-muted-foreground/60 flex-shrink-0" strokeWidth={1.5} />
-      </div>
-    </MockFrame>
-  );
-}
-
-const mockups = [PopunderMock, NativeMock, BannerMock, PushMock];
-
-export function FormatsSection() {
-  const { t } = useLanguage();
-  const isMobile = useIsMobileImmediate();
-
-  return (
-    <section id="formats" className="landing-section landing-section-grid relative">
-      <div className="container mx-auto px-5 md:px-8">
-        <div className="max-w-[1280px] mx-auto">
-          <div className="grid gap-12 lg:grid-cols-12">
-          <div className="lg:col-span-4 lg:sticky lg:top-32 lg:self-start">
-            <LineReveal>
-              <div className="landing-kicker mb-7">03 / AD INVENTORY</div>
-            </LineReveal>
-            <WordsReveal
-              as="h2"
-              text={`${t("formats.title").trim()} ${t("formats.title2").trim()}`}
-              className="text-display block text-foreground lg:!text-[64px]"
-              brandWord={t("formats.title2").trim()}
-              brandClass="gradient-text"
-              stagger={0.06}
-            />
-            <LineReveal delay={0.5} className="mt-7 max-w-xl">
-              <p className="text-muted-foreground text-lg">{t("formats.subtitle")}</p>
-            </LineReveal>
-          </div>
-
-          <div className="grid gap-5 sm:grid-cols-2 lg:col-span-8">
-            {formatIcons.map((Icon, index) => {
-              const Mock = mockups[index];
-              return (
-                <motion.div
-                  key={index}
-                  initial={isMobile ? false : { opacity: 0, y: 30 }}
-                  whileInView={isMobile ? undefined : { opacity: 1, y: 0 }}
-                  viewport={{ once: true, margin: "-60px" }}
-                  transition={{ duration: 0.8, delay: index * 0.08, ease: [0.22, 1, 0.36, 1] }}
-                  className={`landing-card group relative overflow-hidden p-6 transition-transform duration-500 hover:-translate-y-1 md:p-8 ${index % 2 === 1 ? "sm:translate-y-10" : ""}`}
-                >
-                  <div className="flex items-start justify-between mb-8">
-                    <span className="font-mono-eyebrow text-[11px] tracking-[0.22em] text-muted-foreground">
-                      Format · 0{index + 1}
-                    </span>
-                    <Icon className="w-5 h-5 text-primary opacity-70 group-hover:opacity-100 transition-opacity" strokeWidth={1.3} />
-                  </div>
-                  <Mock />
-                  <h3 className="mb-5 font-display text-4xl font-light leading-[1.05] tracking-tight text-foreground">
-                    {formatNames[index]}
-                  </h3>
-                  <p className="text-muted-foreground text-[15px] leading-relaxed max-w-md">
-                    {t(formatDescKeys[index])}
-                  </p>
-                </motion.div>
-              );
-            })}
-          </div>
-          </div>
-        </div>
       </div>
     </section>
   );

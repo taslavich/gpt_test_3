@@ -57,4 +57,20 @@ describe("login intro request", () => {
     act(() => vi.advanceTimersByTime(750));
     expect(container.querySelector("video")).toBeNull();
   });
+
+  it("skips the intro when the user taps or clicks the overlay", () => {
+    vi.useFakeTimers();
+    const { container } = render(<LoginIntroOverlay />);
+
+    act(() => requestLoginIntro());
+
+    const video = container.querySelector("video");
+    expect(video).not.toBeNull();
+
+    fireEvent.pointerDown(video!.parentElement!);
+    expect(video?.parentElement).toHaveClass("opacity-0");
+
+    act(() => vi.advanceTimersByTime(750));
+    expect(container.querySelector("video")).toBeNull();
+  });
 });

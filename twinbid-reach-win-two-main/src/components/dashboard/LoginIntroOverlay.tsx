@@ -108,6 +108,7 @@ export function LoginIntroOverlay() {
   return (
     <div
       aria-hidden="true"
+      onPointerDown={finishPlayback}
       className={`fixed inset-0 z-[10000] flex items-center justify-center bg-black transition-opacity ease-out ${
         isFading ? "opacity-0" : "opacity-100"
       }`}

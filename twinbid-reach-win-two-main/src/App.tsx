@@ -19,6 +19,7 @@ const DashboardOverview = lazy(() => import("./pages/DashboardOverview"));
 const DashboardCampaigns = lazy(() => import("./pages/DashboardCampaigns"));
 const DashboardStatistics = lazy(() => import("./pages/DashboardStatistics"));
 const TrafficCalculator = lazy(() => import("./pages/TrafficCalculator"));
+const DashboardPostback = lazy(() => import("./pages/DashboardPostback"));
 const DashboardBalance = lazy(() => import("./pages/DashboardBalance"));
 const DashboardSettings = lazy(() => import("./pages/DashboardSettings"));
 const CreateCampaign = lazy(() => import("./pages/CreateCampaign"));
@@ -59,6 +60,7 @@ const App = () => (
                   <Route path="campaigns/:id/edit" element={<EditCampaign />} />
                   <Route path="statistics" element={<DashboardStatistics />} />
                   <Route path="traffic-calculator" element={<TrafficCalculator />} />
+                  <Route path="postback" element={<DashboardPostback />} />
                   <Route path="balance" element={<DashboardBalance />} />
                   <Route path="settings" element={<DashboardSettings />} />
                 </Route>

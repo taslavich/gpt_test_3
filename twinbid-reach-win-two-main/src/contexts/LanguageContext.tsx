@@ -15,20 +15,22 @@ const translations: Record<string, Record<"ru" | "en", string>> = {
 
   // Header / Nav
   "nav.benefits": { ru: "Преимущества", en: "Benefits" },
+  "nav.howWorks": { ru: "Как работает", en: "How it works" },
   "nav.formats": { ru: "Форматы", en: "Formats" },
   "nav.howToStart": { ru: "Как начать", en: "How to start" },
   "nav.login": { ru: "Войти", en: "Log in" },
   "nav.register": { ru: "Регистрация", en: "Sign up" },
 
   // Hero
-  "hero.badge": { ru: "Рекламная платформа нового поколения", en: "Next-generation ad platform" },
-  "hero.title1": { ru: "TwinBid — рекламная", en: "TwinBid — advertising" },
-  "hero.title2": { ru: "платформа-агрегатор", en: "aggregator platform" },
-  "hero.subtitle": { ru: "Объединяет трафик сотен рекламных сетей. Одна регистрация — и вы получаете доступ к инвентарю более чем", en: "Combines traffic from hundreds of ad networks. One registration — and you get access to inventory from more than" },
+  "hero.badge": { ru: "Единая платформа для закупки трафика", en: "Next-generation ad platform" },
+  "hero.title1": { ru: "TwinBid объединяет", en: "TwinBid — advertising" },
+  "hero.title2": { ru: "рекламный трафик", en: "aggregator platform" },
+  "hero.subtitle": { ru: "Сотни рекламных сетей и инвентарь более чем", en: "Combines traffic from hundreds of ad networks. One registration — and you get access to inventory from more than" },
   "hero.subtitleSites": { ru: "1 млн сайтов", en: "1M websites" },
-  "hero.subtitleEnd": { ru: "через единый кабинет закупки, аналитики и оптимизации.", en: "through a single dashboard for buying, analytics and optimization." },
+  "hero.subtitleEnd": { ru: "— в одном кабинете для закупки, аналитики и оптимизации.", en: "through a single dashboard for buying, analytics and optimization." },
   "hero.cta": { ru: "Зарегистрироваться", en: "Sign up" },
   "hero.learnMore": { ru: "Узнать больше", en: "Learn more" },
+  "hero.telegram": { ru: "Наш Telegram-канал", en: "Our Telegram channel" },
   "hero.statSites": { ru: "Сайтов", en: "Websites" },
   "hero.statNetworks": { ru: "Рекламных сетей", en: "Ad networks" },
   "hero.statSupport": { ru: "Поддержка", en: "Support" },
@@ -36,15 +38,15 @@ const translations: Record<string, Record<"ru" | "en", string>> = {
   // Start Conditions
   "start.conditionsLabel": { ru: "Условия старта", en: "Start conditions" },
   "start.minDeposit": { ru: "Минимальный депозит", en: "Minimum deposit" },
-  "start.startSmall": { ru: "Начните с небольшого бюджета и масштабируйтесь", en: "Start with a small budget and scale up" },
+  "start.startSmall": { ru: "Начните с небольшого бюджета и увеличивайте объём по мере роста результатов", en: "Start with a small budget and scale up" },
   "start.bonusBadge": { ru: "Бонус новым пользователям", en: "Bonus for new users" },
-  "start.bonusDesc": { ru: "к бюджету на первое пополнение — зарегистрируйтесь и получите дополнительные средства на запуск кампаний", en: "to your budget on first deposit — sign up and get extra funds to launch campaigns" },
+  "start.bonusDesc": { ru: "к первому пополнению от $100. Используйте бонус для запуска и тестирования кампаний", en: "to your budget on first deposit — sign up and get extra funds to launch campaigns" },
   "start.getBonus": { ru: "Получить бонус", en: "Get bonus" },
 
   // Benefits
   "benefits.title1": { ru: "Почему ", en: "Why " },
   "benefits.title2": { ru: " — это удобно?", en: " is convenient?" },
-  "benefits.subtitle": { ru: "Всё, что нужно для эффективной рекламы, в одном месте", en: "Everything you need for effective advertising, in one place" },
+  "benefits.subtitle": { ru: "Закупка, аналитика и оптимизация — в одном кабинете", en: "Everything you need for effective advertising, in one place" },
   "benefits.1.title": { ru: "Единый кабинет вместо десятков площадок", en: "One dashboard instead of dozens of platforms" },
   "benefits.1.desc": { ru: "Одна интеграция, один баланс, общая статистика и логика управления кампаниями. Вы экономите время команды и быстрее масштабируете то, что приносит результат.", en: "One integration, one balance, shared statistics and campaign management logic. You save team time and scale what works faster." },
   "benefits.2.title": { ru: "Максимальный инвентарь без потолков по CPM и CPC моделям", en: "Maximum inventory without CPM and CPC model limits" },
@@ -72,23 +74,23 @@ const translations: Record<string, Record<"ru" | "en", string>> = {
   "formats.title": { ru: "Форматы ", en: "Ad " },
   "formats.title2": { ru: "рекламы", en: "formats" },
   "formats.subtitle": { ru: "Выбирайте оптимальный формат для вашей кампании", en: "Choose the optimal format for your campaign" },
-  "formats.popunder.desc": { ru: "Полноэкранная реклама, открывающаяся в новой вкладке. Максимальная видимость и высокий CTR.", en: "Full-screen ad opening in a new tab. Maximum visibility and high CTR." },
-  "formats.native.desc": { ru: "Органично интегрированная реклама, которая соответствует стилю площадки. Высокое доверие пользователей.", en: "Natively integrated ads matching the platform's style. High user trust." },
-  "formats.banner.desc": { ru: "Классические баннеры различных размеров. Узнаваемость бренда и широкий охват аудитории.", en: "Classic banners of various sizes. Brand awareness and wide audience reach." },
-  "formats.push.desc": { ru: "Push-уведомления прямо на странице без подписки. Мгновенное привлечение внимания.", en: "Push notifications right on the page without subscription. Instant attention grabbing." },
+  "formats.popunder.desc": { ru: "Полноэкранный формат открывает рекламную страницу в новой вкладке после действия пользователя. Он даёт максимум пространства для оффера и хорошо подходит кампаниям, которым нужны широкий охват и быстрый переход на лендинг.", en: "A full-page ad opens in a new tab after a user action. It gives the offer maximum space and works well for campaigns focused on broad reach and fast visits to the landing page." },
+  "formats.native.desc": { ru: "Рекламный блок встраивается прямо в статью или ленту и повторяет структуру контента площадки: изображение, заголовок и короткое описание. Он воспринимается как часть материала, а не как обычный баннер.", en: "The ad sits directly inside an article or feed and follows the publisher’s content structure with an image, headline and short description. It feels like part of the page rather than a standard banner." },
+  "formats.banner.desc": { ru: "Классический графический формат для заметного присутствия бренда. Популярные размеры позволяют размещать креатив в шапке, боковой колонке или внутри контента на разных типах сайтов.", en: "A classic display format for strong brand visibility. Common sizes place the creative in page headers, sidebars or between content blocks across a wide range of websites." },
+  "formats.push.desc": { ru: "Компактное уведомление появляется поверх открытой страницы и не требует подписки. Формат подходит для акций, коротких офферов и сообщений, которым нужен быстрый контакт с пользователем.", en: "A compact notification appears over the open page without requiring a subscription. It is well suited to promotions, concise offers and messages that need an immediate touchpoint." },
 
   // Steps
   "steps.title1": { ru: "Как ", en: "How to " },
   "steps.title2": { ru: "начать?", en: "get started?" },
-  "steps.subtitle": { ru: "Получи доступ к премиальному неограниченному трафику с сотен тысяч сайтов уже сегодня", en: "Get access to premium unlimited traffic from hundreds of thousands of sites today" },
-  "steps.1.title": { ru: "Зарегистрируйте кабинет", en: "Register an account" },
-  "steps.1.desc": { ru: "Зарегистрируйте кабинет пользователя — это займёт всего пару минут.", en: "Register a user account — it only takes a couple of minutes." },
+  "steps.subtitle": { ru: "Получите доступ к трафику с более чем миллиона сайтов и запустите первую кампанию уже сегодня", en: "Get access to premium unlimited traffic from hundreds of thousands of sites today" },
+  "steps.1.title": { ru: "Создайте аккаунт", en: "Register an account" },
+  "steps.1.desc": { ru: "Регистрация займёт всего пару минут.", en: "Register a user account — it only takes a couple of minutes." },
   "steps.2.title": { ru: "Создайте кампанию", en: "Create a campaign" },
-  "steps.2.desc": { ru: "Создайте свою первую кампанию, используя десятки точных таргетингов.", en: "Create your first campaign using dozens of precise targeting options." },
+  "steps.2.desc": { ru: "Создайте первую кампанию и настройте точный таргетинг.", en: "Create your first campaign using dozens of precise targeting options." },
   "steps.3.title": { ru: "Пополните баланс", en: "Top up your balance" },
-  "steps.3.desc": { ru: "Напишите менеджеру и пополните баланс. Получите +25% от суммы пополнения бонусом на первый депозит. Минимум — $100.", en: "Contact a manager and top up your balance. Get +25% of the deposit amount as a bonus on your first deposit. Minimum — $100." },
+  "steps.3.desc": { ru: "Свяжитесь с менеджером и пополните баланс от $100. На первое пополнение мы добавим бонус +25%.", en: "Contact a manager and top up your balance. Get +25% of the deposit amount as a bonus on your first deposit. Minimum — $100." },
   "steps.4.title": { ru: "Масштабируйте", en: "Scale up" },
-  "steps.4.desc": { ru: "Масштабируйте свои кампании с защитой от фрода и AI-оптимизацией.", en: "Scale your campaigns with fraud protection and AI optimization." },
+  "steps.4.desc": { ru: "Увеличивайте объём с антифрод-защитой и AI-оптимизацией.", en: "Scale your campaigns with fraud protection and AI optimization." },
 
   // CTA
   "cta.badge": { ru: "Начните уже сегодня", en: "Start today" },
@@ -177,6 +179,7 @@ const translations: Record<string, Record<"ru" | "en", string>> = {
   "sidebar.campaigns": { ru: "Кампании", en: "Campaigns" },
   "sidebar.statistics": { ru: "Статистика", en: "Statistics" },
   "sidebar.trafficCalculator": { ru: "Калькулятор трафика", en: "Traffic calculator" },
+  "sidebar.postback": { ru: "Postback", en: "Postback" },
   "sidebar.balance": { ru: "Баланс", en: "Balance" },
   "sidebar.settings": { ru: "Настройки", en: "Settings" },
   "sidebar.logout": { ru: "Выйти", en: "Log out" },
@@ -608,6 +611,29 @@ const translations: Record<string, Record<"ru" | "en", string>> = {
   "postback.help3": {
     ru: "Ссылка статичная и не меняется — её можно использовать для всех кампаний.",
     en: "The link is static and does not change — you can use it for all campaigns.",
+  },
+  "postback.pageTitle": { ru: "Postback", en: "Postback" },
+  "postback.pageSubtitle": {
+    ru: "Настройте передачу конверсий из трекера или CPA-сети в TwinBid.",
+    en: "Set up conversion delivery from your tracker or CPA network to TwinBid.",
+  },
+  "postback.setupTitle": { ru: "Настройка Postback", en: "Postback setup" },
+  "postback.parametersTitle": { ru: "Параметры ссылки", en: "URL parameters" },
+  "postback.clickIdDescription": {
+    ru: "Уникальный ID клика. Обязательный параметр для работы системы.",
+    en: "The unique click ID. This parameter is required for the system to work.",
+  },
+  "postback.payoutDescription": {
+    ru: "Сумма выплаты за целевое действие. Необязательный параметр.",
+    en: "The payout amount for the target action. This parameter is optional.",
+  },
+  "postback.statusDescription": {
+    ru: "Статус события. Необязательный параметр.",
+    en: "The event status. This parameter is optional.",
+  },
+  "postback.optionalParametersHint": {
+    ru: "Необязательные параметры можно удалить из ссылки — система продолжит работать, если они вам не нужны или ваш трекер либо CPA-сеть их не поддерживает.",
+    en: "Optional parameters can be removed from the URL. The system will continue to work if you do not need them or your tracker or CPA network does not support them.",
   },
   "postback.payoutLabel": { ru: "Выплата за конверсию", en: "Conversion payout" },
   "postback.payoutHint": {

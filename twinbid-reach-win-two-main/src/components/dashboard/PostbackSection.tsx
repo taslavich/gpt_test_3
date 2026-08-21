@@ -53,6 +53,27 @@ export function PostbackSection({ payout, onPayoutChange }: PostbackSectionProps
         <p className="text-foreground/80">{t("postback.help3")}</p>
       </div>
 
+      <div className="space-y-3 rounded-lg border border-border bg-background/50 p-4">
+        <h3 className="font-medium text-foreground">{t("postback.parametersTitle")}</h3>
+        <dl className="space-y-3 text-sm">
+          <div className="grid gap-1 sm:grid-cols-[110px_1fr] sm:gap-4">
+            <dt className="font-mono font-medium text-foreground">click_id</dt>
+            <dd className="text-muted-foreground">{t("postback.clickIdDescription")}</dd>
+          </div>
+          <div className="grid gap-1 sm:grid-cols-[110px_1fr] sm:gap-4">
+            <dt className="font-mono font-medium text-foreground">payout</dt>
+            <dd className="text-muted-foreground">{t("postback.payoutDescription")}</dd>
+          </div>
+          <div className="grid gap-1 sm:grid-cols-[110px_1fr] sm:gap-4">
+            <dt className="font-mono font-medium text-foreground">status</dt>
+            <dd className="text-muted-foreground">{t("postback.statusDescription")}</dd>
+          </div>
+        </dl>
+        <p className="border-t border-border pt-3 text-sm leading-relaxed text-foreground/80">
+          {t("postback.optionalParametersHint")}
+        </p>
+      </div>
+
       {onPayoutChange && (
         <div className="space-y-2 pt-2 border-t border-border">
           <Label>{t("postback.payoutLabel")}</Label>
