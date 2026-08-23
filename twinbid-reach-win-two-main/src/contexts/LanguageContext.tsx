@@ -219,6 +219,7 @@ const translations: Record<string, Record<"ru" | "en", string>> = {
   "status.moderation": { ru: "На модерации", en: "In moderation" },
   "status.no_budget": { ru: "Нет бюджета", en: "No budget" },
   "status.waiting": { ru: "Ожидает запуска", en: "Waiting" },
+  "status.deleted": { ru: "Удалена", en: "Deleted" },
 
   // Balance page
   "balance.title": { ru: "Баланс и платежи", en: "Balance & Payments" },
@@ -312,6 +313,7 @@ const translations: Record<string, Record<"ru" | "en", string>> = {
   "balance.toast.notCompleted": { ru: "Оплата не завершена. Проверьте уведомления.", en: "Payment not completed. Check notifications." },
   "balance.notif.notCompleted": { ru: "Оплата не завершена", en: "Payment not completed" },
   "balance.notif.noHash": { ru: "Вы не отправили хэш транзакции на", en: "You did not submit the transaction hash for" },
+  "balance.notif.noHashAmount": { ru: "Вы не отправили хэш транзакции на {amount}", en: "You did not submit the transaction hash for {amount}" },
   "balance.notif.completePayment": { ru: "Завершить оплату", en: "Complete payment" },
   "balance.disabledReason": { ru: "У вас есть незавершённая оплата — завершите её или отмените, чтобы создать новую.", en: "You have an unfinished payment — complete or cancel it to start a new one." },
   "balance.notif.cancelConfirmTitle": { ru: "Отменить транзакцию?", en: "Cancel transaction?" },
@@ -413,6 +415,9 @@ const translations: Record<string, Record<"ru" | "en", string>> = {
   "campaigns.renaming": { ru: "Сохранение...", en: "Saving..." },
   "campaigns.renamed": { ru: "Кампания переименована", en: "Campaign renamed" },
   "campaigns.renameFailed": { ru: "Не удалось переименовать кампанию", en: "Failed to rename campaign" },
+  "campaigns.updateFailed": { ru: "Не удалось обновить кампанию", en: "Failed to update campaign" },
+  "campaigns.deleteFailed": { ru: "Не удалось удалить кампанию", en: "Failed to delete campaign" },
+  "campaigns.copyFailed": { ru: "Не удалось скопировать кампанию", en: "Failed to copy campaign" },
   "campaigns.nameRequired": { ru: "Введите название кампании", en: "Enter a campaign name" },
   "campaigns.edit": { ru: "Редактировать", en: "Edit" },
   "campaigns.copy": { ru: "Копировать", en: "Copy" },
@@ -465,6 +470,10 @@ const translations: Record<string, Record<"ru" | "en", string>> = {
   "settings.repeatPassword": { ru: "Повторите пароль", en: "Repeat password" },
   "settings.changePassword": { ru: "Сменить пароль", en: "Change password" },
   "settings.passwordUpdated": { ru: "Пароль обновлён", en: "Password updated" },
+  "settings.saveError": { ru: "Не удалось сохранить настройки", en: "Failed to save settings" },
+  "settings.passwordMismatch": { ru: "Пароли не совпадают", en: "Passwords do not match" },
+  "settings.passwordTooShort": { ru: "Пароль должен содержать минимум 6 символов", en: "Password must be at least 6 characters" },
+  "settings.passwordError": { ru: "Не удалось обновить пароль", en: "Failed to update password" },
 
   // Create Campaign
   "create.title": { ru: "Создание кампании", en: "Create campaign" },
@@ -505,6 +514,7 @@ const translations: Record<string, Record<"ru" | "en", string>> = {
   "create.next": { ru: "Далее", en: "Next" },
   "create.createBtn": { ru: "Создать кампанию", en: "Create campaign" },
   "create.created": { ru: "Кампания создана и отправлена на модерацию!", en: "Campaign created and sent for moderation!" },
+  "create.failed": { ru: "Не удалось сохранить кампанию", en: "Failed to save campaign" },
   "create.draftSaved": { ru: "Кампания сохранена в черновики", en: "Campaign saved as draft" },
   "create.draftSavedDesc": { ru: "Создание кампании не завершено. Вы можете продолжить редактирование в любое время.", en: "Campaign creation is not finished. You can continue editing at any time." },
   "create.uploadImage": { ru: "Загрузить изображение", en: "Upload image" },
@@ -569,6 +579,7 @@ const translations: Record<string, Record<"ru" | "en", string>> = {
   "create.cropGifTooLarge": { ru: "После обрезки GIF превышает 1 МБ. Выберите меньшую область или загрузите более лёгкий файл.", en: "The cropped GIF exceeds 1 MB. Select a smaller area or upload a lighter file." },
   "create.cropVideoTooLarge": { ru: "После обрезки MP4 превышает 10 МБ. Загрузите более лёгкий файл.", en: "The cropped MP4 exceeds 10 MB. Upload a lighter file." },
   "create.cropFailed": { ru: "Не удалось обрезать визуал. Проверьте файл и попробуйте ещё раз.", en: "Couldn't crop the visual. Check the file and try again." },
+  "create.cropInvalid": { ru: "Выберите корректную область обрезки", en: "Select a valid crop area" },
   "create.mismatchConfirmTitle": { ru: "Размер картинки не соответствует", en: "Image size doesn't match" },
   "create.mismatchConfirmBody": { ru: "У некоторых креативов размер картинки не совпадает с требуемым.", en: "Some creatives have images that don't match the required size." },
   "create.mismatchSaveAnyway": { ru: "Обрезать и сохранить", en: "Auto-crop and save" },
@@ -855,6 +866,7 @@ const translations: Record<string, Record<"ru" | "en", string>> = {
   // Edit campaign errors
   "edit.errorBudgetMin": { ru: "Бюджет кампании должен быть не менее $1", en: "Campaign budget must be at least $1" },
   "edit.restartedActive": { ru: "Кампания перезапущена", en: "Campaign restarted" },
+  "edit.saveFailed": { ru: "Не удалось сохранить кампанию", en: "Failed to save campaign" },
 
   // Payment
   "balance.paymentMethod": { ru: "Способ оплаты", en: "Payment method" },
@@ -866,6 +878,21 @@ const translations: Record<string, Record<"ru" | "en", string>> = {
   // Budget notification
   "notif.campaignBudgetLow": { ru: "Бюджет кампании заканчивается", en: "Campaign budget running low" },
   "notif.budgetRemaining": { ru: "бюджета осталось", en: "budget remaining" },
+  "notification.amountUnavailable": { ru: "не указан", en: "not specified" },
+  "notification.lowBalance.description": { ru: "Текущий баланс: {amount}. Рекомендуем пополнить счёт.", en: "Current balance: {amount}. We recommend topping up." },
+  "notification.campaignStatus.title": { ru: "Статус кампании изменён", en: "Campaign status changed" },
+  "notification.campaignStatus.description": { ru: "Новый статус: {status}", en: "New status: {status}" },
+  "notification.campaignStatus.updated": { ru: "Откройте кампанию, чтобы посмотреть актуальный статус.", en: "Open the campaign to view its current status." },
+  "notification.payment.approved": { ru: "Оплата зачислена", en: "Payment credited" },
+  "notification.payment.partial": { ru: "Оплачено частично", en: "Partially paid" },
+  "notification.payment.rejected": { ru: "Платёж отклонён", en: "Payment rejected" },
+  "notification.payment.cancelled": { ru: "Платёж отменён", en: "Payment cancelled" },
+  "notification.payment.pending": { ru: "Платёж обрабатывается", en: "Payment is being processed" },
+  "notification.payment.updated": { ru: "Статус платежа обновлён", en: "Payment status updated" },
+  "notification.payment.amount": { ru: "Сумма: {amount}", en: "Amount: {amount}" },
+  "notification.payment.details": { ru: "Откройте раздел «Баланс», чтобы посмотреть подробности.", en: "Open Balance to view the details." },
+  "notification.other.title": { ru: "Новое уведомление", en: "New notification" },
+  "notification.other.description": { ru: "Откройте соответствующий раздел кабинета, чтобы посмотреть подробности.", en: "Open the relevant dashboard section to view the details." },
 
   // Server error translations (shown as toast bodies)
   "balance.toast.submitError": { ru: "Ошибка пополнения", en: "Top-up error" },

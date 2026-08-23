@@ -22,9 +22,9 @@ import { getBidLimits, getMaximumBid } from "@/lib/bidLimits";
 import {
   creativeRequiresImage,
   extractIframeSrc,
-  isCreativeImageUploadError,
   isValidCreativeUrl,
 } from "@/lib/creativeApi";
+import { getLocalizedErrorMessage } from "@/lib/apiStatus";
 
 export default function EditCampaign() {
   const navigate = useNavigate();
@@ -63,12 +63,12 @@ export default function EditCampaign() {
     let cancelled = false;
     void loadCampaignCreatives(id).catch((error: unknown) => {
       if (cancelled) return;
-      const message = error instanceof Error ? error.message : String(error);
+      const message = getLocalizedErrorMessage(error, t);
       setCreativeLoadError(message);
       toast.error(message);
     });
     return () => { cancelled = true; };
-  }, [id, campaign, loadCampaignCreatives]);
+  }, [id, campaign, loadCampaignCreatives, t]);
 
   useEffect(() => {
     if (campaign?.creativesLoaded) {
@@ -306,12 +306,8 @@ export default function EditCampaign() {
         brandName: showBrandName ? brandName : undefined,
         
       });
-    } catch (err: any) {
-      toast.error(
-        isCreativeImageUploadError(err)
-          ? err.message
-          : `${t("edit.saveFailed") || "Failed to save campaign"}: ${err?.message || err}`,
-      );
+    } catch (err: unknown) {
+      toast.error(`${t("edit.saveFailed")}: ${getLocalizedErrorMessage(err, t)}`);
       return;
     }
 

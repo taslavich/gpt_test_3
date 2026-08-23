@@ -47,6 +47,7 @@ import {
   selectUnconvertedSiteIds,
   type TrafficCleanerMode,
 } from "@/lib/trafficCleaner";
+import { getLocalizedErrorMessage } from "@/lib/apiStatus";
 
 type GroupBy = "dates" | "hours" | "browsers" | "siteid" | "devices" | "os" | "country";
 type SortKey = "label" | "impressions" | "clicks" | "spent" | "cpm" | "cpc" | "conversions" | "income";
@@ -915,7 +916,7 @@ export default function DashboardStatistics() {
           <Popover onOpenChange={(open) => {
             if (open && selectedCampaignId) {
               void loadCampaignCreatives(selectedCampaignId).catch((error: unknown) => {
-                toast.error(error instanceof Error ? error.message : String(error));
+                toast.error(getLocalizedErrorMessage(error, t));
               });
             }
           }}>

@@ -7,8 +7,12 @@ export interface Notification {
   id: string;
   title: string;
   description?: string;
+  /** Stable translation metadata keeps local notifications in sync after a language switch. */
+  titleKey?: string;
+  descriptionKey?: string;
+  translationValues?: Record<string, string | number | null | undefined>;
   type: "info" | "warning" | "error";
-  action?: { label: string; onClick: () => void };
+  action?: { label: string; labelKey?: string; onClick: () => void };
   persistent?: boolean; // when true, also persisted to backend so it survives reloads
   onDismiss?: () => void; // called when user clicks X to dismiss
   dismissWithoutConfirmation?: boolean;
@@ -108,8 +112,9 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
   }, [user]);
 
   const addNotification = useCallback(async (n: Omit<Notification, "id">): Promise<string> => {
-    // De-dupe by title (existing behavior)
-    const existing = notifications.find(p => p.title === n.title);
+    // De-dupe by stable translation key when available, otherwise by title.
+    const identity = n.titleKey ?? n.title;
+    const existing = notifications.find(p => (p.titleKey ?? p.title) === identity);
     if (existing) return existing.id;
 
     let apiId: string | undefined;
@@ -130,7 +135,7 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
 
     const id = apiId || (Date.now().toString(36) + Math.random().toString(36).slice(2, 6));
     setNotifications(prev => {
-      if (prev.some(p => p.title === n.title)) return prev;
+      if (prev.some(p => (p.titleKey ?? p.title) === identity)) return prev;
       return [...prev, { ...n, id, apiId }];
     });
     return id;

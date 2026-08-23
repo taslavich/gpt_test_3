@@ -24,10 +24,10 @@ import { submitCreatedCampaignToModeration } from "@/lib/campaignSubmission";
 import {
   creativeRequiresImage,
   extractIframeSrc,
-  isCreativeImageUploadError,
   isValidCreativeUrl,
 } from "@/lib/creativeApi";
 import { useIsMobileImmediate } from "@/hooks/use-mobile";
+import { getLocalizedErrorMessage } from "@/lib/apiStatus";
 
 const formatLabels: Record<string, string> = {
   banner: "Banner", popunder: "Popunder", native: "Native", push: "In-page Push",
@@ -275,8 +275,7 @@ export default function CreateCampaign() {
       savedAsDraft.current = true;
       const moderationError = await submitCreatedCampaignToModeration(id, updateCampaign);
       if (moderationError) {
-        const error = moderationError;
-        const message = error instanceof Error ? error.message : String(error);
+        const message = getLocalizedErrorMessage(moderationError, t);
         toast.error(`${t("create.failed") || "Failed to submit campaign"}: ${message}`);
         // The backend may save the status before an external moderation bot
         // reports an error. Refresh in the background, but never block the
@@ -288,12 +287,8 @@ export default function CreateCampaign() {
       // active, otherwise the same campaign can be submitted repeatedly.
       toast.success(t("create.created"));
       navigate("/dashboard/campaigns");
-    } catch (e: any) {
-      toast.error(
-        isCreativeImageUploadError(e)
-          ? e.message
-          : `${t("create.failed") || "Failed to create campaign"}: ${e?.message || e}`,
-      );
+    } catch (e: unknown) {
+      toast.error(`${t("create.failed")}: ${getLocalizedErrorMessage(e, t)}`);
       setIsCreating(false);
     }
   };
@@ -314,12 +309,8 @@ export default function CreateCampaign() {
         evenSpend,
         brandName: showBrandName ? brandName : undefined,
       });
-    } catch (e: any) {
-      toast.error(
-        isCreativeImageUploadError(e)
-          ? e.message
-          : `${t("create.failed") || "Failed to save draft"}: ${e?.message || e}`,
-      );
+    } catch (e: unknown) {
+      toast.error(`${t("create.failed")}: ${getLocalizedErrorMessage(e, t)}`);
     }
   };
 
@@ -327,7 +318,13 @@ export default function CreateCampaign() {
     const wasSaved = !savedAsDraft.current && (name.trim() || adFormat);
     await saveDraft();
     if (wasSaved) {
-      void addNotification({ title: t("create.draftSaved"), description: t("create.draftSavedDesc"), type: "warning" });
+      void addNotification({
+        title: t("create.draftSaved"),
+        description: t("create.draftSavedDesc"),
+        titleKey: "create.draftSaved",
+        descriptionKey: "create.draftSavedDesc",
+        type: "warning",
+      });
     }
     navigate("/dashboard/campaigns");
   };

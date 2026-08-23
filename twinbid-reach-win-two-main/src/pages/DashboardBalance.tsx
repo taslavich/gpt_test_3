@@ -7,7 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { CreditCard, ExternalLink, Wallet, Plus, Receipt, Tag } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
-import { notifyError } from "@/lib/apiStatus";
+import { getLocalizedErrorMessage, notifyError } from "@/lib/apiStatus";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { useProfile } from "@/contexts/ProfileContext";
 import { useAuth } from "@/contexts/AuthContext";
@@ -260,9 +260,7 @@ export default function DashboardBalance() {
       if (paymentWindow && !paymentWindow.closed) paymentWindow.close();
       const message = isInvoicePaymentChannel(selectedChannel) && e instanceof ApiError && e.status === 503
         ? t(selectedChannel === "cryptomus_invoice" ? "balance.cryptomus.unavailable" : "balance.passimpay.unavailable")
-        : e instanceof Error
-          ? e.message
-          : t("balance.toast.submitError");
+        : getLocalizedErrorMessage(e, t);
       setTopupError(message);
       notifyError(t("balance.toast.submitError"), e);
     } finally {

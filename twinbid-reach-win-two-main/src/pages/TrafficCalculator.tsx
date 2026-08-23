@@ -425,7 +425,8 @@ export default function TrafficCalculator() {
       await updateCampaign(selected.id, { priceValue: bid });
       toast.success(text.bidSaved);
     } catch (cause) {
-      toast.error(cause instanceof Error ? cause.message : text.bidError);
+      console.error("Traffic calculator bid update failed:", cause);
+      toast.error(text.bidError);
     } finally {
       setSaving(false);
     }

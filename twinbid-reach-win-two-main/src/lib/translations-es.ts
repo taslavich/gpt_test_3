@@ -189,6 +189,7 @@ export const ES_TRANSLATIONS: Record<string, string> = {
   "status.moderation": "En moderación",
   "status.no_budget": "Sin presupuesto",
   "status.waiting": "En espera",
+  "status.deleted": "Eliminada",
 
   // Balance page
   "balance.title": "Saldo y pagos",
@@ -282,6 +283,7 @@ export const ES_TRANSLATIONS: Record<string, string> = {
   "balance.toast.notCompleted": "Pago no completado. Revisa las notificaciones.",
   "balance.notif.notCompleted": "Pago no completado",
   "balance.notif.noHash": "No has enviado el hash de la transacción para",
+  "balance.notif.noHashAmount": "No has enviado el hash de la transacción para {amount}",
   "balance.notif.completePayment": "Completar pago",
   "balance.disabledReason": "Tienes un pago pendiente: complétalo o cancélalo para crear uno nuevo.",
   "balance.notif.cancelConfirmTitle": "¿Cancelar transacción?",
@@ -383,6 +385,9 @@ export const ES_TRANSLATIONS: Record<string, string> = {
   "campaigns.renaming": "Guardando...",
   "campaigns.renamed": "Campaña renombrada",
   "campaigns.renameFailed": "No se pudo renombrar la campaña",
+  "campaigns.updateFailed": "No se pudo actualizar la campaña",
+  "campaigns.deleteFailed": "No se pudo eliminar la campaña",
+  "campaigns.copyFailed": "No se pudo copiar la campaña",
   "campaigns.nameRequired": "Introduce un nombre para la campaña",
   "campaigns.edit": "Editar",
   "campaigns.copy": "Copiar",
@@ -435,6 +440,10 @@ export const ES_TRANSLATIONS: Record<string, string> = {
   "settings.repeatPassword": "Repite la contraseña",
   "settings.changePassword": "Cambiar contraseña",
   "settings.passwordUpdated": "Contraseña actualizada",
+  "settings.saveError": "No se pudieron guardar los ajustes",
+  "settings.passwordMismatch": "Las contraseñas no coinciden",
+  "settings.passwordTooShort": "La contraseña debe tener al menos 6 caracteres",
+  "settings.passwordError": "No se pudo actualizar la contraseña",
   "settings.campaignBudgetAlert": "Presupuesto de campaña",
   "settings.campaignBudgetAlertDesc": "Notificación cuando queda menos del 10% del presupuesto de la campaña",
 
@@ -477,6 +486,7 @@ export const ES_TRANSLATIONS: Record<string, string> = {
   "create.next": "Siguiente",
   "create.createBtn": "Crear campaña",
   "create.created": "¡Campaña creada y enviada a moderación!",
+  "create.failed": "No se pudo guardar la campaña",
   "create.draftSaved": "Campaña guardada como borrador",
   "create.draftSavedDesc": "La creación de la campaña no está finalizada. Puedes continuar editándola en cualquier momento.",
   "create.uploadImage": "Subir imagen",
@@ -537,6 +547,7 @@ export const ES_TRANSLATIONS: Record<string, string> = {
   "create.cropGifTooLarge": "El GIF recortado supera 1 MB. Selecciona un área menor o sube un archivo más ligero.",
   "create.cropVideoTooLarge": "El MP4 recortado supera 10 MB. Sube un archivo más ligero.",
   "create.cropFailed": "No se pudo recortar el visual. Comprueba el archivo e inténtalo de nuevo.",
+  "create.cropInvalid": "Selecciona un área de recorte válida",
   "create.mismatchConfirmTitle": "El tamaño de la imagen no coincide",
   "create.mismatchConfirmBody": "Algunos creativos tienen imágenes que no coinciden con el tamaño requerido.",
   "create.mismatchSaveAnyway": "Recortar y guardar",
@@ -573,6 +584,7 @@ export const ES_TRANSLATIONS: Record<string, string> = {
   "edit.savedModeration": "Campaña guardada y enviada a moderación",
   "edit.saved": "Campaña guardada",
   "edit.errorBudgetMin": "El presupuesto de la campaña debe ser al menos $1",
+  "edit.saveFailed": "No se pudo guardar la campaña",
   "edit.restartedActive": "Campaña reiniciada",
 
   // Targeting Section
@@ -722,6 +734,21 @@ export const ES_TRANSLATIONS: Record<string, string> = {
   // Budget notification
   "notif.campaignBudgetLow": "El presupuesto de la campaña se está agotando",
   "notif.budgetRemaining": "de presupuesto restante",
+  "notification.amountUnavailable": "no especificado",
+  "notification.lowBalance.description": "Saldo actual: {amount}. Te recomendamos recargar.",
+  "notification.campaignStatus.title": "El estado de la campaña ha cambiado",
+  "notification.campaignStatus.description": "Nuevo estado: {status}",
+  "notification.campaignStatus.updated": "Abre la campaña para ver su estado actual.",
+  "notification.payment.approved": "Pago acreditado",
+  "notification.payment.partial": "Pago parcial",
+  "notification.payment.rejected": "Pago rechazado",
+  "notification.payment.cancelled": "Pago cancelado",
+  "notification.payment.pending": "El pago se está procesando",
+  "notification.payment.updated": "Estado del pago actualizado",
+  "notification.payment.amount": "Importe: {amount}",
+  "notification.payment.details": "Abre Saldo para ver los detalles.",
+  "notification.other.title": "Nueva notificación",
+  "notification.other.description": "Abre la sección correspondiente del panel para ver los detalles.",
 
   // Conversion tracking
   "create.step4": "Seguimiento de conversiones",

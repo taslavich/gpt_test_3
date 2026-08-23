@@ -9,10 +9,11 @@
 
 import { toast } from "sonner";
 import { ApiError } from "@/api/http";
+import { translateServerError } from "@/lib/serverErrors";
 
 export function isErrorShown(): boolean {
   // Default to true if the flag was not set yet.
-  const w = (typeof window !== "undefined" ? (window as any) : {}) as Record<string, unknown>;
+  const w = (typeof window !== "undefined" ? window : {}) as Window & { error_showed?: boolean };
   return w.error_showed !== false;
 }
 
@@ -33,6 +34,11 @@ function extractMessage(e: unknown): string {
   if (e instanceof Error) return e.message;
   if (typeof e === "string") return e;
   try { return JSON.stringify(e); } catch { return String(e); }
+}
+
+/** Return a safe error message in the language currently selected by the user. */
+export function getLocalizedErrorMessage(e: unknown, t: (key: string) => string): string {
+  return translateServerError(extractMessage(e), t);
 }
 
 /** Show success toast, but skip when `successMsg` is empty. */

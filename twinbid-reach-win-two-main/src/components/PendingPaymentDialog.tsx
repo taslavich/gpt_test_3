@@ -5,7 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { CircleCheckBig, CircleX, Copy, ExternalLink, Loader2, Send } from "lucide-react";
 import { toast } from "sonner";
-import { notifyError } from "@/lib/apiStatus";
+import { getLocalizedErrorMessage, notifyError } from "@/lib/apiStatus";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { useAuth } from "@/contexts/AuthContext";
 import { useNotifications, type Notification } from "@/contexts/NotificationContext";
@@ -32,12 +32,14 @@ const STATIC_WALLET_REMINDER_TITLES = new Set([
   "Оплата не завершена",
   "Payment not completed",
   "Pago no completado",
+  "Paiement non terminé",
 ]);
 
 const LEGACY_PASSIMPAY_REMINDER_TITLES = new Set([
   "Оплата через PassimPay не завершена",
   "PassimPay payment is not complete",
   "El pago con PassimPay no está completo",
+  "Le paiement PassimPay n’est pas terminé",
 ]);
 
 function isStaticWalletReminder(notification: Pick<Notification, "apiType" | "title">): boolean {
@@ -134,6 +136,9 @@ export function PendingPaymentDialog() {
         await addNotification({
           title: t("balance.notif.notCompleted"),
           description: `${t("balance.notif.noHash")} $${total}`,
+          titleKey: "balance.notif.notCompleted",
+          descriptionKey: "balance.notif.noHashAmount",
+          translationValues: { amount: `$${total}` },
           type: "warning",
           persistent: true,
           apiType: "incomplete_topup",
@@ -209,7 +214,7 @@ export function PendingPaymentDialog() {
     if (handlersAttachedRef.current !== persisted.id) {
       handlersAttachedRef.current = persisted.id;
       attachHandlers(persisted.id, {
-        action: { label: t("balance.notif.completePayment"), onClick: () => openDialog() },
+        action: { label: t("balance.notif.completePayment"), labelKey: "balance.notif.completePayment", onClick: () => openDialog() },
         onDismiss: async () => {
           const transactionRowIdToDismiss = persisted.apiPayload?.transaction_id ?? null;
           if (transactionRowIdToDismiss) {
@@ -276,9 +281,7 @@ export function PendingPaymentDialog() {
         ? t("balance.passimpay.unavailable")
         : error instanceof ApiError && error.status === 404
           ? t("balance.passimpay.notFound")
-          : error instanceof Error
-            ? error.message
-            : t("balance.toast.submitError");
+          : getLocalizedErrorMessage(error, t);
       setPollingError(message);
       if (showSpinner) notifyError(t("balance.toast.submitError"), error);
       else console.error("[topup] invoice polling failed", error);
@@ -310,9 +313,7 @@ export function PendingPaymentDialog() {
         ? t("balance.passimpay.unavailable")
         : error instanceof ApiError && error.status === 404
           ? t("balance.passimpay.notFound")
-          : error instanceof Error
-            ? error.message
-            : t("balance.toast.submitError");
+          : getLocalizedErrorMessage(error, t);
       setPollingError(message);
       notifyError(t("balance.toast.submitError"), error);
     } finally {
@@ -381,6 +382,9 @@ export function PendingPaymentDialog() {
     await addNotification({
       title: t("balance.notif.paymentSuccess"),
       description: t("balance.notif.paymentSuccessDesc").replace("${amount}", `$${pendingPayment.amount.toLocaleString()}`),
+      titleKey: "balance.notif.paymentSuccess",
+      descriptionKey: "balance.notif.paymentSuccessDesc",
+      translationValues: { amount: `$${pendingPayment.amount.toLocaleString()}` },
       type: "info",
       persistent: false,
     });
@@ -447,6 +451,9 @@ export function PendingPaymentDialog() {
       const id = await addNotification({
         title: t("balance.notif.notCompleted"),
         description: `${t("balance.notif.noHash")} $${notificationAmount}`,
+        titleKey: "balance.notif.notCompleted",
+        descriptionKey: "balance.notif.noHashAmount",
+        translationValues: { amount: `$${notificationAmount}` },
         type: "warning",
         persistent: true,
         apiType: "incomplete_topup",
@@ -455,7 +462,7 @@ export function PendingPaymentDialog() {
           // Persist the tx id so a reload can rehydrate full bonus info.
           transaction_id: pendingPayment.transactionRowId ?? null,
         },
-        action: { label: t("balance.notif.completePayment"), onClick: () => openDialog() },
+        action: { label: t("balance.notif.completePayment"), labelKey: "balance.notif.completePayment", onClick: () => openDialog() },
         onDismiss: async () => {
           if (pendingPayment.transactionRowId) {
             try { await api.cancelTransaction(pendingPayment.transactionRowId); }

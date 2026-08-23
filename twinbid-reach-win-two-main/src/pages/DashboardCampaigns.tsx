@@ -23,6 +23,7 @@ import { useLanguage } from "@/contexts/LanguageContext";
 import { useCampaignStats, statOf } from "@/hooks/use-campaign-stats";
 import { formatNumberWithDot, formatStatisticInteger, formatStatisticSpend } from "@/lib/numberFormat";
 import { CampaignIdPopover } from "@/components/dashboard/CampaignIdPopover";
+import { getLocalizedErrorMessage } from "@/lib/apiStatus";
 
 function isDraftComplete(c: Campaign): boolean {
   if (!c.name.trim()) return false;
@@ -121,16 +122,16 @@ export default function DashboardCampaigns() {
           return;
         }
       } catch (error: unknown) {
-        toast.error(error instanceof Error ? error.message : String(error));
+        toast.error(getLocalizedErrorMessage(error, t));
         return;
       }
     }
     const ns = c.status === "active" ? "paused" : "active";
     try {
-      await updateCampaign(id, { status: ns as any });
+      await updateCampaign(id, { status: ns as Campaign["status"] });
       toast.success(ns === "active" ? t("campaigns.started") : t("campaigns.paused"));
-    } catch (e: any) {
-      toast.error(`${t("campaigns.updateFailed") || "Failed to update campaign"}: ${e?.message || e}`);
+    } catch (e: unknown) {
+      toast.error(`${t("campaigns.updateFailed")}: ${getLocalizedErrorMessage(e, t)}`);
     }
   };
 
@@ -139,8 +140,8 @@ export default function DashboardCampaigns() {
     try {
       await ctxDelete(deleteId);
       toast.success(t("campaigns.deleted"));
-    } catch (e: any) {
-      toast.error(`${t("campaigns.deleteFailed") || "Failed to delete campaign"}: ${e?.message || e}`);
+    } catch (e: unknown) {
+      toast.error(`${t("campaigns.deleteFailed")}: ${getLocalizedErrorMessage(e, t)}`);
     }
     setDeleteId(null);
   };
@@ -174,8 +175,8 @@ export default function DashboardCampaigns() {
         : sourceCreatives;
       const id = await addCampaign({ ...rest, creatives, name: `${c.name} ${t("campaigns.copyPostfix")}`, status: "draft", spent: 0, impressions: 0, clicks: 0, ctr: 0 });
       if (id) toast.success(t("campaigns.copied"));
-    } catch (e: any) {
-      toast.error(`${t("campaigns.copyFailed") || "Failed to copy campaign"}: ${e?.message || e}`);
+    } catch (e: unknown) {
+      toast.error(`${t("campaigns.copyFailed")}: ${getLocalizedErrorMessage(e, t)}`);
     }
   };
 
@@ -183,8 +184,8 @@ export default function DashboardCampaigns() {
     try {
       await updateCampaign(id, { status: "draft" });
       toast.success(t("campaigns.moderationCanceled"));
-    } catch (e: any) {
-      toast.error(`${t("campaigns.updateFailed") || "Failed to update campaign"}: ${e?.message || e}`);
+    } catch (e: unknown) {
+      toast.error(`${t("campaigns.updateFailed")}: ${getLocalizedErrorMessage(e, t)}`);
     }
   };
 
@@ -222,8 +223,8 @@ export default function DashboardCampaigns() {
       setRenameCampaign(null);
       setRenameValue("");
       toast.success(t("campaigns.renamed"));
-    } catch (e: any) {
-      toast.error(`${t("campaigns.renameFailed")}: ${e?.message || e}`);
+    } catch (e: unknown) {
+      toast.error(`${t("campaigns.renameFailed")}: ${getLocalizedErrorMessage(e, t)}`);
     } finally {
       setIsRenaming(false);
     }

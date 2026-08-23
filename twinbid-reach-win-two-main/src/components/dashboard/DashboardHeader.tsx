@@ -12,6 +12,7 @@ import { cn } from "@/lib/utils";
 import { useNavigate } from "react-router-dom";
 import { DashboardMobileNavigation } from "@/components/dashboard/DashboardSidebar";
 import { formatCurrencyAmount } from "@/lib/numberFormat";
+import { localizeNotificationContent } from "@/lib/notificationLocalization";
 
 export function DashboardHeader() {
   const { notifications, removeNotification } = useNotifications();
@@ -90,29 +91,32 @@ export function DashboardHeader() {
                     {t("header.noNotifications")}
                   </div>
                 ) : (
-                  notifications.map((n) => (
-                    <div key={n.id} className="p-3 border-b border-border/50 hover:bg-muted/50 transition-colors">
-                      <div className="flex items-start justify-between gap-2">
-                        <div className="flex-1 min-w-0">
-                          <p className={cn("text-sm font-medium", n.type === "warning" && "text-yellow-500", n.type === "error" && "text-destructive")}>
-                            {n.title}
-                          </p>
-                          {n.description && <p className="text-xs text-muted-foreground mt-0.5">{n.description}</p>}
-                          {n.action && (
-                            <button
-                              onClick={() => { n.action!.onClick(); setOpen(false); }}
-                              className="text-xs text-primary hover:underline mt-1"
-                            >
-                              {n.action.label}
-                            </button>
-                          )}
+                  notifications.map((n) => {
+                    const localized = localizeNotificationContent(n, t);
+                    return (
+                      <div key={n.id} className="p-3 border-b border-border/50 hover:bg-muted/50 transition-colors">
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="flex-1 min-w-0">
+                            <p className={cn("text-sm font-medium", n.type === "warning" && "text-yellow-500", n.type === "error" && "text-destructive")}>
+                              {localized.title}
+                            </p>
+                            {localized.description && <p className="text-xs text-muted-foreground mt-0.5">{localized.description}</p>}
+                            {n.action && (
+                              <button
+                                onClick={() => { n.action!.onClick(); setOpen(false); }}
+                                className="text-xs text-primary hover:underline mt-1"
+                              >
+                                {n.action.labelKey ? t(n.action.labelKey) : n.action.label}
+                              </button>
+                            )}
+                          </div>
+                          <button onClick={() => handleDismissClick(n)} className="text-muted-foreground hover:text-foreground shrink-0">
+                            <X className="h-3.5 w-3.5" />
+                          </button>
                         </div>
-                        <button onClick={() => handleDismissClick(n)} className="text-muted-foreground hover:text-foreground shrink-0">
-                          <X className="h-3.5 w-3.5" />
-                        </button>
                       </div>
-                    </div>
-                  ))
+                    );
+                  })
                 )}
               </div>
             </PopoverContent>
