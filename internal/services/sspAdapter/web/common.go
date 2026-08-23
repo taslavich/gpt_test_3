@@ -154,6 +154,12 @@ func persistADMFailure(
 	monitor *services.RedisWriteErrorMonitor,
 	stopADV bool,
 ) {
+	// Malformed callback with an empty winner ID is not an ADV
+	// infrastructure/billing failure and must never disable ADV.
+	if strings.TrimSpace(record.GlobalID) == "" {
+		stopADV = false
+	}
+
 	requiresADVRecovery := stopADV
 	record.RequiresADVRecovery = &requiresADVRecovery
 
