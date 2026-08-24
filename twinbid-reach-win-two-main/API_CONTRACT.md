@@ -99,7 +99,8 @@ Resp: `User`.
   "os": {},
   "browser": {},
   "site_id": {},
-  "ip": {}
+  "ip": {},
+  "block_vpn": false
 }
 ```
 
@@ -109,6 +110,8 @@ Resp: `User`.
 > `h: 999, w: 999`, необходимый для Telegram-модерации. Фактические `h/w`
 > передаются отдельно в каждом креативе, поэтому в одной banner-кампании
 > могут одновременно работать креативы разных размеров.
+> `block_vpn=true` — исключать трафик, классифицированный как VPN/Proxy/Tor/Residential Proxy/Hosting-Datacenter.
+> `block_vpn=false` — VPN-фильтрация отключена. Для новых кампаний фронт по умолчанию отправляет `false`.
 
 ### GET `/api/campaigns?status=&limit=&offset=` → `{ items: Campaign[], total }`
 ### GET `/api/campaigns/:id` → `Campaign`

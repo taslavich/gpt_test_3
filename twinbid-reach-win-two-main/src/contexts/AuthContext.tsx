@@ -102,8 +102,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       storeTokens(res.access_token, res.refresh_token);
       setUser({ id: "mock-user", email: res.user.mail, full_name: res.user.name });
       return { error: null };
-    } catch (e: any) {
-      return { error: e?.message || "Sign up failed" };
+    } catch (e: unknown) {
+      return { error: e instanceof Error ? e.message : "Sign up failed" };
     }
   };
 
@@ -113,14 +113,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       storeTokens(res.access_token, res.refresh_token);
       setUser({ id: "mock-user", email: res.user.mail, full_name: res.user.name });
       return { error: null };
-    } catch (e: any) {
+    } catch (e: unknown) {
       if (isEmailConfirmationRequired(e)) {
         return { error: t("auth.error.confirmEmail") };
       }
       if (e instanceof ApiError) {
         if (e.status === 401 || e.status === 404) return { error: t("auth.error.invalidCredentials") };
       }
-      return { error: e?.message || t("auth.error.loginFailed") };
+      return { error: e instanceof Error ? e.message : t("auth.error.loginFailed") };
     }
   };
 

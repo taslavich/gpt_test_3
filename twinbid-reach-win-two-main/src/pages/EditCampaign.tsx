@@ -41,6 +41,7 @@ export default function EditCampaign() {
   const [creatives, setCreatives] = useState<Creative[]>([]);
   const [initialCreatives, setInitialCreatives] = useState<Creative[]>([]);
   const [lists, setLists] = useState<Record<string, TargetingState>>({});
+  const [blockVpnTraffic, setBlockVpnTraffic] = useState(false);
   const [totalBudget, setTotalBudget] = useState("");
   const [priceValue, setPriceValue] = useState("");
   const [pricingModel, setPricingModel] = useState<PricingModel>("cpm");
@@ -93,6 +94,7 @@ export default function EditCampaign() {
         targeting.schedule = { mode: "white", items: allItems };
       }
       setLists(targeting);
+      setBlockVpnTraffic(campaign.blockVpnTraffic === true);
       setTotalBudget(String(campaign.budget));
       setPriceValue(String(campaign.priceValue));
       setPricingModel(campaign.pricingModel);
@@ -301,6 +303,7 @@ export default function EditCampaign() {
       await updateCampaign(campaign.id, {
         name: name.trim(), creatives: crvs, trafficType, verticals,
         targeting: Object.fromEntries(Object.entries(lists).map(([k, v]) => [k, { mode: v.mode, items: v.items }])),
+        blockVpnTraffic,
         budget: tb, dailyBudget: null,
         priceValue: pv, pricingModel, trafficQuality, startDate, endDate, evenSpend, status: newStatus,
         brandName: showBrandName ? brandName : undefined,
@@ -425,7 +428,14 @@ export default function EditCampaign() {
                 onImport={setLists}
               />
             </CardHeader>
-            <CardContent><TargetingSection lists={lists} onUpdate={updateList} /></CardContent>
+            <CardContent>
+              <TargetingSection
+                lists={lists}
+                onUpdate={updateList}
+                blockVpnTraffic={blockVpnTraffic}
+                onBlockVpnTrafficChange={setBlockVpnTraffic}
+              />
+            </CardContent>
           </Card>
         </TabsContent>
 

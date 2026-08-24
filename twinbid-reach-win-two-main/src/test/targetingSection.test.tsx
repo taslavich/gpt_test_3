@@ -26,6 +26,20 @@ function Harness() {
   );
 }
 
+function VpnHarness() {
+  const [blocked, setBlocked] = useState(false);
+  return (
+    <LanguageProvider>
+      <TargetingSection
+        lists={{}}
+        onUpdate={() => undefined}
+        blockVpnTraffic={blocked}
+        onBlockVpnTrafficChange={setBlocked}
+      />
+    </LanguageProvider>
+  );
+}
+
 describe("targeting list controls", () => {
   beforeEach(() => {
     window.localStorage.setItem("twinbid_lang", "en");
@@ -58,5 +72,17 @@ describe("targeting list controls", () => {
     fireEvent.keyDown(input, { key: "Enter" });
 
     expect(within(ipCard as HTMLElement).getByText("10.20.0.0/16")).toBeInTheDocument();
+  });
+
+  it("disables VPN filtering by default and lets the advertiser enable it", () => {
+    render(<VpnHarness />);
+
+    const toggle = screen.getByRole("switch", { name: "Block VPN traffic" });
+    expect(toggle).not.toBeChecked();
+    expect(screen.getByText("VPN filtering is disabled")).toBeInTheDocument();
+
+    fireEvent.click(toggle);
+    expect(toggle).toBeChecked();
+    expect(screen.getByText("VPN, proxy, Tor and datacenter traffic will be excluded")).toBeInTheDocument();
   });
 });

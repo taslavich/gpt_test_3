@@ -60,6 +60,8 @@ export interface ApiCampaign {
   browser: TargetingMap;
   site_id: TargetingMap;
   ip: TargetingMap;
+  /** `true` means VPN-classified traffic is blocked for the campaign. */
+  block_vpn?: boolean;
   quality_type: "usual" | "high" | "ultra";
   /** Fixed reward per conversion (USD). Used in statistics when the postback does not deliver a payout value. */
   payout?: number | null;

@@ -64,6 +64,7 @@ export default function CreateCampaign() {
   const [verticals, setVerticals] = useState<Vertical[]>([]);
   const [creatives, setCreatives] = useState<Creative[]>([{ id: generateId(), url: "" }]);
   const [lists, setLists] = useState<Record<string, TargetingState>>(defaultTargeting());
+  const [blockVpnTraffic, setBlockVpnTraffic] = useState(false);
   const [totalBudget, setTotalBudget] = useState("");
   const [priceValue, setPriceValue] = useState("");
   const [pricingModel, setPricingModel] = useState<PricingModel>("cpm");
@@ -264,6 +265,7 @@ export default function CreateCampaign() {
         spent: 0, impressions: 0, clicks: 0, ctr: 0, pricingModel, priceValue: parseNum(priceValue),
         trafficQuality, startDate, endDate, creatives: crvs,
         targeting: Object.fromEntries(Object.entries(lists).map(([k, v]) => [k, { mode: v.mode, items: v.items }])),
+        blockVpnTraffic,
         evenSpend,
         brandName: showBrandName ? brandName : undefined,
       });
@@ -306,6 +308,7 @@ export default function CreateCampaign() {
         spent: 0, impressions: 0, clicks: 0, ctr: 0, pricingModel, priceValue: priceValue ? parseNum(priceValue) : 0,
         trafficQuality, startDate, endDate, creatives,
         targeting: Object.fromEntries(Object.entries(lists).map(([k, v]) => [k, { mode: v.mode, items: v.items }])),
+        blockVpnTraffic,
         evenSpend,
         brandName: showBrandName ? brandName : undefined,
       });
@@ -472,7 +475,12 @@ export default function CreateCampaign() {
                   onImport={setLists}
                 />
               </div>
-              <TargetingSection lists={lists} onUpdate={updateList} />
+              <TargetingSection
+                lists={lists}
+                onUpdate={updateList}
+                blockVpnTraffic={blockVpnTraffic}
+                onBlockVpnTrafficChange={setBlockVpnTraffic}
+              />
             </div>
           )}
 

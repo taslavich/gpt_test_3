@@ -92,7 +92,7 @@ export default function DashboardSettings() {
       setCurrentPassword("");
       setNewPassword("");
       setRepeatPassword("");
-    } catch (e: any) {
+    } catch (e: unknown) {
       notifyError(t("settings.passwordError") || "Error updating password", e);
     }
   };

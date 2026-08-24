@@ -76,6 +76,7 @@ const campaignDraft: Omit<Campaign, "id"> = {
   endDate: "2026-07-27",
   creatives: [{ id: "local-1", name: "Landing", url: "http://example.com" }],
   targeting: {},
+  blockVpnTraffic: false,
   evenSpend: false,
   trafficType: "mainstream",
   verticals: [],
@@ -163,6 +164,26 @@ describe("CampaignProvider mutation requests", () => {
     );
   });
 
+  it("disables VPN filtering by default and sends an explicit block setting", async () => {
+    const { result } = renderHook(() => useCampaigns(), { wrapper });
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    let id: string | undefined;
+    await act(async () => {
+      id = await result.current.addCampaign({ ...campaignDraft, creatives: [] });
+    });
+    expect(apiMock.createCampaign).toHaveBeenCalledWith(
+      expect.objectContaining({ block_vpn: false }),
+    );
+    expect(apiMock.createCampaign.mock.calls[0][0]).not.toHaveProperty("vpn");
+
+    await act(async () => {
+      await result.current.updateCampaign(id!, { blockVpnTraffic: true });
+    });
+    expect(apiMock.patchCampaign).toHaveBeenCalledWith(id, { block_vpn: true });
+    expect(apiMock.patchCampaign.mock.calls[0][1]).not.toHaveProperty("vpn");
+  });
+
   it("keeps the technical banner size on status updates", async () => {
     apiMock.listCampaigns.mockResolvedValue({
       items: [{ ...apiCampaign, format_type: "banner", w: null, h: null }],
@@ -214,6 +235,19 @@ describe("CampaignProvider mutation requests", () => {
     expect(apiMock.listCampaigns).toHaveBeenCalledTimes(1);
     expect(apiMock.readCreatives).not.toHaveBeenCalled();
     expect(result.current.campaigns.every(campaign => campaign.creatives.length === 0)).toBe(true);
+    expect(result.current.campaigns.every(campaign => campaign.blockVpnTraffic)).toBe(false);
+  });
+
+  it("maps block_vpn=true from the API to an enabled VPN filter", async () => {
+    apiMock.listCampaigns.mockResolvedValue({
+      items: [{ ...apiCampaign, block_vpn: true }],
+      total: 1,
+    });
+
+    const { result } = renderHook(() => useCampaigns(), { wrapper });
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    expect(result.current.campaigns[0].blockVpnTraffic).toBe(true);
   });
 
   it("does not show campaigns returned with deleted status", async () => {

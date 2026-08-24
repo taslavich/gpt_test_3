@@ -16,7 +16,7 @@ import { captureUtmSourceFromUrl } from "./lib/utmSource";
 
 // Global toggle for surfacing API error toasts in the UI.
 // Flip to `false` to silence error toasts (errors will still log to console).
-(window as any).error_showed = true;
+(window as Window & { error_showed?: boolean }).error_showed = true;
 
 // Persist ?utm_source=... as soon as possible so it survives navigation
 // between the landing page and the auth dialog.

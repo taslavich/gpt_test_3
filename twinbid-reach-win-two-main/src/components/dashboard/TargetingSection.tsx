@@ -3,6 +3,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
+import { Switch } from "@/components/ui/switch";
 import { Plus, X } from "lucide-react";
 import type { TargetingState, ListMode } from "@/contexts/CampaignContext";
 import { useLanguage } from "@/contexts/LanguageContext";
@@ -39,6 +40,8 @@ export const targetingConfigs = targetingConfigKeys.map(key => ({ key, labelKey:
 interface TargetingSectionProps {
   lists: Record<string, TargetingState>;
   onUpdate: (key: string, updates: Partial<TargetingState>) => void;
+  blockVpnTraffic?: boolean;
+  onBlockVpnTrafficChange?: (blocked: boolean) => void;
 }
 
 const AutocompleteInput = memo(function AutocompleteInput({
@@ -494,7 +497,12 @@ const ListItem = memo(function ListItem({ config, list: rawList, onUpdate }: {
   );
 });
 
-export function TargetingSection({ lists, onUpdate }: TargetingSectionProps) {
+export function TargetingSection({
+  lists,
+  onUpdate,
+  blockVpnTraffic = false,
+  onBlockVpnTrafficChange,
+}: TargetingSectionProps) {
   const { t } = useLanguage();
 
   // Migrate old dayOfWeek/hour data to schedule format and force schedule always on.
@@ -523,6 +531,23 @@ export function TargetingSection({ lists, onUpdate }: TargetingSectionProps) {
   return (
     <div className="space-y-3">
       <p className="text-sm text-muted-foreground">{t("targeting.description")}</p>
+      <div className="flex min-w-0 items-center justify-between gap-4 rounded-lg border border-border/50 bg-background/50 p-3 sm:p-4">
+        <div className="min-w-0 space-y-1">
+          <Label htmlFor="vpn-traffic-toggle" className="font-medium">
+            {t("targeting.blockVpnTraffic")}
+          </Label>
+          <p className="text-xs text-muted-foreground">
+            {t(blockVpnTraffic ? "targeting.blockVpnTrafficEnabled" : "targeting.blockVpnTrafficDisabled")}
+          </p>
+        </div>
+        <Switch
+          id="vpn-traffic-toggle"
+          checked={blockVpnTraffic}
+          onCheckedChange={onBlockVpnTrafficChange}
+          aria-label={t("targeting.blockVpnTraffic")}
+          className="shrink-0"
+        />
+      </div>
       {targetingConfigs.map((config) => (
         <ListItem
           key={config.key}

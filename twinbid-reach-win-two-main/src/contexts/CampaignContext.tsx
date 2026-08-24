@@ -140,6 +140,8 @@ export interface Campaign {
   /** UI-only marker: creatives were explicitly loaded for this campaign. */
   creativesLoaded?: boolean;
   targeting: Record<string, TargetingState>;
+  /** Whether traffic classified as VPN/proxy is blocked for the campaign. */
+  blockVpnTraffic: boolean;
   evenSpend: boolean;
   bannerSize?: string;
   brandName?: string;
@@ -161,7 +163,7 @@ function targetingStateToPayload(t: TargetingState): TargetingListPayload {
 function targetingPayloadToState(m: TargetingListPayload | TargetingMap | undefined): TargetingState {
   if (!m) return { mode: "none", items: [] };
   // New shape
-  if (typeof (m as any).isWhiteList === "boolean" && Array.isArray((m as any).objects)) {
+  if ("isWhiteList" in m && typeof m.isWhiteList === "boolean" && "objects" in m && Array.isArray(m.objects)) {
     const p = m as TargetingListPayload;
     if (!p.objects.length) return { mode: "none", items: [] };
     return { mode: p.isWhiteList ? "white" : "black", items: p.objects.map(String) };
@@ -234,7 +236,7 @@ function activeIntervalsToSchedule(intervals: ApiCampaign["active_intervals"] | 
 }
 
 function buildApiTargeting(targeting: Record<string, TargetingState>): Pick<ApiCampaign, TargetKey> {
-  const out: any = {};
+  const out = {} as Record<TargetKey, TargetingListPayload>;
   for (const [uiKey, apiKey] of TARGET_KEY_MAP) {
     const state = targeting[uiKey] || { mode: "none", items: [] };
     const expanded: TargetingState = { ...state, items: expandTargetingItems(uiKey, state.items) };
@@ -245,7 +247,7 @@ function buildApiTargeting(targeting: Record<string, TargetingState>): Pick<ApiC
 function readApiTargeting(c: ApiCampaign): Record<string, TargetingState> {
   return {
     ...Object.fromEntries(TARGET_KEY_MAP.map(([uiKey, apiKey]) => {
-      const state = targetingPayloadToState(c[apiKey] as any);
+      const state = targetingPayloadToState(c[apiKey] as TargetingListPayload | TargetingMap | undefined);
       return [uiKey, { ...state, items: collapseTargetingItems(uiKey, state.items) }];
     })),
     schedule: activeIntervalsToSchedule(c.active_intervals),
@@ -280,6 +282,9 @@ function mapApiCampaignToUi(c: ApiCampaign, creatives: Creative[], creativesLoad
     creatives,
     creativesLoaded,
     targeting: readApiTargeting(c),
+    // Older campaigns may not have this field yet. An omitted value means
+    // VPN filtering is disabled, matching the backend default.
+    blockVpnTraffic: c.block_vpn === true,
     evenSpend: !!c.evenness_by_slot_mode,
     bannerSize: c.w && c.h ? `${c.w}x${c.h}` : undefined,
     brandName: c.brand_name || undefined,
@@ -358,7 +363,7 @@ function endTimestamp(date: string): string | null {
 
 function buildApiCampaignBody(c: Omit<Campaign, "id">): Omit<ApiCampaign, "campaign_id" | "user_id" | "cum_done_dollars"> {
   const isBanner = (c.formatKey || c.format) === "banner";
-  const body: any = {
+  const body: Omit<ApiCampaign, "campaign_id" | "user_id" | "cum_done_dollars"> = {
     campaign_name: c.name,
     format_type: (c.formatKey || c.format) as FormatType,
     h: isBanner ? 999 : null,
@@ -373,6 +378,7 @@ function buildApiCampaignBody(c: Omit<Campaign, "id">): Omit<ApiCampaign, "campa
     start_ts: startTimestamp(c.startDate),
     end_ts: endTimestamp(c.endDate),
     active_intervals: scheduleToActiveIntervals(c.targeting.schedule),
+    block_vpn: c.blockVpnTraffic === true,
     quality_type: uiQualityToApi(c.trafficQuality),
     ...buildApiTargeting(c.targeting),
   };
@@ -424,6 +430,9 @@ function buildApiCampaignPatch(updates: Partial<Campaign>): Partial<ApiCampaign>
   if (updates.targeting !== undefined) {
     Object.assign(p, buildApiTargeting(updates.targeting));
     p.active_intervals = scheduleToActiveIntervals(updates.targeting.schedule);
+  }
+  if (updates.blockVpnTraffic !== undefined) {
+    p.block_vpn = updates.blockVpnTraffic;
   }
   return p;
 }
