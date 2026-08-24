@@ -73,6 +73,11 @@ func main() {
 	if err != nil {
 		log.Fatalf("[ADV][SITE_ID_QUALITY_MAP][startup] initialization failed: %v", err)
 	}
+	vpnStore, err := auction.NewVPNStore(cfg.AdvVPNDBPath)
+	if err != nil {
+		log.Fatalf("[ADV][VPN_DB][startup] initialization failed: %v", err)
+	}
+	defer vpnStore.Close()
 
 	if strings.TrimSpace(cfg.PostgresDSN) == "" {
 		log.Fatal("POSTGRES_DSN is required for ADV")
@@ -88,6 +93,7 @@ func main() {
 	runtimeStore := auction.NewRuntimeStore(runtimeRedis, cfg.AdvPacingCurrentTTL, cfg.AdvPacingSlotTTL)
 	winnerStore := auction.NewWinnerStore(winnerRedis, cfg.AdvWinnerTTL)
 	auctionService := auction.NewAuctionService(runtimeStore, winnerStore, percentStore, qualityStore, siteIDQualityStore)
+	auctionService.SetVPNClassifier(vpnStore)
 	auctionService.SetAntiPerekrutEnabled(cfg.AntiperekrutEnabled)
 	auctionService.StartDiagnostics(ctx)
 	diagnosticsEnabled, err := boolEnvironment("AUCTION_DIAGNOSTICS_ENABLED", false)
@@ -258,6 +264,9 @@ func validateConfig(cfg *config.AdvConfig) error {
 	}
 	if strings.TrimSpace(cfg.AdvSiteIDQualityMapFilePath) == "" {
 		return fmt.Errorf("ADV_SITE_ID_QUALITY_MAP_FILE_PATH is required")
+	}
+	if strings.TrimSpace(cfg.AdvVPNDBPath) == "" {
+		return fmt.Errorf("ADV_VPN_DB_PATH is required")
 	}
 	if strings.TrimSpace(cfg.PostgresDSN) == "" {
 		return fmt.Errorf("POSTGRES_DSN is required")

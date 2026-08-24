@@ -96,6 +96,7 @@ type Campaign struct {
 	BasePrice          float64
 	GoalTotalDollars   float64
 	EvennessBySlotMode bool
+	BlockVPN           bool
 	StartTS            time.Time
 	EndTS              time.Time
 	ActiveIntervals    []TimeRange
@@ -123,6 +124,7 @@ type Snapshot struct {
 	Campaigns               []*Campaign
 	UserGoals               map[string]float64
 	UserAntiPerekrutBlocked map[string]bool
+	HasBlockVPNCampaigns    bool
 	LoadedAt                time.Time
 }
 
@@ -162,6 +164,7 @@ type AuctionService struct {
 	percents      *PercentStore
 	quality       *QualityStore
 	siteIDQuality *SiteIDQualityStore
+	vpnClassifier VPNClassifier
 
 	antiperekrut        *AntiPerekrutManager
 	antiperekrutEnabled bool
@@ -190,6 +193,12 @@ func NewAuctionService(runtime *RuntimeStore, winners *WinnerStore, percents *Pe
 func (s *AuctionService) SetAntiPerekrutManager(manager *AntiPerekrutManager) {
 	if s != nil {
 		s.antiperekrut = manager
+	}
+}
+
+func (s *AuctionService) SetVPNClassifier(classifier VPNClassifier) {
+	if s != nil {
+		s.vpnClassifier = classifier
 	}
 }
 
@@ -386,6 +395,9 @@ func cloneAndValidateSnapshot(src *Snapshot) (*Snapshot, error) {
 			creativeIDs[cc.ID] = struct{}{}
 			cc.TrackersMacros = cloneStringMap(creative.TrackersMacros)
 			clone.Creatives = append(clone.Creatives, &cc)
+		}
+		if clone.BlockVPN {
+			out.HasBlockVPNCampaigns = true
 		}
 		out.Campaigns = append(out.Campaigns, &clone)
 	}
@@ -601,11 +613,23 @@ func (s *AuctionService) auctionCore(
 	}
 
 	logf(
-		"[ADV][SNAPSHOT] request_id=%q campaigns=%d user_goals=%d",
+		"[ADV][SNAPSHOT] request_id=%q campaigns=%d user_goals=%d block_vpn_campaigns_present=%t",
 		requestID,
 		len(snapshot.Campaigns),
 		len(snapshot.UserGoals),
+		snapshot.HasBlockVPNCampaigns,
 	)
+
+	requestIsVPN, vpnClassificationErr := s.classifyVPNRequest(req, snapshot.HasBlockVPNCampaigns)
+	if snapshot.HasBlockVPNCampaigns {
+		logf(
+			"[ADV][VPN_CLASSIFICATION] request_id=%q ip=%q is_vpn=%t error=%v",
+			requestID,
+			requestDeviceIPv4(req),
+			requestIsVPN,
+			vpnClassificationErr,
+		)
+	}
 
 	var antiState *AntiPerekrutState
 	if s.antiperekrutEnabled {
@@ -713,6 +737,8 @@ func (s *AuctionService) auctionCore(
 				winnerUUID,
 				antiState,
 				durableUserBlocked,
+				requestIsVPN,
+				vpnClassificationErr,
 				recorder != nil,
 				logf,
 			)
@@ -1271,6 +1297,23 @@ func candidateBasePrice(cand candidate) float64 {
 	return cand.campaign.BasePrice
 }
 
+func requestDeviceIPv4(req *ortb.BidRequest) string {
+	if req == nil || req.GetDevice() == nil {
+		return ""
+	}
+	return strings.TrimSpace(req.GetDevice().GetIp())
+}
+
+func (s *AuctionService) classifyVPNRequest(req *ortb.BidRequest, required bool) (bool, error) {
+	if !required {
+		return false, nil
+	}
+	if s == nil || s.vpnClassifier == nil {
+		return false, errors.New("VPN classifier is unavailable")
+	}
+	return s.vpnClassifier.IsVPN(requestDeviceIPv4(req))
+}
+
 func logCandidateSelectionOutcomes(
 	logf debugLogFunc,
 	requestID, impID, requestedFormat string,
@@ -1345,6 +1388,8 @@ func (s *AuctionService) evaluateCampaign(
 	hashFallback string,
 	antiState *AntiPerekrutState,
 	durableUserBlocked bool,
+	requestIsVPN bool,
+	vpnClassificationErr error,
 	diagnosticsEnabled bool,
 	logf debugLogFunc,
 ) (candidate, bool, diagnosticReason, error) {
@@ -1394,6 +1439,16 @@ func (s *AuctionService) evaluateCampaign(
 	if !campaignActiveAt(campaign, now) {
 		logCampaignActivityRejection(logf, requestID, impID, campaign, now)
 		return candidate{}, false, campaignActivityRejectionReason(campaign, now), nil
+	}
+	if campaign.BlockVPN {
+		if vpnClassificationErr != nil {
+			logf("[ADV][CAMPAIGN_REJECT] request_id=%q imp_id=%q format=%q campaign_id=%q user_id=%q reason=vpn_filter_unavailable error=%v", requestID, impID, requestedFormat, campaignID, userID, vpnClassificationErr)
+			return candidate{}, false, diagVPNFilterUnavailable, nil
+		}
+		if requestIsVPN {
+			logf("[ADV][CAMPAIGN_REJECT] request_id=%q imp_id=%q format=%q campaign_id=%q user_id=%q reason=vpn_traffic_blocked", requestID, impID, requestedFormat, campaignID, userID)
+			return candidate{}, false, diagVPNTrafficBlocked, nil
+		}
 	}
 
 	userRemaining := 0.0

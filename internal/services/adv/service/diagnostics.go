@@ -42,6 +42,8 @@ const (
 	diagAntiPerekrutHashGateRejected
 	diagQualityMismatch
 	diagSiteIDQualityMismatch
+	diagVPNTrafficBlocked
+	diagVPNFilterUnavailable
 	diagInvalidChargePrice
 	diagCampaignSpentReadFailed
 	diagCampaignBalanceInsufficient
@@ -180,6 +182,8 @@ var diagnosticDefinitions = [diagnosticReasonCount]diagnosticDefinition{
 	diagAntiPerekrutHashGateRejected:       {Code: 327, Name: "antiperekrut_hash_gate_rejected", Description: "campaign did not pass the AntiPerekrut traffic-percent hash gate", Scope: diagnosticScopeCampaign},
 	diagQualityMismatch:                    {Code: 309, Name: "quality_mismatch", Description: "SSP domain is absent from the campaign quality segment", Scope: diagnosticScopeCampaign},
 	diagSiteIDQualityMismatch:              {Code: 328, Name: "site_id_quality_mismatch", Description: "request site.id failed the second quality-map stage for the campaign quality segment", Scope: diagnosticScopeCampaign},
+	diagVPNTrafficBlocked:                  {Code: 329, Name: "vpn_traffic_blocked", Description: "campaign has block_vpn enabled and request device.ip matched the TwinBid VPN MMDB", Scope: diagnosticScopeCampaign},
+	diagVPNFilterUnavailable:               {Code: 330, Name: "vpn_filter_unavailable", Description: "campaign has block_vpn enabled but the request could not be classified by the TwinBid VPN MMDB", Scope: diagnosticScopeCampaign},
 	diagInvalidChargePrice:                 {Code: 310, Name: "invalid_charge_price", Description: "calculated charge price is non-positive or non-finite", Scope: diagnosticScopeCampaign},
 	diagCampaignSpentReadFailed:            {Code: 311, Name: "campaign_spent_read_failed", Description: "campaign spend could not be read from runtime Redis", Scope: diagnosticScopeCampaign},
 	diagCampaignBalanceInsufficient:        {Code: 312, Name: "campaign_balance_insufficient", Description: "campaign remaining budget is smaller than charge price", Scope: diagnosticScopeCampaign},

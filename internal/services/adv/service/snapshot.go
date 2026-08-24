@@ -231,6 +231,7 @@ func loadSnapshotFromPostgres(ctx context.Context, db *sql.DB) (*Snapshot, []sna
 		campaign_id::text,
 		base_price::text,
 		evenness_by_slot_mode,
+		block_vpn,
 		start_ts,
 		end_ts,
 		active_intervals,
@@ -269,7 +270,7 @@ func loadSnapshotFromPostgres(ctx context.Context, db *sql.DB) (*Snapshot, []sna
 		var row campaignDBRow
 		if err := rows.Scan(
 			&row.UserID, &row.CampaignID, &row.BasePrice,
-			&row.Evenness, &row.StartTS, &row.EndTS, &row.ActiveIntervals,
+			&row.Evenness, &row.BlockVPN, &row.StartTS, &row.EndTS, &row.ActiveIntervals,
 			&row.Country, &row.Language, &row.DeviceType, &row.OS, &row.Browser, &row.SiteID, &row.IP,
 			&row.Format, &row.Quality, &row.PricingModel, &row.Status, &row.TrafficType,
 			&row.GoalTotalDollars,
@@ -370,6 +371,7 @@ type campaignDBRow struct {
 	TrafficType  sql.NullString
 
 	Evenness sql.NullBool
+	BlockVPN sql.NullBool
 
 	StartTS sql.NullTime
 	EndTS   sql.NullTime
@@ -479,7 +481,7 @@ func (r campaignDBRow) campaign() (*Campaign, error) {
 		PricingModel: pricingModel,
 		Format:       format, TrafficType: trafficType,
 		QualitySegment: quality,
-		BasePrice:      basePrice, GoalTotalDollars: goalTotalDollars, EvennessBySlotMode: r.Evenness.Valid && r.Evenness.Bool,
+		BasePrice:      basePrice, GoalTotalDollars: goalTotalDollars, EvennessBySlotMode: r.Evenness.Valid && r.Evenness.Bool, BlockVPN: r.BlockVPN.Valid && r.BlockVPN.Bool,
 		StartTS: r.StartTS.Time.UTC(), EndTS: r.EndTS.Time.UTC(), ActiveIntervals: activeIntervals,
 		CountryFilter: country, LanguageFilter: language, DeviceTypeFilter: deviceType,
 		OSFilter: osFilter, BrowserFilter: browser, SiteIDFilter: siteID, IPFilter: ip,
