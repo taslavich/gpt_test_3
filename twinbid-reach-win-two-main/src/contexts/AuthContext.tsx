@@ -4,6 +4,7 @@ import { ACCESS_TOKEN_KEY, REFRESH_TOKEN_KEY, API_BASE_URL } from "@/api/config"
 import { DEFAULT_MANAGER_TELEGRAM } from "@/lib/constants";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { getStoredUtmSource } from "@/lib/utmSource";
+import { generatePartnerId, getStoredPartnerCode } from "@/lib/partners";
 import { isEmailConfirmationRequired } from "@/lib/authErrors";
 
 /** Minimal user shape consumed by the rest of the UI. */
@@ -11,6 +12,8 @@ export interface AuthUser {
   id: string;
   email: string;
   full_name?: string;
+  partner_id: string;
+  partner?: string | null;
 }
 
 interface AuthContextType {
@@ -72,7 +75,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     async function hydrate(): Promise<AuthUser | null> {
       try {
         const session = await api.getSession();
-        if (session) return { id: session.user_id, email: session.email, full_name: session.full_name };
+        if (session) return {
+          id: session.user_id,
+          email: session.email,
+          full_name: session.full_name,
+          partner_id: session.partner_id ?? "",
+          partner: session.partner ?? null,
+        };
       } catch { /* fallthrough to refresh */ }
 
       // Either no session or the call failed — try refreshing once and retry.
@@ -80,7 +89,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (!refreshed) return null;
       try {
         const session = await api.getSession();
-        return session ? { id: session.user_id, email: session.email, full_name: session.full_name } : null;
+        return session ? {
+          id: session.user_id,
+          email: session.email,
+          full_name: session.full_name,
+          partner_id: session.partner_id ?? "",
+          partner: session.partner ?? null,
+        } : null;
       } catch {
         return null;
       }
@@ -98,12 +113,29 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const signUp = async (email: string, password: string, fullName: string | undefined, telegram: string) => {
     try {
       const utm_source = getStoredUtmSource() ?? undefined;
-      const res = await api.signup({ email, password, full_name: fullName, telegram, manager_telegram: DEFAULT_MANAGER_TELEGRAM, utm_source });
+      const partner = getStoredPartnerCode() ?? undefined;
+      const partner_id = generatePartnerId();
+      const res = await api.signup({
+        email,
+        password,
+        full_name: fullName,
+        telegram,
+        manager_telegram: DEFAULT_MANAGER_TELEGRAM,
+        utm_source,
+        partner_id,
+        partner,
+      });
       storeTokens(res.access_token, res.refresh_token);
-      setUser({ id: "mock-user", email: res.user.mail, full_name: res.user.name });
+      setUser({
+        id: "mock-user",
+        email: res.user.mail,
+        full_name: res.user.name,
+        partner_id: res.user.partner_id,
+        partner: res.user.partner ?? null,
+      });
       return { error: null };
-    } catch (e: unknown) {
-      return { error: e instanceof Error ? e.message : "Sign up failed" };
+    } catch (error: unknown) {
+      return { error: error instanceof Error ? error.message : "Sign up failed" };
     }
   };
 
@@ -111,16 +143,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       const res = await api.login({ email, password });
       storeTokens(res.access_token, res.refresh_token);
-      setUser({ id: "mock-user", email: res.user.mail, full_name: res.user.name });
+      setUser({
+        id: "mock-user",
+        email: res.user.mail,
+        full_name: res.user.name,
+        partner_id: res.user.partner_id,
+        partner: res.user.partner ?? null,
+      });
       return { error: null };
-    } catch (e: unknown) {
-      if (isEmailConfirmationRequired(e)) {
+    } catch (error: unknown) {
+      if (isEmailConfirmationRequired(error)) {
         return { error: t("auth.error.confirmEmail") };
       }
-      if (e instanceof ApiError) {
-        if (e.status === 401 || e.status === 404) return { error: t("auth.error.invalidCredentials") };
+      if (error instanceof ApiError) {
+        if (error.status === 401 || error.status === 404) return { error: t("auth.error.invalidCredentials") };
       }
-      return { error: e instanceof Error ? e.message : t("auth.error.loginFailed") };
+      return { error: error instanceof Error ? error.message : t("auth.error.loginFailed") };
     }
   };
 

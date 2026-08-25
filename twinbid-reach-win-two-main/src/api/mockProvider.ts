@@ -3,7 +3,7 @@ import type {
   ApiCreateTransactionRequest, ApiPatchTransactionRequest,
   ApiNotification, StatsQueryRequest, StatsQueryResponse, StatsSummary,
   CalculatorRequest, CalculatorResponse, RecommendBidRequest, RecommendBidResponse,
-  AuthResponse, AuthTokens, ApiEnvelope,
+  AuthResponse, AuthTokens, ApiEnvelope, PartnerStatsResponse, SignupRequest,
 } from "./types";
 
 // -- Persistence (so the mock survives page reloads) -----------------------
@@ -25,6 +25,7 @@ const defaultUser: ApiUser = {
   campaign_status_notifications: true,
   low_balance_notifications: true,
   balance_treshold: 100,
+  partner_id: "TBDEMO2026PARTNER",
 };
 
 interface MockState {
@@ -46,6 +47,7 @@ function loadState(): MockState {
         delete parsed.topups;
       }
       if (!Array.isArray(parsed.creativeImages)) parsed.creativeImages = [];
+      parsed.user = { ...defaultUser, ...parsed.user };
       return parsed;
     }
   } catch { /* ignore */ }
@@ -57,7 +59,13 @@ function saveState() {
 
 const state: MockState = loadState();
 
-interface MockSession { user_id: string; email: string; full_name: string; }
+interface MockSession {
+  user_id: string;
+  email: string;
+  full_name: string;
+  partner_id: string;
+  partner?: string | null;
+}
 function loadSession(): MockSession | null {
   try {
     const raw = localStorage.getItem(SESSION_KEY);
@@ -98,7 +106,7 @@ const promoFixtures: Record<string, { id: string; bonus_percent: number }> = {
  */
 export const mockProvider = {
   // -- auth ---------------------------------------------------------------
-  async signup(body: { email: string; password: string; full_name?: string; telegram: string; manager_telegram: string; utm_source?: string }): Promise<ApiEnvelope<AuthResponse>> {
+  async signup(body: SignupRequest): Promise<ApiEnvelope<AuthResponse>> {
     state.user = {
       ...defaultUser,
       login: body.email,
@@ -107,15 +115,29 @@ export const mockProvider = {
       telegram: body.telegram,
       manager_telegram: body.manager_telegram,
       utm_source: body.utm_source ?? null,
+      partner_id: body.partner_id,
+      partner: body.partner ?? null,
     };
     saveState();
-    saveSession({ user_id: "mock-user", email: body.email, full_name: body.full_name || "" });
+    saveSession({
+      user_id: "mock-user",
+      email: body.email,
+      full_name: body.full_name || "",
+      partner_id: body.partner_id,
+      partner: body.partner ?? null,
+    });
     return ok({ access_token: "mock-access", refresh_token: "mock-refresh", user: state.user });
   },
   async login(body: { email: string; password: string }): Promise<ApiEnvelope<AuthResponse>> {
     state.user = { ...state.user, login: body.email, mail: body.email };
     saveState();
-    saveSession({ user_id: "mock-user", email: body.email, full_name: state.user.name });
+    saveSession({
+      user_id: "mock-user",
+      email: body.email,
+      full_name: state.user.name,
+      partner_id: state.user.partner_id,
+      partner: state.user.partner ?? null,
+    });
     return ok({ access_token: "mock-access", refresh_token: "mock-refresh", user: state.user });
   },
   async refresh(_body: { refresh_token: string }): Promise<ApiEnvelope<AuthTokens>> {
@@ -141,6 +163,15 @@ export const mockProvider = {
     state.user = { ...state.user, ...patch };
     saveState();
     return ok(state.user);
+  },
+
+  async getPartnerStats(): Promise<ApiEnvelope<PartnerStatsResponse>> {
+    return ok({
+      partner: "TBDEMO2026PARTNER",
+      advertisers: 0,
+      turnover: 0,
+      withdrawn: 0,
+    });
   },
 
   // -- campaigns ----------------------------------------------------------

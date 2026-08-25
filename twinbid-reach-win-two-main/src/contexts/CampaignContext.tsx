@@ -140,7 +140,7 @@ export interface Campaign {
   /** UI-only marker: creatives were explicitly loaded for this campaign. */
   creativesLoaded?: boolean;
   targeting: Record<string, TargetingState>;
-  /** Whether traffic classified as VPN/proxy is blocked for the campaign. */
+  /** Whether VPN-classified traffic is blocked for the campaign. */
   blockVpnTraffic: boolean;
   evenSpend: boolean;
   bannerSize?: string;
@@ -156,6 +156,11 @@ export interface Campaign {
 // New API shape: { isWhiteList: boolean, objects: string[] }.
 // Old shape (still accepted on read for backwards compatibility): { "<id>": 0 | 1 }.
 interface TargetingListPayload { isWhiteList: boolean; objects: string[] }
+function isTargetingListPayload(value: unknown): value is TargetingListPayload {
+  if (!value || typeof value !== "object") return false;
+  const candidate = value as Record<string, unknown>;
+  return typeof candidate.isWhiteList === "boolean" && Array.isArray(candidate.objects);
+}
 function targetingStateToPayload(t: TargetingState): TargetingListPayload {
   if (t.mode === "none" || t.items.length === 0) return { isWhiteList: true, objects: [] };
   return { isWhiteList: t.mode === "white", objects: t.items };
@@ -163,10 +168,9 @@ function targetingStateToPayload(t: TargetingState): TargetingListPayload {
 function targetingPayloadToState(m: TargetingListPayload | TargetingMap | undefined): TargetingState {
   if (!m) return { mode: "none", items: [] };
   // New shape
-  if ("isWhiteList" in m && typeof m.isWhiteList === "boolean" && "objects" in m && Array.isArray(m.objects)) {
-    const p = m as TargetingListPayload;
-    if (!p.objects.length) return { mode: "none", items: [] };
-    return { mode: p.isWhiteList ? "white" : "black", items: p.objects.map(String) };
+  if (isTargetingListPayload(m)) {
+    if (!m.objects.length) return { mode: "none", items: [] };
+    return { mode: m.isWhiteList ? "white" : "black", items: m.objects.map(String) };
   }
   // Old shape
   const entries = Object.entries(m as Record<string, unknown>);
@@ -236,7 +240,7 @@ function activeIntervalsToSchedule(intervals: ApiCampaign["active_intervals"] | 
 }
 
 function buildApiTargeting(targeting: Record<string, TargetingState>): Pick<ApiCampaign, TargetKey> {
-  const out = {} as Record<TargetKey, TargetingListPayload>;
+  const out: Partial<Record<TargetKey, TargetingListPayload>> = {};
   for (const [uiKey, apiKey] of TARGET_KEY_MAP) {
     const state = targeting[uiKey] || { mode: "none", items: [] };
     const expanded: TargetingState = { ...state, items: expandTargetingItems(uiKey, state.items) };
@@ -247,7 +251,7 @@ function buildApiTargeting(targeting: Record<string, TargetingState>): Pick<ApiC
 function readApiTargeting(c: ApiCampaign): Record<string, TargetingState> {
   return {
     ...Object.fromEntries(TARGET_KEY_MAP.map(([uiKey, apiKey]) => {
-      const state = targetingPayloadToState(c[apiKey] as TargetingListPayload | TargetingMap | undefined);
+      const state = targetingPayloadToState(c[apiKey]);
       return [uiKey, { ...state, items: collapseTargetingItems(uiKey, state.items) }];
     })),
     schedule: activeIntervalsToSchedule(c.active_intervals),
@@ -282,8 +286,7 @@ function mapApiCampaignToUi(c: ApiCampaign, creatives: Creative[], creativesLoad
     creatives,
     creativesLoaded,
     targeting: readApiTargeting(c),
-    // Older campaigns may not have this field yet. An omitted value means
-    // VPN filtering is disabled, matching the backend default.
+    // Omitted/null/false means that VPN filtering is disabled.
     blockVpnTraffic: c.block_vpn === true,
     evenSpend: !!c.evenness_by_slot_mode,
     bannerSize: c.w && c.h ? `${c.w}x${c.h}` : undefined,
@@ -431,9 +434,7 @@ function buildApiCampaignPatch(updates: Partial<Campaign>): Partial<ApiCampaign>
     Object.assign(p, buildApiTargeting(updates.targeting));
     p.active_intervals = scheduleToActiveIntervals(updates.targeting.schedule);
   }
-  if (updates.blockVpnTraffic !== undefined) {
-    p.block_vpn = updates.blockVpnTraffic;
-  }
+  if (updates.blockVpnTraffic !== undefined) p.block_vpn = updates.blockVpnTraffic;
   return p;
 }
 

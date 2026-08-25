@@ -6,6 +6,7 @@ import { PlatformStory } from "@/components/landing/PlatformStory";
 import { StartConditions } from "@/components/landing/StartConditions";
 import { TrafficCalculatorSection } from "@/components/landing/TrafficCalculatorSection";
 import { FormatsSection } from "@/components/landing/FormatsSection";
+import { PartnersLandingSection } from "@/components/landing/PartnersLandingSection";
 import { CTASection } from "@/components/landing/CTASection";
 import { Footer } from "@/components/landing/Footer";
 import { AnimatedBackground } from "@/components/landing/AnimatedBackground";
@@ -25,6 +26,7 @@ const Index = () => {
           <SignalProof />
           <PlatformStory />
           <TrafficCalculatorSection />
+          <PartnersLandingSection />
           <FormatsSection />
           <StartConditions />
           <CTASection />

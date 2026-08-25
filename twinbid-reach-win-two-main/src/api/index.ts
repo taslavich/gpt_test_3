@@ -22,11 +22,11 @@ function unwrap<T>(env: ApiEnvelope<T>): T {
 
 /** Build a proxy that calls `raw[method](...args)` then unwraps the envelope. */
 function makeUnwrapped(provider: RawApiProvider): ApiProvider {
-  const out = {} as Record<keyof RawApiProvider, unknown>;
-  for (const key of Object.keys(provider) as (keyof RawApiProvider)[]) {
-    const fn = provider[key] as unknown as (...args: unknown[]) => Promise<ApiEnvelope<unknown>>;
+  const out: Record<string, unknown> = {};
+  for (const key of Object.keys(provider)) {
+    const fn = Reflect.get(provider, key);
     if (typeof fn !== "function") continue;
-    out[key] = async (...args: unknown[]) => unwrap(await fn.apply(provider, args));
+    out[key] = async (...args: unknown[]) => unwrap(await Reflect.apply(fn, provider, args));
   }
   return out as ApiProvider;
 }

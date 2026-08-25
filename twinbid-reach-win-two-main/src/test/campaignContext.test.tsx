@@ -164,7 +164,7 @@ describe("CampaignProvider mutation requests", () => {
     );
   });
 
-  it("disables VPN filtering by default and sends an explicit block setting", async () => {
+  it("disables VPN filtering by default and sends an explicit block flag", async () => {
     const { result } = renderHook(() => useCampaigns(), { wrapper });
     await waitFor(() => expect(result.current.loading).toBe(false));
 
@@ -172,16 +172,16 @@ describe("CampaignProvider mutation requests", () => {
     await act(async () => {
       id = await result.current.addCampaign({ ...campaignDraft, creatives: [] });
     });
-    expect(apiMock.createCampaign).toHaveBeenCalledWith(
-      expect.objectContaining({ block_vpn: false }),
-    );
-    expect(apiMock.createCampaign.mock.calls[0][0]).not.toHaveProperty("vpn");
+    const createBody = apiMock.createCampaign.mock.calls.at(-1)?.[0];
+    expect(createBody).toEqual(expect.objectContaining({ block_vpn: false }));
+    expect(createBody).not.toHaveProperty("vpn");
 
     await act(async () => {
       await result.current.updateCampaign(id!, { blockVpnTraffic: true });
     });
+    const patchBody = apiMock.patchCampaign.mock.calls.at(-1)?.[1];
     expect(apiMock.patchCampaign).toHaveBeenCalledWith(id, { block_vpn: true });
-    expect(apiMock.patchCampaign.mock.calls[0][1]).not.toHaveProperty("vpn");
+    expect(patchBody).not.toHaveProperty("vpn");
   });
 
   it("keeps the technical banner size on status updates", async () => {
@@ -235,10 +235,10 @@ describe("CampaignProvider mutation requests", () => {
     expect(apiMock.listCampaigns).toHaveBeenCalledTimes(1);
     expect(apiMock.readCreatives).not.toHaveBeenCalled();
     expect(result.current.campaigns.every(campaign => campaign.creatives.length === 0)).toBe(true);
-    expect(result.current.campaigns.every(campaign => campaign.blockVpnTraffic)).toBe(false);
+    expect(result.current.campaigns.every(campaign => !campaign.blockVpnTraffic)).toBe(true);
   });
 
-  it("maps block_vpn=true from the API to an enabled VPN filter", async () => {
+  it("maps block_vpn=true from the API without inverting its meaning", async () => {
     apiMock.listCampaigns.mockResolvedValue({
       items: [{ ...apiCampaign, block_vpn: true }],
       total: 1,

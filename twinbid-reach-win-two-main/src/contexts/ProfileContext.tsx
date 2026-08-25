@@ -14,13 +14,15 @@ export interface Profile {
   notifyCampaignStatus: boolean;
   notifyLowBalance: boolean;
   managerTelegram: string;
+  partnerId: string;
+  partner: string | null;
 }
 
 interface ProfileContextType {
   profile: Profile | null;
   loading: boolean;
   refetch: () => Promise<void>;
-  updateProfile: (updates: Partial<Omit<Profile, "id">>) => Promise<void>;
+  updateProfile: (updates: Partial<Omit<Profile, "id" | "partnerId" | "partner">>) => Promise<void>;
 }
 
 const ProfileContext = createContext<ProfileContextType | null>(null);
@@ -37,6 +39,8 @@ function fromApi(u: ApiUser, id: string, _prev?: Profile | null): Profile {
     notifyCampaignStatus: u.campaign_status_notifications,
     notifyLowBalance: u.low_balance_notifications,
     managerTelegram: u.manager_telegram || "",
+    partnerId: u.partner_id,
+    partner: u.partner ?? null,
   };
 }
 
@@ -69,7 +73,7 @@ export function ProfileProvider({ children }: { children: ReactNode }) {
     return () => window.clearInterval(interval);
   }, [fetchProfile, user]);
 
-  const updateProfile = useCallback(async (updates: Partial<Omit<Profile, "id">>) => {
+  const updateProfile = useCallback(async (updates: Partial<Omit<Profile, "id" | "partnerId" | "partner">>) => {
     if (!user) return;
     const patch: Partial<ApiUser> & Record<string, unknown> = {};
     if (updates.fullName !== undefined) patch.name = updates.fullName ?? "";

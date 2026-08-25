@@ -1,5 +1,5 @@
 import { motion, useScroll, useTransform, MotionValue } from "framer-motion";
-import { useRef, ReactNode, useEffect, useState, createElement, type ElementType } from "react";
+import { useRef, ReactNode, useEffect, useState, createElement } from "react";
 import { cn } from "@/lib/utils";
 
 /** True on touch/small screens or when user prefers reduced motion. */
@@ -59,7 +59,7 @@ export function WordsReveal({
     );
   }
 
-  const MotionTag = motion[Tag as keyof typeof motion] as unknown as ElementType;
+  const MotionTag = motion[Tag as keyof typeof motion] as unknown as typeof motion.span;
   return (
     <MotionTag
       key={text}

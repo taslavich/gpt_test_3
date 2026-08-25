@@ -20,6 +20,7 @@ const DashboardCampaigns = lazy(() => import("./pages/DashboardCampaigns"));
 const DashboardStatistics = lazy(() => import("./pages/DashboardStatistics"));
 const TrafficCalculator = lazy(() => import("./pages/TrafficCalculator"));
 const DashboardPostback = lazy(() => import("./pages/DashboardPostback"));
+const DashboardPartners = lazy(() => import("./pages/DashboardPartners"));
 const DashboardBalance = lazy(() => import("./pages/DashboardBalance"));
 const DashboardSettings = lazy(() => import("./pages/DashboardSettings"));
 const CreateCampaign = lazy(() => import("./pages/CreateCampaign"));
@@ -27,6 +28,7 @@ const EditCampaign = lazy(() => import("./pages/EditCampaign"));
 const Verify = lazy(() => import("./pages/Verify"));
 const Legal = lazy(() => import("./pages/Legal"));
 const TwinBidMoney = lazy(() => import("./pages/TwinBidMoney"));
+const Partners = lazy(() => import("./pages/Partners"));
 
 const queryClient = new QueryClient();
 
@@ -53,6 +55,7 @@ const App = () => (
                 <Route path="/legal" element={<Legal />} />
                 <Route path="/twinbid_money" element={<TwinBidMoney />} />
                 <Route path="/twinbid/twinbid_money" element={<TwinBidMoney />} />
+                <Route path="/partners" element={<Partners />} />
                 <Route path="/dashboard" element={<ProtectedRoute><DashboardProviders /></ProtectedRoute>}>
                   <Route index element={<DashboardOverview />} />
                   <Route path="campaigns" element={<DashboardCampaigns />} />
@@ -61,6 +64,7 @@ const App = () => (
                   <Route path="statistics" element={<DashboardStatistics />} />
                   <Route path="traffic-calculator" element={<TrafficCalculator />} />
                   <Route path="postback" element={<DashboardPostback />} />
+                  <Route path="partners" element={<DashboardPartners />} />
                   <Route path="balance" element={<DashboardBalance />} />
                   <Route path="settings" element={<DashboardSettings />} />
                 </Route>

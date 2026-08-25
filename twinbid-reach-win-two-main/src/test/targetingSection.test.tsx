@@ -74,7 +74,7 @@ describe("targeting list controls", () => {
     expect(within(ipCard as HTMLElement).getByText("10.20.0.0/16")).toBeInTheDocument();
   });
 
-  it("disables VPN filtering by default and lets the advertiser enable it", () => {
+  it("keeps VPN filtering disabled by default and lets the advertiser enable it", () => {
     render(<VpnHarness />);
 
     const toggle = screen.getByRole("switch", { name: "Block VPN traffic" });

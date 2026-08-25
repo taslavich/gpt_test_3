@@ -3,12 +3,16 @@ import { Menu, X } from "lucide-react";
 import { AuthDialog } from "./AuthDialog";
 import { LanguageSelector } from "@/components/LanguageSelector";
 import { useLanguage } from "@/contexts/LanguageContext";
+import { useLocation } from "react-router-dom";
 import twinbidLogo from "@/assets/twinbid-logo.svg";
 
 export function Header() {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
   const { t } = useLanguage();
+  const location = useLocation();
+  const isHome = location.pathname === "/";
+  const sectionHref = (anchor: string) => isHome ? anchor : `/${anchor}`;
 
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 24);
@@ -18,9 +22,10 @@ export function Header() {
   }, []);
 
   const navLinks = [
-    { label: t("nav.howWorks"), href: "#platform-story" },
-    { label: t("nav.formats"), href: "#formats" },
-    { label: t("nav.howToStart"), href: "#steps" },
+    { label: t("nav.howWorks"), href: sectionHref("#platform-story") },
+    { label: t("nav.formats"), href: sectionHref("#formats") },
+    { label: t("nav.partners"), href: "/partners" },
+    { label: t("nav.howToStart"), href: sectionHref("#steps") },
   ];
 
   const solid = scrolled || isMenuOpen;
@@ -35,7 +40,7 @@ export function Header() {
         }`}
       >
         <div className="relative flex h-[60px] items-center justify-between px-4 md:px-5">
-          <a href="#" className="flex items-center gap-2 shrink-0 relative z-10">
+          <a href="/" className="flex items-center gap-2 shrink-0 relative z-10">
             <img src={twinbidLogo} alt="TwinBid" className="h-9 md:h-10" />
           </a>
 

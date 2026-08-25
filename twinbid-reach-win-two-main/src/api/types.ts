@@ -31,6 +31,33 @@ export interface ApiUser {
   low_balance_notifications: boolean;
   balance_treshold: number;
   utm_source?: string | null;
+  /** User's own permanent public partner ID, created during signup. */
+  partner_id: string;
+  /** Partner ID of the user who referred this user. */
+  partner?: string | null;
+}
+
+export interface SignupRequest {
+  email: string;
+  password: string;
+  full_name?: string;
+  telegram: string;
+  manager_telegram: string;
+  utm_source?: string;
+  /** User's own permanent public partner ID. */
+  partner_id: string;
+  /** Partner ID captured from `?partner=...`, when present. */
+  partner?: string | null;
+}
+
+/** Aggregated TwinBid Partners dashboard data for the authenticated user. */
+export interface PartnerStatsResponse {
+  /** Public affiliate code used in `?partner=...` links. */
+  partner: string;
+  advertisers: number;
+  /** Total amount spent by all advertisers assigned to this partner. */
+  turnover: number;
+  withdrawn: number;
 }
 
 export interface ApiCampaign {
@@ -60,7 +87,7 @@ export interface ApiCampaign {
   browser: TargetingMap;
   site_id: TargetingMap;
   ip: TargetingMap;
-  /** `true` means VPN-classified traffic is blocked for the campaign. */
+  /** When true, VPN-classified traffic is blocked for the campaign. */
   block_vpn?: boolean;
   quality_type: "usual" | "high" | "ultra";
   /** Fixed reward per conversion (USD). Used in statistics when the postback does not deliver a payout value. */

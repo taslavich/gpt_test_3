@@ -13,13 +13,21 @@ import { createRoot } from "react-dom/client";
 import App from "./App.tsx";
 import "./index.css";
 import { captureUtmSourceFromUrl } from "./lib/utmSource";
+import { capturePartnerCodeFromUrl } from "./lib/partners";
+
+declare global {
+  interface Window {
+    error_showed: boolean;
+  }
+}
 
 // Global toggle for surfacing API error toasts in the UI.
 // Flip to `false` to silence error toasts (errors will still log to console).
-(window as Window & { error_showed?: boolean }).error_showed = true;
+window.error_showed = true;
 
 // Persist ?utm_source=... as soon as possible so it survives navigation
 // between the landing page and the auth dialog.
 captureUtmSourceFromUrl();
+capturePartnerCodeFromUrl();
 
 createRoot(document.getElementById("root")!).render(<App />);
