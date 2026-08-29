@@ -24,6 +24,7 @@ import (
 	auction "gitlab.com/twinbid-exchange/RTB-exchange/internal/services/adv/service"
 	advWeb "gitlab.com/twinbid-exchange/RTB-exchange/internal/services/adv/web"
 	antiControl "gitlab.com/twinbid-exchange/RTB-exchange/internal/services/antiperekrut"
+	"gitlab.com/twinbid-exchange/RTB-exchange/internal/services/percenter"
 	redisService "gitlab.com/twinbid-exchange/RTB-exchange/internal/services/redis"
 	"google.golang.org/grpc"
 )
@@ -61,6 +62,30 @@ func main() {
 		log.Fatalf("ADV winner Redis unavailable: %v", err)
 	}
 
+	percenterRedisAddr := strings.TrimSpace(cfg.RedisADVAddr)
+	percenterRedis, err := redisService.NewRedisClient(percenterRedisAddr, cfg.RedisPassword, cfg.RedisDBAdvPercenter, cfg.RedisPoolSize, cfg.RedisMinIdleConns)
+	if err != nil {
+		log.Fatalf("cannot initialize ADV percenter Redis DB %d: %v", cfg.RedisDBAdvPercenter, err)
+	}
+	defer percenterRedis.Close()
+	if err := percenterRedis.Ping(ctx).Err(); err != nil {
+		log.Fatalf("ADV percenter Redis unavailable: %v", err)
+	}
+	percenterPolicy := percenter.Policy{
+		BuyoutRetention:        cfg.BuyoutRetention,
+		EfficiencyRetention:    cfg.EfficiencyRetention,
+		DefaultMinMargin:       cfg.DefaultMinMargin,
+		PromoMinMargin:         cfg.PromoMinMargin,
+		MaxMargin:              cfg.MaxMargin,
+		SSPSearchPrecision:     cfg.SSPSearchPrecision,
+		MarginSearchStepsPP:    append([]float64(nil), cfg.MarginSearchSteps...),
+		SSPReoptimizeInterval:  cfg.SSPReoptimizeInterval,
+		MarginOptimizeInterval: cfg.MarginOptimizeInterval,
+		SegmentStateTTL:        cfg.PercenterSegmentStateTTL,
+		ADVCacheTTL:            cfg.PercenterADVCacheTTL,
+	}.Normalize()
+	percenterStore := percenter.NewStateStore(percenterRedis, percenterPolicy)
+
 	percentStore, err := auction.NewPercentStore(cfg.AdvPercentMapFilePath)
 	if err != nil {
 		log.Fatalf("cannot initialize ADV percent map: %v", err)
@@ -93,6 +118,7 @@ func main() {
 	runtimeStore := auction.NewRuntimeStore(runtimeRedis, cfg.AdvPacingCurrentTTL, cfg.AdvPacingSlotTTL)
 	winnerStore := auction.NewWinnerStore(winnerRedis, cfg.AdvWinnerTTL)
 	auctionService := auction.NewAuctionService(runtimeStore, winnerStore, percentStore, qualityStore, siteIDQualityStore)
+	auctionService.SetSmartPercenter(percenterStore, percenterPolicy)
 	auctionService.SetVPNClassifier(vpnStore)
 	auctionService.SetAntiPerekrutEnabled(cfg.AntiperekrutEnabled)
 	auctionService.StartDiagnostics(ctx)
@@ -250,11 +276,14 @@ func validateConfig(cfg *config.AdvConfig) error {
 	if cfg == nil {
 		return fmt.Errorf("config is nil")
 	}
-	if cfg.RedisDBAdvRuntime != 5 || cfg.RedisDBAdvWinner != 6 {
-		return fmt.Errorf("ADV requires Redis DB 5 for runtime and DB 6 for winners")
+	if cfg.RedisDBAdvRuntime != 5 || cfg.RedisDBAdvWinner != 6 || cfg.RedisDBAdvPercenter != 7 {
+		return fmt.Errorf("ADV requires Redis DB 5 for runtime, DB 6 for winners, and DB 7 for percenter")
 	}
 	if strings.TrimSpace(cfg.RedisUUIDAddr) == "" && len(cfg.RedisShardAddrs) == 0 {
 		return fmt.Errorf("REDIS_UUID_ADDR or REDIS_SHARD_ADDRS is required")
+	}
+	if strings.TrimSpace(cfg.RedisADVAddr) == "" {
+		return fmt.Errorf("REDIS_ADV_ADDR is required for percenter state")
 	}
 	if strings.TrimSpace(cfg.AdvPercentMapFilePath) == "" {
 		return fmt.Errorf("ADV_PERCENT_MAP_FILE_PATH is required")

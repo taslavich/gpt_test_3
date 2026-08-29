@@ -57,7 +57,6 @@ const (
 	diagPacingSlotLimitReached
 	diagNoCreativesConfigured
 	diagEffectivePriceNonPositive
-	diagEffectivePriceBelowBidFloor
 
 	// Campaign request filters.
 	diagCountryFilterRejected
@@ -197,7 +196,6 @@ var diagnosticDefinitions = [diagnosticReasonCount]diagnosticDefinition{
 	diagPacingSlotLimitReached:             {Code: 316, Name: "pacing_slot_limit_reached", Description: "current slot spend reached its pacing target", Scope: diagnosticScopeCampaign},
 	diagNoCreativesConfigured:              {Code: 317, Name: "no_creatives_configured", Description: "campaign has no creatives", Scope: diagnosticScopeCampaign},
 	diagEffectivePriceNonPositive:          {Code: 318, Name: "effective_price_non_positive", Description: "effective auction price after deduction is non-positive or non-finite", Scope: diagnosticScopeCampaign},
-	diagEffectivePriceBelowBidFloor:        {Code: 319, Name: "effective_price_below_bidfloor", Description: "effective auction price is below impression bid floor", Scope: diagnosticScopeCampaign},
 	diagCountryFilterRejected:              {Code: 330, Name: "country_filter_rejected", Description: "request failed campaign country filter", Scope: diagnosticScopeCampaign},
 	diagLanguageFilterRejected:             {Code: 331, Name: "language_filter_rejected", Description: "request failed campaign language filter", Scope: diagnosticScopeCampaign},
 	diagDeviceTypeFilterRejected:           {Code: 332, Name: "device_type_filter_rejected", Description: "request failed campaign device-type filter", Scope: diagnosticScopeCampaign},

@@ -268,18 +268,24 @@ func TestMatchingBannerCreativesFiltersImageMIMEAndAllowsIframe(t *testing.T) {
 	}
 }
 
-func TestEffectivePriceMeetsBidFloor(t *testing.T) {
-	floor := float32(0.75)
-	imp := &ortb.Imp{Bidfloor: &floor}
+func TestInternalAuctionUsesOriginalBidInsteadOfPercenterPrice(t *testing.T) {
+	candidates := []candidate{
+		{campaign: &Campaign{ID: "higher-original", BasePrice: 1.00}, effectivePrice: 0.40, advertiserPrice: 0.60},
+		{campaign: &Campaign{ID: "lower-original", BasePrice: 0.80}, effectivePrice: 0.70, advertiserPrice: 0.79},
+	}
 
-	if effectivePriceMeetsBidFloor(0.74, imp) {
-		t.Fatal("effective price below bidfloor must be rejected")
+	maxBidPool := prepareCandidatePool(candidates, auctionModeMaxBid, nil)
+	if len(maxBidPool) != 2 || maxBidPool[0].campaign.ID != "higher-original" {
+		t.Fatalf("max-bid pool order must use original bid, got %#v", maxBidPool)
 	}
-	if !effectivePriceMeetsBidFloor(0.75, imp) {
-		t.Fatal("effective price equal to bidfloor must be accepted")
+
+	weightedTopPool := prepareCandidatePool(candidates, auctionModeWeightedTop, nil)
+	if len(weightedTopPool) != 2 {
+		t.Fatalf("both campaigns are within 80%% of the original top bid; pool=%#v", weightedTopPool)
 	}
-	if !effectivePriceMeetsBidFloor(0.76, imp) {
-		t.Fatal("effective price above bidfloor must be accepted")
+
+	if got := weightedCandidateIndex(candidates, 0.50); got != 0 {
+		t.Fatalf("weighted draw must use original bid weights; index=%d want 0", got)
 	}
 }
 

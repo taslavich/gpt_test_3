@@ -116,6 +116,18 @@ func (s *AuctionService) RefreshFromPostgres(ctx context.Context, db *sql.DB) er
 		s.excludeInvalidIPCampaignsFromCurrentSnapshot(warnings)
 		return err
 	}
+	if s != nil && s.smartPercenter != nil && snapshot != nil {
+		policy := s.percenterPolicy.Normalize()
+		for _, campaign := range snapshot.Campaigns {
+			if campaign == nil || strings.TrimSpace(campaign.ID) == "" {
+				continue
+			}
+			minMargin := policy.MinMargin(snapshot.UserPromoSpendRemaining[campaign.UserID])
+			if _, versionErr := s.smartPercenter.EnsureCampaignVersion(ctx, campaign.ID, campaign.TypeModel, campaign.BasePrice, minMargin); versionErr != nil {
+				log.Printf("ADV snapshot: percenter campaign version sync failed campaign_id=%s: %v", campaign.ID, versionErr)
+			}
+		}
+	}
 	return s.PublishSnapshot(snapshot)
 }
 
@@ -171,6 +183,7 @@ func (s *AuctionService) excludeInvalidIPCampaignsFromCurrentSnapshot(warnings [
 	filtered := &Snapshot{
 		Campaigns:               make([]*Campaign, 0, len(current.Campaigns)),
 		UserGoals:               cloneFloatMap(current.UserGoals),
+		UserPromoSpendRemaining: cloneFloatMap(current.UserPromoSpendRemaining),
 		UserAntiPerekrutBlocked: cloneBoolMap(current.UserAntiPerekrutBlocked),
 		LoadedAt:                current.LoadedAt,
 	}
@@ -230,6 +243,7 @@ func loadSnapshotFromPostgres(ctx context.Context, db *sql.DB) (*Snapshot, []sna
 		user_id::text,
 		campaign_id::text,
 		base_price::text,
+		type_model,
 		evenness_by_slot_mode,
 		block_vpn,
 		start_ts,
@@ -269,7 +283,7 @@ func loadSnapshotFromPostgres(ctx context.Context, db *sql.DB) (*Snapshot, []sna
 		activeRows++
 		var row campaignDBRow
 		if err := rows.Scan(
-			&row.UserID, &row.CampaignID, &row.BasePrice,
+			&row.UserID, &row.CampaignID, &row.BasePrice, &row.TypeModel,
 			&row.Evenness, &row.BlockVPN, &row.StartTS, &row.EndTS, &row.ActiveIntervals,
 			&row.Country, &row.Language, &row.DeviceType, &row.OS, &row.Browser, &row.SiteID, &row.IP,
 			&row.Format, &row.Quality, &row.PricingModel, &row.Status, &row.TrafficType,
@@ -330,7 +344,7 @@ func loadSnapshotFromPostgres(ctx context.Context, db *sql.DB) (*Snapshot, []sna
 	for id := range userSet {
 		userIDs = append(userIDs, id)
 	}
-	userGoals, userAntiPerekrutBlocked, err := loadUsersBatch(ctx, db, userIDs)
+	userGoals, userPromoSpendRemaining, userAntiPerekrutBlocked, err := loadUsersBatch(ctx, db, userIDs)
 	if err != nil {
 		return nil, warnings, err
 	}
@@ -352,13 +366,14 @@ func loadSnapshotFromPostgres(ctx context.Context, db *sql.DB) (*Snapshot, []sna
 	if activeRows > 0 && len(validCampaigns) == 0 && invalidIPRows != activeRows {
 		return nil, warnings, fmt.Errorf("all %d active campaign rows were invalid; previous snapshot must be retained", activeRows)
 	}
-	return &Snapshot{Campaigns: validCampaigns, UserGoals: userGoals, UserAntiPerekrutBlocked: userAntiPerekrutBlocked, LoadedAt: loadedAt}, warnings, nil
+	return &Snapshot{Campaigns: validCampaigns, UserGoals: userGoals, UserPromoSpendRemaining: userPromoSpendRemaining, UserAntiPerekrutBlocked: userAntiPerekrutBlocked, LoadedAt: loadedAt}, warnings, nil
 }
 
 type campaignDBRow struct {
 	UserID              sql.NullString
 	CampaignID          sql.NullString
 	BasePrice           sql.NullString
+	TypeModel           sql.NullInt64
 	GoalTotalDollars    sql.NullString
 	TrafficResetVersion sql.NullInt64
 	UpdatedAt           sql.NullTime
@@ -410,6 +425,13 @@ func (r campaignDBRow) campaign() (*Campaign, error) {
 	if basePrice <= 0 {
 		return nil, fmt.Errorf("campaign %s base_price must be positive", id)
 	}
+	typeModel := 1
+	if r.TypeModel.Valid && r.TypeModel.Int64 != 0 {
+		typeModel = int(r.TypeModel.Int64)
+	}
+	if typeModel != 1 && typeModel != 2 {
+		return nil, fmt.Errorf("campaign %s has invalid type_model", id)
+	}
 	status := strings.ToLower(strings.TrimSpace(r.Status.String))
 	pricingModel := strings.ToUpper(strings.TrimSpace(r.PricingModel.String))
 	format := normalizeFormat(r.Format.String)
@@ -420,6 +442,9 @@ func (r campaignDBRow) campaign() (*Campaign, error) {
 	}
 	if pricingModel != PricingModelCPM && pricingModel != PricingModelCPC {
 		return nil, fmt.Errorf("campaign %s has invalid pricing_model", id)
+	}
+	if typeModel == 2 && pricingModel != PricingModelCPM {
+		return nil, fmt.Errorf("smart campaign %s must use CPM pricing", id)
 	}
 	if format == "" || trafficType == "" {
 		return nil, fmt.Errorf("campaign %s has invalid format or traffic_type", id)
@@ -481,7 +506,7 @@ func (r campaignDBRow) campaign() (*Campaign, error) {
 		PricingModel: pricingModel,
 		Format:       format, TrafficType: trafficType,
 		QualitySegment: quality,
-		BasePrice:      basePrice, GoalTotalDollars: goalTotalDollars, EvennessBySlotMode: r.Evenness.Valid && r.Evenness.Bool, BlockVPN: r.BlockVPN.Valid && r.BlockVPN.Bool,
+		BasePrice:      basePrice, TypeModel: typeModel, GoalTotalDollars: goalTotalDollars, EvennessBySlotMode: r.Evenness.Valid && r.Evenness.Bool, BlockVPN: r.BlockVPN.Valid && r.BlockVPN.Bool,
 		StartTS: r.StartTS.Time.UTC(), EndTS: r.EndTS.Time.UTC(), ActiveIntervals: activeIntervals,
 		CountryFilter: country, LanguageFilter: language, DeviceTypeFilter: deviceType,
 		OSFilter: osFilter, BrowserFilter: browser, SiteIDFilter: siteID, IPFilter: ip,
@@ -582,11 +607,12 @@ func loadCreativesBatch(ctx context.Context, db *sql.DB, campaignIDs []string, c
 	return rows.Err()
 }
 
-func loadUsersBatch(ctx context.Context, db *sql.DB, userIDs []string) (map[string]float64, map[string]bool, error) {
+func loadUsersBatch(ctx context.Context, db *sql.DB, userIDs []string) (map[string]float64, map[string]float64, map[string]bool, error) {
 	goals := make(map[string]float64, len(userIDs))
+	promoRemaining := make(map[string]float64, len(userIDs))
 	blocked := make(map[string]bool, len(userIDs))
 	if len(userIDs) == 0 {
-		return goals, blocked, nil
+		return goals, promoRemaining, blocked, nil
 	}
 	rows, err := db.QueryContext(
 		ctx,
@@ -594,6 +620,7 @@ func loadUsersBatch(ctx context.Context, db *sql.DB, userIDs []string) (map[stri
 			SELECT
 				id::text,
 				goal_total_dollars::text,
+				promo_spend_remaining::text,
 				antiperekrut_blocked
 			FROM users
 			WHERE id::text = ANY($1)
@@ -601,38 +628,30 @@ func loadUsersBatch(ctx context.Context, db *sql.DB, userIDs []string) (map[stri
 		pq.Array(userIDs),
 	)
 	if err != nil {
-		return nil, nil, fmt.Errorf(
-			"batch query users goal/antiperekrut marker: %w",
-			err,
-		)
+		return nil, nil, nil, fmt.Errorf("batch query users goal/promo/antiperekrut marker: %w", err)
 	}
 	defer rows.Close()
 	for rows.Next() {
-		var id, rawGoal string
+		var id, rawGoal, rawPromo string
 		var isBlocked bool
-		if err := rows.Scan(&id, &rawGoal, &isBlocked); err != nil {
-			return nil, nil, fmt.Errorf(
-				"scan users goal/antiperekrut marker: %w",
-				err,
-			)
+		if err := rows.Scan(&id, &rawGoal, &rawPromo, &isBlocked); err != nil {
+			return nil, nil, nil, fmt.Errorf("scan users goal/promo/antiperekrut marker: %w", err)
 		}
 		id = strings.TrimSpace(id)
-		goal, err := parseFiniteNonNegative(rawGoal)
-		if id == "" || err != nil {
-			log.Printf(
-				"ADV snapshot: skipping invalid users.goal_total_dollars row for user %q: %v",
-				id,
-				err,
-			)
+		goal, goalErr := parseFiniteNonNegative(rawGoal)
+		promo, promoErr := parseFiniteNonNegative(rawPromo)
+		if id == "" || goalErr != nil || promoErr != nil {
+			log.Printf("ADV snapshot: skipping invalid users goal/promo row for user %q: goal_err=%v promo_err=%v", id, goalErr, promoErr)
 			continue
 		}
 		goals[id] = goal
+		promoRemaining[id] = promo
 		blocked[id] = isBlocked
 	}
 	if err := rows.Err(); err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
-	return goals, blocked, nil
+	return goals, promoRemaining, blocked, nil
 }
 
 func parseFiniteNonNegative(value string) (float64, error) {

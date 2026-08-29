@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"strconv"
 	"strings"
 	"time"
 
@@ -96,6 +97,23 @@ func (m *MapStringToStringSlice) SetValue(value string) error {
 }
 
 // Кастомный тип для []string
+type ListFloat64 []float64
+
+func (l *ListFloat64) SetValue(value string) error {
+	*l = make(ListFloat64, 0)
+	if strings.TrimSpace(value) == "" {
+		return nil
+	}
+	for _, item := range strings.Split(value, ",") {
+		parsed, err := strconv.ParseFloat(strings.TrimSpace(item), 64)
+		if err != nil {
+			return fmt.Errorf("invalid float list item %q: %w", item, err)
+		}
+		*l = append(*l, parsed)
+	}
+	return nil
+}
+
 type ListString []string
 
 func (l *ListString) SetValue(value string) error {
@@ -281,8 +299,23 @@ type AdmAdapterConfig struct {
 	RedisConfig
 }
 
+type PercenterAlgorithmConfig struct {
+	SSPReoptimizeInterval    time.Duration `yaml:"SSP_REOPTIMIZE_INTERVAL" env:"SSP_REOPTIMIZE_INTERVAL" env-default:"6h"`
+	MarginOptimizeInterval   time.Duration `yaml:"MARGIN_OPTIMIZE_INTERVAL" env:"MARGIN_OPTIMIZE_INTERVAL" env-default:"5m"`
+	BuyoutRetention          float64       `yaml:"BUYOUT_RETENTION" env:"BUYOUT_RETENTION" env-default:"0.80"`
+	EfficiencyRetention      float64       `yaml:"EFFICIENCY_RETENTION" env:"EFFICIENCY_RETENTION" env-default:"0.80"`
+	DefaultMinMargin         float64       `yaml:"DEFAULT_MIN_MARGIN" env:"DEFAULT_MIN_MARGIN" env-default:"0.20"`
+	PromoMinMargin           float64       `yaml:"PROMO_MIN_MARGIN" env:"PROMO_MIN_MARGIN" env-default:"0.30"`
+	MaxMargin                float64       `yaml:"MAX_MARGIN" env:"MAX_MARGIN" env-default:"0.90"`
+	SSPSearchPrecision       float64       `yaml:"SSP_SEARCH_PRECISION" env:"SSP_SEARCH_PRECISION" env-default:"0.01"`
+	MarginSearchSteps        ListFloat64   `yaml:"MARGIN_SEARCH_STEPS" env:"MARGIN_SEARCH_STEPS" env-default:"10,5,2,1"`
+	PercenterSegmentStateTTL time.Duration `yaml:"PERCENTER_SEGMENT_STATE_TTL" env:"PERCENTER_SEGMENT_STATE_TTL" env-default:"168h"`
+	PercenterADVCacheTTL     time.Duration `yaml:"PERCENTER_ADV_CACHE_TTL" env:"PERCENTER_ADV_CACHE_TTL" env-default:"5s"`
+}
+
 type AdvConfig struct {
 	AntiperekrutControlConfig
+	PercenterAlgorithmConfig
 	HttpServer HttpServer
 	GrpcServer GrpcServer
 	RedisConfig
@@ -358,8 +391,11 @@ type BatchRatioConfig struct {
 }
 
 type PercenterConfig struct {
-	Clickhouse     ClickhouseConfig
-	UriOfBidEngine string `yaml:"URI_OF_BID_ENGINE" env:"URI_OF_BID_ENGINE"`
+	ClickhouseConfig
+	RedisConfig
+	PercenterAlgorithmConfig
+	BotBaseURL        string `yaml:"BOT_BASE_URL" env:"BOT_BASE_URL"`
+	BotInternalSecret string `yaml:"BOT_INTERNAL_SECRET" env:"BOT_INTERNAL_SECRET"`
 }
 
 type ClickhouseLoaderConfig struct {
@@ -427,9 +463,10 @@ type RedisConfig struct {
 	BatchSizeConversionsPercent float64 `yaml:"BATCH_SIZE_CONVERSIONS_PERCENT" env:"BATCH_SIZE_CONVERSIONS_PERCENT"`
 	RedisSetConversions         string  `yaml:"REDIS_SET_CONVERSIONS" env:"REDIS_SET_CONVERSIONS" env-default:"conversions:ready"`
 
-	RedisDBAdvRuntime int    `yaml:"REDIS_DB_ADV_RUNTIME" env:"REDIS_DB_ADV_RUNTIME" env-default:"5"`
-	RedisDBAdvWinner  int    `yaml:"REDIS_DB_ADV_WINNER" env:"REDIS_DB_ADV_WINNER" env-default:"6"`
-	RedisADVAddr      string `env:"REDIS_ADV_ADDR,required"`
+	RedisDBAdvRuntime   int    `yaml:"REDIS_DB_ADV_RUNTIME" env:"REDIS_DB_ADV_RUNTIME" env-default:"5"`
+	RedisDBAdvWinner    int    `yaml:"REDIS_DB_ADV_WINNER" env:"REDIS_DB_ADV_WINNER" env-default:"6"`
+	RedisDBAdvPercenter int    `yaml:"REDIS_DB_ADV_PERCENTER" env:"REDIS_DB_ADV_PERCENTER" env-default:"7"`
+	RedisADVAddr        string `yaml:"REDIS_ADV_ADDR" env:"REDIS_ADV_ADDR"`
 }
 
 type KafkaConfig struct {
@@ -465,7 +502,7 @@ type GrpcServer struct {
 }
 
 func getEnvFileNames() []string {
-	return []string{".env.local", ".env", "bid-engine.env", "clickhouse-loader.env", "kafka-loader.env", "dsp1.env", "dsp2.env", "dsp3.env", "orchestrator.env", "router.env", "spp-adapter.env", "adm-adapter.env", "adv.env"}
+	return []string{".env.local", ".env", "bid-engine.env", "clickhouse-loader.env", "kafka-loader.env", "dsp1.env", "dsp2.env", "dsp3.env", "orchestrator.env", "router.env", "spp-adapter.env", "adm-adapter.env", "adv.env", "percenter.env"}
 }
 
 func LoadConfig[
