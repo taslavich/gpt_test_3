@@ -134,21 +134,24 @@ func BaselineState(segmentHash, campaignID string, originalBid, minMargin float6
 	}
 	ssp := originalBid * (1 - minMargin)
 	return State{
-		SegmentHash:         segmentHash,
-		CampaignID:          campaignID,
-		CampaignVersion:     campaignRevision,
-		PointVersion:        1,
-		OriginalBid:         originalBid,
-		MinMargin:           minMargin,
-		AdvertiserPrice:     originalBid,
-		SSPBid:              ssp,
-		Margin:              minMargin,
-		Phase:               PhaseBenchmark,
-		SSPLow:              0,
-		SSPHigh:             ssp,
-		MarginDirection:     1,
-		LastChangeAt:        now,
-		LastSSPReoptimizeAt: now,
+		SegmentHash:     segmentHash,
+		CampaignID:      campaignID,
+		CampaignVersion: campaignRevision,
+		PointVersion:    1,
+		OriginalBid:     originalBid,
+		MinMargin:       minMargin,
+		AdvertiserPrice: originalBid,
+		SSPBid:          ssp,
+		Margin:          minMargin,
+		Phase:           PhaseBenchmark,
+		SSPLow:          0,
+		SSPHigh:         ssp,
+		MarginDirection: 1,
+		LastChangeAt:    now,
+		// Zero means that the current SSP optimization cycle has not completed yet.
+		// The 6h cadence starts only after the binary search converges, otherwise a
+		// sparse segment could be reset on every rare request and never finish.
+		LastSSPReoptimizeAt: time.Time{},
 		UpdatedAt:           now,
 	}
 }

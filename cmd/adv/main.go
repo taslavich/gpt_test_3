@@ -118,7 +118,7 @@ func main() {
 	runtimeStore := auction.NewRuntimeStore(runtimeRedis, cfg.AdvPacingCurrentTTL, cfg.AdvPacingSlotTTL)
 	winnerStore := auction.NewWinnerStore(winnerRedis, cfg.AdvWinnerTTL)
 	auctionService := auction.NewAuctionService(runtimeStore, winnerStore, percentStore, qualityStore, siteIDQualityStore)
-	auctionService.SetSmartPercenter(percenterStore, percenterPolicy)
+	auctionService.ConfigureSmartPercenter(percenterStore, percenterPolicy)
 	auctionService.SetVPNClassifier(vpnStore)
 	auctionService.SetAntiPerekrutEnabled(cfg.AntiperekrutEnabled)
 	auctionService.StartDiagnostics(ctx)

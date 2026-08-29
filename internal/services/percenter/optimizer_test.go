@@ -36,6 +36,71 @@ func TestAdvanceWaitsFullDecisionInterval(t *testing.T) {
 	}
 }
 
+func TestSparseSSPSearchIsNotResetBeforeItFinishes(t *testing.T) {
+	policy := testPolicy()
+	now := time.Date(2026, 8, 28, 10, 0, 0, 0, time.UTC)
+	state := BaselineState("hash", "campaign", 1, 0.30, 1, now)
+
+	if !state.LastSSPReoptimizeAt.IsZero() {
+		t.Fatalf("unfinished baseline must not start the 6h reoptimization clock: %v", state.LastSSPReoptimizeAt)
+	}
+
+	// The segment is extremely sparse and receives its first usable traffic a day
+	// later. It must still record the benchmark and enter the SSP search instead
+	// of being reset just because six hours elapsed since state creation.
+	state, changed := Advance(state, Metrics{Requests: 1, Wins: 1}, policy, now.Add(24*time.Hour))
+	if !changed || state.Phase != PhaseSSPSearch {
+		t.Fatalf("sparse baseline did not advance into SSP search: %+v", state)
+	}
+	if !state.LastSSPReoptimizeAt.IsZero() {
+		t.Fatalf("SSP reoptimization timestamp must remain zero while search is in progress: %v", state.LastSSPReoptimizeAt)
+	}
+
+	// Another rare sample can arrive well beyond six hours. The in-progress
+	// binary search must continue rather than restart from the benchmark.
+	previousPoint := state.PointVersion
+	state, changed = Advance(state, Metrics{Requests: 1, Wins: 1}, policy, state.LastChangeAt.Add(24*time.Hour))
+	if !changed {
+		t.Fatalf("sparse SSP search stalled: %+v", state)
+	}
+	if state.PointVersion <= previousPoint {
+		t.Fatalf("sparse SSP search did not move to the next test point: %d -> %d", previousPoint, state.PointVersion)
+	}
+	if state.Phase == PhaseBenchmark {
+		t.Fatalf("sparse SSP search was incorrectly reset to benchmark: %+v", state)
+	}
+}
+
+func TestCompletedSSPOptimizationStillReoptimizesAfterSixHours(t *testing.T) {
+	policy := testPolicy()
+	now := time.Date(2026, 8, 28, 10, 0, 0, 0, time.UTC)
+	state := State{
+		SegmentHash:         "hash",
+		CampaignID:          "campaign",
+		CampaignVersion:     1,
+		PointVersion:        9,
+		OriginalBid:         1,
+		MinMargin:           0.30,
+		AdvertiserPrice:     0.80,
+		SSPBid:              0.50,
+		Margin:              0.375,
+		Phase:               PhaseMarginSearch,
+		LastChangeAt:        now.Add(-time.Hour),
+		LastSSPReoptimizeAt: now.Add(-6 * time.Hour),
+	}
+
+	reset, changed := Advance(state, Metrics{Requests: 1, Wins: 1, AdvertiserSpend: 0.0008, TwinBidProfit: 0.0003}, policy, now)
+	if !changed || reset.Phase != PhaseBenchmark {
+		t.Fatalf("completed SSP cycle was not reset after six hours: %+v", reset)
+	}
+	if !reset.LastSSPReoptimizeAt.IsZero() {
+		t.Fatalf("new SSP cycle must be marked unfinished after reset: %v", reset.LastSSPReoptimizeAt)
+	}
+	if reset.PointVersion <= state.PointVersion {
+		t.Fatalf("reset did not advance point version: %d -> %d", state.PointVersion, reset.PointVersion)
+	}
+}
+
 func TestSSPBinarySearchKeepsMarginFixedAndFindsPassingBoundary(t *testing.T) {
 	policy := testPolicy()
 	now := time.Date(2026, 8, 28, 10, 0, 0, 0, time.UTC)
