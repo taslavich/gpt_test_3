@@ -5,48 +5,99 @@ import (
 	"crypto/tls"
 	"fmt"
 	"log"
+	"math"
 	"net"
 	"os"
 	"os/signal"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
 
 	"github.com/ClickHouse/clickhouse-go/v2"
+	goredis "github.com/redis/go-redis/v9"
 	"gitlab.com/twinbid-exchange/RTB-exchange/internal/config"
 	utils "gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/utils_grpc"
 	"gitlab.com/twinbid-exchange/RTB-exchange/internal/services/percenter"
 	redisService "gitlab.com/twinbid-exchange/RTB-exchange/internal/services/redis"
 )
 
+const startupCheckTimeout = 10 * time.Second
+
+var requiredPercenterEnv = []string{
+	"CLICKHOUSE_USERNAME",
+	"CLICKHOUSE_PASSWORD",
+	"CLICKHOUSE_DB",
+	"CLICKHOUSE_HOST",
+	"CLICKHOUSE_PORT",
+	"CLICKHOUSE_TABLE_ORTB",
+	"CLICKHOUSE_TABLE_IMPRESSIONS",
+	"CLICKHOUSE_TABLE_CLICKS",
+	"REDIS_ADV_ADDR",
+	"REDIS_PASSWORD",
+	"REDIS_DB_ADV_PERCENTER",
+	"REDIS_POOL_SIZE",
+	"REDIS_MIN_IDLE_CONNS",
+	"SSP_REOPTIMIZE_INTERVAL",
+	"SIMPLE_BASELINE_REOPTIMIZE_INTERVAL",
+	"MARGIN_OPTIMIZE_INTERVAL",
+	"BUYOUT_RETENTION",
+	"EFFICIENCY_RETENTION",
+	"SIMPLE_WIN_RATE_RETENTION",
+	"DEFAULT_MIN_MARGIN",
+	"PROMO_MIN_MARGIN",
+	"MAX_MARGIN",
+	"SSP_SEARCH_PRECISION",
+	"MARGIN_SEARCH_STEPS",
+	"PERCENTER_SEGMENT_STATE_TTL",
+	"PERCENTER_ADV_CACHE_TTL",
+	"BOT_BASE_URL",
+	"BOT_INTERNAL_SECRET",
+}
+
 func main() {
+	if err := run(); err != nil {
+		log.Fatalf("[PERCENTER][FATAL] %v", err)
+	}
+}
+
+func run() error {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
 	cfg, err := config.LoadConfig[config.PercenterConfig](ctx)
 	if err != nil {
-		log.Fatalf("cannot load percenter config: %v", err)
+		return fmt.Errorf("cannot load percenter config: %w", err)
 	}
-	policy := policyFromConfig(cfg.PercenterAlgorithmConfig)
-	percenterRedisAddr := strings.TrimSpace(cfg.RedisADVAddr)
-	if percenterRedisAddr == "" {
-		log.Fatal("REDIS_ADV_ADDR is required for percenter")
+	if err := validateRequiredEnvironment(); err != nil {
+		return err
 	}
-	if cfg.RedisDBAdvPercenter != 7 {
-		log.Fatalf("percenter requires REDIS_DB_ADV_PERCENTER=7, got %d", cfg.RedisDBAdvPercenter)
+	if err := validatePercenterConfig(cfg); err != nil {
+		return fmt.Errorf("invalid percenter config: %w", err)
 	}
 
+	policy := policyFromConfig(cfg.PercenterAlgorithmConfig)
+
 	redisClient, err := redisService.NewRedisClient(
-		percenterRedisAddr,
+		strings.TrimSpace(cfg.RedisADVAddr),
 		cfg.RedisPassword,
 		cfg.RedisDBAdvPercenter,
 		cfg.RedisPoolSize,
 		cfg.RedisMinIdleConns,
 	)
 	if err != nil {
-		log.Fatalf("cannot initialize percenter Redis: %v", err)
+		return fmt.Errorf("cannot initialize percenter Redis: %w", err)
 	}
 	defer redisClient.Close()
+
+	startupCtx, startupCancel := context.WithTimeout(ctx, startupCheckTimeout)
+	if err := verifyRedis(startupCtx, redisClient); err != nil {
+		startupCancel()
+		return fmt.Errorf("Redis startup check failed: %w", err)
+	}
+	startupCancel()
+	log.Printf("[PERCENTER][STARTUP] Redis OK addr=%s db=%d", cfg.RedisADVAddr, cfg.RedisDBAdvPercenter)
+
 	store := percenter.NewStateStore(redisClient, policy)
 
 	clickhouseConn, err := clickhouse.Open(&clickhouse.Options{
@@ -62,12 +113,42 @@ func main() {
 		MaxIdleConns: 2,
 	})
 	if err != nil {
-		log.Fatalf("cannot initialize percenter ClickHouse client: %v", err)
+		return fmt.Errorf("cannot initialize percenter ClickHouse client: %w", err)
 	}
 	defer clickhouseConn.Close()
 
+	startupCtx, startupCancel = context.WithTimeout(ctx, startupCheckTimeout)
+	if err := verifyClickHouse(startupCtx, clickhouseConn, cfg); err != nil {
+		startupCancel()
+		return fmt.Errorf("ClickHouse startup check failed: %w", err)
+	}
+	startupCancel()
+	log.Printf(
+		"[PERCENTER][STARTUP] ClickHouse OK addr=%s database=%s tables=%s,%s,%s",
+		net.JoinHostPort(cfg.Host, cfg.Port),
+		cfg.Database,
+		cfg.TableOrtb,
+		cfg.TableImpressions,
+		cfg.TableClicks,
+	)
+
 	bot := utils.NewBotMessage(cfg.BotBaseURL, cfg.BotInternalSecret)
-	run := func() {
+	startupCtx, startupCancel = context.WithTimeout(ctx, startupCheckTimeout)
+	if err := bot.SendTextMessageToBot(startupCtx, "[PERCENTER][STARTUP] dependency check OK"); err != nil {
+		startupCancel()
+		return fmt.Errorf("bot startup check failed: %w", err)
+	}
+	startupCancel()
+	log.Printf("[PERCENTER][STARTUP] Bot OK base_url=%s", cfg.BotBaseURL)
+
+	log.Printf(
+		"[PERCENTER][STARTUP] validation complete: margin_interval=%s ssp_reoptimize=%s simple_baseline_reoptimize=%s",
+		policy.MarginOptimizeInterval,
+		policy.SSPReoptimizeInterval,
+		policy.SimpleBaselineReoptimizeInterval,
+	)
+
+	runTick := func() {
 		if err := processTick(ctx, clickhouseConn, store, cfg, policy); err != nil {
 			log.Printf("[PERCENTER][TICK_ERROR] %v", err)
 			if sendErr := bot.SendTextMessageToBot(ctx, fmt.Sprintf("[PERCENTER][CLICKHOUSE_DOWN] %v", err)); sendErr != nil {
@@ -76,24 +157,206 @@ func main() {
 		}
 	}
 
-	// Decisions are made only on the configured cadence. A ClickHouse outage is
-	// non-fatal: ADV keeps serving the last Redis state and this worker alerts on
-	// every tick while ClickHouse remains unavailable.
+	// Decisions are made only on the configured cadence. A ClickHouse outage after
+	// a successful startup is non-fatal: ADV keeps serving the last Redis state and
+	// this worker alerts on every tick while ClickHouse remains unavailable.
 	ticker := time.NewTicker(policy.MarginOptimizeInterval)
 	defer ticker.Stop()
 
 	stop := make(chan os.Signal, 1)
 	signal.Notify(stop, os.Interrupt, syscall.SIGTERM)
+	defer signal.Stop(stop)
+
 	for {
 		select {
 		case <-ctx.Done():
-			return
+			return nil
 		case <-stop:
-			return
+			return nil
 		case <-ticker.C:
-			run()
+			runTick()
 		}
 	}
+}
+
+func validateRequiredEnvironment() error {
+	missing := make([]string, 0)
+	for _, name := range requiredPercenterEnv {
+		value, ok := os.LookupEnv(name)
+		if !ok || strings.TrimSpace(value) == "" {
+			missing = append(missing, name)
+		}
+	}
+	if len(missing) > 0 {
+		return fmt.Errorf("required environment variables are missing or empty: %s", strings.Join(missing, ", "))
+	}
+	return nil
+}
+
+func validatePercenterConfig(cfg *config.PercenterConfig) error {
+	if cfg == nil {
+		return fmt.Errorf("config is nil")
+	}
+
+	if strings.TrimSpace(cfg.RedisADVAddr) == "" {
+		return fmt.Errorf("REDIS_ADV_ADDR is empty")
+	}
+	if cfg.RedisDBAdvPercenter != 7 {
+		return fmt.Errorf("REDIS_DB_ADV_PERCENTER must be 7, got %d", cfg.RedisDBAdvPercenter)
+	}
+	if cfg.RedisPoolSize <= 0 {
+		return fmt.Errorf("REDIS_POOL_SIZE must be > 0, got %d", cfg.RedisPoolSize)
+	}
+	if cfg.RedisMinIdleConns < 0 || cfg.RedisMinIdleConns > cfg.RedisPoolSize {
+		return fmt.Errorf("REDIS_MIN_IDLE_CONNS must be between 0 and REDIS_POOL_SIZE, got %d (pool=%d)", cfg.RedisMinIdleConns, cfg.RedisPoolSize)
+	}
+
+	if strings.TrimSpace(cfg.Host) == "" {
+		return fmt.Errorf("CLICKHOUSE_HOST is empty")
+	}
+	port, err := strconv.Atoi(strings.TrimSpace(cfg.Port))
+	if err != nil || port < 1 || port > 65535 {
+		return fmt.Errorf("CLICKHOUSE_PORT must be a valid TCP port, got %q", cfg.Port)
+	}
+	if strings.TrimSpace(cfg.Database) == "" {
+		return fmt.Errorf("CLICKHOUSE_DB is empty")
+	}
+	if strings.TrimSpace(cfg.TableOrtb) == "" || strings.TrimSpace(cfg.TableImpressions) == "" || strings.TrimSpace(cfg.TableClicks) == "" {
+		return fmt.Errorf("ClickHouse table names must not be empty")
+	}
+
+	if cfg.SSPReoptimizeInterval <= 0 {
+		return fmt.Errorf("SSP_REOPTIMIZE_INTERVAL must be > 0")
+	}
+	if cfg.SimpleBaselineReoptimizeInterval <= 0 {
+		return fmt.Errorf("SIMPLE_BASELINE_REOPTIMIZE_INTERVAL must be > 0")
+	}
+	if cfg.MarginOptimizeInterval <= 0 {
+		return fmt.Errorf("MARGIN_OPTIMIZE_INTERVAL must be > 0")
+	}
+	if cfg.PercenterSegmentStateTTL <= 0 {
+		return fmt.Errorf("PERCENTER_SEGMENT_STATE_TTL must be > 0")
+	}
+	if cfg.PercenterADVCacheTTL <= 0 {
+		return fmt.Errorf("PERCENTER_ADV_CACHE_TTL must be > 0")
+	}
+
+	if err := validateUnitInterval("BUYOUT_RETENTION", cfg.BuyoutRetention); err != nil {
+		return err
+	}
+	if err := validateUnitInterval("EFFICIENCY_RETENTION", cfg.EfficiencyRetention); err != nil {
+		return err
+	}
+	if err := validateUnitInterval("SIMPLE_WIN_RATE_RETENTION", cfg.SimpleWinRateRetention); err != nil {
+		return err
+	}
+	if err := validateMargin("DEFAULT_MIN_MARGIN", cfg.DefaultMinMargin); err != nil {
+		return err
+	}
+	if err := validateMargin("PROMO_MIN_MARGIN", cfg.PromoMinMargin); err != nil {
+		return err
+	}
+	if err := validateMargin("MAX_MARGIN", cfg.MaxMargin); err != nil {
+		return err
+	}
+	if cfg.DefaultMinMargin > cfg.PromoMinMargin {
+		return fmt.Errorf("DEFAULT_MIN_MARGIN %.4f must not exceed PROMO_MIN_MARGIN %.4f", cfg.DefaultMinMargin, cfg.PromoMinMargin)
+	}
+	if cfg.PromoMinMargin > cfg.MaxMargin {
+		return fmt.Errorf("PROMO_MIN_MARGIN %.4f must not exceed MAX_MARGIN %.4f", cfg.PromoMinMargin, cfg.MaxMargin)
+	}
+	if cfg.SSPSearchPrecision <= 0 || cfg.SSPSearchPrecision >= 1 || math.IsNaN(cfg.SSPSearchPrecision) || math.IsInf(cfg.SSPSearchPrecision, 0) {
+		return fmt.Errorf("SSP_SEARCH_PRECISION must be > 0 and < 1, got %v", cfg.SSPSearchPrecision)
+	}
+	if len(cfg.MarginSearchSteps) == 0 {
+		return fmt.Errorf("MARGIN_SEARCH_STEPS must contain at least one positive step")
+	}
+	previous := math.Inf(1)
+	for i, step := range cfg.MarginSearchSteps {
+		if step <= 0 || step > 100 || math.IsNaN(step) || math.IsInf(step, 0) {
+			return fmt.Errorf("MARGIN_SEARCH_STEPS[%d] must be > 0 and <= 100, got %v", i, step)
+		}
+		if step >= previous {
+			return fmt.Errorf("MARGIN_SEARCH_STEPS must be strictly descending, got %v", []float64(cfg.MarginSearchSteps))
+		}
+		previous = step
+	}
+
+	if strings.TrimSpace(cfg.BotBaseURL) == "" {
+		return fmt.Errorf("BOT_BASE_URL is empty")
+	}
+	if strings.TrimSpace(cfg.BotInternalSecret) == "" {
+		return fmt.Errorf("BOT_INTERNAL_SECRET is empty")
+	}
+
+	return nil
+}
+
+func validateUnitInterval(name string, value float64) error {
+	if value <= 0 || value > 1 || math.IsNaN(value) || math.IsInf(value, 0) {
+		return fmt.Errorf("%s must be > 0 and <= 1, got %v", name, value)
+	}
+	return nil
+}
+
+func validateMargin(name string, value float64) error {
+	if value <= 0 || value >= 1 || math.IsNaN(value) || math.IsInf(value, 0) {
+		return fmt.Errorf("%s must be > 0 and < 1, got %v", name, value)
+	}
+	return nil
+}
+
+func verifyRedis(ctx context.Context, client *goredis.Client) error {
+	if client == nil {
+		return fmt.Errorf("client is nil")
+	}
+	if err := client.Ping(ctx).Err(); err != nil {
+		return fmt.Errorf("PING failed: %w", err)
+	}
+
+	key := fmt.Sprintf("percenter:startup-check:%d:%d", os.Getpid(), time.Now().UnixNano())
+	const expected = "ok"
+	if err := client.Set(ctx, key, expected, 30*time.Second).Err(); err != nil {
+		return fmt.Errorf("write test failed: %w", err)
+	}
+	defer client.Del(context.Background(), key)
+
+	actual, err := client.Get(ctx, key).Result()
+	if err != nil {
+		return fmt.Errorf("read test failed: %w", err)
+	}
+	if actual != expected {
+		return fmt.Errorf("read/write test returned unexpected value %q", actual)
+	}
+	if err := client.Del(ctx, key).Err(); err != nil {
+		return fmt.Errorf("delete test failed: %w", err)
+	}
+	return nil
+}
+
+func verifyClickHouse(ctx context.Context, conn clickhouse.Conn, cfg *config.PercenterConfig) error {
+	if conn == nil {
+		return fmt.Errorf("connection is nil")
+	}
+	if err := conn.Ping(ctx); err != nil {
+		return fmt.Errorf("PING failed: %w", err)
+	}
+
+	// Execute the real percenter metrics query over a tiny window. This validates
+	// the configured database/table names as well as every column/join the worker
+	// requires, without waiting five minutes for the first production tick.
+	if _, err := percenter.LoadWindowMetrics(
+		ctx,
+		conn,
+		cfg.Database,
+		cfg.TableOrtb,
+		cfg.TableImpressions,
+		cfg.TableClicks,
+		time.Second,
+	); err != nil {
+		return fmt.Errorf("metrics schema/query smoke test failed: %w", err)
+	}
+	return nil
 }
 
 func processTick(ctx context.Context, conn clickhouse.Conn, store *percenter.StateStore, cfg *config.PercenterConfig, policy percenter.Policy) error {
