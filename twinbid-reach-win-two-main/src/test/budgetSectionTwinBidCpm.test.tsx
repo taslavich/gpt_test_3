@@ -44,13 +44,11 @@ describe("TwinBid CPM payment model", () => {
     window.localStorage.setItem("twinbid_lang", "en");
   });
 
-  it("keeps TwinBid CPM visible but unavailable", () => {
+  it("switches the CPM input to a maximum bid and explains the optimization", () => {
     render(<Harness />);
 
-    const twinBidCpm = screen.getByRole("button", { name: "TwinBid CPM" });
-    expect(twinBidCpm).toBeDisabled();
-    fireEvent.click(twinBidCpm);
-    expect(screen.getByText("CPM (cost per 1000 impressions) *")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "TwinBid CPM" }));
+    expect(screen.getByText("Maximum CPM bid *")).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "Learn more about TwinBid CPM" }));
     expect(screen.getByRole("dialog")).toBeInTheDocument();
