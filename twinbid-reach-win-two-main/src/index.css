@@ -2811,6 +2811,1023 @@
   color: hsl(var(--foreground) / .62);
 }
 
+/* TwinBid Partners B2B page. The composition follows the landing's editorial
+   grid, restrained surfaces, mint accent and narrow content measure. */
+.partners-b2b-page {
+  overflow-x: clip;
+  background: hsl(200 18% 5%);
+  color: hsl(var(--foreground));
+}
+
+.partners-b2b-shell {
+  position: relative;
+  width: min(calc(100% - 48px), 1180px);
+  margin-inline: auto;
+}
+
+.partners-b2b-hero {
+  position: relative;
+  overflow: hidden;
+  padding: 132px 0 76px;
+  background:
+    radial-gradient(circle at 80% 12%, hsl(var(--primary) / .095), transparent 32%),
+    linear-gradient(180deg, hsl(200 18% 4%) 0%, hsl(200 18% 6%) 100%);
+}
+
+.partners-b2b-hero::after {
+  display: none;
+}
+
+.partners-b2b-hero-inner {
+  z-index: 1;
+  display: grid;
+  grid-template-columns: minmax(0, 1.35fr) minmax(330px, .65fr);
+  border: 1px solid hsl(var(--foreground) / .18);
+}
+
+.partners-b2b-hero-copy {
+  min-width: 0;
+  padding: clamp(46px, 5vw, 72px) clamp(48px, 5.5vw, 78px) clamp(46px, 5vw, 68px) clamp(32px, 4vw, 56px);
+}
+
+.partners-b2b-kicker,
+.partners-b2b-label {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 0;
+  color: hsl(var(--foreground) / .54);
+  font: 700 10px/1.2 "JetBrains Mono", monospace;
+  letter-spacing: .14em;
+  text-transform: uppercase;
+}
+
+.partners-b2b-kicker > span {
+  width: 28px;
+  height: 1px;
+  background: hsl(var(--primary));
+}
+
+.partners-b2b-hero h1 {
+  max-width: 14ch;
+  margin: 30px 0 0;
+  font-size: clamp(52px, 5.35vw, 82px);
+  font-weight: 360;
+  line-height: .97;
+  letter-spacing: -.062em;
+  text-wrap: balance;
+}
+
+.partners-b2b-lead {
+  max-width: 64ch;
+  margin: 30px 0 0;
+  color: hsl(var(--foreground) / .68);
+  font-size: clamp(16px, 1.35vw, 19px);
+  line-height: 1.62;
+}
+
+.partners-b2b-hero-actions {
+  display: flex;
+  align-items: center;
+  gap: 24px;
+  margin-top: 38px;
+}
+
+.partners-b2b-hero-actions > span {
+  max-width: 38ch;
+  color: hsl(var(--foreground) / .4);
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.partners-b2b-button {
+  display: inline-flex;
+  min-height: 52px;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  gap: 18px;
+  padding: 0 24px;
+  border: 1px solid hsl(var(--primary));
+  border-radius: 3px;
+  background: hsl(var(--primary));
+  color: hsl(200 18% 5%);
+  font-size: 13px;
+  font-weight: 750;
+  transition: background-color .2s ease, color .2s ease;
+}
+
+.partners-b2b-button:hover {
+  background: transparent;
+  color: hsl(var(--primary));
+}
+
+.partners-b2b-button svg {
+  width: 17px;
+  height: 17px;
+}
+
+.partners-b2b-share {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  justify-content: space-between;
+  padding: clamp(42px, 4.8vw, 66px);
+  border-left: 1px solid hsl(var(--foreground) / .18);
+  background: hsl(var(--foreground) / .018);
+}
+
+.partners-b2b-share-top {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  color: hsl(var(--foreground) / .42);
+  font: 700 10px/1 "JetBrains Mono", monospace;
+  letter-spacing: .11em;
+  text-transform: uppercase;
+}
+
+.partners-b2b-share > strong {
+  margin: 74px 0 54px;
+  color: hsl(var(--primary));
+  font-size: clamp(92px, 9.5vw, 138px);
+  font-weight: 620;
+  line-height: .72;
+  letter-spacing: -.1em;
+}
+
+.partners-b2b-share > p {
+  max-width: 37ch;
+  margin: 0;
+  color: hsl(var(--foreground) / .61);
+  font-size: 14px;
+  line-height: 1.58;
+}
+
+.partners-b2b-signals {
+  display: grid;
+  grid-column: 1 / -1;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  border-top: 1px solid hsl(var(--foreground) / .18);
+}
+
+.partners-b2b-signals > div {
+  display: flex;
+  min-width: 0;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 18px;
+  padding: 24px 28px;
+}
+
+.partners-b2b-signals > div + div {
+  border-left: 1px solid hsl(var(--foreground) / .18);
+}
+
+.partners-b2b-signals strong {
+  color: hsl(var(--primary));
+  font-size: clamp(24px, 2.5vw, 35px);
+  font-weight: 620;
+  line-height: 1;
+  letter-spacing: -.045em;
+}
+
+.partners-b2b-signals span {
+  max-width: 18ch;
+  color: hsl(var(--foreground) / .52);
+  font-size: 11px;
+  line-height: 1.35;
+  text-align: right;
+}
+
+.partners-b2b-handled {
+  display: grid;
+  grid-column: 1 / -1;
+  grid-template-columns: minmax(350px, .78fr) minmax(0, 1.22fr);
+  gap: 0;
+  border-top: 1px solid hsl(var(--foreground) / .18);
+}
+
+.partners-b2b-handled > div {
+  padding: 38px clamp(32px, 4vw, 50px);
+}
+
+.partners-b2b-handled h2 {
+  max-width: 20ch;
+  margin: 22px 0 0;
+  font-size: clamp(30px, 2.7vw, 40px);
+  font-weight: 430;
+  line-height: 1.06;
+  letter-spacing: -.045em;
+}
+
+.partners-b2b-handled ul {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  margin: 0;
+  padding: 0;
+  border-left: 1px solid hsl(var(--foreground) / .18);
+  list-style: none;
+}
+
+.partners-b2b-handled li {
+  display: flex;
+  min-height: 218px;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 30px;
+  padding: 26px 18px;
+  color: hsl(var(--foreground) / .69);
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.partners-b2b-handled li + li {
+  border-left: 1px solid hsl(var(--foreground) / .16);
+}
+
+.partners-b2b-handled li span,
+.partners-b2b-steps > li > span,
+.partners-b2b-payouts li span {
+  color: hsl(var(--primary));
+  font: 700 10px/1 "JetBrains Mono", monospace;
+  letter-spacing: .1em;
+}
+
+.partners-b2b-section {
+  padding: clamp(74px, 7.5vw, 104px) 0;
+  border-top: 1px solid hsl(var(--foreground) / .1);
+}
+
+.partners-b2b-section-heading > div {
+  display: grid;
+  grid-template-columns: minmax(0, 1.25fr) minmax(310px, .75fr);
+  gap: clamp(42px, 7vw, 96px);
+  align-items: end;
+  margin-top: 28px;
+}
+
+.partners-b2b-section-heading h2,
+.partners-b2b-mechanics h2,
+.partners-b2b-final h2 {
+  max-width: 15ch;
+  margin: 0;
+  font-size: clamp(44px, 4.7vw, 68px);
+  font-weight: 390;
+  line-height: .99;
+  letter-spacing: -.058em;
+  text-wrap: balance;
+}
+
+.partners-b2b-section-heading > div > p {
+  max-width: 52ch;
+  margin: 0 0 4px;
+  color: hsl(var(--foreground) / .6);
+  font-size: clamp(15px, 1.22vw, 18px);
+  line-height: 1.62;
+}
+
+.partners-b2b-steps {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  margin: clamp(54px, 6vw, 82px) 0 0;
+  padding: 0;
+  border: 1px solid hsl(var(--foreground) / .16);
+  list-style: none;
+}
+
+.partners-b2b-steps li {
+  display: flex;
+  min-height: 300px;
+  flex-direction: column;
+  padding: 28px;
+}
+
+.partners-b2b-steps li + li {
+  border-left: 1px solid hsl(var(--foreground) / .16);
+}
+
+.partners-b2b-steps h3 {
+  margin: auto 0 0;
+  font-size: clamp(20px, 1.9vw, 27px);
+  font-weight: 520;
+  line-height: 1.14;
+  letter-spacing: -.035em;
+}
+
+.partners-b2b-steps p {
+  margin: 18px 0 0;
+  color: hsl(var(--foreground) / .56);
+  font-size: 14px;
+  line-height: 1.58;
+}
+
+.partners-b2b-mechanics {
+  padding-block: clamp(68px, 6.5vw, 92px);
+  background: hsl(200 18% 4%);
+}
+
+.partners-b2b-mechanics-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.04fr) minmax(0, .96fr);
+  border: 1px solid hsl(var(--foreground) / .14);
+}
+
+.partners-b2b-realtime,
+.partners-b2b-payouts {
+  min-width: 0;
+  padding: clamp(42px, 4.5vw, 58px);
+}
+
+.partners-b2b-payouts {
+  border-left: 1px solid hsl(var(--foreground) / .14);
+  background: hsl(var(--foreground) / .018);
+}
+
+.partners-b2b-mechanics h2 {
+  margin-top: 22px;
+  font-size: clamp(40px, 3.5vw, 52px);
+  line-height: 1.01;
+}
+
+.partners-b2b-realtime h2 {
+  max-width: none;
+  font-size: clamp(38px, 3.15vw, 47px);
+}
+
+.partners-b2b-payouts h2 {
+  max-width: none;
+  font-size: clamp(38px, 3.15vw, 47px);
+}
+
+.partners-b2b-realtime > p:not(.partners-b2b-label),
+.partners-b2b-payouts > p:not(.partners-b2b-label) {
+  max-width: 54ch;
+  margin: 20px 0 0;
+  color: hsl(var(--foreground) / .6);
+  font-size: 15px;
+  line-height: 1.58;
+}
+
+.partners-b2b-income-flow {
+  display: grid;
+  min-height: 112px;
+  grid-template-columns: minmax(0, 1fr) 18px minmax(0, 1fr) 18px minmax(0, 1fr);
+  align-items: center;
+  gap: 12px;
+  margin-top: 34px;
+  padding-block: 20px;
+  border-block: 1px solid hsl(var(--foreground) / .16);
+}
+
+.partners-b2b-income-flow span,
+.partners-b2b-income-flow strong {
+  min-width: 0;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.partners-b2b-income-flow span {
+  color: hsl(var(--foreground) / .62);
+}
+
+.partners-b2b-income-flow strong {
+  color: hsl(var(--primary));
+  font-weight: 650;
+}
+
+.partners-b2b-income-flow svg {
+  width: 15px;
+  color: hsl(var(--foreground) / .3);
+}
+
+.partners-b2b-payouts ul {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin: 30px 0 0;
+  padding: 0;
+  border-top: 1px solid hsl(var(--foreground) / .15);
+  border-left: 1px solid hsl(var(--foreground) / .15);
+  list-style: none;
+}
+
+.partners-b2b-payouts li {
+  display: grid;
+  min-height: 94px;
+  grid-template-columns: 30px minmax(0, 1fr);
+  gap: 10px;
+  align-content: start;
+  padding: 18px 16px;
+  border-right: 1px solid hsl(var(--foreground) / .15);
+  border-bottom: 1px solid hsl(var(--foreground) / .15);
+  color: hsl(var(--foreground) / .68);
+  font-size: 13px;
+  line-height: 1.42;
+}
+
+.partners-b2b-calculator-section {
+  background:
+    radial-gradient(circle at 100% 0, hsl(var(--primary) / .06), transparent 30%),
+    hsl(200 15% 7%);
+}
+
+.partners-b2b-calculator {
+  display: grid;
+  grid-template-columns: minmax(340px, .82fr) minmax(0, 1.18fr);
+  margin-top: clamp(34px, 4vw, 52px);
+  border: 1px solid hsl(var(--foreground) / .18);
+}
+
+.partners-b2b-calculator-fields {
+  min-width: 0;
+  padding: clamp(30px, 3.5vw, 46px);
+}
+
+.partners-b2b-field {
+  display: block;
+  padding: 18px 0;
+  border-bottom: 1px solid hsl(var(--foreground) / .14);
+}
+
+.partners-b2b-field:first-child {
+  padding-top: 0;
+}
+
+.partners-b2b-field > span {
+  display: block;
+  max-width: 34ch;
+  color: hsl(var(--foreground) / .54);
+  font-size: 12px;
+  font-weight: 620;
+  line-height: 1.45;
+}
+
+.partners-b2b-field > div {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin-top: 9px;
+  color: hsl(var(--primary));
+  font-size: 23px;
+  font-weight: 600;
+}
+
+.partners-b2b-field input {
+  width: 100%;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: hsl(var(--foreground));
+  font: 520 clamp(32px, 3.3vw, 48px)/1.1 "Manrope", sans-serif;
+  letter-spacing: -.05em;
+}
+
+.partners-b2b-field input:focus-visible {
+  box-shadow: 0 2px 0 hsl(var(--primary));
+}
+
+.partners-b2b-field small {
+  display: block;
+  margin-top: 6px;
+  color: hsl(var(--foreground) / .36);
+  font-size: 10px;
+  line-height: 1.4;
+}
+
+.partners-b2b-calculator-formula {
+  display: flex;
+  gap: 10px;
+  margin: 16px 0 0;
+  color: hsl(var(--foreground) / .38);
+  font-size: 11px;
+  line-height: 1.48;
+}
+
+.partners-b2b-calculator-formula svg {
+  width: 15px;
+  height: 15px;
+  flex: 0 0 auto;
+}
+
+.partners-b2b-calculator-result {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  justify-content: space-between;
+  padding: clamp(32px, 4vw, 52px);
+  background: hsl(var(--primary));
+  color: hsl(200 18% 5%);
+}
+
+.partners-b2b-result-supporting {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 24px;
+}
+
+.partners-b2b-result-supporting > div {
+  padding-bottom: 20px;
+  border-bottom: 1px solid hsl(200 18% 5% / .22);
+}
+
+.partners-b2b-result-supporting span,
+.partners-b2b-result-main > span,
+.partners-b2b-result-annual span {
+  display: block;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1.4;
+  letter-spacing: .055em;
+  text-transform: uppercase;
+}
+
+.partners-b2b-result-supporting strong {
+  display: block;
+  margin-top: 12px;
+  font-size: clamp(22px, 2.3vw, 32px);
+  font-weight: 620;
+  line-height: 1;
+  letter-spacing: -.05em;
+}
+
+.partners-b2b-result-supporting small {
+  font-size: 10px;
+  font-weight: 650;
+  letter-spacing: 0;
+}
+
+.partners-b2b-result-main {
+  margin: 38px 0 30px;
+}
+
+.partners-b2b-result-main strong {
+  display: block;
+  margin-top: 16px;
+  font-size: clamp(54px, 6vw, 82px);
+  font-weight: 660;
+  line-height: .82;
+  letter-spacing: -.09em;
+}
+
+.partners-b2b-result-main small {
+  display: block;
+  margin-top: 14px;
+  font-size: 13px;
+  font-weight: 650;
+}
+
+.partners-b2b-result-annual {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 22px;
+  padding-top: 20px;
+  border-top: 1px solid hsl(200 18% 5% / .22);
+}
+
+.partners-b2b-result-annual strong {
+  font-size: clamp(20px, 2.1vw, 30px);
+  font-weight: 650;
+  letter-spacing: -.04em;
+  text-align: right;
+}
+
+.partners-b2b-calculator-result > p {
+  max-width: 58ch;
+  margin: 20px 0 0;
+  color: hsl(200 18% 5% / .65);
+  font-size: 10px;
+  line-height: 1.45;
+}
+
+.partners-b2b-example {
+  background: hsl(200 18% 5%);
+}
+
+.partners-b2b-example-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  margin: clamp(50px, 5vw, 72px) 0 0;
+  border: 1px solid hsl(var(--foreground) / .16);
+}
+
+.partners-b2b-example-grid > div {
+  min-width: 0;
+  padding: 28px 24px;
+}
+
+.partners-b2b-example-grid > div + div {
+  border-left: 1px solid hsl(var(--foreground) / .16);
+}
+
+.partners-b2b-example-grid dt {
+  min-height: 34px;
+  color: hsl(var(--foreground) / .48);
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+.partners-b2b-example-grid dd {
+  margin: 30px 0 0;
+  font-size: clamp(30px, 3.3vw, 48px);
+  font-weight: 610;
+  line-height: 1;
+  letter-spacing: -.06em;
+}
+
+.partners-b2b-example-grid .is-accent dd {
+  color: hsl(var(--primary));
+}
+
+.partners-b2b-lifetime {
+  max-width: 78ch;
+  margin: 40px 0 0;
+  color: hsl(var(--foreground) / .63);
+  font-size: clamp(17px, 1.45vw, 21px);
+  line-height: 1.58;
+}
+
+.partners-b2b-final {
+  padding: 36px 0 72px;
+}
+
+.partners-b2b-final-inner {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 60px;
+  align-items: end;
+  padding: clamp(48px, 6vw, 78px);
+  border: 1px solid hsl(var(--foreground) / .15);
+  background:
+    linear-gradient(120deg, hsl(var(--primary) / .07), transparent 38%),
+    hsl(var(--foreground) / .018);
+}
+
+.partners-b2b-final h2 {
+  max-width: 17ch;
+  margin-top: 26px;
+  font-size: clamp(40px, 4.4vw, 62px);
+}
+
+.partners-b2b-final-inner > div > p:not(.partners-b2b-label) {
+  max-width: 64ch;
+  margin: 24px 0 0;
+  color: hsl(var(--foreground) / .58);
+  font-size: 15px;
+  line-height: 1.6;
+}
+
+@media (min-width: 1021px) and (min-height: 720px) {
+  .partners-b2b-calculator-section {
+    display: flex;
+    min-height: 100svh;
+    align-items: center;
+    padding: 70px 0 24px;
+  }
+
+  .partners-b2b-calculator-section .partners-b2b-section-heading > div {
+    margin-top: 14px;
+  }
+
+  .partners-b2b-calculator-section .partners-b2b-section-heading h2 {
+    max-width: 18ch;
+    font-size: clamp(36px, 3.2vw, 48px);
+  }
+
+  .partners-b2b-calculator-section .partners-b2b-section-heading > div > p {
+    font-size: 15px;
+    line-height: 1.5;
+  }
+
+  .partners-b2b-calculator {
+    height: clamp(390px, calc(100svh - 320px), 520px);
+    margin-top: 18px;
+  }
+
+  .partners-b2b-calculator-fields {
+    padding: 18px 30px;
+  }
+
+  .partners-b2b-field {
+    padding: 8px 0;
+  }
+
+  .partners-b2b-field > div {
+    margin-top: 6px;
+  }
+
+  .partners-b2b-field input {
+    font-size: clamp(29px, 2.4vw, 38px);
+  }
+
+  .partners-b2b-field small {
+    margin-top: 4px;
+  }
+
+  .partners-b2b-calculator-formula {
+    margin-top: 12px;
+    font-size: 10px;
+  }
+
+  .partners-b2b-calculator-result {
+    padding: 24px 34px;
+  }
+
+  .partners-b2b-result-supporting > div {
+    padding-bottom: 14px;
+  }
+
+  .partners-b2b-result-supporting strong {
+    margin-top: 8px;
+    font-size: clamp(21px, 2vw, 28px);
+  }
+
+  .partners-b2b-result-main {
+    margin: 22px 0 16px;
+  }
+
+  .partners-b2b-result-main strong {
+    margin-top: 12px;
+    font-size: clamp(54px, 5vw, 74px);
+  }
+
+  .partners-b2b-result-main small {
+    margin-top: 8px;
+  }
+
+  .partners-b2b-result-annual {
+    padding-top: 14px;
+  }
+
+  .partners-b2b-calculator-result > p {
+    margin-top: 14px;
+  }
+}
+
+@media (max-width: 1020px) {
+  .partners-b2b-hero-inner,
+  .partners-b2b-mechanics-grid,
+  .partners-b2b-calculator {
+    grid-template-columns: 1fr;
+  }
+
+  .partners-b2b-hero-copy {
+    padding-inline: clamp(28px, 5vw, 48px);
+  }
+
+  .partners-b2b-share {
+    min-height: 360px;
+    border-top: 1px solid hsl(var(--foreground) / .18);
+    border-left: 0;
+  }
+
+  .partners-b2b-share > strong {
+    margin-block: 62px;
+  }
+
+  .partners-b2b-handled {
+    grid-template-columns: 1fr;
+    gap: 0;
+  }
+
+  .partners-b2b-handled > div {
+    padding: 38px clamp(28px, 5vw, 48px);
+  }
+
+  .partners-b2b-handled ul {
+    border-top: 1px solid hsl(var(--foreground) / .18);
+    border-left: 0;
+  }
+
+  .partners-b2b-section-heading > div {
+    grid-template-columns: 1fr;
+    gap: 26px;
+  }
+
+  .partners-b2b-section-heading h2 {
+    max-width: 18ch;
+  }
+
+  .partners-b2b-section-heading > div > p {
+    max-width: 64ch;
+  }
+
+  .partners-b2b-steps {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .partners-b2b-steps li:nth-child(3) {
+    border-left: 0;
+  }
+
+  .partners-b2b-steps li:nth-child(n + 3) {
+    border-top: 1px solid hsl(var(--foreground) / .16);
+  }
+
+  .partners-b2b-payouts {
+    border-top: 1px solid hsl(var(--foreground) / .14);
+    border-left: 0;
+  }
+
+  .partners-b2b-calculator-result {
+    min-height: 0;
+  }
+}
+
+@media (max-width: 720px) {
+  .partners-b2b-shell {
+    width: min(calc(100% - 32px), 680px);
+  }
+
+  .partners-b2b-hero {
+    padding: 112px 0 72px;
+  }
+
+  .partners-b2b-hero-copy {
+    padding: 38px 24px 44px;
+  }
+
+  .partners-b2b-hero h1 {
+    max-width: 100%;
+    font-size: clamp(43px, 12.2vw, 58px);
+    line-height: 1;
+  }
+
+  .partners-b2b-lead {
+    font-size: 16px;
+  }
+
+  .partners-b2b-hero-actions {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .partners-b2b-button {
+    width: 100%;
+  }
+
+  .partners-b2b-share {
+    min-height: 0;
+    padding: 28px 24px;
+    background: transparent;
+  }
+
+  .partners-b2b-share > strong {
+    margin-block: 42px 34px;
+    font-size: clamp(72px, 22vw, 94px);
+  }
+
+  .partners-b2b-signals,
+  .partners-b2b-handled ul,
+  .partners-b2b-steps,
+  .partners-b2b-example-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .partners-b2b-signals > div,
+  .partners-b2b-signals > div + div {
+    padding: 20px 24px;
+    border-left: 0;
+    border-bottom: 1px solid hsl(var(--foreground) / .14);
+  }
+
+  .partners-b2b-handled {
+    padding-top: 0;
+  }
+
+  .partners-b2b-handled ul {
+    border-bottom: 0;
+  }
+
+  .partners-b2b-handled > div {
+    padding: 34px 24px;
+  }
+
+  .partners-b2b-handled li,
+  .partners-b2b-handled li + li {
+    min-height: 0;
+    flex-direction: row;
+    justify-content: flex-start;
+    gap: 22px;
+    padding: 18px 24px;
+    border-top: 1px solid hsl(var(--foreground) / .16);
+    border-left: 0;
+  }
+
+  .partners-b2b-handled li:first-child {
+    border-top: 0;
+  }
+
+  .partners-b2b-section {
+    padding-block: 76px;
+  }
+
+  .partners-b2b-section-heading h2,
+  .partners-b2b-mechanics h2 {
+    max-width: 100%;
+    font-size: clamp(40px, 11vw, 54px);
+  }
+
+  .partners-b2b-steps li,
+  .partners-b2b-steps li + li,
+  .partners-b2b-steps li:nth-child(3) {
+    min-height: 240px;
+    padding: 26px 0;
+    border-top: 1px solid hsl(var(--foreground) / .16);
+    border-left: 0;
+  }
+
+  .partners-b2b-steps li:first-child {
+    border-top: 0;
+  }
+
+  .partners-b2b-realtime,
+  .partners-b2b-payouts {
+    padding: 44px 24px;
+  }
+
+  .partners-b2b-income-flow {
+    grid-template-columns: 1fr;
+    align-items: flex-start;
+    gap: 14px;
+  }
+
+  .partners-b2b-income-flow svg {
+    justify-self: start;
+    transform: rotate(90deg);
+  }
+
+  .partners-b2b-payouts ul {
+    grid-template-columns: 1fr;
+  }
+
+  .partners-b2b-calculator-fields,
+  .partners-b2b-calculator-result {
+    padding: 32px 24px;
+  }
+
+  .partners-b2b-calculator-result {
+    min-height: 560px;
+  }
+
+  .partners-b2b-result-supporting {
+    grid-template-columns: 1fr;
+  }
+
+  .partners-b2b-result-main {
+    margin-block: 48px 36px;
+  }
+
+  .partners-b2b-result-main strong {
+    font-size: clamp(52px, 16vw, 72px);
+  }
+
+  .partners-b2b-result-annual {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .partners-b2b-result-annual strong {
+    text-align: left;
+  }
+
+  .partners-b2b-example-grid > div,
+  .partners-b2b-example-grid > div + div {
+    display: flex;
+    align-items: end;
+    justify-content: space-between;
+    gap: 20px;
+    padding: 22px 0;
+    border-top: 1px solid hsl(var(--foreground) / .14);
+    border-left: 0;
+  }
+
+  .partners-b2b-example-grid > div:first-child {
+    border-top: 0;
+  }
+
+  .partners-b2b-example-grid dt {
+    min-height: 0;
+  }
+
+  .partners-b2b-example-grid dd {
+    margin: 0;
+    white-space: nowrap;
+  }
+
+  .partners-b2b-final {
+    padding: 20px 0 52px;
+  }
+
+  .partners-b2b-final-inner {
+    grid-template-columns: 1fr;
+    gap: 40px;
+    padding: 42px 24px;
+  }
+}
+
 .landing-auth-dialog > button:last-child:hover {
   border-color: hsl(var(--primary) / .45);
   color: hsl(var(--foreground));

@@ -115,6 +115,7 @@ affiliate-код вместе с общей статистикой по всем
   "traffic_type": "mainstream | adult | mixed",
   "vertical": ["Dating", "Nutra"],
   "pricing_model": "cpm | cpc",
+  "type_model": 1,
   "base_price_cpm": 0.05,
   "base_price_cpc": 0.0001,
   "evenness_by_slot_mode": false,
@@ -144,6 +145,16 @@ affiliate-код вместе с общей статистикой по всем
 > Residential Proxy и Hosting/Datacenter. `block_vpn=false` — VPN-фильтрация
 > отключена. Для новых кампаний фронт по умолчанию отправляет `false`. Если у
 > старой кампании поле `block_vpn` отсутствует, фронт также трактует его как `false`.
+
+`type_model` определяет режим управления CPM-ставкой без изменения остальных
+полей кампании:
+
+- `1` — обычная модель CPM (и стандартное значение для CPC);
+- `2` — TwinBid CPM: `base_price` является максимальной CPM-ставкой, а система
+  оптимизирует фактическую цену выкупа трафика в пределах этого максимума.
+
+Frontend отправляет `pricing_model: "cpm"` для обоих CPM-режимов. Различие между
+обычным CPM и TwinBid CPM передаётся только через `type_model`.
 
 ### GET `/api/campaigns?status=&limit=&offset=` → `{ items: Campaign[], total }`
 ### GET `/api/campaigns/:id` → `Campaign`

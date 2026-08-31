@@ -3,7 +3,7 @@ import { api } from "@/api";
 import type {
   ApiCampaign, ApiCreative, TargetingMap,
   PricingModel as ApiPricing, TrafficType as ApiTraffic,
-  CampaignStatus as ApiStatus, FormatType,
+  CampaignStatus as ApiStatus, FormatType, CampaignTypeModel as ApiCampaignTypeModel,
 } from "@/api/types";
 import { useAuth } from "@/contexts/AuthContext";
 import {
@@ -53,6 +53,7 @@ function collapseTargetingItems(uiKey: string, items: string[]): string[] {
 
 export type CampaignStatus = ApiStatus;
 export type PricingModel = ApiPricing;
+export type CampaignTypeModel = ApiCampaignTypeModel;
 export type TrafficQuality = "common" | "high" | "ultra";
 export type ListMode = "none" | "white" | "black";
 export type TrafficType = ApiTraffic;
@@ -132,6 +133,8 @@ export interface Campaign {
   clicks: number;
   ctr: number;
   pricingModel: PricingModel;
+  /** Backend bidding mode: 1 = standard, 2 = TwinBid CPM. */
+  typeModel: CampaignTypeModel;
   priceValue: number;
   trafficQuality: TrafficQuality;
   startDate: string;
@@ -279,6 +282,7 @@ function mapApiCampaignToUi(c: ApiCampaign, creatives: Creative[], creativesLoad
     clicks: 0,
     ctr: 0,
     pricingModel: c.pricing_model,
+    typeModel: c.type_model === 2 ? 2 : 1,
     priceValue: Number(priceValue) || 0,
     trafficQuality: apiQualityToUi(c.quality_type),
     startDate: c.start_ts ? c.start_ts.slice(0, 10) : "",
@@ -375,6 +379,7 @@ function buildApiCampaignBody(c: Omit<Campaign, "id">): Omit<ApiCampaign, "campa
     traffic_type: c.trafficType,
     vertical: verticalsToApiArray(c.verticals),
     pricing_model: c.pricingModel,
+    type_model: c.typeModel === 2 ? 2 : 1,
     base_price: c.priceValue,
     evenness_by_slot_mode: c.evenSpend,
     goal_total_dollars: c.budget,
@@ -425,6 +430,7 @@ function buildApiCampaignPatch(updates: Partial<Campaign>): Partial<ApiCampaign>
       p.pricing_model = pm;
     }
   }
+  if (updates.typeModel !== undefined) p.type_model = updates.typeModel === 2 ? 2 : 1;
   if (updates.evenSpend !== undefined) p.evenness_by_slot_mode = updates.evenSpend;
   if (updates.trafficQuality !== undefined) p.quality_type = uiQualityToApi(updates.trafficQuality);
   if (updates.budget !== undefined) p.goal_total_dollars = updates.budget;

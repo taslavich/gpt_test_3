@@ -31,6 +31,7 @@ const apiCampaign: ApiCampaign = {
   traffic_type: "mainstream",
   vertical: {},
   pricing_model: "cpm",
+  type_model: 1,
   base_price: 1,
   evenness_by_slot_mode: false,
   goal_total_dollars: 10,
@@ -70,6 +71,7 @@ const campaignDraft: Omit<Campaign, "id"> = {
   clicks: 0,
   ctr: 0,
   pricingModel: "cpm",
+  typeModel: 1,
   priceValue: 1,
   trafficQuality: "common",
   startDate: "2026-07-26",
@@ -135,6 +137,34 @@ describe("CampaignProvider mutation requests", () => {
     expect(apiMock.createCampaign).toHaveBeenCalledWith(
       expect.objectContaining({ w: 999, h: 999 }),
     );
+  });
+
+  it("sends type_model without changing the existing CPM payload", async () => {
+    const { result } = renderHook(() => useCampaigns(), { wrapper });
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    let id: string | undefined;
+    await act(async () => {
+      id = await result.current.addCampaign({
+        ...campaignDraft,
+        typeModel: 2,
+        priceValue: 1,
+        creatives: [],
+      });
+    });
+
+    expect(apiMock.createCampaign).toHaveBeenCalledWith(
+      expect.objectContaining({
+        pricing_model: "cpm",
+        type_model: 2,
+        base_price: 1,
+      }),
+    );
+
+    await act(async () => {
+      await result.current.updateCampaign(id!, { typeModel: 1 });
+    });
+    expect(apiMock.patchCampaign).toHaveBeenCalledWith(id, { type_model: 1 });
   });
 
   it("sends traffic quality names without the quality suffix", async () => {

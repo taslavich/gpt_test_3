@@ -4,6 +4,7 @@
 
 export type CampaignStatus = "active" | "paused" | "draft" | "completed" | "moderation" | "no_budget" | "waiting" | "deleted";
 export type PricingModel = "cpm" | "cpc";
+export type CampaignTypeModel = 1 | 2;
 export type TrafficType = "mainstream" | "adult" | "mixed";
 export type FormatType = "banner" | "popunder" | "native" | "push";
 export type TopupStatus = "draft" | "pending" | "approved" | "rejected" | "cancelled";
@@ -72,6 +73,8 @@ export interface ApiCampaign {
   traffic_type: TrafficType;
   vertical: Record<string, 0 | 1>;
   pricing_model: PricingModel;
+  /** 1 = standard CPM/CPC bidding, 2 = TwinBid CPM optimization. */
+  type_model?: CampaignTypeModel;
   base_price: number;
   evenness_by_slot_mode: boolean;
   goal_total_dollars: number;

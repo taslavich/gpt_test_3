@@ -24,6 +24,7 @@ import { useCampaignStats, statOf } from "@/hooks/use-campaign-stats";
 import { formatNumberWithDot, formatStatisticInteger, formatStatisticSpend } from "@/lib/numberFormat";
 import { CampaignIdPopover } from "@/components/dashboard/CampaignIdPopover";
 import { getLocalizedErrorMessage } from "@/lib/apiStatus";
+import { getCampaignPricingLabel } from "@/lib/campaignPricing";
 
 function isDraftComplete(c: Campaign): boolean {
   if (!c.name.trim()) return false;
@@ -486,7 +487,7 @@ export default function DashboardCampaigns() {
                 [t("overview.impressions"), formatStatisticInteger(vs.impressions)],
                 [t("stats.clicks"), formatStatisticInteger(vs.clicks)],
                 ["CTR", `${vs.ctr}%`],
-                [t("view.bid"), `$${viewCampaign.priceValue} (${viewCampaign.pricingModel.toUpperCase()})`],
+                [viewCampaign.typeModel === 2 ? t("view.maximumBid") : t("view.bid"), `$${viewCampaign.priceValue} (${getCampaignPricingLabel(viewCampaign.pricingModel, viewCampaign.typeModel)})`],
               ].map(([label, val], i) => (
                 <div key={i} className="space-y-1"><p className="text-sm text-muted-foreground">{label as string}</p><div className="font-medium">{val}</div></div>
               ))}

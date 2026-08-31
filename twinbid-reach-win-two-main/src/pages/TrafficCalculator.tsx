@@ -38,6 +38,7 @@ import { getTargetingDimensionOptions } from "@/lib/targetingDimensions";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { useTouchScrollSelectionGuard } from "@/hooks/use-touch-scroll-selection-guard";
+import { getCampaignPricingLabel } from "@/lib/campaignPricing";
 
 const copy = {
   ru: {
@@ -322,7 +323,7 @@ const money = (value: number, model: PricingModel) => `$${value.toLocaleString("
 
 export default function TrafficCalculator() {
   useTouchScrollSelectionGuard();
-  const { lang } = useLanguage();
+  const { lang, t } = useLanguage();
   const text = copy[lang] ?? copy.en;
   const { campaigns, loading: campaignsLoading, updateCampaign } = useCampaigns();
   const [selectedId, setSelectedId] = useState("");
@@ -474,7 +475,7 @@ export default function TrafficCalculator() {
             ) : campaigns.slice(0, 7).map((campaign) => (
               <button key={campaign.id} type="button" onClick={() => selectCampaign(campaign)} className={cn("rounded-xl border p-4 text-left transition-colors", selectedId === campaign.id ? "border-primary bg-primary/10" : "border-border hover:border-primary/40")}>
                 <div className="flex items-center justify-between gap-2"><FormatMark format={campaign.formatKey} /><Badge variant={campaign.status === "active" ? "default" : "secondary"} className="max-w-24 truncate text-[10px]">{campaign.status}</Badge></div>
-                <p className="mt-3 truncate text-sm font-semibold">{campaign.name}</p><p className="mt-1 text-xs text-muted-foreground">{campaign.formatKey} · {campaign.pricingModel.toUpperCase()} {money(campaign.priceValue, campaign.pricingModel)}</p>
+                <p className="mt-3 truncate text-sm font-semibold">{campaign.name}</p><p className="mt-1 text-xs text-muted-foreground">{campaign.formatKey} · {getCampaignPricingLabel(campaign.pricingModel, campaign.typeModel)} {money(campaign.priceValue, campaign.pricingModel)}</p>
               </button>
             ))}
           </div>
@@ -522,12 +523,12 @@ export default function TrafficCalculator() {
                   <>
                     <Metric icon={BarChart3} label={text.actualImpressions} value={actual?.hasData ? formatStatisticInteger(actual.impressions) : "—"} hint={actual?.hasData ? text.statsHint : text.noData} />
                     <Metric icon={Percent} label={text.share} value={share === null ? "—" : `${formatNumberWithDot(share, { maximumFractionDigits: 1 })}%`} hint={text.shareHint} />
-                    <Metric icon={CircleDollarSign} label={text.currentBid} value={money(selected.priceValue, selected.pricingModel)} hint={selected.pricingModel.toUpperCase()} />
+                    <Metric icon={CircleDollarSign} label={selected.typeModel === 2 ? t("view.maximumBid") : text.currentBid} value={money(selected.priceValue, selected.pricingModel)} hint={getCampaignPricingLabel(selected.pricingModel, selected.typeModel)} />
                   </>
                 )}
               </div>
               {selected && (
-                <Card className="border-primary/20 p-4 sm:p-5"><div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between"><div className="max-w-xl"><span className="inline-flex rounded-xl bg-primary/10 p-2.5"><CircleDollarSign className="h-5 w-5 text-primary" /></span><h3 className="mt-4 font-semibold">{text.moreTraffic}</h3><p className="mt-1 text-sm text-muted-foreground">{text.bidDesc}</p></div><div className="w-full lg:max-w-sm"><div className="mb-2 flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground"><span>{text.newBid}</span><span>{selected.pricingModel.toUpperCase()} · {text.fixedType}</span></div><div className="flex flex-col gap-2 min-[400px]:flex-row"><Input inputMode="decimal" aria-invalid={Boolean(bidValidationError)} className={cn("min-w-0", bidValidationError && "border-destructive")} value={bidDraft} onChange={(event) => setBidDraft(event.target.value)} /><Button className="shrink-0" disabled={saving || Boolean(bidValidationError) || parsedBid === selected.priceValue} onClick={saveBid}>{saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}{text.save}</Button></div>{bidValidationError && <p className="mt-2 text-xs text-destructive">{bidValidationError}</p>}</div></div></Card>
+                <Card className="border-primary/20 p-4 sm:p-5"><div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between"><div className="max-w-xl"><span className="inline-flex rounded-xl bg-primary/10 p-2.5"><CircleDollarSign className="h-5 w-5 text-primary" /></span><h3 className="mt-4 font-semibold">{text.moreTraffic}</h3><p className="mt-1 text-sm text-muted-foreground">{selected.typeModel === 2 ? t("budget.twinBidCpmCalculatorDesc") : text.bidDesc}</p></div><div className="w-full lg:max-w-sm"><div className="mb-2 flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground"><span>{selected.typeModel === 2 ? t("budget.twinBidCpmNewMaxBid") : text.newBid}</span><span>{getCampaignPricingLabel(selected.pricingModel, selected.typeModel)} · {text.fixedType}</span></div><div className="flex flex-col gap-2 min-[400px]:flex-row"><Input inputMode="decimal" aria-invalid={Boolean(bidValidationError)} className={cn("min-w-0", bidValidationError && "border-destructive")} value={bidDraft} onChange={(event) => setBidDraft(event.target.value)} /><Button className="shrink-0" disabled={saving || Boolean(bidValidationError) || parsedBid === selected.priceValue} onClick={saveBid}>{saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}{text.save}</Button></div>{bidValidationError && <p className="mt-2 text-xs text-destructive">{bidValidationError}</p>}</div></div></Card>
               )}
             </>
           )}

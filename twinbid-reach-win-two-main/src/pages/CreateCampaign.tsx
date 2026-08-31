@@ -8,7 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { AutoCropConfirmDialog } from "@/components/dashboard/AutoCropConfirmDialog";
 import { ArrowLeft } from "lucide-react";
 import { toast } from "sonner";
-import { useCampaigns, type TargetingState, type PricingModel, type TrafficQuality, type TrafficType, type ListMode, type Creative, type Vertical, VERTICALS } from "@/contexts/CampaignContext";
+import { useCampaigns, type TargetingState, type PricingModel, type CampaignTypeModel, type TrafficQuality, type TrafficType, type ListMode, type Creative, type Vertical, VERTICALS } from "@/contexts/CampaignContext";
 import { useNotifications } from "@/contexts/NotificationContext";
 import { TargetingSection, targetingConfigs } from "@/components/dashboard/TargetingSection";
 import { TargetingImportDialog } from "@/components/dashboard/TargetingImportDialog";
@@ -68,6 +68,7 @@ export default function CreateCampaign() {
   const [totalBudget, setTotalBudget] = useState("");
   const [priceValue, setPriceValue] = useState("");
   const [pricingModel, setPricingModel] = useState<PricingModel>("cpm");
+  const [typeModel, setTypeModel] = useState<CampaignTypeModel>(1);
   const [trafficQuality, setTrafficQuality] = useState<TrafficQuality>("common");
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
@@ -262,7 +263,7 @@ export default function CreateCampaign() {
       const id = await addCampaign({
         name: name.trim(), status: "draft", format: formatLabels[adFormat] || adFormat,
         formatKey: adFormat, trafficType, verticals, budget: parseNum(totalBudget), dailyBudget: null,
-        spent: 0, impressions: 0, clicks: 0, ctr: 0, pricingModel, priceValue: parseNum(priceValue),
+        spent: 0, impressions: 0, clicks: 0, ctr: 0, pricingModel, typeModel, priceValue: parseNum(priceValue),
         trafficQuality, startDate, endDate, creatives: crvs,
         targeting: Object.fromEntries(Object.entries(lists).map(([k, v]) => [k, { mode: v.mode, items: v.items }])),
         blockVpnTraffic,
@@ -305,7 +306,7 @@ export default function CreateCampaign() {
         format: formatLabels[adFormat] || adFormat || "",
         formatKey: adFormat || "", trafficType, verticals, budget: totalBudget ? parseNum(totalBudget) : 0,
         dailyBudget: null,
-        spent: 0, impressions: 0, clicks: 0, ctr: 0, pricingModel, priceValue: priceValue ? parseNum(priceValue) : 0,
+        spent: 0, impressions: 0, clicks: 0, ctr: 0, pricingModel, typeModel, priceValue: priceValue ? parseNum(priceValue) : 0,
         trafficQuality, startDate, endDate, creatives,
         targeting: Object.fromEntries(Object.entries(lists).map(([k, v]) => [k, { mode: v.mode, items: v.items }])),
         blockVpnTraffic,
@@ -490,6 +491,7 @@ export default function CreateCampaign() {
               totalBudget={totalBudget} setTotalBudget={setTotalBudget}
               priceValue={priceValue} setPriceValue={setPriceValue}
               pricingModel={pricingModel} setPricingModel={setPricingModel}
+              typeModel={typeModel} setTypeModel={setTypeModel}
               trafficQuality={trafficQuality} setTrafficQuality={setTrafficQuality}
               startDate={startDate} setStartDate={setStartDate}
               endDate={endDate} setEndDate={setEndDate}

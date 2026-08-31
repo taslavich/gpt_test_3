@@ -9,7 +9,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { AutoCropConfirmDialog } from "@/components/dashboard/AutoCropConfirmDialog";
 import { ArrowLeft, Save, AlertCircle, Loader2 } from "lucide-react";
 import { toast } from "sonner";
-import { useCampaigns, type TargetingState, type PricingModel, type TrafficQuality, type TrafficType, type Creative, type Vertical, VERTICALS } from "@/contexts/CampaignContext";
+import { useCampaigns, type TargetingState, type PricingModel, type CampaignTypeModel, type TrafficQuality, type TrafficType, type Creative, type Vertical, VERTICALS } from "@/contexts/CampaignContext";
 import { TargetingSection } from "@/components/dashboard/TargetingSection";
 import { TargetingImportDialog } from "@/components/dashboard/TargetingImportDialog";
 import { BudgetSection } from "@/components/dashboard/BudgetSection";
@@ -45,6 +45,7 @@ export default function EditCampaign() {
   const [totalBudget, setTotalBudget] = useState("");
   const [priceValue, setPriceValue] = useState("");
   const [pricingModel, setPricingModel] = useState<PricingModel>("cpm");
+  const [typeModel, setTypeModel] = useState<CampaignTypeModel>(1);
   const [trafficQuality, setTrafficQuality] = useState<TrafficQuality>("common");
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
@@ -98,6 +99,7 @@ export default function EditCampaign() {
       setTotalBudget(String(campaign.budget));
       setPriceValue(String(campaign.priceValue));
       setPricingModel(campaign.pricingModel);
+      setTypeModel(campaign.typeModel);
       setTrafficQuality(campaign.trafficQuality);
       setStartDate(campaign.startDate);
       setEndDate(campaign.endDate);
@@ -305,7 +307,7 @@ export default function EditCampaign() {
         targeting: Object.fromEntries(Object.entries(lists).map(([k, v]) => [k, { mode: v.mode, items: v.items }])),
         blockVpnTraffic,
         budget: tb, dailyBudget: null,
-        priceValue: pv, pricingModel, trafficQuality, startDate, endDate, evenSpend, status: newStatus,
+        priceValue: pv, pricingModel, typeModel, trafficQuality, startDate, endDate, evenSpend, status: newStatus,
         brandName: showBrandName ? brandName : undefined,
         
       });
@@ -447,6 +449,7 @@ export default function EditCampaign() {
                 totalBudget={totalBudget} setTotalBudget={setTotalBudget}
                 priceValue={priceValue} setPriceValue={setPriceValue}
                 pricingModel={pricingModel} setPricingModel={setPricingModel}
+                typeModel={typeModel} setTypeModel={setTypeModel}
                 trafficQuality={trafficQuality} setTrafficQuality={setTrafficQuality}
                 startDate={startDate} setStartDate={setStartDate}
                 endDate={endDate} setEndDate={setEndDate}

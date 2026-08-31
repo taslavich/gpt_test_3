@@ -6,9 +6,17 @@ import { HelpCircle, AlertTriangle, Info, CalendarIcon, CheckCircle2, Circle } f
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
 import { format } from "date-fns";
-import type { PricingModel, TrafficQuality } from "@/contexts/CampaignContext";
+import type { CampaignTypeModel, PricingModel, TrafficQuality } from "@/contexts/CampaignContext";
 import { useLanguage } from "@/contexts/LanguageContext";
 import {
   resolveDisplayedBidRecommendation,
@@ -17,10 +25,27 @@ import {
 import { convertRecommendationToModel, getBidLimits, getMaximumBid } from "@/lib/bidLimits";
 import { useEffect } from "react";
 
-function getAvailableModels(formatKey: string): PricingModel[] {
-  if (formatKey === "popunder") return ["cpm", "cpc"];
-  if (formatKey === "push") return ["cpc"];
-  return ["cpm"];
+interface PaymentModelOption {
+  key: "cpm" | "twinbid-cpm" | "cpc";
+  pricingModel: PricingModel;
+  typeModel: CampaignTypeModel;
+  label: string;
+  disabled?: boolean;
+}
+
+function getAvailableModels(formatKey: string): PaymentModelOption[] {
+  const cpm: PaymentModelOption = { key: "cpm", pricingModel: "cpm", typeModel: 1, label: "CPM" };
+  const twinBidCpm: PaymentModelOption = {
+    key: "twinbid-cpm",
+    pricingModel: "cpm",
+    typeModel: 2,
+    label: "TwinBid CPM",
+    disabled: true,
+  };
+  const cpc: PaymentModelOption = { key: "cpc", pricingModel: "cpc", typeModel: 1, label: "CPC" };
+  if (formatKey === "popunder") return [cpm, twinBidCpm, cpc];
+  if (formatKey === "push") return [cpc];
+  return [cpm, twinBidCpm];
 }
 
 function parseNumericValue(val: string): number {
@@ -39,6 +64,8 @@ interface BudgetSectionProps {
   setPriceValue: (v: string) => void;
   pricingModel: PricingModel;
   setPricingModel: (v: PricingModel) => void;
+  typeModel: CampaignTypeModel;
+  setTypeModel: (v: CampaignTypeModel) => void;
   trafficQuality: TrafficQuality;
   setTrafficQuality: (v: TrafficQuality) => void;
   startDate: string;
@@ -54,6 +81,7 @@ interface BudgetSectionProps {
 export function BudgetSection({
   formatKey, totalBudget, setTotalBudget,
   priceValue, setPriceValue, pricingModel, setPricingModel,
+  typeModel, setTypeModel,
   trafficQuality, setTrafficQuality, startDate, setStartDate, endDate, setEndDate,
   evenSpend, setEvenSpend,
   bidRecommendation = null,
@@ -62,6 +90,7 @@ export function BudgetSection({
   const { t } = useLanguage();
   const availableModels = getAvailableModels(formatKey);
   const enforcedPricingModel = availableModels.length === 1 ? availableModels[0] : null;
+  const selectedModelKey = pricingModel === "cpc" ? "cpc" : typeModel === 2 ? "twinbid-cpm" : "cpm";
   const bidLimits = getBidLimits(formatKey, trafficQuality, pricingModel);
   const limits = {
     min: bidLimits.min,
@@ -107,10 +136,14 @@ export function BudgetSection({
   };
 
   useEffect(() => {
-    if (enforcedPricingModel && pricingModel !== enforcedPricingModel) {
-      setPricingModel(enforcedPricingModel);
+    if (enforcedPricingModel && (
+      pricingModel !== enforcedPricingModel.pricingModel
+      || typeModel !== enforcedPricingModel.typeModel
+    )) {
+      setPricingModel(enforcedPricingModel.pricingModel);
+      setTypeModel(enforcedPricingModel.typeModel);
     }
-  }, [enforcedPricingModel, pricingModel, setPricingModel]);
+  }, [enforcedPricingModel, pricingModel, setPricingModel, setTypeModel, typeModel]);
 
   const startDateObj = startDate ? new Date(startDate + "T00:00:00") : undefined;
   const endDateObj = endDate ? new Date(endDate + "T00:00:00") : undefined;
@@ -160,24 +193,77 @@ export function BudgetSection({
       {availableModels.length > 1 && (
         <div className="space-y-2">
           <Label>{t("budget.pricingModel")}</Label>
-          <div className="flex gap-2">
-            {availableModels.map((m) => (
-              <Button key={m} type="button" variant="outline" size="sm"
-                onClick={() => setPricingModel(m)}
+          <div className="flex flex-wrap gap-2">
+            {availableModels.map((model) => (
+              <Button key={model.key} type="button" variant="outline" size="sm"
+                disabled={model.disabled}
+                onClick={() => {
+                  if (model.disabled) return;
+                  setPricingModel(model.pricingModel);
+                  setTypeModel(model.typeModel);
+                }}
                 className={cn(
-                  pricingModel === m
+                  model.disabled
+                    ? "cursor-not-allowed border-border bg-muted text-muted-foreground opacity-60"
+                    : selectedModelKey === model.key
                     ? "bg-primary text-primary-foreground border-primary"
                     : "border-border"
                 )}>
-                {m.toUpperCase()}
+                {model.label}
               </Button>
             ))}
           </div>
+          {availableModels.some((model) => model.key === "twinbid-cpm") && (
+            <Dialog>
+              <DialogTrigger asChild>
+                <Button type="button" variant="link" size="sm" className="h-auto gap-1.5 px-0 py-1 text-primary">
+                  <Info className="h-4 w-4" />
+                  {t("budget.twinBidCpmLearnMore")}
+                </Button>
+              </DialogTrigger>
+              <DialogContent className="max-h-[90dvh] overflow-y-auto border-border bg-card sm:max-w-xl">
+                <DialogHeader>
+                  <DialogTitle>{t("budget.twinBidCpmDialogTitle")}</DialogTitle>
+                  <DialogDescription className="text-left leading-relaxed">
+                    {t("budget.twinBidCpmDialogIntro")}
+                  </DialogDescription>
+                </DialogHeader>
+                <div className="space-y-4">
+                  <div className="rounded-xl border border-border bg-background/50 p-4">
+                    <p className="font-semibold">{t("budget.twinBidCpmVsTitle")}</p>
+                    <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
+                      {t("budget.smartCpmDescription")}
+                    </p>
+                  </div>
+                  <div className="rounded-xl border border-primary/30 bg-primary/5 p-4">
+                    <p className="text-sm leading-relaxed">{t("budget.twinBidCpmExample")}</p>
+                    <div className="mt-4 grid gap-2 sm:grid-cols-2">
+                      <div className="rounded-lg border border-border bg-background p-3">
+                        <p className="text-xs text-muted-foreground">Smart CPM</p>
+                        <p className="mt-1 font-semibold">{t("budget.smartCpmResult")}</p>
+                      </div>
+                      <div className="rounded-lg border border-primary/30 bg-primary/10 p-3">
+                        <p className="text-xs text-primary">TwinBid CPM</p>
+                        <p className="mt-1 font-semibold text-primary">{t("budget.twinBidCpmResult")}</p>
+                      </div>
+                    </div>
+                  </div>
+                  <p className="text-sm leading-relaxed text-muted-foreground">
+                    {t("budget.twinBidCpmConclusion")}
+                  </p>
+                </div>
+              </DialogContent>
+            </Dialog>
+          )}
         </div>
       )}
 
       <div className="space-y-2">
-        <Label>{pricingModel === "cpm" ? t("budget.cpmLabel") : t("budget.cpcLabel")} *</Label>
+        <Label>{pricingModel === "cpc"
+          ? t("budget.cpcLabel")
+          : typeModel === 2
+            ? t("budget.twinBidCpmMaxBidLabel")
+            : t("budget.cpmLabel")} *</Label>
         <div className="relative w-full max-w-xs">
           <Input value={priceValue} onChange={(e) => setPriceValue(e.target.value)}
             placeholder={String(optimalRecommended ?? limits.rec)}
