@@ -22,9 +22,10 @@ DATA_PIPELINE_SERVICES=(
     "rtb-clickhouse-loader"
 )
 
-# Порядок запуска Core: сначала внутренние зависимости, затем входные адаптеры.
+# Core RTB. ADV поднимается первым, затем percenter и остальные сервисы.
 CORE_SERVICES=(
     "rtb-adv"
+    "rtb-percenter"
     "rtb-bid-engine"
     "rtb-orchestrator"
     "rtb-router"
@@ -186,9 +187,12 @@ case "$1" in
         check_project_dir
         echo "🚀 Starting Core RTB Services..."
 
-        # ADV должен первым поднять HTTP control endpoint :8101.
+        # ADV первым поднимает HTTP control endpoint :8101.
         start_services "rtb-adv"
         wait_for_adv
+
+        # Percenter использует Redis/ClickHouse и должен жить вместе с Core.
+        start_services "rtb-percenter"
 
         # После готовности ADV запускаем остальные сервисы по зависимостям.
         start_services "rtb-bid-engine"
@@ -203,13 +207,13 @@ case "$1" in
     stopC|stop-core)
         echo "🛑 Stopping Core RTB Services..."
 
-        # Останавливаем в обратном порядке: сначала источники новых запросов,
-        # затем внутренние сервисы, ADV — последним.
+        # Останавливаем в обратном порядке. ADV — последним.
         stop_services "rtb-adm-adapter"
         stop_services "rtb-spp-adapter"
         stop_services "rtb-router"
         stop_services "rtb-orchestrator"
         stop_services "rtb-bid-engine"
+        stop_services "rtb-percenter"
         stop_services "rtb-adv"
 
         echo "✅ Core services stopped"
@@ -225,6 +229,7 @@ case "$1" in
         go build -o ./cmd/orchestrator/orchestrator ./cmd/orchestrator
         go build -o ./cmd/bid-engine/bid-engine ./cmd/bid-engine
         go build -o ./cmd/adv/adv ./cmd/adv
+        go build -o ./cmd/percenter/percenter ./cmd/percenter
         go build -o ./cmd/spp-adapter/spp-adapter ./cmd/spp-adapter
         go build -o ./cmd/adm-adapter/adm-adapter ./cmd/adm-adapter
 
@@ -233,6 +238,7 @@ case "$1" in
             ./cmd/orchestrator/orchestrator \
             ./cmd/bid-engine/bid-engine \
             ./cmd/adv/adv \
+            ./cmd/percenter/percenter \
             ./cmd/spp-adapter/spp-adapter \
             ./cmd/adm-adapter/adm-adapter
 
@@ -262,7 +268,7 @@ case "$1" in
         else
             echo "⚠️ dsp_rules_v25.json not found"
         fi
-        
+
         if [ -f "./cmd/router/spp_rules_v25.json" ]; then
             cp ./cmd/router/spp_rules_v25.json ./
             echo "✅ Copied spp_rules_v25.json"
@@ -280,7 +286,7 @@ case "$1" in
         "$0" restartC
         ;;
 
-    # --- Full System (всё вместе) ---
+    # --- Full System ---
     start-all)
         "$0" startD
         sleep 3
@@ -313,20 +319,27 @@ case "$1" in
         check_project_dir
         cd "$PROJECT_DIR"
         echo "🔨 Building all services..."
+
         go build -o ./cmd/router/router ./cmd/router
         go build -o ./cmd/orchestrator/orchestrator ./cmd/orchestrator
-
         go build -o ./cmd/bid-engine/bid-engine ./cmd/bid-engine
         go build -o ./cmd/adv/adv ./cmd/adv
-
+        go build -o ./cmd/percenter/percenter ./cmd/percenter
         go build -o ./cmd/spp-adapter/spp-adapter ./cmd/spp-adapter
         go build -o ./cmd/adm-adapter/adm-adapter ./cmd/adm-adapter
-
         go build -o ./cmd/clickhouse-loader/clickhouse-loader ./cmd/clickhouse-loader
-
         go build -o ./cmd/kafka-loader/kafka-loader ./cmd/kafka-loader
 
-        chmod +x ./cmd/*/*
+        chmod +x \
+            ./cmd/router/router \
+            ./cmd/orchestrator/orchestrator \
+            ./cmd/bid-engine/bid-engine \
+            ./cmd/adv/adv \
+            ./cmd/percenter/percenter \
+            ./cmd/spp-adapter/spp-adapter \
+            ./cmd/adm-adapter/adm-adapter \
+            ./cmd/clickhouse-loader/clickhouse-loader \
+            ./cmd/kafka-loader/kafka-loader
 
         # Копируем конфиги в корень для удобства
         if [ -f "./cmd/router/dsp_rules_v25.json" ]; then
@@ -335,7 +348,7 @@ case "$1" in
         else
             echo "⚠️ dsp_rules_v25.json not found"
         fi
-        
+
         if [ -f "./cmd/router/spp_rules_v25.json" ]; then
             cp ./cmd/router/spp_rules_v25.json ./
             echo "✅ Copied spp_rules_v25.json"
@@ -380,11 +393,11 @@ case "$1" in
         echo "  updateD             Git pull + build only loaders + restart Data Pipeline"
         echo ""
         echo "Core RTB Services (C):"
-        echo "  startC              Start bid-engine, ADV, router, orchestrator, spp-adapter and adm-adapter"
+        echo "  startC              Start ADV, percenter, bid-engine, router, orchestrator, spp-adapter and adm-adapter"
         echo "  stopC               Stop Core services"
-        echo "  restartC            Restart Core services"
+        echo "  restartC            Rebuild + restart Core services, including percenter"
         echo "  statusC             Show Core services status"
-        echo "  updateC             Git pull + build only Core + restart Core"
+        echo "  updateC             Git pull + build Core + restart Core"
         echo ""
         echo "Full System:"
         echo "  start-all           Start everything"
@@ -394,16 +407,16 @@ case "$1" in
         echo "  update              Git pull + build all + restart all"
         echo ""
         echo "Build & Deploy:"
-        echo "  build               Build all Go services"
+        echo "  build               Build all Go services, including percenter"
         echo "  deploy              Build and start everything"
         echo ""
         echo "Examples:"
         echo "  $0 startD           # Запустить только данные"
-        echo "  $0 startC           # Запустить только RTB"
+        echo "  $0 startC           # Запустить только RTB + percenter"
         echo "  $0 restartD         # Перезапустить данные"
-        echo "  $0 restartC         # Перезапустить RTB"
+        echo "  $0 restartC         # Пересобрать и перезапустить RTB + percenter"
         echo "  $0 updateD          # Обновить только загрузчики"
-        echo "  $0 updateC          # Обновить только RTB ядро"
+        echo "  $0 updateC          # Обновить RTB ядро + percenter"
         ;;
 
     *)
