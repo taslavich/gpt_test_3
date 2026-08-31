@@ -15,10 +15,13 @@ import (
 	"time"
 
 	"github.com/ClickHouse/clickhouse-go/v2"
+	"github.com/go-chi/chi/v5"
 	goredis "github.com/redis/go-redis/v9"
 	"gitlab.com/twinbid-exchange/RTB-exchange/internal/config"
 	utils "gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/utils_grpc"
+	httpServer "gitlab.com/twinbid-exchange/RTB-exchange/internal/http"
 	"gitlab.com/twinbid-exchange/RTB-exchange/internal/services/percenter"
+	percenterWeb "gitlab.com/twinbid-exchange/RTB-exchange/internal/services/percenter/web"
 	redisService "gitlab.com/twinbid-exchange/RTB-exchange/internal/services/redis"
 )
 
@@ -53,6 +56,8 @@ var requiredPercenterEnv = []string{
 	"PERCENTER_ADV_CACHE_TTL",
 	"BOT_BASE_URL",
 	"BOT_INTERNAL_SECRET",
+	"HTTP_HOSTNAME",
+	"HTTP_PORT",
 }
 
 func main() {
@@ -148,8 +153,17 @@ func run() error {
 		policy.SimpleBaselineReoptimizeInterval,
 	)
 
+	diagnosticsServer := percenterWeb.NewServer(redisClient, store, clickhouseConn, cfg, policy)
+	router := httpServer.InitHttpRouter(chi.NewRouter())
+	percenterWeb.InitHttpRoutes(router, diagnosticsServer)
+	log.Println("HTTP routes initialized")
+	go httpServer.RunHttpServer(ctx, router, cfg.HttpServer.Host, cfg.HttpServer.Port)
+
 	runTick := func() {
-		if err := processTick(ctx, clickhouseConn, store, cfg, policy); err != nil {
+		diagnosticsServer.RecordTickStart(time.Now().UTC())
+		err := processTick(ctx, clickhouseConn, store, cfg, policy)
+		diagnosticsServer.RecordTickFinish(time.Now().UTC(), err)
+		if err != nil {
 			log.Printf("[PERCENTER][TICK_ERROR] %v", err)
 			if sendErr := bot.SendTextMessageToBot(ctx, fmt.Sprintf("[PERCENTER][CLICKHOUSE_DOWN] %v", err)); sendErr != nil {
 				log.Printf("[PERCENTER][TELEGRAM_ERROR] %v", sendErr)
@@ -287,6 +301,12 @@ func validatePercenterConfig(cfg *config.PercenterConfig) error {
 	}
 	if strings.TrimSpace(cfg.BotInternalSecret) == "" {
 		return fmt.Errorf("BOT_INTERNAL_SECRET is empty")
+	}
+	if strings.TrimSpace(cfg.HttpServer.Host) == "" {
+		return fmt.Errorf("HTTP_HOSTNAME is empty")
+	}
+	if cfg.HttpServer.Port == 0 {
+		return fmt.Errorf("HTTP_PORT must be > 0")
 	}
 
 	return nil

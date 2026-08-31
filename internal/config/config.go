@@ -396,8 +396,10 @@ type PercenterConfig struct {
 	ClickhouseConfig
 	RedisConfig
 	PercenterAlgorithmConfig
-	BotBaseURL        string `yaml:"BOT_BASE_URL" env:"BOT_BASE_URL"`
-	BotInternalSecret string `yaml:"BOT_INTERNAL_SECRET" env:"BOT_INTERNAL_SECRET"`
+	HttpServer
+	BotBaseURL           string `yaml:"BOT_BASE_URL" env:"BOT_BASE_URL"`
+	BotInternalSecret    string `yaml:"BOT_INTERNAL_SECRET" env:"BOT_INTERNAL_SECRET"`
+	PercenterAdminSecret string `yaml:"PERCENTER_ADMIN_SECRET" env:"PERCENTER_ADMIN_SECRET"`
 }
 
 type ClickhouseLoaderConfig struct {
