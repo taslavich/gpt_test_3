@@ -1,9 +1,6 @@
 package web
 
 import (
-	"crypto/subtle"
-	"net/http"
-	"strings"
 	"sync"
 	"time"
 
@@ -25,7 +22,6 @@ type Server struct {
 	clickhouse clickhouse.Conn
 	cfg        *config.PercenterConfig
 	policy     percenter.Policy
-	secret     string
 	startedAt  time.Time
 
 	mu       sync.RWMutex
@@ -39,20 +35,12 @@ func NewServer(
 	cfg *config.PercenterConfig,
 	policy percenter.Policy,
 ) *Server {
-	secret := ""
-	if cfg != nil {
-		secret = strings.TrimSpace(cfg.PercenterAdminSecret)
-		if secret == "" {
-			secret = strings.TrimSpace(cfg.BotInternalSecret)
-		}
-	}
 	return &Server{
 		redis:      redisClient,
 		store:      store,
 		clickhouse: clickhouseConn,
 		cfg:        cfg,
 		policy:     policy.Normalize(),
-		secret:     secret,
 		startedAt:  time.Now().UTC(),
 	}
 }
@@ -90,25 +78,4 @@ func (s *Server) tickStatus() TickStatus {
 	status := s.lastTick
 	s.mu.RUnlock()
 	return status
-}
-
-func (s *Server) requireAdmin(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if s == nil || strings.TrimSpace(s.secret) == "" {
-			writeAPIError(w, http.StatusServiceUnavailable, "admin secret is not configured")
-			return
-		}
-		provided := strings.TrimSpace(r.Header.Get("X-Internal-Secret"))
-		if provided == "" {
-			authorization := strings.TrimSpace(r.Header.Get("Authorization"))
-			if len(authorization) > len("Bearer ") && strings.EqualFold(authorization[:len("Bearer ")], "Bearer ") {
-				provided = strings.TrimSpace(authorization[len("Bearer "):])
-			}
-		}
-		if len(provided) != len(s.secret) || subtle.ConstantTimeCompare([]byte(provided), []byte(s.secret)) != 1 {
-			writeAPIError(w, http.StatusUnauthorized, "unauthorized")
-			return
-		}
-		next.ServeHTTP(w, r)
-	})
 }
