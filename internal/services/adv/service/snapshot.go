@@ -123,7 +123,9 @@ func (s *AuctionService) RefreshFromPostgres(ctx context.Context, db *sql.DB) er
 				continue
 			}
 			minMargin := policy.MinMargin(snapshot.UserPromoSpendRemaining[campaign.UserID])
-			if _, versionErr := s.smartPercenter.EnsureCampaignVersion(ctx, campaign.ID, campaign.TypeModel, campaign.BasePrice, minMargin); versionErr != nil {
+			if _, versionErr := s.smartPercenter.EnsureCampaignVersionForContext(
+				ctx, campaign.ID, campaign.TypeModel, campaign.BasePrice, minMargin, percenterCampaignContext(campaign),
+			); versionErr != nil {
 				log.Printf("ADV snapshot: percenter campaign version sync failed campaign_id=%s: %v", campaign.ID, versionErr)
 			}
 		}

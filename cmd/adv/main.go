@@ -72,17 +72,19 @@ func main() {
 		log.Fatalf("ADV percenter Redis unavailable: %v", err)
 	}
 	percenterPolicy := percenter.Policy{
-		BuyoutRetention:        cfg.BuyoutRetention,
-		EfficiencyRetention:    cfg.EfficiencyRetention,
-		DefaultMinMargin:       cfg.DefaultMinMargin,
-		PromoMinMargin:         cfg.PromoMinMargin,
-		MaxMargin:              cfg.MaxMargin,
-		SSPSearchPrecision:     cfg.SSPSearchPrecision,
-		MarginSearchStepsPP:    append([]float64(nil), cfg.MarginSearchSteps...),
-		SSPReoptimizeInterval:  cfg.SSPReoptimizeInterval,
-		MarginOptimizeInterval: cfg.MarginOptimizeInterval,
-		SegmentStateTTL:        cfg.PercenterSegmentStateTTL,
-		ADVCacheTTL:            cfg.PercenterADVCacheTTL,
+		BuyoutRetention:                  cfg.BuyoutRetention,
+		EfficiencyRetention:              cfg.EfficiencyRetention,
+		SimpleWinRateRetention:           cfg.SimpleWinRateRetention,
+		DefaultMinMargin:                 cfg.DefaultMinMargin,
+		PromoMinMargin:                   cfg.PromoMinMargin,
+		MaxMargin:                        cfg.MaxMargin,
+		SSPSearchPrecision:               cfg.SSPSearchPrecision,
+		MarginSearchStepsPP:              append([]float64(nil), cfg.MarginSearchSteps...),
+		SSPReoptimizeInterval:            cfg.SSPReoptimizeInterval,
+		SimpleBaselineReoptimizeInterval: cfg.SimpleBaselineReoptimizeInterval,
+		MarginOptimizeInterval:           cfg.MarginOptimizeInterval,
+		SegmentStateTTL:                  cfg.PercenterSegmentStateTTL,
+		ADVCacheTTL:                      cfg.PercenterADVCacheTTL,
 	}.Normalize()
 	percenterStore := percenter.NewStateStore(percenterRedis, percenterPolicy)
 
@@ -118,7 +120,7 @@ func main() {
 	runtimeStore := auction.NewRuntimeStore(runtimeRedis, cfg.AdvPacingCurrentTTL, cfg.AdvPacingSlotTTL)
 	winnerStore := auction.NewWinnerStore(winnerRedis, cfg.AdvWinnerTTL)
 	auctionService := auction.NewAuctionService(runtimeStore, winnerStore, percentStore, qualityStore, siteIDQualityStore)
-	auctionService.ConfigureSmartPercenter(percenterStore, percenterPolicy)
+	auctionService.ConfigurePercenter(percenterStore, percenterPolicy)
 	auctionService.SetVPNClassifier(vpnStore)
 	auctionService.SetAntiPerekrutEnabled(cfg.AntiperekrutEnabled)
 	auctionService.StartDiagnostics(ctx)

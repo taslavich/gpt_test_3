@@ -6,12 +6,14 @@ import (
 )
 
 type Metrics struct {
-	SegmentHash     string
-	PointVersion    uint64
-	Requests        uint64
-	Wins            uint64
-	AdvertiserSpend float64
-	TwinBidProfit   float64
+	SegmentHash        string
+	PointVersion       uint64
+	Requests           uint64
+	Wins               uint64
+	Clicks             uint64
+	AdvertiserSpend    float64
+	TwinBidProfit      float64
+	ClickTwinBidProfit float64
 }
 
 func (m Metrics) Buyout() float64 {
@@ -29,10 +31,18 @@ func (m Metrics) Efficiency() float64 {
 }
 
 func (m Metrics) ProfitPerRequest() float64 {
+	return m.ProfitPerRequestFor(ProfitModelImpression)
+}
+
+func (m Metrics) ProfitPerRequestFor(profitModel string) float64 {
 	if m.Requests == 0 {
 		return 0
 	}
-	return m.TwinBidProfit / float64(m.Requests)
+	profit := m.TwinBidProfit
+	if normalizeProfitModel(profitModel) == ProfitModelClick {
+		profit = m.ClickTwinBidProfit
+	}
+	return profit / float64(m.Requests)
 }
 
 func Advance(state State, metrics Metrics, policy Policy, now time.Time) (State, bool) {
@@ -46,6 +56,14 @@ func Advance(state State, metrics Metrics, policy Policy, now time.Time) (State,
 
 	if !state.LastChangeAt.IsZero() && now.Sub(state.LastChangeAt) < policy.MarginOptimizeInterval {
 		return state, false
+	}
+
+	if normalizeTypeModel(state.TypeModel) == TypeModelSimple {
+		if state.simpleBaselineReoptimizationDue(now, policy.SimpleBaselineReoptimizeInterval) {
+			reset := resetState(state, now)
+			return reset, true
+		}
+		return advanceSimple(state, metrics, policy, now)
 	}
 
 	if !state.LastSSPReoptimizeAt.IsZero() && now.Sub(state.LastSSPReoptimizeAt) >= policy.SSPReoptimizeInterval {
@@ -149,9 +167,116 @@ func Advance(state State, metrics Metrics, policy Policy, now time.Time) (State,
 }
 
 func resetState(state State, now time.Time) State {
-	reset := BaselineState(state.SegmentHash, state.CampaignID, state.OriginalBid, state.MinMargin, state.CampaignVersion, now)
+	reset := BaselineStateForCampaign(
+		state.SegmentHash,
+		state.CampaignID,
+		state.OriginalBid,
+		state.MinMargin,
+		state.CampaignVersion,
+		state.TypeModel,
+		state.ProfitModel,
+		now,
+	)
 	reset.PointVersion = nextPointVersion(state.PointVersion)
 	return reset
+}
+
+func advanceSimple(state State, metrics Metrics, policy Policy, now time.Time) (State, bool) {
+	switch state.Phase {
+	case PhaseSimpleBaseline, "":
+		buyout := metrics.Buyout()
+		if buyout <= 0 {
+			return state, false
+		}
+		state.BenchmarkBuyout = buyout
+		state.BestProfitPerReq = metrics.ProfitPerRequestFor(state.ProfitModel)
+		state.BestMargin = state.MinMargin
+		state.BestAdvertiserPrice = state.OriginalBid
+		state.MarginStepIndex = 0
+		state.MarginDirection = 1
+		state.LastSimpleBaselineAt = now
+		if next, ok := nextSimpleMarginFromBest(state, policy, 1); ok {
+			applySimpleMarginPoint(&state, next, now)
+			state.Phase = PhaseSimpleMarginSearch
+			return state, true
+		}
+		return state, false
+
+	case PhaseSimpleMarginSearch:
+		validWinRate := state.BenchmarkBuyout > 0 && metrics.Buyout()/state.BenchmarkBuyout >= policy.SimpleWinRateRetention
+		profit := metrics.ProfitPerRequestFor(state.ProfitModel)
+		improved := validWinRate && profit > state.BestProfitPerReq
+		if improved {
+			state.BestProfitPerReq = profit
+			state.BestMargin = state.Margin
+			state.BestAdvertiserPrice = state.OriginalBid
+			if next, ok := nextSimpleMarginFromBest(state, policy, state.MarginDirection); ok {
+				applySimpleMarginPoint(&state, next, now)
+				return state, true
+			}
+		}
+
+		if state.MarginStepIndex < len(policy.MarginSearchStepsPP)-1 {
+			state.MarginStepIndex++
+			if next, ok := nextSimpleMarginFromBest(state, policy, state.MarginDirection); ok {
+				applySimpleMarginPoint(&state, next, now)
+				return state, true
+			}
+		}
+		state.MarginDirection *= -1
+		if state.MarginDirection == 0 {
+			state.MarginDirection = -1
+		}
+		if next, ok := nextSimpleMarginFromBest(state, policy, state.MarginDirection); ok {
+			applySimpleMarginPoint(&state, next, now)
+			return state, true
+		}
+		applySimpleMarginPoint(&state, state.BestMargin, now)
+		return state, true
+
+	default:
+		reset := resetState(state, now)
+		return reset, true
+	}
+}
+
+func applySimpleMarginPoint(state *State, margin float64, now time.Time) {
+	if state == nil {
+		return
+	}
+	margin = math.Max(state.MinMargin, math.Min(margin, 0.999999))
+	state.PointVersion = nextPointVersion(state.PointVersion)
+	state.AdvertiserPrice = state.OriginalBid
+	state.Margin = margin
+	state.SSPBid = state.OriginalBid * (1 - margin)
+	state.LastChangeAt = now
+}
+
+func nextSimpleMarginFromBest(state State, policy Policy, direction int) (float64, bool) {
+	if len(policy.MarginSearchStepsPP) == 0 {
+		return 0, false
+	}
+	idx := state.MarginStepIndex
+	if idx < 0 {
+		idx = 0
+	}
+	if idx >= len(policy.MarginSearchStepsPP) {
+		idx = len(policy.MarginSearchStepsPP) - 1
+	}
+	if direction == 0 {
+		direction = 1
+	}
+	step := policy.MarginSearchStepsPP[idx] / 100
+	base := state.BestMargin
+	if base <= 0 {
+		base = state.Margin
+	}
+	candidate := base + float64(direction)*step
+	maxMargin := math.Max(state.MinMargin, policy.MaxMargin)
+	if candidate < state.MinMargin-1e-12 || candidate > maxMargin+1e-12 {
+		return 0, false
+	}
+	return math.Max(state.MinMargin, math.Min(candidate, maxMargin)), true
 }
 
 func applySSPTestPoint(state *State, ssp float64, now time.Time) {

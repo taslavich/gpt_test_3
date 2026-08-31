@@ -300,17 +300,19 @@ type AdmAdapterConfig struct {
 }
 
 type PercenterAlgorithmConfig struct {
-	SSPReoptimizeInterval    time.Duration `yaml:"SSP_REOPTIMIZE_INTERVAL" env:"SSP_REOPTIMIZE_INTERVAL" env-default:"6h"`
-	MarginOptimizeInterval   time.Duration `yaml:"MARGIN_OPTIMIZE_INTERVAL" env:"MARGIN_OPTIMIZE_INTERVAL" env-default:"5m"`
-	BuyoutRetention          float64       `yaml:"BUYOUT_RETENTION" env:"BUYOUT_RETENTION" env-default:"0.80"`
-	EfficiencyRetention      float64       `yaml:"EFFICIENCY_RETENTION" env:"EFFICIENCY_RETENTION" env-default:"0.80"`
-	DefaultMinMargin         float64       `yaml:"DEFAULT_MIN_MARGIN" env:"DEFAULT_MIN_MARGIN" env-default:"0.20"`
-	PromoMinMargin           float64       `yaml:"PROMO_MIN_MARGIN" env:"PROMO_MIN_MARGIN" env-default:"0.30"`
-	MaxMargin                float64       `yaml:"MAX_MARGIN" env:"MAX_MARGIN" env-default:"0.90"`
-	SSPSearchPrecision       float64       `yaml:"SSP_SEARCH_PRECISION" env:"SSP_SEARCH_PRECISION" env-default:"0.01"`
-	MarginSearchSteps        ListFloat64   `yaml:"MARGIN_SEARCH_STEPS" env:"MARGIN_SEARCH_STEPS" env-default:"10,5,2,1"`
-	PercenterSegmentStateTTL time.Duration `yaml:"PERCENTER_SEGMENT_STATE_TTL" env:"PERCENTER_SEGMENT_STATE_TTL" env-default:"168h"`
-	PercenterADVCacheTTL     time.Duration `yaml:"PERCENTER_ADV_CACHE_TTL" env:"PERCENTER_ADV_CACHE_TTL" env-default:"5s"`
+	SSPReoptimizeInterval            time.Duration `yaml:"SSP_REOPTIMIZE_INTERVAL" env:"SSP_REOPTIMIZE_INTERVAL" env-default:"6h"`
+	SimpleBaselineReoptimizeInterval time.Duration `yaml:"SIMPLE_BASELINE_REOPTIMIZE_INTERVAL" env:"SIMPLE_BASELINE_REOPTIMIZE_INTERVAL" env-default:"6h"`
+	MarginOptimizeInterval           time.Duration `yaml:"MARGIN_OPTIMIZE_INTERVAL" env:"MARGIN_OPTIMIZE_INTERVAL" env-default:"5m"`
+	BuyoutRetention                  float64       `yaml:"BUYOUT_RETENTION" env:"BUYOUT_RETENTION" env-default:"0.80"`
+	EfficiencyRetention              float64       `yaml:"EFFICIENCY_RETENTION" env:"EFFICIENCY_RETENTION" env-default:"0.80"`
+	SimpleWinRateRetention           float64       `yaml:"SIMPLE_WIN_RATE_RETENTION" env:"SIMPLE_WIN_RATE_RETENTION" env-default:"0.50"`
+	DefaultMinMargin                 float64       `yaml:"DEFAULT_MIN_MARGIN" env:"DEFAULT_MIN_MARGIN" env-default:"0.20"`
+	PromoMinMargin                   float64       `yaml:"PROMO_MIN_MARGIN" env:"PROMO_MIN_MARGIN" env-default:"0.30"`
+	MaxMargin                        float64       `yaml:"MAX_MARGIN" env:"MAX_MARGIN" env-default:"0.90"`
+	SSPSearchPrecision               float64       `yaml:"SSP_SEARCH_PRECISION" env:"SSP_SEARCH_PRECISION" env-default:"0.01"`
+	MarginSearchSteps                ListFloat64   `yaml:"MARGIN_SEARCH_STEPS" env:"MARGIN_SEARCH_STEPS" env-default:"10,5,2,1"`
+	PercenterSegmentStateTTL         time.Duration `yaml:"PERCENTER_SEGMENT_STATE_TTL" env:"PERCENTER_SEGMENT_STATE_TTL" env-default:"168h"`
+	PercenterADVCacheTTL             time.Duration `yaml:"PERCENTER_ADV_CACHE_TTL" env:"PERCENTER_ADV_CACHE_TTL" env-default:"5s"`
 }
 
 type AdvConfig struct {

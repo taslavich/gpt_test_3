@@ -14,24 +14,34 @@ import (
 )
 
 const (
-	PhaseBenchmark      = "benchmark"
-	PhaseSSPSearch      = "ssp_search"
-	PhaseMarginBaseline = "margin_baseline"
-	PhaseMarginSearch   = "margin_search"
+	TypeModelSimple = 1
+	TypeModelSmart  = 2
+
+	ProfitModelImpression = "impression"
+	ProfitModelClick      = "click"
+
+	PhaseBenchmark          = "benchmark"
+	PhaseSSPSearch          = "ssp_search"
+	PhaseMarginBaseline     = "margin_baseline"
+	PhaseMarginSearch       = "margin_search"
+	PhaseSimpleBaseline     = "simple_baseline"
+	PhaseSimpleMarginSearch = "simple_margin_search"
 )
 
 type Policy struct {
-	BuyoutRetention        float64
-	EfficiencyRetention    float64
-	DefaultMinMargin       float64
-	PromoMinMargin         float64
-	MaxMargin              float64
-	SSPSearchPrecision     float64
-	MarginSearchStepsPP    []float64
-	SSPReoptimizeInterval  time.Duration
-	MarginOptimizeInterval time.Duration
-	SegmentStateTTL        time.Duration
-	ADVCacheTTL            time.Duration
+	BuyoutRetention                  float64
+	EfficiencyRetention              float64
+	SimpleWinRateRetention           float64
+	DefaultMinMargin                 float64
+	PromoMinMargin                   float64
+	MaxMargin                        float64
+	SSPSearchPrecision               float64
+	MarginSearchStepsPP              []float64
+	SSPReoptimizeInterval            time.Duration
+	SimpleBaselineReoptimizeInterval time.Duration
+	MarginOptimizeInterval           time.Duration
+	SegmentStateTTL                  time.Duration
+	ADVCacheTTL                      time.Duration
 }
 
 func (p Policy) Normalize() Policy {
@@ -40,6 +50,9 @@ func (p Policy) Normalize() Policy {
 	}
 	if p.EfficiencyRetention <= 0 || p.EfficiencyRetention > 1 {
 		p.EfficiencyRetention = 0.80
+	}
+	if p.SimpleWinRateRetention <= 0 || p.SimpleWinRateRetention > 1 {
+		p.SimpleWinRateRetention = 0.50
 	}
 	if p.DefaultMinMargin <= 0 || p.DefaultMinMargin >= 1 {
 		p.DefaultMinMargin = 0.20
@@ -72,6 +85,9 @@ func (p Policy) Normalize() Policy {
 	if p.SSPReoptimizeInterval <= 0 {
 		p.SSPReoptimizeInterval = 6 * time.Hour
 	}
+	if p.SimpleBaselineReoptimizeInterval <= 0 {
+		p.SimpleBaselineReoptimizeInterval = 6 * time.Hour
+	}
 	if p.MarginOptimizeInterval <= 0 {
 		p.MarginOptimizeInterval = 5 * time.Minute
 	}
@@ -97,6 +113,8 @@ type State struct {
 	CampaignID      string  `json:"campaign_id"`
 	CampaignVersion int64   `json:"campaign_version"`
 	PointVersion    uint64  `json:"point_version"`
+	TypeModel       int     `json:"type_model"`
+	ProfitModel     string  `json:"profit_model"`
 	OriginalBid     float64 `json:"original_bid"`
 	MinMargin       float64 `json:"min_margin"`
 
@@ -117,12 +135,17 @@ type State struct {
 	MarginStepIndex int `json:"margin_step_index"`
 	MarginDirection int `json:"margin_direction"`
 
-	LastChangeAt        time.Time `json:"last_change_at"`
-	LastSSPReoptimizeAt time.Time `json:"last_ssp_reoptimize_at"`
-	UpdatedAt           time.Time `json:"updated_at"`
+	LastChangeAt         time.Time `json:"last_change_at"`
+	LastSSPReoptimizeAt  time.Time `json:"last_ssp_reoptimize_at"`
+	LastSimpleBaselineAt time.Time `json:"last_simple_baseline_at"`
+	UpdatedAt            time.Time `json:"updated_at"`
 }
 
 func BaselineState(segmentHash, campaignID string, originalBid, minMargin float64, campaignRevision int64, now time.Time) State {
+	return BaselineStateForCampaign(segmentHash, campaignID, originalBid, minMargin, campaignRevision, TypeModelSmart, ProfitModelImpression, now)
+}
+
+func BaselineStateForCampaign(segmentHash, campaignID string, originalBid, minMargin float64, campaignRevision int64, typeModel int, profitModel string, now time.Time) State {
 	if now.IsZero() {
 		now = time.Now().UTC()
 	}
@@ -133,17 +156,25 @@ func BaselineState(segmentHash, campaignID string, originalBid, minMargin float6
 		minMargin = 0.99
 	}
 	ssp := originalBid * (1 - minMargin)
+	typeModel = normalizeTypeModel(typeModel)
+	profitModel = normalizeProfitModel(profitModel)
+	phase := PhaseBenchmark
+	if typeModel == TypeModelSimple {
+		phase = PhaseSimpleBaseline
+	}
 	return State{
 		SegmentHash:     segmentHash,
 		CampaignID:      campaignID,
 		CampaignVersion: campaignRevision,
 		PointVersion:    1,
+		TypeModel:       typeModel,
+		ProfitModel:     profitModel,
 		OriginalBid:     originalBid,
 		MinMargin:       minMargin,
 		AdvertiserPrice: originalBid,
 		SSPBid:          ssp,
 		Margin:          minMargin,
-		Phase:           PhaseBenchmark,
+		Phase:           phase,
 		SSPLow:          0,
 		SSPHigh:         ssp,
 		MarginDirection: 1,
@@ -157,9 +188,21 @@ func BaselineState(segmentHash, campaignID string, originalBid, minMargin float6
 }
 
 func (s State) ValidFor(originalBid, minMargin float64, campaignRevision int64) bool {
-	return finitePositive(s.OriginalBid) && finitePositive(s.AdvertiserPrice) && finitePositive(s.SSPBid) &&
-		approximatelyEqual(s.OriginalBid, originalBid) && approximatelyEqual(s.MinMargin, minMargin) &&
-		s.CampaignVersion == campaignRevision
+	return s.ValidForCampaign(originalBid, minMargin, campaignRevision, TypeModelSmart, ProfitModelImpression)
+}
+
+func (s State) ValidForCampaign(originalBid, minMargin float64, campaignRevision int64, typeModel int, profitModel string) bool {
+	typeModel = normalizeTypeModel(typeModel)
+	profitModel = normalizeProfitModel(profitModel)
+	if !finitePositive(s.OriginalBid) || !finitePositive(s.AdvertiserPrice) || !finitePositive(s.SSPBid) ||
+		!approximatelyEqual(s.OriginalBid, originalBid) || !approximatelyEqual(s.MinMargin, minMargin) ||
+		s.CampaignVersion != campaignRevision || normalizeTypeModel(s.TypeModel) != typeModel || normalizeProfitModel(s.ProfitModel) != profitModel {
+		return false
+	}
+	if typeModel == TypeModelSimple && !approximatelyEqual(s.AdvertiserPrice, originalBid) {
+		return false
+	}
+	return true
 }
 
 func (s State) sspReoptimizationDue(now time.Time, interval time.Duration) bool {
@@ -167,6 +210,21 @@ func (s State) sspReoptimizationDue(now time.Time, interval time.Duration) bool 
 		return false
 	}
 	return !now.Before(s.LastSSPReoptimizeAt.Add(interval))
+}
+
+func (s State) simpleBaselineReoptimizationDue(now time.Time, interval time.Duration) bool {
+	if interval <= 0 || s.LastSimpleBaselineAt.IsZero() {
+		return false
+	}
+	return !now.Before(s.LastSimpleBaselineAt.Add(interval))
+}
+
+func (s State) reoptimizationDue(now time.Time, policy Policy) bool {
+	policy = policy.Normalize()
+	if normalizeTypeModel(s.TypeModel) == TypeModelSimple {
+		return s.simpleBaselineReoptimizationDue(now, policy.SimpleBaselineReoptimizeInterval)
+	}
+	return s.sspReoptimizationDue(now, policy.SSPReoptimizeInterval)
 }
 
 type Pricing struct {
@@ -210,18 +268,24 @@ return 1
 `)
 
 func (s *StateStore) GetOrInitPricing(ctx context.Context, segmentHash, campaignID string, originalBid, minMargin float64, campaignRevision int64, now time.Time) (Pricing, error) {
+	return s.GetOrInitPricingForCampaign(ctx, segmentHash, campaignID, originalBid, minMargin, campaignRevision, TypeModelSmart, ProfitModelImpression, now)
+}
+
+func (s *StateStore) GetOrInitPricingForCampaign(ctx context.Context, segmentHash, campaignID string, originalBid, minMargin float64, campaignRevision int64, typeModel int, profitModel string, now time.Time) (Pricing, error) {
 	if now.IsZero() {
 		now = time.Now().UTC()
 	}
-	baseline := BaselineState(segmentHash, campaignID, originalBid, minMargin, campaignRevision, now)
+	typeModel = normalizeTypeModel(typeModel)
+	profitModel = normalizeProfitModel(profitModel)
+	baseline := BaselineStateForCampaign(segmentHash, campaignID, originalBid, minMargin, campaignRevision, typeModel, profitModel, now)
 	fallback := pricingFromState(baseline)
 	fallback.FromFallback = true
 	if s == nil || s.redis == nil {
 		return fallback, errors.New("percenter redis is unavailable")
 	}
 
-	if state, ok := s.cached(segmentHash, originalBid, minMargin, campaignRevision, now); ok {
-		if state.sspReoptimizationDue(now, s.policy.SSPReoptimizeInterval) {
+	if state, ok := s.cachedForCampaign(segmentHash, originalBid, minMargin, campaignRevision, typeModel, profitModel, now); ok {
+		if state.reoptimizationDue(now, s.policy) {
 			baseline.PointVersion = nextPointVersion(state.PointVersion)
 			if err := s.Save(ctx, baseline); err != nil {
 				return pricingFromState(state), err
@@ -235,7 +299,7 @@ func (s *StateStore) GetOrInitPricing(ctx context.Context, segmentHash, campaign
 	if err != nil && !errors.Is(err, redis.Nil) {
 		return fallback, err
 	}
-	if errors.Is(err, redis.Nil) || !state.ValidFor(originalBid, minMargin, campaignRevision) {
+	if errors.Is(err, redis.Nil) || !state.ValidForCampaign(originalBid, minMargin, campaignRevision, typeModel, profitModel) {
 		if !errors.Is(err, redis.Nil) && state.PointVersion > 0 {
 			baseline.PointVersion = nextPointVersion(state.PointVersion)
 		}
@@ -243,7 +307,7 @@ func (s *StateStore) GetOrInitPricing(ctx context.Context, segmentHash, campaign
 		if err := s.Save(ctx, state); err != nil {
 			return fallback, err
 		}
-	} else if state.sspReoptimizationDue(now, s.policy.SSPReoptimizeInterval) {
+	} else if state.reoptimizationDue(now, s.policy) {
 		previous := state
 		baseline.PointVersion = nextPointVersion(state.PointVersion)
 		state = baseline
@@ -256,13 +320,17 @@ func (s *StateStore) GetOrInitPricing(ctx context.Context, segmentHash, campaign
 }
 
 func (s *StateStore) cached(hash string, originalBid, minMargin float64, revision int64, now time.Time) (State, bool) {
+	return s.cachedForCampaign(hash, originalBid, minMargin, revision, TypeModelSmart, ProfitModelImpression, now)
+}
+
+func (s *StateStore) cachedForCampaign(hash string, originalBid, minMargin float64, revision int64, typeModel int, profitModel string, now time.Time) (State, bool) {
 	if s == nil || s.policy.ADVCacheTTL <= 0 {
 		return State{}, false
 	}
 	s.mu.RLock()
 	item, ok := s.cache[hash]
 	s.mu.RUnlock()
-	if !ok || now.Sub(item.loadedAt) > s.policy.ADVCacheTTL || !item.state.ValidFor(originalBid, minMargin, revision) {
+	if !ok || now.Sub(item.loadedAt) > s.policy.ADVCacheTTL || !item.state.ValidForCampaign(originalBid, minMargin, revision, typeModel, profitModel) {
 		return State{}, false
 	}
 	return item.state, true
@@ -383,11 +451,15 @@ end
 return current_version
 `)
 
-func campaignFingerprint(typeModel int, originalBid, minMargin float64) string {
-	return fmt.Sprintf("%d|%.12g|%.12g", typeModel, originalBid, minMargin)
+func campaignFingerprint(typeModel int, originalBid, minMargin float64, pricingContext string) string {
+	return fmt.Sprintf("%d|%.12g|%.12g|%s", normalizeTypeModel(typeModel), originalBid, minMargin, strings.TrimSpace(pricingContext))
 }
 
 func (s *StateStore) EnsureCampaignVersion(ctx context.Context, campaignID string, typeModel int, originalBid, minMargin float64) (int64, error) {
+	return s.EnsureCampaignVersionForContext(ctx, campaignID, typeModel, originalBid, minMargin, "")
+}
+
+func (s *StateStore) EnsureCampaignVersionForContext(ctx context.Context, campaignID string, typeModel int, originalBid, minMargin float64, pricingContext string) (int64, error) {
 	if s == nil || s.redis == nil {
 		return 0, errors.New("percenter redis is unavailable")
 	}
@@ -395,7 +467,7 @@ func (s *StateStore) EnsureCampaignVersion(ctx context.Context, campaignID strin
 	if campaignID == "" {
 		return 0, errors.New("campaign id is empty")
 	}
-	fingerprint := campaignFingerprint(typeModel, originalBid, minMargin)
+	fingerprint := campaignFingerprint(typeModel, originalBid, minMargin, pricingContext)
 	version, err := ensureCampaignVersionScript.Run(ctx, s.redis, []string{CampaignVersionKey(campaignID)}, fingerprint).Int64()
 	if err != nil {
 		return 0, fmt.Errorf("ensure percenter campaign version %s: %w", campaignID, err)
@@ -404,6 +476,20 @@ func (s *StateStore) EnsureCampaignVersion(ctx context.Context, campaignID strin
 		version = 1
 	}
 	return version, nil
+}
+
+func normalizeTypeModel(typeModel int) int {
+	if typeModel == TypeModelSimple {
+		return TypeModelSimple
+	}
+	return TypeModelSmart
+}
+
+func normalizeProfitModel(model string) string {
+	if strings.EqualFold(strings.TrimSpace(model), ProfitModelClick) {
+		return ProfitModelClick
+	}
+	return ProfitModelImpression
 }
 
 func nextPointVersion(current uint64) uint64 {

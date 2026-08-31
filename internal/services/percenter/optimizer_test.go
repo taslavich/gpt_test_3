@@ -8,15 +8,17 @@ import (
 
 func testPolicy() Policy {
 	return Policy{
-		BuyoutRetention:        0.80,
-		EfficiencyRetention:    0.80,
-		DefaultMinMargin:       0.20,
-		PromoMinMargin:         0.30,
-		MaxMargin:              0.90,
-		SSPSearchPrecision:     0.01,
-		MarginSearchStepsPP:    []float64{10, 5, 2, 1},
-		SSPReoptimizeInterval:  6 * time.Hour,
-		MarginOptimizeInterval: 5 * time.Minute,
+		BuyoutRetention:                  0.80,
+		EfficiencyRetention:              0.80,
+		SimpleWinRateRetention:           0.50,
+		DefaultMinMargin:                 0.20,
+		PromoMinMargin:                   0.30,
+		MaxMargin:                        0.90,
+		SSPSearchPrecision:               0.01,
+		MarginSearchStepsPP:              []float64{10, 5, 2, 1},
+		SSPReoptimizeInterval:            6 * time.Hour,
+		SimpleBaselineReoptimizeInterval: 6 * time.Hour,
+		MarginOptimizeInterval:           5 * time.Minute,
 	}
 }
 
@@ -178,5 +180,118 @@ func TestMarginSearchHonorsEfficiencyAndOriginalBid(t *testing.T) {
 	}
 	if state.Margin > policy.MaxMargin+1e-12 || state.AdvertiserPrice > state.OriginalBid+1e-12 {
 		t.Fatalf("margin search violated hard bounds: %+v", state)
+	}
+}
+
+func TestSimplePercenterKeepsAdvertiserPriceFixed(t *testing.T) {
+	policy := testPolicy()
+	now := time.Date(2026, 8, 29, 12, 0, 0, 0, time.UTC)
+	state := BaselineStateForCampaign("hash", "campaign", 1, 0.20, 1, TypeModelSimple, ProfitModelImpression, now)
+
+	if state.Phase != PhaseSimpleBaseline || state.AdvertiserPrice != 1 || math.Abs(state.SSPBid-0.80) > 1e-12 {
+		t.Fatalf("unexpected simple baseline: %+v", state)
+	}
+
+	state, changed := Advance(state, Metrics{Requests: 1000, Wins: 100, TwinBidProfit: 0.02}, policy, now.Add(5*time.Minute))
+	if !changed || state.Phase != PhaseSimpleMarginSearch {
+		t.Fatalf("simple search did not start: %+v", state)
+	}
+	if state.AdvertiserPrice != 1 {
+		t.Fatalf("simple percenter changed advertiser price: %v", state.AdvertiserPrice)
+	}
+	if math.Abs(state.Margin-0.30) > 1e-12 || math.Abs(state.SSPBid-0.70) > 1e-12 {
+		t.Fatalf("unexpected first simple test point: %+v", state)
+	}
+}
+
+func TestSimplePercenterRejectsPointBelowHalfBaselineWinRate(t *testing.T) {
+	policy := testPolicy()
+	now := time.Date(2026, 8, 29, 12, 0, 0, 0, time.UTC)
+	state := BaselineStateForCampaign("hash", "campaign", 1, 0.20, 1, TypeModelSimple, ProfitModelImpression, now)
+	state, changed := Advance(state, Metrics{Requests: 1000, Wins: 100, TwinBidProfit: 0.02}, policy, now.Add(5*time.Minute))
+	if !changed {
+		t.Fatal("simple baseline did not advance")
+	}
+	bestBefore := state.BestMargin
+
+	// The candidate has a larger raw profit, but only 40% of baseline win rate.
+	state, changed = Advance(state, Metrics{Requests: 1000, Wins: 40, TwinBidProfit: 1.0}, policy, state.LastChangeAt.Add(5*time.Minute))
+	if !changed {
+		t.Fatal("simple percenter did not react to invalid win-rate point")
+	}
+	if state.BestMargin != bestBefore {
+		t.Fatalf("point below 50%% baseline became best: %v -> %v", bestBefore, state.BestMargin)
+	}
+	if state.AdvertiserPrice != state.OriginalBid {
+		t.Fatalf("simple percenter changed advertiser price: %+v", state)
+	}
+}
+
+func TestSimplePercenterUsesClickProfitForCPC(t *testing.T) {
+	policy := testPolicy()
+	now := time.Date(2026, 8, 29, 12, 0, 0, 0, time.UTC)
+	state := BaselineStateForCampaign("hash", "campaign", 1, 0.20, 1, TypeModelSimple, ProfitModelClick, now)
+	metrics := Metrics{
+		Requests:           1000,
+		Wins:               100,
+		Clicks:             10,
+		TwinBidProfit:      999, // must be ignored for CPC/simple profit decisions
+		ClickTwinBidProfit: 0.25,
+	}
+	state, changed := Advance(state, metrics, policy, now.Add(5*time.Minute))
+	if !changed {
+		t.Fatal("simple CPC baseline did not advance")
+	}
+	want := 0.25 / 1000
+	if math.Abs(state.BestProfitPerReq-want) > 1e-12 {
+		t.Fatalf("best profit=%v want click-based %v", state.BestProfitPerReq, want)
+	}
+}
+
+func TestSimpleBaselineReoptimizesEverySixHoursAfterBaselineEstablished(t *testing.T) {
+	policy := testPolicy()
+	now := time.Date(2026, 8, 29, 12, 0, 0, 0, time.UTC)
+	state := State{
+		SegmentHash:          "hash",
+		CampaignID:           "campaign",
+		CampaignVersion:      1,
+		PointVersion:         8,
+		TypeModel:            TypeModelSimple,
+		ProfitModel:          ProfitModelImpression,
+		OriginalBid:          1,
+		MinMargin:            0.20,
+		AdvertiserPrice:      1,
+		SSPBid:               0.60,
+		Margin:               0.40,
+		Phase:                PhaseSimpleMarginSearch,
+		BenchmarkBuyout:      0.10,
+		BestMargin:           0.40,
+		BestAdvertiserPrice:  1,
+		LastChangeAt:         now.Add(-time.Hour),
+		LastSimpleBaselineAt: now.Add(-6 * time.Hour),
+	}
+
+	reset, changed := Advance(state, Metrics{Requests: 10, Wins: 1, TwinBidProfit: 0.01}, policy, now)
+	if !changed || reset.Phase != PhaseSimpleBaseline {
+		t.Fatalf("simple baseline was not reset after six hours: %+v", reset)
+	}
+	if !reset.LastSimpleBaselineAt.IsZero() {
+		t.Fatalf("new simple baseline cycle must remain unfinished: %v", reset.LastSimpleBaselineAt)
+	}
+	if reset.AdvertiserPrice != reset.OriginalBid || math.Abs(reset.Margin-reset.MinMargin) > 1e-12 {
+		t.Fatalf("simple reset did not return to original bid/min margin: %+v", reset)
+	}
+}
+
+func TestSparseSimpleBaselineDoesNotResetBeforeFirstMeasurement(t *testing.T) {
+	policy := testPolicy()
+	now := time.Date(2026, 8, 29, 12, 0, 0, 0, time.UTC)
+	state := BaselineStateForCampaign("hash", "campaign", 1, 0.20, 1, TypeModelSimple, ProfitModelImpression, now)
+	if !state.LastSimpleBaselineAt.IsZero() {
+		t.Fatalf("new simple segment unexpectedly started baseline clock: %v", state.LastSimpleBaselineAt)
+	}
+	state, changed := Advance(state, Metrics{Requests: 1, Wins: 1, TwinBidProfit: 0.0002}, policy, now.Add(24*time.Hour))
+	if !changed || state.Phase != PhaseSimpleMarginSearch {
+		t.Fatalf("sparse simple segment failed to establish baseline: %+v", state)
 	}
 }

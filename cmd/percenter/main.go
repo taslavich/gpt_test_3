@@ -103,6 +103,7 @@ func processTick(ctx context.Context, conn clickhouse.Conn, store *percenter.Sta
 		cfg.Database,
 		cfg.TableOrtb,
 		cfg.TableImpressions,
+		cfg.TableClicks,
 		3*policy.MarginOptimizeInterval,
 	)
 	if err != nil {
@@ -135,8 +136,9 @@ func processTick(ctx context.Context, conn clickhouse.Conn, store *percenter.Sta
 			continue
 		}
 		log.Printf(
-			"[PERCENTER][STATE_UPDATED] segment_hash=%s point_version=%d phase=%s advertiser_price=%.6f ssp_bid=%.6f margin=%.4f requests=%d wins=%d profit_per_request=%.9f",
+			"[PERCENTER][STATE_UPDATED] segment_hash=%s type_model=%d point_version=%d phase=%s advertiser_price=%.6f ssp_bid=%.6f margin=%.4f requests=%d wins=%d clicks=%d profit_per_request=%.9f",
 			updated.SegmentHash,
+			updated.TypeModel,
 			updated.PointVersion,
 			updated.Phase,
 			updated.AdvertiserPrice,
@@ -144,7 +146,8 @@ func processTick(ctx context.Context, conn clickhouse.Conn, store *percenter.Sta
 			updated.Margin,
 			metric.Requests,
 			metric.Wins,
-			metric.ProfitPerRequest(),
+			metric.Clicks,
+			metric.ProfitPerRequestFor(updated.ProfitModel),
 		)
 	}
 	return nil
@@ -152,16 +155,18 @@ func processTick(ctx context.Context, conn clickhouse.Conn, store *percenter.Sta
 
 func policyFromConfig(cfg config.PercenterAlgorithmConfig) percenter.Policy {
 	return percenter.Policy{
-		BuyoutRetention:        cfg.BuyoutRetention,
-		EfficiencyRetention:    cfg.EfficiencyRetention,
-		DefaultMinMargin:       cfg.DefaultMinMargin,
-		PromoMinMargin:         cfg.PromoMinMargin,
-		MaxMargin:              cfg.MaxMargin,
-		SSPSearchPrecision:     cfg.SSPSearchPrecision,
-		MarginSearchStepsPP:    append([]float64(nil), cfg.MarginSearchSteps...),
-		SSPReoptimizeInterval:  cfg.SSPReoptimizeInterval,
-		MarginOptimizeInterval: cfg.MarginOptimizeInterval,
-		SegmentStateTTL:        cfg.PercenterSegmentStateTTL,
-		ADVCacheTTL:            cfg.PercenterADVCacheTTL,
+		BuyoutRetention:                  cfg.BuyoutRetention,
+		EfficiencyRetention:              cfg.EfficiencyRetention,
+		SimpleWinRateRetention:           cfg.SimpleWinRateRetention,
+		DefaultMinMargin:                 cfg.DefaultMinMargin,
+		PromoMinMargin:                   cfg.PromoMinMargin,
+		MaxMargin:                        cfg.MaxMargin,
+		SSPSearchPrecision:               cfg.SSPSearchPrecision,
+		MarginSearchStepsPP:              append([]float64(nil), cfg.MarginSearchSteps...),
+		SSPReoptimizeInterval:            cfg.SSPReoptimizeInterval,
+		SimpleBaselineReoptimizeInterval: cfg.SimpleBaselineReoptimizeInterval,
+		MarginOptimizeInterval:           cfg.MarginOptimizeInterval,
+		SegmentStateTTL:                  cfg.PercenterSegmentStateTTL,
+		ADVCacheTTL:                      cfg.PercenterADVCacheTTL,
 	}.Normalize()
 }

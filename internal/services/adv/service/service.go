@@ -211,10 +211,7 @@ func (s *AuctionService) SetVPNClassifier(classifier VPNClassifier) {
 }
 
 func (s *AuctionService) SetSmartPercenter(store *percenter.StateStore, policy percenter.Policy) {
-	if s != nil {
-		s.smartPercenter = store
-		s.percenterPolicy = policy.Normalize()
-	}
+	s.ConfigurePercenter(store, policy)
 }
 
 func (s *AuctionService) SetSnapshotWarningNotifier(notifier func(context.Context, string) error) {
@@ -1563,9 +1560,12 @@ func (s *AuctionService) evaluateCampaign(
 
 	policy := s.percenterPolicy.Normalize()
 	minMargin := policy.MinMargin(promoRemaining)
+	profitModel := percenterProfitModel(campaign.PricingModel, requestedFormat)
 	campaignVersion := int64(0)
 	if s.smartPercenter != nil {
-		version, versionErr := s.smartPercenter.EnsureCampaignVersion(ctx, campaignID, campaign.TypeModel, campaign.BasePrice, minMargin)
+		version, versionErr := s.smartPercenter.EnsureCampaignVersionForContext(
+			ctx, campaignID, campaign.TypeModel, campaign.BasePrice, minMargin, percenterCampaignContext(campaign),
+		)
 		if versionErr != nil {
 			logf("[ADV][PERCENTER_CAMPAIGN_VERSION_FALLBACK] request_id=%q imp_id=%q campaign_id=%q error=%v", requestID, impID, campaignID, versionErr)
 		} else {
@@ -1578,11 +1578,12 @@ func (s *AuctionService) evaluateCampaign(
 	effective := CalculateEffectiveAuctionPrice(campaign.BasePrice, deduction)
 	segmentHash := ""
 	pointVersion := uint64(0)
-	if campaign.TypeModel == 2 {
-		if campaign.PricingModel != PricingModelCPM {
+	if campaign.TypeModel == percenter.TypeModelSimple || campaign.TypeModel == percenter.TypeModelSmart {
+		if campaign.TypeModel == percenter.TypeModelSmart && campaign.PricingModel != PricingModelCPM {
 			logf("[ADV][CAMPAIGN_REJECT] request_id=%q imp_id=%q campaign_id=%q user_id=%q reason=smart_campaign_non_cpm", requestID, impID, campaignID, userID)
 			return candidate{}, false, diagInvalidChargePrice, nil
 		}
+
 		parsedUA := ua.UAFields{}
 		geo := ""
 		siteID := ""
@@ -1600,22 +1601,34 @@ func (s *AuctionService) evaluateCampaign(
 		segmentHash = percenter.HashSegment(percenter.Segment{
 			SSPDomain: sspDomain, Geo: geo, Browser: parsedUA.Browser, Device: parsedUA.Device, OS: parsedUA.OS, SiteID: siteID, CampaignID: campaignID,
 		})
+
+		fallbackPhase := percenter.PhaseBenchmark
+		if campaign.TypeModel == percenter.TypeModelSimple {
+			fallbackPhase = percenter.PhaseSimpleBaseline
+		}
 		pricing := percenter.Pricing{
 			AdvertiserPrice: campaign.BasePrice,
 			SSPBid:          campaign.BasePrice * (1 - minMargin),
 			Margin:          minMargin,
-			Phase:           percenter.PhaseBenchmark,
+			Phase:           fallbackPhase,
 			FromFallback:    true,
 		}
 		if s.smartPercenter != nil && campaignVersion > 0 {
-			storedPricing, pricingErr := s.smartPercenter.GetOrInitPricing(ctx, segmentHash, campaignID, campaign.BasePrice, minMargin, campaignVersion, now)
+			storedPricing, pricingErr := s.smartPercenter.GetOrInitPricingForCampaign(
+				ctx, segmentHash, campaignID, campaign.BasePrice, minMargin, campaignVersion, campaign.TypeModel, profitModel, now,
+			)
 			if pricingErr != nil {
 				logf("[ADV][PERCENTER_FALLBACK] request_id=%q imp_id=%q campaign_id=%q segment_hash=%q error=%v", requestID, impID, campaignID, segmentHash, pricingErr)
 			} else {
 				pricing = storedPricing
 			}
 		}
+
 		advertiserPrice = pricing.AdvertiserPrice
+		if campaign.TypeModel == percenter.TypeModelSimple {
+			// The simple percenter must never change the advertiser's original bid.
+			advertiserPrice = campaign.BasePrice
+		}
 		effective = pricing.SSPBid
 		deduction = pricing.Margin
 		pointVersion = pricing.PointVersion
