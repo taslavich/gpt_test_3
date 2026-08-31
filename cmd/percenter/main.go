@@ -160,15 +160,33 @@ func run() error {
 	go httpServer.RunHttpServer(ctx, router, cfg.HttpServer.Host, cfg.HttpServer.Port)
 
 	runTick := func() {
-		diagnosticsServer.RecordTickStart(time.Now().UTC())
-		err := processTick(ctx, clickhouseConn, store, cfg, policy)
-		diagnosticsServer.RecordTickFinish(time.Now().UTC(), err)
+		startedAt := time.Now().UTC()
+		diagnosticsServer.RecordTickStart(startedAt)
+		log.Printf(
+			"[PERCENTER][TICK] started_at=%s interval=%s metrics_window=%s",
+			startedAt.Format(time.RFC3339),
+			policy.MarginOptimizeInterval,
+			3*policy.MarginOptimizeInterval,
+		)
+
+		stats, err := processTick(ctx, clickhouseConn, store, cfg, policy)
+		finishedAt := time.Now().UTC()
+		diagnosticsServer.RecordTickFinish(finishedAt, err)
 		if err != nil {
-			log.Printf("[PERCENTER][TICK_ERROR] %v", err)
+			log.Printf("[PERCENTER][TICK_ERROR] duration=%s error=%v", finishedAt.Sub(startedAt), err)
 			if sendErr := bot.SendTextMessageToBot(ctx, fmt.Sprintf("[PERCENTER][CLICKHOUSE_DOWN] %v", err)); sendErr != nil {
 				log.Printf("[PERCENTER][TELEGRAM_ERROR] %v", sendErr)
 			}
+			return
 		}
+		log.Printf(
+			"[PERCENTER][TICK] completed_at=%s duration=%s metrics=%d states_updated=%d rebenchmarks_started=%d",
+			finishedAt.Format(time.RFC3339),
+			finishedAt.Sub(startedAt),
+			stats.MetricsLoaded,
+			stats.StatesUpdated,
+			stats.RebenchmarksStarted,
+		)
 	}
 
 	// Decisions are made only on the configured cadence. A ClickHouse outage after
@@ -176,6 +194,9 @@ func run() error {
 	// this worker alerts on every tick while ClickHouse remains unavailable.
 	ticker := time.NewTicker(policy.MarginOptimizeInterval)
 	defer ticker.Stop()
+
+	rebenchmarkLogTicker := time.NewTicker(policy.SSPReoptimizeInterval)
+	defer rebenchmarkLogTicker.Stop()
 
 	stop := make(chan os.Signal, 1)
 	signal.Notify(stop, os.Interrupt, syscall.SIGTERM)
@@ -187,6 +208,13 @@ func run() error {
 			return nil
 		case <-stop:
 			return nil
+		case now := <-rebenchmarkLogTicker.C:
+			log.Printf(
+				"[PERCENTER][REBENCHMARK_TIMER] at=%s smart_interval=%s simple_interval=%s note=per-segment_rebenchmark_runs_when_due_and_metrics_exist",
+				now.UTC().Format(time.RFC3339),
+				policy.SSPReoptimizeInterval,
+				policy.SimpleBaselineReoptimizeInterval,
+			)
 		case <-ticker.C:
 			runTick()
 		}
@@ -379,7 +407,27 @@ func verifyClickHouse(ctx context.Context, conn clickhouse.Conn, cfg *config.Per
 	return nil
 }
 
-func processTick(ctx context.Context, conn clickhouse.Conn, store *percenter.StateStore, cfg *config.PercenterConfig, policy percenter.Policy) error {
+type tickStats struct {
+	MetricsLoaded       int
+	StatesUpdated       int
+	RebenchmarksStarted int
+}
+
+func scheduledRebenchmarkDue(state percenter.State, policy percenter.Policy, now time.Time) (bool, time.Duration, time.Time) {
+	policy = policy.Normalize()
+	if state.TypeModel == percenter.TypeModelSimple {
+		if state.LastSimpleBaselineAt.IsZero() {
+			return false, policy.SimpleBaselineReoptimizeInterval, time.Time{}
+		}
+		return !now.Before(state.LastSimpleBaselineAt.Add(policy.SimpleBaselineReoptimizeInterval)), policy.SimpleBaselineReoptimizeInterval, state.LastSimpleBaselineAt
+	}
+	if state.LastSSPReoptimizeAt.IsZero() {
+		return false, policy.SSPReoptimizeInterval, time.Time{}
+	}
+	return !now.Before(state.LastSSPReoptimizeAt.Add(policy.SSPReoptimizeInterval)), policy.SSPReoptimizeInterval, state.LastSSPReoptimizeAt
+}
+
+func processTick(ctx context.Context, conn clickhouse.Conn, store *percenter.StateStore, cfg *config.PercenterConfig, policy percenter.Policy) (tickStats, error) {
 	metrics, err := percenter.LoadWindowMetrics(
 		ctx,
 		conn,
@@ -390,9 +438,10 @@ func processTick(ctx context.Context, conn clickhouse.Conn, store *percenter.Sta
 		3*policy.MarginOptimizeInterval,
 	)
 	if err != nil {
-		return fmt.Errorf("load ClickHouse window metrics: %w", err)
+		return tickStats{}, fmt.Errorf("load ClickHouse window metrics: %w", err)
 	}
 
+	stats := tickStats{MetricsLoaded: len(metrics)}
 	now := time.Now().UTC()
 	for _, metric := range metrics {
 		state, err := store.Load(ctx, metric.SegmentHash)
@@ -405,6 +454,7 @@ func processTick(ctx context.Context, conn clickhouse.Conn, store *percenter.Sta
 		if metric.PointVersion != state.PointVersion {
 			continue
 		}
+		rebenchmarkDue, rebenchmarkInterval, lastRebenchmarkAt := scheduledRebenchmarkDue(state, policy, now)
 		updated, changed := percenter.Advance(state, metric, policy, now)
 		if !changed {
 			continue
@@ -417,6 +467,21 @@ func processTick(ctx context.Context, conn clickhouse.Conn, store *percenter.Sta
 		if !saved {
 			log.Printf("[PERCENTER][STATE_RACE_SKIP] segment_hash=%s", metric.SegmentHash)
 			continue
+		}
+		stats.StatesUpdated++
+		if rebenchmarkDue {
+			stats.RebenchmarksStarted++
+			log.Printf(
+				"[PERCENTER][REBENCHMARK] segment_hash=%s type_model=%d interval=%s last_completed_at=%s from_phase=%s to_phase=%s old_point_version=%d new_point_version=%d",
+				updated.SegmentHash,
+				updated.TypeModel,
+				rebenchmarkInterval,
+				lastRebenchmarkAt.Format(time.RFC3339),
+				state.Phase,
+				updated.Phase,
+				state.PointVersion,
+				updated.PointVersion,
+			)
 		}
 		log.Printf(
 			"[PERCENTER][STATE_UPDATED] segment_hash=%s type_model=%d point_version=%d phase=%s advertiser_price=%.6f ssp_bid=%.6f margin=%.4f requests=%d wins=%d clicks=%d profit_per_request=%.9f",
@@ -433,7 +498,7 @@ func processTick(ctx context.Context, conn clickhouse.Conn, store *percenter.Sta
 			metric.ProfitPerRequestFor(updated.ProfitModel),
 		)
 	}
-	return nil
+	return stats, nil
 }
 
 func policyFromConfig(cfg config.PercenterAlgorithmConfig) percenter.Policy {
