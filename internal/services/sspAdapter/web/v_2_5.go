@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"net/url"
 	"runtime/debug"
 	"strings"
 	"time"
@@ -722,11 +723,104 @@ func postBid_V2_5(
 			}
 		}
 	}
+
+	for a := range res.BidResponse.Seatbid {
+		seatBid := res.BidResponse.Seatbid[a]
+
+		for b := range seatBid.Bid {
+			bid := seatBid.Bid[b]
+
+			if ssp_domain == "adl_pb.com" {
+				// Этот SSP должен использовать NURL.
+				if bid.GetNurl() == "" {
+					log.Printf(
+						"[CALLBACK_CHECK] NURL EMPTY ssp=%s",
+						ssp_domain,
+					)
+				} else if !validateNURL(bid.GetNurl()) {
+					log.Printf(
+						"[CALLBACK_CHECK] NURL INVALID ssp=%s nurl=%q",
+						ssp_domain,
+						bid.GetNurl(),
+					)
+				}
+			} else {
+				// Все остальные SSP должны использовать BURL.
+				if bid.GetBurl() == "" {
+					log.Printf(
+						"[CALLBACK_CHECK] BURL EMPTY ssp=%s",
+						ssp_domain,
+					)
+				} else if !validateBURL(bid.GetBurl()) {
+					log.Printf(
+						"[CALLBACK_CHECK] BURL INVALID ssp=%s burl=%q",
+						ssp_domain,
+						bid.GetBurl(),
+					)
+				}
+			}
+		}
+	}
+
 	if err = rnr.JSON(w, http.StatusOK, postBidResponse_V2_5{
 		BidResponse: res.BidResponse,
 	}); err != nil {
 		log.Printf("Cannot make HTTP response back: %v\n", err)
 	}
+}
+
+func validCallbackHost(host string) bool {
+	switch host {
+	case "server1.twinbidexchange.com",
+		"server2.twinbidexchange.com",
+		"server3.twinbidexchange.com",
+		"server4.twinbidexchange.com":
+		return true
+	default:
+		return false
+	}
+}
+
+func validateBURL(rawURL string) bool {
+	u, err := url.Parse(rawURL)
+	if err != nil {
+		return false
+	}
+
+	if u.Scheme != "https" {
+		return false
+	}
+
+	if !validCallbackHost(u.Hostname()) {
+		return false
+	}
+
+	if u.Path != "/burl" {
+		return false
+	}
+
+	return true
+}
+
+func validateNURL(rawURL string) bool {
+	u, err := url.Parse(rawURL)
+	if err != nil {
+		return false
+	}
+
+	if u.Scheme != "https" {
+		return false
+	}
+
+	if !validCallbackHost(u.Hostname()) {
+		return false
+	}
+
+	if u.Path != "/nurl" {
+		return false
+	}
+
+	return true
 }
 
 func getWorkStatus(
