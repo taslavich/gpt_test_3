@@ -705,6 +705,23 @@ func postBid_V2_5(
 		return
 	}
 
+	for a := range res.BidResponse.Seatbid {
+		seatBid := res.BidResponse.Seatbid[a]
+		for b := range seatBid.Bid {
+			bid := seatBid.Bid[b]
+			if bid.GetAdm() == "" {
+				log.Println("ADM == EMPTY")
+			}
+
+			if bid.GetBurl() == "" {
+				log.Println("BURL == EMPTY")
+			}
+
+			if bid.GetNurl() == "" {
+				log.Println("NURL == EMPTY")
+			}
+		}
+	}
 	if err = rnr.JSON(w, http.StatusOK, postBidResponse_V2_5{
 		BidResponse: res.BidResponse,
 	}); err != nil {
