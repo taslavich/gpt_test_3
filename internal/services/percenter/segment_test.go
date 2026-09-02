@@ -31,3 +31,44 @@ func TestHashSegmentIsStableAndKeepsEmptyPositions(t *testing.T) {
 		t.Fatal("empty field position must not be collapsed")
 	}
 }
+
+func TestSegmentHierarchyMatchesApprovedOrderAndAvoidsExactCollisions(t *testing.T) {
+	segment := Segment{
+		SSPDomain:  "ssp.example",
+		Geo:        "us",
+		Browser:    "Chrome",
+		Device:     "Mobile",
+		OS:         "Android",
+		SiteID:     "site-1",
+		CampaignID: "campaign-1",
+	}
+	h := SegmentHierarchy(segment)
+	wantLevels := []SegmentLevel{
+		SegmentLevelExact,
+		SegmentLevelCampaignSiteGeoDevOS,
+		SegmentLevelCampaignSiteGeoDev,
+		SegmentLevelCampaignSite,
+		SegmentLevelCampaign,
+	}
+	if len(h) != len(wantLevels) {
+		t.Fatalf("unexpected hierarchy size: got=%d want=%d", len(h), len(wantLevels))
+	}
+	for i, want := range wantLevels {
+		if h[i].Level != want {
+			t.Fatalf("hierarchy[%d] level=%q want=%q", i, h[i].Level, want)
+		}
+		if h[i].Hash == "" {
+			t.Fatalf("hierarchy[%d] has empty hash", i)
+		}
+	}
+	if h[0].Hash != HashSegment(segment) {
+		t.Fatalf("exact hierarchy hash changed: got=%s want=%s", h[0].Hash, HashSegment(segment))
+	}
+
+	blankExact := segment
+	blankExact.Browser = ""
+	blankExact.SSPDomain = ""
+	if HashSegment(blankExact) == h[1].Hash {
+		t.Fatal("parent hierarchy hash collided with an exact segment containing blank browser/ssp")
+	}
+}

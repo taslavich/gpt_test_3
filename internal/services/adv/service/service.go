@@ -1607,6 +1607,7 @@ func (s *AuctionService) evaluateCampaign(
 			fallbackPhase = percenter.PhaseSimpleBaseline
 		}
 		pricing := percenter.Pricing{
+			SegmentHash:     segmentHash,
 			AdvertiserPrice: campaign.BasePrice,
 			SSPBid:          campaign.BasePrice * (1 - minMargin),
 			Margin:          minMargin,
@@ -1617,11 +1618,15 @@ func (s *AuctionService) evaluateCampaign(
 			storedPricing, pricingErr := s.smartPercenter.GetOrInitPricingForCampaign(
 				ctx, segmentHash, campaignID, campaign.BasePrice, minMargin, campaignVersion, campaign.TypeModel, profitModel, now,
 			)
-			if pricingErr != nil {
-				logf("[ADV][PERCENTER_FALLBACK] request_id=%q imp_id=%q campaign_id=%q segment_hash=%q error=%v", requestID, impID, campaignID, segmentHash, pricingErr)
-			} else {
+			if storedPricing.SSPBid > 0 && storedPricing.AdvertiserPrice > 0 {
 				pricing = storedPricing
 			}
+			if pricingErr != nil {
+				logf("[ADV][PERCENTER_FALLBACK] request_id=%q imp_id=%q campaign_id=%q segment_hash=%q effective_segment_hash=%q error=%v", requestID, impID, campaignID, segmentHash, pricing.SegmentHash, pricingErr)
+			}
+		}
+		if strings.TrimSpace(pricing.SegmentHash) != "" {
+			segmentHash = pricing.SegmentHash
 		}
 
 		advertiserPrice = pricing.AdvertiserPrice

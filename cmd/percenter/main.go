@@ -180,12 +180,15 @@ func run() error {
 			return
 		}
 		log.Printf(
-			"[PERCENTER][TICK] completed_at=%s duration=%s metrics=%d states_updated=%d rebenchmarks_started=%d",
+			"[PERCENTER][TICK] completed_at=%s duration=%s metrics=%d states_updated=%d rebenchmarks_started=%d fallback_decisions=%d fallback_routes_changed=%d fallback_no_eligible=%d",
 			finishedAt.Format(time.RFC3339),
 			finishedAt.Sub(startedAt),
 			stats.MetricsLoaded,
 			stats.StatesUpdated,
 			stats.RebenchmarksStarted,
+			stats.FallbackDecisions,
+			stats.FallbackRoutesChanged,
+			stats.FallbackNoEligible,
 		)
 	}
 
@@ -404,13 +407,26 @@ func verifyClickHouse(ctx context.Context, conn clickhouse.Conn, cfg *config.Per
 	); err != nil {
 		return fmt.Errorf("metrics schema/query smoke test failed: %w", err)
 	}
+	if _, err := percenter.LoadFallbackTraffic(
+		ctx,
+		conn,
+		cfg.Database,
+		cfg.TableOrtb,
+		cfg.TableImpressions,
+		time.Second,
+	); err != nil {
+		return fmt.Errorf("fallback schema/query smoke test failed: %w", err)
+	}
 	return nil
 }
 
 type tickStats struct {
-	MetricsLoaded       int
-	StatesUpdated       int
-	RebenchmarksStarted int
+	MetricsLoaded         int
+	StatesUpdated         int
+	RebenchmarksStarted   int
+	FallbackDecisions     int
+	FallbackRoutesChanged int
+	FallbackNoEligible    int
 }
 
 func scheduledRebenchmarkDue(state percenter.State, policy percenter.Policy, now time.Time) (bool, time.Duration, time.Time) {
@@ -427,7 +443,95 @@ func scheduledRebenchmarkDue(state percenter.State, policy percenter.Policy, now
 	return !now.Before(state.LastSSPReoptimizeAt.Add(policy.SSPReoptimizeInterval)), policy.SSPReoptimizeInterval, state.LastSSPReoptimizeAt
 }
 
+func applyFallbackRoutes(ctx context.Context, store *percenter.StateStore, decisions []percenter.FallbackDecision, now time.Time) (map[string]struct{}, int, int) {
+	stableEligible := make(map[string]struct{})
+	routesChanged := 0
+	noEligible := 0
+
+	for _, decision := range decisions {
+		if !decision.HasSelection {
+			// Analyst rule: if even campaign has < 5 impressions in the last
+			// five minutes, keep the current route/pricing unchanged.
+			noEligible++
+			continue
+		}
+
+		exactState, err := store.Load(ctx, decision.ExactHash)
+		if err != nil {
+			log.Printf("[PERCENTER][FALLBACK_STATE_LOAD_SKIP] exact_hash=%s selected_hash=%s level=%s error=%v", decision.ExactHash, decision.SelectedHash, decision.SelectedLevel, err)
+			continue
+		}
+
+		currentHash := percenter.EffectiveStateHash(exactState)
+		if currentHash == decision.SelectedHash {
+			stableEligible[decision.SelectedHash] = struct{}{}
+			continue
+		}
+
+		if decision.SelectedHash != decision.ExactHash {
+			// Create/validate the parent state before routing production traffic to it.
+			if _, err := store.GetOrInitPricingForCampaign(
+				ctx,
+				decision.SelectedHash,
+				exactState.CampaignID,
+				exactState.OriginalBid,
+				exactState.MinMargin,
+				exactState.CampaignVersion,
+				exactState.TypeModel,
+				exactState.ProfitModel,
+				now,
+			); err != nil {
+				log.Printf("[PERCENTER][FALLBACK_PARENT_INIT_SKIP] exact_hash=%s selected_hash=%s level=%s error=%v", decision.ExactHash, decision.SelectedHash, decision.SelectedLevel, err)
+				continue
+			}
+		}
+
+		updated, changed := percenter.SetFallbackTarget(exactState, decision.SelectedHash, now)
+		if !changed {
+			stableEligible[decision.SelectedHash] = struct{}{}
+			continue
+		}
+		saved, err := store.SaveIfCurrent(ctx, exactState, updated)
+		if err != nil {
+			log.Printf("[PERCENTER][FALLBACK_ROUTE_SAVE_ERROR] exact_hash=%s selected_hash=%s level=%s error=%v", decision.ExactHash, decision.SelectedHash, decision.SelectedLevel, err)
+			continue
+		}
+		if !saved {
+			log.Printf("[PERCENTER][FALLBACK_ROUTE_RACE_SKIP] exact_hash=%s selected_hash=%s level=%s", decision.ExactHash, decision.SelectedHash, decision.SelectedLevel)
+			continue
+		}
+		routesChanged++
+		log.Printf(
+			"[PERCENTER][FALLBACK_ROUTE_CHANGED] exact_hash=%s from_hash=%s to_hash=%s level=%s impressions=%d window=%s",
+			decision.ExactHash,
+			currentHash,
+			decision.SelectedHash,
+			decision.SelectedLevel,
+			decision.Impressions,
+			percenter.FallbackWindow,
+		)
+		// Do not optimize a state in the same tick in which traffic is routed to
+		// it. The next five-minute window gives that state fresh measurements.
+	}
+	return stableEligible, routesChanged, noEligible
+}
+
 func processTick(ctx context.Context, conn clickhouse.Conn, store *percenter.StateStore, cfg *config.PercenterConfig, policy percenter.Policy) (tickStats, error) {
+	traffic, err := percenter.LoadFallbackTraffic(
+		ctx,
+		conn,
+		cfg.Database,
+		cfg.TableOrtb,
+		cfg.TableImpressions,
+		percenter.FallbackWindow,
+	)
+	if err != nil {
+		return tickStats{}, fmt.Errorf("load ClickHouse fallback traffic: %w", err)
+	}
+	decisions := percenter.BuildFallbackDecisions(traffic, percenter.FallbackMinImpressions)
+	now := time.Now().UTC()
+	stableEligible, routesChanged, noEligible := applyFallbackRoutes(ctx, store, decisions, now)
+
 	metrics, err := percenter.LoadWindowMetrics(
 		ctx,
 		conn,
@@ -441,9 +545,24 @@ func processTick(ctx context.Context, conn clickhouse.Conn, store *percenter.Sta
 		return tickStats{}, fmt.Errorf("load ClickHouse window metrics: %w", err)
 	}
 
-	stats := tickStats{MetricsLoaded: len(metrics)}
-	now := time.Now().UTC()
+	stats := tickStats{
+		MetricsLoaded:         len(metrics),
+		FallbackDecisions:     len(decisions),
+		FallbackRoutesChanged: routesChanged,
+		FallbackNoEligible:    noEligible,
+	}
 	for _, metric := range metrics {
+		if _, eligible := stableEligible[metric.SegmentHash]; !eligible {
+			continue
+		}
+		// A routing level may be eligible because its whole hierarchy has >= 5
+		// impressions, while only a subset currently uses this particular state.
+		// Never move the state itself until its current point has at least five
+		// actual impressions too.
+		if metric.Wins < percenter.FallbackMinImpressions {
+			continue
+		}
+
 		state, err := store.Load(ctx, metric.SegmentHash)
 		if err != nil {
 			// A state can expire between the auction and the worker tick. The next

@@ -90,3 +90,83 @@ func quoteIdentifier(value string) string {
 	}
 	return "`" + strings.ReplaceAll(value, "`", "``") + "`"
 }
+
+// LoadFallbackTraffic reconstructs exact segment dimensions from ORTB and
+// counts actual impression callbacks over the fixed fallback window. The
+// segment_hash stored in ORTB may already be a parent hash, therefore routing
+// decisions are based on raw dimensions + win_cid rather than on segment_hash.
+func LoadFallbackTraffic(ctx context.Context, conn clickhouse.Conn, database, ortbTable, impressionsTable string, window time.Duration) ([]SegmentTraffic, error) {
+	if conn == nil {
+		return nil, fmt.Errorf("clickhouse connection is nil")
+	}
+	if window <= 0 {
+		window = FallbackWindow
+	}
+	database = quoteIdentifier(database)
+	ortbTable = quoteIdentifier(ortbTable)
+	impressionsTable = quoteIdentifier(impressionsTable)
+	seconds := int64(window / time.Second)
+	if seconds < 1 {
+		seconds = 1
+	}
+
+	query := fmt.Sprintf(`
+SELECT
+    ifNull(o.spp_domain, '') AS ssp_domain,
+    ifNull(o.geo, '') AS geo,
+    ifNull(o.browser, '') AS browser,
+    ifNull(o.device, '') AS device,
+    ifNull(o.os, '') AS os,
+    ifNull(o.site_id, '') AS site_id,
+    o.win_cid AS campaign_id,
+    countIf(isNotNull(i.uuid) AND ifNull(o.win_dsp_domain, '') = 'adv') AS impressions
+FROM %s.%s AS o
+LEFT JOIN
+(
+    SELECT DISTINCT uuid
+    FROM %s.%s
+    WHERE event_time_impressions >= now64(3) - toIntervalSecond(%d)
+) AS i ON o.uuid = i.uuid
+WHERE o.event_time >= now64(3) - toIntervalSecond(%d)
+  AND o.segment_hash != ''
+  AND o.percenter_point_version > 0
+  AND o.win_cid != ''
+GROUP BY
+    ssp_domain,
+    geo,
+    browser,
+    device,
+    os,
+    site_id,
+    campaign_id
+SETTINGS join_use_nulls = 1
+`, database, ortbTable, database, impressionsTable, seconds, seconds)
+
+	rows, err := conn.Query(ctx, query)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	result := make([]SegmentTraffic, 0)
+	for rows.Next() {
+		var item SegmentTraffic
+		if err := rows.Scan(
+			&item.Segment.SSPDomain,
+			&item.Segment.Geo,
+			&item.Segment.Browser,
+			&item.Segment.Device,
+			&item.Segment.OS,
+			&item.Segment.SiteID,
+			&item.Segment.CampaignID,
+			&item.Impressions,
+		); err != nil {
+			return nil, err
+		}
+		result = append(result, item)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return result, nil
+}

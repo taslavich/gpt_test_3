@@ -109,14 +109,15 @@ func (p Policy) MinMargin(promoRemaining float64) float64 {
 }
 
 type State struct {
-	SegmentHash     string  `json:"segment_hash"`
-	CampaignID      string  `json:"campaign_id"`
-	CampaignVersion int64   `json:"campaign_version"`
-	PointVersion    uint64  `json:"point_version"`
-	TypeModel       int     `json:"type_model"`
-	ProfitModel     string  `json:"profit_model"`
-	OriginalBid     float64 `json:"original_bid"`
-	MinMargin       float64 `json:"min_margin"`
+	SegmentHash         string  `json:"segment_hash"`
+	FallbackSegmentHash string  `json:"fallback_segment_hash,omitempty"`
+	CampaignID          string  `json:"campaign_id"`
+	CampaignVersion     int64   `json:"campaign_version"`
+	PointVersion        uint64  `json:"point_version"`
+	TypeModel           int     `json:"type_model"`
+	ProfitModel         string  `json:"profit_model"`
+	OriginalBid         float64 `json:"original_bid"`
+	MinMargin           float64 `json:"min_margin"`
 
 	AdvertiserPrice float64 `json:"advertiser_price"`
 	SSPBid          float64 `json:"ssp_bid"`
@@ -228,6 +229,7 @@ func (s State) reoptimizationDue(now time.Time, policy Policy) bool {
 }
 
 type Pricing struct {
+	SegmentHash     string
 	AdvertiserPrice float64
 	SSPBid          float64
 	Margin          float64
@@ -277,27 +279,46 @@ func (s *StateStore) GetOrInitPricingForCampaign(ctx context.Context, segmentHas
 	}
 	typeModel = normalizeTypeModel(typeModel)
 	profitModel = normalizeProfitModel(profitModel)
+
+	state, fallback, err := s.getOrInitStateForCampaign(ctx, segmentHash, campaignID, originalBid, minMargin, campaignRevision, typeModel, profitModel, now)
+	if err != nil {
+		return fallback, err
+	}
+
+	targetHash := strings.TrimSpace(state.FallbackSegmentHash)
+	if targetHash == "" || targetHash == state.SegmentHash {
+		return pricingFromState(state), nil
+	}
+
+	targetState, _, targetErr := s.getOrInitStateForCampaign(ctx, targetHash, campaignID, originalBid, minMargin, campaignRevision, typeModel, profitModel, now)
+	if targetErr != nil {
+		// Keep serving the exact segment's last known state if the selected parent
+		// cannot be read/initialized. This avoids falling all the way back to a new
+		// baseline because of a transient Redis error.
+		pricing := pricingFromState(state)
+		pricing.FromFallback = true
+		return pricing, targetErr
+	}
+	pricing := pricingFromState(targetState)
+	pricing.FromFallback = true
+	return pricing, nil
+}
+
+func (s *StateStore) getOrInitStateForCampaign(ctx context.Context, segmentHash, campaignID string, originalBid, minMargin float64, campaignRevision int64, typeModel int, profitModel string, now time.Time) (State, Pricing, error) {
 	baseline := BaselineStateForCampaign(segmentHash, campaignID, originalBid, minMargin, campaignRevision, typeModel, profitModel, now)
 	fallback := pricingFromState(baseline)
 	fallback.FromFallback = true
 	if s == nil || s.redis == nil {
-		return fallback, errors.New("percenter redis is unavailable")
+		return State{}, fallback, errors.New("percenter redis is unavailable")
 	}
 
 	if state, ok := s.cachedForCampaign(segmentHash, originalBid, minMargin, campaignRevision, typeModel, profitModel, now); ok {
-		if state.reoptimizationDue(now, s.policy) {
-			baseline.PointVersion = nextPointVersion(state.PointVersion)
-			if err := s.Save(ctx, baseline); err != nil {
-				return pricingFromState(state), err
-			}
-			return pricingFromState(baseline), nil
-		}
-		return pricingFromState(state), nil
+		return state, pricingFromState(state), nil
 	}
 
 	state, err := s.Load(ctx, segmentHash)
 	if err != nil && !errors.Is(err, redis.Nil) {
-		return fallback, err
+		return State{}, fallback, err
 	}
 	if errors.Is(err, redis.Nil) || !state.ValidForCampaign(originalBid, minMargin, campaignRevision, typeModel, profitModel) {
 		if !errors.Is(err, redis.Nil) && state.PointVersion > 0 {
@@ -305,18 +326,11 @@ func (s *StateStore) GetOrInitPricingForCampaign(ctx context.Context, segmentHas
 		}
 		state = baseline
 		if err := s.Save(ctx, state); err != nil {
-			return fallback, err
-		}
-	} else if state.reoptimizationDue(now, s.policy) {
-		previous := state
-		baseline.PointVersion = nextPointVersion(state.PointVersion)
-		state = baseline
-		if err := s.Save(ctx, state); err != nil {
-			return pricingFromState(previous), err
+			return State{}, fallback, err
 		}
 	}
 	s.putCache(state, now)
-	return pricingFromState(state), nil
+	return state, pricingFromState(state), nil
 }
 
 func (s *StateStore) cached(hash string, originalBid, minMargin float64, revision int64, now time.Time) (State, bool) {
@@ -424,7 +438,7 @@ func (s *StateStore) SaveIfCurrent(ctx context.Context, previous, next State) (b
 }
 
 func pricingFromState(state State) Pricing {
-	return Pricing{AdvertiserPrice: state.AdvertiserPrice, SSPBid: state.SSPBid, Margin: state.Margin, Phase: state.Phase, PointVersion: state.PointVersion}
+	return Pricing{SegmentHash: state.SegmentHash, AdvertiserPrice: state.AdvertiserPrice, SSPBid: state.SSPBid, Margin: state.Margin, Phase: state.Phase, PointVersion: state.PointVersion}
 }
 
 func CampaignVersionKey(campaignID string) string {

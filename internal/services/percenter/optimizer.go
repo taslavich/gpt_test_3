@@ -178,6 +178,7 @@ func resetState(state State, now time.Time) State {
 		now,
 	)
 	reset.PointVersion = nextPointVersion(state.PointVersion)
+	reset.FallbackSegmentHash = state.FallbackSegmentHash
 	return reset
 }
 
