@@ -85,7 +85,9 @@ CREATE TABLE IF NOT EXISTS {db}.ortb
 
     win_cid           String DEFAULT '',
     win_crid          String DEFAULT '',
-    win_user_id       String DEFAULT ''
+    win_user_id       String DEFAULT '',
+    segment_hash      String DEFAULT '',
+    percenter_point_version UInt64 DEFAULT 0
 )
 ENGINE = MergeTree
 PARTITION BY toStartOfHour(created_at)
@@ -95,6 +97,12 @@ SETTINGS index_granularity = 8192;
 
 -- Lookup by auction UUID for clicks_wins -> ORTB enrichment.
 -- ALTER is kept for compatibility with already existing tables.
+ALTER TABLE {db}.ortb
+    ADD COLUMN IF NOT EXISTS segment_hash String DEFAULT '';
+
+ALTER TABLE {db}.ortb
+    ADD COLUMN IF NOT EXISTS percenter_point_version UInt64 DEFAULT 0;
+
 ALTER TABLE {db}.ortb
     ADD INDEX IF NOT EXISTS idx_ortb_uuid
     uuid TYPE bloom_filter(0.01) GRANULARITY 1;

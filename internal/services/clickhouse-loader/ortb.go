@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"net"
+	"strconv"
 	"time"
 
 	"github.com/ClickHouse/clickhouse-go/v2"
@@ -12,6 +13,11 @@ import (
 	"github.com/segmentio/kafka-go"
 	eventspb "gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/proto/buffer"
 	"google.golang.org/protobuf/proto"
+)
+
+const (
+	segmentHashTransportKey  = "__twinbid_segment_hash"
+	pointVersionTransportKey = "__twinbid_percenter_point_version"
 )
 
 func ProcessKafkaMessagesOrtb(
@@ -89,7 +95,9 @@ func insertBatchOrtb(
 			win_dsp_price,
 			win_cid,
 			win_crid,
-			win_user_id
+			win_user_id,
+			segment_hash,
+			percenter_point_version
 		)
 	`, table)
 
@@ -134,7 +142,8 @@ func insertBatchOrtb(
 
 		cityID := int32(r.CityId)
 		code := uint16(r.Code)
-		bidResponsesRaw := encodeBidResponsesRaw(r.BidResponses)
+		segmentHash, pointVersion, bidResponses := extractPercenterMetadata(r.BidResponses)
+		bidResponsesRaw := encodeBidResponsesRaw(bidResponses)
 
 		if err := batch.Append(
 			u,
@@ -163,6 +172,8 @@ func insertBatchOrtb(
 			r.WinCid,
 			r.WinCrid,
 			r.WinUserId,
+			segmentHash,
+			pointVersion,
 		); err != nil {
 			stats.AppendErrors++
 			return stats, fmt.Errorf("Record %d: batch.Append: %w", i, err)
@@ -174,6 +185,25 @@ func insertBatchOrtb(
 	}
 
 	return stats, nil
+}
+
+func extractPercenterMetadata(items map[string]string) (string, uint64, map[string]string) {
+	if len(items) == 0 {
+		return "", 0, items
+	}
+	segmentHash := items[segmentHashTransportKey]
+	pointVersion, _ := strconv.ParseUint(items[pointVersionTransportKey], 10, 64)
+	if segmentHash == "" && pointVersion == 0 {
+		return "", 0, items
+	}
+	clean := make(map[string]string, len(items))
+	for key, value := range items {
+		if key == segmentHashTransportKey || key == pointVersionTransportKey {
+			continue
+		}
+		clean[key] = value
+	}
+	return segmentHash, pointVersion, clean
 }
 
 func encodeBidResponsesRaw(items map[string]string) string {

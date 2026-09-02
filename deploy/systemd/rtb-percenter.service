@@ -1,0 +1,37 @@
+[Unit]
+Description=RTB Percenter Service
+After=network-online.target
+Wants=network-online.target
+StartLimitIntervalSec=0
+
+[Service]
+Type=simple
+User=root
+Group=root
+WorkingDirectory=/root/RTB/gpt_test_3
+ExecStart=/root/RTB/gpt_test_3/cmd/percenter/percenter
+Restart=always
+RestartSec=1
+
+EnvironmentFile=/root/RTB/gpt_test_3/cmd/percenter/percenter.env
+
+# FD / процессы
+LimitNOFILE=1048576
+LimitNPROC=1048576
+LimitMEMLOCK=infinity
+TasksMax=infinity
+
+# Percenter не является latency-critical HTTP сервисом.
+Nice=0
+CPUWeight=50
+
+# Logging
+StandardOutput=append:/var/log/rtb/percenter.log
+StandardError=append:/var/log/rtb/percenter.error.log
+SyslogIdentifier=rtb-percenter
+
+NoNewPrivileges=yes
+PrivateTmp=yes
+
+[Install]
+WantedBy=multi-user.target

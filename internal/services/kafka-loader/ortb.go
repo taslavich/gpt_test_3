@@ -13,6 +13,11 @@ import (
 	"google.golang.org/protobuf/proto"
 )
 
+const (
+	segmentHashTransportKey  = "__twinbid_segment_hash"
+	pointVersionTransportKey = "__twinbid_percenter_point_version"
+)
+
 var ortbHMGetFields = []string{
 	constants.EVENT_TIME_COLUMN,
 	constants.TYPIC_COLUMN,
@@ -39,6 +44,8 @@ var ortbHMGetFields = []string{
 	constants.WIN_CID_COLUMN,
 	constants.WIN_CRID_COLUMN,
 	constants.WIN_USER_ID_COLUMN,
+	constants.SEGMENT_HASH_COLUMN,
+	constants.PERCENTER_POINT_VERSION_COLUMN,
 }
 
 func ProcessBatchOrtb(
@@ -74,32 +81,34 @@ func buildOrtbKafkaMessage(
 	values []interface{},
 ) (kafka.Message, bool, error) {
 	rawRecord := types.Ortb{
-		UUID:            uuid,
-		EVENT_TIME:      valueAsString(values, 0),
-		TYPIC:           valueAsString(values, 1),
-		FORMAT:          valueAsString(values, 2),
-		SPP_DOMAIN:      valueAsString(values, 3),
-		GEO:             valueAsString(values, 4),
-		CITY_ID:         valueAsString(values, 5),
-		CODE:            valueAsString(values, 6),
-		BID_RESPONSES:   valueAsString(values, 7),
-		IP:              valueAsString(values, 8),
-		IPV6:            valueAsString(values, 9),
-		LANG:            valueAsString(values, 10),
-		BROWSER:         valueAsString(values, 11),
-		BROWSER_VERSION: valueAsString(values, 12),
-		OS:              valueAsString(values, 13),
-		OS_VERSION:      valueAsString(values, 14),
-		DEVICE:          valueAsString(values, 15),
-		SITE_ID:         valueAsString(values, 16),
-		SITE_DOMAIN:     valueAsString(values, 17),
-		BID_FLOOR:       valueAsString(values, 18),
-		WIN_DSP_DOMAIN:  valueAsString(values, 19),
-		WIN_PRICE:       valueAsString(values, 20),
-		WIN_DSP_PRICE:   valueAsString(values, 21),
-		WIN_CID:         valueAsString(values, 22),
-		WIN_CRID:        valueAsString(values, 23),
-		WIN_USER_ID:     valueAsString(values, 24),
+		UUID:                    uuid,
+		EVENT_TIME:              valueAsString(values, 0),
+		TYPIC:                   valueAsString(values, 1),
+		FORMAT:                  valueAsString(values, 2),
+		SPP_DOMAIN:              valueAsString(values, 3),
+		GEO:                     valueAsString(values, 4),
+		CITY_ID:                 valueAsString(values, 5),
+		CODE:                    valueAsString(values, 6),
+		BID_RESPONSES:           valueAsString(values, 7),
+		IP:                      valueAsString(values, 8),
+		IPV6:                    valueAsString(values, 9),
+		LANG:                    valueAsString(values, 10),
+		BROWSER:                 valueAsString(values, 11),
+		BROWSER_VERSION:         valueAsString(values, 12),
+		OS:                      valueAsString(values, 13),
+		OS_VERSION:              valueAsString(values, 14),
+		DEVICE:                  valueAsString(values, 15),
+		SITE_ID:                 valueAsString(values, 16),
+		SITE_DOMAIN:             valueAsString(values, 17),
+		BID_FLOOR:               valueAsString(values, 18),
+		WIN_DSP_DOMAIN:          valueAsString(values, 19),
+		WIN_PRICE:               valueAsString(values, 20),
+		WIN_DSP_PRICE:           valueAsString(values, 21),
+		WIN_CID:                 valueAsString(values, 22),
+		WIN_CRID:                valueAsString(values, 23),
+		WIN_USER_ID:             valueAsString(values, 24),
+		SEGMENT_HASH:            valueAsString(values, 25),
+		PERCENTER_POINT_VERSION: valueAsString(values, 26),
 	}
 
 	if !HasDataOrtb(rawRecord) {
@@ -110,6 +119,17 @@ func buildOrtbKafkaMessage(
 	if err != nil {
 		log.Printf("Ошибка парсинга bidResponses из Redis (index 7): %v", err)
 		bidResponses = make(map[string]string)
+	}
+	if rawRecord.SEGMENT_HASH != "" || rawRecord.PERCENTER_POINT_VERSION != "" {
+		if bidResponses == nil {
+			bidResponses = make(map[string]string)
+		}
+		if rawRecord.SEGMENT_HASH != "" {
+			bidResponses[segmentHashTransportKey] = rawRecord.SEGMENT_HASH
+		}
+		if rawRecord.PERCENTER_POINT_VERSION != "" {
+			bidResponses[pointVersionTransportKey] = rawRecord.PERCENTER_POINT_VERSION
+		}
 	}
 
 	event := &eventspb.OrtbEvent{

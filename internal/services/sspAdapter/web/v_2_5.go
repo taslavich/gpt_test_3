@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"log"
 	"net/http"
-	"net/url"
 	"runtime/debug"
 	"strings"
 	"time"
@@ -15,11 +14,13 @@ import (
 	"github.com/google/uuid"
 	grpcRuntime "github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
 	"github.com/redis/go-redis/v9"
+	"gitlab.com/twinbid-exchange/RTB-exchange/internal/constants"
 	"gitlab.com/twinbid-exchange/RTB-exchange/internal/geoBadIp"
 	orchestratorProto "gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/proto/services/orchestrator"
 	"gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/proto/types/ortb_V2_5"
 	utils "gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/utils_grpc"
 	services "gitlab.com/twinbid-exchange/RTB-exchange/internal/services"
+	"gitlab.com/twinbid-exchange/RTB-exchange/internal/services/percenter"
 	"gitlab.com/twinbid-exchange/RTB-exchange/internal/ua"
 	"google.golang.org/grpc/status"
 )
@@ -51,6 +52,8 @@ func writeStatsOrtbAndAddToSet(
 	siteId string,
 	siteDomain string,
 	bidFloor float64,
+	segmentHash string,
+	pointVersion uint64,
 ) bool {
 	if err := utils.WriteStatsOrtb(
 		ctx,
@@ -74,6 +77,21 @@ func writeStatsOrtbAndAddToSet(
 		log.Printf("failed to WriteStats in postBid_V2_5: %v", err)
 		recordRedisError(redisWriteErrorMonitor, err, sspAdapterWorkStatusURL)
 		return false
+	}
+
+	if segmentHash != "" {
+		if err := utils.WriteBytesToRedis(ctx, redisClients, globalId, constants.SEGMENT_HASH_COLUMN, []byte(segmentHash), logged); err != nil {
+			log.Printf("failed to write ORTB segment hash in postBid_V2_5: %v", err)
+			recordRedisError(redisWriteErrorMonitor, err, sspAdapterWorkStatusURL)
+			return false
+		}
+	}
+	if pointVersion > 0 {
+		if err := utils.WriteBytesToRedis(ctx, redisClients, globalId, constants.PERCENTER_POINT_VERSION_COLUMN, []byte(fmt.Sprintf("%d", pointVersion)), logged); err != nil {
+			log.Printf("failed to write ORTB percenter point version in postBid_V2_5: %v", err)
+			recordRedisError(redisWriteErrorMonitor, err, sspAdapterWorkStatusURL)
+			return false
+		}
 	}
 
 	if err := utils.AddUUIDToRedisSet(ctx, redisClients, redisSetOrtb, globalId, logged); err != nil {
@@ -265,6 +283,8 @@ func postBid_V2_5(
 			"",
 			"",
 			0,
+			"",
+			0,
 		) {
 			w.WriteHeader(http.StatusServiceUnavailable)
 			return
@@ -300,6 +320,8 @@ func postBid_V2_5(
 			701,
 			ua.UAFields{},
 			"",
+			"",
+			0,
 			"",
 			0,
 		) {
@@ -347,6 +369,8 @@ func postBid_V2_5(
 			702,
 			ua.UAFields{},
 			"",
+			"",
+			0,
 			"",
 			0,
 		) {
@@ -629,6 +653,8 @@ func postBid_V2_5(
 				siteId,
 				siteDomain,
 				float64(uuidBidFloor[uuid]),
+				"",
+				0,
 			) {
 				w.WriteHeader(http.StatusServiceUnavailable)
 				return
@@ -640,7 +666,8 @@ func postBid_V2_5(
 	}
 
 	if res.Code == http.StatusNoContent {
-		for _, uuid := range impIdUuid {
+		for impID, uuid := range impIdUuid {
+			segmentHash, pointVersion := advPercenterMetadataForImpression(res, impID, ssp_domain, countryISO, uaFileds, siteId)
 			if !writeStatsOrtbAndAddToSet(
 				ctx,
 				redisClients,
@@ -662,6 +689,8 @@ func postBid_V2_5(
 				siteId,
 				siteDomain,
 				float64(uuidBidFloor[uuid]),
+				segmentHash,
+				pointVersion,
 			) {
 				w.WriteHeader(http.StatusServiceUnavailable)
 				return
@@ -673,7 +702,9 @@ func postBid_V2_5(
 	}
 
 	failedImpIds := append([]string(nil), res.GetFailedImpIds()...)
+	writtenImpIDs := make(map[string]struct{}, len(res.GetImpIdUuidClone()))
 	for impID, uuid := range res.GetImpIdUuidClone() {
+		segmentHash, pointVersion := advPercenterMetadataForImpression(res, impID, ssp_domain, countryISO, uaFileds, siteId)
 		if !writeStatsOrtbAndAddToSet(
 			ctx,
 			redisClients,
@@ -695,71 +726,38 @@ func postBid_V2_5(
 			siteId,
 			siteDomain,
 			float64(uuidBidFloor[uuid]),
+			segmentHash,
+			pointVersion,
+		) {
+			failedImpIds = append(failedImpIds, impID)
+		} else {
+			writtenImpIDs[impID] = struct{}{}
+		}
+	}
+	// Preserve ADV percenter opportunities even when a selected Smart bid was
+	// dropped after ADV (for example during downstream finalization).
+	for impID, uuid := range impIdUuid {
+		if _, alreadyWritten := writtenImpIDs[impID]; alreadyWritten {
+			continue
+		}
+		segmentHash, pointVersion := advPercenterMetadataForImpression(res, impID, ssp_domain, countryISO, uaFileds, siteId)
+		if segmentHash == "" || pointVersion == 0 {
+			continue
+		}
+		if !writeStatsOrtbAndAddToSet(
+			ctx, redisClients, redisSetOrtb, redisWriteErrorMonitor, sspAdapterWorkStatusURL, uuid, logged,
+			format, typic, ssp_domain, device.GetIp(), device.GetIpv6(), lang, countryISO, cityId,
+			http.StatusNoContent, uaFileds, siteId, siteDomain, float64(uuidBidFloor[uuid]), segmentHash, pointVersion,
 		) {
 			failedImpIds = append(failedImpIds, impID)
 		}
 	}
 
 	removeFailedImpBidsFromResponse(res.BidResponse, failedImpIds)
+	percenter.StripInternalMetadata(res.BidResponse)
 	if !bidResponseHasBids(res.BidResponse) {
 		w.WriteHeader(http.StatusNoContent)
 		return
-	}
-
-	for a := range res.BidResponse.Seatbid {
-		seatBid := res.BidResponse.Seatbid[a]
-		for b := range seatBid.Bid {
-			bid := seatBid.Bid[b]
-			if bid.GetAdm() == "" {
-				log.Println("ADM == EMPTY")
-			}
-
-			if bid.GetBurl() == "" {
-				log.Println("BURL == EMPTY")
-			}
-
-			if bid.GetNurl() == "" {
-				log.Println("NURL == EMPTY")
-			}
-		}
-	}
-
-	for a := range res.BidResponse.Seatbid {
-		seatBid := res.BidResponse.Seatbid[a]
-
-		for b := range seatBid.Bid {
-			bid := seatBid.Bid[b]
-
-			if ssp_domain == "adl_pb.com" {
-				// Этот SSP должен использовать NURL.
-				if bid.GetNurl() == "" {
-					log.Printf(
-						"[CALLBACK_CHECK] NURL EMPTY ssp=%s",
-						ssp_domain,
-					)
-				} else if !validateNURL(bid.GetNurl()) {
-					log.Printf(
-						"[CALLBACK_CHECK] NURL INVALID ssp=%s nurl=%q",
-						ssp_domain,
-						bid.GetNurl(),
-					)
-				}
-			} else {
-				// Все остальные SSP должны использовать BURL.
-				if bid.GetBurl() == "" {
-					log.Printf(
-						"[CALLBACK_CHECK] BURL EMPTY ssp=%s",
-						ssp_domain,
-					)
-				} else if !validateBURL(bid.GetBurl()) {
-					log.Printf(
-						"[CALLBACK_CHECK] BURL INVALID ssp=%s burl=%q",
-						ssp_domain,
-						bid.GetBurl(),
-					)
-				}
-			}
-		}
 	}
 
 	if err = rnr.JSON(w, http.StatusOK, postBidResponse_V2_5{
@@ -769,58 +767,54 @@ func postBid_V2_5(
 	}
 }
 
-func validCallbackHost(host string) bool {
-	switch host {
-	case "server1.twinbidexchange.com",
-		"server2.twinbidexchange.com",
-		"server3.twinbidexchange.com",
-		"server4.twinbidexchange.com":
-		return true
-	default:
-		return false
+func advPercenterMetadataForImpression(
+	res *orchestratorProto.OrchestratorResponse_V2_5,
+	impID string,
+	sspDomain string,
+	geo string,
+	uaFields ua.UAFields,
+	siteID string,
+) (string, uint64) {
+	if res == nil || impID == "" {
+		return "", 0
 	}
+	if segmentHash, pointVersion := percenter.InternalMetadata(res.GetBidResponse(), impID); segmentHash != "" {
+		return segmentHash, pointVersion
+	}
+	// Backward-compatible fallback for responses produced by an older ADV.
+	if res.GetWinnerUserIds()[impID] == "" {
+		return "", 0
+	}
+	campaignID := campaignIDForImpression(res.GetBidResponse(), impID)
+	if campaignID == "" {
+		return "", 0
+	}
+	return percenter.HashSegment(percenter.Segment{
+		SSPDomain:  sspDomain,
+		Geo:        geo,
+		Browser:    uaFields.Browser,
+		Device:     uaFields.Device,
+		OS:         uaFields.OS,
+		SiteID:     siteID,
+		CampaignID: campaignID,
+	}), 0
 }
 
-func validateBURL(rawURL string) bool {
-	u, err := url.Parse(rawURL)
-	if err != nil {
-		return false
+func campaignIDForImpression(response *ortb_V2_5.BidResponse, impID string) string {
+	if response == nil || impID == "" {
+		return ""
 	}
-
-	if u.Scheme != "https" {
-		return false
+	for _, seat := range response.GetSeatbid() {
+		if seat == nil {
+			continue
+		}
+		for _, bid := range seat.GetBid() {
+			if bid != nil && bid.GetImpid() == impID {
+				return bid.GetCid()
+			}
+		}
 	}
-
-	if !validCallbackHost(u.Hostname()) {
-		return false
-	}
-
-	if u.Path != "/burl" {
-		return false
-	}
-
-	return true
-}
-
-func validateNURL(rawURL string) bool {
-	u, err := url.Parse(rawURL)
-	if err != nil {
-		return false
-	}
-
-	if u.Scheme != "https" {
-		return false
-	}
-
-	if !validCallbackHost(u.Hostname()) {
-		return false
-	}
-
-	if u.Path != "/nurl" {
-		return false
-	}
-
-	return true
+	return ""
 }
 
 func getWorkStatus(

@@ -11,6 +11,7 @@ import (
 	dspRouterGrpc "gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/proto/services/dspRouter"
 	orchestratorGrpc "gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/proto/services/orchestrator"
 	utils "gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/utils_grpc"
+	"gitlab.com/twinbid-exchange/RTB-exchange/internal/services/percenter"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
@@ -218,8 +219,9 @@ func (s *Server) GetWinnerBid_V2_5(
 		return nil, status.Error(codes.Unavailable, "bid engine returned a nil response")
 	}
 
+	mergedBidResponse := percenter.MergeInternalMetadata(winner.GetBidResponse(), bids.GetReadyBidResponse())
 	return &orchestratorGrpc.OrchestratorResponse_V2_5{
-		BidResponse:    winner.GetBidResponse(),
+		BidResponse:    mergedBidResponse,
 		Code:           winner.GetCode(),
 		FailedImpIds:   winner.GetFailedImpIds(),
 		ImpIdUuidClone: winner.GetImpIdUuidClone(),
