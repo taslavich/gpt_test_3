@@ -2,6 +2,7 @@ package kafka_loader
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log"
 
@@ -121,26 +122,85 @@ func cleanupPercenterHistoryProcessing(ctx context.Context, client *redis.Client
 	return nil
 }
 
-func restorePercenterHistoryBatch(ctx context.Context, client *redis.Client, readyKey, processingKey string, raws []string) error {
-	script := redis.NewScript(`
-for i = 1, #ARGV do
-  redis.call('LREM', KEYS[2], 1, ARGV[i])
-  redis.call('RPUSH', KEYS[1], ARGV[i])
-end
-return #ARGV
-`)
-	args := make([]interface{}, len(raws))
-	for i, raw := range raws {
-		args[i] = raw
+func validatePercenterHistoryListType(ctx context.Context, client *redis.Client, key string) error {
+	keyType, err := client.Type(ctx, key).Result()
+	if err != nil {
+		return err
 	}
-	return script.Run(ctx, client, []string{readyKey, processingKey}, args...).Err()
+	if keyType != "none" && keyType != "list" {
+		return fmt.Errorf("Redis key %s has unexpected type: %s", key, keyType)
+	}
+	return nil
+}
+
+func restorePercenterHistoryBatch(ctx context.Context, client *redis.Client, readyKey, processingKey string, raws []string) error {
+	if len(raws) == 0 {
+		return nil
+	}
+	if err := validatePercenterHistoryListType(ctx, client, readyKey); err != nil {
+		return err
+	}
+	if err := validatePercenterHistoryListType(ctx, client, processingKey); err != nil {
+		return err
+	}
+
+	_, err := client.TxPipelined(ctx, func(pipe redis.Pipeliner) error {
+		for _, raw := range raws {
+			pipe.LRem(ctx, processingKey, 1, raw)
+			pipe.RPush(ctx, readyKey, raw)
+		}
+		return nil
+	})
+	return err
 }
 
 func moveMalformedHistoryToDead(ctx context.Context, client *redis.Client, processingKey, deadKey, raw string) error {
-	script := redis.NewScript(`
-local removed = redis.call('LREM', KEYS[1], 1, ARGV[1])
-if removed > 0 then redis.call('RPUSH', KEYS[2], ARGV[1]) end
-return removed
-`)
-	return script.Run(ctx, client, []string{processingKey, deadKey}, raw).Err()
+	const maxRetries = 8
+	for attempt := 0; attempt < maxRetries; attempt++ {
+		err := client.Watch(ctx, func(tx *redis.Tx) error {
+			processingType, err := tx.Type(ctx, processingKey).Result()
+			if err != nil {
+				return err
+			}
+			if processingType != "none" && processingType != "list" {
+				return fmt.Errorf("Redis key %s has unexpected type: %s", processingKey, processingType)
+			}
+			deadType, err := tx.Type(ctx, deadKey).Result()
+			if err != nil {
+				return err
+			}
+			if deadType != "none" && deadType != "list" {
+				return fmt.Errorf("Redis key %s has unexpected type: %s", deadKey, deadType)
+			}
+
+			items, err := tx.LRange(ctx, processingKey, 0, -1).Result()
+			if err != nil {
+				return err
+			}
+			found := false
+			for _, item := range items {
+				if item == raw {
+					found = true
+					break
+				}
+			}
+			if !found {
+				return nil
+			}
+
+			_, err = tx.TxPipelined(ctx, func(pipe redis.Pipeliner) error {
+				pipe.LRem(ctx, processingKey, 1, raw)
+				pipe.RPush(ctx, deadKey, raw)
+				return nil
+			})
+			return err
+		}, processingKey)
+		if err == nil {
+			return nil
+		}
+		if !errors.Is(err, redis.TxFailedErr) {
+			return err
+		}
+	}
+	return fmt.Errorf("move malformed percenter history event to dead list: Redis transaction conflicted after %d retries", maxRetries)
 }

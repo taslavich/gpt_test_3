@@ -1,11 +1,13 @@
 package percenter
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"math"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -257,8 +259,8 @@ func NewStateStore(client *redis.Client, policy Policy) *StateStore {
 }
 
 // ConfigureHistoryQueue binds state mutations to the durable history Redis list.
-// It must point at a LIST in the same Redis DB as the percenter state so the Lua
-// scripts can atomically change state and enqueue its audit event.
+// It must point at a LIST in the same Redis DB as the percenter state so the
+// Go Redis transaction can change state and enqueue its audit event together.
 func (s *StateStore) ConfigureHistoryQueue(readyKey string) {
 	if s == nil {
 		return
@@ -279,70 +281,6 @@ func (s *StateStore) historyQueueKey() string {
 }
 
 func SegmentKey(hash string) string { return "percenter:segment:" + hash }
-
-var compareAndSwapStateScript = redis.NewScript(`
-local current = redis.call("GET", KEYS[1])
-if not current then
-  return 0
-end
-if current ~= ARGV[1] then
-  return 0
-end
-redis.call("SET", KEYS[1], ARGV[2], "PX", ARGV[3])
-return 1
-`)
-
-var setStateIfAbsentWithHistoryScript = redis.NewScript(`
-local state_type = redis.call("TYPE", KEYS[1]).ok
-if state_type ~= "none" and state_type ~= "string" then
-  return redis.error_reply("percenter state key has unexpected type: " .. state_type)
-end
-local history_type = redis.call("TYPE", KEYS[2]).ok
-if history_type ~= "none" and history_type ~= "list" then
-  return redis.error_reply("percenter history key has unexpected type: " .. history_type)
-end
-if redis.call("EXISTS", KEYS[1]) == 1 then
-  return 0
-end
-local pushed = redis.pcall("RPUSH", KEYS[2], ARGV[3])
-if type(pushed) == "table" and pushed.err then
-  return redis.error_reply("percenter history enqueue failed: " .. pushed.err)
-end
-local stored = redis.pcall("SET", KEYS[1], ARGV[1], "PX", ARGV[2])
-if type(stored) == "table" and stored.err then
-  redis.call("RPOP", KEYS[2])
-  return redis.error_reply("percenter state save failed: " .. stored.err)
-end
-return 1
-`)
-
-var compareAndSwapStateWithHistoryScript = redis.NewScript(`
-local state_type = redis.call("TYPE", KEYS[1]).ok
-if state_type ~= "string" then
-  if state_type == "none" then
-    return 0
-  end
-  return redis.error_reply("percenter state key has unexpected type: " .. state_type)
-end
-local history_type = redis.call("TYPE", KEYS[2]).ok
-if history_type ~= "none" and history_type ~= "list" then
-  return redis.error_reply("percenter history key has unexpected type: " .. history_type)
-end
-local current = redis.call("GET", KEYS[1])
-if not current or current ~= ARGV[1] then
-  return 0
-end
-local pushed = redis.pcall("RPUSH", KEYS[2], ARGV[4])
-if type(pushed) == "table" and pushed.err then
-  return redis.error_reply("percenter history enqueue failed: " .. pushed.err)
-end
-local stored = redis.pcall("SET", KEYS[1], ARGV[2], "PX", ARGV[3])
-if type(stored) == "table" and stored.err then
-  redis.call("RPOP", KEYS[2])
-  return redis.error_reply("percenter state save failed: " .. stored.err)
-end
-return 1
-`)
 
 func (s *StateStore) GetOrInitPricing(ctx context.Context, segmentHash, campaignID string, originalBid, minMargin float64, campaignRevision int64, now time.Time) (Pricing, error) {
 	return s.GetOrInitPricingForCampaign(ctx, segmentHash, campaignID, originalBid, minMargin, campaignRevision, TypeModelSmart, ProfitModelImpression, now)
@@ -502,7 +440,7 @@ func (s *StateStore) Save(ctx context.Context, state State) error {
 	return nil
 }
 
-func (s *StateStore) historyMutationPayload(state State, event HistoryEvent) ([]byte, []byte, int64, string, error) {
+func (s *StateStore) historyMutationPayload(state State, event HistoryEvent) ([]byte, []byte, time.Duration, string, error) {
 	if s == nil || s.redis == nil {
 		return nil, nil, 0, "", errors.New("percenter redis is unavailable")
 	}
@@ -521,35 +459,68 @@ func (s *StateStore) historyMutationPayload(state State, event HistoryEvent) ([]
 	if err != nil {
 		return nil, nil, 0, "", fmt.Errorf("encode percenter history event %s: %w", event.EventID, err)
 	}
-	ttlMS := s.policy.SegmentStateTTL.Milliseconds()
-	if ttlMS <= 0 {
-		ttlMS = (7 * 24 * time.Hour).Milliseconds()
+	ttl := s.policy.SegmentStateTTL
+	if ttl <= 0 {
+		ttl = 7 * 24 * time.Hour
 	}
-	return stateRaw, eventRaw, ttlMS, historyKey, nil
+	return stateRaw, eventRaw, ttl, historyKey, nil
+}
+
+func validateHistoryTransactionKeyTypes(ctx context.Context, tx *redis.Tx, stateKey, historyKey string) (string, error) {
+	stateType, err := tx.Type(ctx, stateKey).Result()
+	if err != nil {
+		return "", err
+	}
+	if stateType != "none" && stateType != "string" {
+		return "", fmt.Errorf("percenter state key has unexpected type: %s", stateType)
+	}
+	historyType, err := tx.Type(ctx, historyKey).Result()
+	if err != nil {
+		return "", err
+	}
+	if historyType != "none" && historyType != "list" {
+		return "", fmt.Errorf("percenter history key has unexpected type: %s", historyType)
+	}
+	return stateType, nil
 }
 
 func (s *StateStore) saveIfAbsentWithHistory(ctx context.Context, state State, event HistoryEvent) (bool, error) {
 	state.UpdatedAt = time.Now().UTC()
-	stateRaw, eventRaw, ttlMS, historyKey, err := s.historyMutationPayload(state, event)
+	stateRaw, eventRaw, ttl, historyKey, err := s.historyMutationPayload(state, event)
 	if err != nil {
 		return false, err
 	}
-	result, err := setStateIfAbsentWithHistoryScript.Run(
-		ctx,
-		s.redis,
-		[]string{SegmentKey(state.SegmentHash), historyKey},
-		string(stateRaw),
-		fmt.Sprintf("%d", ttlMS),
-		string(eventRaw),
-	).Int()
-	if err != nil {
-		return false, fmt.Errorf("initialize percenter state %s with history: %w", state.SegmentHash, err)
-	}
-	if result != 1 {
+	stateKey := SegmentKey(state.SegmentHash)
+	saved := false
+	err = s.redis.Watch(ctx, func(tx *redis.Tx) error {
+		stateType, err := validateHistoryTransactionKeyTypes(ctx, tx, stateKey, historyKey)
+		if err != nil {
+			return err
+		}
+		if stateType != "none" {
+			return nil
+		}
+
+		_, err = tx.TxPipelined(ctx, func(pipe redis.Pipeliner) error {
+			pipe.Set(ctx, stateKey, stateRaw, ttl)
+			pipe.RPush(ctx, historyKey, eventRaw)
+			return nil
+		})
+		if err == nil {
+			saved = true
+		}
+		return err
+	}, stateKey)
+	if errors.Is(err, redis.TxFailedErr) {
 		return false, nil
 	}
-	s.putCache(state, state.UpdatedAt)
-	return true, nil
+	if err != nil {
+		return false, fmt.Errorf("initialize percenter state %s with history transaction: %w", state.SegmentHash, err)
+	}
+	if saved {
+		s.putCache(state, state.UpdatedAt)
+	}
+	return saved, nil
 }
 
 func (s *StateStore) SaveIfCurrent(ctx context.Context, previous, next State) (bool, error) {
@@ -565,31 +536,48 @@ func (s *StateStore) SaveIfCurrent(ctx context.Context, previous, next State) (b
 	if err != nil {
 		return false, fmt.Errorf("encode next percenter state %s: %w", next.SegmentHash, err)
 	}
-	ttlMS := s.policy.SegmentStateTTL.Milliseconds()
-	if ttlMS <= 0 {
-		ttlMS = (7 * 24 * time.Hour).Milliseconds()
+	ttl := s.policy.SegmentStateTTL
+	if ttl <= 0 {
+		ttl = 7 * 24 * time.Hour
 	}
-	result, err := compareAndSwapStateScript.Run(
-		ctx,
-		s.redis,
-		[]string{SegmentKey(previous.SegmentHash)},
-		string(previousRaw),
-		string(nextRaw),
-		fmt.Sprintf("%d", ttlMS),
-	).Int()
+	stateKey := SegmentKey(previous.SegmentHash)
+	saved := false
+	err = s.redis.Watch(ctx, func(tx *redis.Tx) error {
+		currentRaw, err := tx.Get(ctx, stateKey).Bytes()
+		if errors.Is(err, redis.Nil) {
+			return nil
+		}
+		if err != nil {
+			return err
+		}
+		if !bytes.Equal(currentRaw, previousRaw) {
+			return nil
+		}
+		_, err = tx.TxPipelined(ctx, func(pipe redis.Pipeliner) error {
+			pipe.Set(ctx, stateKey, nextRaw, ttl)
+			return nil
+		})
+		if err == nil {
+			saved = true
+		}
+		return err
+	}, stateKey)
+	if errors.Is(err, redis.TxFailedErr) {
+		return false, nil
+	}
 	if err != nil {
 		return false, fmt.Errorf("compare-and-swap percenter state %s: %w", previous.SegmentHash, err)
 	}
-	if result != 1 {
-		return false, nil
+	if saved {
+		s.putCache(next, next.UpdatedAt)
 	}
-	s.putCache(next, next.UpdatedAt)
-	return true, nil
+	return saved, nil
 }
 
 // SaveIfCurrentWithHistory performs the state CAS and Redis history enqueue in
-// one server-side Lua script. A client crash/kill cannot leave a committed state
-// without its corresponding history event, and a CAS race enqueues nothing.
+// one WATCH/MULTI/EXEC transaction issued by Go. The segment state key is
+// watched, so a concurrent state change aborts the transaction and enqueues no
+// history event. SET and RPUSH are committed together by Redis EXEC.
 func (s *StateStore) SaveIfCurrentWithHistory(ctx context.Context, previous, next State, event HistoryEvent) (bool, error) {
 	if s == nil || s.redis == nil {
 		return false, errors.New("percenter redis is unavailable")
@@ -602,27 +590,51 @@ func (s *StateStore) SaveIfCurrentWithHistory(ctx context.Context, previous, nex
 		return false, fmt.Errorf("encode previous percenter state %s: %w", previous.SegmentHash, err)
 	}
 	next.UpdatedAt = time.Now().UTC()
-	nextRaw, eventRaw, ttlMS, historyKey, err := s.historyMutationPayload(next, event)
+	nextRaw, eventRaw, ttl, historyKey, err := s.historyMutationPayload(next, event)
 	if err != nil {
 		return false, err
 	}
-	result, err := compareAndSwapStateWithHistoryScript.Run(
-		ctx,
-		s.redis,
-		[]string{SegmentKey(previous.SegmentHash), historyKey},
-		string(previousRaw),
-		string(nextRaw),
-		fmt.Sprintf("%d", ttlMS),
-		string(eventRaw),
-	).Int()
-	if err != nil {
-		return false, fmt.Errorf("compare-and-swap percenter state %s with history: %w", previous.SegmentHash, err)
-	}
-	if result != 1 {
+	stateKey := SegmentKey(previous.SegmentHash)
+	saved := false
+	err = s.redis.Watch(ctx, func(tx *redis.Tx) error {
+		stateType, err := validateHistoryTransactionKeyTypes(ctx, tx, stateKey, historyKey)
+		if err != nil {
+			return err
+		}
+		if stateType == "none" {
+			return nil
+		}
+		currentRaw, err := tx.Get(ctx, stateKey).Bytes()
+		if errors.Is(err, redis.Nil) {
+			return nil
+		}
+		if err != nil {
+			return err
+		}
+		if !bytes.Equal(currentRaw, previousRaw) {
+			return nil
+		}
+
+		_, err = tx.TxPipelined(ctx, func(pipe redis.Pipeliner) error {
+			pipe.Set(ctx, stateKey, nextRaw, ttl)
+			pipe.RPush(ctx, historyKey, eventRaw)
+			return nil
+		})
+		if err == nil {
+			saved = true
+		}
+		return err
+	}, stateKey)
+	if errors.Is(err, redis.TxFailedErr) {
 		return false, nil
 	}
-	s.putCache(next, next.UpdatedAt)
-	return true, nil
+	if err != nil {
+		return false, fmt.Errorf("compare-and-swap percenter state %s with history transaction: %w", previous.SegmentHash, err)
+	}
+	if saved {
+		s.putCache(next, next.UpdatedAt)
+	}
+	return saved, nil
 }
 
 func pricingFromState(state State) Pricing {
@@ -632,26 +644,6 @@ func pricingFromState(state State) Pricing {
 func CampaignVersionKey(campaignID string) string {
 	return "percenter:campaign:" + strings.TrimSpace(campaignID) + ":version"
 }
-
-var ensureCampaignVersionScript = redis.NewScript(`
-local current_fp = redis.call("HGET", KEYS[1], "fingerprint")
-local current_version = tonumber(redis.call("HGET", KEYS[1], "version") or "0")
-if not current_fp then
-  redis.call("HSET", KEYS[1], "fingerprint", ARGV[1], "version", 1)
-  return 1
-end
-if current_fp ~= ARGV[1] then
-  local next_version = current_version + 1
-  if next_version < 1 then next_version = 1 end
-  redis.call("HSET", KEYS[1], "fingerprint", ARGV[1], "version", next_version)
-  return next_version
-end
-if current_version < 1 then
-  redis.call("HSET", KEYS[1], "version", 1)
-  return 1
-end
-return current_version
-`)
 
 func campaignFingerprint(typeModel int, originalBid, minMargin float64, pricingContext string) string {
 	return fmt.Sprintf("%d|%.12g|%.12g|%s", normalizeTypeModel(typeModel), originalBid, minMargin, strings.TrimSpace(pricingContext))
@@ -670,14 +662,70 @@ func (s *StateStore) EnsureCampaignVersionForContext(ctx context.Context, campai
 		return 0, errors.New("campaign id is empty")
 	}
 	fingerprint := campaignFingerprint(typeModel, originalBid, minMargin, pricingContext)
-	version, err := ensureCampaignVersionScript.Run(ctx, s.redis, []string{CampaignVersionKey(campaignID)}, fingerprint).Int64()
-	if err != nil {
-		return 0, fmt.Errorf("ensure percenter campaign version %s: %w", campaignID, err)
+	key := CampaignVersionKey(campaignID)
+
+	const maxRetries = 8
+	for attempt := 0; attempt < maxRetries; attempt++ {
+		var version int64
+		err := s.redis.Watch(ctx, func(tx *redis.Tx) error {
+			fields, err := tx.HGetAll(ctx, key).Result()
+			if err != nil {
+				return err
+			}
+
+			currentFingerprint, hasFingerprint := fields["fingerprint"]
+			currentVersion := int64(0)
+			if hasFingerprint {
+				if rawVersion := strings.TrimSpace(fields["version"]); rawVersion != "" {
+					currentVersion, err = strconv.ParseInt(rawVersion, 10, 64)
+					if err != nil {
+						return fmt.Errorf("invalid percenter campaign version %q: %w", rawVersion, err)
+					}
+				}
+			}
+
+			needsWrite := false
+			switch {
+			case !hasFingerprint:
+				version = 1
+				needsWrite = true
+			case currentFingerprint != fingerprint:
+				version = currentVersion + 1
+				if version < 1 {
+					version = 1
+				}
+				needsWrite = true
+			case currentVersion < 1:
+				version = 1
+				needsWrite = true
+			default:
+				version = currentVersion
+			}
+
+			if !needsWrite {
+				return nil
+			}
+			_, err = tx.TxPipelined(ctx, func(pipe redis.Pipeliner) error {
+				if !hasFingerprint || currentFingerprint != fingerprint {
+					pipe.HSet(ctx, key, "fingerprint", fingerprint, "version", version)
+				} else {
+					pipe.HSet(ctx, key, "version", version)
+				}
+				return nil
+			})
+			return err
+		}, key)
+		if err == nil {
+			if version < 1 {
+				version = 1
+			}
+			return version, nil
+		}
+		if !errors.Is(err, redis.TxFailedErr) {
+			return 0, fmt.Errorf("ensure percenter campaign version %s: %w", campaignID, err)
+		}
 	}
-	if version < 1 {
-		version = 1
-	}
-	return version, nil
+	return 0, fmt.Errorf("ensure percenter campaign version %s: Redis transaction conflicted after %d retries", campaignID, maxRetries)
 }
 
 func normalizeTypeModel(typeModel int) int {
