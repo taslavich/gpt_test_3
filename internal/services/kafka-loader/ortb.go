@@ -9,13 +9,15 @@ import (
 	"github.com/segmentio/kafka-go"
 	"gitlab.com/twinbid-exchange/RTB-exchange/internal/constants"
 	eventspb "gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/proto/buffer"
+	"gitlab.com/twinbid-exchange/RTB-exchange/internal/services/percenter"
 	"gitlab.com/twinbid-exchange/RTB-exchange/internal/types"
 	"google.golang.org/protobuf/proto"
 )
 
 const (
-	segmentHashTransportKey  = "__twinbid_segment_hash"
-	pointVersionTransportKey = "__twinbid_percenter_point_version"
+	exactSegmentHashTransportKey = "__twinbid_exact_segment_hash"
+	segmentHashTransportKey      = "__twinbid_segment_hash"
+	pointVersionTransportKey     = "__twinbid_percenter_point_version"
 )
 
 var ortbHMGetFields = []string{
@@ -120,9 +122,18 @@ func buildOrtbKafkaMessage(
 		log.Printf("Ошибка парсинга bidResponses из Redis (index 7): %v", err)
 		bidResponses = make(map[string]string)
 	}
-	if rawRecord.SEGMENT_HASH != "" || rawRecord.PERCENTER_POINT_VERSION != "" {
+	exactSegmentHash := ""
+	if rawRecord.WIN_CID != "" {
+		exactSegmentHash = percenter.HashSegment(percenter.Segment{
+			SSPDomain: rawRecord.SPP_DOMAIN, Geo: rawRecord.GEO, Browser: rawRecord.BROWSER, Device: rawRecord.DEVICE, OS: rawRecord.OS, SiteID: rawRecord.SITE_ID, CampaignID: rawRecord.WIN_CID,
+		})
+	}
+	if exactSegmentHash != "" || rawRecord.SEGMENT_HASH != "" || rawRecord.PERCENTER_POINT_VERSION != "" {
 		if bidResponses == nil {
 			bidResponses = make(map[string]string)
+		}
+		if exactSegmentHash != "" {
+			bidResponses[exactSegmentHashTransportKey] = exactSegmentHash
 		}
 		if rawRecord.SEGMENT_HASH != "" {
 			bidResponses[segmentHashTransportKey] = rawRecord.SEGMENT_HASH

@@ -33,6 +33,7 @@ func main() {
 		log.Fatalf("Cannot load config: %v", err)
 	}
 	log.Println("Config initialized!")
+	botNotifier := utils.NewBotMessage(cfg.BotBaseURL, cfg.BotInternalSecret)
 
 	redisAddrs := cfg.RedisShardAddrs
 	if cfg.RedisUseTLS {
@@ -76,6 +77,16 @@ func main() {
 		}
 	}()
 
+	historyRedis, err := redis_service.NewRedisClient(cfg.RedisADVAddr, cfg.RedisPassword, cfg.RedisDBAdvPercenter, cfg.RedisPoolSize, cfg.RedisMinIdleConns)
+	if err != nil {
+		log.Fatalf("Cannot init percenter history Redis: %v", err)
+	}
+	defer historyRedis.Close()
+	if err := historyRedis.Ping(ctx).Err(); err != nil {
+		log.Fatalf("Failed to connect to percenter history Redis: %v", err)
+	}
+	log.Printf("✅ Connected to percenter history Redis addr=%s db=%d", cfg.RedisADVAddr, cfg.RedisDBAdvPercenter)
+
 	if err := redis_service.PingClients(ctx, "ORTB", redisClients.Ortb); err != nil {
 		log.Fatalf("Failed to connect to ORTB redis shards: %v", err)
 	}
@@ -98,6 +109,7 @@ func main() {
 
 	kafkaWriter, err := kafka_service.CreateKafkaWriters(cfg.KafkaConfig)
 	if err != nil {
+		_ = botNotifier.SendTextMessageToBot(ctx, fmt.Sprintf("[KAFKA_LOADER][KAFKA_STARTUP_ERROR] %v", err))
 		log.Fatalf("Cannot init kafka: %v", err)
 	}
 
@@ -124,6 +136,11 @@ func main() {
 			log.Printf("⚠️ failed to close ORTB Kafka writer: %v", err)
 		}
 	}()
+	defer func() {
+		if err := kafkaWriter.PercenterHistory.Close(); err != nil {
+			log.Printf("⚠️ failed to close Percenter History Kafka writer: %v", err)
+		}
+	}()
 
 	log.Println("✅ Kafka writer initialized")
 
@@ -148,6 +165,7 @@ func main() {
 	}()
 
 	if err := connProd.Ping(ctx); err != nil {
+		_ = botNotifier.SendTextMessageToBot(ctx, fmt.Sprintf("[KAFKA_LOADER][CLICKHOUSE_STARTUP_ERROR] %v", err))
 		log.Fatalf("❌ ClickHouse ping failed: %v", err)
 	}
 	log.Println("✅ Connected to ClickHouse for batch ratio")
@@ -182,7 +200,6 @@ func main() {
 	}
 
 	var loaderWG sync.WaitGroup
-	botNotifier := utils.NewBotMessage(cfg.BotBaseURL, cfg.BotInternalSecret)
 	handleStreamError := func(err error) {
 		message := fmt.Sprintf("❌ service=Kafka Loader stream error, stopping batch processing and SSP adapter ORTB streams: %v", err)
 		log.Print(message)
@@ -200,11 +217,12 @@ func main() {
 	}
 
 	log.Printf(
-		"🚀 Kafka Loader initialized. Batch processing is stopped until POST /loader/start. Topics: %s, %s, %s, %s",
+		"🚀 Kafka Loader initialized. Batch processing is stopped until POST /loader/start. Topics: %s, %s, %s, %s, %s",
 		cfg.KafkaConfig.KafkaTopicOrtb,
 		cfg.KafkaConfig.KafkaTopicImpressions,
 		cfg.KafkaConfig.KafkaTopicClicks,
 		cfg.KafkaConfig.KafkaTopicClicksWins,
+		cfg.KafkaConfig.KafkaTopicPercenterHistory,
 	)
 
 	clicksWinsInterval := time.Duration(cfg.KafkaConfig.ClicksWinsFlushIntervalSec) * time.Second
@@ -339,6 +357,40 @@ func main() {
 			if err != nil {
 				handleStreamError(err)
 				continue
+			}
+		}
+	}()
+
+	historyAlert := services.NewRecoveryNotifier(botNotifier, 5*time.Minute)
+	loaderWG.Add(1)
+	go func() {
+		defer loaderWG.Done()
+		for {
+			if err := loaderControl.Wait(ctx); err != nil {
+				return
+			}
+			processed, err := kafka_loader.ProcessBatchPercenterHistory(
+				ctx, historyRedis, kafkaWriter.PercenterHistory, cfg.RedisConfig.BatchSizePercenterHistory,
+				cfg.RedisPercenterHistoryReadyKey, cfg.RedisPercenterHistoryProcessingKey, cfg.RedisPercenterHistoryDeadKey,
+			)
+			if err != nil {
+				msg := fmt.Sprintf("[KAFKA_LOADER][PERCENTER_HISTORY_ERROR] %v", err)
+				log.Print(msg)
+				historyAlert.Failure(ctx, msg)
+				select {
+				case <-ctx.Done():
+					return
+				case <-time.After(2 * time.Second):
+				}
+				continue
+			}
+			historyAlert.Recovered(ctx, "[KAFKA_LOADER][PERCENTER_HISTORY_RECOVERED] Redis -> Kafka history stream is healthy")
+			if processed == 0 {
+				select {
+				case <-ctx.Done():
+					return
+				case <-time.After(emptyPause):
+				}
 			}
 		}
 	}()

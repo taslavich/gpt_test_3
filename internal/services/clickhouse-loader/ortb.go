@@ -16,8 +16,9 @@ import (
 )
 
 const (
-	segmentHashTransportKey  = "__twinbid_segment_hash"
-	pointVersionTransportKey = "__twinbid_percenter_point_version"
+	exactSegmentHashTransportKey = "__twinbid_exact_segment_hash"
+	segmentHashTransportKey      = "__twinbid_segment_hash"
+	pointVersionTransportKey     = "__twinbid_percenter_point_version"
 )
 
 func ProcessKafkaMessagesOrtb(
@@ -96,6 +97,7 @@ func insertBatchOrtb(
 			win_cid,
 			win_crid,
 			win_user_id,
+			exact_segment_hash,
 			segment_hash,
 			percenter_point_version
 		)
@@ -142,7 +144,7 @@ func insertBatchOrtb(
 
 		cityID := int32(r.CityId)
 		code := uint16(r.Code)
-		segmentHash, pointVersion, bidResponses := extractPercenterMetadata(r.BidResponses)
+		exactSegmentHash, segmentHash, pointVersion, bidResponses := extractPercenterMetadata(r.BidResponses)
 		bidResponsesRaw := encodeBidResponsesRaw(bidResponses)
 
 		if err := batch.Append(
@@ -172,6 +174,7 @@ func insertBatchOrtb(
 			r.WinCid,
 			r.WinCrid,
 			r.WinUserId,
+			exactSegmentHash,
 			segmentHash,
 			pointVersion,
 		); err != nil {
@@ -187,23 +190,24 @@ func insertBatchOrtb(
 	return stats, nil
 }
 
-func extractPercenterMetadata(items map[string]string) (string, uint64, map[string]string) {
+func extractPercenterMetadata(items map[string]string) (string, string, uint64, map[string]string) {
 	if len(items) == 0 {
-		return "", 0, items
+		return "", "", 0, items
 	}
+	exactSegmentHash := items[exactSegmentHashTransportKey]
 	segmentHash := items[segmentHashTransportKey]
 	pointVersion, _ := strconv.ParseUint(items[pointVersionTransportKey], 10, 64)
-	if segmentHash == "" && pointVersion == 0 {
-		return "", 0, items
+	if exactSegmentHash == "" && segmentHash == "" && pointVersion == 0 {
+		return "", "", 0, items
 	}
 	clean := make(map[string]string, len(items))
 	for key, value := range items {
-		if key == segmentHashTransportKey || key == pointVersionTransportKey {
+		if key == exactSegmentHashTransportKey || key == segmentHashTransportKey || key == pointVersionTransportKey {
 			continue
 		}
 		clean[key] = value
 	}
-	return segmentHash, pointVersion, clean
+	return exactSegmentHash, segmentHash, pointVersion, clean
 }
 
 func encodeBidResponsesRaw(items map[string]string) string {

@@ -86,7 +86,8 @@ CREATE TABLE IF NOT EXISTS {db}.ortb
     win_cid           String DEFAULT '',
     win_crid          String DEFAULT '',
     win_user_id       String DEFAULT '',
-    segment_hash      String DEFAULT '',
+    exact_segment_hash String DEFAULT '',
+    segment_hash       String DEFAULT '',
     percenter_point_version UInt64 DEFAULT 0
 )
 ENGINE = MergeTree
@@ -97,6 +98,9 @@ SETTINGS index_granularity = 8192;
 
 -- Lookup by auction UUID for clicks_wins -> ORTB enrichment.
 -- ALTER is kept for compatibility with already existing tables.
+ALTER TABLE {db}.ortb
+    ADD COLUMN IF NOT EXISTS exact_segment_hash String DEFAULT '';
+
 ALTER TABLE {db}.ortb
     ADD COLUMN IF NOT EXISTS segment_hash String DEFAULT '';
 
@@ -335,6 +339,10 @@ CREATE TABLE IF NOT EXISTS {db}.fact_impressions
     win_crid               String DEFAULT '',
     win_user_id            String DEFAULT '',
 
+    exact_segment_hash     String DEFAULT '',
+    segment_hash           String DEFAULT '',
+    percenter_point_version UInt64 DEFAULT 0,
+
     created_at             DateTime64(3, 'UTC') DEFAULT now64(3)
 )
 ENGINE = MergeTree
@@ -391,6 +399,9 @@ CREATE TABLE IF NOT EXISTS {db}.fact_clicks
     win_cid           String DEFAULT '',
     win_crid          String DEFAULT '',
     win_user_id       String DEFAULT '',
+    exact_segment_hash String DEFAULT '',
+    segment_hash       String DEFAULT '',
+    percenter_point_version UInt64 DEFAULT 0,
     created_at        DateTime64(3, 'UTC') DEFAULT now64(3)
 )
 ENGINE = MergeTree
@@ -447,6 +458,9 @@ CREATE TABLE IF NOT EXISTS {db}.fact_clicks_wins
     win_cid                String DEFAULT '',
     win_crid               String DEFAULT '',
     win_user_id            String DEFAULT '',
+    exact_segment_hash     String DEFAULT '',
+    segment_hash           String DEFAULT '',
+    percenter_point_version UInt64 DEFAULT 0,
     created_at             DateTime64(3, 'UTC') DEFAULT now64(3)
 )
 ENGINE = MergeTree
@@ -500,6 +514,10 @@ CREATE TABLE IF NOT EXISTS {db}.fact_conversions
     win_crid          String DEFAULT '',
     win_user_id       String DEFAULT '',
 
+    exact_segment_hash String DEFAULT '',
+    segment_hash       String DEFAULT '',
+    percenter_point_version UInt64 DEFAULT 0,
+
     payout            Float64 DEFAULT 0,
     status            LowCardinality(String) DEFAULT '',
     approved          UInt8 DEFAULT 0,
@@ -519,6 +537,20 @@ ALTER TABLE {db}.fact_clicks
 
 ALTER TABLE {db}.fact_clicks_wins
     ADD COLUMN IF NOT EXISTS clicks_wins_uuid UUID AFTER uuid;
+
+-- Percenter segment metadata is additive; historical rows keep empty/zero defaults.
+ALTER TABLE {db}.fact_impressions ADD COLUMN IF NOT EXISTS exact_segment_hash String DEFAULT '';
+ALTER TABLE {db}.fact_impressions ADD COLUMN IF NOT EXISTS segment_hash String DEFAULT '';
+ALTER TABLE {db}.fact_impressions ADD COLUMN IF NOT EXISTS percenter_point_version UInt64 DEFAULT 0;
+ALTER TABLE {db}.fact_clicks ADD COLUMN IF NOT EXISTS exact_segment_hash String DEFAULT '';
+ALTER TABLE {db}.fact_clicks ADD COLUMN IF NOT EXISTS segment_hash String DEFAULT '';
+ALTER TABLE {db}.fact_clicks ADD COLUMN IF NOT EXISTS percenter_point_version UInt64 DEFAULT 0;
+ALTER TABLE {db}.fact_clicks_wins ADD COLUMN IF NOT EXISTS exact_segment_hash String DEFAULT '';
+ALTER TABLE {db}.fact_clicks_wins ADD COLUMN IF NOT EXISTS segment_hash String DEFAULT '';
+ALTER TABLE {db}.fact_clicks_wins ADD COLUMN IF NOT EXISTS percenter_point_version UInt64 DEFAULT 0;
+ALTER TABLE {db}.fact_conversions ADD COLUMN IF NOT EXISTS exact_segment_hash String DEFAULT '';
+ALTER TABLE {db}.fact_conversions ADD COLUMN IF NOT EXISTS segment_hash String DEFAULT '';
+ALTER TABLE {db}.fact_conversions ADD COLUMN IF NOT EXISTS percenter_point_version UInt64 DEFAULT 0;
 
 ALTER TABLE {db}.fact_conversions
     ADD COLUMN IF NOT EXISTS conversions_event_time DateTime64(3, 'UTC')
@@ -549,6 +581,93 @@ ALTER TABLE {db}.fact_conversions
     ADD INDEX IF NOT EXISTS idx_fact_conversions_created_at
     created_at TYPE minmax GRANULARITY 1;
 
+ALTER TABLE {db}.fact_impressions ADD INDEX IF NOT EXISTS idx_fact_impressions_exact_segment_hash exact_segment_hash TYPE bloom_filter(0.01) GRANULARITY 1;
+ALTER TABLE {db}.fact_impressions ADD INDEX IF NOT EXISTS idx_fact_impressions_segment_hash segment_hash TYPE bloom_filter(0.01) GRANULARITY 1;
+ALTER TABLE {db}.fact_clicks ADD INDEX IF NOT EXISTS idx_fact_clicks_exact_segment_hash exact_segment_hash TYPE bloom_filter(0.01) GRANULARITY 1;
+ALTER TABLE {db}.fact_clicks ADD INDEX IF NOT EXISTS idx_fact_clicks_segment_hash segment_hash TYPE bloom_filter(0.01) GRANULARITY 1;
+ALTER TABLE {db}.fact_clicks_wins ADD INDEX IF NOT EXISTS idx_fact_clicks_wins_exact_segment_hash exact_segment_hash TYPE bloom_filter(0.01) GRANULARITY 1;
+ALTER TABLE {db}.fact_clicks_wins ADD INDEX IF NOT EXISTS idx_fact_clicks_wins_segment_hash segment_hash TYPE bloom_filter(0.01) GRANULARITY 1;
+ALTER TABLE {db}.fact_conversions ADD INDEX IF NOT EXISTS idx_fact_conversions_exact_segment_hash exact_segment_hash TYPE bloom_filter(0.01) GRANULARITY 1;
+ALTER TABLE {db}.fact_conversions ADD INDEX IF NOT EXISTS idx_fact_conversions_segment_hash segment_hash TYPE bloom_filter(0.01) GRANULARITY 1;
+
+
+-- ============================================================
+-- PERCENTER STATE HISTORY
+-- Delivered at-least-once through Redis -> kafka-loader -> Kafka -> clickhouse-loader.
+-- ReplacingMergeTree(event_id) collapses duplicate deliveries after merges.
+-- ============================================================
+CREATE TABLE IF NOT EXISTS {db}.percenter_state_history
+(
+    event_id                         String,
+    event_time                       DateTime64(3, 'UTC'),
+    recorded_at                      DateTime64(3, 'UTC') DEFAULT now64(3),
+    event_type                       LowCardinality(String),
+    exact_segment_hash               String DEFAULT '',
+    previous_effective_segment_hash  String DEFAULT '',
+    effective_segment_hash           String DEFAULT '',
+    state_segment_hash               String DEFAULT '',
+    campaign_id                      String DEFAULT '',
+    campaign_version                 Int64 DEFAULT 0,
+    type_model                       UInt8 DEFAULT 0,
+    profit_model                     LowCardinality(String) DEFAULT '',
+    old_point_version                UInt64 DEFAULT 0,
+    new_point_version                UInt64 DEFAULT 0,
+    old_phase                        LowCardinality(String) DEFAULT '',
+    new_phase                        LowCardinality(String) DEFAULT '',
+    old_advertiser_price             Float64 DEFAULT 0,
+    new_advertiser_price             Float64 DEFAULT 0,
+    old_ssp_bid                      Float64 DEFAULT 0,
+    new_ssp_bid                      Float64 DEFAULT 0,
+    old_margin                       Float64 DEFAULT 0,
+    new_margin                       Float64 DEFAULT 0,
+    old_fallback_segment_hash        String DEFAULT '',
+    new_fallback_segment_hash        String DEFAULT '',
+    original_bid                     Float64 DEFAULT 0,
+    min_margin                       Float64 DEFAULT 0,
+    old_benchmark_buyout             Float64 DEFAULT 0,
+    new_benchmark_buyout             Float64 DEFAULT 0,
+    old_baseline_efficiency          Float64 DEFAULT 0,
+    new_baseline_efficiency          Float64 DEFAULT 0,
+    old_best_profit_per_request      Float64 DEFAULT 0,
+    new_best_profit_per_request      Float64 DEFAULT 0,
+    old_best_margin                  Float64 DEFAULT 0,
+    new_best_margin                  Float64 DEFAULT 0,
+    old_best_advertiser_price        Float64 DEFAULT 0,
+    new_best_advertiser_price        Float64 DEFAULT 0,
+    old_ssp_low                      Float64 DEFAULT 0,
+    new_ssp_low                      Float64 DEFAULT 0,
+    old_ssp_high                     Float64 DEFAULT 0,
+    new_ssp_high                     Float64 DEFAULT 0,
+    old_margin_step_index            Int32 DEFAULT 0,
+    new_margin_step_index            Int32 DEFAULT 0,
+    old_margin_direction             Int8 DEFAULT 0,
+    new_margin_direction             Int8 DEFAULT 0,
+    old_last_change_at               Nullable(DateTime64(3, 'UTC')),
+    new_last_change_at               Nullable(DateTime64(3, 'UTC')),
+    old_last_ssp_reoptimize_at       Nullable(DateTime64(3, 'UTC')),
+    new_last_ssp_reoptimize_at       Nullable(DateTime64(3, 'UTC')),
+    old_last_simple_baseline_at      Nullable(DateTime64(3, 'UTC')),
+    new_last_simple_baseline_at      Nullable(DateTime64(3, 'UTC')),
+    requests                         UInt64 DEFAULT 0,
+    impressions                      UInt64 DEFAULT 0,
+    clicks                           UInt64 DEFAULT 0,
+    advertiser_spend                 Float64 DEFAULT 0,
+    twinbid_profit                   Float64 DEFAULT 0,
+    click_twinbid_profit             Float64 DEFAULT 0,
+    buyout                           Float64 DEFAULT 0,
+    efficiency                       Float64 DEFAULT 0,
+    profit_per_request               Float64 DEFAULT 0,
+    fallback_level                   LowCardinality(String) DEFAULT '',
+    fallback_impressions             UInt64 DEFAULT 0
+)
+ENGINE = ReplacingMergeTree
+PARTITION BY toYYYYMM(event_time)
+ORDER BY event_id
+SETTINGS index_granularity = 8192;
+
+ALTER TABLE {db}.percenter_state_history ADD INDEX IF NOT EXISTS idx_percenter_history_state_hash state_segment_hash TYPE bloom_filter(0.01) GRANULARITY 1;
+ALTER TABLE {db}.percenter_state_history ADD INDEX IF NOT EXISTS idx_percenter_history_exact_hash exact_segment_hash TYPE bloom_filter(0.01) GRANULARITY 1;
+ALTER TABLE {db}.percenter_state_history ADD INDEX IF NOT EXISTS idx_percenter_history_effective_hash effective_segment_hash TYPE bloom_filter(0.01) GRANULARITY 1;
 
 -- ============================================================
 -- AGGREGATED STATS
@@ -914,7 +1033,10 @@ SELECT
 
     o.win_cid AS win_cid,
     o.win_crid AS win_crid,
-    o.win_user_id AS win_user_id
+    o.win_user_id AS win_user_id,
+    o.exact_segment_hash AS exact_segment_hash,
+    o.segment_hash AS segment_hash,
+    o.percenter_point_version AS percenter_point_version
 FROM {db}.impressions_in AS a
 ANY INNER JOIN {db}.ortb AS o
     ON a.uuid = o.uuid
@@ -978,7 +1100,10 @@ SELECT
 
     o.win_cid AS win_cid,
     o.win_crid AS win_crid,
-    o.win_user_id AS win_user_id
+    o.win_user_id AS win_user_id,
+    o.exact_segment_hash AS exact_segment_hash,
+    o.segment_hash AS segment_hash,
+    o.percenter_point_version AS percenter_point_version
 FROM {db}.clicks_in AS a
 ANY INNER JOIN {db}.ortb AS o
     ON a.uuid = o.uuid
@@ -1049,7 +1174,10 @@ SELECT
 
     o.win_cid AS win_cid,
     o.win_crid AS win_crid,
-    o.win_user_id AS win_user_id
+    o.win_user_id AS win_user_id,
+    o.exact_segment_hash AS exact_segment_hash,
+    o.segment_hash AS segment_hash,
+    o.percenter_point_version AS percenter_point_version
 FROM
 (
     /*
@@ -1083,7 +1211,10 @@ FROM
         win_dsp_price,
         win_cid,
         win_crid,
-        win_user_id
+        win_user_id,
+        exact_segment_hash,
+        segment_hash,
+        percenter_point_version
     FROM {db}.ortb
     PREWHERE created_at >= now() - INTERVAL 65 MINUTE
     WHERE uuid IN
@@ -1177,6 +1308,9 @@ SELECT
     o.win_cid AS win_cid,
     o.win_crid AS win_crid,
     o.win_user_id AS win_user_id,
+    o.exact_segment_hash AS exact_segment_hash,
+    o.segment_hash AS segment_hash,
+    o.percenter_point_version AS percenter_point_version,
 
     a.payout AS payout,
     a.status AS status,
@@ -1214,7 +1348,10 @@ FROM
         win_dsp_price,
         win_cid,
         win_crid,
-        win_user_id
+        win_user_id,
+        exact_segment_hash,
+        segment_hash,
+        percenter_point_version
     FROM {db}.fact_clicks
     WHERE clicks_uuid IN
     (
@@ -1262,6 +1399,9 @@ APPEND TO {db}.fact_impressions
     win_cid,
     win_crid,
     win_user_id,
+    exact_segment_hash,
+    segment_hash,
+    percenter_point_version,
     created_at
 )
 EMPTY
@@ -1354,6 +1494,9 @@ SELECT
     c.win_cid AS win_cid,
     c.win_crid AS win_crid,
     c.win_user_id AS win_user_id,
+    c.exact_segment_hash AS exact_segment_hash,
+    c.segment_hash AS segment_hash,
+    c.percenter_point_version AS percenter_point_version,
     c.created_at AS created_at
 FROM {db}.fact_clicks AS c
 INNER JOIN deficits AS d USING (uuid)
@@ -1400,6 +1543,9 @@ SELECT
     b.win_cid AS win_cid,
     b.win_crid AS win_crid,
     b.win_user_id AS win_user_id,
+    b.exact_segment_hash AS exact_segment_hash,
+    b.segment_hash AS segment_hash,
+    b.percenter_point_version AS percenter_point_version,
     b.created_at AS created_at
 FROM deficits AS d
 INNER JOIN base_impression AS b USING (uuid)
@@ -1440,6 +1586,9 @@ APPEND TO {db}.fact_clicks
     win_cid,
     win_crid,
     win_user_id,
+    exact_segment_hash,
+    segment_hash,
+    percenter_point_version,
     created_at
 )
 EMPTY
@@ -1529,6 +1678,9 @@ SELECT
     w.win_cid AS win_cid,
     w.win_crid AS win_crid,
     w.win_user_id AS win_user_id,
+    w.exact_segment_hash AS exact_segment_hash,
+    w.segment_hash AS segment_hash,
+    w.percenter_point_version AS percenter_point_version,
     w.created_at AS created_at
 FROM {db}.fact_clicks_wins AS w
 INNER JOIN deficits AS d USING (uuid)
@@ -1574,6 +1726,9 @@ SELECT
     b.win_cid AS win_cid,
     b.win_crid AS win_crid,
     b.win_user_id AS win_user_id,
+    b.exact_segment_hash AS exact_segment_hash,
+    b.segment_hash AS segment_hash,
+    b.percenter_point_version AS percenter_point_version,
     b.created_at AS created_at
 FROM deficits AS d
 INNER JOIN base_clicks_win AS b USING (uuid)

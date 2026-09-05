@@ -365,11 +365,13 @@ type ClickhouseConfig struct {
 	TableClicks                 string  `yaml:"CLICKHOUSE_TABLE_CLICKS" env:"CLICKHOUSE_TABLE_CLICKS" env-default:"clicks_in"`
 	TableClicksWins             string  `yaml:"CLICKHOUSE_TABLE_CLICKS_WINS" env:"CLICKHOUSE_TABLE_CLICKS_WINS" env-default:"clicks_wins_in"`
 	TableConversions            string  `yaml:"CLICKHOUSE_TABLE_CONVERSIONS" env:"CLICKHOUSE_TABLE_CONVERSIONS" env-default:"conversions_in"`
+	TablePercenterHistory       string  `yaml:"CLICKHOUSE_TABLE_PERCENTER_HISTORY" env:"CLICKHOUSE_TABLE_PERCENTER_HISTORY" env-default:"percenter_state_history"`
 	BatchSizeOrtb               int     `yaml:"CLICKHOUSE_BATCH_SIZE_ORTB" env:"CLICKHOUSE_BATCH_SIZE_ORTB"`
 	BatchSizeImpressions        int     `yaml:"CLICKHOUSE_BATCH_SIZE_IMPRESSIONS" env:"CLICKHOUSE_BATCH_SIZE_IMPRESSIONS"`
 	BatchSizeClicks             int     `yaml:"CLICKHOUSE_BATCH_SIZE_CLICKS" env:"CLICKHOUSE_BATCH_SIZE_CLICKS"`
 	BatchSizeClicksWins         int     `yaml:"CLICKHOUSE_BATCH_SIZE_CLICKS_WINS" env:"CLICKHOUSE_BATCH_SIZE_CLICKS_WINS" env-default:"10000"`
 	BatchSizeConversions        int     `yaml:"CLICKHOUSE_BATCH_SIZE_CONVERSIONS" env:"CLICKHOUSE_BATCH_SIZE_CONVERSIONS"`
+	BatchSizePercenterHistory   int     `yaml:"CLICKHOUSE_BATCH_SIZE_PERCENTER_HISTORY" env:"CLICKHOUSE_BATCH_SIZE_PERCENTER_HISTORY" env-default:"10000"`
 	BatchSizeImpressionsPercent float64 `yaml:"CLICKHOUSE_BATCH_SIZE_IMPRESSIONS_PERCENT" env:"CLICKHOUSE_BATCH_SIZE_IMPRESSIONS_PERCENT"`
 	BatchSizeClicksPercent      float64 `yaml:"CLICKHOUSE_BATCH_SIZE_CLICKS_PERCENT" env:"CLICKHOUSE_BATCH_SIZE_CLICKS_PERCENT"`
 	BatchTimeoutMS              int     `yaml:"CLICKHOUSE_BATCH_TIMEOUT_MS" env:"CLICKHOUSE_BATCH_TIMEOUT_MS" env-default:"800"`
@@ -396,9 +398,10 @@ type PercenterConfig struct {
 	ClickhouseConfig
 	RedisConfig
 	PercenterAlgorithmConfig
-	HttpServer        HttpServer
-	BotBaseURL        string `yaml:"BOT_BASE_URL" env:"BOT_BASE_URL"`
-	BotInternalSecret string `yaml:"BOT_INTERNAL_SECRET" env:"BOT_INTERNAL_SECRET"`
+	HttpServer                 HttpServer
+	BotBaseURL                 string `yaml:"BOT_BASE_URL" env:"BOT_BASE_URL"`
+	BotInternalSecret          string `yaml:"BOT_INTERNAL_SECRET" env:"BOT_INTERNAL_SECRET"`
+	PercenterHistoryOutboxPath string `yaml:"PERCENTER_HISTORY_OUTBOX_PATH" env:"PERCENTER_HISTORY_OUTBOX_PATH" env-default:"/var/lib/twinbid/percenter/history-outbox.db"`
 }
 
 type ClickhouseLoaderConfig struct {
@@ -470,6 +473,12 @@ type RedisConfig struct {
 	RedisDBAdvWinner    int    `yaml:"REDIS_DB_ADV_WINNER" env:"REDIS_DB_ADV_WINNER" env-default:"6"`
 	RedisDBAdvPercenter int    `yaml:"REDIS_DB_ADV_PERCENTER" env:"REDIS_DB_ADV_PERCENTER" env-default:"7"`
 	RedisADVAddr        string `yaml:"REDIS_ADV_ADDR" env:"REDIS_ADV_ADDR"`
+
+	// Durable percenter history transport. Producer and kafka-loader use the same ADV Redis DB.
+	RedisPercenterHistoryReadyKey      string `yaml:"REDIS_PERCENTER_HISTORY_READY_KEY" env:"REDIS_PERCENTER_HISTORY_READY_KEY" env-default:"percenter:history:v1:ready"`
+	RedisPercenterHistoryProcessingKey string `yaml:"REDIS_PERCENTER_HISTORY_PROCESSING_KEY" env:"REDIS_PERCENTER_HISTORY_PROCESSING_KEY" env-default:"percenter:history:v1:processing"`
+	RedisPercenterHistoryDeadKey       string `yaml:"REDIS_PERCENTER_HISTORY_DEAD_KEY" env:"REDIS_PERCENTER_HISTORY_DEAD_KEY" env-default:"percenter:history:v1:dead"`
+	BatchSizePercenterHistory          int64  `yaml:"BATCH_SIZE_PERCENTER_HISTORY" env:"BATCH_SIZE_PERCENTER_HISTORY" env-default:"10000"`
 }
 
 type KafkaConfig struct {
@@ -484,14 +493,16 @@ type KafkaConfig struct {
 	KafkaTopicClicks           string `yaml:"KAFKA_TOPIC_CLICKS" env:"KAFKA_TOPIC_CLICKS" env-default:"clicks"`
 	KafkaTopicClicksWins       string `yaml:"KAFKA_TOPIC_CLICKS_WINS" env:"KAFKA_TOPIC_CLICKS_WINS" env-default:"clicks_wins_v2"`
 	KafkaTopicConversions      string `yaml:"KAFKA_TOPIC_CONVERSIONS" env:"KAFKA_TOPIC_CONVERSIONS" env-default:"conversions"`
+	KafkaTopicPercenterHistory string `yaml:"KAFKA_TOPIC_PERCENTER_HISTORY" env:"KAFKA_TOPIC_PERCENTER_HISTORY" env-default:"percenter_history_v1"`
 	ClicksWinsFlushIntervalSec int    `yaml:"CLICKS_WINS_FLUSH_INTERVAL_SEC" env:"CLICKS_WINS_FLUSH_INTERVAL_SEC" env-default:"2"`
 
 	// Kafka consumer groups
-	KafkaGroupIDOrtb        string `yaml:"KAFKA_GROUP_ID_ORTB" env:"KAFKA_GROUP_ID_ORTB" env-default:"groupIdOrtb"`
-	KafkaGroupIDImpressions string `yaml:"KAFKA_GROUP_ID_IMPRESSIONS" env:"KAFKA_GROUP_ID_IMPRESSIONS" env-default:"groupIdImpressions"`
-	KafkaGroupIDClicks      string `yaml:"KAFKA_GROUP_ID_CLICKS" env:"KAFKA_GROUP_ID_CLICKS" env-default:"groupIdClicks"`
-	KafkaGroupIDClicksWins  string `yaml:"KAFKA_GROUP_ID_CLICKS_WINS" env:"KAFKA_GROUP_ID_CLICKS_WINS" env-default:"groupIdClicksWins_v2"`
-	KafkaGroupIDConversions string `yaml:"KAFKA_GROUP_ID_CONVERSIONS" env:"KAFKA_GROUP_ID_CONVERSIONS" env-default:"groupIdConversions"`
+	KafkaGroupIDOrtb             string `yaml:"KAFKA_GROUP_ID_ORTB" env:"KAFKA_GROUP_ID_ORTB" env-default:"groupIdOrtb"`
+	KafkaGroupIDImpressions      string `yaml:"KAFKA_GROUP_ID_IMPRESSIONS" env:"KAFKA_GROUP_ID_IMPRESSIONS" env-default:"groupIdImpressions"`
+	KafkaGroupIDClicks           string `yaml:"KAFKA_GROUP_ID_CLICKS" env:"KAFKA_GROUP_ID_CLICKS" env-default:"groupIdClicks"`
+	KafkaGroupIDClicksWins       string `yaml:"KAFKA_GROUP_ID_CLICKS_WINS" env:"KAFKA_GROUP_ID_CLICKS_WINS" env-default:"groupIdClicksWins_v2"`
+	KafkaGroupIDConversions      string `yaml:"KAFKA_GROUP_ID_CONVERSIONS" env:"KAFKA_GROUP_ID_CONVERSIONS" env-default:"groupIdConversions"`
+	KafkaGroupIDPercenterHistory string `yaml:"KAFKA_GROUP_ID_PERCENTER_HISTORY" env:"KAFKA_GROUP_ID_PERCENTER_HISTORY" env-default:"groupIdPercenterHistory_v1"`
 }
 
 type HttpServer struct {

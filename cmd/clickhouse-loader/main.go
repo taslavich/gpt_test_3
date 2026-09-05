@@ -31,6 +31,7 @@ func main() {
 		log.Fatalf("Cannot load config: %v", err)
 	}
 	log.Println("Config initialized!")
+	botNotifier := utils.NewBotMessage(cfg.BotBaseURL, cfg.BotInternalSecret)
 
 	log.Println(cfg.Clickhouse.Username, cfg.Clickhouse.Password)
 
@@ -56,11 +57,13 @@ func main() {
 	}()
 
 	if err := conn.Ping(ctx); err != nil {
+		_ = botNotifier.SendTextMessageToBot(ctx, fmt.Sprintf("[CLICKHOUSE_LOADER][CLICKHOUSE_STARTUP_ERROR] default ping: %v", err))
 		log.Fatalf("❌ ClickHouse ping failed: %v", err)
 	}
 	log.Println("✅ Connected to Default ClickHouse")
 
 	if err := clickhouse_loader.CreateDB(ctx, conn, cfg.Clickhouse.Database); err != nil {
+		_ = botNotifier.SendTextMessageToBot(ctx, fmt.Sprintf("[CLICKHOUSE_LOADER][SCHEMA_STARTUP_ERROR] %v", err))
 		log.Fatalf("❌ Failed to create table: %v", err)
 	}
 	log.Printf("✅ Db %s ready", cfg.Clickhouse.Database)
@@ -94,6 +97,7 @@ func main() {
 	}()
 
 	if err := connProd.Ping(ctx); err != nil {
+		_ = botNotifier.SendTextMessageToBot(ctx, fmt.Sprintf("[CLICKHOUSE_LOADER][CLICKHOUSE_STARTUP_ERROR] prod ping: %v", err))
 		log.Fatalf("❌ Prod ClickHouse ping failed: %v", err)
 	}
 	log.Println("✅ Connected to Prod ClickHouse")
@@ -114,6 +118,7 @@ func main() {
 
 	kafkaReaders, err := kafka_service.InitKafkaReaders(cfg.Kafka)
 	if err != nil {
+		_ = botNotifier.SendTextMessageToBot(ctx, fmt.Sprintf("[CLICKHOUSE_LOADER][KAFKA_STARTUP_ERROR] %v", err))
 		log.Fatalf("Cannot init kafka: %v", err)
 	}
 	defer func() {
@@ -139,6 +144,11 @@ func main() {
 			log.Printf("⚠️ failed to close ORTB Kafka reader: %v", err)
 		}
 	}()
+	defer func() {
+		if err := kafkaReaders.PercenterHistory.Close(); err != nil {
+			log.Printf("⚠️ failed to close Percenter History Kafka reader: %v", err)
+		}
+	}()
 	log.Println("✅ Kafka readers initialized")
 
 	log.Println("GROUP_ID", cfg)
@@ -150,11 +160,12 @@ func main() {
 	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
 
 	log.Printf(
-		"🚀 ClickHouse Loader initialized. Batch processing is stopped until POST /loader/start. Topics: %s, %s, %s, %s",
+		"🚀 ClickHouse Loader initialized. Batch processing is stopped until POST /loader/start. Topics: %s, %s, %s, %s, %s",
 		cfg.Kafka.KafkaTopicOrtb,
 		cfg.Kafka.KafkaTopicImpressions,
 		cfg.Kafka.KafkaTopicClicks,
 		cfg.Kafka.KafkaTopicClicksWins,
+		cfg.Kafka.KafkaTopicPercenterHistory,
 	)
 
 	clicksWinsInterval := time.Duration(cfg.Kafka.ClicksWinsFlushIntervalSec) * time.Second
@@ -177,7 +188,6 @@ func main() {
 	}
 
 	var loaderWG sync.WaitGroup
-	botNotifier := utils.NewBotMessage(cfg.BotBaseURL, cfg.BotInternalSecret)
 	handleStreamError := func(err error) {
 		message := fmt.Sprintf("❌ service=ClickHouse Loader stream error, stopping batch processing: %v", err)
 		log.Print(message)
@@ -324,6 +334,40 @@ func main() {
 			if err != nil {
 				handleStreamError(err)
 				continue
+			}
+		}
+	}()
+
+	historyAlert := services.NewRecoveryNotifier(botNotifier, 5*time.Minute)
+	loaderWG.Add(1)
+	go func() {
+		defer loaderWG.Done()
+		for {
+			if err := loaderControl.Wait(ctx); err != nil {
+				return
+			}
+			inserted, err := clickhouse_loader.ProcessKafkaMessagesPercenterHistory(
+				ctx, kafkaReaders.PercenterHistory, connProd, cfg.Clickhouse.TablePercenterHistory,
+				cfg.Clickhouse.BatchSizePercenterHistory, cfg.TimeoutSec, cfg.Clickhouse.BatchTimeoutMS,
+			)
+			if err != nil {
+				msg := fmt.Sprintf("[CLICKHOUSE_LOADER][PERCENTER_HISTORY_ERROR] %v", err)
+				log.Print(msg)
+				historyAlert.Failure(ctx, msg)
+				select {
+				case <-ctx.Done():
+					return
+				case <-time.After(2 * time.Second):
+				}
+				continue
+			}
+			historyAlert.Recovered(ctx, "[CLICKHOUSE_LOADER][PERCENTER_HISTORY_RECOVERED] Kafka -> ClickHouse history stream is healthy")
+			if inserted == 0 {
+				select {
+				case <-ctx.Done():
+					return
+				case <-time.After(emptyPause):
+				}
 			}
 		}
 	}()

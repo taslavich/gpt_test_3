@@ -20,6 +20,7 @@ import (
 	"gitlab.com/twinbid-exchange/RTB-exchange/internal/config"
 	utils "gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/utils_grpc"
 	httpServer "gitlab.com/twinbid-exchange/RTB-exchange/internal/http"
+	services "gitlab.com/twinbid-exchange/RTB-exchange/internal/services"
 	"gitlab.com/twinbid-exchange/RTB-exchange/internal/services/percenter"
 	percenterWeb "gitlab.com/twinbid-exchange/RTB-exchange/internal/services/percenter/web"
 	redisService "gitlab.com/twinbid-exchange/RTB-exchange/internal/services/redis"
@@ -39,6 +40,8 @@ var requiredPercenterEnv = []string{
 	"REDIS_ADV_ADDR",
 	"REDIS_PASSWORD",
 	"REDIS_DB_ADV_PERCENTER",
+	"REDIS_PERCENTER_HISTORY_READY_KEY",
+	"PERCENTER_HISTORY_OUTBOX_PATH",
 	"REDIS_POOL_SIZE",
 	"REDIS_MIN_IDLE_CONNS",
 	"SSP_REOPTIMIZE_INTERVAL",
@@ -146,6 +149,17 @@ func run() error {
 	startupCancel()
 	log.Printf("[PERCENTER][STARTUP] Bot OK base_url=%s", cfg.BotBaseURL)
 
+	historyOutbox, err := percenter.OpenHistoryOutbox(cfg.PercenterHistoryOutboxPath)
+	if err != nil {
+		_ = bot.SendTextMessageToBot(ctx, fmt.Sprintf("[PERCENTER][HISTORY_OUTBOX_STARTUP_ERROR] %v", err))
+		return fmt.Errorf("cannot open durable percenter history outbox: %w", err)
+	}
+	defer historyOutbox.Close()
+	historyAlert := services.NewRecoveryNotifier(bot, 5*time.Minute)
+	historyRecorder := &historyRecorder{outbox: historyOutbox, alert: historyAlert}
+	go runHistoryOutboxFlusher(ctx, historyRecorder, redisClient, cfg.RedisPercenterHistoryReadyKey)
+	log.Printf("[PERCENTER][STARTUP] durable history outbox OK path=%s redis_queue=%s", cfg.PercenterHistoryOutboxPath, cfg.RedisPercenterHistoryReadyKey)
+
 	log.Printf(
 		"[PERCENTER][STARTUP] validation complete: margin_interval=%s ssp_reoptimize=%s simple_baseline_reoptimize=%s",
 		policy.MarginOptimizeInterval,
@@ -169,7 +183,7 @@ func run() error {
 			3*policy.MarginOptimizeInterval,
 		)
 
-		stats, err := processTick(ctx, clickhouseConn, store, cfg, policy)
+		stats, err := processTick(ctx, clickhouseConn, store, historyRecorder, cfg, policy)
 		finishedAt := time.Now().UTC()
 		diagnosticsServer.RecordTickFinish(finishedAt, err)
 		if err != nil {
@@ -248,6 +262,12 @@ func validatePercenterConfig(cfg *config.PercenterConfig) error {
 	}
 	if cfg.RedisDBAdvPercenter != 7 {
 		return fmt.Errorf("REDIS_DB_ADV_PERCENTER must be 7, got %d", cfg.RedisDBAdvPercenter)
+	}
+	if strings.TrimSpace(cfg.RedisPercenterHistoryReadyKey) == "" {
+		return fmt.Errorf("REDIS_PERCENTER_HISTORY_READY_KEY is empty")
+	}
+	if strings.TrimSpace(cfg.PercenterHistoryOutboxPath) == "" {
+		return fmt.Errorf("PERCENTER_HISTORY_OUTBOX_PATH is empty")
 	}
 	if cfg.RedisPoolSize <= 0 {
 		return fmt.Errorf("REDIS_POOL_SIZE must be > 0, got %d", cfg.RedisPoolSize)
@@ -443,7 +463,7 @@ func scheduledRebenchmarkDue(state percenter.State, policy percenter.Policy, now
 	return !now.Before(state.LastSSPReoptimizeAt.Add(policy.SSPReoptimizeInterval)), policy.SSPReoptimizeInterval, state.LastSSPReoptimizeAt
 }
 
-func applyFallbackRoutes(ctx context.Context, store *percenter.StateStore, decisions []percenter.FallbackDecision, now time.Time) (map[string]struct{}, int, int) {
+func applyFallbackRoutes(ctx context.Context, store *percenter.StateStore, history *historyRecorder, decisions []percenter.FallbackDecision, now time.Time) (map[string]struct{}, int, int) {
 	stableEligible := make(map[string]struct{})
 	routesChanged := 0
 	noEligible := 0
@@ -500,6 +520,9 @@ func applyFallbackRoutes(ctx context.Context, store *percenter.StateStore, decis
 			log.Printf("[PERCENTER][FALLBACK_ROUTE_RACE_SKIP] exact_hash=%s selected_hash=%s level=%s", decision.ExactHash, decision.SelectedHash, decision.SelectedLevel)
 			continue
 		}
+		if history != nil {
+			history.Record(ctx, percenter.FallbackHistoryEvent(exactState, updated, decision, currentHash, now))
+		}
 		routesChanged++
 		log.Printf(
 			"[PERCENTER][FALLBACK_ROUTE_CHANGED] exact_hash=%s from_hash=%s to_hash=%s level=%s impressions=%d window=%s",
@@ -516,7 +539,7 @@ func applyFallbackRoutes(ctx context.Context, store *percenter.StateStore, decis
 	return stableEligible, routesChanged, noEligible
 }
 
-func processTick(ctx context.Context, conn clickhouse.Conn, store *percenter.StateStore, cfg *config.PercenterConfig, policy percenter.Policy) (tickStats, error) {
+func processTick(ctx context.Context, conn clickhouse.Conn, store *percenter.StateStore, history *historyRecorder, cfg *config.PercenterConfig, policy percenter.Policy) (tickStats, error) {
 	traffic, err := percenter.LoadFallbackTraffic(
 		ctx,
 		conn,
@@ -530,7 +553,7 @@ func processTick(ctx context.Context, conn clickhouse.Conn, store *percenter.Sta
 	}
 	decisions := percenter.BuildFallbackDecisions(traffic, percenter.FallbackMinImpressions)
 	now := time.Now().UTC()
-	stableEligible, routesChanged, noEligible := applyFallbackRoutes(ctx, store, decisions, now)
+	stableEligible, routesChanged, noEligible := applyFallbackRoutes(ctx, store, history, decisions, now)
 
 	metrics, err := percenter.LoadWindowMetrics(
 		ctx,
@@ -586,6 +609,13 @@ func processTick(ctx context.Context, conn clickhouse.Conn, store *percenter.Sta
 		if !saved {
 			log.Printf("[PERCENTER][STATE_RACE_SKIP] segment_hash=%s", metric.SegmentHash)
 			continue
+		}
+		eventType := "state_updated"
+		if rebenchmarkDue {
+			eventType = "rebenchmark"
+		}
+		if history != nil {
+			history.Record(ctx, percenter.StateUpdateHistoryEvent(state, updated, metric, eventType, now))
 		}
 		stats.StatesUpdated++
 		if rebenchmarkDue {

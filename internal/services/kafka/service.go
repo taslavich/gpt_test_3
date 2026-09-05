@@ -11,24 +11,27 @@ import (
 )
 
 const (
-	DefaultTopicPartitions = 48
-	DefaultRetentionHours  = 48
+	DefaultTopicPartitions     = 48
+	DefaultRetentionHours      = 48
+	HistoryTopicRetentionHours = 30 * 24
 )
 
 type KafkaReaders struct {
-	Ortb        *kafka.Reader
-	Impressions *kafka.Reader
-	Clicks      *kafka.Reader
-	ClicksWins  *kafka.Reader
-	Conversions *kafka.Reader
+	Ortb             *kafka.Reader
+	Impressions      *kafka.Reader
+	Clicks           *kafka.Reader
+	ClicksWins       *kafka.Reader
+	Conversions      *kafka.Reader
+	PercenterHistory *kafka.Reader
 }
 
 type KafkaWriters struct {
-	Ortb        *kafka.Writer
-	Impressions *kafka.Writer
-	Clicks      *kafka.Writer
-	ClicksWins  *kafka.Writer
-	Conversions *kafka.Writer
+	Ortb             *kafka.Writer
+	Impressions      *kafka.Writer
+	Clicks           *kafka.Writer
+	ClicksWins       *kafka.Writer
+	Conversions      *kafka.Writer
+	PercenterHistory *kafka.Writer
 }
 
 func (r *KafkaReaders) Close() error {
@@ -38,7 +41,7 @@ func (r *KafkaReaders) Close() error {
 	items := []struct {
 		name   string
 		reader *kafka.Reader
-	}{{"ORTB", r.Ortb}, {"Impressions", r.Impressions}, {"Clicks", r.Clicks}, {"Clicks Wins", r.ClicksWins}, {"Conversions", r.Conversions}}
+	}{{"ORTB", r.Ortb}, {"Impressions", r.Impressions}, {"Clicks", r.Clicks}, {"Clicks Wins", r.ClicksWins}, {"Conversions", r.Conversions}, {"Percenter History", r.PercenterHistory}}
 	var lastErr error
 	for _, item := range items {
 		if item.reader == nil {
@@ -59,7 +62,7 @@ func (w *KafkaWriters) Close() error {
 	items := []struct {
 		name   string
 		writer *kafka.Writer
-	}{{"ORTB", w.Ortb}, {"Impressions", w.Impressions}, {"Clicks", w.Clicks}, {"Clicks Wins", w.ClicksWins}, {"Conversions", w.Conversions}}
+	}{{"ORTB", w.Ortb}, {"Impressions", w.Impressions}, {"Clicks", w.Clicks}, {"Clicks Wins", w.ClicksWins}, {"Conversions", w.Conversions}, {"Percenter History", w.PercenterHistory}}
 	var lastErr error
 	for _, item := range items {
 		if item.writer == nil {
@@ -80,6 +83,7 @@ func kafkaTopics(cfg config.KafkaConfig) []string {
 		cfg.KafkaTopicClicks,
 		cfg.KafkaTopicClicksWins,
 		cfg.KafkaTopicConversions,
+		cfg.KafkaTopicPercenterHistory,
 	}
 }
 
@@ -112,6 +116,10 @@ func checkKafkaBrokers(brokers []string) error {
 }
 
 func ensureTopicExists(brokers []string, topic string, numPartitions int) error {
+	return ensureTopicExistsWithRetention(brokers, topic, numPartitions, DefaultRetentionHours)
+}
+
+func ensureTopicExistsWithRetention(brokers []string, topic string, numPartitions int, retentionHours int) error {
 	if len(brokers) == 0 {
 		return fmt.Errorf("kafka brokers list is empty")
 	}
@@ -155,10 +163,13 @@ func ensureTopicExists(brokers []string, topic string, numPartitions int) error 
 		}
 	}
 
+	if retentionHours <= 0 {
+		retentionHours = DefaultRetentionHours
+	}
 	configs := []kafka.ConfigEntry{
 		{
 			ConfigName:  "retention.ms",
-			ConfigValue: fmt.Sprintf("%d", DefaultRetentionHours*60*60*1000),
+			ConfigValue: fmt.Sprintf("%d", retentionHours*60*60*1000),
 		},
 		{
 			ConfigName:  "retention.bytes",
@@ -200,7 +211,11 @@ func ensureTopicExists(brokers []string, topic string, numPartitions int) error 
 
 func EnsureTopicsExist(cfg config.KafkaConfig) error {
 	for _, topic := range kafkaTopics(cfg) {
-		if err := ensureTopicExists(cfg.KafkaBrokers, topic, DefaultTopicPartitions); err != nil {
+		retentionHours := DefaultRetentionHours
+		if topic == cfg.KafkaTopicPercenterHistory {
+			retentionHours = HistoryTopicRetentionHours
+		}
+		if err := ensureTopicExistsWithRetention(cfg.KafkaBrokers, topic, DefaultTopicPartitions, retentionHours); err != nil {
 			return fmt.Errorf("failed to ensure Kafka topic %s exists: %w", topic, err)
 		}
 	}
@@ -262,6 +277,7 @@ func InitKafkaReaders(cfg config.KafkaConfig) (*KafkaReaders, error) {
 		{name: "Clicks", topic: cfg.KafkaTopicClicks, groupID: cfg.KafkaGroupIDClicks},
 		{name: "Clicks Wins", topic: cfg.KafkaTopicClicksWins, groupID: cfg.KafkaGroupIDClicksWins},
 		{name: "Conversions", topic: cfg.KafkaTopicConversions, groupID: cfg.KafkaGroupIDConversions},
+		{name: "Percenter History", topic: cfg.KafkaTopicPercenterHistory, groupID: cfg.KafkaGroupIDPercenterHistory},
 	}
 	readers := make([]*kafka.Reader, 0, len(readerConfigs))
 	closeOnError := func() {
@@ -280,11 +296,12 @@ func InitKafkaReaders(cfg config.KafkaConfig) (*KafkaReaders, error) {
 		readers = append(readers, reader)
 	}
 	return &KafkaReaders{
-		Ortb:        readers[0],
-		Impressions: readers[1],
-		Clicks:      readers[2],
-		ClicksWins:  readers[3],
-		Conversions: readers[4],
+		Ortb:             readers[0],
+		Impressions:      readers[1],
+		Clicks:           readers[2],
+		ClicksWins:       readers[3],
+		Conversions:      readers[4],
+		PercenterHistory: readers[5],
 	}, nil
 }
 
@@ -372,6 +389,7 @@ func CreateKafkaWriters(cfg config.KafkaConfig) (*KafkaWriters, error) {
 		{name: "Clicks", topic: cfg.KafkaTopicClicks},
 		{name: "Clicks Wins", topic: cfg.KafkaTopicClicksWins},
 		{name: "Conversions", topic: cfg.KafkaTopicConversions},
+		{name: "Percenter History", topic: cfg.KafkaTopicPercenterHistory},
 	}
 	writers := make([]*kafka.Writer, 0, len(writerConfigs))
 	closeOnError := func() {
@@ -390,10 +408,11 @@ func CreateKafkaWriters(cfg config.KafkaConfig) (*KafkaWriters, error) {
 		writers = append(writers, writer)
 	}
 	return &KafkaWriters{
-		Ortb:        writers[0],
-		Impressions: writers[1],
-		Clicks:      writers[2],
-		ClicksWins:  writers[3],
-		Conversions: writers[4],
+		Ortb:             writers[0],
+		Impressions:      writers[1],
+		Clicks:           writers[2],
+		ClicksWins:       writers[3],
+		Conversions:      writers[4],
+		PercenterHistory: writers[5],
 	}, nil
 }
