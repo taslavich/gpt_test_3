@@ -244,15 +244,38 @@ type cachedState struct {
 }
 
 type StateStore struct {
-	redis          *redis.Client
-	policy         Policy
-	mu             sync.RWMutex
-	cache          map[string]cachedState
-	lastCacheSweep time.Time
+	redis           *redis.Client
+	policy          Policy
+	mu              sync.RWMutex
+	cache           map[string]cachedState
+	lastCacheSweep  time.Time
+	historyReadyKey string
 }
 
 func NewStateStore(client *redis.Client, policy Policy) *StateStore {
 	return &StateStore{redis: client, policy: policy.Normalize(), cache: make(map[string]cachedState)}
+}
+
+// ConfigureHistoryQueue binds state mutations to the durable history Redis list.
+// It must point at a LIST in the same Redis DB as the percenter state so the Lua
+// scripts can atomically change state and enqueue its audit event.
+func (s *StateStore) ConfigureHistoryQueue(readyKey string) {
+	if s == nil {
+		return
+	}
+	s.mu.Lock()
+	s.historyReadyKey = strings.TrimSpace(readyKey)
+	s.mu.Unlock()
+}
+
+func (s *StateStore) historyQueueKey() string {
+	if s == nil {
+		return ""
+	}
+	s.mu.RLock()
+	key := s.historyReadyKey
+	s.mu.RUnlock()
+	return key
 }
 
 func SegmentKey(hash string) string { return "percenter:segment:" + hash }
@@ -266,6 +289,58 @@ if current ~= ARGV[1] then
   return 0
 end
 redis.call("SET", KEYS[1], ARGV[2], "PX", ARGV[3])
+return 1
+`)
+
+var setStateIfAbsentWithHistoryScript = redis.NewScript(`
+local state_type = redis.call("TYPE", KEYS[1]).ok
+if state_type ~= "none" and state_type ~= "string" then
+  return redis.error_reply("percenter state key has unexpected type: " .. state_type)
+end
+local history_type = redis.call("TYPE", KEYS[2]).ok
+if history_type ~= "none" and history_type ~= "list" then
+  return redis.error_reply("percenter history key has unexpected type: " .. history_type)
+end
+if redis.call("EXISTS", KEYS[1]) == 1 then
+  return 0
+end
+local pushed = redis.pcall("RPUSH", KEYS[2], ARGV[3])
+if type(pushed) == "table" and pushed.err then
+  return redis.error_reply("percenter history enqueue failed: " .. pushed.err)
+end
+local stored = redis.pcall("SET", KEYS[1], ARGV[1], "PX", ARGV[2])
+if type(stored) == "table" and stored.err then
+  redis.call("RPOP", KEYS[2])
+  return redis.error_reply("percenter state save failed: " .. stored.err)
+end
+return 1
+`)
+
+var compareAndSwapStateWithHistoryScript = redis.NewScript(`
+local state_type = redis.call("TYPE", KEYS[1]).ok
+if state_type ~= "string" then
+  if state_type == "none" then
+    return 0
+  end
+  return redis.error_reply("percenter state key has unexpected type: " .. state_type)
+end
+local history_type = redis.call("TYPE", KEYS[2]).ok
+if history_type ~= "none" and history_type ~= "list" then
+  return redis.error_reply("percenter history key has unexpected type: " .. history_type)
+end
+local current = redis.call("GET", KEYS[1])
+if not current or current ~= ARGV[1] then
+  return 0
+end
+local pushed = redis.pcall("RPUSH", KEYS[2], ARGV[4])
+if type(pushed) == "table" and pushed.err then
+  return redis.error_reply("percenter history enqueue failed: " .. pushed.err)
+end
+local stored = redis.pcall("SET", KEYS[1], ARGV[2], "PX", ARGV[3])
+if type(stored) == "table" and stored.err then
+  redis.call("RPOP", KEYS[2])
+  return redis.error_reply("percenter state save failed: " .. stored.err)
+end
 return 1
 `)
 
@@ -316,21 +391,46 @@ func (s *StateStore) getOrInitStateForCampaign(ctx context.Context, segmentHash,
 		return state, pricingFromState(state), nil
 	}
 
-	state, err := s.Load(ctx, segmentHash)
-	if err != nil && !errors.Is(err, redis.Nil) {
-		return State{}, fallback, err
-	}
-	if errors.Is(err, redis.Nil) || !state.ValidForCampaign(originalBid, minMargin, campaignRevision, typeModel, profitModel) {
-		if !errors.Is(err, redis.Nil) && state.PointVersion > 0 {
-			baseline.PointVersion = nextPointVersion(state.PointVersion)
-		}
-		state = baseline
-		if err := s.Save(ctx, state); err != nil {
+	// Initialization and campaign reinitialization are persisted together with
+	// their history event. This is intentionally retried on a CAS race so two
+	// concurrent ADV requests cannot create an untracked state transition.
+	for attempt := 0; attempt < 4; attempt++ {
+		state, err := s.Load(ctx, segmentHash)
+		if err != nil && !errors.Is(err, redis.Nil) {
 			return State{}, fallback, err
 		}
+		if errors.Is(err, redis.Nil) {
+			initialized := baseline
+			event := InitializedHistoryEvent(initialized, now)
+			saved, err := s.saveIfAbsentWithHistory(ctx, initialized, event)
+			if err != nil {
+				return State{}, fallback, err
+			}
+			if saved {
+				return initialized, pricingFromState(initialized), nil
+			}
+			continue
+		}
+
+		if state.ValidForCampaign(originalBid, minMargin, campaignRevision, typeModel, profitModel) {
+			s.putCache(state, now)
+			return state, pricingFromState(state), nil
+		}
+
+		reinitialized := baseline
+		if state.PointVersion > 0 {
+			reinitialized.PointVersion = nextPointVersion(state.PointVersion)
+		}
+		event := StateUpdateHistoryEvent(state, reinitialized, Metrics{}, "reinitialized", now)
+		saved, err := s.SaveIfCurrentWithHistory(ctx, state, reinitialized, event)
+		if err != nil {
+			return State{}, fallback, err
+		}
+		if saved {
+			return reinitialized, pricingFromState(reinitialized), nil
+		}
 	}
-	s.putCache(state, now)
-	return state, pricingFromState(state), nil
+	return State{}, fallback, fmt.Errorf("percenter state %s changed concurrently during initialization", segmentHash)
 }
 
 func (s *StateStore) cached(hash string, originalBid, minMargin float64, revision int64, now time.Time) (State, bool) {
@@ -402,6 +502,56 @@ func (s *StateStore) Save(ctx context.Context, state State) error {
 	return nil
 }
 
+func (s *StateStore) historyMutationPayload(state State, event HistoryEvent) ([]byte, []byte, int64, string, error) {
+	if s == nil || s.redis == nil {
+		return nil, nil, 0, "", errors.New("percenter redis is unavailable")
+	}
+	historyKey := s.historyQueueKey()
+	if historyKey == "" {
+		return nil, nil, 0, "", errors.New("percenter history Redis queue is not configured")
+	}
+	if strings.TrimSpace(event.StateSegmentHash) != strings.TrimSpace(state.SegmentHash) {
+		return nil, nil, 0, "", fmt.Errorf("history state hash %q does not match state %q", event.StateSegmentHash, state.SegmentHash)
+	}
+	stateRaw, err := json.Marshal(state)
+	if err != nil {
+		return nil, nil, 0, "", fmt.Errorf("encode percenter state %s: %w", state.SegmentHash, err)
+	}
+	eventRaw, err := MarshalHistoryEvent(event)
+	if err != nil {
+		return nil, nil, 0, "", fmt.Errorf("encode percenter history event %s: %w", event.EventID, err)
+	}
+	ttlMS := s.policy.SegmentStateTTL.Milliseconds()
+	if ttlMS <= 0 {
+		ttlMS = (7 * 24 * time.Hour).Milliseconds()
+	}
+	return stateRaw, eventRaw, ttlMS, historyKey, nil
+}
+
+func (s *StateStore) saveIfAbsentWithHistory(ctx context.Context, state State, event HistoryEvent) (bool, error) {
+	state.UpdatedAt = time.Now().UTC()
+	stateRaw, eventRaw, ttlMS, historyKey, err := s.historyMutationPayload(state, event)
+	if err != nil {
+		return false, err
+	}
+	result, err := setStateIfAbsentWithHistoryScript.Run(
+		ctx,
+		s.redis,
+		[]string{SegmentKey(state.SegmentHash), historyKey},
+		string(stateRaw),
+		fmt.Sprintf("%d", ttlMS),
+		string(eventRaw),
+	).Int()
+	if err != nil {
+		return false, fmt.Errorf("initialize percenter state %s with history: %w", state.SegmentHash, err)
+	}
+	if result != 1 {
+		return false, nil
+	}
+	s.putCache(state, state.UpdatedAt)
+	return true, nil
+}
+
 func (s *StateStore) SaveIfCurrent(ctx context.Context, previous, next State) (bool, error) {
 	if s == nil || s.redis == nil {
 		return false, errors.New("percenter redis is unavailable")
@@ -429,6 +579,44 @@ func (s *StateStore) SaveIfCurrent(ctx context.Context, previous, next State) (b
 	).Int()
 	if err != nil {
 		return false, fmt.Errorf("compare-and-swap percenter state %s: %w", previous.SegmentHash, err)
+	}
+	if result != 1 {
+		return false, nil
+	}
+	s.putCache(next, next.UpdatedAt)
+	return true, nil
+}
+
+// SaveIfCurrentWithHistory performs the state CAS and Redis history enqueue in
+// one server-side Lua script. A client crash/kill cannot leave a committed state
+// without its corresponding history event, and a CAS race enqueues nothing.
+func (s *StateStore) SaveIfCurrentWithHistory(ctx context.Context, previous, next State, event HistoryEvent) (bool, error) {
+	if s == nil || s.redis == nil {
+		return false, errors.New("percenter redis is unavailable")
+	}
+	if strings.TrimSpace(previous.SegmentHash) == "" || previous.SegmentHash != next.SegmentHash {
+		return false, fmt.Errorf("percenter state hash mismatch: previous=%q next=%q", previous.SegmentHash, next.SegmentHash)
+	}
+	previousRaw, err := json.Marshal(previous)
+	if err != nil {
+		return false, fmt.Errorf("encode previous percenter state %s: %w", previous.SegmentHash, err)
+	}
+	next.UpdatedAt = time.Now().UTC()
+	nextRaw, eventRaw, ttlMS, historyKey, err := s.historyMutationPayload(next, event)
+	if err != nil {
+		return false, err
+	}
+	result, err := compareAndSwapStateWithHistoryScript.Run(
+		ctx,
+		s.redis,
+		[]string{SegmentKey(previous.SegmentHash), historyKey},
+		string(previousRaw),
+		string(nextRaw),
+		fmt.Sprintf("%d", ttlMS),
+		string(eventRaw),
+	).Int()
+	if err != nil {
+		return false, fmt.Errorf("compare-and-swap percenter state %s with history: %w", previous.SegmentHash, err)
 	}
 	if result != 1 {
 		return false, nil

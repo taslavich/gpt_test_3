@@ -107,6 +107,7 @@ func run() error {
 	log.Printf("[PERCENTER][STARTUP] Redis OK addr=%s db=%d", cfg.RedisADVAddr, cfg.RedisDBAdvPercenter)
 
 	store := percenter.NewStateStore(redisClient, policy)
+	store.ConfigureHistoryQueue(cfg.RedisPercenterHistoryReadyKey)
 
 	clickhouseConn, err := clickhouse.Open(&clickhouse.Options{
 		Addr:     []string{net.JoinHostPort(cfg.Host, cfg.Port)},
@@ -183,7 +184,7 @@ func run() error {
 			3*policy.MarginOptimizeInterval,
 		)
 
-		stats, err := processTick(ctx, clickhouseConn, store, historyRecorder, cfg, policy)
+		stats, err := processTick(ctx, clickhouseConn, store, cfg, policy)
 		finishedAt := time.Now().UTC()
 		diagnosticsServer.RecordTickFinish(finishedAt, err)
 		if err != nil {
@@ -463,7 +464,7 @@ func scheduledRebenchmarkDue(state percenter.State, policy percenter.Policy, now
 	return !now.Before(state.LastSSPReoptimizeAt.Add(policy.SSPReoptimizeInterval)), policy.SSPReoptimizeInterval, state.LastSSPReoptimizeAt
 }
 
-func applyFallbackRoutes(ctx context.Context, store *percenter.StateStore, history *historyRecorder, decisions []percenter.FallbackDecision, now time.Time) (map[string]struct{}, int, int) {
+func applyFallbackRoutes(ctx context.Context, store *percenter.StateStore, decisions []percenter.FallbackDecision, now time.Time) (map[string]struct{}, int, int) {
 	stableEligible := make(map[string]struct{})
 	routesChanged := 0
 	noEligible := 0
@@ -511,7 +512,8 @@ func applyFallbackRoutes(ctx context.Context, store *percenter.StateStore, histo
 			stableEligible[decision.SelectedHash] = struct{}{}
 			continue
 		}
-		saved, err := store.SaveIfCurrent(ctx, exactState, updated)
+		event := percenter.FallbackHistoryEvent(exactState, updated, decision, currentHash, now)
+		saved, err := store.SaveIfCurrentWithHistory(ctx, exactState, updated, event)
 		if err != nil {
 			log.Printf("[PERCENTER][FALLBACK_ROUTE_SAVE_ERROR] exact_hash=%s selected_hash=%s level=%s error=%v", decision.ExactHash, decision.SelectedHash, decision.SelectedLevel, err)
 			continue
@@ -519,9 +521,6 @@ func applyFallbackRoutes(ctx context.Context, store *percenter.StateStore, histo
 		if !saved {
 			log.Printf("[PERCENTER][FALLBACK_ROUTE_RACE_SKIP] exact_hash=%s selected_hash=%s level=%s", decision.ExactHash, decision.SelectedHash, decision.SelectedLevel)
 			continue
-		}
-		if history != nil {
-			history.Record(ctx, percenter.FallbackHistoryEvent(exactState, updated, decision, currentHash, now))
 		}
 		routesChanged++
 		log.Printf(
@@ -539,7 +538,7 @@ func applyFallbackRoutes(ctx context.Context, store *percenter.StateStore, histo
 	return stableEligible, routesChanged, noEligible
 }
 
-func processTick(ctx context.Context, conn clickhouse.Conn, store *percenter.StateStore, history *historyRecorder, cfg *config.PercenterConfig, policy percenter.Policy) (tickStats, error) {
+func processTick(ctx context.Context, conn clickhouse.Conn, store *percenter.StateStore, cfg *config.PercenterConfig, policy percenter.Policy) (tickStats, error) {
 	traffic, err := percenter.LoadFallbackTraffic(
 		ctx,
 		conn,
@@ -553,7 +552,7 @@ func processTick(ctx context.Context, conn clickhouse.Conn, store *percenter.Sta
 	}
 	decisions := percenter.BuildFallbackDecisions(traffic, percenter.FallbackMinImpressions)
 	now := time.Now().UTC()
-	stableEligible, routesChanged, noEligible := applyFallbackRoutes(ctx, store, history, decisions, now)
+	stableEligible, routesChanged, noEligible := applyFallbackRoutes(ctx, store, decisions, now)
 
 	metrics, err := percenter.LoadWindowMetrics(
 		ctx,
@@ -601,7 +600,12 @@ func processTick(ctx context.Context, conn clickhouse.Conn, store *percenter.Sta
 		if !changed {
 			continue
 		}
-		saved, err := store.SaveIfCurrent(ctx, state, updated)
+		eventType := "state_updated"
+		if rebenchmarkDue {
+			eventType = "rebenchmark"
+		}
+		event := percenter.StateUpdateHistoryEvent(state, updated, metric, eventType, now)
+		saved, err := store.SaveIfCurrentWithHistory(ctx, state, updated, event)
 		if err != nil {
 			log.Printf("[PERCENTER][STATE_SAVE_ERROR] segment_hash=%s error=%v", metric.SegmentHash, err)
 			continue
@@ -609,13 +613,6 @@ func processTick(ctx context.Context, conn clickhouse.Conn, store *percenter.Sta
 		if !saved {
 			log.Printf("[PERCENTER][STATE_RACE_SKIP] segment_hash=%s", metric.SegmentHash)
 			continue
-		}
-		eventType := "state_updated"
-		if rebenchmarkDue {
-			eventType = "rebenchmark"
-		}
-		if history != nil {
-			history.Record(ctx, percenter.StateUpdateHistoryEvent(state, updated, metric, eventType, now))
 		}
 		stats.StatesUpdated++
 		if rebenchmarkDue {

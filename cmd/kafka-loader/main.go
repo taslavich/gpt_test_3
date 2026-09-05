@@ -79,10 +79,12 @@ func main() {
 
 	historyRedis, err := redis_service.NewRedisClient(cfg.RedisADVAddr, cfg.RedisPassword, cfg.RedisDBAdvPercenter, cfg.RedisPoolSize, cfg.RedisMinIdleConns)
 	if err != nil {
+		_ = botNotifier.SendTextMessageToBot(ctx, fmt.Sprintf("[KAFKA_LOADER][PERCENTER_HISTORY_STARTUP_ERROR] cannot initialize Redis: %v", err))
 		log.Fatalf("Cannot init percenter history Redis: %v", err)
 	}
 	defer historyRedis.Close()
 	if err := historyRedis.Ping(ctx).Err(); err != nil {
+		_ = botNotifier.SendTextMessageToBot(ctx, fmt.Sprintf("[KAFKA_LOADER][PERCENTER_HISTORY_STARTUP_ERROR] Redis ping failed: %v", err))
 		log.Fatalf("Failed to connect to percenter history Redis: %v", err)
 	}
 	log.Printf("✅ Connected to percenter history Redis addr=%s db=%d", cfg.RedisADVAddr, cfg.RedisDBAdvPercenter)

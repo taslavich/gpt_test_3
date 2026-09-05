@@ -63,3 +63,21 @@ func TestStateUpdateHistoryDoesNotMutatePricing(t *testing.T) {
 		t.Fatalf("builder mutated state: %+v", before)
 	}
 }
+
+func TestInitializedHistoryEventCapturesFirstState(t *testing.T) {
+	now := time.Date(2026, 9, 5, 12, 0, 0, 0, time.UTC)
+	state := BaselineStateForCampaign("hash-init", "77", 1.25, 0.2, 3, TypeModelSimple, ProfitModelImpression, now)
+	event := InitializedHistoryEvent(state, now)
+	if event.EventType != "initialized" || event.EventID == "" {
+		t.Fatalf("bad initialized event: %+v", event)
+	}
+	if event.StateSegmentHash != state.SegmentHash || event.EffectiveSegmentHash != state.SegmentHash {
+		t.Fatalf("wrong hashes in initialized event: %+v", event)
+	}
+	if event.OldPointVersion != 0 || event.NewPointVersion != state.PointVersion {
+		t.Fatalf("wrong point versions in initialized event: %+v", event)
+	}
+	if event.NewAdvertiserPrice != state.AdvertiserPrice || event.NewSSPBid != state.SSPBid || event.NewMargin != state.Margin {
+		t.Fatalf("wrong initial pricing in event: %+v", event)
+	}
+}

@@ -87,6 +87,7 @@ func main() {
 		ADVCacheTTL:                      cfg.PercenterADVCacheTTL,
 	}.Normalize()
 	percenterStore := percenter.NewStateStore(percenterRedis, percenterPolicy)
+	percenterStore.ConfigureHistoryQueue(cfg.RedisPercenterHistoryReadyKey)
 
 	percentStore, err := auction.NewPercentStore(cfg.AdvPercentMapFilePath)
 	if err != nil {
@@ -286,6 +287,9 @@ func validateConfig(cfg *config.AdvConfig) error {
 	}
 	if strings.TrimSpace(cfg.RedisADVAddr) == "" {
 		return fmt.Errorf("REDIS_ADV_ADDR is required for percenter state")
+	}
+	if strings.TrimSpace(cfg.RedisPercenterHistoryReadyKey) == "" {
+		return fmt.Errorf("REDIS_PERCENTER_HISTORY_READY_KEY is required for atomic percenter state history")
 	}
 	if strings.TrimSpace(cfg.AdvPercentMapFilePath) == "" {
 		return fmt.Errorf("ADV_PERCENT_MAP_FILE_PATH is required")

@@ -224,9 +224,10 @@ func (a *Server) handleSegmentEvaluate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	saved, err := a.store.SaveIfCurrent(r.Context(), state, next)
+	historyEvent := percenter.StateUpdateHistoryEvent(state, next, metric, "state_updated", now)
+	saved, err := a.store.SaveIfCurrentWithHistory(r.Context(), state, next, historyEvent)
 	if err != nil {
-		writeAPIError(w, http.StatusBadGateway, fmt.Sprintf("save state: %v", err))
+		writeAPIError(w, http.StatusBadGateway, fmt.Sprintf("save state with history: %v", err))
 		return
 	}
 	if !saved {
@@ -249,7 +250,8 @@ func (a *Server) handleSegmentRebenchmark(w http.ResponseWriter, r *http.Request
 		handleStateLoadError(w, err)
 		return
 	}
-	next := percenter.RebenchmarkState(state, time.Now().UTC())
+	now := time.Now().UTC()
+	next := percenter.RebenchmarkState(state, now)
 	dryRun := queryBool(r, "dry_run", false)
 	if dryRun {
 		log.Printf("[PERCENTER][HTTP][REBENCHMARK] segment_hash=%s dry_run=true applied=false", state.SegmentHash)
@@ -261,9 +263,10 @@ func (a *Server) handleSegmentRebenchmark(w http.ResponseWriter, r *http.Request
 		})
 		return
 	}
-	saved, err := a.store.SaveIfCurrent(r.Context(), state, next)
+	historyEvent := percenter.StateUpdateHistoryEvent(state, next, percenter.Metrics{}, "rebenchmark", now)
+	saved, err := a.store.SaveIfCurrentWithHistory(r.Context(), state, next, historyEvent)
 	if err != nil {
-		writeAPIError(w, http.StatusBadGateway, fmt.Sprintf("save state: %v", err))
+		writeAPIError(w, http.StatusBadGateway, fmt.Sprintf("save state with history: %v", err))
 		return
 	}
 	if !saved {

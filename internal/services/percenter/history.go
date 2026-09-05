@@ -137,6 +137,15 @@ func StateUpdateHistoryEvent(before, after State, metrics Metrics, eventType str
 	return event
 }
 
+func InitializedHistoryEvent(state State, now time.Time) HistoryEvent {
+	event := StateUpdateHistoryEvent(State{}, state, Metrics{}, "initialized", now)
+	event.PreviousEffectiveSegmentHash = ""
+	event.EffectiveSegmentHash = EffectiveStateHash(state)
+	event.StateSegmentHash = state.SegmentHash
+	event.EventID = historyEventID(event.EventType, event.StateSegmentHash, fmt.Sprint(event.NewPointVersion), fmt.Sprint(event.EventTime.UnixNano()))
+	return event
+}
+
 func FallbackHistoryEvent(before, after State, decision FallbackDecision, previousEffectiveHash string, now time.Time) HistoryEvent {
 	if now.IsZero() {
 		now = time.Now().UTC()
