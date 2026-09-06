@@ -164,6 +164,9 @@ func WriteStatsOrtb(
 	siteId string,
 	siteDomain string,
 	bidFloor float64,
+	exactSegmentHash string,
+	segmentHash string,
+	pointVersion uint64,
 ) error {
 	if !logged {
 		return nil
@@ -193,6 +196,15 @@ func WriteStatsOrtb(
 		constants.GEO_COLUMN:             countryISO,
 		constants.CITY_ID_COLUMN:         cityId,
 		constants.CODE_COLUMN:            code,
+	}
+	if exactSegmentHash != "" {
+		fields[constants.EXACT_SEGMENT_HASH_COLUMN] = exactSegmentHash
+	}
+	if segmentHash != "" {
+		fields[constants.SEGMENT_HASH_COLUMN] = segmentHash
+		// pointVersion=0 is meaningful: it marks a baseline/fallback request for
+		// which the segment is known but no persisted percenter point was available.
+		fields[constants.PERCENTER_POINT_VERSION_COLUMN] = pointVersion
 	}
 
 	pipe := client.Pipeline()

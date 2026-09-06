@@ -8,12 +8,17 @@ import (
 )
 
 const (
-	internalSegmentPrefix = "__twinbid_percenter_segment:"
-	internalPointPrefix   = "__twinbid_percenter_point:"
+	internalExactSegmentPrefix = "__twinbid_percenter_exact_segment:"
+	internalSegmentPrefix      = "__twinbid_percenter_segment:"
+	internalPointPrefix        = "__twinbid_percenter_point:"
 )
 
 func AttachInternalMetadata(response *ortb.BidResponse, impID, segmentHash string, pointVersion uint64) {
-	if response == nil || strings.TrimSpace(impID) == "" || strings.TrimSpace(segmentHash) == "" || pointVersion == 0 {
+	AttachInternalMetadataWithExact(response, impID, "", segmentHash, pointVersion)
+}
+
+func AttachInternalMetadataWithExact(response *ortb.BidResponse, impID, exactSegmentHash, segmentHash string, pointVersion uint64) {
+	if response == nil || strings.TrimSpace(impID) == "" || strings.TrimSpace(segmentHash) == "" {
 		return
 	}
 	if response.Ext == nil {
@@ -22,24 +27,33 @@ func AttachInternalMetadata(response *ortb.BidResponse, impID, segmentHash strin
 	if response.Ext.Values == nil {
 		response.Ext.Values = make(map[string]string)
 	}
+	if exactSegmentHash = strings.TrimSpace(exactSegmentHash); exactSegmentHash != "" {
+		response.Ext.Values[internalExactSegmentPrefix+impID] = exactSegmentHash
+	}
 	response.Ext.Values[internalSegmentPrefix+impID] = segmentHash
 	response.Ext.Values[internalPointPrefix+impID] = strconv.FormatUint(pointVersion, 10)
 }
 
 func InternalMetadata(response *ortb.BidResponse, impID string) (string, uint64) {
+	_, segmentHash, pointVersion := InternalMetadataWithExact(response, impID)
+	return segmentHash, pointVersion
+}
+
+func InternalMetadataWithExact(response *ortb.BidResponse, impID string) (string, string, uint64) {
 	if response == nil || response.GetExt() == nil || strings.TrimSpace(impID) == "" {
-		return "", 0
+		return "", "", 0
 	}
 	values := response.GetExt().GetValues()
+	exactSegmentHash := strings.TrimSpace(values[internalExactSegmentPrefix+impID])
 	segmentHash := strings.TrimSpace(values[internalSegmentPrefix+impID])
 	if segmentHash == "" {
-		return "", 0
+		return exactSegmentHash, "", 0
 	}
 	pointVersion, err := strconv.ParseUint(strings.TrimSpace(values[internalPointPrefix+impID]), 10, 64)
 	if err != nil || pointVersion == 0 {
-		return segmentHash, 0
+		return exactSegmentHash, segmentHash, 0
 	}
-	return segmentHash, pointVersion
+	return exactSegmentHash, segmentHash, pointVersion
 }
 
 func MergeInternalMetadata(destination, source *ortb.BidResponse) *ortb.BidResponse {
@@ -78,5 +92,5 @@ func StripInternalMetadata(response *ortb.BidResponse) {
 }
 
 func isInternalMetadataKey(key string) bool {
-	return strings.HasPrefix(key, internalSegmentPrefix) || strings.HasPrefix(key, internalPointPrefix)
+	return strings.HasPrefix(key, internalExactSegmentPrefix) || strings.HasPrefix(key, internalSegmentPrefix) || strings.HasPrefix(key, internalPointPrefix)
 }

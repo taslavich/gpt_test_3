@@ -6,95 +6,95 @@ import (
 	"log"
 	"time"
 
-	"github.com/redis/go-redis/v9"
 	services "gitlab.com/twinbid-exchange/RTB-exchange/internal/services"
 	"gitlab.com/twinbid-exchange/RTB-exchange/internal/services/percenter"
 )
 
-type historyRecorder struct {
-	outbox *percenter.HistoryOutbox
-	alert  *services.RecoveryNotifier
-}
+const pendingHistoryRecoveryInterval = 10 * time.Minute
 
-func (r *historyRecorder) Record(ctx context.Context, event percenter.HistoryEvent) {
-	if r == nil || r.outbox == nil {
+// runPendingHistoryFlusher keeps the hot path free of the shared history queue.
+// State transitions persist history in a per-segment outbox + pending marker;
+// this worker forwards it asynchronously to the existing Redis -> Kafka -> CH
+// chain. Normal recovery never scans business-state keys.
+func runPendingHistoryFlusher(
+	ctx context.Context,
+	store *percenter.StateStore,
+	readyKey string,
+	alert *services.RecoveryNotifier,
+) {
+	if store == nil || readyKey == "" {
 		return
 	}
-	if err := r.outbox.Save(event); err != nil {
-		msg := fmt.Sprintf("[PERCENTER][HISTORY_OUTBOX_SAVE_ERROR] event_id=%s type=%s state_hash=%s error=%v", event.EventID, event.EventType, event.StateSegmentHash, err)
+
+	handleError := func(stage string, err error) {
+		if err == nil {
+			return
+		}
+		msg := fmt.Sprintf("[PERCENTER][HISTORY_PENDING_%s_ERROR] %v", stage, err)
 		log.Print(msg)
-		if r.alert != nil {
-			r.alert.Failure(ctx, msg)
+		if alert != nil {
+			alert.Failure(ctx, msg)
 		}
 	}
-}
+	handleRecovered := func() {
+		if alert != nil {
+			alert.Recovered(ctx, "[PERCENTER][HISTORY_PENDING_RECOVERED] pending history delivery is healthy")
+		}
+	}
 
-func runHistoryOutboxFlusher(ctx context.Context, recorder *historyRecorder, redisClient *redis.Client, readyKey string) {
-	if recorder == nil || recorder.outbox == nil || redisClient == nil || readyKey == "" {
-		return
+	// Recover native outboxes first so rolling-upgrade migration cannot delay the
+	// normal history path on a large existing keyspace. Legacy proj135 state
+	// migration runs once in a separate goroutine and feeds the same dirty-hint
+	// path as new state transitions.
+	if flushed, err := store.RecoverPendingHistory(ctx, readyKey); err != nil {
+		handleError("RECOVERY", err)
+	} else {
+		if flushed > 0 {
+			log.Printf("[PERCENTER][HISTORY_PENDING_RECOVERY] flushed=%d", flushed)
+		}
+		handleRecovered()
 	}
-	ticker := time.NewTicker(time.Second)
-	defer ticker.Stop()
-	flush := func() {
-		events, err := recorder.outbox.List(500)
+
+	go func() {
+		migrated, err := store.MigrateLegacyPendingHistory(ctx, readyKey)
 		if err != nil {
-			msg := fmt.Sprintf("[PERCENTER][HISTORY_OUTBOX_READ_ERROR] %v", err)
-			log.Print(msg)
-			if recorder.alert != nil {
-				recorder.alert.Failure(ctx, msg)
-			}
+			handleError("LEGACY_MIGRATION", err)
 			return
 		}
-		if len(events) == 0 {
-			return
+		if migrated > 0 {
+			log.Printf("[PERCENTER][HISTORY_LEGACY_MIGRATION] migrated_events=%d", migrated)
 		}
-		pipe := redisClient.Pipeline()
-		raws := make([][]byte, 0, len(events))
-		for _, event := range events {
-			raw, err := percenter.MarshalHistoryEvent(event)
-			if err != nil {
-				msg := fmt.Sprintf("[PERCENTER][HISTORY_OUTBOX_ENCODE_ERROR] event_id=%s error=%v", event.EventID, err)
-				log.Print(msg)
-				if recorder.alert != nil {
-					recorder.alert.Failure(ctx, msg)
-				}
-				return
-			}
-			raws = append(raws, raw)
-			pipe.RPush(ctx, readyKey, raw)
-		}
-		if _, err := pipe.Exec(ctx); err != nil {
-			msg := fmt.Sprintf("[PERCENTER][HISTORY_REDIS_QUEUE_ERROR] pending=%d error=%v", len(events), err)
-			log.Print(msg)
-			if recorder.alert != nil {
-				recorder.alert.Failure(ctx, msg)
-			}
-			return
-		}
-		// Redis accepted the batch. Deletion is intentionally after enqueue.
-		// If deletion fails, the event is replayed; event_id deduplicates it downstream.
-		for _, event := range events {
-			if err := recorder.outbox.Delete(event.EventID); err != nil {
-				msg := fmt.Sprintf("[PERCENTER][HISTORY_OUTBOX_DELETE_ERROR] event_id=%s error=%v", event.EventID, err)
-				log.Print(msg)
-				if recorder.alert != nil {
-					recorder.alert.Failure(ctx, msg)
-				}
-				return
-			}
-		}
-		if recorder.alert != nil {
-			recorder.alert.Recovered(ctx, "[PERCENTER][HISTORY_PIPELINE_RECOVERED] local outbox -> Redis queue is healthy")
-		}
-		log.Printf("[PERCENTER][HISTORY_OUTBOX_FLUSH] queued=%d", len(events))
-	}
-	flush()
+	}()
+
+	drainTicker := time.NewTicker(250 * time.Millisecond)
+	defer drainTicker.Stop()
+	recoveryTicker := time.NewTicker(pendingHistoryRecoveryInterval)
+	defer recoveryTicker.Stop()
+
 	for {
 		select {
 		case <-ctx.Done():
 			return
-		case <-ticker.C:
-			flush()
+		case <-drainTicker.C:
+			flushed, err := store.DrainPendingHistoryHints(ctx, readyKey, 256)
+			if err != nil {
+				handleError("DRAIN", err)
+				continue
+			}
+			if flushed > 0 {
+				log.Printf("[PERCENTER][HISTORY_PENDING_DRAIN] flushed=%d", flushed)
+			}
+			handleRecovered()
+		case <-recoveryTicker.C:
+			flushed, err := store.RecoverPendingHistory(ctx, readyKey)
+			if err != nil {
+				handleError("RECOVERY", err)
+				continue
+			}
+			if flushed > 0 {
+				log.Printf("[PERCENTER][HISTORY_PENDING_RECOVERY] flushed=%d", flushed)
+			}
+			handleRecovered()
 		}
 	}
 }

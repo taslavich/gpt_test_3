@@ -21,6 +21,7 @@ import (
 	advGrpc "gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/proto/services/adv"
 	utils "gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/utils_grpc"
 	httpServer "gitlab.com/twinbid-exchange/RTB-exchange/internal/http"
+	services "gitlab.com/twinbid-exchange/RTB-exchange/internal/services"
 	auction "gitlab.com/twinbid-exchange/RTB-exchange/internal/services/adv/service"
 	advWeb "gitlab.com/twinbid-exchange/RTB-exchange/internal/services/adv/web"
 	antiControl "gitlab.com/twinbid-exchange/RTB-exchange/internal/services/antiperekrut"
@@ -133,6 +134,19 @@ func main() {
 
 	botNotifier := utils.NewBotMessageWithTimeout(cfg.BotBaseURL, cfg.BotInternalSecret, cfg.AntiperekrutControlTimeout)
 	auctionService.SetSnapshotWarningNotifier(botNotifier.SendTextMessageToBot)
+	stateHistoryAlert := services.NewRecoveryNotifier(botNotifier, 5*time.Minute)
+	auctionService.SetPercenterStateHealthReporter(
+		func(callCtx context.Context, message string) { stateHistoryAlert.Failure(callCtx, message) },
+		func(callCtx context.Context, message string) { stateHistoryAlert.Recovered(callCtx, message) },
+	)
+	historyNotifyAlert := services.NewRecoveryNotifier(botNotifier, 5*time.Minute)
+	percenterStore.StartHistoryDirtyNotifier(ctx, func(err error) {
+		msg := fmt.Sprintf("[ADV][PERCENTER_HISTORY_DIRTY_NOTIFY_ERROR] %v", err)
+		log.Print(msg)
+		historyNotifyAlert.Failure(ctx, msg)
+	}, func() {
+		historyNotifyAlert.Recovered(ctx, "[ADV][PERCENTER_HISTORY_DIRTY_NOTIFY_RECOVERED] dirty-segment notifications are healthy")
+	})
 	var antiManager *auction.AntiPerekrutManager
 	var startupEvent antiControl.StartupEvent
 
@@ -174,6 +188,7 @@ func main() {
 		}()
 
 		if err := auctionService.RefreshFromPostgres(ctx, db); err != nil {
+			_ = botNotifier.SendTextMessageToBot(ctx, fmt.Sprintf("[ADV][INITIAL_SNAPSHOT_ERROR] %v", err))
 			log.Fatalf("initial ADV snapshot failed: %v", err)
 		}
 
@@ -202,6 +217,7 @@ func main() {
 		antiManager.Start(ctx)
 	} else {
 		if err := auctionService.RefreshFromPostgres(ctx, db); err != nil {
+			_ = botNotifier.SendTextMessageToBot(ctx, fmt.Sprintf("[ADV][INITIAL_SNAPSHOT_ERROR] %v", err))
 			log.Fatalf("initial ADV snapshot failed: %v", err)
 		}
 		log.Print("antiperekrut is disabled by ANTIPEREKRUT_ENABLED=true")

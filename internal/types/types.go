@@ -27,6 +27,7 @@ type Ortb struct {
 	WIN_CID                 string `json:"WIN_CID"`
 	WIN_CRID                string `json:"WIN_CRID"`
 	WIN_USER_ID             string `json:"WIN_USER_ID"`
+	EXACT_SEGMENT_HASH      string `json:"EXACT_SEGMENT_HASH"`
 	SEGMENT_HASH            string `json:"SEGMENT_HASH"`
 	PERCENTER_POINT_VERSION string `json:"PERCENTER_POINT_VERSION"`
 }

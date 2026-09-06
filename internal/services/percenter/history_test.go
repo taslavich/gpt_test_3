@@ -81,3 +81,30 @@ func TestInitializedHistoryEventCapturesFirstState(t *testing.T) {
 		t.Fatalf("wrong initial pricing in event: %+v", event)
 	}
 }
+
+func TestPendingHistoryDoesNotChangeBusinessStateComparison(t *testing.T) {
+	now := time.Date(2026, 9, 5, 12, 0, 0, 0, time.UTC)
+	base := BaselineStateForCampaign("seg", "campaign", 1, 0.2, 3, TypeModelSmart, ProfitModelImpression, now)
+	withPending := base
+	withPending.PendingHistory = []HistoryEvent{InitializedHistoryEvent(base, now)}
+	if !statesEqualIgnoringPendingHistory(base, withPending) {
+		t.Fatal("pending history must not participate in business-state CAS comparison")
+	}
+	withPending.SSPBid -= 0.01
+	if statesEqualIgnoringPendingHistory(base, withPending) {
+		t.Fatal("pricing changes must participate in business-state CAS comparison")
+	}
+}
+
+func TestHistoryTransportKeysStayOutsideBusinessState(t *testing.T) {
+	segmentHash := "segment-123"
+	if HistoryOutboxKey(segmentHash) == SegmentKey(segmentHash) {
+		t.Fatal("history outbox must not reuse the business-state key")
+	}
+	if HistoryPendingKey(segmentHash) == SegmentKey(segmentHash) {
+		t.Fatal("history pending marker must not reuse the business-state key")
+	}
+	if got := historySegmentHashFromPendingKey(HistoryPendingKey(segmentHash)); got != segmentHash {
+		t.Fatalf("pending marker round-trip=%q want=%q", got, segmentHash)
+	}
+}

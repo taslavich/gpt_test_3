@@ -114,8 +114,9 @@ type Campaign struct {
 
 	Creatives []*Creative
 
-	TrafficResetVersion int64
-	UpdatedAt           time.Time
+	TrafficResetVersion      int64
+	PercenterCampaignVersion int64
+	UpdatedAt                time.Time
 
 	// diagnosticIndex is assigned only when a validated snapshot is published.
 	// It gives the diagnostics-on path O(1) array access without a UUID map lookup.
@@ -145,13 +146,14 @@ type AuctionOutcome struct {
 }
 
 type candidate struct {
-	campaign        *Campaign
-	creatives       []*Creative
-	chargePrice     float64
-	effectivePrice  float64
-	advertiserPrice float64
-	segmentHash     string
-	pointVersion    uint64
+	campaign         *Campaign
+	creatives        []*Creative
+	chargePrice      float64
+	effectivePrice   float64
+	advertiserPrice  float64
+	exactSegmentHash string
+	segmentHash      string
+	pointVersion     uint64
 
 	// Diagnostics metadata is observational only. It is never read by pricing,
 	// filtering, candidate-pool construction, random selection, or bid building.
@@ -181,6 +183,11 @@ type AuctionService struct {
 	snapshotWarningMu       sync.Mutex
 	snapshotWarningSeen     map[string]struct{}
 	snapshotWarningNotifier func(context.Context, string) error
+
+	percenterHealthMu        sync.RWMutex
+	percenterStateFailure    func(context.Context, string)
+	percenterStateRecovered  func(context.Context, string)
+	percenterStateHadFailure atomic.Bool
 }
 
 func NewAuctionService(runtime *RuntimeStore, winners *WinnerStore, percents *PercentStore, quality *QualityStore, siteIDQuality *SiteIDQualityStore) *AuctionService {
@@ -219,6 +226,46 @@ func (s *AuctionService) SetSnapshotWarningNotifier(notifier func(context.Contex
 		s.snapshotWarningMu.Lock()
 		s.snapshotWarningNotifier = notifier
 		s.snapshotWarningMu.Unlock()
+	}
+}
+
+func (s *AuctionService) SetPercenterStateHealthReporter(onFailure func(context.Context, string), onRecovered func(context.Context, string)) {
+	if s == nil {
+		return
+	}
+	s.percenterHealthMu.Lock()
+	s.percenterStateFailure = onFailure
+	s.percenterStateRecovered = onRecovered
+	s.percenterHealthMu.Unlock()
+}
+
+func (s *AuctionService) reportPercenterStateFailure(ctx context.Context, message string) {
+	if s == nil {
+		return
+	}
+	// Avoid invoking notification machinery on every failed auction while Redis
+	// is down. The first failure flips the state; recovery is reported once on the
+	// first subsequent successful percenter lookup.
+	if s.percenterStateHadFailure.Load() || !s.percenterStateHadFailure.CompareAndSwap(false, true) {
+		return
+	}
+	s.percenterHealthMu.RLock()
+	fn := s.percenterStateFailure
+	s.percenterHealthMu.RUnlock()
+	if fn != nil {
+		fn(ctx, message)
+	}
+}
+
+func (s *AuctionService) reportPercenterStateRecovered(ctx context.Context) {
+	if s == nil || !s.percenterStateHadFailure.Load() || !s.percenterStateHadFailure.CompareAndSwap(true, false) {
+		return
+	}
+	s.percenterHealthMu.RLock()
+	fn := s.percenterStateRecovered
+	s.percenterHealthMu.RUnlock()
+	if fn != nil {
+		fn(ctx, "[ADV][PERCENTER_STATE_HISTORY_RECOVERED] percenter state/history Redis path is healthy")
 	}
 }
 
@@ -691,6 +738,7 @@ func (s *AuctionService) auctionCore(
 	seat := &ortb.SeatBid{Bid: make([]*ortb.Bid, 0, len(req.GetImp()))}
 	winnerUsers := make(map[string]string)
 	winnerBasePrices := make(map[string]float64)
+	winnerExactSegmentHashes := make(map[string]string)
 	winnerSegmentHashes := make(map[string]string)
 	winnerPointVersions := make(map[string]uint64)
 	infrastructureErrors := 0
@@ -938,7 +986,8 @@ func (s *AuctionService) auctionCore(
 			seat.Bid = append(seat.Bid, bid)
 			winnerUsers[impID] = cand.campaign.UserID
 			winnerBasePrices[impID] = cand.advertiserPrice
-			if cand.segmentHash != "" && cand.pointVersion > 0 {
+			if cand.segmentHash != "" {
+				winnerExactSegmentHashes[impID] = cand.exactSegmentHash
 				winnerSegmentHashes[impID] = cand.segmentHash
 				winnerPointVersions[impID] = cand.pointVersion
 			}
@@ -1011,7 +1060,7 @@ func (s *AuctionService) auctionCore(
 	logf("[ADV][AUCTION_SUCCESS] request_id=%q format=%q response_id=%q bids=%d winner_user_ids=%d", requestID, requestedFormat, responseID, len(seat.Bid), len(winnerUsers))
 	response := &ortb.BidResponse{Id: &responseID, Cur: &currency, Seatbid: []*ortb.SeatBid{seat}}
 	for impID, segmentHash := range winnerSegmentHashes {
-		percenter.AttachInternalMetadata(response, impID, segmentHash, winnerPointVersions[impID])
+		percenter.AttachInternalMetadataWithExact(response, impID, winnerExactSegmentHashes[impID], segmentHash, winnerPointVersions[impID])
 	}
 	return &AuctionOutcome{
 		BidResponse:      response,
@@ -1561,21 +1610,15 @@ func (s *AuctionService) evaluateCampaign(
 	policy := s.percenterPolicy.Normalize()
 	minMargin := policy.MinMargin(promoRemaining)
 	profitModel := percenterProfitModel(campaign.PricingModel, requestedFormat)
-	campaignVersion := int64(0)
-	if s.smartPercenter != nil {
-		version, versionErr := s.smartPercenter.EnsureCampaignVersionForContext(
-			ctx, campaignID, campaign.TypeModel, campaign.BasePrice, minMargin, percenterCampaignContext(campaign),
-		)
-		if versionErr != nil {
-			logf("[ADV][PERCENTER_CAMPAIGN_VERSION_FALLBACK] request_id=%q imp_id=%q campaign_id=%q error=%v", requestID, impID, campaignID, versionErr)
-		} else {
-			campaignVersion = version
-		}
-	}
+	// Campaign-version synchronization happens only during PostgreSQL snapshot
+	// refresh. The auction hot path reads the immutable value from RAM and does
+	// zero Redis round-trips for campaign versioning.
+	campaignVersion := campaign.PercenterCampaignVersion
 
 	advertiserPrice := campaign.BasePrice
 	deduction := s.percents.Lookup(campaign.UserID)
 	effective := CalculateEffectiveAuctionPrice(campaign.BasePrice, deduction)
+	exactSegmentHash := ""
 	segmentHash := ""
 	pointVersion := uint64(0)
 	if campaign.TypeModel == percenter.TypeModelSimple || campaign.TypeModel == percenter.TypeModelSmart {
@@ -1601,6 +1644,7 @@ func (s *AuctionService) evaluateCampaign(
 		segmentHash = percenter.HashSegment(percenter.Segment{
 			SSPDomain: sspDomain, Geo: geo, Browser: parsedUA.Browser, Device: parsedUA.Device, OS: parsedUA.OS, SiteID: siteID, CampaignID: campaignID,
 		})
+		exactSegmentHash = segmentHash
 
 		fallbackPhase := percenter.PhaseBenchmark
 		if campaign.TypeModel == percenter.TypeModelSimple {
@@ -1622,7 +1666,11 @@ func (s *AuctionService) evaluateCampaign(
 				pricing = storedPricing
 			}
 			if pricingErr != nil {
+				message := fmt.Sprintf("[ADV][PERCENTER_STATE_HISTORY_ERROR] campaign_id=%s segment_hash=%s error=%v", campaignID, segmentHash, pricingErr)
+				s.reportPercenterStateFailure(ctx, message)
 				logf("[ADV][PERCENTER_FALLBACK] request_id=%q imp_id=%q campaign_id=%q segment_hash=%q effective_segment_hash=%q error=%v", requestID, impID, campaignID, segmentHash, pricing.SegmentHash, pricingErr)
+			} else {
+				s.reportPercenterStateRecovered(ctx)
 			}
 		}
 		if strings.TrimSpace(pricing.SegmentHash) != "" {
@@ -1738,7 +1786,7 @@ func (s *AuctionService) evaluateCampaign(
 		campaignRemaining,
 		userRemaining,
 	)
-	return candidate{campaign: campaign, creatives: creatives, chargePrice: chargePrice, effectivePrice: effective, advertiserPrice: advertiserPrice, segmentHash: segmentHash, pointVersion: pointVersion}, true, diagNone, nil
+	return candidate{campaign: campaign, creatives: creatives, chargePrice: chargePrice, effectivePrice: effective, advertiserPrice: advertiserPrice, exactSegmentHash: exactSegmentHash, segmentHash: segmentHash, pointVersion: pointVersion}, true, diagNone, nil
 }
 
 func diagnosticReasonForAntiPerekrutEligibility(reason AntiPerekrutEligibilityReason) diagnosticReason {

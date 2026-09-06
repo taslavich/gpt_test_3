@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"crypto/tls"
+	"errors"
 	"fmt"
 	"log"
 	"math"
@@ -41,7 +42,6 @@ var requiredPercenterEnv = []string{
 	"REDIS_PASSWORD",
 	"REDIS_DB_ADV_PERCENTER",
 	"REDIS_PERCENTER_HISTORY_READY_KEY",
-	"PERCENTER_HISTORY_OUTBOX_PATH",
 	"REDIS_POOL_SIZE",
 	"REDIS_MIN_IDLE_CONNS",
 	"SSP_REOPTIMIZE_INTERVAL",
@@ -150,16 +150,18 @@ func run() error {
 	startupCancel()
 	log.Printf("[PERCENTER][STARTUP] Bot OK base_url=%s", cfg.BotBaseURL)
 
-	historyOutbox, err := percenter.OpenHistoryOutbox(cfg.PercenterHistoryOutboxPath)
-	if err != nil {
-		_ = bot.SendTextMessageToBot(ctx, fmt.Sprintf("[PERCENTER][HISTORY_OUTBOX_STARTUP_ERROR] %v", err))
-		return fmt.Errorf("cannot open durable percenter history outbox: %w", err)
-	}
-	defer historyOutbox.Close()
-	historyAlert := services.NewRecoveryNotifier(bot, 5*time.Minute)
-	historyRecorder := &historyRecorder{outbox: historyOutbox, alert: historyAlert}
-	go runHistoryOutboxFlusher(ctx, historyRecorder, redisClient, cfg.RedisPercenterHistoryReadyKey)
-	log.Printf("[PERCENTER][STARTUP] durable history outbox OK path=%s redis_queue=%s", cfg.PercenterHistoryOutboxPath, cfg.RedisPercenterHistoryReadyKey)
+	dirtyNotifyAlert := services.NewRecoveryNotifier(bot, 5*time.Minute)
+	pendingDeliveryAlert := services.NewRecoveryNotifier(bot, 5*time.Minute)
+	stateHistoryAlert := services.NewRecoveryNotifier(bot, 5*time.Minute)
+	store.StartHistoryDirtyNotifier(ctx, func(err error) {
+		msg := fmt.Sprintf("[PERCENTER][HISTORY_DIRTY_NOTIFY_ERROR] %v", err)
+		log.Print(msg)
+		dirtyNotifyAlert.Failure(ctx, msg)
+	}, func() {
+		dirtyNotifyAlert.Recovered(ctx, "[PERCENTER][HISTORY_DIRTY_NOTIFY_RECOVERED] dirty-segment notifications are healthy")
+	})
+	go runPendingHistoryFlusher(ctx, store, cfg.RedisPercenterHistoryReadyKey, pendingDeliveryAlert)
+	log.Printf("[PERCENTER][STARTUP] async pending history delivery enabled redis_queue=%s", cfg.RedisPercenterHistoryReadyKey)
 
 	log.Printf(
 		"[PERCENTER][STARTUP] validation complete: margin_interval=%s ssp_reoptimize=%s simple_baseline_reoptimize=%s",
@@ -169,6 +171,10 @@ func run() error {
 	)
 
 	diagnosticsServer := percenterWeb.NewServer(redisClient, store, clickhouseConn, cfg, policy)
+	diagnosticsServer.SetStateHistoryHealthReporter(
+		func(callCtx context.Context, message string) { stateHistoryAlert.Failure(callCtx, message) },
+		func(callCtx context.Context, message string) { stateHistoryAlert.Recovered(callCtx, message) },
+	)
 	router := httpServer.InitHttpRouter(chi.NewRouter())
 	percenterWeb.InitHttpRoutes(router, diagnosticsServer)
 	log.Println("HTTP routes initialized")
@@ -184,7 +190,7 @@ func run() error {
 			3*policy.MarginOptimizeInterval,
 		)
 
-		stats, err := processTick(ctx, clickhouseConn, store, cfg, policy)
+		stats, err := processTick(ctx, clickhouseConn, store, cfg, policy, stateHistoryAlert)
 		finishedAt := time.Now().UTC()
 		diagnosticsServer.RecordTickFinish(finishedAt, err)
 		if err != nil {
@@ -266,9 +272,6 @@ func validatePercenterConfig(cfg *config.PercenterConfig) error {
 	}
 	if strings.TrimSpace(cfg.RedisPercenterHistoryReadyKey) == "" {
 		return fmt.Errorf("REDIS_PERCENTER_HISTORY_READY_KEY is empty")
-	}
-	if strings.TrimSpace(cfg.PercenterHistoryOutboxPath) == "" {
-		return fmt.Errorf("PERCENTER_HISTORY_OUTBOX_PATH is empty")
 	}
 	if cfg.RedisPoolSize <= 0 {
 		return fmt.Errorf("REDIS_POOL_SIZE must be > 0, got %d", cfg.RedisPoolSize)
@@ -464,7 +467,7 @@ func scheduledRebenchmarkDue(state percenter.State, policy percenter.Policy, now
 	return !now.Before(state.LastSSPReoptimizeAt.Add(policy.SSPReoptimizeInterval)), policy.SSPReoptimizeInterval, state.LastSSPReoptimizeAt
 }
 
-func applyFallbackRoutes(ctx context.Context, store *percenter.StateStore, decisions []percenter.FallbackDecision, now time.Time) (map[string]struct{}, int, int) {
+func applyFallbackRoutes(ctx context.Context, store *percenter.StateStore, decisions []percenter.FallbackDecision, now time.Time, stateHistoryAlert *services.RecoveryNotifier) (map[string]struct{}, int, int) {
 	stableEligible := make(map[string]struct{})
 	routesChanged := 0
 	noEligible := 0
@@ -479,7 +482,11 @@ func applyFallbackRoutes(ctx context.Context, store *percenter.StateStore, decis
 
 		exactState, err := store.Load(ctx, decision.ExactHash)
 		if err != nil {
-			log.Printf("[PERCENTER][FALLBACK_STATE_LOAD_SKIP] exact_hash=%s selected_hash=%s level=%s error=%v", decision.ExactHash, decision.SelectedHash, decision.SelectedLevel, err)
+			message := fmt.Sprintf("[PERCENTER][FALLBACK_STATE_LOAD_SKIP] exact_hash=%s selected_hash=%s level=%s error=%v", decision.ExactHash, decision.SelectedHash, decision.SelectedLevel, err)
+			log.Print(message)
+			if stateHistoryAlert != nil {
+				stateHistoryAlert.Failure(ctx, message)
+			}
 			continue
 		}
 
@@ -502,7 +509,11 @@ func applyFallbackRoutes(ctx context.Context, store *percenter.StateStore, decis
 				exactState.ProfitModel,
 				now,
 			); err != nil {
-				log.Printf("[PERCENTER][FALLBACK_PARENT_INIT_SKIP] exact_hash=%s selected_hash=%s level=%s error=%v", decision.ExactHash, decision.SelectedHash, decision.SelectedLevel, err)
+				message := fmt.Sprintf("[PERCENTER][FALLBACK_PARENT_INIT_SKIP] exact_hash=%s selected_hash=%s level=%s error=%v", decision.ExactHash, decision.SelectedHash, decision.SelectedLevel, err)
+				log.Print(message)
+				if stateHistoryAlert != nil {
+					stateHistoryAlert.Failure(ctx, message)
+				}
 				continue
 			}
 		}
@@ -515,12 +526,19 @@ func applyFallbackRoutes(ctx context.Context, store *percenter.StateStore, decis
 		event := percenter.FallbackHistoryEvent(exactState, updated, decision, currentHash, now)
 		saved, err := store.SaveIfCurrentWithHistory(ctx, exactState, updated, event)
 		if err != nil {
-			log.Printf("[PERCENTER][FALLBACK_ROUTE_SAVE_ERROR] exact_hash=%s selected_hash=%s level=%s error=%v", decision.ExactHash, decision.SelectedHash, decision.SelectedLevel, err)
+			message := fmt.Sprintf("[PERCENTER][FALLBACK_ROUTE_SAVE_ERROR] exact_hash=%s selected_hash=%s level=%s error=%v", decision.ExactHash, decision.SelectedHash, decision.SelectedLevel, err)
+			log.Print(message)
+			if stateHistoryAlert != nil {
+				stateHistoryAlert.Failure(ctx, message)
+			}
 			continue
 		}
 		if !saved {
 			log.Printf("[PERCENTER][FALLBACK_ROUTE_RACE_SKIP] exact_hash=%s selected_hash=%s level=%s", decision.ExactHash, decision.SelectedHash, decision.SelectedLevel)
 			continue
+		}
+		if stateHistoryAlert != nil {
+			stateHistoryAlert.Recovered(ctx, "[PERCENTER][STATE_HISTORY_SAVE_RECOVERED] state/history writes are healthy")
 		}
 		routesChanged++
 		log.Printf(
@@ -538,7 +556,7 @@ func applyFallbackRoutes(ctx context.Context, store *percenter.StateStore, decis
 	return stableEligible, routesChanged, noEligible
 }
 
-func processTick(ctx context.Context, conn clickhouse.Conn, store *percenter.StateStore, cfg *config.PercenterConfig, policy percenter.Policy) (tickStats, error) {
+func processTick(ctx context.Context, conn clickhouse.Conn, store *percenter.StateStore, cfg *config.PercenterConfig, policy percenter.Policy, stateHistoryAlert *services.RecoveryNotifier) (tickStats, error) {
 	traffic, err := percenter.LoadFallbackTraffic(
 		ctx,
 		conn,
@@ -552,7 +570,7 @@ func processTick(ctx context.Context, conn clickhouse.Conn, store *percenter.Sta
 	}
 	decisions := percenter.BuildFallbackDecisions(traffic, percenter.FallbackMinImpressions)
 	now := time.Now().UTC()
-	stableEligible, routesChanged, noEligible := applyFallbackRoutes(ctx, store, decisions, now)
+	stableEligible, routesChanged, noEligible := applyFallbackRoutes(ctx, store, decisions, now, stateHistoryAlert)
 
 	metrics, err := percenter.LoadWindowMetrics(
 		ctx,
@@ -589,7 +607,11 @@ func processTick(ctx context.Context, conn clickhouse.Conn, store *percenter.Sta
 		if err != nil {
 			// A state can expire between the auction and the worker tick. The next
 			// ADV request recreates it from the current campaign snapshot.
-			log.Printf("[PERCENTER][STATE_LOAD_SKIP] segment_hash=%s error=%v", metric.SegmentHash, err)
+			message := fmt.Sprintf("[PERCENTER][STATE_LOAD_SKIP] segment_hash=%s error=%v", metric.SegmentHash, err)
+			log.Print(message)
+			if stateHistoryAlert != nil && !errors.Is(err, goredis.Nil) {
+				stateHistoryAlert.Failure(ctx, message)
+			}
 			continue
 		}
 		if metric.PointVersion != state.PointVersion {
@@ -607,12 +629,19 @@ func processTick(ctx context.Context, conn clickhouse.Conn, store *percenter.Sta
 		event := percenter.StateUpdateHistoryEvent(state, updated, metric, eventType, now)
 		saved, err := store.SaveIfCurrentWithHistory(ctx, state, updated, event)
 		if err != nil {
-			log.Printf("[PERCENTER][STATE_SAVE_ERROR] segment_hash=%s error=%v", metric.SegmentHash, err)
+			message := fmt.Sprintf("[PERCENTER][STATE_SAVE_ERROR] segment_hash=%s error=%v", metric.SegmentHash, err)
+			log.Print(message)
+			if stateHistoryAlert != nil {
+				stateHistoryAlert.Failure(ctx, message)
+			}
 			continue
 		}
 		if !saved {
 			log.Printf("[PERCENTER][STATE_RACE_SKIP] segment_hash=%s", metric.SegmentHash)
 			continue
+		}
+		if stateHistoryAlert != nil {
+			stateHistoryAlert.Recovered(ctx, "[PERCENTER][STATE_HISTORY_SAVE_RECOVERED] state/history writes are healthy")
 		}
 		stats.StatesUpdated++
 		if rebenchmarkDue {

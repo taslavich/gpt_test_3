@@ -42,3 +42,29 @@ func TestMergeInternalMetadataPreservesDestination(t *testing.T) {
 		t.Fatalf("merged metadata=(%q,%d), want (hash-1,3)", hash, point)
 	}
 }
+
+func TestInternalMetadataWithExact(t *testing.T) {
+	response := &ortb.BidResponse{}
+	AttachInternalMetadataWithExact(response, "imp-exact", "exact-hash", "effective-hash", 11)
+	exactHash, effectiveHash, pointVersion := InternalMetadataWithExact(response, "imp-exact")
+	if exactHash != "exact-hash" || effectiveHash != "effective-hash" || pointVersion != 11 {
+		t.Fatalf("metadata exact=%q effective=%q point=%d", exactHash, effectiveHash, pointVersion)
+	}
+	StripInternalMetadata(response)
+	if response.GetExt() != nil {
+		t.Fatalf("internal metadata was not fully stripped: %+v", response.GetExt())
+	}
+}
+
+func TestInternalMetadataPreservesKnownSegmentWithZeroPointVersion(t *testing.T) {
+	response := &ortb.BidResponse{}
+	AttachInternalMetadataWithExact(response, "imp-fallback", "exact-fallback", "effective-fallback", 0)
+
+	exactHash, effectiveHash, pointVersion := InternalMetadataWithExact(response, "imp-fallback")
+	if exactHash != "exact-fallback" || effectiveHash != "effective-fallback" || pointVersion != 0 {
+		t.Fatalf("fallback metadata exact=%q effective=%q point=%d", exactHash, effectiveHash, pointVersion)
+	}
+	if got := response.GetExt().GetValues()[internalPointPrefix+"imp-fallback"]; got != "0" {
+		t.Fatalf("raw point version=%q, want 0", got)
+	}
+}

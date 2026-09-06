@@ -14,7 +14,6 @@ import (
 	"github.com/google/uuid"
 	grpcRuntime "github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
 	"github.com/redis/go-redis/v9"
-	"gitlab.com/twinbid-exchange/RTB-exchange/internal/constants"
 	"gitlab.com/twinbid-exchange/RTB-exchange/internal/geoBadIp"
 	orchestratorProto "gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/proto/services/orchestrator"
 	"gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/proto/types/ortb_V2_5"
@@ -52,6 +51,7 @@ func writeStatsOrtbAndAddToSet(
 	siteId string,
 	siteDomain string,
 	bidFloor float64,
+	exactSegmentHash string,
 	segmentHash string,
 	pointVersion uint64,
 ) bool {
@@ -73,25 +73,13 @@ func writeStatsOrtbAndAddToSet(
 		siteId,
 		siteDomain,
 		bidFloor,
+		exactSegmentHash,
+		segmentHash,
+		pointVersion,
 	); err != nil {
 		log.Printf("failed to WriteStats in postBid_V2_5: %v", err)
 		recordRedisError(redisWriteErrorMonitor, err, sspAdapterWorkStatusURL)
 		return false
-	}
-
-	if segmentHash != "" {
-		if err := utils.WriteBytesToRedis(ctx, redisClients, globalId, constants.SEGMENT_HASH_COLUMN, []byte(segmentHash), logged); err != nil {
-			log.Printf("failed to write ORTB segment hash in postBid_V2_5: %v", err)
-			recordRedisError(redisWriteErrorMonitor, err, sspAdapterWorkStatusURL)
-			return false
-		}
-	}
-	if pointVersion > 0 {
-		if err := utils.WriteBytesToRedis(ctx, redisClients, globalId, constants.PERCENTER_POINT_VERSION_COLUMN, []byte(fmt.Sprintf("%d", pointVersion)), logged); err != nil {
-			log.Printf("failed to write ORTB percenter point version in postBid_V2_5: %v", err)
-			recordRedisError(redisWriteErrorMonitor, err, sspAdapterWorkStatusURL)
-			return false
-		}
 	}
 
 	if err := utils.AddUUIDToRedisSet(ctx, redisClients, redisSetOrtb, globalId, logged); err != nil {
@@ -284,6 +272,7 @@ func postBid_V2_5(
 			"",
 			0,
 			"",
+			"",
 			0,
 		) {
 			w.WriteHeader(http.StatusServiceUnavailable)
@@ -322,6 +311,7 @@ func postBid_V2_5(
 			"",
 			"",
 			0,
+			"",
 			"",
 			0,
 		) {
@@ -371,6 +361,7 @@ func postBid_V2_5(
 			"",
 			"",
 			0,
+			"",
 			"",
 			0,
 		) {
@@ -654,6 +645,7 @@ func postBid_V2_5(
 				siteDomain,
 				float64(uuidBidFloor[uuid]),
 				"",
+				"",
 				0,
 			) {
 				w.WriteHeader(http.StatusServiceUnavailable)
@@ -667,7 +659,7 @@ func postBid_V2_5(
 
 	if res.Code == http.StatusNoContent {
 		for impID, uuid := range impIdUuid {
-			segmentHash, pointVersion := advPercenterMetadataForImpression(res, impID, ssp_domain, countryISO, uaFileds, siteId)
+			exactSegmentHash, segmentHash, pointVersion := advPercenterMetadataForImpression(res, impID, ssp_domain, countryISO, uaFileds, siteId)
 			if !writeStatsOrtbAndAddToSet(
 				ctx,
 				redisClients,
@@ -689,6 +681,7 @@ func postBid_V2_5(
 				siteId,
 				siteDomain,
 				float64(uuidBidFloor[uuid]),
+				exactSegmentHash,
 				segmentHash,
 				pointVersion,
 			) {
@@ -704,7 +697,7 @@ func postBid_V2_5(
 	failedImpIds := append([]string(nil), res.GetFailedImpIds()...)
 	writtenImpIDs := make(map[string]struct{}, len(res.GetImpIdUuidClone()))
 	for impID, uuid := range res.GetImpIdUuidClone() {
-		segmentHash, pointVersion := advPercenterMetadataForImpression(res, impID, ssp_domain, countryISO, uaFileds, siteId)
+		exactSegmentHash, segmentHash, pointVersion := advPercenterMetadataForImpression(res, impID, ssp_domain, countryISO, uaFileds, siteId)
 		if !writeStatsOrtbAndAddToSet(
 			ctx,
 			redisClients,
@@ -726,6 +719,7 @@ func postBid_V2_5(
 			siteId,
 			siteDomain,
 			float64(uuidBidFloor[uuid]),
+			exactSegmentHash,
 			segmentHash,
 			pointVersion,
 		) {
@@ -740,14 +734,14 @@ func postBid_V2_5(
 		if _, alreadyWritten := writtenImpIDs[impID]; alreadyWritten {
 			continue
 		}
-		segmentHash, pointVersion := advPercenterMetadataForImpression(res, impID, ssp_domain, countryISO, uaFileds, siteId)
-		if segmentHash == "" || pointVersion == 0 {
+		exactSegmentHash, segmentHash, pointVersion := advPercenterMetadataForImpression(res, impID, ssp_domain, countryISO, uaFileds, siteId)
+		if segmentHash == "" {
 			continue
 		}
 		if !writeStatsOrtbAndAddToSet(
 			ctx, redisClients, redisSetOrtb, redisWriteErrorMonitor, sspAdapterWorkStatusURL, uuid, logged,
 			format, typic, ssp_domain, device.GetIp(), device.GetIpv6(), lang, countryISO, cityId,
-			http.StatusNoContent, uaFileds, siteId, siteDomain, float64(uuidBidFloor[uuid]), segmentHash, pointVersion,
+			http.StatusNoContent, uaFileds, siteId, siteDomain, float64(uuidBidFloor[uuid]), exactSegmentHash, segmentHash, pointVersion,
 		) {
 			failedImpIds = append(failedImpIds, impID)
 		}
@@ -774,22 +768,29 @@ func advPercenterMetadataForImpression(
 	geo string,
 	uaFields ua.UAFields,
 	siteID string,
-) (string, uint64) {
+) (string, string, uint64) {
 	if res == nil || impID == "" {
-		return "", 0
+		return "", "", 0
 	}
-	if segmentHash, pointVersion := percenter.InternalMetadata(res.GetBidResponse(), impID); segmentHash != "" {
-		return segmentHash, pointVersion
+	if exactHash, segmentHash, pointVersion := percenter.InternalMetadataWithExact(res.GetBidResponse(), impID); segmentHash != "" {
+		if exactHash == "" {
+			if campaignID := campaignIDForImpression(res.GetBidResponse(), impID); campaignID != "" {
+				exactHash = percenter.HashSegment(percenter.Segment{
+					SSPDomain: sspDomain, Geo: geo, Browser: uaFields.Browser, Device: uaFields.Device, OS: uaFields.OS, SiteID: siteID, CampaignID: campaignID,
+				})
+			}
+		}
+		return exactHash, segmentHash, pointVersion
 	}
 	// Backward-compatible fallback for responses produced by an older ADV.
 	if res.GetWinnerUserIds()[impID] == "" {
-		return "", 0
+		return "", "", 0
 	}
 	campaignID := campaignIDForImpression(res.GetBidResponse(), impID)
 	if campaignID == "" {
-		return "", 0
+		return "", "", 0
 	}
-	return percenter.HashSegment(percenter.Segment{
+	exactHash := percenter.HashSegment(percenter.Segment{
 		SSPDomain:  sspDomain,
 		Geo:        geo,
 		Browser:    uaFields.Browser,
@@ -797,7 +798,8 @@ func advPercenterMetadataForImpression(
 		OS:         uaFields.OS,
 		SiteID:     siteID,
 		CampaignID: campaignID,
-	}), 0
+	})
+	return exactHash, exactHash, 0
 }
 
 func campaignIDForImpression(response *ortb_V2_5.BidResponse, impID string) string {

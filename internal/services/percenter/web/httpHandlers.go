@@ -227,6 +227,8 @@ func (a *Server) handleSegmentEvaluate(w http.ResponseWriter, r *http.Request) {
 	historyEvent := percenter.StateUpdateHistoryEvent(state, next, metric, "state_updated", now)
 	saved, err := a.store.SaveIfCurrentWithHistory(r.Context(), state, next, historyEvent)
 	if err != nil {
+		message := fmt.Sprintf("[PERCENTER][HTTP][STATE_HISTORY_SAVE_ERROR] segment_hash=%s error=%v", state.SegmentHash, err)
+		a.reportStateHistoryFailure(r.Context(), message)
 		writeAPIError(w, http.StatusBadGateway, fmt.Sprintf("save state with history: %v", err))
 		return
 	}
@@ -238,6 +240,7 @@ func (a *Server) handleSegmentEvaluate(w http.ResponseWriter, r *http.Request) {
 		})
 		return
 	}
+	a.reportStateHistoryRecovered(r.Context(), "[PERCENTER][STATE_HISTORY_SAVE_RECOVERED] state/history writes are healthy")
 	response["applied"] = true
 	response["next_state"] = next
 	log.Printf("[PERCENTER][HTTP][EVALUATE] segment_hash=%s dry_run=false changed=true applied=true point_version=%d", state.SegmentHash, next.PointVersion)
@@ -266,6 +269,8 @@ func (a *Server) handleSegmentRebenchmark(w http.ResponseWriter, r *http.Request
 	historyEvent := percenter.StateUpdateHistoryEvent(state, next, percenter.Metrics{}, "rebenchmark", now)
 	saved, err := a.store.SaveIfCurrentWithHistory(r.Context(), state, next, historyEvent)
 	if err != nil {
+		message := fmt.Sprintf("[PERCENTER][HTTP][STATE_HISTORY_SAVE_ERROR] segment_hash=%s error=%v", state.SegmentHash, err)
+		a.reportStateHistoryFailure(r.Context(), message)
 		writeAPIError(w, http.StatusBadGateway, fmt.Sprintf("save state with history: %v", err))
 		return
 	}
@@ -276,6 +281,7 @@ func (a *Server) handleSegmentRebenchmark(w http.ResponseWriter, r *http.Request
 		})
 		return
 	}
+	a.reportStateHistoryRecovered(r.Context(), "[PERCENTER][STATE_HISTORY_SAVE_RECOVERED] state/history writes are healthy")
 	log.Printf("[PERCENTER][HTTP][REBENCHMARK] segment_hash=%s dry_run=false applied=true point_version=%d", state.SegmentHash, next.PointVersion)
 	writeJSON(w, http.StatusOK, map[string]interface{}{
 		"applied":    true,

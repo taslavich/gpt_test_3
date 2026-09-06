@@ -46,6 +46,7 @@ var ortbHMGetFields = []string{
 	constants.WIN_CID_COLUMN,
 	constants.WIN_CRID_COLUMN,
 	constants.WIN_USER_ID_COLUMN,
+	constants.EXACT_SEGMENT_HASH_COLUMN,
 	constants.SEGMENT_HASH_COLUMN,
 	constants.PERCENTER_POINT_VERSION_COLUMN,
 }
@@ -109,8 +110,9 @@ func buildOrtbKafkaMessage(
 		WIN_CID:                 valueAsString(values, 22),
 		WIN_CRID:                valueAsString(values, 23),
 		WIN_USER_ID:             valueAsString(values, 24),
-		SEGMENT_HASH:            valueAsString(values, 25),
-		PERCENTER_POINT_VERSION: valueAsString(values, 26),
+		EXACT_SEGMENT_HASH:      valueAsString(values, 25),
+		SEGMENT_HASH:            valueAsString(values, 26),
+		PERCENTER_POINT_VERSION: valueAsString(values, 27),
 	}
 
 	if !HasDataOrtb(rawRecord) {
@@ -122,8 +124,10 @@ func buildOrtbKafkaMessage(
 		log.Printf("Ошибка парсинга bidResponses из Redis (index 7): %v", err)
 		bidResponses = make(map[string]string)
 	}
-	exactSegmentHash := ""
-	if rawRecord.WIN_CID != "" {
+	exactSegmentHash := rawRecord.EXACT_SEGMENT_HASH
+	if exactSegmentHash == "" && rawRecord.WIN_CID != "" {
+		// Backward-compatible reconstruction for ORTB rows produced before the
+		// exact hash was written directly by spp-adapter.
 		exactSegmentHash = percenter.HashSegment(percenter.Segment{
 			SSPDomain: rawRecord.SPP_DOMAIN, Geo: rawRecord.GEO, Browser: rawRecord.BROWSER, Device: rawRecord.DEVICE, OS: rawRecord.OS, SiteID: rawRecord.SITE_ID, CampaignID: rawRecord.WIN_CID,
 		})

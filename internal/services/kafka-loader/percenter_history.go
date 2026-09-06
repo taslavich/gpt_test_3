@@ -122,36 +122,20 @@ func cleanupPercenterHistoryProcessing(ctx context.Context, client *redis.Client
 	return nil
 }
 
-func validatePercenterHistoryListType(ctx context.Context, client *redis.Client, key string) error {
-	keyType, err := client.Type(ctx, key).Result()
-	if err != nil {
-		return err
-	}
-	if keyType != "none" && keyType != "list" {
-		return fmt.Errorf("Redis key %s has unexpected type: %s", key, keyType)
-	}
-	return nil
-}
-
 func restorePercenterHistoryBatch(ctx context.Context, client *redis.Client, readyKey, processingKey string, raws []string) error {
 	if len(raws) == 0 {
 		return nil
 	}
-	if err := validatePercenterHistoryListType(ctx, client, readyKey); err != nil {
-		return err
-	}
-	if err := validatePercenterHistoryListType(ctx, client, processingKey); err != nil {
-		return err
-	}
 
-	_, err := client.TxPipelined(ctx, func(pipe redis.Pipeliner) error {
-		for _, raw := range raws {
-			pipe.LRem(ctx, processingKey, 1, raw)
-			pipe.RPush(ctx, readyKey, raw)
-		}
-		return nil
-	})
-	return err
+	// RPOPLPUSH is a single atomic Redis command. Using the same recovery path
+	// here avoids a multi-command LREM+RPUSH transaction entirely, so a wrong
+	// destination type cannot remove an item from processing before the restore
+	// fails. If the process dies halfway through, the next batch startup resumes
+	// recovery from the remaining processing list.
+	if err := recoverPercenterHistoryProcessing(ctx, client, readyKey, processingKey); err != nil {
+		return fmt.Errorf("restore percenter history batch: %w", err)
+	}
+	return nil
 }
 
 func moveMalformedHistoryToDead(ctx context.Context, client *redis.Client, processingKey, deadKey, raw string) error {
@@ -194,7 +178,7 @@ func moveMalformedHistoryToDead(ctx context.Context, client *redis.Client, proce
 				return nil
 			})
 			return err
-		}, processingKey)
+		}, processingKey, deadKey)
 		if err == nil {
 			return nil
 		}

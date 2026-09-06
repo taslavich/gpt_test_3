@@ -1,6 +1,7 @@
 package web
 
 import (
+	"context"
 	"sync"
 	"time"
 
@@ -26,6 +27,9 @@ type Server struct {
 
 	mu       sync.RWMutex
 	lastTick TickStatus
+
+	stateHistoryFailure   func(context.Context, string)
+	stateHistoryRecovered func(context.Context, string)
 }
 
 func NewServer(
@@ -42,6 +46,40 @@ func NewServer(
 		cfg:        cfg,
 		policy:     policy.Normalize(),
 		startedAt:  time.Now().UTC(),
+	}
+}
+
+func (s *Server) SetStateHistoryHealthReporter(onFailure func(context.Context, string), onRecovered func(context.Context, string)) {
+	if s == nil {
+		return
+	}
+	s.mu.Lock()
+	s.stateHistoryFailure = onFailure
+	s.stateHistoryRecovered = onRecovered
+	s.mu.Unlock()
+}
+
+func (s *Server) reportStateHistoryFailure(ctx context.Context, message string) {
+	if s == nil {
+		return
+	}
+	s.mu.RLock()
+	fn := s.stateHistoryFailure
+	s.mu.RUnlock()
+	if fn != nil {
+		fn(ctx, message)
+	}
+}
+
+func (s *Server) reportStateHistoryRecovered(ctx context.Context, message string) {
+	if s == nil {
+		return
+	}
+	s.mu.RLock()
+	fn := s.stateHistoryRecovered
+	s.mu.RUnlock()
+	if fn != nil {
+		fn(ctx, message)
 	}
 }
 

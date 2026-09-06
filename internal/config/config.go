@@ -398,10 +398,9 @@ type PercenterConfig struct {
 	ClickhouseConfig
 	RedisConfig
 	PercenterAlgorithmConfig
-	HttpServer                 HttpServer
-	BotBaseURL                 string `yaml:"BOT_BASE_URL" env:"BOT_BASE_URL"`
-	BotInternalSecret          string `yaml:"BOT_INTERNAL_SECRET" env:"BOT_INTERNAL_SECRET"`
-	PercenterHistoryOutboxPath string `yaml:"PERCENTER_HISTORY_OUTBOX_PATH" env:"PERCENTER_HISTORY_OUTBOX_PATH" env-default:"/var/lib/twinbid/percenter/history-outbox.db"`
+	HttpServer        HttpServer
+	BotBaseURL        string `yaml:"BOT_BASE_URL" env:"BOT_BASE_URL"`
+	BotInternalSecret string `yaml:"BOT_INTERNAL_SECRET" env:"BOT_INTERNAL_SECRET"`
 }
 
 type ClickhouseLoaderConfig struct {

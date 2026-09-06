@@ -15,6 +15,7 @@ import (
 
 	"github.com/lib/pq"
 	filterV2 "gitlab.com/twinbid-exchange/RTB-exchange/internal/filterV2"
+	"gitlab.com/twinbid-exchange/RTB-exchange/internal/services/percenter"
 )
 
 var weekdayIndex = map[string]int{
@@ -118,16 +119,36 @@ func (s *AuctionService) RefreshFromPostgres(ctx context.Context, db *sql.DB) er
 	}
 	if s != nil && s.smartPercenter != nil && snapshot != nil {
 		policy := s.percenterPolicy.Normalize()
+		requests := make([]percenter.CampaignVersionRequest, 0, len(snapshot.Campaigns))
 		for _, campaign := range snapshot.Campaigns {
 			if campaign == nil || strings.TrimSpace(campaign.ID) == "" {
 				continue
 			}
-			minMargin := policy.MinMargin(snapshot.UserPromoSpendRemaining[campaign.UserID])
-			if _, versionErr := s.smartPercenter.EnsureCampaignVersionForContext(
-				ctx, campaign.ID, campaign.TypeModel, campaign.BasePrice, minMargin, percenterCampaignContext(campaign),
-			); versionErr != nil {
-				log.Printf("ADV snapshot: percenter campaign version sync failed campaign_id=%s: %v", campaign.ID, versionErr)
+			requests = append(requests, percenter.CampaignVersionRequest{
+				CampaignID:     campaign.ID,
+				TypeModel:      campaign.TypeModel,
+				OriginalBid:    campaign.BasePrice,
+				MinMargin:      policy.MinMargin(snapshot.UserPromoSpendRemaining[campaign.UserID]),
+				PricingContext: percenterCampaignContext(campaign),
+			})
+		}
+		versions, versionErr := s.smartPercenter.EnsureCampaignVersionsForContext(ctx, requests)
+		if versionErr != nil {
+			// Do not publish a snapshot with an unknown percenter version. The
+			// caller keeps the previous immutable snapshot, preserving pricing
+			// behavior while Redis recovers. This Redis work is outside the
+			// auction request path and its read fast-path is pipelined.
+			return fmt.Errorf("sync percenter campaign versions: %w", versionErr)
+		}
+		for _, campaign := range snapshot.Campaigns {
+			if campaign == nil || strings.TrimSpace(campaign.ID) == "" {
+				continue
 			}
+			version := versions[campaign.ID]
+			if version < 1 {
+				return fmt.Errorf("sync percenter campaign version campaign_id=%s: missing version after batch sync", campaign.ID)
+			}
+			campaign.PercenterCampaignVersion = version
 		}
 	}
 	return s.PublishSnapshot(snapshot)
