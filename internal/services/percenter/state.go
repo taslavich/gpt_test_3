@@ -251,8 +251,9 @@ type cachedState struct {
 }
 
 const (
-	stateCacheShardCount      = 256
-	stateCacheCleanupPerWrite = 16
+	stateCacheShardCount         = 256
+	stateCacheCleanupPerWrite    = 16
+	stateCacheMaxEntriesPerShard = 8192
 )
 
 type stateCacheShard struct {
@@ -472,7 +473,6 @@ func (s *StateStore) putCache(state State, now time.Time) {
 	shard := &s.cacheShards[cacheShardIndex(state.SegmentHash)]
 	cutoff := now.Add(-s.policy.ADVCacheTTL)
 	shard.mu.Lock()
-	shard.items[state.SegmentHash] = cachedState{state: state, loadedAt: now}
 
 	// Expiration cleanup is deliberately bounded. Each write inspects at most 16
 	// entries in its own shard, so cleanup work in the auction path is O(1).
@@ -486,6 +486,18 @@ func (s *StateStore) putCache(state State, now time.Time) {
 			delete(shard.items, hash)
 		}
 	}
+
+	// Keep cache memory bounded even under extreme exact-segment cardinality.
+	// Updating an existing key never evicts another entry. For a new key at the
+	// hard limit, evict one entry from this shard only; Go map iteration gives us
+	// a constant-work victim without an O(N) LRU scan or a global lock.
+	if _, exists := shard.items[state.SegmentHash]; !exists && len(shard.items) >= stateCacheMaxEntriesPerShard {
+		for victim := range shard.items {
+			delete(shard.items, victim)
+			break
+		}
+	}
+	shard.items[state.SegmentHash] = cachedState{state: state, loadedAt: now}
 	shard.mu.Unlock()
 }
 

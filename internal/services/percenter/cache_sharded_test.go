@@ -54,3 +54,29 @@ func TestShardedCacheConcurrentAccess(t *testing.T) {
 	}
 	wg.Wait()
 }
+
+func TestShardedCacheHardLimitPerShard(t *testing.T) {
+	policy := Policy{ADVCacheTTL: 5 * time.Second}.Normalize()
+	store := NewStateStore(nil, policy)
+	now := time.Date(2026, 9, 7, 12, 0, 0, 0, time.UTC)
+
+	// Every hash starts with 00, so all entries intentionally land in shard 0.
+	for i := 0; i < stateCacheMaxEntriesPerShard+128; i++ {
+		hash := fmt.Sprintf("00%062x", i)
+		state := BaselineStateForCampaign(hash, "campaign", 1, 0.2, 1, TypeModelSmart, ProfitModelImpression, now)
+		store.putCache(state, now)
+	}
+
+	shard := &store.cacheShards[0]
+	shard.mu.RLock()
+	size := len(shard.items)
+	shard.mu.RUnlock()
+	if size > stateCacheMaxEntriesPerShard {
+		t.Fatalf("cache shard exceeded hard limit: size=%d limit=%d", size, stateCacheMaxEntriesPerShard)
+	}
+
+	latestHash := fmt.Sprintf("00%062x", stateCacheMaxEntriesPerShard+127)
+	if _, ok := store.cachedForCampaign(latestHash, 1, 0.2, 1, TypeModelSmart, ProfitModelImpression, now.Add(time.Second)); !ok {
+		t.Fatal("latest inserted cache entry was unexpectedly evicted")
+	}
+}

@@ -111,6 +111,17 @@ type snapshotLoadWarning struct {
 }
 
 func (s *AuctionService) RefreshFromPostgres(ctx context.Context, db *sql.DB) error {
+	return s.refreshFromPostgres(ctx, db, true)
+}
+
+// RefreshFromPostgresStrict is used during ADV startup. Unlike the periodic
+// runtime refresh, startup must not publish a snapshot unless percenter campaign
+// versions were successfully synchronized with Redis DB7.
+func (s *AuctionService) RefreshFromPostgresStrict(ctx context.Context, db *sql.DB) error {
+	return s.refreshFromPostgres(ctx, db, false)
+}
+
+func (s *AuctionService) refreshFromPostgres(ctx context.Context, db *sql.DB, percenterFailOpen bool) error {
 	snapshot, warnings, err := loadSnapshotFromPostgres(ctx, db)
 	s.reportSnapshotWarnings(ctx, warnings)
 	if err != nil {
@@ -149,6 +160,12 @@ func (s *AuctionService) RefreshFromPostgres(ctx context.Context, db *sql.DB) er
 			}
 		}
 		if versionErr != nil {
+			if !percenterFailOpen {
+				message := fmt.Sprintf("[ADV][PERCENTER_VERSION_SYNC_ERROR][startup] error=%v", versionErr)
+				log.Print(message)
+				s.reportPercenterStateFailure(ctx, message)
+				return fmt.Errorf("synchronize percenter campaign versions during startup: %w", versionErr)
+			}
 			reused, baseline := applyFailOpenPercenterVersions(s.snapshot.Load(), snapshot, policy)
 			message := fmt.Sprintf("[ADV][PERCENTER_VERSION_SYNC_ERROR] error=%v reused_previous=%d baseline_version_zero=%d", versionErr, reused, baseline)
 			log.Print(message)

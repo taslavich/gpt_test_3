@@ -188,7 +188,7 @@ func main() {
 			}
 		}()
 
-		if err := auctionService.RefreshFromPostgres(ctx, db); err != nil {
+		if err := auctionService.RefreshFromPostgresStrict(ctx, db); err != nil {
 			_ = botNotifier.SendTextMessageToBot(ctx, fmt.Sprintf("[ADV][INITIAL_SNAPSHOT_ERROR] %v", err))
 			log.Fatalf("initial ADV snapshot failed: %v", err)
 		}
@@ -217,7 +217,7 @@ func main() {
 		}
 		antiManager.Start(ctx)
 	} else {
-		if err := auctionService.RefreshFromPostgres(ctx, db); err != nil {
+		if err := auctionService.RefreshFromPostgresStrict(ctx, db); err != nil {
 			_ = botNotifier.SendTextMessageToBot(ctx, fmt.Sprintf("[ADV][INITIAL_SNAPSHOT_ERROR] %v", err))
 			log.Fatalf("initial ADV snapshot failed: %v", err)
 		}
@@ -251,6 +251,12 @@ func main() {
 	// The control endpoint must be reachable before startup fan-out, while the
 	// auction gRPC server must not become ready until the initial attempt has
 	// addressed every configured ADV URL and at least one durable ACK exists.
+	// Re-check DB7 immediately before exposing any ADV endpoint. The initial
+	// snapshot above is strict as well, so a DB7 failure anywhere in the startup
+	// synchronization path prevents ADV from becoming ready.
+	if err := percenterRedis.Ping(ctx).Err(); err != nil {
+		log.Fatalf("ADV percenter Redis unavailable before server start: %v", err)
+	}
 	go httpServer.RunHttpServer(ctx, router, cfg.HttpServer.Host, cfg.HttpServer.Port)
 	if cfg.AntiperekrutEnabled {
 		err = antiControl.FanoutStartupEvent(ctx, antiControl.ClientConfig{
