@@ -20,12 +20,12 @@ KAFKA_SERVICES=(
 DATA_PIPELINE_SERVICES=(
     "${KAFKA_SERVICES[@]}"
     "rtb-clickhouse-loader"
+    "rtb-percenter"
 )
 
-# Core RTB. ADV поднимается первым, затем percenter и остальные сервисы.
+# Core RTB. ADV поднимается первым, затем остальные сервисы.
 CORE_SERVICES=(
     "rtb-adv"
-    "rtb-percenter"
     "rtb-bid-engine"
     "rtb-orchestrator"
     "rtb-router"
@@ -135,14 +135,17 @@ wait_for_loaders() {
 case "$1" in
     # --- Data Pipeline (D) ---
     startD|start-data-pipeline)
-        echo "🚀 Starting Data Pipeline services (Kafka-loader, ClickHouse-loader)..."
-        start_services "${DATA_PIPELINE_SERVICES[@]}"
+        echo "🚀 Starting Data Pipeline services (Kafka-loader, ClickHouse-loader, Percenter)..."
+        start_services "${KAFKA_SERVICES[@]}"
+        start_services "rtb-clickhouse-loader"
         wait_for_loaders
+        start_services "rtb-percenter"
         echo "✅ Data pipeline fully started"
         ;;
 
     stopD|stop-data-pipeline)
         echo "🛑 Stopping Data Pipeline..."
+        stop_services "rtb-percenter"
         stop_services "rtb-clickhouse-loader"
         stop_services "rtb-kafka-loader"
         echo "✅ Data pipeline stopped"
@@ -156,10 +159,12 @@ case "$1" in
 
         go build -o ./cmd/clickhouse-loader/clickhouse-loader ./cmd/clickhouse-loader
         go build -o ./cmd/kafka-loader/kafka-loader ./cmd/kafka-loader
+        go build -o ./cmd/percenter/percenter ./cmd/percenter
 
         chmod +x \
             ./cmd/clickhouse-loader/clickhouse-loader \
-            ./cmd/kafka-loader/kafka-loader
+            ./cmd/kafka-loader/kafka-loader \
+            ./cmd/percenter/percenter
 
         echo "✅ Data Pipeline rebuild completed"
 
@@ -191,9 +196,6 @@ case "$1" in
         start_services "rtb-adv"
         wait_for_adv
 
-        # Percenter использует Redis/ClickHouse и должен жить вместе с Core.
-        start_services "rtb-percenter"
-
         # После готовности ADV запускаем остальные сервисы по зависимостям.
         start_services "rtb-bid-engine"
         start_services "rtb-orchestrator"
@@ -213,7 +215,6 @@ case "$1" in
         stop_services "rtb-router"
         stop_services "rtb-orchestrator"
         stop_services "rtb-bid-engine"
-        stop_services "rtb-percenter"
         stop_services "rtb-adv"
 
         echo "✅ Core services stopped"
@@ -229,7 +230,6 @@ case "$1" in
         go build -o ./cmd/orchestrator/orchestrator ./cmd/orchestrator
         go build -o ./cmd/bid-engine/bid-engine ./cmd/bid-engine
         go build -o ./cmd/adv/adv ./cmd/adv
-        go build -o ./cmd/percenter/percenter ./cmd/percenter
         go build -o ./cmd/spp-adapter/spp-adapter ./cmd/spp-adapter
         go build -o ./cmd/adm-adapter/adm-adapter ./cmd/adm-adapter
 
@@ -238,7 +238,6 @@ case "$1" in
             ./cmd/orchestrator/orchestrator \
             ./cmd/bid-engine/bid-engine \
             ./cmd/adv/adv \
-            ./cmd/percenter/percenter \
             ./cmd/spp-adapter/spp-adapter \
             ./cmd/adm-adapter/adm-adapter
 
@@ -386,16 +385,16 @@ case "$1" in
         echo "Usage: $0 <command>"
         echo ""
         echo "Data Pipeline (D):"
-        echo "  startD              Start Kafka-loader and ClickHouse-loader"
+        echo "  startD              Start Kafka-loader, ClickHouse-loader and percenter"
         echo "  stopD               Stop Data Pipeline services"
-        echo "  restartD            Restart Data Pipeline"
+        echo "  restartD            Rebuild + restart Data Pipeline, including percenter"
         echo "  statusD             Show Data Pipeline status"
-        echo "  updateD             Git pull + build only loaders + restart Data Pipeline"
+        echo "  updateD             Git pull + build Data Pipeline + percenter + restart"
         echo ""
         echo "Core RTB Services (C):"
-        echo "  startC              Start ADV, percenter, bid-engine, router, orchestrator, spp-adapter and adm-adapter"
+        echo "  startC              Start ADV, bid-engine, router, orchestrator, spp-adapter and adm-adapter"
         echo "  stopC               Stop Core services"
-        echo "  restartC            Rebuild + restart Core services, including percenter"
+        echo "  restartC            Rebuild + restart Core services"
         echo "  statusC             Show Core services status"
         echo "  updateC             Git pull + build Core + restart Core"
         echo ""
@@ -411,12 +410,12 @@ case "$1" in
         echo "  deploy              Build and start everything"
         echo ""
         echo "Examples:"
-        echo "  $0 startD           # Запустить только данные"
-        echo "  $0 startC           # Запустить только RTB + percenter"
-        echo "  $0 restartD         # Перезапустить данные"
-        echo "  $0 restartC         # Пересобрать и перезапустить RTB + percenter"
-        echo "  $0 updateD          # Обновить только загрузчики"
-        echo "  $0 updateC          # Обновить RTB ядро + percenter"
+        echo "  $0 startD           # Запустить инфраструктуру + percenter"
+        echo "  $0 startC           # Запустить только RTB"
+        echo "  $0 restartD         # Пересобрать и перезапустить инфраструктуру + percenter"
+        echo "  $0 restartC         # Пересобрать и перезапустить RTB"
+        echo "  $0 updateD          # Обновить инфраструктуру + percenter"
+        echo "  $0 updateC          # Обновить RTB ядро"
         ;;
 
     *)
