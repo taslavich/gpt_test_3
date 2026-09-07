@@ -538,7 +538,7 @@ ALTER TABLE {db}.fact_clicks
 ALTER TABLE {db}.fact_clicks_wins
     ADD COLUMN IF NOT EXISTS clicks_wins_uuid UUID AFTER uuid;
 
--- Percenter segment metadata is additive; historical rows keep empty/zero defaults.
+-- Percenter segment metadata is additive, historical rows keep empty/zero defaults.
 ALTER TABLE {db}.fact_impressions ADD COLUMN IF NOT EXISTS exact_segment_hash String DEFAULT '';
 ALTER TABLE {db}.fact_impressions ADD COLUMN IF NOT EXISTS segment_hash String DEFAULT '';
 ALTER TABLE {db}.fact_impressions ADD COLUMN IF NOT EXISTS percenter_point_version UInt64 DEFAULT 0;
