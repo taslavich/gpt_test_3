@@ -139,6 +139,7 @@ func main() {
 		func(callCtx context.Context, message string) { stateHistoryAlert.Failure(callCtx, message) },
 		func(callCtx context.Context, message string) { stateHistoryAlert.Recovered(callCtx, message) },
 	)
+	auctionService.StartPercenterStateHealthReporter(ctx, 45*time.Second)
 	historyNotifyAlert := services.NewRecoveryNotifier(botNotifier, 5*time.Minute)
 	percenterStore.StartHistoryDirtyNotifier(ctx, func(err error) {
 		msg := fmt.Sprintf("[ADV][PERCENTER_HISTORY_DIRTY_NOTIFY_ERROR] %v", err)

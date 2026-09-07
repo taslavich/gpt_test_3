@@ -250,25 +250,40 @@ type cachedState struct {
 	loadedAt time.Time
 }
 
-type StateStore struct {
-	redis          *redis.Client
-	policy         Policy
-	mu             sync.RWMutex
-	cache          map[string]cachedState
-	lastCacheSweep time.Time
+const (
+	stateCacheShardCount      = 256
+	stateCacheCleanupPerWrite = 16
+)
 
+type stateCacheShard struct {
+	mu    sync.RWMutex
+	items map[string]cachedState
+}
+
+type StateStore struct {
+	redis  *redis.Client
+	policy Policy
+
+	// Local in-process cache only. These are NOT Redis shards.
+	// Sharding removes the single global cache mutex from the auction path.
+	cacheShards [stateCacheShardCount]stateCacheShard
+
+	historyMu         sync.RWMutex
 	historyDirtyKey   string
 	historyNotifyCh   chan string
 	historyNotifyOnce sync.Once
 }
 
 func NewStateStore(client *redis.Client, policy Policy) *StateStore {
-	return &StateStore{
+	s := &StateStore{
 		redis:           client,
 		policy:          policy.Normalize(),
-		cache:           make(map[string]cachedState),
 		historyNotifyCh: make(chan string, 4096),
 	}
+	for i := range s.cacheShards {
+		s.cacheShards[i].items = make(map[string]cachedState)
+	}
+	return s
 }
 
 // ConfigureHistoryQueue keeps the shared ready queue out of segment CAS. The
@@ -279,18 +294,18 @@ func (s *StateStore) ConfigureHistoryQueue(readyKey string) {
 	if s == nil {
 		return
 	}
-	s.mu.Lock()
+	s.historyMu.Lock()
 	s.historyDirtyKey = HistoryDirtyKey(readyKey)
-	s.mu.Unlock()
+	s.historyMu.Unlock()
 }
 
 func (s *StateStore) historyDirtySetKey() string {
 	if s == nil {
 		return ""
 	}
-	s.mu.RLock()
+	s.historyMu.RLock()
 	key := s.historyDirtyKey
-	s.mu.RUnlock()
+	s.historyMu.RUnlock()
 	return key
 }
 
@@ -389,14 +404,56 @@ func (s *StateStore) cached(hash string, originalBid, minMargin float64, revisio
 	return s.cachedForCampaign(hash, originalBid, minMargin, revision, TypeModelSmart, ProfitModelImpression, now)
 }
 
+func cacheHexNibble(value byte) (int, bool) {
+	switch {
+	case value >= '0' && value <= '9':
+		return int(value - '0'), true
+	case value >= 'a' && value <= 'f':
+		return int(value-'a') + 10, true
+	case value >= 'A' && value <= 'F':
+		return int(value-'A') + 10, true
+	default:
+		return 0, false
+	}
+}
+
+func cacheShardIndex(hash string) int {
+	// Segment hashes are hexadecimal, so the first byte already provides an even
+	// 0..255 distribution without re-hashing the whole string on every request.
+	if len(hash) >= 2 {
+		hi, okHi := cacheHexNibble(hash[0])
+		lo, okLo := cacheHexNibble(hash[1])
+		if okHi && okLo {
+			return (hi << 4) | lo
+		}
+	}
+	// Compatibility fallback for any non-hex key.
+	var value uint32 = 2166136261
+	for i := 0; i < len(hash); i++ {
+		value ^= uint32(hash[i])
+		value *= 16777619
+	}
+	return int(value % stateCacheShardCount)
+}
+
 func (s *StateStore) cachedForCampaign(hash string, originalBid, minMargin float64, revision int64, typeModel int, profitModel string, now time.Time) (State, bool) {
 	if s == nil || s.policy.ADVCacheTTL <= 0 {
 		return State{}, false
 	}
-	s.mu.RLock()
-	item, ok := s.cache[hash]
-	s.mu.RUnlock()
-	if !ok || now.Sub(item.loadedAt) > s.policy.ADVCacheTTL || !item.state.ValidForCampaign(originalBid, minMargin, revision, typeModel, profitModel) {
+	shard := &s.cacheShards[cacheShardIndex(hash)]
+	shard.mu.RLock()
+	item, ok := shard.items[hash]
+	shard.mu.RUnlock()
+	if !ok {
+		return State{}, false
+	}
+	if now.Sub(item.loadedAt) > s.policy.ADVCacheTTL || !item.state.ValidForCampaign(originalBid, minMargin, revision, typeModel, profitModel) {
+		// Delete only this stale/invalid entry. No global O(N) sweep or global lock.
+		shard.mu.Lock()
+		if current, exists := shard.items[hash]; exists && current.loadedAt.Equal(item.loadedAt) {
+			delete(shard.items, hash)
+		}
+		shard.mu.Unlock()
 		return State{}, false
 	}
 	return item.state, true
@@ -412,18 +469,24 @@ func (s *StateStore) putCache(state State, now time.Time) {
 	// Pending history is transport state, not pricing state. Do not retain it in
 	// the hot ADV cache; CAS helpers explicitly merge pending events from Redis.
 	state.PendingHistory = nil
-	s.mu.Lock()
-	s.cache[state.SegmentHash] = cachedState{state: state, loadedAt: now}
-	if s.lastCacheSweep.IsZero() || now.Sub(s.lastCacheSweep) >= time.Minute {
-		cutoff := now.Add(-s.policy.ADVCacheTTL)
-		for hash, item := range s.cache {
-			if item.loadedAt.Before(cutoff) {
-				delete(s.cache, hash)
-			}
+	shard := &s.cacheShards[cacheShardIndex(state.SegmentHash)]
+	cutoff := now.Add(-s.policy.ADVCacheTTL)
+	shard.mu.Lock()
+	shard.items[state.SegmentHash] = cachedState{state: state, loadedAt: now}
+
+	// Expiration cleanup is deliberately bounded. Each write inspects at most 16
+	// entries in its own shard, so cleanup work in the auction path is O(1).
+	checked := 0
+	for hash, item := range shard.items {
+		if checked >= stateCacheCleanupPerWrite {
+			break
 		}
-		s.lastCacheSweep = now
+		checked++
+		if item.loadedAt.Before(cutoff) {
+			delete(shard.items, hash)
+		}
 	}
-	s.mu.Unlock()
+	shard.mu.Unlock()
 }
 
 func (s *StateStore) Load(ctx context.Context, segmentHash string) (State, error) {

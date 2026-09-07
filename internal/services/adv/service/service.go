@@ -184,10 +184,15 @@ type AuctionService struct {
 	snapshotWarningSeen     map[string]struct{}
 	snapshotWarningNotifier func(context.Context, string) error
 
-	percenterHealthMu        sync.RWMutex
-	percenterStateFailure    func(context.Context, string)
-	percenterStateRecovered  func(context.Context, string)
-	percenterStateHadFailure atomic.Bool
+	percenterHealthMu            sync.RWMutex
+	percenterStateFailure        func(context.Context, string)
+	percenterStateRecovered      func(context.Context, string)
+	percenterHealthWake          chan struct{}
+	percenterHealthStartOnce     sync.Once
+	percenterHealthLastFailure   atomic.Int64
+	percenterHealthLastSuccess   atomic.Int64
+	percenterHealthNeedsRecovery atomic.Bool
+	percenterHealthMessage       atomic.Value
 }
 
 func NewAuctionService(runtime *RuntimeStore, winners *WinnerStore, percents *PercentStore, quality *QualityStore, siteIDQuality *SiteIDQualityStore) *AuctionService {
@@ -200,6 +205,7 @@ func NewAuctionService(runtime *RuntimeStore, winners *WinnerStore, percents *Pe
 		antiperekrutEnabled: true,
 		diagnostics:         NewAuctionDiagnostics(time.Now().UTC()),
 		snapshotWarningSeen: make(map[string]struct{}),
+		percenterHealthWake: make(chan struct{}, 1),
 	}
 	s.snapshot.Store(&Snapshot{Campaigns: []*Campaign{}, UserGoals: map[string]float64{}, UserPromoSpendRemaining: map[string]float64{}, UserAntiPerekrutBlocked: map[string]bool{}})
 	return s
@@ -239,34 +245,139 @@ func (s *AuctionService) SetPercenterStateHealthReporter(onFailure func(context.
 	s.percenterHealthMu.Unlock()
 }
 
-func (s *AuctionService) reportPercenterStateFailure(ctx context.Context, message string) {
+// StartPercenterStateHealthReporter moves all notifier/network work out of the
+// auction goroutine. Request processing only updates atomics and emits a
+// best-effort wake signal. Recovery is declared only after a quiet period with
+// no new failures and at least one successful percenter operation afterwards.
+func (s *AuctionService) StartPercenterStateHealthReporter(ctx context.Context, recoveryQuietPeriod time.Duration) {
 	if s == nil {
 		return
 	}
-	// Avoid invoking notification machinery on every failed auction while Redis
-	// is down. The first failure flips the state; recovery is reported once on the
-	// first subsequent successful percenter lookup.
-	if s.percenterStateHadFailure.Load() || !s.percenterStateHadFailure.CompareAndSwap(false, true) {
+	if recoveryQuietPeriod <= 0 {
+		recoveryQuietPeriod = 45 * time.Second
+	}
+	s.percenterHealthStartOnce.Do(func() {
+		go func() {
+			tickInterval := 5 * time.Second
+			if candidate := recoveryQuietPeriod / 4; candidate > 0 && candidate < tickInterval {
+				tickInterval = candidate
+			}
+			if tickInterval < 10*time.Millisecond {
+				tickInterval = 10 * time.Millisecond
+			}
+			ticker := time.NewTicker(tickInterval)
+			defer ticker.Stop()
+			alerted := false
+			lastAlertAt := time.Time{}
+			const repeatAlertInterval = 5 * time.Minute
+
+			process := func(now time.Time) {
+				needsRecovery := s.percenterHealthNeedsRecovery.Load()
+				lastFailureNanos := s.percenterHealthLastFailure.Load()
+				lastSuccessNanos := s.percenterHealthLastSuccess.Load()
+				if needsRecovery && lastFailureNanos > 0 && (!alerted || lastAlertAt.IsZero() || now.Sub(lastAlertAt) >= repeatAlertInterval) {
+					message := "[ADV][PERCENTER_STATE_HISTORY_ERROR] percenter Redis path is unhealthy"
+					if loaded := s.percenterHealthMessage.Load(); loaded != nil {
+						if text, ok := loaded.(string); ok && strings.TrimSpace(text) != "" {
+							message = text
+						}
+					}
+					s.percenterHealthMu.RLock()
+					fn := s.percenterStateFailure
+					s.percenterHealthMu.RUnlock()
+					if fn != nil {
+						fn(ctx, message)
+					}
+					alerted = true
+					lastAlertAt = now
+				}
+				if !alerted || !needsRecovery || lastFailureNanos <= 0 || lastSuccessNanos <= lastFailureNanos {
+					return
+				}
+				lastFailure := time.Unix(0, lastFailureNanos)
+				if now.Sub(lastFailure) < recoveryQuietPeriod {
+					return
+				}
+				// A newer failure must never be cleared by an older recovery decision.
+				if s.percenterHealthLastFailure.Load() != lastFailureNanos {
+					return
+				}
+				s.percenterHealthMu.RLock()
+				fn := s.percenterStateRecovered
+				s.percenterHealthMu.RUnlock()
+				if fn != nil {
+					fn(ctx, "[ADV][PERCENTER_STATE_HISTORY_RECOVERED] percenter state/history Redis path is healthy")
+				}
+				if s.percenterHealthLastFailure.Load() != lastFailureNanos {
+					return
+				}
+				s.percenterHealthNeedsRecovery.Store(false)
+				alerted = false
+				lastAlertAt = time.Time{}
+			}
+
+			for {
+				select {
+				case <-ctx.Done():
+					return
+				case <-s.percenterHealthWake:
+					process(time.Now().UTC())
+				case now := <-ticker.C:
+					process(now.UTC())
+				}
+			}
+		}()
+	})
+}
+
+func (s *AuctionService) wakePercenterHealthReporter() {
+	if s == nil || s.percenterHealthWake == nil {
 		return
 	}
-	s.percenterHealthMu.RLock()
-	fn := s.percenterStateFailure
-	s.percenterHealthMu.RUnlock()
-	if fn != nil {
-		fn(ctx, message)
+	select {
+	case s.percenterHealthWake <- struct{}{}:
+	default:
 	}
 }
 
-func (s *AuctionService) reportPercenterStateRecovered(ctx context.Context) {
-	if s == nil || !s.percenterStateHadFailure.Load() || !s.percenterStateHadFailure.CompareAndSwap(true, false) {
+func (s *AuctionService) reportPercenterStateFailure(_ context.Context, message string) {
+	if s == nil {
 		return
 	}
-	s.percenterHealthMu.RLock()
-	fn := s.percenterStateRecovered
-	s.percenterHealthMu.RUnlock()
-	if fn != nil {
-		fn(ctx, "[ADV][PERCENTER_STATE_HISTORY_RECOVERED] percenter state/history Redis path is healthy")
+	now := time.Now().UTC().UnixNano()
+	// Updating the timestamp at most once per second keeps the request path
+	// constant-time even during a sustained Redis incident.
+	const signalInterval = int64(time.Second)
+	for {
+		previous := s.percenterHealthLastFailure.Load()
+		if previous > 0 && now-previous < signalInterval {
+			return
+		}
+		if s.percenterHealthLastFailure.CompareAndSwap(previous, now) {
+			break
+		}
 	}
+	s.percenterHealthMessage.Store(message)
+	s.percenterHealthNeedsRecovery.Store(true)
+	s.wakePercenterHealthReporter()
+}
+
+func (s *AuctionService) reportPercenterStateRecovered(_ context.Context) {
+	if s == nil || !s.percenterHealthNeedsRecovery.Load() {
+		return
+	}
+	now := time.Now().UTC().UnixNano()
+	const signalInterval = int64(time.Second)
+	for {
+		previous := s.percenterHealthLastSuccess.Load()
+		if previous > 0 && now-previous < signalInterval {
+			return
+		}
+		if s.percenterHealthLastSuccess.CompareAndSwap(previous, now) {
+			break
+		}
+	}
+	s.wakePercenterHealthReporter()
 }
 
 func (s *AuctionService) SetAntiPerekrutEnabled(enabled bool) {

@@ -132,26 +132,78 @@ func (s *AuctionService) RefreshFromPostgres(ctx context.Context, db *sql.DB) er
 				PricingContext: percenterCampaignContext(campaign),
 			})
 		}
-		versions, versionErr := s.smartPercenter.EnsureCampaignVersionsForContext(ctx, requests)
-		if versionErr != nil {
-			// Do not publish a snapshot with an unknown percenter version. The
-			// caller keeps the previous immutable snapshot, preserving pricing
-			// behavior while Redis recovers. This Redis work is outside the
-			// auction request path and its read fast-path is pipelined.
-			return fmt.Errorf("sync percenter campaign versions: %w", versionErr)
+		versionCtx, cancelVersionSync := context.WithTimeout(ctx, 2*time.Second)
+		versions, versionErr := s.smartPercenter.EnsureCampaignVersionsForContext(versionCtx, requests)
+		cancelVersionSync()
+		if versionErr == nil {
+			for _, campaign := range snapshot.Campaigns {
+				if campaign == nil || strings.TrimSpace(campaign.ID) == "" {
+					continue
+				}
+				version := versions[campaign.ID]
+				if version < 1 {
+					versionErr = fmt.Errorf("campaign_id=%s: missing version after batch sync", campaign.ID)
+					break
+				}
+				campaign.PercenterCampaignVersion = version
+			}
 		}
-		for _, campaign := range snapshot.Campaigns {
-			if campaign == nil || strings.TrimSpace(campaign.ID) == "" {
-				continue
-			}
-			version := versions[campaign.ID]
-			if version < 1 {
-				return fmt.Errorf("sync percenter campaign version campaign_id=%s: missing version after batch sync", campaign.ID)
-			}
-			campaign.PercenterCampaignVersion = version
+		if versionErr != nil {
+			reused, baseline := applyFailOpenPercenterVersions(s.snapshot.Load(), snapshot, policy)
+			message := fmt.Sprintf("[ADV][PERCENTER_VERSION_SYNC_ERROR] error=%v reused_previous=%d baseline_version_zero=%d", versionErr, reused, baseline)
+			log.Print(message)
+			s.reportPercenterStateFailure(ctx, message)
+		} else {
+			s.reportPercenterStateRecovered(ctx)
 		}
 	}
 	return s.PublishSnapshot(snapshot)
+}
+
+func percenterSnapshotFingerprint(snapshot *Snapshot, campaign *Campaign, policy percenter.Policy) string {
+	if snapshot == nil || campaign == nil {
+		return ""
+	}
+	typeModel := campaign.TypeModel
+	if typeModel != percenter.TypeModelSimple {
+		typeModel = percenter.TypeModelSmart
+	}
+	minMargin := policy.MinMargin(snapshot.UserPromoSpendRemaining[campaign.UserID])
+	return fmt.Sprintf("%d|%.12g|%.12g|%s", typeModel, campaign.BasePrice, minMargin, strings.TrimSpace(percenterCampaignContext(campaign)))
+}
+
+// applyFailOpenPercenterVersions lets ordinary campaign snapshot changes keep
+// flowing when percenter version synchronization fails at runtime. A previous
+// version is reused only when the exact pricing fingerprint is unchanged;
+// new/changed campaigns get version=0 and therefore use safe baseline pricing
+// until a later successful refresh synchronizes Redis again.
+func applyFailOpenPercenterVersions(previous, next *Snapshot, policy percenter.Policy) (reused, baseline int) {
+	previousByID := make(map[string]*Campaign)
+	if previous != nil {
+		for _, campaign := range previous.Campaigns {
+			if campaign != nil && strings.TrimSpace(campaign.ID) != "" {
+				previousByID[campaign.ID] = campaign
+			}
+		}
+	}
+	if next == nil {
+		return 0, 0
+	}
+	for _, campaign := range next.Campaigns {
+		if campaign == nil || strings.TrimSpace(campaign.ID) == "" {
+			continue
+		}
+		campaign.PercenterCampaignVersion = 0
+		old := previousByID[campaign.ID]
+		if old != nil && old.PercenterCampaignVersion > 0 &&
+			percenterSnapshotFingerprint(previous, old, policy) == percenterSnapshotFingerprint(next, campaign, policy) {
+			campaign.PercenterCampaignVersion = old.PercenterCampaignVersion
+			reused++
+			continue
+		}
+		baseline++
+	}
+	return reused, baseline
 }
 
 func (s *AuctionService) reportSnapshotWarnings(ctx context.Context, warnings []snapshotLoadWarning) {
