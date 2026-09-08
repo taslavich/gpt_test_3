@@ -202,6 +202,7 @@ type AuctionService struct {
 	// goroutine/connection storm in the auction hot path.
 	percenterInitRetryInFlight sync.Map
 	percenterInitRetrySlots    chan struct{}
+	percenterTelemetry         percenterTelemetryCounters
 }
 
 func NewAuctionService(runtime *RuntimeStore, winners *WinnerStore, percents *PercentStore, quality *QualityStore, siteIDQuality *SiteIDQualityStore) *AuctionService {
@@ -421,6 +422,7 @@ func (s *AuctionService) schedulePercenterInitRetry(
 	}
 	key := percenterInitRetryKey(segmentHash, campaignVersion)
 	if _, loaded := s.percenterInitRetryInFlight.LoadOrStore(key, struct{}{}); loaded {
+		s.percenterTelemetry.backgroundRetryDeduplicated.Add(1)
 		return
 	}
 
@@ -431,10 +433,12 @@ func (s *AuctionService) schedulePercenterInitRetry(
 	select {
 	case s.percenterInitRetrySlots <- struct{}{}:
 	default:
+		s.percenterTelemetry.backgroundRetryPoolFull.Add(1)
 		s.percenterInitRetryInFlight.Delete(key)
 		return
 	}
 
+	s.percenterTelemetry.backgroundRetryStarted.Add(1)
 	store := s.smartPercenter
 	go func() {
 		defer func() {
@@ -456,6 +460,7 @@ func (s *AuctionService) schedulePercenterInitRetry(
 			time.Now().UTC(),
 		)
 		if retryErr != nil {
+			s.percenterTelemetry.backgroundRetryFailed.Add(1)
 			message := fmt.Sprintf(
 				"[ADV][PERCENTER_STATE_HISTORY_ERROR] campaign_id=%s segment_hash=%s background_retry=true initial_error=%v retry_error=%v",
 				campaignID,
@@ -463,9 +468,12 @@ func (s *AuctionService) schedulePercenterInitRetry(
 				initialErr,
 				retryErr,
 			)
+			log.Printf("[ADV][PERCENTER_INIT_RETRY_FAILED] campaign_id=%s segment_hash=%s error=%v", campaignID, segmentHash, retryErr)
 			s.reportPercenterStateFailure(retryCtx, message)
 			return
 		}
+		s.percenterTelemetry.backgroundRetrySuccess.Add(1)
+		log.Printf("[ADV][PERCENTER_INIT_RETRY_RECOVERED] campaign_id=%s segment_hash=%s", campaignID, segmentHash)
 		s.reportPercenterStateRecovered(retryCtx)
 	}()
 }
@@ -1860,9 +1868,19 @@ func (s *AuctionService) evaluateCampaign(
 			FromFallback:    true,
 		}
 		if s.smartPercenter != nil && campaignVersion > 0 {
+			s.percenterTelemetry.stateGetOrInitCalls.Add(1)
 			storedPricing, pricingErr := s.smartPercenter.GetOrInitPricingForCampaign(
 				ctx, segmentHash, campaignID, campaign.BasePrice, minMargin, campaignVersion, campaign.TypeModel, profitModel, now,
 			)
+			if pricingErr == nil {
+				s.percenterTelemetry.stateGetOrInitSuccess.Add(1)
+			} else if errors.Is(pricingErr, context.Canceled) {
+				s.percenterTelemetry.requestContextCanceled.Add(1)
+			} else if errors.Is(pricingErr, context.DeadlineExceeded) {
+				s.percenterTelemetry.requestDeadlineExceeded.Add(1)
+			} else {
+				s.percenterTelemetry.stateGetOrInitOtherErrors.Add(1)
+			}
 			if storedPricing.SSPBid > 0 && storedPricing.AdvertiserPrice > 0 {
 				pricing = storedPricing
 			}

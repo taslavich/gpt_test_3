@@ -21,6 +21,7 @@ func runPendingHistoryFlusher(
 	store *percenter.StateStore,
 	readyKey string,
 	alert *services.RecoveryNotifier,
+	telemetry *percenterRuntimeTelemetry,
 ) {
 	if store == nil || readyKey == "" {
 		return
@@ -29,6 +30,9 @@ func runPendingHistoryFlusher(
 	handleError := func(stage string, err error) {
 		if err == nil {
 			return
+		}
+		if telemetry != nil {
+			telemetry.historyPendingErrors.Add(1)
 		}
 		msg := fmt.Sprintf("[PERCENTER][HISTORY_PENDING_%s_ERROR] %v", stage, err)
 		log.Print(msg)

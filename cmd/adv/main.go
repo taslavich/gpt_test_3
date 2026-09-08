@@ -134,6 +134,7 @@ func main() {
 
 	botNotifier := utils.NewBotMessageWithTimeout(cfg.BotBaseURL, cfg.BotInternalSecret, cfg.AntiperekrutControlTimeout)
 	auctionService.SetSnapshotWarningNotifier(botNotifier.SendTextMessageToBot)
+	percenter.StartADVPercenterTelemetryPublisher(ctx, percenterRedis, auctionService, botNotifier.SendTextMessageToBot)
 	stateHistoryAlert := services.NewRecoveryNotifier(botNotifier, 5*time.Minute)
 	auctionService.SetPercenterStateHealthReporter(
 		func(callCtx context.Context, message string) { stateHistoryAlert.Failure(callCtx, message) },
