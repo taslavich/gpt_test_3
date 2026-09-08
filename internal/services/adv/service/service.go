@@ -28,17 +28,19 @@ import (
 )
 
 const (
-	SlotDuration         = 5 * time.Minute
-	CampaignStatusActive = "active"
-	PricingModelCPM      = "CPM"
-	PricingModelCPC      = "CPC"
-	TrafficAdult         = "ADULT"
-	TrafficMainstream    = "MAINSTREAM"
-	TrafficMixed         = "MIXED"
-	unknownTrackerValue  = "unknown"
-	topBidPoolRatio      = 0.80
-	auctionPriceEpsilon  = 1e-12
-	antiPerekrutEnabled  = false
+	SlotDuration                    = 5 * time.Minute
+	CampaignStatusActive            = "active"
+	PricingModelCPM                 = "CPM"
+	PricingModelCPC                 = "CPC"
+	TrafficAdult                    = "ADULT"
+	TrafficMainstream               = "MAINSTREAM"
+	TrafficMixed                    = "MIXED"
+	unknownTrackerValue             = "unknown"
+	topBidPoolRatio                 = 0.80
+	auctionPriceEpsilon             = 1e-12
+	antiPerekrutEnabled             = false
+	percenterInitRetryTimeout       = 5 * time.Second
+	percenterInitRetryMaxConcurrent = 8
 )
 
 type auctionMode uint8
@@ -193,19 +195,27 @@ type AuctionService struct {
 	percenterHealthLastSuccess   atomic.Int64
 	percenterHealthNeedsRecovery atomic.Bool
 	percenterHealthMessage       atomic.Value
+
+	// Request cancellation must not permanently prevent creation of a new
+	// percenter state/history record. Retries are deduplicated per segment and
+	// campaign version and bounded so an unhealthy Redis cannot create a
+	// goroutine/connection storm in the auction hot path.
+	percenterInitRetryInFlight sync.Map
+	percenterInitRetrySlots    chan struct{}
 }
 
 func NewAuctionService(runtime *RuntimeStore, winners *WinnerStore, percents *PercentStore, quality *QualityStore, siteIDQuality *SiteIDQualityStore) *AuctionService {
 	s := &AuctionService{
-		runtime:             runtime,
-		winners:             winners,
-		percents:            percents,
-		quality:             quality,
-		siteIDQuality:       siteIDQuality,
-		antiperekrutEnabled: true,
-		diagnostics:         NewAuctionDiagnostics(time.Now().UTC()),
-		snapshotWarningSeen: make(map[string]struct{}),
-		percenterHealthWake: make(chan struct{}, 1),
+		runtime:                 runtime,
+		winners:                 winners,
+		percents:                percents,
+		quality:                 quality,
+		siteIDQuality:           siteIDQuality,
+		antiperekrutEnabled:     true,
+		diagnostics:             NewAuctionDiagnostics(time.Now().UTC()),
+		snapshotWarningSeen:     make(map[string]struct{}),
+		percenterHealthWake:     make(chan struct{}, 1),
+		percenterInitRetrySlots: make(chan struct{}, percenterInitRetryMaxConcurrent),
 	}
 	s.snapshot.Store(&Snapshot{Campaigns: []*Campaign{}, UserGoals: map[string]float64{}, UserPromoSpendRemaining: map[string]float64{}, UserAntiPerekrutBlocked: map[string]bool{}})
 	return s
@@ -378,6 +388,86 @@ func (s *AuctionService) reportPercenterStateRecovered(_ context.Context) {
 		}
 	}
 	s.wakePercenterHealthReporter()
+}
+
+func shouldRetryPercenterInitOutsideRequest(err error) bool {
+	return errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded)
+}
+
+func detachedPercenterInitContext(parent context.Context) (context.Context, context.CancelFunc) {
+	if parent == nil {
+		parent = context.Background()
+	}
+	return context.WithTimeout(context.WithoutCancel(parent), percenterInitRetryTimeout)
+}
+
+func percenterInitRetryKey(segmentHash string, campaignVersion int64) string {
+	return segmentHash + ":" + strconv.FormatInt(campaignVersion, 10)
+}
+
+func (s *AuctionService) schedulePercenterInitRetry(
+	parent context.Context,
+	segmentHash string,
+	campaignID string,
+	originalBid float64,
+	minMargin float64,
+	campaignVersion int64,
+	typeModel int,
+	profitModel string,
+	initialErr error,
+) {
+	if s == nil || s.smartPercenter == nil || campaignVersion <= 0 || strings.TrimSpace(segmentHash) == "" {
+		return
+	}
+	key := percenterInitRetryKey(segmentHash, campaignVersion)
+	if _, loaded := s.percenterInitRetryInFlight.LoadOrStore(key, struct{}{}); loaded {
+		return
+	}
+
+	// The repair attempt must never block the auction goroutine. At most eight
+	// detached retries can use Redis concurrently, leaving the rest of the Redis
+	// pool available for normal auction reads. A later request can retry again
+	// when the small repair pool is temporarily full.
+	select {
+	case s.percenterInitRetrySlots <- struct{}{}:
+	default:
+		s.percenterInitRetryInFlight.Delete(key)
+		return
+	}
+
+	store := s.smartPercenter
+	go func() {
+		defer func() {
+			<-s.percenterInitRetrySlots
+			s.percenterInitRetryInFlight.Delete(key)
+		}()
+
+		retryCtx, cancel := detachedPercenterInitContext(parent)
+		defer cancel()
+		_, retryErr := store.GetOrInitPricingForCampaign(
+			retryCtx,
+			segmentHash,
+			campaignID,
+			originalBid,
+			minMargin,
+			campaignVersion,
+			typeModel,
+			profitModel,
+			time.Now().UTC(),
+		)
+		if retryErr != nil {
+			message := fmt.Sprintf(
+				"[ADV][PERCENTER_STATE_HISTORY_ERROR] campaign_id=%s segment_hash=%s background_retry=true initial_error=%v retry_error=%v",
+				campaignID,
+				segmentHash,
+				initialErr,
+				retryErr,
+			)
+			s.reportPercenterStateFailure(retryCtx, message)
+			return
+		}
+		s.reportPercenterStateRecovered(retryCtx)
+	}()
 }
 
 func (s *AuctionService) SetAntiPerekrutEnabled(enabled bool) {
@@ -1777,8 +1867,18 @@ func (s *AuctionService) evaluateCampaign(
 				pricing = storedPricing
 			}
 			if pricingErr != nil {
-				message := fmt.Sprintf("[ADV][PERCENTER_STATE_HISTORY_ERROR] campaign_id=%s segment_hash=%s error=%v", campaignID, segmentHash, pricingErr)
-				s.reportPercenterStateFailure(ctx, message)
+				if shouldRetryPercenterInitOutsideRequest(pricingErr) {
+					// The auction/request context is intentionally short-lived. Keep
+					// serving the already prepared safe baseline, then retry the durable
+					// state+history initialization outside this request. Only a failed
+					// detached retry is treated as a Redis health failure.
+					s.schedulePercenterInitRetry(
+						ctx, segmentHash, campaignID, campaign.BasePrice, minMargin, campaignVersion, campaign.TypeModel, profitModel, pricingErr,
+					)
+				} else {
+					message := fmt.Sprintf("[ADV][PERCENTER_STATE_HISTORY_ERROR] campaign_id=%s segment_hash=%s error=%v", campaignID, segmentHash, pricingErr)
+					s.reportPercenterStateFailure(ctx, message)
+				}
 				logf("[ADV][PERCENTER_FALLBACK] request_id=%q imp_id=%q campaign_id=%q segment_hash=%q effective_segment_hash=%q error=%v", requestID, impID, campaignID, segmentHash, pricing.SegmentHash, pricingErr)
 			} else {
 				s.reportPercenterStateRecovered(ctx)
