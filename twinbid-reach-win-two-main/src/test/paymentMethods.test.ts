@@ -6,17 +6,17 @@ describe("payment methods", () => {
     expect(PAYMENT_METHODS).toEqual([
       expect.objectContaining({
         id: "usdc_erc20",
-        address: "0xaE8c308b5dE66E9D4EC32297893bEF0053De4527",
+        address: "0xED961471A377a998df31191A7277006Aa0b04186",
         currency: "usdc",
       }),
       expect.objectContaining({
         id: "usdt_trc20",
-        address: "TMcMNrGaEmTPujLnVMZubfKiSQydC5kTfj",
+        address: "TJr26CGefYQAQ5ryrxETrQPeLYdzmz52ad",
         currency: "usdt",
       }),
       expect.objectContaining({
         id: "usdt_erc20",
-        address: "0xaE8c308b5dE66E9D4EC32297893bEF0053De4527",
+        address: "0xED961471A377a998df31191A7277006Aa0b04186",
         currency: "usdt",
       }),
     ]);
