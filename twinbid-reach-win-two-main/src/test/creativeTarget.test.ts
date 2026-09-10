@@ -9,6 +9,14 @@ describe("creative media dimensions", () => {
     expect(isMediaSizeMismatch(target, 1920, 1080)).toBe(true);
   });
 
+  it("requires video creatives to be exactly 1920x1080", () => {
+    const target = getTargetDims("video");
+
+    expect(target).toMatchObject({ w: 1920, h: 1080, mode: "fixed" });
+    expect(isMediaSizeMismatch(target, 1920, 1080)).toBe(false);
+    expect(isMediaSizeMismatch(target, 1280, 720)).toBe(true);
+  });
+
   it("keeps the square minimum-size rule for native visuals", () => {
     const target = getTargetDims("native");
 

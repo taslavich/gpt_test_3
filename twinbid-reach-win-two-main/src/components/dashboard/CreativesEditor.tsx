@@ -12,6 +12,7 @@ import { Upload, Plus, Trash2, Loader2, Pencil, AlertTriangle, Eye, Info, Layout
 import { toast } from "sonner";
 import { useLanguage } from "@/contexts/LanguageContext";
 import type { Creative, CreativeType } from "@/contexts/CampaignContext";
+import type { VideoFormat } from "@/api/types";
 import { ImageCropperDialog } from "@/components/dashboard/ImageCropperDialog";
 import { CreativePreviewDialog } from "@/components/dashboard/CreativePreviewDialog";
 import {
@@ -174,6 +175,12 @@ const generateId = () => String(Date.now()) + Math.random().toString(36).slice(2
 
 const MAX_CREATIVES = 10;
 
+const VIDEO_FORMATS: Array<{ id: VideoFormat; label: string; descriptionKey: string }> = [
+  { id: "instream", label: "In-stream", descriptionKey: "create.videoFormat.instream.desc" },
+  { id: "outstream", label: "Out-stream", descriptionKey: "create.videoFormat.outstream.desc" },
+  { id: "video_popup", label: "Pop-up Video", descriptionKey: "create.videoFormat.popup.desc" },
+];
+
 import { BANNER_SIZES, getTargetDims, isMediaSizeMismatch } from "@/lib/creativeTarget";
 
 function getCreativeTarget(formatKey: string, creative: Creative) {
@@ -290,6 +297,7 @@ export const CreativesEditor = forwardRef<CreativesEditorHandle, CreativesEditor
   const [measured, setMeasured] = useState<Record<string, { w: number; h: number; crossOrigin: boolean }>>({});
 
   const isBanner = formatKey === "banner";
+  const isVideoFormat = formatKey === "video";
 
   // Refs to always read the latest props/state from within effects and async
   // handlers — prevents stale-closure writes that could clobber sibling
@@ -420,13 +428,15 @@ export const CreativesEditor = forwardRef<CreativesEditorHandle, CreativesEditor
     const file = e.target.files?.[0];
     if (!file) return;
     const ext = file.name.toLowerCase().slice(file.name.lastIndexOf("."));
-    const validation = validateCreativeFile(file, isBanner);
+    const validation = validateCreativeFile(file, isBanner || isVideoFormat, isVideoFormat);
     if (!validation.valid) {
       const reason = "reason" in validation ? validation.reason : "format";
       const messageKey = reason === "video-size"
         ? "create.videoSizeError"
         : reason === "image-size"
           ? "create.imageSizeError"
+          : isVideoFormat
+            ? "create.videoFormatError"
           : isBanner
             ? "create.bannerMediaFormatError"
             : "create.imageFormatError";
@@ -668,6 +678,41 @@ export const CreativesEditor = forwardRef<CreativesEditorHandle, CreativesEditor
               <p className="text-xs text-muted-foreground">{t("create.creativeNameHint")}</p>
               {errors[`creative_${creative.id}_name`] && <p className="text-xs text-destructive">{errors[`creative_${creative.id}_name`]}</p>}
             </div>
+
+            {isVideoFormat && (
+              <div className="space-y-2">
+                <Label>{t("create.videoFormatLabel")} *</Label>
+                <div className="grid gap-2 sm:grid-cols-2">
+                  {VIDEO_FORMATS.map(option => {
+                    const selected = creative.videoFormat === option.id;
+                    return (
+                      <button
+                        key={option.id}
+                        type="button"
+                        aria-pressed={selected}
+                        onClick={() => {
+                          updateCreative(creative.id, { videoFormat: option.id });
+                          onClearError?.(`creative_${creative.id}_videoFormat`);
+                        }}
+                        className={`rounded-lg border p-3 text-left transition-colors ${
+                          selected
+                            ? "border-primary bg-primary/10"
+                            : "border-border bg-background hover:border-primary/40"
+                        }`}
+                      >
+                        <span className="block text-sm font-medium text-foreground">{option.label}</span>
+                        <span className="mt-1 block text-xs leading-relaxed text-muted-foreground">
+                          {t(option.descriptionKey)}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+                {errors[`creative_${creative.id}_videoFormat`] && (
+                  <p className="text-xs text-destructive">{errors[`creative_${creative.id}_videoFormat`]}</p>
+                )}
+              </div>
+            )}
 
             {isBanner && (
               <div className="space-y-2">
@@ -1133,16 +1178,18 @@ export const CreativesEditor = forwardRef<CreativesEditorHandle, CreativesEditor
               </div>
             )}
 
-            {/* Image field for push/native (kept below URL like before) */}
+            {/* Media field for push/native/video (kept below URL like before) */}
             {showImage && !isBanner && (
               <div className="space-y-2">
-                <Label>{t("create.uploadImage")} *</Label>
+                <Label>{t(isVideoFormat ? "create.uploadVideo" : "create.uploadImage")} *</Label>
                 <input
                   ref={el => { fileInputRefs.current[creative.id] = el; }}
-                  type="file" accept=".png,.jpg,.jpeg,.gif,image/png,image/jpeg,image/gif" className="hidden"
+                  type="file"
+                  accept={isVideoFormat ? ".mp4,video/mp4" : ".png,.jpg,.jpeg,.gif,image/png,image/jpeg,image/gif"}
+                  className="hidden"
                   onChange={e => handleImageUpload(creative.id, e)} />
                 <p className="text-xs text-muted-foreground">
-                  {t("create.imageFormatHint")}
+                  {t(isVideoFormat ? "create.videoFormatHint" : "create.imageFormatHint")}
                   {target && (target.mode === "fixed"
                     ? ` · ${target.w}×${target.h}px`
                     : ` · ≥ ${target.minSide ?? 200}×${target.minSide ?? 200}px (1:1)`)}
@@ -1153,7 +1200,7 @@ export const CreativesEditor = forwardRef<CreativesEditorHandle, CreativesEditor
                     {uploadingId === creative.id
                       ? <Loader2 className="h-4 w-4 animate-spin" />
                       : <Upload className="h-4 w-4" />}
-                    {t("create.uploadImage")}
+                    {t(isVideoFormat ? "create.uploadVideo" : "create.uploadImage")}
                   </Button>
                   {canCrop && (
                     <Button type="button" variant="outline" onClick={() => openCropper(creative.id)} className="border-border gap-2">
@@ -1182,8 +1229,10 @@ export const CreativesEditor = forwardRef<CreativesEditorHandle, CreativesEditor
                   </div>
                 )}
                 {creative.imageUrl && (
-                  <button type="button" onClick={() => setPreviewMedia({ url: creative.imageUrl!, video: false })} className="block">
-                    <img src={creative.imageUrl} alt="Preview" className="mt-2 max-h-32 rounded border border-border cursor-zoom-in hover:opacity-90 transition-opacity" />
+                  <button type="button" onClick={() => setPreviewMedia({ url: creative.imageUrl!, video: isVideoFormat })} className="block">
+                    {isVideoFormat
+                      ? <video src={creative.imageUrl} muted loop autoPlay playsInline className="mt-2 max-h-32 rounded border border-border cursor-zoom-in transition-opacity hover:opacity-90" />
+                      : <img src={creative.imageUrl} alt="Preview" className="mt-2 max-h-32 rounded border border-border cursor-zoom-in hover:opacity-90 transition-opacity" />}
                   </button>
                 )}
                 {errors[`creative_${creative.id}_image`] && <p className="text-xs text-destructive">{errors[`creative_${creative.id}_image`]}</p>}

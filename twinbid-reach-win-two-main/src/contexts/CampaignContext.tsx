@@ -3,7 +3,7 @@ import { api } from "@/api";
 import type {
   ApiCampaign, ApiCreative, TargetingMap,
   PricingModel as ApiPricing, TrafficType as ApiTraffic,
-  CampaignStatus as ApiStatus, FormatType, CampaignTypeModel as ApiCampaignTypeModel,
+  CampaignStatus as ApiStatus, FormatType, VideoFormat, CampaignTypeModel as ApiCampaignTypeModel,
 } from "@/api/types";
 import { useAuth } from "@/contexts/AuthContext";
 import {
@@ -90,6 +90,8 @@ export interface Creative {
   imageFileName?: string;
   imageMimeType?: string;
   mediaType?: "image" | "video";
+  /** Required placement type for a video campaign creative. */
+  videoFormat?: VideoFormat;
   /** Final media dimensions after crop/resize. Sent as creative w/h for native and in-page push. */
   imageWidth?: number;
   imageHeight?: number;
@@ -335,6 +337,9 @@ export function mapApiCreativeToUi(cr: ApiCreative): Creative {
     bannerSize: cr.w && cr.h ? `${cr.w}x${cr.h}` : undefined,
     title: cr.title || undefined,
     description: cr.description || undefined,
+    videoFormat: cr.video_format === "outstream_standard" || cr.video_format === "outstream_slider"
+      ? "outstream"
+      : cr.video_format || undefined,
     creativeType,
   };
 

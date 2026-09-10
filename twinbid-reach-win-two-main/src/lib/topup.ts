@@ -130,6 +130,14 @@ export function isUnfinishedStaticWalletTransaction(
     && (transaction.status === "draft" || transaction.status === "pending");
 }
 
+/** A static-wallet payment that still needs the wallet/hash dialog. */
+export function isResumableStaticWalletTransaction(
+  transaction: Pick<ApiUserTransaction, "payment_channel" | "status" | "transaction_hash">,
+): boolean {
+  return isUnfinishedStaticWalletTransaction(transaction)
+    && !transaction.transaction_hash?.trim();
+}
+
 export function isTransactionCredited(
   transaction: Pick<ApiUserTransaction, "status" | "credited_at">,
 ): boolean {

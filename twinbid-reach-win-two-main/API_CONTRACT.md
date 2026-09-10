@@ -108,7 +108,7 @@ affiliate-код вместе с общей статистикой по всем
   "campaign_id": "uuid",
   "user_id": "uuid",
   "campaign_name": "string",
-  "format_type": "banner | popunder | native | push",
+  "format_type": "banner | popunder | native | push | video",
   "brand_name": "string?",
   "h": 999, "w": 999,
   "status": "active | paused | draft | completed | moderation | no_budget | waiting | deleted",
@@ -175,6 +175,7 @@ Frontend отправляет `pricing_model: "cpm"` для обоих CPM-ре�
 - `banner` → `ban_creatives`
 - `push` → `ipp_creatives` (in-page push)
 - `native` → `nat_creatives`
+- `video` → video creatives (имя таблицы определяет backend)
 
 ### `Creative` (ответ бэка)
 ```json
@@ -194,9 +195,17 @@ Frontend отправляет `pricing_model: "cpm"` для обоих CPM-ре�
   "w": 300,
   "h": 250,
   "title": null,
-  "description": null
+  "description": null,
+  "video_format": null
 }
 ```
+
+Для кампании с `format_type: "video"` поле `video_format` обязательно и
+принимает одно из значений:
+
+- `instream` — показ внутри видеоплеера (pre-roll, mid-roll или post-roll);
+- `outstream` — самостоятельный видеоблок внутри статьи или ленты;
+- `video_popup` — плавающее видео поверх контента с кнопкой закрытия.
 
 `image_url` постоянный и не имеет TTL. Фронт использует его при каждом
 повторном открытии кампании независимо от её статуса. `image_name` используется
@@ -219,7 +228,9 @@ Frontend отправляет `pricing_model: "cpm"` для обоих CPM-ре�
 `image/jpg`, `image/png`, `image/gif` или `video/mp4`.
 
 Текущие ограничения: PNG/JPG/GIF — не более 1 MiB; MP4 — не более
-10 MiB и только для banner-креатива. При ответе `401` загрузка использует тот же
+10 MiB и разрешён для banner- и video-креативов. В video-кампании допускается
+только MP4, а frontend приводит его к размеру 1920×1080. При ответе `401`
+загрузка использует тот же
 общий refresh токена, что и JSON-запросы, после чего ровно один раз повторяет
 multipart-запрос с новым access token.
 
@@ -249,6 +260,12 @@ multipart-запрос с новым access token.
 
 Для каждого banner-креатива обязательны собственные `w` и `h`. Они берутся
 из размера, выбранного непосредственно в карточке креатива, а не из кампании.
+
+Для каждого video-креатива frontend сначала загружает обязательный MP4 через
+`creative-images`, затем отправляет в JSON обязательные `image_id`,
+`video_format`, `w: 1920`, `h: 1080`. В `adm` передаётся целевой URL без
+макросов, а сами макросы передаются через `trackers_macros`, как у остальных
+кликабельных форматов.
 
 `trackers_macros` передаётся как map `макрос → название query-параметра`.
 Например, ссылка `?subid={click_id}&source={site_id}` превращается в
@@ -637,7 +654,7 @@ SQL целиком остаётся на бэкенде. Фронт переда
 
 Допустимые значения:
 
-- `format_type`: `banner | popunder | native | push`;
+- `format_type`: `banner | popunder | native | push | video`;
 - `traffic_type`: `mainstream | adult | mixed`;
 - `*_mode`: `include | exclude`;
 - пустой массив означает отсутствие ограничения по измерению.
@@ -656,7 +673,7 @@ SQL целиком остаётся на бэкенде. Фронт переда
 - `average_bid` — средняя ненулевая выигравшая ставка сегмента.
 
 Единица `average_bid` определяется форматом: для `push` это CPC, для `banner`,
-`native` и `popunder` — CPM. Если у `popunder` пользователь переключает модель
+`native`, `video` и `popunder` — CPM. Если у `popunder` пользователь переключает модель
 на CPC, фронт переводит рекомендацию тем же коэффициентом, который уже
 используется для пересчёта минимальной CPM-ставки в CPC.
 

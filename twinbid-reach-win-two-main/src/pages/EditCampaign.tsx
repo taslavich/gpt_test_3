@@ -215,6 +215,9 @@ export default function EditCampaign() {
 
     crvs.forEach(c => {
       if (!c.name?.trim()) e[`creative_${c.id}_name`] = t("create.required");
+      if (campaign.formatKey === "video" && !c.videoFormat) {
+        e[`creative_${c.id}_videoFormat`] = t("create.required");
+      }
       const type = campaign.formatKey === "banner" ? (c.creativeType || "image") : "image";
       if (campaign.formatKey === "banner" && !c.bannerSize) {
         e[`creative_${c.id}_bannerSize`] = t("create.required");
@@ -248,6 +251,9 @@ export default function EditCampaign() {
           && !c.pendingFile
         ) {
           e[`creative_${c.id}_image`] = t("create.required");
+        }
+        if (campaign.formatKey === "video" && c.pendingFile && c.mediaType !== "video") {
+          e[`creative_${c.id}_image`] = t("create.videoFormatError");
         }
       }
       if ((campaign.formatKey === "native" || campaign.formatKey === "push") && !c.title?.trim()) e[`creative_${c.id}_title`] = t("create.required");
@@ -479,6 +485,9 @@ export default function EditCampaign() {
           if (!name.trim()) e.name = t("create.required");
           creatives.forEach(c => {
             if (!c.name?.trim()) e[`creative_${c.id}_name`] = t("create.required");
+            if (campaign.formatKey === "video" && !c.videoFormat) {
+              e[`creative_${c.id}_videoFormat`] = t("create.required");
+            }
             const type = campaign.formatKey === "banner" ? (c.creativeType || "image") : "image";
             if (campaign.formatKey === "banner" && !c.bannerSize) {
               e[`creative_${c.id}_bannerSize`] = t("create.required");
@@ -513,6 +522,9 @@ export default function EditCampaign() {
                 && !c.pendingFile
               ) {
                 e[`creative_${c.id}_image`] = t("create.required");
+              }
+              if (campaign.formatKey === "video" && c.pendingFile && c.mediaType !== "video") {
+                e[`creative_${c.id}_image`] = t("create.videoFormatError");
               }
             }
             if ((campaign.formatKey === "native" || campaign.formatKey === "push") && !c.title?.trim()) e[`creative_${c.id}_title`] = t("create.required");

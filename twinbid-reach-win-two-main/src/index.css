@@ -1126,6 +1126,18 @@
 .format-editorial-banner .format-editorial-ad strong { font-size: clamp(25px, 5.7cqi, 48px); }
 .format-editorial-inpage .format-editorial-ad { right: 7%; bottom: 7%; width: 66%; height: 178px; background: hsl(var(--foreground)); color: hsl(var(--background)); box-shadow: 8px 8px 0 hsl(var(--accent)); }
 .format-editorial-inpage .format-editorial-ad strong { font-size: clamp(27px, 6cqi, 50px); }
+.format-editorial-scene[class*="format-editorial-video-"] .format-editorial-page { display: flex; flex-direction: column; gap: clamp(12px, 2cqi, 18px); padding: clamp(18px, 3.5cqi, 34px); }
+.format-editorial-video-player { position: relative; display: grid; width: 100%; aspect-ratio: 16 / 9; place-items: center; overflow: hidden; border: 1px solid hsl(var(--background)); background: hsl(var(--editorial-ink)); color: hsl(var(--primary)); box-shadow: 5px 5px 0 hsl(var(--accent)); }
+.format-editorial-video-player::before { position: absolute; inset: 0; content: ""; background: radial-gradient(circle at 68% 28%, hsl(var(--primary) / .34), transparent 29%), linear-gradient(145deg, transparent 0 52%, hsl(var(--primary) / .12) 52% 100%); }
+.format-editorial-video-player > span { position: relative; display: grid; width: clamp(42px, 8cqi, 72px); aspect-ratio: 1; place-items: center; border: 1px solid currentColor; border-radius: 50%; font-size: clamp(16px, 3cqi, 26px); text-indent: .12em; }
+.format-editorial-video-player > small { position: absolute; right: 13px; bottom: 12px; color: hsl(var(--foreground) / .72); font: 700 8px/1 "JetBrains Mono", monospace; letter-spacing: .08em; text-transform: uppercase; }
+.format-editorial-video-player > i { position: absolute; right: 12px; bottom: 0; left: 12px; height: 2px; background: hsl(var(--foreground) / .18); }
+.format-editorial-video-player > i::after { display: block; width: 42%; height: 100%; background: hsl(var(--primary)); content: ""; }
+.format-editorial-video-float { position: absolute; right: 6%; bottom: 6%; display: grid; width: 46%; aspect-ratio: 16 / 9; place-items: center; border: 1px solid hsl(var(--background)); background: hsl(var(--editorial-ink)); color: hsl(var(--primary)); box-shadow: 7px 7px 0 hsl(var(--accent)); }
+.format-editorial-video-float > b { position: absolute; top: 6px; right: 8px; color: hsl(var(--foreground)); font-size: 15px; font-weight: 400; }
+.format-editorial-video-float > span { display: grid; width: 34px; aspect-ratio: 1; place-items: center; border: 1px solid currentColor; border-radius: 50%; font-size: 12px; text-indent: .1em; }
+.format-editorial-video-float > small { position: absolute; bottom: 8px; left: 9px; color: hsl(var(--foreground) / .64); font: 700 6px/1 "JetBrains Mono", monospace; letter-spacing: .07em; text-transform: uppercase; }
+.format-editorial-video-popup .format-editorial-video-float { right: 12%; bottom: 10%; width: 60%; }
 .formats-editorial-stage-foot { padding: 15px 4px 0; }
 .formats-editorial-stage-foot strong { font-size: 18px; }
 .formats-editorial-mobile-scene { display: none; }

@@ -1,4 +1,4 @@
-import type { ApiCreative, ApiCreativeImage, ApiCreativeWrite, FormatType } from "@/api/types";
+import type { ApiCreative, ApiCreativeImage, ApiCreativeWrite, FormatType, VideoFormat } from "@/api/types";
 
 export type UiCreativeType = "image" | "html" | "iframe";
 
@@ -13,6 +13,7 @@ export interface CreativeDraft {
   imageFileName?: string;
   imageMimeType?: string;
   mediaType?: "image" | "video";
+  videoFormat?: VideoFormat;
   /** Final media dimensions after any crop/resize performed by the editor. */
   imageWidth?: number;
   imageHeight?: number;
@@ -56,14 +57,14 @@ export type CreativeFileValidation =
   | { valid: true; mediaType: "image" | "video" }
   | { valid: false; reason: "format" | "image-size" | "video-size" };
 
-export function validateCreativeFile(file: File, allowVideo: boolean): CreativeFileValidation {
+export function validateCreativeFile(file: File, allowVideo: boolean, videoOnly = false): CreativeFileValidation {
   const name = file.name.toLowerCase();
   const extension = name.includes(".") ? name.slice(name.lastIndexOf(".")) : "";
   const video = allowVideo && (file.type === "video/mp4" || extension === ".mp4");
   const image =
     ["image/png", "image/jpeg", "image/jpg", "image/gif"].includes(file.type)
     || [".png", ".jpg", ".jpeg", ".gif"].includes(extension);
-  if (!image && !video) return { valid: false, reason: "format" };
+  if ((!image && !video) || (videoOnly && !video)) return { valid: false, reason: "format" };
   if (video && file.size > MAX_CREATIVE_VIDEO_BYTES) {
     return { valid: false, reason: "video-size" };
   }
@@ -257,6 +258,7 @@ export function buildBannerMediaAdm(
 export function creativeRequiresImage(format: string, creative: CreativeDraft): boolean {
   return format === "native"
     || format === "push"
+    || format === "video"
     || (format === "banner" && (creative.creativeType || "image") === "image");
 }
 
@@ -275,6 +277,12 @@ export function isCreativeReadyForCreate(format: string, creative: CreativeDraft
     return !!creative.pendingFile && !!creative.url.trim();
   }
   if (format === "popunder") return !!creative.url.trim();
+  if (format === "video") {
+    return !!creative.videoFormat
+      && !!creative.pendingFile
+      && validateCreativeFile(creative.pendingFile, true, true).valid
+      && !!creative.url.trim();
+  }
   return !!creative.pendingFile && !!creative.url.trim();
 }
 
@@ -348,6 +356,13 @@ export function buildCreativeWriteBody({
   const macroUrl = buildUrlWithMacros(creative.url, {});
   base.adm = stripMacrosFromUrl(macroUrl);
   base.trackers_macros = extractMacrosFromUrl(macroUrl);
+  if (format === "video") {
+    if (!creative.videoFormat) throw new Error("Video format is required");
+    base.w = 1920;
+    base.h = 1080;
+    base.video_format = creative.videoFormat;
+    return withImageId(base, imageId);
+  }
   if (format === "native" || format === "push") {
     const w = creative.imageWidth;
     const h = creative.imageHeight;

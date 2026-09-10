@@ -13,6 +13,11 @@ const FORMAT_BID_LIMITS: Record<string, Record<TrafficQuality, BidLimitConfig>> 
     high: { min: 0.01, recommended: 0.07 },
     ultra: { min: 0.01, recommended: 0.14 },
   },
+  video: {
+    common: { min: 0.01, recommended: 0.05 },
+    high: { min: 0.01, recommended: 0.07 },
+    ultra: { min: 0.01, recommended: 0.14 },
+  },
   native: {
     common: { min: 0.01, recommended: 0.05 },
     high: { min: 0.01, recommended: 0.07 },

@@ -15,6 +15,7 @@ import {
   getTransactionChannel,
   isInvoicePaymentChannel,
   isInvoicePartial,
+  isResumableStaticWalletTransaction,
   PENDING_INVOICE_HISTORY_REFRESH_MS,
   isTransactionCredited,
   isUnfinishedStaticWalletTransaction,
@@ -142,6 +143,24 @@ describe("top-up request contract", () => {
     expect(isUnfinishedStaticWalletTransaction(transaction({
       payment_channel: "static_wallet",
       status: "approved",
+    }))).toBe(false);
+  });
+
+  it("reopens only static-wallet payments that still have no transaction hash", () => {
+    expect(isResumableStaticWalletTransaction(transaction({
+      payment_channel: "static_wallet",
+      status: "draft",
+      transaction_hash: null,
+    }))).toBe(true);
+    expect(isResumableStaticWalletTransaction(transaction({
+      payment_channel: "static_wallet",
+      status: "pending",
+      transaction_hash: null,
+    }))).toBe(true);
+    expect(isResumableStaticWalletTransaction(transaction({
+      payment_channel: "static_wallet",
+      status: "pending",
+      transaction_hash: "0xsubmitted",
     }))).toBe(false);
   });
 

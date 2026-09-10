@@ -18,6 +18,7 @@ import {
   getTransactionBonusAmount,
   getTransactionChannel,
   isInvoicePaymentChannel,
+  isResumableStaticWalletTransaction,
   openFreshInvoicePayment,
 } from "@/lib/topup";
 import { trackBalanceTopupSuccess } from "@/lib/yandexMetrikaTopup";
@@ -28,13 +29,6 @@ import { api, ApiError } from "@/api";
 // Track the persistent "payment not completed" notification across the whole app.
 let pendingNotifId: string | null = null;
 
-const STATIC_WALLET_REMINDER_TITLES = new Set([
-  "Оплата не завершена",
-  "Payment not completed",
-  "Pago no completado",
-  "Paiement non terminé",
-]);
-
 const LEGACY_PASSIMPAY_REMINDER_TITLES = new Set([
   "Оплата через PassimPay не завершена",
   "PassimPay payment is not complete",
@@ -44,7 +38,7 @@ const LEGACY_PASSIMPAY_REMINDER_TITLES = new Set([
 
 function isStaticWalletReminder(notification: Pick<Notification, "apiType" | "title">): boolean {
   return notification.apiType === "incomplete_topup"
-    && STATIC_WALLET_REMINDER_TITLES.has(notification.title.trim());
+    && !LEGACY_PASSIMPAY_REMINDER_TITLES.has(notification.title.trim());
 }
 
 function isLegacyPassimPayReminder(notification: Pick<Notification, "apiType" | "title">): boolean {
@@ -113,8 +107,6 @@ export function PendingPaymentDialog() {
     if (!user) { draftCheckedRef.current = null; return; }
     if (!notificationsLoaded) return;
     if (draftCheckedRef.current === user.id) return;
-    const hasIncompleteNotif = notifications.some(isStaticWalletReminder);
-    if (hasIncompleteNotif) { draftCheckedRef.current = user.id; return; }
     draftCheckedRef.current = user.id;
     (async () => {
       try {
@@ -122,13 +114,24 @@ export function PendingPaymentDialog() {
         const items = Array.isArray(res?.items) ? res.items : [];
         const unfinished = items.find(
           x => x.user_id === user.id
-            && x.status === "draft"
-            && x.payment_channel === "static_wallet",
+            && isResumableStaticWalletTransaction(x),
         );
         if (!unfinished) return;
+        const existingReminder = notifications.find(
+          n => isStaticWalletReminder(n)
+            && (!n.apiPayload?.transaction_id || n.apiPayload.transaction_id === unfinished.id),
+        );
+        if (!pendingPayment) {
+          setPendingPayment(pendingFromTransaction(unfinished));
+        }
+        if (!existingReminder) {
+          // A created transaction must never leave the user with only a disabled
+          // top-up button. Reopen the wallet/hash dialog immediately.
+          openDialog();
+        }
         // Re-check to avoid race with hydration creating the notif elsewhere.
-        if (notifications.some(
-          n => isStaticWalletReminder(n) || n.apiPayload?.transaction_id === unfinished.id,
+        if (existingReminder || notifications.some(
+          n => n.apiPayload?.transaction_id === unfinished.id,
         )) return;
         const depositAmt = Number(unfinished.deposit_amount) || 0;
         const bonusUsd = getTransactionBonusAmount(unfinished);
@@ -151,7 +154,7 @@ export function PendingPaymentDialog() {
         console.error("[topup] draft auto-notify failed", e);
       }
     })();
-  }, [user, notificationsLoaded, notifications, addNotification, t]);
+  }, [user, notificationsLoaded, notifications, pendingPayment, setPendingPayment, openDialog, addNotification, t]);
 
   // Re-bind UI handlers to the persisted "incomplete_topup" notification on reload,
   // and rehydrate pendingPayment from the linked transaction so all bonus info

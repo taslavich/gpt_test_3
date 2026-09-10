@@ -1,10 +1,11 @@
-import { act, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ApiUserTransaction } from "@/api/types";
 
 const mocks = vi.hoisted(() => ({
   listTransactions: vi.fn(),
   registerRefreshHandler: vi.fn(),
+  openPayment: vi.fn(),
   user: { id: "user-id" },
   profile: { balance: 0 },
   translate: (key: string) => key,
@@ -40,7 +41,7 @@ vi.mock("@/contexts/ProfileContext", () => ({
 vi.mock("@/contexts/PendingPaymentContext", () => ({
   usePendingPayment: () => ({
     pendingPayment: null,
-    openPayment: vi.fn(),
+    openPayment: mocks.openPayment,
     registerRefreshHandler: mocks.registerRefreshHandler,
   }),
 }));
@@ -83,6 +84,7 @@ describe("DashboardBalance transaction polling", () => {
     vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
     mocks.listTransactions.mockReset();
     mocks.registerRefreshHandler.mockReset();
+    mocks.openPayment.mockReset();
   });
 
   afterEach(() => {
@@ -125,5 +127,34 @@ describe("DashboardBalance transaction polling", () => {
       await flush();
     });
     expect(mocks.listTransactions).toHaveBeenCalledTimes(3);
+  });
+
+  it("lets the user reopen a static-wallet payment when the transaction exists but its dialog is gone", async () => {
+    mocks.listTransactions.mockResolvedValueOnce({
+      items: [invoice({
+        payment_channel: "static_wallet",
+        payment_method: "usdt_erc20",
+        status: "pending",
+        transaction_hash: null,
+        payment_url: null,
+        provider_status: null,
+      })],
+      total: 1,
+    });
+
+    await act(async () => {
+      render(<DashboardBalance />);
+      await flush();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: /TwinBid Crypto/ }));
+    fireEvent.click(screen.getAllByRole("button", { name: "balance.notif.completePayment" })[0]);
+
+    expect(mocks.openPayment).toHaveBeenCalledWith(expect.objectContaining({
+      transactionRowId: "row-id",
+      method: "usdt_erc20",
+      channel: "static_wallet",
+      status: "pending",
+    }));
   });
 });

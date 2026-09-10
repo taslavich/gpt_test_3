@@ -31,6 +31,7 @@ import {
   getTransactionBonusAmount,
   isInvoicePaymentChannel,
   isInvoicePartial,
+  isResumableStaticWalletTransaction,
   isTransactionCredited,
   isUnfinishedStaticWalletTransaction,
   parseTopupAmount,
@@ -173,6 +174,27 @@ export default function DashboardBalance() {
     && pendingPayment.channel === "static_wallet";
   const isTopUpBlocked = selectedChannel === "static_wallet"
     && (hasPendingStaticWalletDialog || hasUnfinishedStaticWallet);
+
+  const resumableStaticWallet = topupRequests.find(
+    tx => isResumableStaticWalletTransaction(tx)
+      && (!user || tx.user_id === user.id),
+  );
+
+  const openStaticWalletPayment = (transaction: ApiUserTransaction) => {
+    const amount = Number(transaction.deposit_amount) || 0;
+    const bonusAmount = getTransactionBonusAmount(transaction);
+    openPayment({
+      amount,
+      method: transaction.payment_method || "usdt_trc20",
+      channel: "static_wallet",
+      bonus: amount > 0 && bonusAmount > 0 ? bonusAmount / amount * 100 : undefined,
+      bonus_amount: bonusAmount,
+      promocode_id: transaction.promocode_id ?? null,
+      transactionRowId: transaction.id,
+      total_balance_increase: Number(transaction.total_balance_increase) || amount + bonusAmount,
+      status: transaction.status,
+    });
+  };
 
   const handleTopUp = async () => {
     if (!finalAmount || finalAmount < 100 || !user || !selectedChannel || submittingTopup || topupSubmitLockRef.current) return;
@@ -511,11 +533,23 @@ export default function DashboardBalance() {
                       : ""}
                 {appliedPromo && finalAmount ? ` (+${fmtMoney(promoPreviewBonus)}$ ${t("balance.promo.bonusShort")})` : ""}
               </Button>
-              {isTopUpBlocked && (
+              {isTopUpBlocked && (resumableStaticWallet ? (
+                <div className="flex flex-wrap items-center gap-2 text-xs text-yellow-500">
+                  <span>{t("balance.disabledReason")}</span>
+                  <Button
+                    type="button"
+                    variant="link"
+                    className="h-auto p-0 text-xs text-primary"
+                    onClick={() => openStaticWalletPayment(resumableStaticWallet)}
+                  >
+                    {t("balance.notif.completePayment")}
+                  </Button>
+                </div>
+              ) : (
                 <p className="text-xs text-yellow-500">
                   {t("balance.disabledReason")}
                 </p>
-              )}
+              ))}
             </div>
             {topupError && (
               <p className="text-sm text-destructive" role="alert">{topupError}</p>
@@ -630,6 +664,19 @@ export default function DashboardBalance() {
                             <Badge variant="outline" className={cn("font-normal", st.className)}>
                               {st.label}
                             </Badge>
+                            {!isInvoice
+                              && isResumableStaticWalletTransaction(req) && (
+                                <Button
+                                  type="button"
+                                  variant="outline"
+                                  size="sm"
+                                  className="h-8 whitespace-nowrap border-border"
+                                  onClick={() => openStaticWalletPayment(req)}
+                                >
+                                  <ExternalLink className="mr-1.5 h-3.5 w-3.5" />
+                                  {t("balance.notif.completePayment")}
+                                </Button>
+                              )}
                             {isInvoice
                               && !credited
                               && req.status !== "rejected"

@@ -545,6 +545,14 @@ describe("creative API migration", () => {
     expect(mapped.bannerSize).toBe("300x250");
   });
 
+  it.each(["outstream_standard", "outstream_slider"] as const)(
+    "opens the legacy %s placement as the unified outstream format",
+    (videoFormat) => {
+      const mapped = mapApiCreativeToUi(existingCreative({ video_format: videoFormat }));
+      expect(mapped.videoFormat).toBe("outstream");
+    },
+  );
+
   it("sends MP4 with video/mp4 MIME and builds video ADM", async () => {
     const original = imageFile("banner.mp4", "application/octet-stream");
     expect(normalizeCreativeUploadFile(original).type).toBe("video/mp4");
@@ -565,7 +573,52 @@ describe("creative API migration", () => {
     expect(client.creates[0].body.adm).toContain("<video ");
   });
 
-  it("allows MP4 only for banners and enforces the 10 MB limit", () => {
+  it("uploads a video creative and sends its required placement to the backend", async () => {
+    const client = new FakeCreativeApi();
+    await createCampaignCreatives({
+      client,
+      campaignId: "campaign-video",
+      format: "video",
+      creatives: [baseCreative({
+        pendingFile: imageFile("creative.mp4", "video/mp4"),
+        imageFileName: "creative.mp4",
+        imageMimeType: "video/mp4",
+        mediaType: "video",
+        imageWidth: 1920,
+        imageHeight: 1080,
+        videoFormat: "outstream",
+      })],
+    });
+
+    expect(client.uploads[0].file.type).toBe("video/mp4");
+    expect(client.creates[0].body).toMatchObject({
+      creative_name: "Creative",
+      adm: "https://target.example",
+      image_id: "uploaded-image-1",
+      video_format: "outstream",
+      w: 1920,
+      h: 1080,
+    });
+    expect(client.creates[0].body.trackers_macros).toEqual({
+      click_id: "click_id",
+      site_id: "site_id",
+    });
+  });
+
+  it("requires the video placement and accepts only MP4 for video creatives", () => {
+    const mp4 = imageFile("creative.mp4", "video/mp4");
+    const png = imageFile("creative.png", "image/png");
+
+    expect(validateCreativeFile(mp4, true, true)).toEqual({ valid: true, mediaType: "video" });
+    expect(validateCreativeFile(png, true, true)).toEqual({ valid: false, reason: "format" });
+    expect(() => buildCreativeWriteBody({
+      format: "video",
+      creative: baseCreative({ pendingFile: mp4, mediaType: "video", videoFormat: undefined }),
+      imageId: "image-1",
+    })).toThrow("Video format is required");
+  });
+
+  it("allows MP4 for banners and videos and enforces the 10 MB limit", () => {
     const exactLimit = new File(
       [new Uint8Array(MAX_CREATIVE_VIDEO_BYTES)],
       "banner.mp4",

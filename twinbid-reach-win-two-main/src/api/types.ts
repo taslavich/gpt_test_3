@@ -6,7 +6,9 @@ export type CampaignStatus = "active" | "paused" | "draft" | "completed" | "mode
 export type PricingModel = "cpm" | "cpc";
 export type CampaignTypeModel = 1 | 2;
 export type TrafficType = "mainstream" | "adult" | "mixed";
-export type FormatType = "banner" | "popunder" | "native" | "push";
+export type FormatType = "banner" | "popunder" | "native" | "push" | "video";
+export type VideoFormat = "instream" | "outstream" | "video_popup";
+export type LegacyVideoFormat = "outstream_standard" | "outstream_slider";
 export type TopupStatus = "draft" | "pending" | "approved" | "rejected" | "cancelled";
 export type PaymentChannel = "static_wallet" | "passimpay_invoice" | "cryptomus_invoice";
 export type PaymentProvider = "passimpay" | "cryptomus";
@@ -129,6 +131,8 @@ export interface ApiCreative {
   h?: number | null;
   title?: string | null;
   description?: string | null;
+  /** Required for creatives of campaigns with format_type=video. */
+  video_format?: VideoFormat | LegacyVideoFormat | null;
 }
 
 /** JSON body accepted by creative POST/PATCH. File bytes are never included. */
@@ -143,6 +147,8 @@ export interface ApiCreativeWrite {
   h?: number | null;
   title?: string | null;
   description?: string | null;
+  /** Video placement requested by the advertiser. */
+  video_format?: VideoFormat | null;
 }
 
 export interface ApiUserTransaction {

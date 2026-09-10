@@ -22,5 +22,6 @@ export function getTargetDims(formatKey: string, bannerSize?: string): CropperTa
   }
   if (formatKey === "push") return { w: 200, h: 200, mode: "square-resizable", minSide: 200 };
   if (formatKey === "native") return { w: 200, h: 200, mode: "square-resizable", minSide: 200 };
+  if (formatKey === "video") return { w: 1920, h: 1080, mode: "fixed" };
   return null;
 }

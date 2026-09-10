@@ -222,11 +222,44 @@ function NativePreview({ title, description, imageUrl, brandName }: { title?: st
   );
 }
 
+function VideoPreview({ creative, label }: { creative: Creative; label: string }) {
+  const player = (
+    <div className="relative aspect-video w-full overflow-hidden rounded border border-slate-300 bg-slate-950 shadow-lg">
+      {creative.imageUrl
+        ? <video src={creative.imageUrl} controls autoPlay muted loop playsInline className="h-full w-full object-cover" />
+        : <div className="flex h-full items-center justify-center text-sm text-slate-400">1920×1080</div>}
+      <span className="pointer-events-none absolute bottom-2 left-2 rounded bg-black/65 px-2 py-1 text-[10px] font-medium text-white">
+        {label}
+      </span>
+    </div>
+  );
+
+  if (creative.videoFormat === "instream") {
+    return <FakeSite withSidebar={false}>{player}</FakeSite>;
+  }
+  if (creative.videoFormat === "outstream") {
+    return <FakeSite withSidebar={false}><ArticleBody short />{player}</FakeSite>;
+  }
+  return (
+    <div className="relative">
+      <FakeSite withSidebar={false}><ArticleBody /></FakeSite>
+      <div className="absolute bottom-3 right-3 w-[58%] max-w-[360px]">
+        {player}
+      </div>
+    </div>
+  );
+}
+
 export function CreativePreviewDialog({ open, onClose, formatKey, bannerSize, brandName, creative }: CreativePreviewDialogProps) {
   const { t } = useLanguage();
   if (!creative) return null;
 
   const size = bannerSize && /^\d+x\d+$/.test(bannerSize) ? bannerSize : "300x250";
+  const videoLabel = creative.videoFormat === "instream"
+    ? "In-stream"
+    : creative.videoFormat === "outstream"
+      ? "Out-stream"
+      : "Pop-up Video";
 
   return (
     <Dialog open={open} onOpenChange={(o) => { if (!o) onClose(); }}>
@@ -256,6 +289,10 @@ export function CreativePreviewDialog({ open, onClose, formatKey, bannerSize, br
 
         {formatKey === "native" && (
           <NativePreview title={creative.title} description={creative.description} imageUrl={creative.imageUrl} brandName={brandName} />
+        )}
+
+        {formatKey === "video" && (
+          <VideoPreview creative={creative} label={videoLabel} />
         )}
 
         {formatKey === "popunder" && (

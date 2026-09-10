@@ -29,10 +29,6 @@ import {
 import { useIsMobileImmediate } from "@/hooks/use-mobile";
 import { getLocalizedErrorMessage } from "@/lib/apiStatus";
 
-const formatLabels: Record<string, string> = {
-  banner: "Banner", popunder: "Popunder", native: "Native", push: "In-page Push",
-};
-
 const allScheduleItems = (): string[] => {
   const days = ["monday","tuesday","wednesday","thursday","friday","saturday","sunday"];
   const items: string[] = [];
@@ -53,6 +49,13 @@ export default function CreateCampaign() {
   const navigate = useNavigate();
   const { campaigns, addCampaign, updateCampaign, refetch } = useCampaigns();
   const { t } = useLanguage();
+  const formatLabels: Record<string, string> = {
+    banner: "Banner",
+    popunder: "Popunder",
+    native: "Native",
+    push: "In-page Push",
+    video: t("create.formatVideo"),
+  };
   const { addNotification } = useNotifications();
   const isMobile = useIsMobileImmediate();
   const [step, setStep] = useState(1);
@@ -128,6 +131,9 @@ export default function CreateCampaign() {
     // Validate creatives
     creatives.forEach(c => {
       if (!c.name?.trim()) e[`creative_${c.id}_name`] = t("create.required");
+      if (adFormat === "video" && !c.videoFormat) {
+        e[`creative_${c.id}_videoFormat`] = t("create.required");
+      }
       const type = adFormat === "banner" ? (c.creativeType || "image") : "image";
       if (adFormat === "banner" && !c.bannerSize) {
         e[`creative_${c.id}_bannerSize`] = t("create.required");
@@ -157,6 +163,9 @@ export default function CreateCampaign() {
         if (!c.url.trim()) e[`creative_${c.id}_url`] = t("create.required");
         if (creativeRequiresImage(adFormat, c) && !c.imageUrl && !c.pendingFile) {
           e[`creative_${c.id}_image`] = t("create.required");
+        }
+        if (adFormat === "video" && c.pendingFile && c.mediaType !== "video") {
+          e[`creative_${c.id}_image`] = t("create.videoFormatError");
         }
       }
       if ((adFormat === "native" || adFormat === "push") && !c.title?.trim()) e[`creative_${c.id}_title`] = t("create.required");

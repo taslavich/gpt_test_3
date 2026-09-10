@@ -151,11 +151,11 @@ export default function DashboardCampaigns() {
     const { id: _id, ...rest } = c;
     try {
       const sourceCreatives = await loadCampaignCreatives(c.id);
-      // For formats with a visual (banner/native/push), the backend requires
+      // For formats with a visual (banner/native/push/video), the backend requires
       // a file on creative create. The duplicated source creatives only have
       // a presigned `imageUrl` — download those bytes and attach as
       // `pendingFile` so the copy is uploaded with the same image.
-      const needsFile = c.formatKey === "banner" || c.formatKey === "native" || c.formatKey === "push";
+      const needsFile = c.formatKey === "banner" || c.formatKey === "native" || c.formatKey === "push" || c.formatKey === "video";
       const creatives = needsFile
         ? await Promise.all(
             sourceCreatives.map(async (cr) => {

@@ -7,6 +7,9 @@ const formats = [
   { id: "native", name: "Native", desc: "formats.native.desc" },
   { id: "banner", name: "Banner", desc: "formats.banner.desc" },
   { id: "inpage", name: "In-page Push", desc: "formats.push.desc" },
+  { id: "video-instream", name: "In-stream", desc: "formats.video.instream.desc" },
+  { id: "video-outstream", name: "Out-stream", desc: "formats.video.outstream.desc" },
+  { id: "video-popup", name: "Pop-up Video", desc: "formats.video.popup.desc" },
 ] as const;
 
 const formatCopy = {
@@ -20,7 +23,7 @@ const formatCopy = {
     sponsored: "РЕКЛАМА",
     nativeHeadline: "Внутри материала",
     nativeCopy: "Встраивается в страницу и воспринимается как часть материала.",
-    tags: { popunder: "МАКСИМАЛЬНЫЙ ОХВАТ", native: "ВНУТРИ КОНТЕНТА", banner: "МЕДИЙНЫЙ ФОРМАТ", inpage: "ПОВЕРХ СТРАНИЦЫ" },
+    tags: { popunder: "МАКСИМАЛЬНЫЙ ОХВАТ", native: "ВНУТРИ КОНТЕНТА", banner: "МЕДИЙНЫЙ ФОРМАТ", inpage: "ПОВЕРХ СТРАНИЦЫ", "video-instream": "ВНУТРИ ПЛЕЕРА", "video-outstream": "ВНУТРИ КОНТЕНТА", "video-popup": "ПОВЕРХ КОНТЕНТА" },
   },
   en: {
     section: "04 / AD FORMATS",
@@ -32,7 +35,7 @@ const formatCopy = {
     sponsored: "SPONSORED",
     nativeHeadline: "Inside the story",
     nativeCopy: "Follows the page structure and feels like part of the content.",
-    tags: { popunder: "FULL ATTENTION", native: "IN-CONTENT", banner: "DISPLAY REACH", inpage: "ON-PAGE MESSAGE" },
+    tags: { popunder: "FULL ATTENTION", native: "IN-CONTENT", banner: "DISPLAY REACH", inpage: "ON-PAGE MESSAGE", "video-instream": "INSIDE THE PLAYER", "video-outstream": "IN-CONTENT VIDEO", "video-popup": "OVER THE CONTENT" },
   },
   es: {
     section: "04 / FORMATOS",
@@ -44,7 +47,7 @@ const formatCopy = {
     sponsored: "PUBLICIDAD",
     nativeHeadline: "Dentro del artículo",
     nativeCopy: "Respeta la estructura de la página y se integra en el contenido.",
-    tags: { popunder: "ATENCIÓN TOTAL", native: "DENTRO DEL CONTENIDO", banner: "ALCANCE DISPLAY", inpage: "MENSAJE EN PÁGINA" },
+    tags: { popunder: "ATENCIÓN TOTAL", native: "DENTRO DEL CONTENIDO", banner: "ALCANCE DISPLAY", inpage: "MENSAJE EN PÁGINA", "video-instream": "DENTRO DEL REPRODUCTOR", "video-outstream": "VÍDEO EN CONTENIDO", "video-popup": "SOBRE EL CONTENIDO" },
   },
   fr: {
     section: "04 / FORMATS",
@@ -56,7 +59,7 @@ const formatCopy = {
     sponsored: "SPONSORISÉ",
     nativeHeadline: "Au cœur de l’article",
     nativeCopy: "Reprend la structure de la page et s’intègre naturellement au contenu.",
-    tags: { popunder: "ATTENTION MAXIMALE", native: "DANS LE CONTENU", banner: "PORTÉE DISPLAY", inpage: "MESSAGE SUR LA PAGE" },
+    tags: { popunder: "ATTENTION MAXIMALE", native: "DANS LE CONTENU", banner: "PORTÉE DISPLAY", inpage: "MESSAGE SUR LA PAGE", "video-instream": "DANS LE LECTEUR", "video-outstream": "VIDÉO DANS LE CONTENU", "video-popup": "AU-DESSUS DU CONTENU" },
   },
 };
 
@@ -65,6 +68,8 @@ type Labels = (typeof formatCopy)[keyof typeof formatCopy];
 
 function FormatScene({ format, labels }: { format: Format; labels: Labels }) {
   const { id: type, name } = format;
+  const isVideo = type.startsWith("video-");
+  const isFloatingVideo = type === "video-popup";
 
   return (
     <div className={`format-editorial-scene format-editorial-${type}`} aria-hidden="true">
@@ -85,12 +90,28 @@ function FormatScene({ format, labels }: { format: Format; labels: Labels }) {
               </div>
               <div className="format-editorial-copy-lines format-editorial-copy-lines-short"><span /><span /><span /></div>
             </>
+          ) : isVideo ? (
+            <>
+              <div className="format-editorial-video-player">
+                <span>▶</span>
+                <small>{name}</small>
+                <i />
+              </div>
+              <div className="format-editorial-copy-lines"><span /><span /><span /></div>
+            </>
           ) : (
             <><i /><i /><i /><i /></>
           )}
         </div>
       </div>
-      {type !== "native" ? (
+      {isFloatingVideo && (
+        <div className="format-editorial-video-float">
+          <b>×</b>
+          <span>▶</span>
+          <small>{name}</small>
+        </div>
+      )}
+      {type !== "native" && !isVideo ? (
         <div className="format-editorial-ad">
           <small>{type === "banner" ? "728 × 90" : type === "inpage" ? labels.sponsored : labels.ad}</small>
           <strong>{name === "In-page Push" ? <>IN-PAGE<br />PUSH</> : name}</strong>
@@ -131,7 +152,7 @@ export function FormatsSection() {
           <div className="formats-editorial-stage">
             <div className="formats-editorial-stage-label">
               <span>{text.preview}</span>
-              <strong>0{active + 1} / 04</strong>
+              <strong>0{active + 1} / 0{formats.length}</strong>
             </div>
             <FormatScene key={`${lang}-${current.id}`} format={current} labels={text} />
             <div className="formats-editorial-stage-foot">
