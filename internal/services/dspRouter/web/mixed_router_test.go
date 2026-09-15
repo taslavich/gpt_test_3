@@ -2,8 +2,13 @@ package dspRouterWeb
 
 import (
 	"context"
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
 	"testing"
+	"time"
 
+	"gitlab.com/twinbid-exchange/RTB-exchange/internal/config"
 	"gitlab.com/twinbid-exchange/RTB-exchange/internal/constants"
 	advGrpc "gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/proto/services/adv"
 	dspRouterGrpc "gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/proto/services/dspRouter"
@@ -109,5 +114,91 @@ func TestRouterPartialADVKeepsADVAndFallsThroughForUnresolved(t *testing.T) {
 	}
 	if got := response.GetWinnerUserIds()[impADV]; got != "user-adv" {
 		t.Fatalf("forwarded ADV winner user=%q want user-adv", got)
+	}
+}
+
+func TestRouterRTBReceivesAllImpressionsAndIsTaggedSeparately(t *testing.T) {
+	requestID := "req-rtb-full-request"
+	imp1, imp2 := "imp-1", "imp-2"
+	advPrice := float32(0.70)
+	advClient := &fakeADVClient{response: &advGrpc.DoAuctionResponse{
+		BidResponse: &ortb.BidResponse{Seatbid: []*ortb.SeatBid{{Bid: []*ortb.Bid{
+			{Impid: &imp1, Price: &advPrice},
+			{Impid: &imp2, Price: &advPrice},
+		}}}},
+		WinnerUserIds:    map[string]string{imp1: "user-1", imp2: "user-2"},
+		WinnerBasePrices: map[string]float64{imp1: 1.0, imp2: 1.0},
+	}}
+
+	var receivedImpIDs []string
+	rtbServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		defer r.Body.Close()
+		var bidRequest ortb.BidRequest
+		if err := json.NewDecoder(r.Body).Decode(&bidRequest); err != nil {
+			t.Errorf("decode RTB request: %v", err)
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+		for _, imp := range bidRequest.GetImp() {
+			receivedImpIDs = append(receivedImpIDs, imp.GetId())
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"id":"rtb-response","seatbid":[{"bid":[{"id":"rtb-bid","impid":"imp-1","price":1.20,"adm":"https://rtb.example/adm"}]}]}`))
+	}))
+	defer rtbServer.Close()
+
+	rtbDomain := "adl_rtb_partner.example"
+	routes := &FormatRoutesV25{
+		POP: FormatRouteV25{
+			AdultRTBEndpoints: config.MapStringToString{rtbServer.URL: rtbDomain},
+		},
+	}
+	clients := InitSspHttpClients(routes.EndpointSets()...)
+	server := NewServer(
+		nil, nil, nil, routes, nil, 300*time.Millisecond, clients,
+		nil, nil, nil, nil, nil, nil, nil, nil, advClient,
+	)
+
+	response, err := server.GetBids_V2_5(context.Background(), &dspRouterGrpc.DspRouterRequest_V2_5{
+		BidRequest:  &ortb.BidRequest{Id: &requestID, Imp: []*ortb.Imp{{Id: &imp1}, {Id: &imp2}}},
+		ImpIdUuid:   map[string]string{imp1: "uuid-1", imp2: "uuid-2"},
+		SspDomain:   "adl_ssp.example",
+		TrafficType: "ADULT",
+		Format:      constants.POP,
+	})
+	if err != nil {
+		t.Fatalf("router call failed: %v", err)
+	}
+	if len(receivedImpIDs) != 2 || receivedImpIDs[0] != imp1 || receivedImpIDs[1] != imp2 {
+		t.Fatalf("RTB received impressions=%v want [%s %s]", receivedImpIDs, imp1, imp2)
+	}
+	key := constants.RTBResponseDomainPrefix + rtbDomain
+	if response.GetBidResponses()[key] == nil {
+		t.Fatalf("RTB response key %q missing from BidResponses: %v", key, response.GetBidResponses())
+	}
+	if response.GetRekl() {
+		t.Fatal("Router cannot mark all-ADV before BidEngine auctions ADV against RTB")
+	}
+}
+
+func TestDemandResponseCodesIncludeRTBForAllImpressionsAndDSPOnlyForFallback(t *testing.T) {
+	dspImps := map[string]string{"imp-fallback": "uuid-fallback"}
+	dspCodes := map[string]string{"adl_dsp.example": "204"}
+	rtbCodes := map[string]string{"adl_rtb.example": "200"}
+
+	advResolvedStats := demandResponseCodesForImp("imp-adv", dspImps, dspCodes, rtbCodes)
+	if got := advResolvedStats["adl_rtb.example"]; got != "200" {
+		t.Fatalf("ADV-resolved imp RTB code=%q want 200", got)
+	}
+	if _, exists := advResolvedStats["adl_dsp.example"]; exists {
+		t.Fatal("ADV-resolved imp must not contain DSP status for a DSP request that was never sent")
+	}
+
+	fallbackStats := demandResponseCodesForImp("imp-fallback", dspImps, dspCodes, rtbCodes)
+	if got := fallbackStats["adl_rtb.example"]; got != "200" {
+		t.Fatalf("fallback imp RTB code=%q want 200", got)
+	}
+	if got := fallbackStats["adl_dsp.example"]; got != "204" {
+		t.Fatalf("fallback imp DSP code=%q want 204", got)
 	}
 }

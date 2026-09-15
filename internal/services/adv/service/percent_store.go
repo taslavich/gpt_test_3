@@ -10,11 +10,13 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
+
+	"gitlab.com/twinbid-exchange/RTB-exchange/internal/constants"
 )
 
 // DefaultADVPercent is used when the campaign owner is absent from the map.
 // 0.30 means a default 30% deduction from the auction price.
-const DefaultADVPercent = 0.30
+const DefaultADVPercent = constants.DefaultAdvertiserDeduction
 
 // PercentMap stores the ADV auction deduction percent by campaign owner user ID.
 // JSON format: {"<user_id>": <percent>}, where percent must be in [0, 1].

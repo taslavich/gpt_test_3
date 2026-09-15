@@ -5,6 +5,16 @@ const (
 	ZERO_BIDFLOOR     = 0
 )
 
+// DefaultAdvertiserDeduction is the baseline exchange margin applied to
+// advertiser demand. RTB uses the same baseline in BidEngine so ADV and RTB
+// stay aligned on the default 30% deduction.
+const DefaultAdvertiserDeduction = 0.30
+
+// RTBResponseDomainPrefix marks RTB responses while they travel through the
+// existing BidResponses map. The prefix is internal only; statistics and
+// ClickHouse winner fields always use the original configured RTB domain.
+const RTBResponseDomainPrefix = "__rtb__:"
+
 const (
 	EVENT_TIME_COLUMN      = "EVENT_TIME"
 	TYPIC_COLUMN           = "TYPIC"

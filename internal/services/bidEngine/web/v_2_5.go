@@ -158,12 +158,23 @@ func (s *Server) GetWinnerBid_V2_5(
 		}
 	}
 
-	advImpIDs := bidResponseImpIDSet(req.GetReadyBidResponse())
+	advCandidateImpIDs := bidResponseImpIDSet(req.GetReadyBidResponse())
 	finalImpIDs := bidResponseImpIDSet(bidResponse)
-	allADV := allRequestImpressionsInSet(req.GetBidRequest(), advImpIDs)
+	finalADVImpIDs := make(map[string]struct{})
+	for impID, uuid := range req.GetImpIdUuid() {
+		if _, finalized := finalImpIDs[impID]; !finalized {
+			continue
+		}
+		winnerStats := clickhouseBid[uuid]
+		if winnerStats == nil || winnerStats.WinDspDomain == nil || *winnerStats.WinDspDomain != "adv" {
+			continue
+		}
+		finalADVImpIDs[impID] = struct{}{}
+	}
+	allADV := allRequestImpressionsInSet(req.GetBidRequest(), finalADVImpIDs)
 
 	impIdUuidClone := make(map[string]string, len(req.ImpIdUuid))
-	winnerUsers := make(map[string]string, len(advImpIDs))
+	winnerUsers := make(map[string]string, len(finalADVImpIDs))
 	failedImpIds := make([]string, 0)
 	failedSet := make(map[string]struct{})
 	appendFailed := func(impID string) {
@@ -180,14 +191,14 @@ func (s *Server) GetWinnerBid_V2_5(
 	// Legacy ADV handling marked a selected ADV impression as failed when its
 	// UUID mapping was missing. Keep that behavior even though the common stats
 	// loop is keyed by ImpIdUuid.
-	for impID := range advImpIDs {
+	for impID := range advCandidateImpIDs {
 		if _, exists := req.GetImpIdUuid()[impID]; !exists {
 			appendFailed(impID)
 		}
 	}
 
 	for impID, uuid := range req.GetImpIdUuid() {
-		_, isADV := advImpIDs[impID]
+		_, isADV := finalADVImpIDs[impID]
 		if allADV && !isADV {
 			continue
 		}

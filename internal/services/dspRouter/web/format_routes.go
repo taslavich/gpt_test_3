@@ -23,6 +23,12 @@ type FormatRouteV25 struct {
 	AdultEndpoints      config.MapStringToString
 	MainstreamEndpoints config.MapStringToString
 
+	// RTB endpoints intentionally live outside the DSP endpoint maps. They use
+	// the same SSP/GEO allow-map and filter rules, but receive the original
+	// OpenRTB request and are tagged as RTB when forwarded to BidEngine.
+	AdultRTBEndpoints      config.MapStringToString
+	MainstreamRTBEndpoints config.MapStringToString
+
 	AdultLinkFilename      string
 	MainstreamLinkFilename string
 	AdultLinkMap           *GeoDspLinkMap
@@ -32,6 +38,8 @@ type FormatRouteV25 struct {
 	// lookups on the 100k RPS path.
 	AdultOrdered         []DSPEndpointV25
 	MainstreamOrdered    []DSPEndpointV25
+	AdultRTBOrdered      []DSPEndpointV25
+	MainstreamRTBOrdered []DSPEndpointV25
 	AdultNativeMask      filter.NativeFieldMask
 	MainstreamNativeMask filter.NativeFieldMask
 }
@@ -99,6 +107,21 @@ func (r *FormatRoutesV25) selectRuntime(format, trafficType string) ([]DSPEndpoi
 	}
 }
 
+func (r *FormatRoutesV25) selectRTBRuntime(format, trafficType string) []DSPEndpointV25 {
+	route := r.route(format)
+	if route == nil {
+		return nil
+	}
+	switch trafficType {
+	case sppAdapterWeb.ADULT:
+		return route.AdultRTBOrdered
+	case sppAdapterWeb.MAINSTREAM:
+		return route.MainstreamRTBOrdered
+	default:
+		return nil
+	}
+}
+
 func (r *FormatRoutesV25) selectConfig(format, trafficType string) (string, *GeoDspLinkMap) {
 	route := r.route(format)
 	if route == nil {
@@ -141,13 +164,15 @@ func (r *FormatRoutesV25) prepare(processor *filter.OptimizedFilterProcessor) {
 		}
 		route.AdultOrdered = orderedEndpoints(route.AdultEndpoints)
 		route.MainstreamOrdered = orderedEndpoints(route.MainstreamEndpoints)
+		route.AdultRTBOrdered = orderedEndpoints(route.AdultRTBEndpoints)
+		route.MainstreamRTBOrdered = orderedEndpoints(route.MainstreamRTBEndpoints)
 		if processor == nil {
 			return
 		}
-		for _, dsp := range route.AdultOrdered {
+		for _, dsp := range append(append([]DSPEndpointV25{}, route.AdultOrdered...), route.AdultRTBOrdered...) {
 			route.AdultNativeMask |= processor.NativeMaskForDSPV25(DeletePrefix(dsp.Domain))
 		}
-		for _, dsp := range route.MainstreamOrdered {
+		for _, dsp := range append(append([]DSPEndpointV25{}, route.MainstreamOrdered...), route.MainstreamRTBOrdered...) {
 			route.MainstreamNativeMask |= processor.NativeMaskForDSPV25(DeletePrefix(dsp.Domain))
 		}
 	}
@@ -162,9 +187,9 @@ func (r *FormatRoutesV25) EndpointSets() []config.MapStringToString {
 		return nil
 	}
 	return []config.MapStringToString{
-		r.POP.AdultEndpoints, r.POP.MainstreamEndpoints,
-		r.BAN.AdultEndpoints, r.BAN.MainstreamEndpoints,
-		r.NAT.AdultEndpoints, r.NAT.MainstreamEndpoints,
-		r.IPP.AdultEndpoints, r.IPP.MainstreamEndpoints,
+		r.POP.AdultEndpoints, r.POP.MainstreamEndpoints, r.POP.AdultRTBEndpoints, r.POP.MainstreamRTBEndpoints,
+		r.BAN.AdultEndpoints, r.BAN.MainstreamEndpoints, r.BAN.AdultRTBEndpoints, r.BAN.MainstreamRTBEndpoints,
+		r.NAT.AdultEndpoints, r.NAT.MainstreamEndpoints, r.NAT.AdultRTBEndpoints, r.NAT.MainstreamRTBEndpoints,
+		r.IPP.AdultEndpoints, r.IPP.MainstreamEndpoints, r.IPP.AdultRTBEndpoints, r.IPP.MainstreamRTBEndpoints,
 	}
 }

@@ -131,21 +131,25 @@ func main() {
 	formatRoutes := &dspRouterWeb.FormatRoutesV25{
 		POP: dspRouterWeb.FormatRouteV25{
 			AdultEndpoints: cfg.DSPEndpointsAdult_v_2_5, MainstreamEndpoints: cfg.DSPEndpointsMainstream_v_2_5,
+			AdultRTBEndpoints: cfg.RTBEndpointsAdultV25, MainstreamRTBEndpoints: cfg.RTBEndpointsMainstreamV25,
 			AdultLinkFilename: cfg.SspGeoDspLinksAdultFilePath, MainstreamLinkFilename: cfg.SspGeoDspLinksMainstreamFilePath,
 			AdultLinkMap: &popAdultLinks, MainstreamLinkMap: &popMainstreamLinks,
 		},
 		BAN: dspRouterWeb.FormatRouteV25{
 			AdultEndpoints: cfg.DSPEndpointsBanAdultV25, MainstreamEndpoints: cfg.DSPEndpointsBanMainstreamV25,
+			AdultRTBEndpoints: cfg.RTBEndpointsBanAdultV25, MainstreamRTBEndpoints: cfg.RTBEndpointsBanMainstreamV25,
 			AdultLinkFilename: cfg.SspGeoDspLinksBanAdultFilePath, MainstreamLinkFilename: cfg.SspGeoDspLinksBanMainstreamFilePath,
 			AdultLinkMap: &banAdultLinks, MainstreamLinkMap: &banMainstreamLinks,
 		},
 		NAT: dspRouterWeb.FormatRouteV25{
 			AdultEndpoints: cfg.DSPEndpointsNatAdultV25, MainstreamEndpoints: cfg.DSPEndpointsNatMainstreamV25,
+			AdultRTBEndpoints: cfg.RTBEndpointsNatAdultV25, MainstreamRTBEndpoints: cfg.RTBEndpointsNatMainstreamV25,
 			AdultLinkFilename: cfg.SspGeoDspLinksNatAdultFilePath, MainstreamLinkFilename: cfg.SspGeoDspLinksNatMainstreamFilePath,
 			AdultLinkMap: &natAdultLinks, MainstreamLinkMap: &natMainstreamLinks,
 		},
 		IPP: dspRouterWeb.FormatRouteV25{
 			AdultEndpoints: cfg.DSPEndpointsIppAdultV25, MainstreamEndpoints: cfg.DSPEndpointsIppMainstreamV25,
+			AdultRTBEndpoints: cfg.RTBEndpointsIppAdultV25, MainstreamRTBEndpoints: cfg.RTBEndpointsIppMainstreamV25,
 			AdultLinkFilename: cfg.SspGeoDspLinksIppAdultFilePath, MainstreamLinkFilename: cfg.SspGeoDspLinksIppMainstreamFilePath,
 			AdultLinkMap: &ippAdultLinks, MainstreamLinkMap: &ippMainstreamLinks,
 		},

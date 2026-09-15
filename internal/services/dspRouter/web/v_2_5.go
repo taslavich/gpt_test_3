@@ -143,6 +143,7 @@ type dspDomainResp struct {
 type dspDomainCode struct {
 	domain string
 	code   string
+	isRTB  bool
 }
 
 func trafficTypeFromDspRouterRequest(req *dspRouterGrpc.DspRouterRequest_V2_5) string {
@@ -239,6 +240,24 @@ func cloneFloat64Map(input map[string]float64) map[string]float64 {
 		output[key] = value
 	}
 	return output
+}
+
+func demandResponseCodesForImp(
+	impID string,
+	dspImpIDUUID map[string]string,
+	dspCodes map[string]string,
+	rtbCodes map[string]string,
+) map[string]string {
+	stats := make(map[string]string, len(rtbCodes)+len(dspCodes))
+	for domain, code := range rtbCodes {
+		stats[domain] = code
+	}
+	if _, sentToDSP := dspImpIDUUID[impID]; sentToDSP {
+		for domain, code := range dspCodes {
+			stats[domain] = code
+		}
+	}
+	return stats
 }
 
 func bidResponseImpIDs(response *ortb_V2_5.BidResponse) map[string]struct{} {
@@ -341,16 +360,16 @@ func (s *Server) GetBids_V2_5(
 		req.BidRequest.Device.Ip = req.BidRequest.Device.Ipv6
 	}
 
-	var wg sync.WaitGroup
-
 	trafficType := trafficTypeFromDspRouterRequest(req)
 	requestFormat := normalizeDSPFormat(req.GetFormat())
 
 	var dspList []DSPEndpointV25
+	var rtbList []DSPEndpointV25
 	var linkMap GeoDspLinkMap
 	var nativeMask filter.NativeFieldMask
 	if s.formatRoutes != nil {
 		dspList, linkMap, nativeMask = s.formatRoutes.selectRuntime(requestFormat, trafficType)
+		rtbList = s.formatRoutes.selectRTBRuntime(requestFormat, trafficType)
 	} else if requestFormat == constants.POP {
 		// Backwards-compatible fallback used by older tests/constructors. Sorting
 		// here is test/legacy-only; production routes are precompiled at startup.
@@ -368,8 +387,8 @@ func (s *Server) GetBids_V2_5(
 		}
 	}
 
-	codesCh := make(chan *dspDomainCode, len(dspList))
-	responsesCh := make(chan *dspDomainResp, len(dspList))
+	codesCh := make(chan *dspDomainCode, len(dspList)+len(rtbList))
+	responsesCh := make(chan *dspDomainResp, len(dspList)+len(rtbList))
 
 	var filters *filter.FiltersBox
 	var filtersCid *filter.FilterCidBoxType
@@ -401,12 +420,6 @@ func (s *Server) GetBids_V2_5(
 			Rekl:         false,
 			ImpIdUuid:    cloneStringMap(req.GetImpIdUuid()),
 		}, nil
-	}
-
-	globalUuid := ""
-	for _, value := range req.GetImpIdUuid() {
-		globalUuid = value
-		break
 	}
 
 	if traceRequest {
@@ -454,7 +467,7 @@ func (s *Server) GetBids_V2_5(
 		// ADV errors always fall through with the full request. Ignore any
 		// response object returned together with the error, preserving the
 		// previous error semantics.
-		log.Printf("ADV auction failed, falling back to DSP: %v", advErr)
+		log.Printf("ADV auction failed, falling back to DSP/RTB: %v", advErr)
 		readyADVResponse = nil
 	} else if len(bidResponseImpIDs(readyADVResponse)) > 0 {
 		readyADVForBidEngine = readyADVResponse
@@ -462,6 +475,10 @@ func (s *Server) GetBids_V2_5(
 		winnerBasePrices = cloneFloat64Map(advResponse.GetWinnerBasePrices())
 	}
 
+	// DSP keeps the existing fallback semantics: only impressions without an
+	// ADV candidate are sent downstream. RTB is intentionally different: it
+	// receives the original request with every impression and competes with ADV
+	// in BidEngine.
 	dspBidRequest, dspImpIdUuid, err := buildDSPFallbackBidRequest(
 		req.GetBidRequest(),
 		req.GetImpIdUuid(),
@@ -470,8 +487,15 @@ func (s *Server) GetBids_V2_5(
 	if err != nil {
 		return nil, status.Error(codes.Internal, err.Error())
 	}
+	rtbBidRequest, ok := proto.Clone(req.GetBidRequest()).(*ortb_V2_5.BidRequest)
+	if !ok || rtbBidRequest == nil {
+		return nil, status.Error(codes.Internal, "cannot clone RTB bid request")
+	}
 
-	if len(dspBidRequest.GetImp()) == 0 && readyADVForBidEngine != nil {
+	// Preserve the old all-ADV fast path only when RTB is not configured. Once
+	// RTB exists it must still be queried for every impression, including those
+	// already matched by ADV.
+	if len(dspBidRequest.GetImp()) == 0 && readyADVForBidEngine != nil && len(rtbList) == 0 {
 		if traceRequest {
 			log.Printf(
 				"[ROUTER][ADV_SELECTED] request_id=%q ssp_domain=%q format=%q winner_user_ids=%d resolved_impressions=%d",
@@ -496,235 +520,205 @@ func (s *Server) GetBids_V2_5(
 	}
 
 	if traceRequest {
-		if readyADVForBidEngine != nil {
-			log.Printf(
-				"[ROUTER][ADV_PARTIAL_FALLBACK_DSP] request_id=%q ssp_domain=%q format=%q adv_resolved=%d dsp_impressions=%d dsp_endpoints=%d",
-				req.GetBidRequest().GetId(),
-				req.GetSspDomain(),
-				req.GetFormat(),
-				len(bidResponseImpIDs(readyADVForBidEngine)),
-				len(dspBidRequest.GetImp()),
-				len(dspList),
-			)
-		} else {
-			log.Printf(
-				"[ROUTER][ADV_NO_BID_FALLBACK_DSP] request_id=%q ssp_domain=%q format=%q dsp_endpoints=%d",
-				req.GetBidRequest().GetId(),
-				req.GetSspDomain(),
-				req.GetFormat(),
-				len(dspList),
-			)
-		}
+		log.Printf(
+			"[ROUTER][DEMAND_FANOUT] request_id=%q ssp_domain=%q format=%q adv_resolved=%d dsp_impressions=%d dsp_endpoints=%d rtb_impressions=%d rtb_endpoints=%d",
+			req.GetBidRequest().GetId(),
+			req.GetSspDomain(),
+			req.GetFormat(),
+			len(bidResponseImpIDs(readyADVForBidEngine)),
+			len(dspBidRequest.GetImp()),
+			len(dspList),
+			len(rtbBidRequest.GetImp()),
+			len(rtbList),
+		)
 	}
 
-	jsonData, err := jsoniter.Marshal(dspBidRequest)
+	dspJSON, err := jsoniter.Marshal(dspBidRequest)
 	if err != nil {
-		newErr := fmt.Errorf("Can not marshal in GetBids_V_2_5 because got uknown error: %v", err)
-		grpcCode := codes.Unknown
-		if st, ok := status.FromError(err); ok {
-			grpcCode = st.Code()
-			newErr = fmt.Errorf("Can not marshal in GetBids_V_2_5 because got error: %v", st.Err())
-		}
-		return nil, status.Error(grpcCode, newErr.Error())
+		return nil, status.Errorf(codes.Unknown, "cannot marshal DSP fallback request: %v", err)
+	}
+	rtbJSON, err := jsoniter.Marshal(rtbBidRequest)
+	if err != nil {
+		return nil, status.Errorf(codes.Unknown, "cannot marshal RTB request: %v", err)
 	}
 
-	globalUuid = ""
-	for _, value := range dspImpIdUuid {
-		globalUuid = value
-		break
+	firstUUID := func(values map[string]string) string {
+		for _, value := range values {
+			return value
+		}
+		return ""
 	}
+	dspGlobalUUID := firstUUID(dspImpIdUuid)
+	rtbGlobalUUID := firstUUID(req.GetImpIdUuid())
 
 	var dspFilterCtx *filter.V25RequestContext
+	var rtbFilterCtx *filter.V25RequestContext
 	if s.processor != nil {
 		dspFilterCtx = filter.NewV25RequestContext(dspBidRequest, requestFormat, nativeMask)
+		rtbFilterCtx = filter.NewV25RequestContext(rtbBidRequest, requestFormat, nativeMask)
 	}
 
-	for _, dspEndpoint := range dspList {
-		endpoint := dspEndpoint.Endpoint
-		domain := dspEndpoint.Domain
+	type demandJob struct {
+		endpoint string
+		domain   string
+		jsonData []byte
+		uuid     string
+		isRTB    bool
+		client   *http.Client
+	}
 
-		country := ""
-		if req.GetBidRequest().GetDevice() != nil && req.GetBidRequest().GetDevice().GetGeo() != nil {
-			country = req.GetBidRequest().GetDevice().GetGeo().GetCountry()
-		}
-		if linkMap != nil && !utils.GetValueFomSspGeoDspMap(req.SspDomain, country, domain, linkMap, false) {
-			codesCh <- &dspDomainCode{
-				domain: domain,
-				code:   "-2",
+	buildJobs := func(
+		endpointList []DSPEndpointV25,
+		bidRequest *ortb_V2_5.BidRequest,
+		baseJSON []byte,
+		globalUUID string,
+		filterCtx *filter.V25RequestContext,
+		isRTB bool,
+	) ([]demandJob, error) {
+		jobs := make([]demandJob, 0, len(endpointList))
+		for _, demandEndpoint := range endpointList {
+			endpoint := demandEndpoint.Endpoint
+			domain := demandEndpoint.Domain
+
+			country := ""
+			if req.GetBidRequest().GetDevice() != nil && req.GetBidRequest().GetDevice().GetGeo() != nil {
+				country = req.GetBidRequest().GetDevice().GetGeo().GetCountry()
 			}
-			continue
-		}
-
-		if s.processor != nil && !s.processor.ProcessRequestContextForDSPV25(DeletePrefix(domain), dspFilterCtx).Allowed {
-			codesCh <- &dspDomainCode{
-				domain: domain,
-				code:   "-3",
+			if linkMap != nil && !utils.GetValueFomSspGeoDspMap(req.SspDomain, country, domain, linkMap, false) {
+				codesCh <- &dspDomainCode{domain: domain, code: "-2", isRTB: isRTB}
+				continue
 			}
-			continue
-		}
-
-		if !Allowed(domain, dspBidRequest, s.ranger) {
-			//log.Println("Gor DSP filter")
-			codesCh <- &dspDomainCode{
-				domain: domain,
-				code:   "-1",
+			if s.processor != nil && !s.processor.ProcessRequestContextForDSPV25(DeletePrefix(domain), filterCtx).Allowed {
+				codesCh <- &dspDomainCode{domain: domain, code: "-3", isRTB: isRTB}
+				continue
 			}
-			continue
-		}
-
-		if filters != nil && !filters.Allowed(dspBidRequest, domain, false) {
-			//log.Println("Gor DSP filter")
-			codesCh <- &dspDomainCode{
-				domain: domain,
-				code:   "-5",
+			if !Allowed(domain, bidRequest, s.ranger) {
+				codesCh <- &dspDomainCode{domain: domain, code: "-1", isRTB: isRTB}
+				continue
 			}
-			//log.Printf("STOP SITE ID: %d, domain: %s, ssp domain: %s", req.BidRequest.Site.GetId(), domain)
-			continue
-		}
+			if filters != nil && !filters.Allowed(bidRequest, domain, false) {
+				codesCh <- &dspDomainCode{domain: domain, code: "-5", isRTB: isRTB}
+				continue
+			}
 
-		/*	if req.SspDomain == "mc_clickadilla.com" && domain == "mc_dsp_dao.ad" {
-			ChangeSiteId(req.BidRequest)
-		}*/
-
-		jsonDataTmp := jsonData
-		mainRequest := dspBidRequest
-
-		if strings.HasSuffix(domain, constants.BUYMEDIA) {
-			newBidRequest := proto.Clone(dspBidRequest).(*ortb_V2_5.BidRequest)
-			var mockBidfloor float32 = 0
-			var mockSecure int32 = 1
-			var mockBidfloorcur string = "USD"
-			if newBidRequest.Imp != nil {
-				for i := range newBidRequest.Imp {
-					imp := newBidRequest.Imp[i]
-					if imp != nil {
-						newBidRequest.Imp[i].Bidfloor = &mockBidfloor
-						newBidRequest.Imp[i].Secure = &mockSecure
-						newBidRequest.Imp[i].Bidfloorcur = &mockBidfloorcur
-						newBidRequest.Imp[i].Banner = &ortb_V2_5.Banner{}
+			jsonDataTmp := baseJSON
+			mainRequest := bidRequest
+			if strings.HasSuffix(domain, constants.BUYMEDIA) {
+				newBidRequest := proto.Clone(bidRequest).(*ortb_V2_5.BidRequest)
+				var mockBidfloor float32
+				var mockSecure int32 = 1
+				mockBidfloorcur := "USD"
+				for _, imp := range newBidRequest.GetImp() {
+					if imp == nil {
+						continue
 					}
+					imp.Bidfloor = &mockBidfloor
+					imp.Secure = &mockSecure
+					imp.Bidfloorcur = &mockBidfloorcur
+					imp.Banner = &ortb_V2_5.Banner{}
 				}
-			}
-
-			mainRequest = newBidRequest
-
-			jsonDataTmp, err = jsoniter.Marshal(newBidRequest)
-			if err != nil {
-				newErr := fmt.Errorf("Can not marshal in GetBids_V_2_5 because got uknown error: %v", err)
-
-				grpcCode := codes.Unknown
-
-				if st, ok := status.FromError(err); ok {
-					grpcCode = st.Code()
-					newErr = fmt.Errorf("Can not marshal in GetBids_V_2_5 because got error: %v", st.Err())
-				}
-
-				return nil, status.Error(grpcCode, newErr.Error())
-			}
-		}
-
-		if filterBoxChanger != nil {
-			if bidRequest, isChanged := filterBoxChanger.Change(mainRequest, domain); isChanged {
-				//fmt.Println(bidRequest.Site.GetId())
-				jsonDataTmp, err = jsoniter.Marshal(bidRequest)
+				mainRequest = newBidRequest
+				jsonDataTmp, err = jsoniter.Marshal(newBidRequest)
 				if err != nil {
-					newErr := fmt.Errorf("Can not marshal in GetBids_V_2_5 because got uknown error: %v", err)
-
-					grpcCode := codes.Unknown
-
-					if st, ok := status.FromError(err); ok {
-						grpcCode = st.Code()
-						newErr = fmt.Errorf("Can not marshal in GetBids_V_2_5 because got error: %v", st.Err())
-					}
-
-					return nil, status.Error(grpcCode, newErr.Error())
+					return nil, fmt.Errorf("marshal BUYMEDIA request for %s: %w", domain, err)
 				}
 			}
+
+			if filterBoxChanger != nil {
+				if changedRequest, isChanged := filterBoxChanger.Change(mainRequest, domain); isChanged {
+					jsonDataTmp, err = jsoniter.Marshal(changedRequest)
+					if err != nil {
+						return nil, fmt.Errorf("marshal changed request for %s: %w", domain, err)
+					}
+				}
+			}
+
+			jobs = append(jobs, demandJob{
+				endpoint: endpoint,
+				domain:   domain,
+				jsonData: jsonDataTmp,
+				uuid:     globalUUID,
+				isRTB:    isRTB,
+				client:   getDspHttpClients(domain, s.clients),
+			})
 		}
+		return jobs, nil
+	}
 
-		/*if DeletePrefix(domain) == "dsp_test_hilltopads.com" {
-			ChangeSiteIdhilltopTest(req.BidRequest)
-		}*/
+	// Build both sets before starting network I/O, then launch every RTB and DSP
+	// request without waiting between groups. This is the required fan-out:
+	// after ADV, DSP fallback and full-request RTB run concurrently.
+	rtbJobs, err := buildJobs(rtbList, rtbBidRequest, rtbJSON, rtbGlobalUUID, rtbFilterCtx, true)
+	if err != nil {
+		return nil, status.Error(codes.Internal, err.Error())
+	}
+	var dspJobs []demandJob
+	if len(dspBidRequest.GetImp()) > 0 {
+		dspJobs, err = buildJobs(dspList, dspBidRequest, dspJSON, dspGlobalUUID, dspFilterCtx, false)
+		if err != nil {
+			return nil, status.Error(codes.Internal, err.Error())
+		}
+	}
+	jobs := append(rtbJobs, dspJobs...)
 
-		client_v_2_5 := getDspHttpClients(domain, s.clients)
-
+	var wg sync.WaitGroup
+	for _, job := range jobs {
+		job := job
 		wg.Add(1)
-		go func(ctx context.Context, endpoint, domain string, client_v_2_5 *http.Client, timeout time.Duration) {
+		go func() {
 			defer wg.Done()
-
 			reqCtx, cancel := context.WithTimeout(context.Background(), timeout)
 			defer cancel()
 
-			dspResp, code, err := s.getBidsFromDSPbyHTTP_V_2_5(reqCtx, globalUuid, jsonDataTmp, endpoint, client_v_2_5)
-			if err != nil {
-				/*log.Printf(
-					"Cannot getBidsFromDSPbyHTTP_V_2_5, uuid: %s,ssp_domain: %s, dsp_domain: %s, timeout max %d ms, tmax: %d, error: %v",
-					req.GlobalId,
-					req.SspDomain,
-					domain,
-					client_v_2_5.Timeout.Milliseconds(),
-					newTmax,
-					err,
-				)*/
-			}
-
+			demandResp, code, _ := s.getBidsFromDSPbyHTTP_V_2_5(reqCtx, job.uuid, job.jsonData, job.endpoint, job.client)
 			if code == http.StatusOK && filtersCid != nil {
-				if !filter.GetValueFomCidMap(dspResp, req.SspDomain, domain, *filtersCid) {
-					codesCh <- &dspDomainCode{
-						domain: domain,
-						code:   "-77",
-					}
+				if !filter.GetValueFomCidMap(demandResp, req.SspDomain, job.domain, *filtersCid) {
+					codesCh <- &dspDomainCode{domain: job.domain, code: "-77", isRTB: job.isRTB}
 					return
 				}
 			}
 
+			// Existing Router bid-response statistics are keyed by configured
+			// domain. RTB is recorded in exactly the same map with the actual HTTP
+			// status code (or the same negative filter codes as DSP).
 			codesCh <- &dspDomainCode{
-				domain: domain,
+				domain: job.domain,
 				code:   fmt.Sprintf("%d", code),
+				isRTB:  job.isRTB,
 			}
-			if dspResp == nil {
+			if demandResp == nil {
 				return
 			}
-
-			if !s.processor.ProcessResponseForSPPV25(DeletePrefix(req.SspDomain), dspResp).Allowed {
-				//log.Printf("Gor SSP filter, domain %s, resp: %w", endpoint, dspResp)
+			if s.processor != nil && !s.processor.ProcessResponseForSPPV25(DeletePrefix(req.SspDomain), demandResp).Allowed {
 				return
 			}
 
 			if strings.HasSuffix(req.SspDomain, "kadam.net") {
-				for i := range dspResp.Seatbid {
-					if dspResp.Seatbid[i] == nil {
-						continue
-					}
-					for j := range dspResp.Seatbid[i].Bid {
-						if dspResp.Seatbid[i].Bid[j] == nil {
+				for _, seat := range demandResp.GetSeatbid() {
+					for _, bid := range seat.GetBid() {
+						if bid == nil {
 							continue
 						}
 						adid := uuid.New().String()[:10]
-						dspResp.Seatbid[i].Bid[j].Adid = &adid
+						bid.Adid = &adid
 					}
 				}
 			} else {
-				for i := range dspResp.Seatbid {
-					if dspResp.Seatbid[i] == nil {
-						continue
-					}
-					for j := range dspResp.Seatbid[i].Bid {
-						if dspResp.Seatbid[i].Bid[j] == nil {
-							continue
+				for _, seat := range demandResp.GetSeatbid() {
+					for _, bid := range seat.GetBid() {
+						if bid != nil {
+							bid.Adid = nil
 						}
-						dspResp.Seatbid[i].Bid[j].Adid = nil
 					}
 				}
 			}
 
-			if dspResp != nil {
-				responsesCh <- &dspDomainResp{
-					domain: domain,
-					resp:   dspResp,
-				}
+			responseDomain := job.domain
+			if job.isRTB {
+				responseDomain = constants.RTBResponseDomainPrefix + job.domain
 			}
-		}(ctx, endpoint, domain, client_v_2_5, timeout)
+			responsesCh <- &dspDomainResp{domain: responseDomain, resp: demandResp}
+		}()
 	}
 
 	go func() {
@@ -733,13 +727,26 @@ func (s *Server) GetBids_V2_5(
 		close(responsesCh)
 	}()
 
-	clickResponses := make(map[string]string)
-	for c := range codesCh {
-		clickResponses[c.domain] = c.code
+	dspCodes := make(map[string]string)
+	rtbCodes := make(map[string]string)
+	for item := range codesCh {
+		if item.isRTB {
+			rtbCodes[item.domain] = item.code
+		} else {
+			dspCodes[item.domain] = item.code
+		}
 	}
 
-	for _, uuid := range dspImpIdUuid {
-		if err := writeBidResponsesToRedis(s.redisClients, uuid, clickResponses, req.Logged); err != nil {
+	// BID_RESPONSES is per impression UUID. RTB was queried with every
+	// impression, so its domain/status is written for every UUID. DSP status is
+	// merged into the same map only for impressions that were actually sent to
+	// DSP fallback. This avoids fabricating DSP stats for ADV-resolved imps.
+	for impID, requestUUID := range req.GetImpIdUuid() {
+		stats := demandResponseCodesForImp(impID, dspImpIdUuid, dspCodes, rtbCodes)
+		if len(stats) == 0 {
+			continue
+		}
+		if err := writeBidResponsesToRedis(s.redisClients, requestUUID, stats, req.Logged); err != nil {
 			log.Printf("failed to write bid responses to Redis: %v", err)
 			if s.redisWriteErrorMonitor != nil {
 				s.redisWriteErrorMonitor.RecordForURL(err, req.SspUrl)
@@ -748,8 +755,8 @@ func (s *Server) GetBids_V2_5(
 	}
 
 	responses := make(map[string]*ortb_V2_5.BidResponse)
-	for r := range responsesCh {
-		responses[r.domain] = r.resp
+	for item := range responsesCh {
+		responses[item.domain] = item.resp
 	}
 
 	return &dspRouterGrpc.DspRouterResponse_V2_5{
