@@ -1,0 +1,486 @@
+package auction
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"io"
+	"math"
+	"net"
+	"net/http"
+	"net/netip"
+	"net/url"
+	"strings"
+	"sync"
+	"time"
+
+	jsoniter "github.com/json-iterator/go"
+	"github.com/redis/go-redis/v9"
+	"gitlab.com/twinbid-exchange/RTB-exchange/internal/constants"
+	eventspb "gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/proto/buffer"
+	ortb "gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/proto/types/ortb_V2_5"
+	utils "gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/utils_grpc"
+	redis_service "gitlab.com/twinbid-exchange/RTB-exchange/internal/services/redis"
+	"google.golang.org/protobuf/proto"
+)
+
+const (
+	rtbCodeNetworkError = "1"
+	rtbCodeInvalidJSON  = "3"
+	rtbCodeReadError    = "4"
+	rtbCodeRequestError = "55"
+	rtbCodeInvalidADM   = "800"
+)
+
+type rtbCampaignResult struct {
+	campaignID string
+	impIDs     []string
+	bids       map[string]*ortb.Bid
+	codes      map[string]string
+}
+
+func newSafeRTBHTTPClient() *http.Client {
+	dialer := &net.Dialer{Timeout: 5 * time.Second, KeepAlive: 30 * time.Second}
+	transport := &http.Transport{
+		Proxy:                 nil,
+		ForceAttemptHTTP2:     true,
+		MaxIdleConns:          1024,
+		MaxIdleConnsPerHost:   64,
+		IdleConnTimeout:       90 * time.Second,
+		TLSHandshakeTimeout:   5 * time.Second,
+		ResponseHeaderTimeout: 0,
+		ExpectContinueTimeout: time.Second,
+	}
+	transport.DialContext = func(ctx context.Context, network, address string) (net.Conn, error) {
+		host, port, err := net.SplitHostPort(address)
+		if err != nil {
+			return nil, err
+		}
+		ips, err := net.DefaultResolver.LookupIPAddr(ctx, host)
+		if err != nil {
+			return nil, err
+		}
+		for _, item := range ips {
+			if unsafeRTBIP(item.IP) {
+				continue
+			}
+			return dialer.DialContext(ctx, network, net.JoinHostPort(item.IP.String(), port))
+		}
+		return nil, fmt.Errorf("RTB endpoint %q resolves only to private/reserved addresses", host)
+	}
+	return &http.Client{
+		Transport: transport,
+		CheckRedirect: func(*http.Request, []*http.Request) error {
+			return errors.New("RTB redirects are disabled")
+		},
+	}
+}
+
+var rtbBlockedPrefixes = []netip.Prefix{
+	netip.MustParsePrefix("0.0.0.0/8"),
+	netip.MustParsePrefix("10.0.0.0/8"),
+	netip.MustParsePrefix("100.64.0.0/10"),
+	netip.MustParsePrefix("127.0.0.0/8"),
+	netip.MustParsePrefix("169.254.0.0/16"),
+	netip.MustParsePrefix("172.16.0.0/12"),
+	netip.MustParsePrefix("192.0.0.0/24"),
+	netip.MustParsePrefix("192.168.0.0/16"),
+	netip.MustParsePrefix("198.18.0.0/15"),
+	netip.MustParsePrefix("224.0.0.0/4"),
+	netip.MustParsePrefix("240.0.0.0/4"),
+	netip.MustParsePrefix("::/128"),
+	netip.MustParsePrefix("::1/128"),
+	netip.MustParsePrefix("fc00::/7"),
+	netip.MustParsePrefix("fe80::/10"),
+	netip.MustParsePrefix("ff00::/8"),
+}
+
+func unsafeRTBIP(ip net.IP) bool {
+	addr, ok := netip.AddrFromSlice(ip)
+	if !ok {
+		return true
+	}
+	addr = addr.Unmap()
+	for _, prefix := range rtbBlockedPrefixes {
+		if prefix.Contains(addr) {
+			return true
+		}
+	}
+	return false
+}
+
+func (s *AuctionService) SetStatsRedisClients(clients []*redis.Client) {
+	if s != nil {
+		s.statsRedisClients = clients
+	}
+}
+
+func (s *AuctionService) fetchRTBCampaignBids(
+	ctx context.Context,
+	req *ortb.BidRequest,
+	snapshot *Snapshot,
+	now time.Time,
+	options AuctionRequestOptions,
+	requestedFormat, trafficType, sspDomain, siteIDQualityValue string,
+	antiState *AntiPerekrutState,
+	requestIsVPN bool,
+	vpnClassificationErr error,
+	logf debugLogFunc,
+) map[string]map[string]*ortb.Bid {
+	out := make(map[string]map[string]*ortb.Bid)
+	if s == nil || req == nil || snapshot == nil || s.rtbHTTPClient == nil {
+		return out
+	}
+
+	type job struct {
+		campaign *Campaign
+		imps     []*ortb.Imp
+	}
+	jobs := make([]job, 0)
+	for _, campaign := range snapshot.Campaigns {
+		if campaign == nil || !campaign.RTB || strings.TrimSpace(campaign.DSPLink) == "" {
+			continue
+		}
+		eligible := make([]*ortb.Imp, 0, len(req.GetImp()))
+		for _, imp := range req.GetImp() {
+			if imp == nil || strings.TrimSpace(imp.GetId()) == "" {
+				continue
+			}
+			durableUserBlocked := snapshot.UserAntiPerekrutBlocked[campaign.UserID]
+			if s.rtbPreflightEligible(campaign, req, imp, now, requestedFormat, trafficType, sspDomain, siteIDQualityValue,
+				options.ImpIDUUID[imp.GetId()], antiState, durableUserBlocked, requestIsVPN, vpnClassificationErr, logf) {
+				eligible = append(eligible, imp)
+			}
+		}
+		if len(eligible) > 0 {
+			jobs = append(jobs, job{campaign: campaign, imps: eligible})
+		}
+	}
+	if len(jobs) == 0 {
+		return out
+	}
+
+	results := make(chan rtbCampaignResult, len(jobs))
+	var wg sync.WaitGroup
+	for _, item := range jobs {
+		item := item
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			results <- s.callRTBCampaign(ctx, req, item.campaign, item.imps, requestedFormat)
+		}()
+	}
+	wg.Wait()
+	close(results)
+
+	statsByImp := make(map[string]map[string]string)
+	for result := range results {
+		for impID, code := range result.codes {
+			if statsByImp[impID] == nil {
+				statsByImp[impID] = make(map[string]string)
+			}
+			statsByImp[impID][result.campaignID] = code
+		}
+		for impID, bid := range result.bids {
+			if out[impID] == nil {
+				out[impID] = make(map[string]*ortb.Bid)
+			}
+			out[impID][result.campaignID] = bid
+		}
+	}
+	s.writeRTBResponseStats(ctx, options.ImpIDUUID, statsByImp, logf)
+	return out
+}
+
+func (s *AuctionService) rtbPreflightEligible(
+	campaign *Campaign,
+	req *ortb.BidRequest,
+	imp *ortb.Imp,
+	now time.Time,
+	requestedFormat, trafficType, sspDomain, siteIDQualityValue, hashFallback string,
+	antiState *AntiPerekrutState,
+	durableUserBlocked bool,
+	requestIsVPN bool,
+	vpnClassificationErr error,
+	logf debugLogFunc,
+) bool {
+	if campaign == nil || imp == nil || !campaign.RTB {
+		return false
+	}
+	if normalizeFormat(campaign.Format) != requestedFormat || !trafficMatches(campaign.TrafficType, trafficType) || !campaignActiveAt(campaign, now) {
+		return false
+	}
+	if campaign.BlockVPN && (vpnClassificationErr != nil || requestIsVPN) {
+		return false
+	}
+	if s.antiperekrutEnabled {
+		if s.antiperekrut == nil || !s.antiperekrut.CampaignAllowed(antiState, campaign) {
+			return false
+		}
+		hashID := strings.TrimSpace(req.GetId())
+		if hashID == "" {
+			hashID = hashFallback
+		}
+		if !trafficHashPass(hashID, campaign.ID, s.antiperekrut.EffectiveTrafficLimit(antiState, campaign, now)) {
+			return false
+		}
+		_ = durableUserBlocked // durable state is already part of CampaignAllowed
+	}
+	if !s.quality.Contains(campaign.QualitySegment, sspDomain) || !s.siteIDQuality.allowsNormalized(campaign.QualitySegment, siteIDQualityValue) {
+		return false
+	}
+	return campaignPassesFiltersWithDebug(campaign, req, strings.TrimSpace(req.GetId()), imp.GetId(), logf)
+}
+
+func (s *AuctionService) callRTBCampaign(ctx context.Context, source *ortb.BidRequest, campaign *Campaign, imps []*ortb.Imp, format string) rtbCampaignResult {
+	result := rtbCampaignResult{campaignID: campaign.ID, bids: make(map[string]*ortb.Bid), codes: make(map[string]string)}
+	for _, imp := range imps {
+		if imp != nil && strings.TrimSpace(imp.GetId()) != "" {
+			result.impIDs = append(result.impIDs, imp.GetId())
+		}
+	}
+	setAll := func(code string) {
+		for _, impID := range result.impIDs {
+			result.codes[impID] = code
+		}
+	}
+
+	u, err := url.Parse(strings.TrimSpace(campaign.DSPLink))
+	if err != nil || u.Host == "" || (u.Scheme != "http" && u.Scheme != "https") {
+		setAll(rtbCodeRequestError)
+		return result
+	}
+	cloned, ok := proto.Clone(source).(*ortb.BidRequest)
+	if !ok || cloned == nil {
+		setAll(rtbCodeRequestError)
+		return result
+	}
+	allowed := make(map[string]struct{}, len(result.impIDs))
+	for _, id := range result.impIDs {
+		allowed[id] = struct{}{}
+	}
+	filtered := make([]*ortb.Imp, 0, len(result.impIDs))
+	for _, imp := range cloned.GetImp() {
+		if imp == nil {
+			continue
+		}
+		if _, exists := allowed[imp.GetId()]; exists {
+			filtered = append(filtered, imp)
+		}
+	}
+	cloned.Imp = filtered
+	stripInternalADVFormatMarkers(cloned)
+	body, err := jsoniter.Marshal(cloned)
+	if err != nil {
+		setAll(rtbCodeRequestError)
+		return result
+	}
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, campaign.DSPLink, strings.NewReader(string(body)))
+	if err != nil {
+		setAll(rtbCodeRequestError)
+		return result
+	}
+	httpReq.Header.Set("Content-Type", "application/json")
+	httpReq.Header.Set("Connection", "keep-alive")
+	httpReq.Header.Set("X-Openrtb-Version", "2.5")
+	resp, err := s.rtbHTTPClient.Do(httpReq)
+	if err != nil {
+		setAll(rtbCodeNetworkError)
+		return result
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		setAll(fmt.Sprintf("%d", resp.StatusCode))
+		return result
+	}
+	payload, err := io.ReadAll(resp.Body)
+	if err != nil {
+		setAll(rtbCodeReadError)
+		return result
+	}
+	var bidResponse ortb.BidResponse
+	if err := jsoniter.Unmarshal(payload, &bidResponse); err != nil {
+		setAll(rtbCodeInvalidJSON)
+		return result
+	}
+
+	bidsByImp := make(map[string][]*ortb.Bid)
+	for _, seat := range bidResponse.GetSeatbid() {
+		if seat == nil {
+			continue
+		}
+		for _, bid := range seat.GetBid() {
+			if bid == nil {
+				continue
+			}
+			if _, exists := allowed[bid.GetImpid()]; !exists {
+				continue
+			}
+			bidsByImp[bid.GetImpid()] = append(bidsByImp[bid.GetImpid()], bid)
+		}
+	}
+	for _, impID := range result.impIDs {
+		result.codes[impID] = fmt.Sprintf("%d", http.StatusOK)
+		items := bidsByImp[impID]
+		if len(items) == 0 {
+			continue // successful no-bid
+		}
+		var best *ortb.Bid
+		invalidADMSeen := false
+		for _, bid := range items {
+			if !validRTBADM(format, bid.GetAdm()) {
+				invalidADMSeen = true
+				continue
+			}
+			price := bid.GetPrice()
+			if price <= 0 || math.IsNaN(float64(price)) || math.IsInf(float64(price), 0) {
+				continue
+			}
+			if best == nil || price > best.GetPrice() || (price == best.GetPrice() && bid.GetId() < best.GetId()) {
+				best = bid
+			}
+		}
+		if best != nil {
+			result.bids[impID] = best
+			continue
+		}
+		if invalidADMSeen {
+			result.codes[impID] = rtbCodeInvalidADM
+		}
+	}
+	return result
+}
+
+func validRTBADM(format, adm string) bool {
+	if strings.TrimSpace(adm) == "" {
+		return false
+	}
+	switch normalizeFormat(format) {
+	case constants.NAT, constants.IPP:
+		return json.Valid([]byte(adm))
+	default:
+		return true
+	}
+}
+
+func (s *AuctionService) evaluateRTBCandidate(ctx context.Context, campaign *Campaign, bid *ortb.Bid, imp *ortb.Imp, now time.Time, requestedFormat string) (candidate, bool, error) {
+	if campaign == nil || bid == nil || imp == nil {
+		return candidate{}, false, nil
+	}
+	rawPrice := float64(bid.GetPrice())
+	if rawPrice <= 0 || math.IsNaN(rawPrice) || math.IsInf(rawPrice, 0) {
+		return candidate{}, false, nil
+	}
+	chargePrice := CalculateChargePrice(rawPrice, campaign.PricingModel, requestedFormat)
+	if !finitePositive(chargePrice) {
+		return candidate{}, false, nil
+	}
+	campaignSpent, err := s.runtime.CampaignSpent(ctx, campaign.ID)
+	if err != nil {
+		return candidate{}, false, err
+	}
+	if campaign.GoalTotalDollars-campaignSpent < chargePrice {
+		return candidate{}, false, nil
+	}
+	if campaign.EvennessBySlotMode {
+		clone := *campaign
+		clone.BasePrice = rawPrice
+		eligible, _, err := s.runtime.PacingEligibility(ctx, &clone, now, campaignSpent)
+		if err != nil || !eligible {
+			return candidate{}, false, err
+		}
+	}
+	deduction := s.percents.Lookup(campaign.UserID)
+	effective := CalculateEffectiveAuctionPrice(rawPrice, deduction)
+	if !finitePositive(effective) {
+		return candidate{}, false, nil
+	}
+	return candidate{campaign: campaign, chargePrice: chargePrice, effectivePrice: effective, basePrice: rawPrice, externalBid: bid}, true, nil
+}
+
+func buildExternalADVBid(cand candidate) *ortb.Bid {
+	if cand.externalBid == nil || cand.campaign == nil || !finitePositive(cand.effectivePrice) {
+		return nil
+	}
+	bid, ok := proto.Clone(cand.externalBid).(*ortb.Bid)
+	if !ok || bid == nil {
+		return nil
+	}
+	price := float32(cand.effectivePrice)
+	cid := cand.campaign.ID
+	marker := constants.ExternalADVBidMarker
+	bid.Price = &price
+	bid.Cid = &cid
+	if bid.Ext == nil {
+		bid.Ext = &ortb.BidExt{}
+	}
+	// Cwin is an internal transport marker only. BidEngine replaces it with the
+	// real clicks_wins callback before the bid leaves the exchange, so the
+	// external bidder's Adid/Crid remain intact.
+	bid.Ext.Cwin = &marker
+	// Downstream BURL follows the same semantics as ordinary DSP: it is never
+	// proxied. BidEngine synthesizes the exchange BURL when required.
+	bid.Burl = nil
+	return bid
+}
+
+func stripInternalADVFormatMarkers(req *ortb.BidRequest) {
+	if req == nil {
+		return
+	}
+	for _, imp := range req.GetImp() {
+		if imp == nil || imp.GetBanner() == nil || len(imp.GetBanner().GetExt()) == 0 {
+			continue
+		}
+		ext := imp.Banner.GetExt()[:0]
+		for _, value := range imp.Banner.GetExt() {
+			if strings.HasPrefix(strings.TrimSpace(value), constants.ADVImpressionFormatMarkerPrefix) {
+				continue
+			}
+			ext = append(ext, value)
+		}
+		imp.Banner.Ext = ext
+	}
+}
+
+func (s *AuctionService) writeRTBResponseStats(_ context.Context, impUUID map[string]string, stats map[string]map[string]string, logf debugLogFunc) {
+	if s == nil || len(s.statsRedisClients) == 0 {
+		return
+	}
+	for impID, items := range stats {
+		if len(items) == 0 {
+			continue
+		}
+		uuid := strings.TrimSpace(impUUID[impID])
+		if uuid == "" {
+			continue
+		}
+		payload, err := proto.Marshal(&eventspb.BidResponses{Items: items})
+		if err != nil {
+			logf("[ADV][RTB_STATS_ERROR] imp_id=%q error=%v", impID, err)
+			continue
+		}
+
+		// The auction context may already be cancelled specifically because an RTB
+		// endpoint timed out. Statistics must still record that timeout. Use the
+		// same short, detached write budget as Router and write only to an ORTB hash
+		// that already exists, which preserves the SSP adapter's `logged` contract.
+		writeCtx, cancel := context.WithTimeout(context.Background(), 30*time.Millisecond)
+		client, _, err := redis_service.SelectShard(s.statsRedisClients, uuid)
+		if err == nil {
+			var exists bool
+			exists, err = utils.UUIDKeyExistsInRedis(writeCtx, client, uuid)
+			if err == nil && exists {
+				pipe := client.Pipeline()
+				pipe.HSet(writeCtx, uuid, constants.ADV_RTB_RESPONSES_COLUMN, payload)
+				pipe.Expire(writeCtx, uuid, utils.RedisKeyTTL)
+				_, err = pipe.Exec(writeCtx)
+			}
+		}
+		cancel()
+		if err != nil {
+			logf("[ADV][RTB_STATS_ERROR] imp_id=%q error=%v", impID, err)
+		}
+	}
+}
