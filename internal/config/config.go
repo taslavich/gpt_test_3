@@ -168,18 +168,6 @@ type RouterConfig struct {
 	DSPEndpointsIppAdultV25      MapStringToString `yaml:"DSP_ENDPOINTS_IPP_ADULT_V_2_5" env:"DSP_ENDPOINTS_IPP_ADULT_V_2_5"`
 	DSPEndpointsIppMainstreamV25 MapStringToString `yaml:"DSP_ENDPOINTS_IPP_MAINSTREAM_V_2_5" env:"DSP_ENDPOINTS_IPP_MAINSTREAM_V_2_5"`
 
-	// RTB endpoints are configured separately from DSP endpoints. They reuse
-	// the DSP allow-map/filter pipeline, but Router sends the original request
-	// (all impressions) to them and BidEngine auctions them against ADV first.
-	RTBEndpointsAdultV25         MapStringToString `yaml:"RTB_ENDPOINTS_ADULT_V_2_5" env:"RTB_ENDPOINTS_ADULT_V_2_5"`
-	RTBEndpointsMainstreamV25    MapStringToString `yaml:"RTB_ENDPOINTS_MAINSTREAM_V_2_5" env:"RTB_ENDPOINTS_MAINSTREAM_V_2_5"`
-	RTBEndpointsBanAdultV25      MapStringToString `yaml:"RTB_ENDPOINTS_BAN_ADULT_V_2_5" env:"RTB_ENDPOINTS_BAN_ADULT_V_2_5"`
-	RTBEndpointsBanMainstreamV25 MapStringToString `yaml:"RTB_ENDPOINTS_BAN_MAINSTREAM_V_2_5" env:"RTB_ENDPOINTS_BAN_MAINSTREAM_V_2_5"`
-	RTBEndpointsNatAdultV25      MapStringToString `yaml:"RTB_ENDPOINTS_NAT_ADULT_V_2_5" env:"RTB_ENDPOINTS_NAT_ADULT_V_2_5"`
-	RTBEndpointsNatMainstreamV25 MapStringToString `yaml:"RTB_ENDPOINTS_NAT_MAINSTREAM_V_2_5" env:"RTB_ENDPOINTS_NAT_MAINSTREAM_V_2_5"`
-	RTBEndpointsIppAdultV25      MapStringToString `yaml:"RTB_ENDPOINTS_IPP_ADULT_V_2_5" env:"RTB_ENDPOINTS_IPP_ADULT_V_2_5"`
-	RTBEndpointsIppMainstreamV25 MapStringToString `yaml:"RTB_ENDPOINTS_IPP_MAINSTREAM_V_2_5" env:"RTB_ENDPOINTS_IPP_MAINSTREAM_V_2_5"`
-
 	DspRulesConfigPathV25 string `yaml:"DSP_RULES_CONFIG_PATH" env:"DSP_RULES_CONFIG_PATH_V_25"`
 	SppRulesConfigPathV25 string `yaml:"SPP_RULES_CONFIG_PATH" env:"SPP_RULES_CONFIG_PATH_V_25"`
 

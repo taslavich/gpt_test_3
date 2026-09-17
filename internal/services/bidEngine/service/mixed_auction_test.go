@@ -3,6 +3,7 @@ package bidEngine
 import (
 	"context"
 	"math"
+	"net/url"
 	"testing"
 
 	"gitlab.com/twinbid-exchange/RTB-exchange/internal/constants"
@@ -216,165 +217,76 @@ func TestGetWinnerBidInternalDSPTieBreakIsDeterministic(t *testing.T) {
 	}
 }
 
-func TestGetWinnerBidInternalRTBBeatsADVAndUsesDefaultAdvertiserDeduction(t *testing.T) {
-	requestID, impID, uuid := "req-rtb-beats-adv", "imp-1", "uuid-1"
-	advPrice := float32(0.70)
-	rtbPrice := float32(1.00)
-	advADM := "https://adv.example/adm"
-	rtbADM := "https://rtb.example/adm"
-	rtbDomain := "adl_rtb_partner.example"
-
+func TestGetWinnerBidInternalDoesNotEnforceBidfloor(t *testing.T) {
+	requestID, impID, uuid := "req-no-floor", "imp-1", "uuid-1"
+	price := float32(0.50)
+	floor := float32(10.0)
+	adm := "https://dsp.example/adm"
 	req := &bidEngineGrpc.BidEngineRequest_V2_5{
-		BidRequest: &ortb.BidRequest{Id: &requestID, Imp: []*ortb.Imp{{Id: &impID}}},
-		ReadyBidResponse: &ortb.BidResponse{Seatbid: []*ortb.SeatBid{{Bid: []*ortb.Bid{
-			{Impid: &impID, Price: &advPrice, Adm: &advADM},
-		}}}},
+		BidRequest: &ortb.BidRequest{Id: &requestID, Imp: []*ortb.Imp{{Id: &impID, Bidfloor: &floor}}},
 		BidResponses: map[string]*ortb.BidResponse{
-			constants.RTBResponseDomainPrefix + rtbDomain: {Seatbid: []*ortb.SeatBid{{Bid: []*ortb.Bid{
-				{Impid: &impID, Price: &rtbPrice, Adm: &rtbADM},
-			}}}},
-		},
-		ImpIdUuid:        map[string]string{impID: uuid},
-		WinnerUserIds:    map[string]string{impID: "adv-user"},
-		WinnerBasePrices: map[string]float64{impID: 1.0},
-		SspDomain:        "ssp.example",
-		Format:           constants.POP,
-	}
-
-	response, clickhouse, burlUUIDs, _ := GetWinnerBidInternal_V_2_5(
-		context.Background(), req, 0.10, req.ImpIdUuid, nil, nil, false, "", "callbacks.example",
-	)
-	bids := response.GetSeatbid()[0].GetBid()
-	if len(bids) != 1 {
-		t.Fatalf("winners=%d want 1", len(bids))
-	}
-	wantPrice := rtbPrice * (1 - float32(constants.DefaultAdvertiserDeduction))
-	if math.Abs(float64(bids[0].GetPrice()-wantPrice)) > 1e-6 {
-		t.Fatalf("RTB final price=%f want %f", bids[0].GetPrice(), wantPrice)
-	}
-	stats := clickhouse[uuid]
-	if stats == nil {
-		t.Fatal("missing RTB winner stats")
-	}
-	if stats.WinDspDomain == nil || *stats.WinDspDomain != rtbDomain {
-		t.Fatalf("RTB WinDspDomain=%v want %q", stats.WinDspDomain, rtbDomain)
-	}
-	if stats.WinUserId == nil || *stats.WinUserId != rtbDomain {
-		t.Fatalf("RTB WinUserId=%v want %q", stats.WinUserId, rtbDomain)
-	}
-	if stats.WinCid == nil || *stats.WinCid != rtbDomain {
-		t.Fatalf("RTB WinCid=%v want %q", stats.WinCid, rtbDomain)
-	}
-	if stats.WinDspPrice == nil || math.Abs(float64(*stats.WinDspPrice-rtbPrice)) > 1e-6 {
-		t.Fatalf("RTB source price=%v want %f", stats.WinDspPrice, rtbPrice)
-	}
-	if len(burlUUIDs) != 1 || burlUUIDs[0] != uuid {
-		t.Fatalf("RTB BURL UUIDs=%v want [%s]", burlUUIDs, uuid)
-	}
-}
-
-func TestGetWinnerBidInternalADVBeatsRTBOnHigherOrEqualEffectivePrice(t *testing.T) {
-	requestID, impID, uuid := "req-adv-beats-rtb", "imp-1", "uuid-1"
-	advPrice := float32(1.00)
-	rtbPrice := float32(1.00)
-	advADM := "https://adv.example/adm"
-	rtbADM := "https://rtb.example/adm"
-	rtbDomain := "adl_rtb_partner.example"
-
-	req := &bidEngineGrpc.BidEngineRequest_V2_5{
-		BidRequest: &ortb.BidRequest{Id: &requestID, Imp: []*ortb.Imp{{Id: &impID}}},
-		ReadyBidResponse: &ortb.BidResponse{Seatbid: []*ortb.SeatBid{{Bid: []*ortb.Bid{
-			{Impid: &impID, Price: &advPrice, Adm: &advADM},
-		}}}},
-		BidResponses: map[string]*ortb.BidResponse{
-			constants.RTBResponseDomainPrefix + rtbDomain: {Seatbid: []*ortb.SeatBid{{Bid: []*ortb.Bid{
-				{Impid: &impID, Price: &rtbPrice, Adm: &rtbADM},
-			}}}},
-		},
-		ImpIdUuid:        map[string]string{impID: uuid},
-		WinnerUserIds:    map[string]string{impID: "adv-user"},
-		WinnerBasePrices: map[string]float64{impID: 1.25},
-		SspDomain:        "ssp.example",
-		Format:           constants.POP,
-	}
-
-	response, clickhouse, _, _ := GetWinnerBidInternal_V_2_5(
-		context.Background(), req, 0.10, req.ImpIdUuid, nil, nil, false, "", "callbacks.example",
-	)
-	bids := response.GetSeatbid()[0].GetBid()
-	if len(bids) != 1 || math.Abs(float64(bids[0].GetPrice()-advPrice)) > 1e-6 {
-		t.Fatalf("ADV must win RTB tie, got %+v", bids)
-	}
-	if got := clickhouse[uuid].WinDspDomain; got == nil || *got != "adv" {
-		t.Fatalf("winner domain=%v want adv", got)
-	}
-}
-
-func TestGetWinnerBidInternalRTBSuppressesDSPFallbackWhenRTBExists(t *testing.T) {
-	requestID, impID, uuid := "req-rtb-before-dsp", "imp-1", "uuid-1"
-	rtbPrice := float32(0.80)
-	dspPrice := float32(10.00)
-	rtbADM := "https://rtb.example/adm"
-	dspADM := "https://dsp.example/adm"
-	rtbDomain := "adl_rtb_partner.example"
-
-	req := &bidEngineGrpc.BidEngineRequest_V2_5{
-		BidRequest: &ortb.BidRequest{Id: &requestID, Imp: []*ortb.Imp{{Id: &impID}}},
-		BidResponses: map[string]*ortb.BidResponse{
-			constants.RTBResponseDomainPrefix + rtbDomain: {Seatbid: []*ortb.SeatBid{{Bid: []*ortb.Bid{
-				{Impid: &impID, Price: &rtbPrice, Adm: &rtbADM},
-			}}}},
-			"dsp-fallback.example": {Seatbid: []*ortb.SeatBid{{Bid: []*ortb.Bid{
-				{Impid: &impID, Price: &dspPrice, Adm: &dspADM},
-			}}}},
+			"dsp-main": {Seatbid: []*ortb.SeatBid{{Bid: []*ortb.Bid{{Impid: &impID, Price: &price, Adm: &adm}}}}},
 		},
 		ImpIdUuid: map[string]string{impID: uuid},
 		SspDomain: "ssp.example",
 		Format:    constants.POP,
 	}
 
-	_, clickhouse, _, _ := GetWinnerBidInternal_V_2_5(
-		context.Background(), req, 0.10, req.ImpIdUuid, nil, nil, false, "", "callbacks.example",
-	)
-	if got := clickhouse[uuid].WinDspDomain; got == nil || *got != rtbDomain {
-		t.Fatalf("winner domain=%v want RTB %q; DSP must remain fallback-only", got, rtbDomain)
+	response, _, _, _ := GetWinnerBidInternal_V_2_5(context.Background(), req, 0, req.ImpIdUuid, nil, nil, false, "", "callbacks.example")
+	bids := response.GetSeatbid()[0].GetBid()
+	if len(bids) != 1 || math.Abs(float64(bids[0].GetPrice()-price)) > 1e-6 {
+		t.Fatalf("bid below bidfloor must remain eligible: bids=%+v", bids)
 	}
 }
 
-func TestGetWinnerBidInternalRTBDoesNotReduceBaselineMarginToMeetBidfloor(t *testing.T) {
-	requestID, impID, uuid := "req-rtb-bidfloor", "imp-1", "uuid-1"
-	advPrice := float32(0.60)
-	rtbPrice := float32(0.80) // gross RTB wins, but 30% deduction => 0.56 < bidfloor 0.60
-	bidfloor := float32(0.60)
-	advADM := "https://adv.example/adm"
-	rtbADM := "https://rtb.example/adm"
-	rtbDomain := "adl_rtb_partner.example"
-
+func TestExternalADVWinnerUsesDSPStyleNURLWithoutRTBEntity(t *testing.T) {
+	requestID, impID, uuid := "req-external-adv", "imp-1", "uuid-1"
+	price := float32(0.70)
+	basePrice := 1.0
+	adm := `<img src="https://buyer.example/banner.png">`
+	nurl := "https://buyer.example/win"
+	marker := constants.ExternalADVBidMarker
+	campaignID := "campaign-rtb"
+	crid := "external-creative"
 	req := &bidEngineGrpc.BidEngineRequest_V2_5{
-		BidRequest: &ortb.BidRequest{Id: &requestID, Imp: []*ortb.Imp{{Id: &impID, Bidfloor: &bidfloor}}},
-		ReadyBidResponse: &ortb.BidResponse{Seatbid: []*ortb.SeatBid{{Bid: []*ortb.Bid{
-			{Impid: &impID, Price: &advPrice, Adm: &advADM},
-		}}}},
-		BidResponses: map[string]*ortb.BidResponse{
-			constants.RTBResponseDomainPrefix + rtbDomain: {Seatbid: []*ortb.SeatBid{{Bid: []*ortb.Bid{
-				{Impid: &impID, Price: &rtbPrice, Adm: &rtbADM},
-			}}}},
-		},
+		BidRequest: &ortb.BidRequest{Id: &requestID, Imp: []*ortb.Imp{{Id: &impID}}},
+		ReadyBidResponse: &ortb.BidResponse{Seatbid: []*ortb.SeatBid{{Bid: []*ortb.Bid{{
+			Impid: &impID, Price: &price, Adm: &adm, Nurl: &nurl, Cid: &campaignID, Crid: &crid,
+			Ext: &ortb.BidExt{Cwin: &marker},
+		}}}}},
 		ImpIdUuid:        map[string]string{impID: uuid},
-		WinnerUserIds:    map[string]string{impID: "adv-user"},
-		WinnerBasePrices: map[string]float64{impID: 0.9},
+		WinnerUserIds:    map[string]string{impID: "user-1"},
+		WinnerBasePrices: map[string]float64{impID: basePrice},
 		SspDomain:        "ssp.example",
-		Format:           constants.POP,
+		Format:           constants.BAN,
 	}
 
-	response, clickhouse, _, _ := GetWinnerBidInternal_V_2_5(
-		context.Background(), req, 0.10, req.ImpIdUuid, nil, nil, false, "", "callbacks.example",
-	)
+	response, clickhouse, burlUUIDs, _ := GetWinnerBidInternal_V_2_5(context.Background(), req, 0, req.ImpIdUuid, nil, nil, false, "", "callbacks.example")
 	bids := response.GetSeatbid()[0].GetBid()
-	if len(bids) != 1 || math.Abs(float64(bids[0].GetPrice()-advPrice)) > 1e-6 {
-		t.Fatalf("ADV must remain winner when RTB net price violates bidfloor, got %+v", bids)
+	if len(bids) != 1 {
+		t.Fatalf("external ADV winners=%d want 1", len(bids))
 	}
-	if got := clickhouse[uuid].WinDspDomain; got == nil || *got != "adv" {
-		t.Fatalf("winner domain=%v want adv", got)
+	bid := bids[0]
+	if bid.GetAdm() != adm {
+		t.Fatalf("external BAN ADM changed: %q", bid.GetAdm())
+	}
+	parsedNURL, err := url.Parse(bid.GetNurl())
+	if err != nil || parsedNURL.Query().Get("url") != nurl {
+		t.Fatalf("external NURL was not proxied: %q", bid.GetNurl())
+	}
+	if bid.GetBurl() == "" {
+		t.Fatal("exchange BURL must be synthesized for external ADV")
+	}
+	if bid.GetExt().GetCwin() == constants.ExternalADVBidMarker || bid.GetExt().GetCwin() == "" {
+		t.Fatalf("internal marker was not replaced by clicks_wins callback: %q", bid.GetExt().GetCwin())
+	}
+	if got := clickhouse[uuid].WinCid; got == nil || *got != campaignID {
+		t.Fatalf("ClickHouse campaign id=%v want %q", got, campaignID)
+	}
+	if got := clickhouse[uuid].WinCrid; got == nil || *got != crid {
+		t.Fatalf("ClickHouse crid=%v want %q", got, crid)
+	}
+	if len(burlUUIDs) != 1 || burlUUIDs[0] != uuid {
+		t.Fatalf("external ADV BURL UUIDs=%v want [%s]", burlUUIDs, uuid)
 	}
 }

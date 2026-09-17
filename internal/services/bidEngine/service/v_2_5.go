@@ -3,7 +3,6 @@ package bidEngine
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"log"
 	"math"
 	"sort"
@@ -114,44 +113,28 @@ func getWinnerBidInternalV25(
 		}
 	}
 
-	// Router transports RTB responses through the existing BidResponses map
-	// with an internal key prefix. Split the sources here: RTB competes with ADV
-	// first, while ordinary DSP remains fallback-only.
+	// Ordinary DSP responses are already available because Router fans DSP out
+	// in parallel with ADV. They remain fallback-only: a finalized ADV winner
+	// always has priority for its impression.
 	impDSPBids := make(map[string][]*bidWithDomain)
-	impRTBBids := make(map[string][]*bidWithDomain)
 	for responseDomain, bidResponse := range req.BidResponses {
 		if bidResponse == nil || bidResponse.Seatbid == nil {
 			continue
-		}
-		domain := responseDomain
-		isRTB := false
-		if stripped, ok := strings.CutPrefix(responseDomain, constants.RTBResponseDomainPrefix); ok {
-			domain = stripped
-			isRTB = true
 		}
 		for _, seatbid := range bidResponse.Seatbid {
 			if seatbid == nil {
 				continue
 			}
 			for _, bid := range seatbid.Bid {
-				if bid == nil {
+				if bid == nil || strings.TrimSpace(bid.GetImpid()) == "" {
 					continue
 				}
-				impID := bid.GetImpid()
-				if impID == "" {
-					continue
-				}
-				candidate := &bidWithDomain{bid: bid, domain: domain}
-				if isRTB {
-					impRTBBids[impID] = append(impRTBBids[impID], candidate)
-				} else {
-					impDSPBids[impID] = append(impDSPBids[impID], candidate)
-				}
+				impDSPBids[bid.GetImpid()] = append(impDSPBids[bid.GetImpid()], &bidWithDomain{bid: bid, domain: responseDomain})
 			}
 		}
 	}
 
-	if len(req.BidResponses) > 0 && len(impDSPBids) == 0 && len(impRTBBids) == 0 {
+	if len(req.BidResponses) > 0 && len(impDSPBids) == 0 {
 		jsonData, err := json.MarshalIndent(req.BidResponses, "", "  ")
 		if err != nil {
 			log.Printf("Got len of impBids = 0, Error marshaling: %v", err)
@@ -189,104 +172,27 @@ func getWinnerBidInternalV25(
 		}
 		impID := imp.GetId()
 
-		// RTB participates in the first-stage auction together with ADV. Compare
-		// the RTB source bid as received; only after RTB wins do we apply the
-		// shared baseline advertiser deduction in BidEngine. ADV keeps its current
-		// already-effective price and wins an exact tie for backwards compatibility.
 		advBid := advBids[impID]
-		rtbCandidates := impRTBBids[impID]
-		var bestRTB *bidWithDomain
-		for _, candidate := range rtbCandidates {
-			if candidate == nil || candidate.bid == nil {
-				continue
-			}
-			rawPrice := candidate.bid.GetPrice()
-			if rawPrice <= 0 || math.IsNaN(float64(rawPrice)) || math.IsInf(float64(rawPrice), 0) || rawPrice < imp.GetBidfloor() {
-				continue
-			}
-			if shouldWrapDSPADM(req.GetFormat()) {
-				if strings.TrimSpace(candidate.bid.GetAdm()) == "" {
-					continue
-				}
-			} else if !validRawDSPADM(req.GetFormat(), candidate.bid.GetAdm()) {
-				continue
-			}
-			if bestRTB == nil || rawPrice > bestRTB.bid.GetPrice() ||
-				(rawPrice == bestRTB.bid.GetPrice() && (candidate.domain < bestRTB.domain ||
-					(candidate.domain == bestRTB.domain && candidate.bid.GetId() < bestRTB.bid.GetId()))) {
-				bestRTB = candidate
-			}
-		}
 
-		rtbWinsFirstStage := bestRTB != nil && (advBid == nil || bestRTB.bid.GetPrice() > advBid.GetPrice())
-		if rtbWinsFirstStage {
-			finalPrice := bestRTB.bid.GetPrice() * (1 - float32(constants.DefaultAdvertiserDeduction))
-			// Match ADV semantics: the baseline deduction is not weakened to satisfy
-			// bidfloor. If the deducted RTB price is below bidfloor, RTB is not a
-			// usable winner and we fall back to ADV/DSP below.
-			if finalPrice > 0 && !math.IsNaN(float64(finalPrice)) && !math.IsInf(float64(finalPrice), 0) && finalPrice >= imp.GetBidfloor() {
-				baseBid := &ortb_V2_5.Bid{
-					Id:    bestRTB.bid.Id,
-					Impid: bestRTB.bid.Impid,
-					Price: &finalPrice,
-					Adm:   bestRTB.bid.Adm,
-					Nurl:  bestRTB.bid.Nurl,
-					Adid:  bestRTB.bid.Adid,
-					Cid:   bestRTB.bid.Cid,
-					Crid:  bestRTB.bid.Crid,
-					Ext:   bestRTB.bid.Ext,
-				}
-				wrapRTBADM := shouldWrapDSPADM(req.GetFormat())
-				finalBid, ok := FinalizeBidCallbacks(
-					baseBid,
-					admDomain,
-					ImpIdUuid[impID],
-					req.GetSspDomain(),
-					req.GetFormat(),
-					wrapRTBADM && logged,
-					true,
-				)
-				if ok && finalBid != nil {
-					rtbDomain := bestRTB.domain
-					crid := bestRTB.bid.Crid
-					empty := ""
-					if crid == nil {
-						crid = &empty
-					}
-					uuid := ImpIdUuid[impID]
-					clickhouseSeatBid[uuid] = &clickhouse_types.Bid{
-						WinDspDomain: &rtbDomain,
-						WinPrice:     &finalPrice,
-						WinDspPrice:  bestRTB.bid.Price,
-						WinCid:       &rtbDomain,
-						WinCrid:      crid,
-						WinUserId:    &rtbDomain,
-					}
-					seatBid[0].Bid = append(seatBid[0].Bid, finalBid)
-					burlUUIDs = append(burlUUIDs, uuid)
-					if logged && wrapRTBADM {
-						admUUIDs = append(admUUIDs, uuid)
-					}
-					continue
-				}
-			}
-		}
-
-		// If RTB did not beat ADV (or could not be finalized), preserve the ADV
-		// winner path unchanged.
+		// ADV keeps strict priority over DSP for this impression.
 		if advBid != nil {
 			uuid := ImpIdUuid[impID]
 			userID := req.GetWinnerUserIds()[impID]
 			if strings.TrimSpace(uuid) != "" && strings.TrimSpace(userID) != "" {
 				basePriceValue, basePriceExists := req.GetWinnerBasePrices()[impID]
 				if basePriceExists && basePriceValue > 0 && !math.IsNaN(basePriceValue) && !math.IsInf(basePriceValue, 0) {
-					finalBid, ok := FinalizeADVCallbacks(
-						advBid,
-						admDomain,
-						uuid,
-						req.GetSspDomain(),
-						req.GetFormat(),
-					)
+					externalADV := isExternalADVBid(advBid)
+					var finalBid *ortb_V2_5.Bid
+					var ok bool
+					if externalADV {
+						clean, cloneOK := proto.Clone(advBid).(*ortb_V2_5.Bid)
+						if cloneOK && clean != nil {
+							wrapADM := shouldWrapDSPADM(req.GetFormat())
+							finalBid, ok = FinalizeBidCallbacks(clean, admDomain, uuid, req.GetSspDomain(), req.GetFormat(), wrapADM && logged, true)
+						}
+					} else {
+						finalBid, ok = FinalizeADVCallbacks(advBid, admDomain, uuid, req.GetSspDomain(), req.GetFormat())
+					}
 					if ok && finalBid != nil {
 						effectivePrice := finalBid.GetPrice()
 						basePrice := float32(basePriceValue)
@@ -301,34 +207,37 @@ func getWinnerBidInternalV25(
 						}
 						seatBid[0].Bid = append(seatBid[0].Bid, finalBid)
 						finalADVImps[impID] = struct{}{}
+						if externalADV {
+							burlUUIDs = append(burlUUIDs, uuid)
+							if logged && shouldWrapDSPADM(req.GetFormat()) {
+								admUUIDs = append(admUUIDs, uuid)
+							}
+						}
 						continue
 					}
 				}
 			}
 		}
 
-		// No usable ADV/RTB winner for this impression: run the existing DSP
-		// fallback auction with the same bidfloor/percent logic as before.
+		// No usable ADV winner for this impression: run the already-fetched DSP
+		// fallback auction. Bidfloor is intentionally not enforced in BidEngine.
 		bids := impDSPBids[impID]
 		if len(bids) == 0 {
 			continue
 		}
 
-		bidFloor := imp.GetBidfloor()
 		newBids := make([]*bidWithDomain, 0, len(bids))
 		for k := range bids {
+			rawPrice := bids[k].bid.GetPrice()
+			if rawPrice <= 0 || math.IsNaN(float64(rawPrice)) || math.IsInf(float64(rawPrice), 0) {
+				continue
+			}
 			value := utils.GetValueFomSspGeoDspMap(req.SspDomain, country, bids[k].domain, percentMap, &types.PercentAndBidfloor{
-				Percent:  profitPercent,
-				Bidfloor: true,
+				Percent: profitPercent,
 			})
 
-			finalPrice, err := applyPriceConstraintsAndPercent(
-				bids[k].bid.GetPrice(),
-				bidFloor,
-				value.Percent,
-				value.Bidfloor,
-			)
-			if err != nil {
+			finalPrice := applyPercent(rawPrice, value.Percent)
+			if finalPrice <= 0 || math.IsNaN(float64(finalPrice)) || math.IsInf(float64(finalPrice), 0) {
 				continue
 			}
 
@@ -436,6 +345,10 @@ func allRequestedImpressionsHaveFinalADV(request *ortb_V2_5.BidRequest, advImps 
 		}
 	}
 	return seen > 0
+}
+
+func isExternalADVBid(bid *ortb_V2_5.Bid) bool {
+	return bid != nil && bid.GetExt() != nil && strings.TrimSpace(bid.GetExt().GetCwin()) == constants.ExternalADVBidMarker
 }
 
 func shouldWrapDSPADM(format string) bool {
@@ -584,19 +497,6 @@ func setClicksWinsCallback(bid *ortb_V2_5.Bid, admDomain, globalID string) bool 
 	return true
 }
 
-func applyPriceConstraintsAndPercent(dspPrice, bidFloor, profitPercent float32, needed bool) (
-	finalDspPrice float32,
-	err error,
-) {
-	if needed && dspPrice < bidFloor {
-		return 0, fmt.Errorf("DSP Price is lower thand bid floor")
-	}
-
-	finalDspPrice = dspPrice - dspPrice*profitPercent
-
-	if needed && finalDspPrice < bidFloor {
-		finalDspPrice = bidFloor
-	}
-
-	return finalDspPrice, nil
+func applyPercent(dspPrice, profitPercent float32) float32 {
+	return dspPrice - dspPrice*profitPercent
 }

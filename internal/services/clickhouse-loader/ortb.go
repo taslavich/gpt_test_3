@@ -5,11 +5,13 @@ import (
 	"fmt"
 	"log"
 	"net"
+	"strings"
 	"time"
 
 	"github.com/ClickHouse/clickhouse-go/v2"
 	"github.com/google/uuid"
 	"github.com/segmentio/kafka-go"
+	"gitlab.com/twinbid-exchange/RTB-exchange/internal/constants"
 	eventspb "gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/proto/buffer"
 	"google.golang.org/protobuf/proto"
 )
@@ -84,6 +86,7 @@ func insertBatchOrtb(
 			geo,
 			city_id,
 			bid_responses_raw,
+			adv_rtb_responses_raw,
 			win_dsp_domain,
 			win_final_price,
 			win_dsp_price,
@@ -134,7 +137,17 @@ func insertBatchOrtb(
 
 		cityID := int32(r.CityId)
 		code := uint16(r.Code)
-		bidResponsesRaw := encodeBidResponsesRaw(r.BidResponses)
+		normalResponses := make(map[string]string)
+		advRTBResponses := make(map[string]string)
+		for key, value := range r.BidResponses {
+			if campaignID, ok := strings.CutPrefix(key, constants.ADVRTBResponseStatsPrefix); ok {
+				advRTBResponses[campaignID] = value
+				continue
+			}
+			normalResponses[key] = value
+		}
+		bidResponsesRaw := encodeBidResponsesRaw(normalResponses)
+		advRTBResponsesRaw := encodeBidResponsesRaw(advRTBResponses)
 
 		if err := batch.Append(
 			u,
@@ -157,6 +170,7 @@ func insertBatchOrtb(
 			&r.Geo,
 			cityID,
 			bidResponsesRaw,
+			advRTBResponsesRaw,
 			&r.WinDspDomain,
 			r.WinPrice,
 			r.WinDspPrice,

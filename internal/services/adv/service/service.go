@@ -8,6 +8,7 @@ import (
 	"log"
 	"math"
 	"math/rand"
+	"net/http"
 	"net/netip"
 	"net/url"
 	"regexp"
@@ -94,6 +95,8 @@ type Campaign struct {
 	TrafficType        string
 	QualitySegment     string
 	BasePrice          float64
+	RTB                bool
+	DSPLink            string
 	GoalTotalDollars   float64
 	EvennessBySlotMode bool
 	BlockVPN           bool
@@ -146,6 +149,8 @@ type candidate struct {
 	creatives      []*Creative
 	chargePrice    float64
 	effectivePrice float64
+	basePrice      float64
+	externalBid    *ortb.Bid
 
 	// Diagnostics metadata is observational only. It is never read by pricing,
 	// filtering, candidate-pool construction, random selection, or bid building.
@@ -158,13 +163,15 @@ type AuctionService struct {
 	// operations even if the service is ever built for a 32-bit architecture.
 	requestCounter uint64
 
-	snapshot      atomic.Pointer[Snapshot]
-	runtime       *RuntimeStore
-	winners       *WinnerStore
-	percents      *PercentStore
-	quality       *QualityStore
-	siteIDQuality *SiteIDQualityStore
-	vpnClassifier VPNClassifier
+	snapshot          atomic.Pointer[Snapshot]
+	runtime           *RuntimeStore
+	winners           *WinnerStore
+	percents          *PercentStore
+	quality           *QualityStore
+	siteIDQuality     *SiteIDQualityStore
+	vpnClassifier     VPNClassifier
+	rtbHTTPClient     *http.Client
+	statsRedisClients []*redis.Client
 
 	antiperekrut        *AntiPerekrutManager
 	antiperekrutEnabled bool
@@ -185,6 +192,7 @@ func NewAuctionService(runtime *RuntimeStore, winners *WinnerStore, percents *Pe
 		antiperekrutEnabled: true,
 		diagnostics:         NewAuctionDiagnostics(time.Now().UTC()),
 		snapshotWarningSeen: make(map[string]struct{}),
+		rtbHTTPClient:       newSafeRTBHTTPClient(),
 	}
 	s.snapshot.Store(&Snapshot{Campaigns: []*Campaign{}, UserGoals: map[string]float64{}, UserAntiPerekrutBlocked: map[string]bool{}})
 	return s
@@ -314,6 +322,7 @@ func cloneAndValidateSnapshot(src *Snapshot) (*Snapshot, error) {
 		clone.Format = normalizeFormat(clone.Format)
 		clone.TrafficType = normalizeTraffic(clone.TrafficType)
 		clone.QualitySegment = strings.ToLower(strings.TrimSpace(clone.QualitySegment))
+		clone.DSPLink = strings.TrimSpace(clone.DSPLink)
 
 		if clone.ID == "" || clone.UserID == "" {
 			return nil, errors.New("campaign has empty id or user_id")
@@ -334,8 +343,19 @@ func cloneAndValidateSnapshot(src *Snapshot) (*Snapshot, error) {
 		if _, ok := validQualitySegments[clone.QualitySegment]; !ok {
 			return nil, fmt.Errorf("campaign %s has invalid quality segment", clone.ID)
 		}
-		if !finitePositive(clone.BasePrice) || !finiteNonNegative(clone.GoalTotalDollars) {
-			return nil, fmt.Errorf("campaign %s has invalid price or goal", clone.ID)
+		if !finiteNonNegative(clone.GoalTotalDollars) {
+			return nil, fmt.Errorf("campaign %s has invalid goal", clone.ID)
+		}
+		if clone.RTB {
+			if !finiteNonNegative(clone.BasePrice) || clone.DSPLink == "" {
+				return nil, fmt.Errorf("RTB campaign %s has invalid base price or dsp_link", clone.ID)
+			}
+			parsed, err := url.Parse(clone.DSPLink)
+			if err != nil || parsed.Host == "" || (parsed.Scheme != "http" && parsed.Scheme != "https") {
+				return nil, fmt.Errorf("RTB campaign %s has invalid dsp_link", clone.ID)
+			}
+		} else if !finitePositive(clone.BasePrice) {
+			return nil, fmt.Errorf("campaign %s has invalid base price", clone.ID)
 		}
 		if clone.StartTS.IsZero() || clone.EndTS.IsZero() || !clone.StartTS.Before(clone.EndTS) {
 			return nil, fmt.Errorf("campaign %s has invalid time window", clone.ID)
@@ -365,36 +385,38 @@ func cloneAndValidateSnapshot(src *Snapshot) (*Snapshot, error) {
 		clone.IPFilter = cloneFilter(campaign.IPFilter)
 		clone.IPCIDRPrefixes = append([]netip.Prefix(nil), campaign.IPCIDRPrefixes...)
 		clone.Creatives = make([]*Creative, 0, len(campaign.Creatives))
-		creativeIDs := make(map[string]struct{}, len(campaign.Creatives))
-		for _, creative := range campaign.Creatives {
-			if creative == nil {
-				return nil, fmt.Errorf("campaign %s contains nil creative", clone.ID)
+		if !clone.RTB {
+			creativeIDs := make(map[string]struct{}, len(campaign.Creatives))
+			for _, creative := range campaign.Creatives {
+				if creative == nil {
+					return nil, fmt.Errorf("campaign %s contains nil creative", clone.ID)
+				}
+				cc := *creative
+				cc.ID = strings.TrimSpace(cc.ID)
+				cc.CampaignID = strings.TrimSpace(cc.CampaignID)
+				cc.ADMURL = strings.TrimSpace(cc.ADMURL)
+				cc.ImageURL = strings.TrimSpace(cc.ImageURL)
+				cc.FileFormat = strings.TrimSpace(cc.FileFormat)
+				cc.BannerType = strings.TrimSpace(cc.BannerType)
+				if cc.ID == "" || cc.ADMURL == "" {
+					return nil, fmt.Errorf("campaign %s has invalid creative", clone.ID)
+				}
+				if normalizeFormat(clone.Format) == "BAN" && (cc.W <= 0 || cc.H <= 0) {
+					return nil, fmt.Errorf("banner campaign %s has creative %s without valid dimensions", clone.ID, cc.ID)
+				}
+				if cc.CampaignID == "" {
+					cc.CampaignID = clone.ID
+				}
+				if cc.CampaignID != clone.ID {
+					return nil, fmt.Errorf("creative %s belongs to another campaign", cc.ID)
+				}
+				if _, duplicate := creativeIDs[cc.ID]; duplicate {
+					return nil, fmt.Errorf("campaign %s has duplicate creative %s", clone.ID, cc.ID)
+				}
+				creativeIDs[cc.ID] = struct{}{}
+				cc.TrackersMacros = cloneStringMap(creative.TrackersMacros)
+				clone.Creatives = append(clone.Creatives, &cc)
 			}
-			cc := *creative
-			cc.ID = strings.TrimSpace(cc.ID)
-			cc.CampaignID = strings.TrimSpace(cc.CampaignID)
-			cc.ADMURL = strings.TrimSpace(cc.ADMURL)
-			cc.ImageURL = strings.TrimSpace(cc.ImageURL)
-			cc.FileFormat = strings.TrimSpace(cc.FileFormat)
-			cc.BannerType = strings.TrimSpace(cc.BannerType)
-			if cc.ID == "" || cc.ADMURL == "" {
-				return nil, fmt.Errorf("campaign %s has invalid creative", clone.ID)
-			}
-			if normalizeFormat(clone.Format) == "BAN" && (cc.W <= 0 || cc.H <= 0) {
-				return nil, fmt.Errorf("banner campaign %s has creative %s without valid dimensions", clone.ID, cc.ID)
-			}
-			if cc.CampaignID == "" {
-				cc.CampaignID = clone.ID
-			}
-			if cc.CampaignID != clone.ID {
-				return nil, fmt.Errorf("creative %s belongs to another campaign", cc.ID)
-			}
-			if _, duplicate := creativeIDs[cc.ID]; duplicate {
-				return nil, fmt.Errorf("campaign %s has duplicate creative %s", clone.ID, cc.ID)
-			}
-			creativeIDs[cc.ID] = struct{}{}
-			cc.TrackersMacros = cloneStringMap(creative.TrackersMacros)
-			clone.Creatives = append(clone.Creatives, &cc)
 		}
 		if clone.BlockVPN {
 			out.HasBlockVPNCampaigns = true
@@ -650,6 +672,11 @@ func (s *AuctionService) auctionCore(
 		}
 	}
 
+	rtbBids := s.fetchRTBCampaignBids(
+		ctx, req, snapshot, now, options, requestedFormat, trafficType, sspDomain, siteIDQualityValue,
+		antiState, requestIsVPN, vpnClassificationErr, logf,
+	)
+
 	seat := &ortb.SeatBid{Bid: make([]*ortb.Bid, 0, len(req.GetImp()))}
 	winnerUsers := make(map[string]string)
 	winnerBasePrices := make(map[string]float64)
@@ -724,24 +751,25 @@ func (s *AuctionService) auctionCore(
 			if campaign != nil {
 				durableUserBlocked = snapshot.UserAntiPerekrutBlocked[campaign.UserID]
 			}
-			cand, eligible, reason, infraErr := s.evaluateCampaign(
-				ctx,
-				campaign,
-				req,
-				imp,
-				now,
-				requestedFormat,
-				trafficType,
-				sspDomain,
-				siteIDQualityValue,
-				winnerUUID,
-				antiState,
-				durableUserBlocked,
-				requestIsVPN,
-				vpnClassificationErr,
-				recorder != nil,
-				logf,
-			)
+			var cand candidate
+			var eligible bool
+			var reason diagnosticReason
+			var infraErr error
+			if campaign != nil && campaign.RTB {
+				remoteBid := rtbBids[impID][campaign.ID]
+				if remoteBid == nil {
+					continue
+				}
+				cand, eligible, infraErr = s.evaluateRTBCandidate(ctx, campaign, remoteBid, imp, now, requestedFormat)
+				if !eligible {
+					reason = diagNoWinnerSelected
+				}
+			} else {
+				cand, eligible, reason, infraErr = s.evaluateCampaign(
+					ctx, campaign, req, imp, now, requestedFormat, trafficType, sspDomain, siteIDQualityValue,
+					winnerUUID, antiState, durableUserBlocked, requestIsVPN, vpnClassificationErr, recorder != nil, logf,
+				)
+			}
 			if infraErr != nil {
 				infrastructureErrors++
 				campaignID := ""
@@ -854,25 +882,36 @@ func (s *AuctionService) auctionCore(
 				len(cand.creatives),
 			)
 
-			if len(cand.creatives) == 0 {
-				attemptResults[campaignID] = "eligible_candidate_has_no_creatives"
-				setCandidateDiagnosticReason(states, cand.diagnosticSlot, diagEligibleCandidateHasNoCreatives)
-				logf("[ADV][CANDIDATE_SKIP] request_id=%q imp_id=%q format=%q campaign_id=%q reason=eligible_candidate_has_no_creatives", requestID, impID, requestedFormat, campaignID)
-				continue
-			}
-			creative := cand.creatives[rand.Intn(len(cand.creatives))]
-			if creative == nil {
-				attemptResults[campaignID] = "random_creative_nil"
-				setCandidateDiagnosticReason(states, cand.diagnosticSlot, diagRandomCreativeNil)
-				logf("[ADV][CANDIDATE_SKIP] request_id=%q imp_id=%q format=%q campaign_id=%q reason=random_creative_nil matched_creatives=%d", requestID, impID, requestedFormat, campaignID, len(cand.creatives))
-				continue
-			}
-			bid := s.buildBid(req, imp, cand.campaign, creative, cand.effectivePrice)
-			if bid == nil {
-				attemptResults[campaignID] = "bid_build_failed"
-				setCandidateDiagnosticReason(states, cand.diagnosticSlot, diagBidBuildFailed)
-				logf("[ADV][CANDIDATE_SKIP] request_id=%q imp_id=%q format=%q campaign_id=%q creative_id=%q reason=bid_build_failed adm_url_empty=%t", requestID, impID, requestedFormat, campaignID, creative.ID, strings.TrimSpace(creative.ADMURL) == "")
-				continue
+			var bid *ortb.Bid
+			creativeID := ""
+			clickIDParam := ""
+			if cand.externalBid != nil {
+				bid = buildExternalADVBid(cand)
+				creativeID = cand.externalBid.GetCrid()
+				if bid == nil {
+					attemptResults[campaignID] = "external_bid_build_failed"
+					continue
+				}
+			} else {
+				if len(cand.creatives) == 0 {
+					attemptResults[campaignID] = "eligible_candidate_has_no_creatives"
+					setCandidateDiagnosticReason(states, cand.diagnosticSlot, diagEligibleCandidateHasNoCreatives)
+					continue
+				}
+				creative := cand.creatives[rand.Intn(len(cand.creatives))]
+				if creative == nil {
+					attemptResults[campaignID] = "random_creative_nil"
+					setCandidateDiagnosticReason(states, cand.diagnosticSlot, diagRandomCreativeNil)
+					continue
+				}
+				creativeID = creative.ID
+				clickIDParam = strings.TrimSpace(creative.TrackersMacros["click_id"])
+				bid = s.buildBid(req, imp, cand.campaign, creative, cand.effectivePrice)
+				if bid == nil {
+					attemptResults[campaignID] = "bid_build_failed"
+					setCandidateDiagnosticReason(states, cand.diagnosticSlot, diagBidBuildFailed)
+					continue
+				}
 			}
 
 			winner := WinnerRecord{
@@ -880,19 +919,19 @@ func (s *AuctionService) auctionCore(
 				UserID:       cand.campaign.UserID,
 				CampaignID:   cand.campaign.ID,
 				Format:       requestedFormat,
-				ClickIDParam: strings.TrimSpace(creative.TrackersMacros["click_id"]),
+				ClickIDParam: clickIDParam,
 			}
 			if err := s.winners.Put(ctx, winnerUUID, winner); err != nil {
 				attemptResults[campaignID] = "winner_redis_write_failed"
 				setCandidateDiagnosticReason(states, cand.diagnosticSlot, diagWinnerRedisWriteFailed)
-				logf("[ADV][WINNER_REDIS_ERROR] request_id=%q imp_id=%q format=%q winner_uuid=%q campaign_id=%q creative_id=%q user_id=%q error=%v", requestID, impID, requestedFormat, winnerUUID, campaignID, creative.ID, cand.campaign.UserID, err)
+				logf("[ADV][WINNER_REDIS_ERROR] request_id=%q imp_id=%q format=%q winner_uuid=%q campaign_id=%q creative_id=%q user_id=%q error=%v", requestID, impID, requestedFormat, winnerUUID, campaignID, creativeID, cand.campaign.UserID, err)
 				infrastructureErrors++
 				continue
 			}
 
 			seat.Bid = append(seat.Bid, bid)
 			winnerUsers[impID] = cand.campaign.UserID
-			winnerBasePrices[impID] = cand.campaign.BasePrice
+			winnerBasePrices[impID] = candidateBasePrice(cand)
 			winnerCampaignID = campaignID
 			winnerEffectivePrice = cand.effectivePrice
 			winnerSlot = cand.diagnosticSlot
@@ -907,9 +946,9 @@ func (s *AuctionService) auctionCore(
 				auctionPosition,
 				mode.String(),
 				campaignID,
-				creative.ID,
+				creativeID,
 				cand.campaign.UserID,
-				cand.campaign.BasePrice,
+				candidateBasePrice(cand),
 				cand.chargePrice,
 				cand.effectivePrice,
 				len(cand.creatives),
@@ -1291,6 +1330,9 @@ func logCandidatePool(
 }
 
 func candidateBasePrice(cand candidate) float64 {
+	if cand.basePrice > 0 {
+		return cand.basePrice
+	}
 	if cand.campaign == nil {
 		return 0
 	}
@@ -1577,10 +1619,6 @@ func (s *AuctionService) evaluateCampaign(
 		logf("[ADV][CAMPAIGN_REJECT] request_id=%q imp_id=%q format=%q campaign_id=%q user_id=%q reason=effective_price_non_positive base_price=%.12f deduction=%.12f effective_price=%.12f", requestID, impID, requestedFormat, campaignID, userID, campaign.BasePrice, deduction, effective)
 		return candidate{}, false, diagEffectivePriceNonPositive, nil
 	}
-	if !effectivePriceMeetsBidFloor(effective, imp) {
-		logf("[ADV][CAMPAIGN_REJECT] request_id=%q imp_id=%q format=%q campaign_id=%q user_id=%q reason=effective_price_below_bidfloor effective_price=%.12f bidfloor=%.12f", requestID, impID, requestedFormat, campaignID, userID, effective, float64(imp.GetBidfloor()))
-		return candidate{}, false, diagEffectivePriceBelowBidFloor, nil
-	}
 
 	logf(
 		"[ADV][CAMPAIGN_ELIGIBLE] request_id=%q imp_id=%q format=%q campaign_id=%q user_id=%q campaign_format=%q creatives=%d base_price=%.12f charge_price=%.12f deduction=%.12f effective_price=%.12f campaign_remaining=%.12f user_remaining=%.12f",
@@ -1598,7 +1636,7 @@ func (s *AuctionService) evaluateCampaign(
 		campaignRemaining,
 		userRemaining,
 	)
-	return candidate{campaign: campaign, creatives: creatives, chargePrice: chargePrice, effectivePrice: effective}, true, diagNone, nil
+	return candidate{campaign: campaign, creatives: creatives, chargePrice: chargePrice, effectivePrice: effective, basePrice: campaign.BasePrice}, true, diagNone, nil
 }
 
 func diagnosticReasonForAntiPerekrutEligibility(reason AntiPerekrutEligibilityReason) diagnosticReason {
@@ -1658,10 +1696,6 @@ func campaignActivityRejectionReason(campaign *Campaign, now time.Time) diagnost
 		}
 	}
 	return diagNone
-}
-
-func effectivePriceMeetsBidFloor(effective float64, imp *ortb.Imp) bool {
-	return imp != nil && effective >= float64(imp.GetBidfloor())
 }
 
 func logCampaignActivityRejection(logf debugLogFunc, requestID, impID string, campaign *Campaign, now time.Time) {

@@ -77,6 +77,7 @@ CREATE TABLE IF NOT EXISTS {db}.ortb
     geo               Nullable(String),
     city_id           Nullable(Int32),
     bid_responses_raw String DEFAULT '',
+    adv_rtb_responses_raw String DEFAULT '',
 
     win_dsp_domain    Nullable(String),
 
@@ -95,6 +96,9 @@ SETTINGS index_granularity = 8192;
 
 -- Lookup by auction UUID for clicks_wins -> ORTB enrichment.
 -- ALTER is kept for compatibility with already existing tables.
+ALTER TABLE {db}.ortb
+    ADD COLUMN IF NOT EXISTS adv_rtb_responses_raw String DEFAULT '' AFTER bid_responses_raw;
+
 ALTER TABLE {db}.ortb
     ADD INDEX IF NOT EXISTS idx_ortb_uuid
     uuid TYPE bloom_filter(0.01) GRANULARITY 1;
@@ -317,6 +321,7 @@ CREATE TABLE IF NOT EXISTS {db}.fact_impressions
     city_id                Nullable(Int32),
 
     bid_responses_raw      String DEFAULT '',
+    adv_rtb_responses_raw      String DEFAULT '',
 
     win_dsp_domain         LowCardinality(String),
 
@@ -374,6 +379,7 @@ CREATE TABLE IF NOT EXISTS {db}.fact_clicks
     geo               LowCardinality(String),
     city_id           Nullable(Int32),
     bid_responses_raw String DEFAULT '',
+    adv_rtb_responses_raw String DEFAULT '',
 
     win_dsp_domain    LowCardinality(String),
 
@@ -430,6 +436,7 @@ CREATE TABLE IF NOT EXISTS {db}.fact_clicks_wins
     geo                    LowCardinality(String),
     city_id                Nullable(Int32),
     bid_responses_raw      String DEFAULT '',
+    adv_rtb_responses_raw      String DEFAULT '',
 
     win_dsp_domain         LowCardinality(String),
 
@@ -482,6 +489,7 @@ CREATE TABLE IF NOT EXISTS {db}.fact_conversions
     geo               LowCardinality(String),
     city_id           Nullable(Int32),
     bid_responses_raw String DEFAULT '',
+    adv_rtb_responses_raw String DEFAULT '',
 
     win_dsp_domain    LowCardinality(String),
 
@@ -511,6 +519,18 @@ ALTER TABLE {db}.fact_clicks
 
 ALTER TABLE {db}.fact_clicks_wins
     ADD COLUMN IF NOT EXISTS clicks_wins_uuid UUID AFTER uuid;
+
+ALTER TABLE {db}.fact_impressions
+    ADD COLUMN IF NOT EXISTS adv_rtb_responses_raw String DEFAULT '' AFTER bid_responses_raw;
+
+ALTER TABLE {db}.fact_clicks
+    ADD COLUMN IF NOT EXISTS adv_rtb_responses_raw String DEFAULT '' AFTER bid_responses_raw;
+
+ALTER TABLE {db}.fact_clicks_wins
+    ADD COLUMN IF NOT EXISTS adv_rtb_responses_raw String DEFAULT '' AFTER bid_responses_raw;
+
+ALTER TABLE {db}.fact_conversions
+    ADD COLUMN IF NOT EXISTS adv_rtb_responses_raw String DEFAULT '' AFTER bid_responses_raw;
 
 ALTER TABLE {db}.fact_conversions
     ADD COLUMN IF NOT EXISTS conversions_event_time DateTime64(3, 'UTC')
@@ -898,6 +918,7 @@ SELECT
     o.city_id AS city_id,
 
     o.bid_responses_raw AS bid_responses_raw,
+    o.adv_rtb_responses_raw AS adv_rtb_responses_raw,
 
     ifNull(o.win_dsp_domain, '') AS win_dsp_domain,
 
@@ -962,6 +983,7 @@ SELECT
     o.city_id AS city_id,
 
     o.bid_responses_raw AS bid_responses_raw,
+    o.adv_rtb_responses_raw AS adv_rtb_responses_raw,
 
     ifNull(o.win_dsp_domain, '') AS win_dsp_domain,
 
@@ -1033,6 +1055,7 @@ SELECT
     o.city_id AS city_id,
 
     o.bid_responses_raw AS bid_responses_raw,
+    o.adv_rtb_responses_raw AS adv_rtb_responses_raw,
 
     ifNull(o.win_dsp_domain, '') AS win_dsp_domain,
 
@@ -1070,6 +1093,7 @@ FROM
         geo,
         city_id,
         bid_responses_raw,
+        adv_rtb_responses_raw,
         win_dsp_domain,
         win_final_price,
         win_dsp_price,
@@ -1160,6 +1184,7 @@ SELECT
     o.city_id AS city_id,
 
     o.bid_responses_raw AS bid_responses_raw,
+    o.adv_rtb_responses_raw AS adv_rtb_responses_raw,
 
     ifNull(o.win_dsp_domain, '') AS win_dsp_domain,
 
@@ -1201,6 +1226,7 @@ FROM
         geo,
         city_id,
         bid_responses_raw,
+        adv_rtb_responses_raw,
         win_dsp_domain,
         win_final_price,
         win_dsp_price,
@@ -1248,6 +1274,7 @@ APPEND TO {db}.fact_impressions
     geo,
     city_id,
     bid_responses_raw,
+    adv_rtb_responses_raw,
     win_dsp_domain,
     win_final_price,
     win_dsp_price,
@@ -1340,6 +1367,7 @@ SELECT
     c.geo AS geo,
     c.city_id AS city_id,
     c.bid_responses_raw AS bid_responses_raw,
+    c.adv_rtb_responses_raw AS adv_rtb_responses_raw,
     c.win_dsp_domain AS win_dsp_domain,
     c.win_final_price AS win_final_price,
     c.win_dsp_price AS win_dsp_price,
@@ -1386,6 +1414,7 @@ SELECT
     b.geo AS geo,
     b.city_id AS city_id,
     b.bid_responses_raw AS bid_responses_raw,
+    b.adv_rtb_responses_raw AS adv_rtb_responses_raw,
     b.win_dsp_domain AS win_dsp_domain,
     b.win_final_price AS win_final_price,
     b.win_dsp_price AS win_dsp_price,
@@ -1426,6 +1455,7 @@ APPEND TO {db}.fact_clicks
     geo,
     city_id,
     bid_responses_raw,
+    adv_rtb_responses_raw,
     win_dsp_domain,
     win_final_price,
     win_dsp_price,
@@ -1515,6 +1545,7 @@ SELECT
     w.geo AS geo,
     w.city_id AS city_id,
     w.bid_responses_raw AS bid_responses_raw,
+    w.adv_rtb_responses_raw AS adv_rtb_responses_raw,
     w.win_dsp_domain AS win_dsp_domain,
     w.win_final_price AS win_final_price,
     w.win_dsp_price AS win_dsp_price,
@@ -1560,6 +1591,7 @@ SELECT
     b.geo AS geo,
     b.city_id AS city_id,
     b.bid_responses_raw AS bid_responses_raw,
+    b.adv_rtb_responses_raw AS adv_rtb_responses_raw,
     b.win_dsp_domain AS win_dsp_domain,
     b.win_final_price AS win_final_price,
     b.win_dsp_price AS win_dsp_price,

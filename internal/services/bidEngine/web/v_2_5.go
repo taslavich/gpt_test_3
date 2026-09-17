@@ -137,9 +137,9 @@ func (s *Server) GetWinnerBid_V2_5(
 		)
 	}
 
-	// These UUID sets belong to the downstream DSP callback path. ADV callback
-	// semantics stay unchanged: its prepared callbacks are finalized in the
-	// internal function without adding DSP ADM/BURL tracking keys here.
+	// These UUID sets belong to bids that use downstream-style callbacks. That
+	// includes ordinary DSP winners and external ADV winners produced by an RTB
+	// campaign; normal local ADV winners keep their existing callback path.
 	for _, uuid := range admUUIDs {
 		if err := utils.WriteUUIDKeyToRedis(ctx, s.redisAdmClient, uuid, s.redisUUIDKeyTTL); err != nil {
 			log.Printf("failed to write ADM UUID key in GetWinnerBidInternal: %v", err)

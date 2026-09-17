@@ -61,6 +61,25 @@ func main() {
 		log.Fatalf("ADV winner Redis unavailable: %v", err)
 	}
 
+	statsRedisAddrs := cfg.RedisShardAddrs
+	if cfg.RedisUseTLS {
+		statsRedisAddrs = cfg.RedisShardTLSAddrs
+	}
+	statsRedisClients, err := redisService.NewRedisShardedClientsForDB(
+		statsRedisAddrs, cfg.RedisPassword, cfg.RedisDBOrtb, cfg.RedisUseTLS, cfg.RedisPoolSize, cfg.RedisMinIdleConns,
+	)
+	if err != nil {
+		log.Fatalf("cannot initialize ADV ORTB stats Redis: %v", err)
+	}
+	defer func() {
+		if err := redisService.CloseClients(statsRedisClients); err != nil {
+			log.Printf("ADV stats Redis close failed: %v", err)
+		}
+	}()
+	if err := redisService.PingClients(ctx, "adv-stats", statsRedisClients); err != nil {
+		log.Fatalf("ADV ORTB stats Redis unavailable: %v", err)
+	}
+
 	percentStore, err := auction.NewPercentStore(cfg.AdvPercentMapFilePath)
 	if err != nil {
 		log.Fatalf("cannot initialize ADV percent map: %v", err)
@@ -93,6 +112,7 @@ func main() {
 	runtimeStore := auction.NewRuntimeStore(runtimeRedis, cfg.AdvPacingCurrentTTL, cfg.AdvPacingSlotTTL)
 	winnerStore := auction.NewWinnerStore(winnerRedis, cfg.AdvWinnerTTL)
 	auctionService := auction.NewAuctionService(runtimeStore, winnerStore, percentStore, qualityStore, siteIDQualityStore)
+	auctionService.SetStatsRedisClients(statsRedisClients)
 	auctionService.SetVPNClassifier(vpnStore)
 	auctionService.SetAntiPerekrutEnabled(cfg.AntiperekrutEnabled)
 	auctionService.StartDiagnostics(ctx)

@@ -230,6 +230,8 @@ func loadSnapshotFromPostgres(ctx context.Context, db *sql.DB) (*Snapshot, []sna
 		user_id::text,
 		campaign_id::text,
 		base_price::text,
+		rtb,
+		dsp_link,
 		evenness_by_slot_mode,
 		block_vpn,
 		start_ts,
@@ -269,7 +271,7 @@ func loadSnapshotFromPostgres(ctx context.Context, db *sql.DB) (*Snapshot, []sna
 		activeRows++
 		var row campaignDBRow
 		if err := rows.Scan(
-			&row.UserID, &row.CampaignID, &row.BasePrice,
+			&row.UserID, &row.CampaignID, &row.BasePrice, &row.RTB, &row.DSPLink,
 			&row.Evenness, &row.BlockVPN, &row.StartTS, &row.EndTS, &row.ActiveIntervals,
 			&row.Country, &row.Language, &row.DeviceType, &row.OS, &row.Browser, &row.SiteID, &row.IP,
 			&row.Format, &row.Quality, &row.PricingModel, &row.Status, &row.TrafficType,
@@ -359,6 +361,8 @@ type campaignDBRow struct {
 	UserID              sql.NullString
 	CampaignID          sql.NullString
 	BasePrice           sql.NullString
+	RTB                 sql.NullBool
+	DSPLink             sql.NullString
 	GoalTotalDollars    sql.NullString
 	TrafficResetVersion sql.NullInt64
 	UpdatedAt           sql.NullTime
@@ -407,8 +411,13 @@ func (r campaignDBRow) campaign() (*Campaign, error) {
 		)
 	}
 
-	if basePrice <= 0 {
+	rtb := r.RTB.Valid && r.RTB.Bool
+	dspLink := strings.TrimSpace(r.DSPLink.String)
+	if !rtb && basePrice <= 0 {
 		return nil, fmt.Errorf("campaign %s base_price must be positive", id)
+	}
+	if rtb && dspLink == "" {
+		return nil, fmt.Errorf("campaign %s rtb=true requires dsp_link", id)
 	}
 	status := strings.ToLower(strings.TrimSpace(r.Status.String))
 	pricingModel := strings.ToUpper(strings.TrimSpace(r.PricingModel.String))
@@ -481,7 +490,7 @@ func (r campaignDBRow) campaign() (*Campaign, error) {
 		PricingModel: pricingModel,
 		Format:       format, TrafficType: trafficType,
 		QualitySegment: quality,
-		BasePrice:      basePrice, GoalTotalDollars: goalTotalDollars, EvennessBySlotMode: r.Evenness.Valid && r.Evenness.Bool, BlockVPN: r.BlockVPN.Valid && r.BlockVPN.Bool,
+		BasePrice:      basePrice, RTB: rtb, DSPLink: dspLink, GoalTotalDollars: goalTotalDollars, EvennessBySlotMode: r.Evenness.Valid && r.Evenness.Bool, BlockVPN: r.BlockVPN.Valid && r.BlockVPN.Bool,
 		StartTS: r.StartTS.Time.UTC(), EndTS: r.EndTS.Time.UTC(), ActiveIntervals: activeIntervals,
 		CountryFilter: country, LanguageFilter: language, DeviceTypeFilter: deviceType,
 		OSFilter: osFilter, BrowserFilter: browser, SiteIDFilter: siteID, IPFilter: ip,

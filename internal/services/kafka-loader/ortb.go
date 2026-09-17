@@ -22,6 +22,7 @@ var ortbHMGetFields = []string{
 	constants.CITY_ID_COLUMN,
 	constants.CODE_COLUMN,
 	constants.BID_RESPONSES_COLUMN,
+	constants.ADV_RTB_RESPONSES_COLUMN,
 	constants.IP_COLUMN,
 	constants.IPV6_COLUMN,
 	constants.LANG_COLUMN,
@@ -74,32 +75,33 @@ func buildOrtbKafkaMessage(
 	values []interface{},
 ) (kafka.Message, bool, error) {
 	rawRecord := types.Ortb{
-		UUID:            uuid,
-		EVENT_TIME:      valueAsString(values, 0),
-		TYPIC:           valueAsString(values, 1),
-		FORMAT:          valueAsString(values, 2),
-		SPP_DOMAIN:      valueAsString(values, 3),
-		GEO:             valueAsString(values, 4),
-		CITY_ID:         valueAsString(values, 5),
-		CODE:            valueAsString(values, 6),
-		BID_RESPONSES:   valueAsString(values, 7),
-		IP:              valueAsString(values, 8),
-		IPV6:            valueAsString(values, 9),
-		LANG:            valueAsString(values, 10),
-		BROWSER:         valueAsString(values, 11),
-		BROWSER_VERSION: valueAsString(values, 12),
-		OS:              valueAsString(values, 13),
-		OS_VERSION:      valueAsString(values, 14),
-		DEVICE:          valueAsString(values, 15),
-		SITE_ID:         valueAsString(values, 16),
-		SITE_DOMAIN:     valueAsString(values, 17),
-		BID_FLOOR:       valueAsString(values, 18),
-		WIN_DSP_DOMAIN:  valueAsString(values, 19),
-		WIN_PRICE:       valueAsString(values, 20),
-		WIN_DSP_PRICE:   valueAsString(values, 21),
-		WIN_CID:         valueAsString(values, 22),
-		WIN_CRID:        valueAsString(values, 23),
-		WIN_USER_ID:     valueAsString(values, 24),
+		UUID:              uuid,
+		EVENT_TIME:        valueAsString(values, 0),
+		TYPIC:             valueAsString(values, 1),
+		FORMAT:            valueAsString(values, 2),
+		SPP_DOMAIN:        valueAsString(values, 3),
+		GEO:               valueAsString(values, 4),
+		CITY_ID:           valueAsString(values, 5),
+		CODE:              valueAsString(values, 6),
+		BID_RESPONSES:     valueAsString(values, 7),
+		ADV_RTB_RESPONSES: valueAsString(values, 8),
+		IP:                valueAsString(values, 9),
+		IPV6:              valueAsString(values, 10),
+		LANG:              valueAsString(values, 11),
+		BROWSER:           valueAsString(values, 12),
+		BROWSER_VERSION:   valueAsString(values, 13),
+		OS:                valueAsString(values, 14),
+		OS_VERSION:        valueAsString(values, 15),
+		DEVICE:            valueAsString(values, 16),
+		SITE_ID:           valueAsString(values, 17),
+		SITE_DOMAIN:       valueAsString(values, 18),
+		BID_FLOOR:         valueAsString(values, 19),
+		WIN_DSP_DOMAIN:    valueAsString(values, 20),
+		WIN_PRICE:         valueAsString(values, 21),
+		WIN_DSP_PRICE:     valueAsString(values, 22),
+		WIN_CID:           valueAsString(values, 23),
+		WIN_CRID:          valueAsString(values, 24),
+		WIN_USER_ID:       valueAsString(values, 25),
 	}
 
 	if !HasDataOrtb(rawRecord) {
@@ -110,6 +112,15 @@ func buildOrtbKafkaMessage(
 	if err != nil {
 		log.Printf("Ошибка парсинга bidResponses из Redis (index 7): %v", err)
 		bidResponses = make(map[string]string)
+	}
+
+	advRTBResponses, err := parseBidResponsesFromRedis(values, 8)
+	if err != nil {
+		log.Printf("failed to parse ADV RTB responses from Redis (index 8): %v", err)
+		advRTBResponses = make(map[string]string)
+	}
+	for campaignID, code := range advRTBResponses {
+		bidResponses[constants.ADVRTBResponseStatsPrefix+campaignID] = code
 	}
 
 	event := &eventspb.OrtbEvent{

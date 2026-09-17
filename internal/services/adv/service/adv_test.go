@@ -268,21 +268,6 @@ func TestMatchingBannerCreativesFiltersImageMIMEAndAllowsIframe(t *testing.T) {
 	}
 }
 
-func TestEffectivePriceMeetsBidFloor(t *testing.T) {
-	floor := float32(0.75)
-	imp := &ortb.Imp{Bidfloor: &floor}
-
-	if effectivePriceMeetsBidFloor(0.74, imp) {
-		t.Fatal("effective price below bidfloor must be rejected")
-	}
-	if !effectivePriceMeetsBidFloor(0.75, imp) {
-		t.Fatal("effective price equal to bidfloor must be accepted")
-	}
-	if !effectivePriceMeetsBidFloor(0.76, imp) {
-		t.Fatal("effective price above bidfloor must be accepted")
-	}
-}
-
 func TestWhitelistBlacklistMissingValue(t *testing.T) {
 	white := filterV2.NewFilters(true, true, []string{"SE"})
 	black := filterV2.NewFilters(true, false, []string{"SE"})
