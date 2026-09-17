@@ -51,7 +51,9 @@ export function CreateCampaignDialog({ open, onOpenChange }: CreateCampaignDialo
                 <SelectTrigger className="bg-background border-border"><SelectValue placeholder={t("legacy.selectFormat")} /></SelectTrigger>
                 <SelectContent className="bg-card border-border">
                   <SelectItem value="banner">Banner</SelectItem>
-                  <SelectItem value="video">Video</SelectItem>
+                  <SelectItem value="video" disabled>
+                    Video — {t("create.videoUnavailable")}
+                  </SelectItem>
                   <SelectItem value="ctv">CTV/OTT</SelectItem>
                   <SelectItem value="audio">Audio</SelectItem>
                 </SelectContent>

@@ -1,5 +1,6 @@
 import type {
-  ApiUser, ApiCampaign, ApiCreative, ApiCreativeImage, ApiCreativeWrite, ApiUserTransaction, ApiPromocode,
+  ApiUser, ApiCampaign, ApiCreateCampaignRequest, ApiPatchCampaignRequest,
+  ApiCreative, ApiCreativeImage, ApiCreativeWrite, ApiUserTransaction, ApiPromocode,
   ApiCreateTransactionRequest, ApiPatchTransactionRequest,
   ApiNotification, StatsQueryRequest, StatsQueryResponse, StatsSummary,
   CalculatorRequest, CalculatorResponse, RecommendBidRequest, RecommendBidResponse,
@@ -183,13 +184,13 @@ export const mockProvider = {
     if (!c) return fail("Campaign not found");
     return ok(c);
   },
-  async createCampaign(body: Omit<ApiCampaign, "campaign_id" | "user_id" | "cum_done_dollars">): Promise<ApiEnvelope<ApiCampaign>> {
+  async createCampaign(body: ApiCreateCampaignRequest): Promise<ApiEnvelope<ApiCampaign>> {
     const c: ApiCampaign = { ...body, campaign_id: uid(), user_id: "mock-user", cum_done_dollars: 0 };
     state.campaigns.unshift(c);
     saveState();
     return ok(c);
   },
-  async patchCampaign(id: string, patch: Partial<ApiCampaign>): Promise<ApiEnvelope<ApiCampaign>> {
+  async patchCampaign(id: string, patch: ApiPatchCampaignRequest): Promise<ApiEnvelope<ApiCampaign>> {
     const i = state.campaigns.findIndex(c => c.campaign_id === id);
     if (i < 0) return fail("Campaign not found");
     state.campaigns[i] = { ...state.campaigns[i], ...patch };

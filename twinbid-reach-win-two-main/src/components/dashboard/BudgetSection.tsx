@@ -69,6 +69,8 @@ interface BudgetSectionProps {
   setEvenSpend: (v: boolean) => void;
   bidRecommendation?: BidRecommendation | null;
   errors?: Record<string, string>;
+  /** RTB campaigns keep budget/dates/quality but receive their bid externally. */
+  hideBidding?: boolean;
 }
 
 export function BudgetSection({
@@ -79,6 +81,7 @@ export function BudgetSection({
   evenSpend, setEvenSpend,
   bidRecommendation = null,
   errors = {},
+  hideBidding = false,
 }: BudgetSectionProps) {
   const { t } = useLanguage();
   const availableModels = getAvailableModels(formatKey);
@@ -129,14 +132,14 @@ export function BudgetSection({
   };
 
   useEffect(() => {
-    if (enforcedPricingModel && (
+    if (!hideBidding && enforcedPricingModel && (
       pricingModel !== enforcedPricingModel.pricingModel
       || typeModel !== enforcedPricingModel.typeModel
     )) {
       setPricingModel(enforcedPricingModel.pricingModel);
       setTypeModel(enforcedPricingModel.typeModel);
     }
-  }, [enforcedPricingModel, pricingModel, setPricingModel, setTypeModel, typeModel]);
+  }, [enforcedPricingModel, hideBidding, pricingModel, setPricingModel, setTypeModel, typeModel]);
 
   const startDateObj = startDate ? new Date(startDate + "T00:00:00") : undefined;
   const endDateObj = endDate ? new Date(endDate + "T00:00:00") : undefined;
@@ -183,7 +186,7 @@ export function BudgetSection({
         </div>
       </div>
 
-      {availableModels.length > 1 && (
+      {!hideBidding && availableModels.length > 1 && (
         <div className="space-y-2">
           <Label>{t("budget.pricingModel")}</Label>
           <div className="flex flex-wrap gap-2">
@@ -247,7 +250,7 @@ export function BudgetSection({
         </div>
       )}
 
-      <div className="space-y-2">
+      {!hideBidding && <div className="space-y-2">
         <Label>{pricingModel === "cpc"
           ? t("budget.cpcLabel")
           : typeModel === 2
@@ -309,7 +312,7 @@ export function BudgetSection({
           )}
         </div>
         {errors.priceValue && <p className="text-xs text-destructive">{errors.priceValue}</p>}
-      </div>
+      </div>}
 
       <div className="grid max-w-sm grid-cols-1 gap-4 min-[420px]:grid-cols-2">
         <div className="space-y-2">

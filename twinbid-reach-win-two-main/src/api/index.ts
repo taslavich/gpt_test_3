@@ -26,7 +26,9 @@ function makeUnwrapped(provider: RawApiProvider): ApiProvider {
   for (const key of Object.keys(provider)) {
     const fn = Reflect.get(provider, key);
     if (typeof fn !== "function") continue;
-    out[key] = async (...args: unknown[]) => unwrap(await Reflect.apply(fn, provider, args));
+    out[key] = async (...args: unknown[]) => unwrap(
+      await Reflect.apply(fn, provider, args) as ApiEnvelope<unknown>,
+    );
   }
   return out as ApiProvider;
 }

@@ -67,7 +67,7 @@ export const httpProvider: RawApiProvider = {
     user_id: string;
     email: string;
     full_name: string;
-    partner_id?: string;
+    partner_id: string;
     partner?: string | null;
   } | null>>("/api/auth/session"),
   changePassword:(body) => http<ApiEnvelope<void>>("/api/auth/password", { method: "POST", body }),

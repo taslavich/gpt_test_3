@@ -34,10 +34,14 @@ export default function EditCampaign() {
   const { campaigns, getCampaign, updateCampaign, loadCampaignCreatives, loading } = useCampaigns();
   const { t } = useLanguage();
   const campaign = getCampaign(id || "");
+  const isRtb = campaign?.launchType === "rtb";
+  const isLegacyVideo = campaign?.formatKey === "video";
   const [creativeLoadError, setCreativeLoadError] = useState("");
 
   const [name, setName] = useState("");
   const [brandName, setBrandName] = useState("");
+  const [rtbEndpoint, setRtbEndpoint] = useState("");
+  const [initialRtbEndpoint, setInitialRtbEndpoint] = useState("");
   const [creatives, setCreatives] = useState<Creative[]>([]);
   const [initialCreatives, setInitialCreatives] = useState<Creative[]>([]);
   const [lists, setLists] = useState<Record<string, TargetingState>>({});
@@ -61,7 +65,7 @@ export default function EditCampaign() {
   const [bidRecommendation, setBidRecommendation] = useState<BidRecommendation | null>(null);
 
   useEffect(() => {
-    if (!id || !campaign || campaign.creativesLoaded) return;
+    if (!id || !campaign || isRtb || isLegacyVideo || campaign.creativesLoaded) return;
     let cancelled = false;
     void loadCampaignCreatives(id).catch((error: unknown) => {
       if (cancelled) return;
@@ -70,13 +74,17 @@ export default function EditCampaign() {
       toast.error(message);
     });
     return () => { cancelled = true; };
-  }, [id, campaign, loadCampaignCreatives, t]);
+  }, [id, campaign, isRtb, isLegacyVideo, loadCampaignCreatives, t]);
 
   useEffect(() => {
-    if (campaign?.creativesLoaded) {
+    if (campaign && !isLegacyVideo && (isRtb || campaign.creativesLoaded)) {
       setName(campaign.name);
       setBrandName(campaign.brandName || "");
-      const loadedCreatives = campaign.creatives?.length ? campaign.creatives : [{ id: "migrated", url: "" }];
+      setRtbEndpoint(campaign.rtbEndpoint || "");
+      setInitialRtbEndpoint(campaign.rtbEndpoint || "");
+      const loadedCreatives = isRtb
+        ? []
+        : campaign.creatives?.length ? campaign.creatives : [{ id: "migrated", url: "" }];
       // Older banner campaigns stored one size on the campaign. Use it only
       // as a migration fallback when an existing creative has no own w/h.
       const crvs = loadedCreatives.map(creative => (
@@ -109,7 +117,7 @@ export default function EditCampaign() {
       setVerticals(campaign.verticals || []);
       
     }
-  }, [campaign]);
+  }, [campaign, isRtb, isLegacyVideo]);
 
   const hasCreativeChanged = useMemo(() => {
     return JSON.stringify(creatives) !== JSON.stringify(initialCreatives);
@@ -118,7 +126,8 @@ export default function EditCampaign() {
   const isRestart = campaign?.status === "completed";
   const showBrandName = campaign?.formatKey === "native" || campaign?.formatKey === "push";
   const hasTrafficTypeChanged = trafficType !== initialTrafficType;
-  const needsModeration = hasCreativeChanged || hasTrafficTypeChanged;
+  const hasRtbEndpointChanged = isRtb && rtbEndpoint.trim() !== initialRtbEndpoint.trim();
+  const needsModeration = hasCreativeChanged || hasTrafficTypeChanged || hasRtbEndpointChanged;
 
   const clearError = (...keys: string[]) => setErrors(prev => {
     const next = { ...prev };
@@ -131,21 +140,22 @@ export default function EditCampaign() {
   useEffect(() => { if (startDate) clearError("startDate"); }, [startDate]);
   useEffect(() => { if (endDate) { const today = new Date(); today.setHours(0,0,0,0); if (new Date(endDate) >= today) clearError("endDate"); } }, [endDate]);
   useEffect(() => { if (name.trim()) clearError("name"); }, [name]);
+  useEffect(() => { if (isValidCreativeUrl(rtbEndpoint.trim())) clearError("rtbEndpoint"); }, [rtbEndpoint]);
   useEffect(() => {
-    if (priceValue && campaign) {
+    if (!isRtb && priceValue && campaign) {
       const pv = parseFloat(priceValue.replace(",", ".")) || 0;
       const { min } = getBidLimits(campaign.formatKey, trafficQuality, pricingModel);
       const max = getMaximumBid(campaign.formatKey, pricingModel);
       if (pv >= min && pv <= max) clearError("priceValue");
     }
-  }, [priceValue, pricingModel, trafficQuality, campaign]);
+  }, [priceValue, pricingModel, trafficQuality, campaign, isRtb]);
 
   const updateList = (key: string, updates: Partial<TargetingState>) => {
     setLists(prev => ({ ...prev, [key]: { ...prev[key], ...updates } }));
   };
 
   const loadBidRecommendation = async () => {
-    if (!campaign) return;
+    if (!campaign || isRtb) return;
     setBidRecommendation(null);
     try {
       const response = await api.recommendBid(buildRecommendBidRequest(campaign.formatKey, trafficType, lists));
@@ -159,13 +169,13 @@ export default function EditCampaign() {
   };
 
   const changeTab = (nextTab: string) => {
-    if (activeTab === "targeting" && nextTab === "budget") {
+    if (!isRtb && activeTab === "targeting" && nextTab === "budget") {
       void loadBidRecommendation();
     }
     setActiveTab(nextTab);
   };
 
-  if (loading || (campaign && !campaign.creativesLoaded && !creativeLoadError)) {
+  if (loading || (campaign && !isRtb && !isLegacyVideo && !campaign.creativesLoaded && !creativeLoadError)) {
     return (
       <div className="flex items-center justify-center py-12">
         <Loader2 className="h-6 w-6 animate-spin text-primary" />
@@ -182,22 +192,70 @@ export default function EditCampaign() {
     );
   }
 
+  if (isLegacyVideo) {
+    return (
+      <div className="max-w-3xl min-w-0 space-y-6">
+        <div className="flex items-center gap-4">
+          <Button variant="ghost" size="icon" onClick={() => navigate("/dashboard/campaigns")}>
+            <ArrowLeft className="h-5 w-5" />
+          </Button>
+          <div>
+            <h2 className="text-2xl font-bold">{t("edit.title")}</h2>
+            <p className="text-muted-foreground text-sm">ID: {id}</p>
+          </div>
+        </div>
+        <Card className="border-yellow-500/25 bg-card">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-lg">
+              <AlertCircle className="h-5 w-5 text-yellow-500" />
+              {t("edit.legacyVideoReadOnlyTitle")}
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-5">
+            <p className="text-sm leading-6 text-muted-foreground">
+              {t("edit.legacyVideoReadOnlyDescription")}
+            </p>
+            <div className="space-y-2">
+              <Label>{t("edit.name")}</Label>
+              <Input value={campaign.name} readOnly disabled className="bg-muted border-border text-muted-foreground" />
+            </div>
+            <div className="space-y-2">
+              <Label>{t("edit.formatLabel")}</Label>
+              <Input value={campaign.format} readOnly disabled className="bg-muted border-border text-muted-foreground" />
+            </div>
+            <Button variant="outline" onClick={() => navigate("/dashboard/campaigns")}>
+              {t("create.back")}
+            </Button>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
   const parseNum = (v: string) => parseFloat(v.replace(",", ".")) || 0;
 
   const handleSave = async (skipMismatchCheck = false, overrideCreatives?: Creative[]) => {
     const crvs = overrideCreatives ?? creatives;
     const e: Record<string, string> = {};
+    if (campaign.formatKey === "video") {
+      const message = t("create.videoCampaignUnsupported");
+      setErrors(prev => ({ ...prev, adFormat: message }));
+      toast.error(message);
+      return;
+    }
     const tb = parseNum(totalBudget);
     if (!totalBudget || isNaN(tb) || tb < 1) e.totalBudget = t("edit.errorBudgetMin");
     if (campaign.status === "no_budget" && tb <= campaign.budget) {
       e.totalBudget = t("edit.errorBudgetMustIncrease");
     }
 
-    const { min } = getBidLimits(campaign.formatKey, trafficQuality, pricingModel);
-    const pv = parseNum(priceValue);
-    const max = getMaximumBid(campaign.formatKey, pricingModel);
-    if (!priceValue || isNaN(pv) || pv < min) e.priceValue = `${t("budget.belowMin")} ($${min})`;
-    else if (pv > max) e.priceValue = t("budget.aboveMaxError").replace("{max}", String(max));
+    const pv = isRtb ? 0 : parseNum(priceValue);
+    if (!isRtb) {
+      const { min } = getBidLimits(campaign.formatKey, trafficQuality, pricingModel);
+      const max = getMaximumBid(campaign.formatKey, pricingModel);
+      if (!priceValue || isNaN(pv) || pv < min) e.priceValue = `${t("budget.belowMin")} ($${min})`;
+      else if (pv > max) e.priceValue = t("budget.aboveMaxError").replace("{max}", String(max));
+    }
 
     if (!startDate) e.startDate = t("create.required");
     if (!endDate) e.endDate = t("create.required");
@@ -206,6 +264,10 @@ export default function EditCampaign() {
       if (new Date(endDate) < today) e.endDate = t("create.endDateError");
     }
     if (!name.trim()) e.name = t("create.required");
+    if (isRtb) {
+      if (!rtbEndpoint.trim()) e.rtbEndpoint = t("create.required");
+      else if (!isValidCreativeUrl(rtbEndpoint.trim())) e.rtbEndpoint = t("create.rtbEndpointInvalid");
+    }
 
     const sched = lists.schedule;
     if (!sched || !sched.items || sched.items.length === 0) {
@@ -213,7 +275,7 @@ export default function EditCampaign() {
       return;
     }
 
-    crvs.forEach(c => {
+    if (!isRtb) crvs.forEach(c => {
       if (!c.name?.trim()) e[`creative_${c.id}_name`] = t("create.required");
       if (campaign.formatKey === "video" && !c.videoFormat) {
         e[`creative_${c.id}_videoFormat`] = t("create.required");
@@ -261,7 +323,7 @@ export default function EditCampaign() {
     });
 
     // Block save when a banner html/iframe creative has a size mismatch (no auto-crop for those).
-    if (campaign.formatKey === "banner") {
+    if (!isRtb && campaign.formatKey === "banner") {
       const bad = crvs.find(c => {
         const type = c.creativeType || "image";
         return (type === "html" || type === "iframe") && c.sizeMismatch;
@@ -288,7 +350,7 @@ export default function EditCampaign() {
     }
 
     // Every visual creative must match its configured visible area.
-    if (!skipMismatchCheck && crvs.some(c => (c.creativeType || "image") === "image" && c.sizeMismatch)) {
+    if (!isRtb && !skipMismatchCheck && crvs.some(c => (c.creativeType || "image") === "image" && c.sizeMismatch)) {
       setConfirmMismatchOpen(true);
       return;
     }
@@ -309,11 +371,18 @@ export default function EditCampaign() {
 
     try {
       await updateCampaign(campaign.id, {
-        name: name.trim(), creatives: crvs, trafficType, verticals,
+        name: name.trim(),
+        launchType: campaign.launchType || "cabinet",
+        rtbEndpoint: isRtb ? rtbEndpoint.trim() : undefined,
+        ...(isRtb ? {} : { creatives: crvs }),
+        trafficType, verticals,
         targeting: Object.fromEntries(Object.entries(lists).map(([k, v]) => [k, { mode: v.mode, items: v.items }])),
         blockVpnTraffic,
         budget: tb, dailyBudget: null,
-        priceValue: pv, pricingModel, typeModel, trafficQuality, startDate, endDate, evenSpend, status: newStatus,
+        priceValue: pv,
+        pricingModel: isRtb && campaign.formatKey === "push" ? "cpc" : isRtb ? "cpm" : pricingModel,
+        typeModel: isRtb ? 1 : typeModel,
+        trafficQuality, startDate, endDate, evenSpend, status: newStatus,
         brandName: showBrandName ? brandName : undefined,
         
       });
@@ -407,6 +476,7 @@ export default function EditCampaign() {
                 <Label>{t("edit.formatLabel")}</Label>
                 <Input value={campaign.format} disabled className="bg-muted border-border text-muted-foreground cursor-not-allowed" />
                 <p className="text-xs text-muted-foreground">{t("edit.formatLocked")}</p>
+                {errors.adFormat && <p className="text-xs text-destructive">{errors.adFormat}</p>}
               </div>
 
               {showBrandName && (
@@ -417,10 +487,28 @@ export default function EditCampaign() {
                 </div>
               )}
 
-              <div className="pt-2">
-                <p className="text-sm font-medium text-muted-foreground mb-3">{t("create.creatives")}</p>
-                <CreativesEditor ref={creativesEditorRef} formatKey={campaign.formatKey} brandName={brandName} creatives={creatives} onChange={setCreatives} errors={errors} onClearError={clearError} />
-              </div>
+              {isRtb ? (
+                <div className="space-y-2 pt-2">
+                  <Label htmlFor="edit-rtb-endpoint">{t("create.rtbEndpoint")} *</Label>
+                  <Input
+                    id="edit-rtb-endpoint"
+                    type="url"
+                    required
+                    value={rtbEndpoint}
+                    onChange={(event) => setRtbEndpoint(event.target.value)}
+                    placeholder={t("create.rtbEndpointPlaceholder")}
+                    className={`bg-background border-border ${errors.rtbEndpoint ? "border-destructive" : ""}`}
+                  />
+                  {errors.rtbEndpoint
+                    ? <p className="text-xs text-destructive">{errors.rtbEndpoint}</p>
+                    : <p className="text-xs text-muted-foreground">{t("create.rtbEndpointHint")}</p>}
+                </div>
+              ) : (
+                <div className="pt-2">
+                  <p className="text-sm font-medium text-muted-foreground mb-3">{t("create.creatives")}</p>
+                  <CreativesEditor ref={creativesEditorRef} formatKey={campaign.formatKey} brandName={brandName} creatives={creatives} onChange={setCreatives} errors={errors} onClearError={clearError} />
+                </div>
+              )}
             </CardContent>
           </Card>
         </TabsContent>
@@ -462,6 +550,7 @@ export default function EditCampaign() {
                 evenSpend={evenSpend} setEvenSpend={setEvenSpend}
                 bidRecommendation={bidRecommendation}
                 errors={errors}
+                hideBidding={isRtb}
               />
             </CardContent>
           </Card>
@@ -483,7 +572,14 @@ export default function EditCampaign() {
         const validateGeneral = () => {
           const e: Record<string, string> = {};
           if (!name.trim()) e.name = t("create.required");
-          creatives.forEach(c => {
+          if (campaign.formatKey === "video") {
+            e.adFormat = t("create.videoCampaignUnsupported");
+          }
+          if (isRtb) {
+            if (!rtbEndpoint.trim()) e.rtbEndpoint = t("create.required");
+            else if (!isValidCreativeUrl(rtbEndpoint.trim())) e.rtbEndpoint = t("create.rtbEndpointInvalid");
+          }
+          if (!isRtb) creatives.forEach(c => {
             if (!c.name?.trim()) e[`creative_${c.id}_name`] = t("create.required");
             if (campaign.formatKey === "video" && !c.videoFormat) {
               e[`creative_${c.id}_videoFormat`] = t("create.required");
@@ -560,7 +656,7 @@ export default function EditCampaign() {
         );
       })()}
 
-      <AutoCropConfirmDialog
+      {!isRtb && <AutoCropConfirmDialog
         open={confirmMismatchOpen}
         creatives={creatives}
         formatKey={campaign.formatKey}
@@ -574,7 +670,7 @@ export default function EditCampaign() {
           setConfirmMismatchOpen(false);
           await handleSave(true, next);
         }}
-      />
+      />}
 
     </div>
   );

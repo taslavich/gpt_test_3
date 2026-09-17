@@ -108,6 +108,8 @@ affiliate-код вместе с общей статистикой по всем
   "campaign_id": "uuid",
   "user_id": "uuid",
   "campaign_name": "string",
+  "rtb": true,
+  "dsp_link": "https://bidder.example.com/openrtb2",
   "format_type": "banner | popunder | native | push | video",
   "brand_name": "string?",
   "h": 999, "w": 999,
@@ -156,6 +158,30 @@ affiliate-код вместе с общей статистикой по всем
 Frontend отправляет `pricing_model: "cpm"` для обоих CPM-режимов. Различие между
 обычным CPM и TwinBid CPM передаётся только через `type_model`.
 
+`rtb` и `dsp_link` определяют источник рекламы:
+
+- `rtb: false`, `dsp_link: null` — стандартная кампания с креативами,
+  созданными в кабинете;
+- `rtb: true` — RTB-кампания с обязательным абсолютным HTTP(S)-адресом в
+  `dsp_link`. Для неё frontend не создаёт и не изменяет локальные креативы,
+  скрывает выбор ставки и всегда передаёт `type_model: 1`, `base_price: 0`.
+  `pricing_model` зависит от формата: для `push` (In-page Push) передаётся
+  `"cpc"`, для `popunder`, `banner` и `native` — `"cpm"`. Все остальные поля
+  кампании, включая таргетинги, качество трафика, бюджет и даты, передаются без
+  изменений.
+
+`video` остаётся в общем `FormatType`, чтобы frontend мог безопасно прочитать
+старые кампании из API. Однако backend больше не принимает
+`format_type: "video"` при создании или изменении кампаний независимо от
+значения `rtb`. Frontend не даёт выбрать этот формат, показывает существующие
+video-кампании в режиме только для чтения и повторно проверяет формат
+непосредственно перед `POST`/`PATCH`, не отправляя невалидный запрос.
+
+Backend должен принимать `rtb` и `dsp_link` в `POST /api/campaigns` и в
+соответствующих обновлениях `PATCH /api/campaigns/:id`, а также всегда возвращать
+оба поля в объектах `Campaign`. Поля `launch_type` и `rtb_endpoint` не входят в
+сетевой контракт.
+
 ### GET `/api/campaigns?status=&limit=&offset=` → `{ items: Campaign[], total }`
 ### GET `/api/campaigns/:id` → `Campaign`
 ### POST `/api/campaigns` (без `cum_done_dollars`, без `campaign_id`) → `Campaign`
@@ -170,12 +196,17 @@ Frontend отправляет `pricing_model: "cpm"` для обоих CPM-ре�
 
 ## 4. Creatives
 
+Для кампаний с `rtb: true` frontend не вызывает creative endpoints: вместо
+креатива используется `dsp_link` самой кампании. Новые и изменяемые кампании
+любого типа не могут иметь `format_type: "video"`.
+
 Тип креатива выбирается по `format_type` кампании:
 - `popunder` → `pop_creatives`
 - `banner` → `ban_creatives`
 - `push` → `ipp_creatives` (in-page push)
 - `native` → `nat_creatives`
-- `video` → video creatives (имя таблицы определяет backend)
+- `video` → legacy video creatives (только чтение старых кампаний; имя таблицы
+  определяет backend)
 
 ### `Creative` (ответ бэка)
 ```json
@@ -200,8 +231,10 @@ Frontend отправляет `pricing_model: "cpm"` для обоих CPM-ре�
 }
 ```
 
-Для кампании с `format_type: "video"` поле `video_format` обязательно и
-принимает одно из значений:
+В ответах creative API старой кампании с `format_type: "video"` поле
+`video_format` принимает одно из значений ниже. Это описание сохранено только
+для совместимого чтения legacy-данных; frontend больше не создаёт и не изменяет
+такие креативы:
 
 - `instream` — показ внутри видеоплеера (pre-roll, mid-roll или post-roll);
 - `outstream` — самостоятельный видеоблок внутри статьи или ленты;
@@ -227,9 +260,10 @@ Frontend отправляет `pricing_model: "cpm"` для обоих CPM-ре�
 Формат multipart-файла передаётся через `Content-Type` части:
 `image/jpg`, `image/png`, `image/gif` или `video/mp4`.
 
-Текущие ограничения: PNG/JPG/GIF — не более 1 MiB; MP4 — не более
-10 MiB и разрешён для banner- и video-креативов. В video-кампании допускается
-только MP4, а frontend приводит его к размеру 1920×1080. При ответе `401`
+Текущие ограничения: PNG/JPG/GIF — не более 1 MiB; MP4 — не более 10 MiB.
+Новая MP4-загрузка остаётся разрешена для banner-креативов. MP4 старых
+video-кампаний по-прежнему корректно читается frontend, но новые креативы для
+кампании с `format_type: "video"` не создаются. При ответе `401`
 загрузка использует тот же
 общий refresh токена, что и JSON-запросы, после чего ровно один раз повторяет
 multipart-запрос с новым access token.

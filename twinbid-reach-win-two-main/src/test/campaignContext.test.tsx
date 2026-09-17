@@ -26,6 +26,8 @@ const apiCampaign: ApiCampaign = {
   campaign_id: "campaign-1",
   user_id: "user-1",
   campaign_name: "Campaign",
+  rtb: false,
+  dsp_link: null,
   format_type: "popunder",
   status: "draft",
   traffic_type: "mainstream",
@@ -91,6 +93,7 @@ function wrapper({ children }: { children: ReactNode }) {
 describe("CampaignProvider mutation requests", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    window.localStorage.clear();
     apiMock.listCampaigns.mockResolvedValue({ items: [], total: 0 });
     apiMock.createCampaign.mockResolvedValue(apiCampaign);
     apiMock.createCreative.mockResolvedValue(apiCreative);
@@ -166,6 +169,250 @@ describe("CampaignProvider mutation requests", () => {
     });
     expect(apiMock.patchCampaign).toHaveBeenCalledWith(id, { type_model: 1 });
   });
+
+  it("creates RTB campaigns with an endpoint, CPM zero, and no creative requests", async () => {
+    apiMock.createCampaign.mockImplementationOnce(async body => ({
+      ...apiCampaign,
+      ...body,
+    }));
+    const { result } = renderHook(() => useCampaigns(), { wrapper });
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    let id: string | undefined;
+    await act(async () => {
+      id = await result.current.addCampaign({
+        ...campaignDraft,
+        launchType: "rtb",
+        rtbEndpoint: "https://bidder.example.com/openrtb2",
+        pricingModel: "cpc",
+        typeModel: 2,
+        priceValue: 9,
+      });
+    });
+
+    expect(apiMock.createCampaign).toHaveBeenCalledWith(
+      expect.objectContaining({
+        rtb: true,
+        dsp_link: "https://bidder.example.com/openrtb2",
+        pricing_model: "cpm",
+        type_model: 1,
+        base_price: 0,
+      }),
+    );
+    const createBody = apiMock.createCampaign.mock.calls[0][0];
+    expect(createBody).not.toHaveProperty("launch_type");
+    expect(createBody).not.toHaveProperty("rtb_endpoint");
+    expect(apiMock.createCreative).not.toHaveBeenCalled();
+    expect(apiMock.uploadCreativeImage).not.toHaveBeenCalled();
+    expect(result.current.campaigns[0]).toEqual(expect.objectContaining({
+      launchType: "rtb",
+      rtbEndpoint: "https://bidder.example.com/openrtb2",
+      pricingModel: "cpm",
+      typeModel: 1,
+      priceValue: 0,
+      creatives: [],
+    }));
+
+    await act(async () => {
+      await result.current.updateCampaign(id!, {
+        launchType: "rtb",
+        rtbEndpoint: "https://bidder.example.com/openrtb2/v2",
+        pricingModel: "cpc",
+        typeModel: 2,
+        priceValue: 4,
+        creatives: [{ id: "must-not-upload", url: "https://example.com" }],
+      });
+    });
+
+    expect(apiMock.patchCampaign).toHaveBeenCalledWith(id, expect.objectContaining({
+      rtb: true,
+      dsp_link: "https://bidder.example.com/openrtb2/v2",
+      pricing_model: "cpm",
+      type_model: 1,
+      base_price: 0,
+    }));
+    const patchBody = apiMock.patchCampaign.mock.calls.at(-1)?.[1];
+    expect(patchBody).not.toHaveProperty("launch_type");
+    expect(patchBody).not.toHaveProperty("rtb_endpoint");
+    expect(apiMock.readCreatives).not.toHaveBeenCalled();
+    expect(apiMock.createCreative).not.toHaveBeenCalled();
+  });
+
+  it("writes CPC with a zero bid for an RTB in-page push campaign", async () => {
+    apiMock.createCampaign.mockImplementationOnce(async body => ({
+      ...apiCampaign,
+      ...body,
+      campaign_id: "campaign-push",
+      user_id: "user-1",
+      cum_done_dollars: 0,
+    }));
+    const { result } = renderHook(() => useCampaigns(), { wrapper });
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    let id: string | undefined;
+    await act(async () => {
+      id = await result.current.addCampaign({
+        ...campaignDraft,
+        launchType: "rtb",
+        rtbEndpoint: "https://bidder.example.com/push",
+        format: "push",
+        formatKey: "push",
+        pricingModel: "cpm",
+        priceValue: 10,
+      });
+    });
+
+    expect(apiMock.createCampaign).toHaveBeenCalledWith(expect.objectContaining({
+      format_type: "push",
+      rtb: true,
+      dsp_link: "https://bidder.example.com/push",
+      pricing_model: "cpc",
+      type_model: 1,
+      base_price: 0,
+    }));
+    expect(apiMock.createCreative).not.toHaveBeenCalled();
+
+    await act(async () => {
+      await result.current.updateCampaign(id!, {
+        rtbEndpoint: "https://bidder.example.com/push-v2",
+      });
+    });
+    expect(apiMock.patchCampaign).toHaveBeenCalledWith(id, expect.objectContaining({
+      dsp_link: "https://bidder.example.com/push-v2",
+      pricing_model: "cpc",
+      type_model: 1,
+      base_price: 0,
+    }));
+  });
+
+  it("maps backend rtb and dsp_link fields into the UI model", async () => {
+    apiMock.listCampaigns.mockResolvedValue({
+      items: [{
+        ...apiCampaign,
+        format_type: "push",
+        rtb: true,
+        dsp_link: "https://bidder.example.com/existing-push",
+      }],
+      total: 1,
+    });
+
+    const { result } = renderHook(() => useCampaigns(), { wrapper });
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    expect(result.current.campaigns[0]).toEqual(expect.objectContaining({
+      launchType: "rtb",
+      rtbEndpoint: "https://bidder.example.com/existing-push",
+      pricingModel: "cpc",
+      priceValue: 0,
+    }));
+  });
+
+  it("creates cabinet campaigns with rtb=false and dsp_link=null", async () => {
+    const { result } = renderHook(() => useCampaigns(), { wrapper });
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    await act(async () => {
+      await result.current.addCampaign({
+        ...campaignDraft,
+        launchType: "cabinet",
+        rtbEndpoint: "https://must-not-be-sent.example.com",
+        creatives: [],
+      });
+    });
+
+    expect(apiMock.createCampaign).toHaveBeenCalledWith(expect.objectContaining({
+      rtb: false,
+      dsp_link: null,
+    }));
+  });
+
+  it("rejects cabinet video before create reaches the API", async () => {
+    const { result } = renderHook(() => useCampaigns(), { wrapper });
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    await expect(result.current.addCampaign({
+      ...campaignDraft,
+      launchType: "cabinet",
+      format: "video",
+      formatKey: "video",
+    })).rejects.toThrow("Video campaigns are no longer supported");
+
+    expect(apiMock.createCampaign).not.toHaveBeenCalled();
+    expect(apiMock.createCreative).not.toHaveBeenCalled();
+  });
+
+  it("rejects RTB video before create reaches the API", async () => {
+    const { result } = renderHook(() => useCampaigns(), { wrapper });
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    await expect(result.current.addCampaign({
+      ...campaignDraft,
+      launchType: "rtb",
+      rtbEndpoint: "https://bidder.example.com/video",
+      format: "video",
+      formatKey: "video",
+    })).rejects.toThrow("Video campaigns are no longer supported");
+
+    expect(apiMock.createCampaign).not.toHaveBeenCalled();
+    expect(apiMock.createCreative).not.toHaveBeenCalled();
+  });
+
+  it("rejects changing a campaign to video before PATCH reaches the API", async () => {
+    apiMock.listCampaigns.mockResolvedValue({
+      items: [{
+        ...apiCampaign,
+        rtb: true,
+        dsp_link: "https://bidder.example.com/openrtb2",
+        format_type: "banner",
+      }],
+      total: 1,
+    });
+    const { result } = renderHook(() => useCampaigns(), { wrapper });
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    await expect(
+      result.current.updateCampaign("campaign-1", { formatKey: "video", format: "video" }),
+    ).rejects.toThrow("Video campaigns are no longer supported");
+    expect(apiMock.patchCampaign).not.toHaveBeenCalled();
+    expect(apiMock.readCreatives).not.toHaveBeenCalled();
+  });
+
+  it("keeps legacy video campaigns readable without creative fan-out", async () => {
+    apiMock.listCampaigns.mockResolvedValue({
+      items: [{ ...apiCampaign, format_type: "video", rtb: false, dsp_link: null }],
+      total: 1,
+    });
+    const { result } = renderHook(() => useCampaigns(), { wrapper });
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    expect(result.current.campaigns[0]).toEqual(expect.objectContaining({
+      format: "video",
+      formatKey: "video",
+      launchType: "cabinet",
+    }));
+    expect(apiMock.readCreatives).not.toHaveBeenCalled();
+  });
+
+  it.each(["banner", "popunder", "native", "push"] as const)(
+    "continues creating %s campaigns",
+    async format => {
+      const { result } = renderHook(() => useCampaigns(), { wrapper });
+      await waitFor(() => expect(result.current.loading).toBe(false));
+
+      await act(async () => {
+        await result.current.addCampaign({
+          ...campaignDraft,
+          format,
+          formatKey: format,
+          creatives: [],
+        });
+      });
+
+      expect(apiMock.createCampaign).toHaveBeenCalledWith(
+        expect.objectContaining({ format_type: format }),
+      );
+    },
+  );
 
   it("sends traffic quality names without the quality suffix", async () => {
     const { result } = renderHook(() => useCampaigns(), { wrapper });

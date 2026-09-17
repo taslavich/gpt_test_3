@@ -7,7 +7,7 @@ import { LanguageProvider } from "@/contexts/LanguageContext";
 import type { CampaignTypeModel, PricingModel } from "@/contexts/CampaignContext";
 import { TooltipProvider } from "@/components/ui/tooltip";
 
-function Harness() {
+function Harness({ hideBidding = false }: { hideBidding?: boolean }) {
   const [pricingModel, setPricingModel] = useState<PricingModel>("cpm");
   const [typeModel, setTypeModel] = useState<CampaignTypeModel>(1);
   const [priceValue, setPriceValue] = useState("1");
@@ -33,6 +33,7 @@ function Harness() {
           setEndDate={() => undefined}
           evenSpend={false}
           setEvenSpend={() => undefined}
+          hideBidding={hideBidding}
         />
       </TooltipProvider>
     </LanguageProvider>
@@ -54,5 +55,15 @@ describe("TwinBid CPM payment model", () => {
     expect(screen.getByRole("dialog")).toBeInTheDocument();
     expect(screen.getByText("How TwinBid CPM works")).toBeInTheDocument();
     expect(screen.getByText("$0.20 per 1,000 impressions")).toBeInTheDocument();
+  });
+
+  it("hides bid controls for RTB while keeping budget and schedule fields", () => {
+    render(<Harness hideBidding />);
+
+    expect(screen.queryByRole("button", { name: "TwinBid CPM" })).not.toBeInTheDocument();
+    expect(screen.queryByText("CPM bid *")).not.toBeInTheDocument();
+    expect(screen.getByText("Total budget *")).toBeInTheDocument();
+    expect(screen.getByText("Start date *")).toBeInTheDocument();
+    expect(screen.getByText("End date *")).toBeInTheDocument();
   });
 });

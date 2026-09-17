@@ -5,10 +5,11 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { AutoCropConfirmDialog } from "@/components/dashboard/AutoCropConfirmDialog";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, ArrowRight, LayoutDashboard, RadioTower } from "lucide-react";
 import { toast } from "sonner";
-import { useCampaigns, type TargetingState, type PricingModel, type CampaignTypeModel, type TrafficQuality, type TrafficType, type ListMode, type Creative, type Vertical, VERTICALS } from "@/contexts/CampaignContext";
+import { useCampaigns, type TargetingState, type PricingModel, type CampaignTypeModel, type CampaignLaunchType, type TrafficQuality, type TrafficType, type ListMode, type Creative, type Vertical, VERTICALS } from "@/contexts/CampaignContext";
 import { useNotifications } from "@/contexts/NotificationContext";
 import { TargetingSection, targetingConfigs } from "@/components/dashboard/TargetingSection";
 import { TargetingImportDialog } from "@/components/dashboard/TargetingImportDialog";
@@ -58,6 +59,8 @@ export default function CreateCampaign() {
   };
   const { addNotification } = useNotifications();
   const isMobile = useIsMobileImmediate();
+  const [launchType, setLaunchType] = useState<CampaignLaunchType | null>(null);
+  const [rtbEndpoint, setRtbEndpoint] = useState("");
   const [step, setStep] = useState(1);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [trafficType, setTrafficType] = useState<TrafficType>("mainstream");
@@ -82,6 +85,7 @@ export default function CreateCampaign() {
   const [confirmMismatchOpen, setConfirmMismatchOpen] = useState(false);
   const creativesEditorRef = useRef<CreativesEditorHandle>(null);
   const [bidRecommendation, setBidRecommendation] = useState<BidRecommendation | null>(null);
+  const isRtb = launchType === "rtb";
 
   const clearError = useCallback((...keys: string[]) => setErrors(prev => {
     if (!keys.some(key => key in prev)) return prev;
@@ -112,14 +116,40 @@ export default function CreateCampaign() {
     // mobile select is closing can leave some Android WebViews in a locked
     // overlay state. Duplicate values are ignored so existing input is kept.
     if (nextFormat === adFormat) return;
+    if (nextFormat === "video") {
+      const message = t("create.videoCampaignUnsupported");
+      setErrors(prev => ({ ...prev, adFormat: message }));
+      toast.error(message);
+      return;
+    }
     setAdFormat(nextFormat);
     clearError("adFormat");
-    setCreatives([{
-      id: generateId(),
-      url: "",
-      creativeType: nextFormat === "banner" ? "image" : undefined,
-    }]);
-  }, [adFormat, clearError]);
+    if (!isRtb) {
+      setCreatives([{
+        id: generateId(),
+        url: "",
+        creativeType: nextFormat === "banner" ? "image" : undefined,
+      }]);
+    }
+  }, [adFormat, clearError, isRtb, t]);
+
+  const chooseLaunchType = (nextType: CampaignLaunchType) => {
+    setLaunchType(nextType);
+    setErrors({});
+    setBidRecommendation(null);
+    if (nextType === "rtb") {
+      setPricingModel("cpm");
+      setTypeModel(1);
+      setPriceValue("0");
+      setCreatives([]);
+    } else if (creatives.length === 0) {
+      setCreatives([{
+        id: generateId(),
+        url: "",
+        creativeType: adFormat === "banner" ? "image" : undefined,
+      }]);
+    }
+  };
 
   const showBrandName = adFormat === "native" || adFormat === "push";
 
@@ -127,9 +157,16 @@ export default function CreateCampaign() {
     const e: Record<string, string> = {};
     if (!name.trim()) e.name = t("create.required");
     if (!adFormat) e.adFormat = t("create.selectFormatError");
+    if (adFormat === "video") e.adFormat = t("create.videoCampaignUnsupported");
 
-    // Validate creatives
-    creatives.forEach(c => {
+    if (isRtb) {
+      const endpoint = rtbEndpoint.trim();
+      if (!endpoint) e.rtbEndpoint = t("create.required");
+      else if (!isValidCreativeUrl(endpoint)) e.rtbEndpoint = t("create.rtbEndpointInvalid");
+    }
+
+    // Validate creatives only for campaigns managed in the cabinet.
+    if (!isRtb) creatives.forEach(c => {
       if (!c.name?.trim()) e[`creative_${c.id}_name`] = t("create.required");
       if (adFormat === "video" && !c.videoFormat) {
         e[`creative_${c.id}_videoFormat`] = t("create.required");
@@ -174,7 +211,7 @@ export default function CreateCampaign() {
 
     // Block advancing when a banner html/iframe creative has a size mismatch.
     // (Image creatives keep their existing auto-crop confirm flow on the final step.)
-    if (adFormat === "banner") {
+    if (!isRtb && adFormat === "banner") {
       const badHtmlOrIframe = creatives.find(c => {
         const type = c.creativeType || "image";
         return (type === "html" || type === "iframe") && c.sizeMismatch;
@@ -205,11 +242,13 @@ export default function CreateCampaign() {
     const e: Record<string, string> = {};
     const tb = parseNum(totalBudget);
     if (!totalBudget || isNaN(tb) || tb < 1) e.totalBudget = t("edit.errorBudgetMin");
-    const pv = parseNum(priceValue);
-    const { min } = getMinPrice();
-    const max = getMaximumBid(adFormat, pricingModel);
-    if (!priceValue || isNaN(pv) || pv < min) e.priceValue = `${t("budget.belowMin")} ($${min})`;
-    else if (pv > max) e.priceValue = t("budget.aboveMaxError").replace("{max}", String(max));
+    if (!isRtb) {
+      const pv = parseNum(priceValue);
+      const { min } = getMinPrice();
+      const max = getMaximumBid(adFormat, pricingModel);
+      if (!priceValue || isNaN(pv) || pv < min) e.priceValue = `${t("budget.belowMin")} ($${min})`;
+      else if (pv > max) e.priceValue = t("budget.aboveMaxError").replace("{max}", String(max));
+    }
     if (!startDate) e.startDate = t("create.required");
     if (!endDate) e.endDate = t("create.required");
     if (endDate) {
@@ -227,6 +266,7 @@ export default function CreateCampaign() {
   };
 
   const loadBidRecommendation = async () => {
+    if (isRtb) return;
     setBidRecommendation(null);
     try {
       const response = await api.recommendBid(buildRecommendBidRequest(adFormat, trafficType, lists));
@@ -249,12 +289,12 @@ export default function CreateCampaign() {
       }
       setStep(3);
       setErrors({});
-      void loadBidRecommendation();
+      if (!isRtb) void loadBidRecommendation();
       return;
     }
     if (step === 3) { if (!validateStep3()) return; setStep(4); setErrors({}); return; }
     if (step === 4) {
-      if (creatives.some(c => (c.creativeType || "image") === "image" && c.sizeMismatch)) { setConfirmMismatchOpen(true); return; }
+      if (!isRtb && creatives.some(c => (c.creativeType || "image") === "image" && c.sizeMismatch)) { setConfirmMismatchOpen(true); return; }
       await handleCreate();
       return;
     }
@@ -266,14 +306,25 @@ export default function CreateCampaign() {
 
   const handleCreateWith = async (crvs: Creative[]) => {
     if (isCreating) return;
+    if (adFormat === "video") {
+      const message = t("create.videoCampaignUnsupported");
+      setErrors(prev => ({ ...prev, adFormat: message }));
+      toast.error(message);
+      return;
+    }
     setIsCreating(true);
     try {
       // Create as draft first, then PATCH to moderation (per backend flow)
       const id = await addCampaign({
         name: name.trim(), status: "draft", format: formatLabels[adFormat] || adFormat,
         formatKey: adFormat, trafficType, verticals, budget: parseNum(totalBudget), dailyBudget: null,
-        spent: 0, impressions: 0, clicks: 0, ctr: 0, pricingModel, typeModel, priceValue: parseNum(priceValue),
-        trafficQuality, startDate, endDate, creatives: crvs,
+        spent: 0, impressions: 0, clicks: 0, ctr: 0,
+        launchType: launchType || "cabinet",
+        rtbEndpoint: isRtb ? rtbEndpoint.trim() : undefined,
+        pricingModel: isRtb && adFormat === "push" ? "cpc" : isRtb ? "cpm" : pricingModel,
+        typeModel: isRtb ? 1 : typeModel,
+        priceValue: isRtb ? 0 : parseNum(priceValue),
+        trafficQuality, startDate, endDate, creatives: isRtb ? [] : crvs,
         targeting: Object.fromEntries(Object.entries(lists).map(([k, v]) => [k, { mode: v.mode, items: v.items }])),
         blockVpnTraffic,
         evenSpend,
@@ -307,7 +358,14 @@ export default function CreateCampaign() {
 
   const saveDraft = async () => {
     if (savedAsDraft.current) return;
+    if (!launchType) return;
     if (!name.trim() && !adFormat) return;
+    if (adFormat === "video") {
+      const message = t("create.videoCampaignUnsupported");
+      setErrors(prev => ({ ...prev, adFormat: message }));
+      toast.error(message);
+      return;
+    }
     savedAsDraft.current = true;
     try {
       await addCampaign({
@@ -315,8 +373,13 @@ export default function CreateCampaign() {
         format: formatLabels[adFormat] || adFormat || "",
         formatKey: adFormat || "", trafficType, verticals, budget: totalBudget ? parseNum(totalBudget) : 0,
         dailyBudget: null,
-        spent: 0, impressions: 0, clicks: 0, ctr: 0, pricingModel, typeModel, priceValue: priceValue ? parseNum(priceValue) : 0,
-        trafficQuality, startDate, endDate, creatives,
+        spent: 0, impressions: 0, clicks: 0, ctr: 0,
+        launchType,
+        rtbEndpoint: isRtb ? rtbEndpoint.trim() : undefined,
+        pricingModel: isRtb && adFormat === "push" ? "cpc" : isRtb ? "cpm" : pricingModel,
+        typeModel: isRtb ? 1 : typeModel,
+        priceValue: isRtb ? 0 : priceValue ? parseNum(priceValue) : 0,
+        trafficQuality, startDate, endDate, creatives: isRtb ? [] : creatives,
         targeting: Object.fromEntries(Object.entries(lists).map(([k, v]) => [k, { mode: v.mode, items: v.items }])),
         blockVpnTraffic,
         evenSpend,
@@ -328,7 +391,7 @@ export default function CreateCampaign() {
   };
 
   const handleBack = async () => {
-    const wasSaved = !savedAsDraft.current && (name.trim() || adFormat);
+    const wasSaved = !!launchType && !savedAsDraft.current && !!(name.trim() || adFormat);
     await saveDraft();
     if (wasSaved) {
       void addNotification({
@@ -366,7 +429,7 @@ export default function CreateCampaign() {
       <Card className="bg-card border-border">
         <CardHeader className="p-4 sm:p-6">
           <CardTitle>
-            {step === 1 && t("create.step1")}
+            {step === 1 && (isRtb ? t("create.step1Rtb") : t("create.step1"))}
             {step === 2 && t("create.step2")}
             {step === 3 && t("create.step3")}
             {step === 4 && t("create.step4")}
@@ -375,6 +438,20 @@ export default function CreateCampaign() {
         <CardContent className="space-y-5 p-4 pt-0 sm:p-6 sm:pt-0">
           {step === 1 && (
             <>
+              <div className="flex flex-col gap-3 rounded-xl border border-primary/25 bg-primary/5 p-4 sm:flex-row sm:items-center sm:justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="rounded-lg bg-primary/10 p-2 text-primary">
+                    {isRtb ? <RadioTower className="h-5 w-5" /> : <LayoutDashboard className="h-5 w-5" />}
+                  </div>
+                  <div>
+                    <p className="text-sm font-semibold">{isRtb ? t("create.launchRtb") : t("create.launchCabinet")}</p>
+                    <p className="text-xs text-muted-foreground">{t("create.launchTypeCurrent")}</p>
+                  </div>
+                </div>
+                <Button type="button" variant="outline" size="sm" onClick={() => setLaunchType(null)}>
+                  {t("create.changeLaunchType")}
+                </Button>
+              </div>
               <div className="space-y-2">
                 <Label>{t("create.trafficType")} *</Label>
                 <Select value={trafficType} onValueChange={(v) => { setTrafficType(v as TrafficType); if (v === "mainstream") setVerticals(prev => prev.filter(x => x !== "Adult")); }}>
@@ -439,7 +516,9 @@ export default function CreateCampaign() {
                   >
                     <option value="" disabled>{t("create.selectFormat")}</option>
                     {Object.entries(formatLabels).map(([value, label]) => (
-                      <option key={value} value={value}>{label}</option>
+                      <option key={value} value={value} disabled={value === "video"}>
+                        {label}{value === "video" ? ` — ${t("create.videoUnavailable")}` : ""}
+                      </option>
                     ))}
                   </select>
                 ) : (
@@ -449,7 +528,9 @@ export default function CreateCampaign() {
                     </SelectTrigger>
                     <SelectContent className="bg-card border-border">
                       {Object.entries(formatLabels).map(([val, label]) => (
-                        <SelectItem key={val} value={val}>{label}</SelectItem>
+                        <SelectItem key={val} value={val} disabled={val === "video"}>
+                          {label}{val === "video" ? ` — ${t("create.videoUnavailable")}` : ""}
+                        </SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
@@ -465,7 +546,26 @@ export default function CreateCampaign() {
                 </div>
               )}
 
-              {adFormat && (
+              {isRtb ? (
+                <div className="space-y-2 pt-2">
+                  <Label htmlFor="rtb-endpoint">{t("create.rtbEndpoint")} *</Label>
+                  <Input
+                    id="rtb-endpoint"
+                    type="url"
+                    required
+                    value={rtbEndpoint}
+                    onChange={(event) => {
+                      setRtbEndpoint(event.target.value);
+                      if (isValidCreativeUrl(event.target.value.trim())) clearError("rtbEndpoint");
+                    }}
+                    placeholder={t("create.rtbEndpointPlaceholder")}
+                    className={`bg-background border-border ${errors.rtbEndpoint ? "border-destructive" : ""}`}
+                  />
+                  {errors.rtbEndpoint
+                    ? <p className="text-xs text-destructive">{errors.rtbEndpoint}</p>
+                    : <p className="text-xs text-muted-foreground">{t("create.rtbEndpointHint")}</p>}
+                </div>
+              ) : adFormat && (
                 <>
                   <div className="pt-2">
                     <p className="text-sm font-medium text-muted-foreground mb-3">{t("create.creatives")}</p>
@@ -507,6 +607,7 @@ export default function CreateCampaign() {
               evenSpend={evenSpend} setEvenSpend={setEvenSpend}
               bidRecommendation={bidRecommendation}
               errors={errors}
+              hideBidding={isRtb}
             />
           )}
 
@@ -534,7 +635,46 @@ export default function CreateCampaign() {
         </div>
       )}
 
-      <AutoCropConfirmDialog
+      <Dialog open={launchType === null} onOpenChange={() => undefined}>
+        <DialogContent
+          className="min-h-[50dvh] border-border bg-card sm:max-w-5xl [&>button]:hidden"
+          onEscapeKeyDown={(event) => event.preventDefault()}
+          onPointerDownOutside={(event) => event.preventDefault()}
+        >
+          <DialogHeader className="mx-auto max-w-2xl text-center sm:text-center">
+            <DialogTitle className="text-2xl sm:text-3xl">{t("create.launchTypeTitle")}</DialogTitle>
+            <DialogDescription className="text-sm sm:text-base">{t("create.launchTypeDescription")}</DialogDescription>
+          </DialogHeader>
+          <div className="grid flex-1 gap-4 sm:grid-cols-2">
+            <button
+              type="button"
+              onClick={() => chooseLaunchType("cabinet")}
+              className="group flex min-h-64 flex-col rounded-2xl border border-border bg-background/60 p-6 text-left transition hover:-translate-y-0.5 hover:border-primary/60 hover:bg-primary/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+            >
+              <div className="mb-6 w-fit rounded-2xl bg-primary/10 p-4 text-primary"><LayoutDashboard className="h-9 w-9" /></div>
+              <h3 className="text-xl font-semibold">{t("create.launchCabinet")}</h3>
+              <p className="mt-3 flex-1 text-sm leading-6 text-muted-foreground">{t("create.launchCabinetDescription")}</p>
+              <span className="mt-6 inline-flex items-center gap-2 text-sm font-semibold text-primary">
+                {t("create.selectLaunchType")} <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-1" />
+              </span>
+            </button>
+            <button
+              type="button"
+              onClick={() => chooseLaunchType("rtb")}
+              className="group flex min-h-64 flex-col rounded-2xl border border-border bg-background/60 p-6 text-left transition hover:-translate-y-0.5 hover:border-primary/60 hover:bg-primary/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+            >
+              <div className="mb-6 w-fit rounded-2xl bg-primary/10 p-4 text-primary"><RadioTower className="h-9 w-9" /></div>
+              <h3 className="text-xl font-semibold">{t("create.launchRtb")}</h3>
+              <p className="mt-3 flex-1 text-sm leading-6 text-muted-foreground">{t("create.launchRtbDescription")}</p>
+              <span className="mt-6 inline-flex items-center gap-2 text-sm font-semibold text-primary">
+                {t("create.selectLaunchType")} <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-1" />
+              </span>
+            </button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {!isRtb && <AutoCropConfirmDialog
         open={confirmMismatchOpen}
         creatives={creatives}
         formatKey={adFormat}
@@ -551,7 +691,7 @@ export default function CreateCampaign() {
           // via closure, but we pass explicit next to avoid stale state.
           await handleCreateWith(next);
         }}
-      />
+      />}
     </div>
   );
 }

@@ -67,6 +67,10 @@ export interface ApiCampaign {
   campaign_id: string;
   user_id: string;
   campaign_name: string;
+  /** True for an OpenRTB campaign, false for a cabinet-managed campaign. */
+  rtb: boolean;
+  /** Required absolute HTTP(S) OpenRTB endpoint when `rtb` is true. */
+  dsp_link: string | null;
   format_type: FormatType;
   brand_name?: string | null;
   h?: number | null;
@@ -98,6 +102,15 @@ export interface ApiCampaign {
   /** Fixed reward per conversion (USD). Used in statistics when the postback does not deliver a payout value. */
   payout?: number | null;
 }
+
+/** JSON body accepted by POST /api/campaigns. */
+export type ApiCreateCampaignRequest = Omit<
+  ApiCampaign,
+  "campaign_id" | "user_id" | "cum_done_dollars"
+>;
+
+/** JSON body accepted by PATCH /api/campaigns/:id. */
+export type ApiPatchCampaignRequest = Partial<ApiCreateCampaignRequest>;
 
 export type BannerType = "img" | "iframe";
 

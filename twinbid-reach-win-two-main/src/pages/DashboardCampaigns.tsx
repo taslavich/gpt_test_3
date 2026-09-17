@@ -25,13 +25,16 @@ import { formatNumberWithDot, formatStatisticInteger, formatStatisticSpend } fro
 import { CampaignIdPopover } from "@/components/dashboard/CampaignIdPopover";
 import { getLocalizedErrorMessage } from "@/lib/apiStatus";
 import { getCampaignPricingLabel } from "@/lib/campaignPricing";
+import { isValidCreativeUrl } from "@/lib/creativeApi";
 
 function isDraftComplete(c: Campaign): boolean {
   if (!c.name.trim()) return false;
   if (!c.formatKey) return false;
-  if (!c.creatives?.length || !c.creatives[0]?.url?.trim()) return false;
+  if (c.launchType === "rtb") {
+    if (!c.rtbEndpoint || !isValidCreativeUrl(c.rtbEndpoint)) return false;
+  } else if (!c.creatives?.length || !c.creatives[0]?.url?.trim()) return false;
   if (c.budget < 1) return false;
-  if (!c.priceValue) return false;
+  if (c.launchType !== "rtb" && !c.priceValue) return false;
   return true;
 }
 
@@ -117,7 +120,7 @@ export default function DashboardCampaigns() {
     if (!c) return;
     if (c.status === "draft") {
       try {
-        const creatives = await loadCampaignCreatives(c.id);
+        const creatives = c.launchType === "rtb" ? [] : await loadCampaignCreatives(c.id);
         if (!isDraftComplete({ ...c, creatives })) {
           toast.error(t("campaigns.draftIncomplete"));
           return;
@@ -150,12 +153,12 @@ export default function DashboardCampaigns() {
   const duplicateCampaign = async (c: Campaign) => {
     const { id: _id, ...rest } = c;
     try {
-      const sourceCreatives = await loadCampaignCreatives(c.id);
+      const sourceCreatives = c.launchType === "rtb" ? [] : await loadCampaignCreatives(c.id);
       // For formats with a visual (banner/native/push/video), the backend requires
       // a file on creative create. The duplicated source creatives only have
       // a presigned `imageUrl` — download those bytes and attach as
       // `pendingFile` so the copy is uploaded with the same image.
-      const needsFile = c.formatKey === "banner" || c.formatKey === "native" || c.formatKey === "push" || c.formatKey === "video";
+      const needsFile = c.launchType !== "rtb" && (c.formatKey === "banner" || c.formatKey === "native" || c.formatKey === "push" || c.formatKey === "video");
       const creatives = needsFile
         ? await Promise.all(
             sourceCreatives.map(async (cr) => {

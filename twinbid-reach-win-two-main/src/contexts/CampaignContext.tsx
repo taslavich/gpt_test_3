@@ -1,7 +1,7 @@
 import { createContext, useContext, useState, useCallback, useEffect, useRef, type ReactNode } from "react";
 import { api } from "@/api";
 import type {
-  ApiCampaign, ApiCreative, TargetingMap,
+  ApiCampaign, ApiCreateCampaignRequest, ApiPatchCampaignRequest, ApiCreative, TargetingMap,
   PricingModel as ApiPricing, TrafficType as ApiTraffic,
   CampaignStatus as ApiStatus, FormatType, VideoFormat, CampaignTypeModel as ApiCampaignTypeModel,
 } from "@/api/types";
@@ -18,6 +18,7 @@ import {
   isVideoAsset,
   syncCampaignCreatives,
 } from "@/lib/creativeApi";
+import { assertCampaignFormatSupported } from "@/lib/campaignValidation";
 
 // Browser/OS/device_type items in the UI are group keys (e.g. "Chrome",
 // "iOS", "mobile") but the backend targeting expects raw values (e.g.
@@ -54,6 +55,7 @@ function collapseTargetingItems(uiKey: string, items: string[]): string[] {
 export type CampaignStatus = ApiStatus;
 export type PricingModel = ApiPricing;
 export type CampaignTypeModel = ApiCampaignTypeModel;
+export type CampaignLaunchType = "cabinet" | "rtb";
 export type TrafficQuality = "common" | "high" | "ultra";
 export type ListMode = "none" | "white" | "black";
 export type TrafficType = ApiTraffic;
@@ -67,6 +69,10 @@ const apiQualityToUi = (q: ApiQuality | string | undefined): TrafficQuality => {
   if (q === "ultra_high_quality" || q === "ultra") return "ultra";
   return "common";
 };
+
+function getRtbPricingModel(formatKey: string): PricingModel {
+  return formatKey === "push" ? "cpc" : "cpm";
+}
 
 export interface TargetingState {
   mode: ListMode;
@@ -124,6 +130,10 @@ export type Vertical = typeof VERTICALS[number];
 export interface Campaign {
   id: string;
   name: string;
+  /** How the campaign is supplied: creatives in the cabinet or an OpenRTB endpoint. */
+  launchType?: CampaignLaunchType;
+  /** Absolute OpenRTB endpoint. Used only when launchType is `rtb`. */
+  rtbEndpoint?: string;
   status: CampaignStatus;
   format: string;
   formatKey: string;
@@ -251,7 +261,7 @@ function buildApiTargeting(targeting: Record<string, TargetingState>): Pick<ApiC
     const expanded: TargetingState = { ...state, items: expandTargetingItems(uiKey, state.items) };
     out[apiKey] = targetingStateToPayload(expanded);
   }
-  return out as Pick<ApiCampaign, TargetKey>;
+  return out as unknown as Pick<ApiCampaign, TargetKey>;
 }
 function readApiTargeting(c: ApiCampaign): Record<string, TargetingState> {
   return {
@@ -266,7 +276,8 @@ function readApiTargeting(c: ApiCampaign): Record<string, TargetingState> {
 
 // ---- Mapping --------------------------------------------------------------
 function mapApiCampaignToUi(c: ApiCampaign, creatives: Creative[], creativesLoaded = false): Campaign {
-  let priceValue = Number(c.base_price) || 0;
+  const isRtb = c.rtb === true;
+  let priceValue = isRtb ? 0 : Number(c.base_price) || 0;
   // Popunder CPC is stored as CPM-equivalent (value * 1000). Convert back for display.
   if (c.format_type === "popunder" && c.pricing_model === "cpc") {
     priceValue = priceValue / 1000;
@@ -274,6 +285,8 @@ function mapApiCampaignToUi(c: ApiCampaign, creatives: Creative[], creativesLoad
   return {
     id: c.campaign_id,
     name: c.campaign_name,
+    launchType: isRtb ? "rtb" : "cabinet",
+    rtbEndpoint: c.dsp_link ?? undefined,
     status: c.status,
     format: c.format_type, // human label = key for now
     formatKey: c.format_type,
@@ -283,8 +296,8 @@ function mapApiCampaignToUi(c: ApiCampaign, creatives: Creative[], creativesLoad
     impressions: 0,
     clicks: 0,
     ctr: 0,
-    pricingModel: c.pricing_model,
-    typeModel: c.type_model === 2 ? 2 : 1,
+    pricingModel: isRtb ? getRtbPricingModel(c.format_type) : c.pricing_model,
+    typeModel: isRtb ? 1 : c.type_model === 2 ? 2 : 1,
     priceValue: Number(priceValue) || 0,
     trafficQuality: apiQualityToUi(c.quality_type),
     startDate: c.start_ts ? c.start_ts.slice(0, 10) : "",
@@ -373,19 +386,24 @@ function endTimestamp(date: string): string | null {
   return `${date}T23:59:59Z`;
 }
 
-function buildApiCampaignBody(c: Omit<Campaign, "id">): Omit<ApiCampaign, "campaign_id" | "user_id" | "cum_done_dollars"> {
-  const isBanner = (c.formatKey || c.format) === "banner";
-  const body: Omit<ApiCampaign, "campaign_id" | "user_id" | "cum_done_dollars"> = {
+function buildApiCampaignBody(c: Omit<Campaign, "id">): ApiCreateCampaignRequest {
+  const formatKey = c.formatKey || c.format;
+  const isBanner = formatKey === "banner";
+  const isRtb = c.launchType === "rtb";
+  assertCampaignFormatSupported(formatKey);
+  const body: ApiCreateCampaignRequest = {
     campaign_name: c.name,
-    format_type: (c.formatKey || c.format) as FormatType,
+    rtb: isRtb,
+    dsp_link: isRtb ? c.rtbEndpoint?.trim() || null : null,
+    format_type: formatKey as FormatType,
     h: isBanner ? 999 : null,
     w: isBanner ? 999 : null,
     status: c.status,
     traffic_type: c.trafficType,
     vertical: verticalsToApiArray(c.verticals),
-    pricing_model: c.pricingModel,
-    type_model: c.typeModel === 2 ? 2 : 1,
-    base_price: c.priceValue,
+    pricing_model: isRtb ? getRtbPricingModel(formatKey) : c.pricingModel,
+    type_model: isRtb ? 1 : c.typeModel === 2 ? 2 : 1,
+    base_price: isRtb ? 0 : c.priceValue,
     evenness_by_slot_mode: c.evenSpend,
     goal_total_dollars: c.budget,
     start_ts: startTimestamp(c.startDate),
@@ -401,7 +419,7 @@ function buildApiCampaignBody(c: Omit<Campaign, "id">): Omit<ApiCampaign, "campa
   // For popunder, the backend only stores CPM. If the user selected CPC,
   // send the value as its CPM-equivalent (×1000), but keep pricing_model = "cpc"
   // so the user's choice is preserved and displayed back correctly.
-  if (c.formatKey === "popunder" && c.pricingModel === "cpc") {
+  if (!isRtb && c.formatKey === "popunder" && c.pricingModel === "cpc") {
     body.base_price = c.priceValue * 1000;
   }
   return body;
@@ -413,9 +431,18 @@ function buildApiCampaignBody(c: Omit<Campaign, "id">): Omit<ApiCampaign, "campa
  * toggling one switch (e.g. status) rewrites unrelated fields like
  * notification preferences or budget.
  */
-function buildApiCampaignPatch(updates: Partial<Campaign>): Partial<ApiCampaign> {
-  const p: Partial<ApiCampaign> = {};
+function buildApiCampaignPatch(
+  updates: Partial<Campaign>,
+  current?: Campaign,
+): ApiPatchCampaignRequest {
+  const p: ApiPatchCampaignRequest = {};
+  const finalLaunchType = updates.launchType ?? current?.launchType ?? "cabinet";
   if (updates.name !== undefined) p.campaign_name = updates.name;
+  if (updates.launchType !== undefined) p.rtb = finalLaunchType === "rtb";
+  if (updates.launchType !== undefined || updates.rtbEndpoint !== undefined) {
+    const endpoint = updates.rtbEndpoint ?? current?.rtbEndpoint;
+    p.dsp_link = finalLaunchType === "rtb" ? endpoint?.trim() || null : null;
+  }
   if (updates.formatKey !== undefined || updates.format !== undefined) {
     p.format_type = ((updates.formatKey ?? updates.format) || "") as FormatType;
   }
@@ -544,16 +571,19 @@ export function CampaignProvider({ children }: { children: ReactNode }) {
     if (!user) throw new Error("Not authenticated");
     // Errors here propagate to the caller so the UI can show the real
     // backend message instead of a fake success toast.
-    const created = await api.createCampaign(buildApiCampaignBody(c));
-    const createdCreatives = await createCampaignCreatives({
-      client: api,
-      campaignId: created.campaign_id,
-      format: c.formatKey,
-      creatives: c.creatives,
-      // Incomplete auto-saved drafts may legitimately have no finished
-      // creative yet. Formal campaign creation is validated by the page.
-      skipIncomplete: c.status === "draft",
-    });
+    const body = buildApiCampaignBody(c);
+    const created = await api.createCampaign(body);
+    const createdCreatives = c.launchType === "rtb"
+      ? []
+      : await createCampaignCreatives({
+          client: api,
+          campaignId: created.campaign_id,
+          format: c.formatKey,
+          creatives: c.creatives,
+          // Incomplete auto-saved drafts may legitimately have no finished
+          // creative yet. Formal campaign creation is validated by the page.
+          skipIncomplete: c.status === "draft",
+        });
     // Do not refetch the complete campaign list here. fetchCampaigns loads
     // creatives separately for every campaign, so doing that after a single
     // create caused one GET /creatives per existing campaign (and the
@@ -570,7 +600,14 @@ export function CampaignProvider({ children }: { children: ReactNode }) {
     // For popunder CPC, keep pricing_model = "cpc" but store the value as CPM-equivalent (×1000).
     const current = campaigns.find(c => c.id === id);
     const effectiveUpdates: Partial<Campaign> = { ...updates };
-    const fmt = effectiveUpdates.formatKey ?? current?.formatKey;
+    const launchType = effectiveUpdates.launchType ?? current?.launchType ?? "cabinet";
+    const fmt = effectiveUpdates.formatKey ?? current?.formatKey ?? "";
+    assertCampaignFormatSupported(fmt);
+    if (launchType === "rtb") {
+      effectiveUpdates.pricingModel = getRtbPricingModel(fmt);
+      effectiveUpdates.typeModel = 1;
+      effectiveUpdates.priceValue = 0;
+    }
     const pm = effectiveUpdates.pricingModel ?? current?.pricingModel;
     if (fmt === "popunder" && pm === "cpc" && effectiveUpdates.priceValue !== undefined) {
       effectiveUpdates.priceValue = (effectiveUpdates.priceValue as number) * 1000;
@@ -579,7 +616,7 @@ export function CampaignProvider({ children }: { children: ReactNode }) {
     // (draft → moderation) are rejected by the backend when the campaign has
     // no creatives, so we need the creatives to exist before the PATCH runs.
     let refreshedCreatives: Creative[] | undefined;
-    if (updates.creatives !== undefined) {
+    if (launchType !== "rtb" && updates.creatives !== undefined) {
       // Never degrade a failed read to an empty list here: doing so would
       // misclassify every existing creative as new and create duplicates.
       const existingRaw = await api.readCreatives(id);
@@ -603,7 +640,7 @@ export function CampaignProvider({ children }: { children: ReactNode }) {
 
     // Build a *partial* patch so toggling a single field (status, budget,
     // ...) does not rewrite unrelated fields.
-    const patch = buildApiCampaignPatch(effectiveUpdates);
+    const patch = buildApiCampaignPatch(effectiveUpdates, current);
     if (fmt === "banner") {
       // Real banner dimensions belong to each creative. The campaign keeps
       // a neutral technical size required by the moderation bot.
@@ -614,7 +651,6 @@ export function CampaignProvider({ children }: { children: ReactNode }) {
     if (Object.keys(patch).length > 0) {
       patchedCampaign = await api.patchCampaign(id, patch);
     }
-
     // Keep the local cache in sync instead of reloading every campaign and
     // every creative collection. A status-only update now performs exactly
     // one PATCH and no creative-list requests.
@@ -622,7 +658,26 @@ export function CampaignProvider({ children }: { children: ReactNode }) {
       if (item.id !== id) return item;
       const creatives = refreshedCreatives ?? item.creatives;
       const creativesLoaded = refreshedCreatives !== undefined || item.creativesLoaded === true;
-      if (patchedCampaign) return mapApiCampaignToUi(patchedCampaign, creatives, creativesLoaded);
+      if (patchedCampaign) {
+        const mapped = mapApiCampaignToUi(patchedCampaign, creatives, creativesLoaded);
+        if (launchType === "rtb") {
+          return {
+            ...mapped,
+            launchType: "rtb",
+            rtbEndpoint: effectiveUpdates.rtbEndpoint ?? item.rtbEndpoint,
+            pricingModel: getRtbPricingModel(fmt),
+            typeModel: 1,
+            priceValue: 0,
+            creatives: [],
+            creativesLoaded: true,
+          };
+        }
+        return {
+          ...mapped,
+          launchType: mapped.launchType,
+          rtbEndpoint: mapped.rtbEndpoint,
+        };
+      }
       return { ...item, ...updates, creatives, creativesLoaded };
     }));
   }, [user, campaigns]);
