@@ -47,7 +47,7 @@ func TestCallRTBCampaignChoosesMaxBidAndKeepsPerImpStatus(t *testing.T) {
 		{Id: &imp3},
 	}}
 
-	result := s.callRTBCampaign(context.Background(), source, campaign, source.GetImp(), constants.POP)
+	result := s.callRTBCampaign(context.Background(), source, campaign, source.GetImp(), constants.POP, func(string, ...any) {})
 	if got := result.bids[imp1]; got == nil || got.GetId() != "high" || got.GetPrice() != 1.20 {
 		t.Fatalf("imp1 selected bid=%+v want max valid bid high/1.20", got)
 	}
@@ -82,7 +82,7 @@ func TestCallRTBCampaignTimeoutDropsCampaignForAllSentImpressions(t *testing.T) 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Millisecond)
 	defer cancel()
 
-	result := s.callRTBCampaign(ctx, source, campaign, source.GetImp(), constants.POP)
+	result := s.callRTBCampaign(ctx, source, campaign, source.GetImp(), constants.POP, func(string, ...any) {})
 	if len(result.bids) != 0 {
 		t.Fatalf("timeout returned bids: %+v", result.bids)
 	}
@@ -150,7 +150,7 @@ func TestCallRTBCampaignStripsOnlyInternalADVFormatMarker(t *testing.T) {
 	s := &AuctionService{rtbHTTPClient: server.Client()}
 	campaign := &Campaign{ID: "campaign-rtb", RTB: true, DSPLink: server.URL}
 	source := &ortb.BidRequest{Imp: []*ortb.Imp{{Id: &impID, Banner: &ortb.Banner{Ext: []string{userExt, marker}}}}}
-	result := s.callRTBCampaign(context.Background(), source, campaign, source.GetImp(), constants.BAN)
+	result := s.callRTBCampaign(context.Background(), source, campaign, source.GetImp(), constants.BAN, func(string, ...any) {})
 	if result.codes[impID] != "204" {
 		t.Fatalf("status=%q want 204", result.codes[impID])
 	}
