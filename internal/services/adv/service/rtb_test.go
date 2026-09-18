@@ -173,3 +173,114 @@ func TestUnsafeRTBIPBlocksInternalRanges(t *testing.T) {
 		}
 	}
 }
+
+func Test54AdsRTBRequestNormalizationForPop(t *testing.T) {
+	requestID := "req-54ads"
+	imp1ID, imp2ID := "imp-1", "imp-2"
+	subID := "publisher-subid"
+	deviceType := int32(4)
+	country := "CN"
+	domain := "https://example.com/some/path"
+	page := "/landing"
+	tmax := int32(100)
+	bannerW := int32(320)
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		defer r.Body.Close()
+		var got map[string]any
+		if err := json.NewDecoder(r.Body).Decode(&got); err != nil {
+			t.Fatalf("decode 54Ads RTB request: %v", err)
+		}
+		if got["tmax"] != float64(500) {
+			t.Fatalf("tmax=%v want 500", got["tmax"])
+		}
+
+		device, _ := got["device"].(map[string]any)
+		if _, exists := device["deviceType"]; exists {
+			t.Fatalf("deviceType must not be sent to 54Ads: %+v", device)
+		}
+		if device["devicetype"] != float64(4) {
+			t.Fatalf("devicetype=%v want 4", device["devicetype"])
+		}
+		geo, _ := device["geo"].(map[string]any)
+		if geo["country"] != "CHN" {
+			t.Fatalf("device.geo.country=%v want CHN", geo["country"])
+		}
+
+		site, _ := got["site"].(map[string]any)
+		if site["domain"] != "example.com" {
+			t.Fatalf("site.domain=%v want example.com", site["domain"])
+		}
+		if site["page"] != "https://example.com/landing" {
+			t.Fatalf("site.page=%v want full URL", site["page"])
+		}
+
+		imps, _ := got["imp"].([]any)
+		if len(imps) != 2 {
+			t.Fatalf("impressions=%d want 2", len(imps))
+		}
+		for i, rawImp := range imps {
+			imp, _ := rawImp.(map[string]any)
+			if _, exists := imp["banner"]; exists {
+				t.Fatalf("imp[%d].banner must be removed for POP: %+v", i, imp)
+			}
+			ext, _ := imp["ext"].(map[string]any)
+			if ext["type"] != "pop" {
+				t.Fatalf("imp[%d].ext.type=%v want pop", i, ext["type"])
+			}
+		}
+		firstImp := imps[0].(map[string]any)
+		firstExt := firstImp["ext"].(map[string]any)
+		if firstExt["subid"] != subID {
+			t.Fatalf("imp[0].ext.subid=%v want %q", firstExt["subid"], subID)
+		}
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	defer server.Close()
+
+	s := &AuctionService{rtbHTTPClient: server.Client()}
+	campaign := &Campaign{ID: "campaign-54ads", UserID: rtb54AdsUserID, RTB: true, DSPLink: server.URL}
+	source := &ortb.BidRequest{
+		Id:   &requestID,
+		Tmax: &tmax,
+		Imp: []*ortb.Imp{
+			{Id: &imp1ID, Ext: &ortb.Imp_Ext{Subid: &subID}, Banner: &ortb.Banner{W: &bannerW}},
+			{Id: &imp2ID, Banner: &ortb.Banner{W: &bannerW}},
+		},
+		Device: &ortb.Device{DeviceType: &deviceType, Geo: &ortb.Geo{Country: &country}},
+		Site:   &ortb.Site{Domain: &domain, Page: &page},
+	}
+
+	result := s.callRTBCampaign(context.Background(), source, campaign, source.GetImp(), constants.POP, func(string, ...any) {})
+	if result.codes[imp1ID] != "204" || result.codes[imp2ID] != "204" {
+		t.Fatalf("statuses=%v want both 204", result.codes)
+	}
+	if source.GetTmax() != 100 || source.GetDevice().GetGeo().GetCountry() != "CN" || source.GetImp()[0].GetBanner() == nil {
+		t.Fatal("source request must not be mutated")
+	}
+}
+
+func Test54AdsRTBRequestKeepsBannerOutsidePop(t *testing.T) {
+	impID := "imp-ban"
+	bannerW := int32(300)
+	campaign := &Campaign{ID: "campaign-54ads", UserID: rtb54AdsUserID, RTB: true}
+	req := &ortb.BidRequest{Imp: []*ortb.Imp{{Id: &impID, Banner: &ortb.Banner{W: &bannerW}}}}
+
+	body, err := marshalRTBRequestForCampaign(req, campaign, constants.BAN)
+	if err != nil {
+		t.Fatalf("marshal request: %v", err)
+	}
+	var got map[string]any
+	if err := json.Unmarshal(body, &got); err != nil {
+		t.Fatalf("decode request: %v", err)
+	}
+	imps := got["imp"].([]any)
+	imp := imps[0].(map[string]any)
+	if _, exists := imp["banner"]; !exists {
+		t.Fatal("banner must be preserved outside POP")
+	}
+	ext := imp["ext"].(map[string]any)
+	if ext["type"] != "pop" {
+		t.Fatalf("imp.ext.type=%v want pop", ext["type"])
+	}
+}

@@ -26,6 +26,7 @@ import (
 )
 
 const (
+	rtb54AdsUserID      = "9cf9b083-9687-42ce-9117-3df208a2a2cd"
 	rtbCodeNetworkError = "1"
 	rtbCodeInvalidJSON  = "3"
 	rtbCodeReadError    = "4"
@@ -309,7 +310,7 @@ func (s *AuctionService) callRTBCampaign(ctx context.Context, source *ortb.BidRe
 	}
 	cloned.Imp = filtered
 	stripInternalADVFormatMarkers(cloned)
-	body, err := jsoniter.Marshal(cloned)
+	body, err := marshalRTBRequestForCampaign(cloned, campaign, format)
 	if err != nil {
 		setAll(rtbCodeRequestError)
 		return result
@@ -398,6 +399,131 @@ func (s *AuctionService) callRTBCampaign(ctx context.Context, source *ortb.BidRe
 		}
 	}
 	return result
+}
+
+func marshalRTBRequestForCampaign(req *ortb.BidRequest, campaign *Campaign, format string) ([]byte, error) {
+	body, err := jsoniter.Marshal(req)
+	if err != nil {
+		return nil, err
+	}
+	if campaign == nil || strings.TrimSpace(campaign.UserID) != rtb54AdsUserID {
+		return body, nil
+	}
+
+	var payload map[string]any
+	if err := jsoniter.Unmarshal(body, &payload); err != nil {
+		return nil, err
+	}
+	normalize54AdsRTBRequest(payload, normalizeFormat(format) == constants.POP)
+	return jsoniter.Marshal(payload)
+}
+
+func normalize54AdsRTBRequest(payload map[string]any, pop bool) {
+	if payload == nil {
+		return
+	}
+	payload["tmax"] = 500
+
+	if rawDevice, ok := payload["device"]; ok {
+		if device, ok := rawDevice.(map[string]any); ok {
+			if deviceType, exists := device["deviceType"]; exists {
+				delete(device, "deviceType")
+				device["devicetype"] = deviceType
+			}
+			normalize54AdsGeoCountry(device["geo"])
+		}
+	}
+
+	if rawUser, ok := payload["user"]; ok {
+		if user, ok := rawUser.(map[string]any); ok {
+			normalize54AdsGeoCountry(user["geo"])
+		}
+	}
+
+	if rawSite, ok := payload["site"]; ok {
+		if site, ok := rawSite.(map[string]any); ok {
+			domain, _ := site["domain"].(string)
+			page, _ := site["page"].(string)
+			host := rtbHostname(domain)
+			if host == "" {
+				host = rtbHostname(page)
+			}
+			if host != "" {
+				site["domain"] = host
+			}
+			if fullPage := rtbFullPageURL(page, host); fullPage != "" {
+				site["page"] = fullPage
+			}
+		}
+	}
+
+	if rawImps, ok := payload["imp"].([]any); ok {
+		for _, rawImp := range rawImps {
+			imp, ok := rawImp.(map[string]any)
+			if !ok {
+				continue
+			}
+			ext, _ := imp["ext"].(map[string]any)
+			if ext == nil {
+				ext = make(map[string]any)
+			}
+			ext["type"] = "pop"
+			imp["ext"] = ext
+			if pop {
+				delete(imp, "banner")
+			}
+		}
+	}
+}
+
+func normalize54AdsGeoCountry(rawGeo any) {
+	geo, ok := rawGeo.(map[string]any)
+	if !ok {
+		return
+	}
+	country, _ := geo["country"].(string)
+	if strings.EqualFold(strings.TrimSpace(country), "CN") {
+		geo["country"] = "CHN"
+	}
+}
+
+func rtbHostname(raw string) string {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return ""
+	}
+	candidate := raw
+	if !strings.Contains(candidate, "://") {
+		candidate = "//" + strings.TrimPrefix(candidate, "//")
+	}
+	u, err := url.Parse(candidate)
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(u.Hostname())
+}
+
+func rtbFullPageURL(rawPage, host string) string {
+	page := strings.TrimSpace(rawPage)
+	if page == "" {
+		if host == "" {
+			return ""
+		}
+		return "https://" + host + "/"
+	}
+	if u, err := url.Parse(page); err == nil && u.IsAbs() && (u.Scheme == "http" || u.Scheme == "https") && u.Host != "" {
+		return page
+	}
+	if strings.HasPrefix(page, "//") {
+		return "https:" + page
+	}
+	if strings.HasPrefix(page, "/") && host != "" {
+		return "https://" + host + page
+	}
+	if !strings.Contains(page, "://") {
+		return "https://" + strings.TrimPrefix(page, "//")
+	}
+	return page
 }
 
 func validRTBADM(format, adm string) bool {
