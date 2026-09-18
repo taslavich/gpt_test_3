@@ -6,6 +6,7 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"testing"
 	"time"
 
@@ -282,5 +283,49 @@ func Test54AdsRTBRequestKeepsBannerOutsidePop(t *testing.T) {
 	ext := imp["ext"].(map[string]any)
 	if ext["type"] != "pop" {
 		t.Fatalf("imp.ext.type=%v want pop", ext["type"])
+	}
+}
+
+func TestBidFlyRTBNURLUsesRawBidPrice(t *testing.T) {
+	requestID := "req-bidfly"
+	impID := "imp-1"
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"id":"resp","seatbid":[{"bid":[{"id":"b1","impid":"imp-1","price":1.2,"adm":"https://creative.example/render","nurl":"https://dsp.bidfly.net/rtb/win?rid=20985490157&cid=259&price=${AUCTION_PRICE}&click_id=abc&eid=47"}]}]}`))
+	}))
+	defer server.Close()
+
+	s := &AuctionService{rtbHTTPClient: server.Client()}
+	campaign := &Campaign{ID: "campaign-bidfly", UserID: rtbBidFlyUserID, RTB: true, DSPLink: server.URL}
+	source := &ortb.BidRequest{Id: &requestID, Imp: []*ortb.Imp{{Id: &impID}}}
+
+	result := s.callRTBCampaign(context.Background(), source, campaign, source.GetImp(), constants.POP, func(string, ...any) {})
+	bid := result.bids[impID]
+	if bid == nil {
+		t.Fatal("expected selected RTB bid")
+	}
+	parsed, err := url.Parse(bid.GetNurl())
+	if err != nil {
+		t.Fatalf("parse prepared nurl: %v", err)
+	}
+	if got := parsed.Query().Get("price"); got != "1.2" {
+		t.Fatalf("nurl price=%q want raw RTB bid price 1.2; nurl=%q", got, bid.GetNurl())
+	}
+	if bid.GetPrice() != 1.2 {
+		t.Fatalf("raw bid price changed: %v", bid.GetPrice())
+	}
+}
+
+func TestBidFlyRTBNURLAddsMissingPrice(t *testing.T) {
+	got := rtbNURLWithRawBidPrice("https://dsp.bidfly.net/rtb/win?rid=1&cid=2", 0.75)
+	parsed, err := url.Parse(got)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if parsed.Query().Get("price") != "0.75" {
+		t.Fatalf("missing price was not added: %q", got)
+	}
+	if parsed.Query().Get("rid") != "1" || parsed.Query().Get("cid") != "2" {
+		t.Fatalf("existing query parameters changed: %q", got)
 	}
 }

@@ -229,9 +229,8 @@ func getNurl(
 		return
 	}
 
-	// ADV has no downstream DSP NURL. Detect a preselected ADV winner by UUID
-	// in DB 6 and terminate the callback locally without requiring or calling
-	// an embedded url= target.
+	// Detect a preselected ADV winner by UUID in DB 6. Local ADV winners have
+	// no downstream NURL, while external RTB winners may carry one in url=.
 	isADV, err := handleADVCallback(
 		r.Context(),
 		input.GlobalId,
@@ -248,12 +247,12 @@ func getNurl(
 		w.WriteHeader(http.StatusServiceUnavailable)
 		return
 	}
-	if isADV {
+	if isADV && strings.TrimSpace(input.DspURL) == "" {
 		w.WriteHeader(http.StatusNoContent)
 		return
 	}
 
-	if input.Ssp_Domain == "adl_pb.com" {
+	if !isADV && input.Ssp_Domain == "adl_pb.com" {
 		exists, err := utils.UUIDKeyExistsInRedis(ctx, redisNurlClient, input.GlobalId)
 		if err != nil {
 			recordRedisError(redisWriteErrorMonitor, err, sspAdapterWorkStatusURL)
@@ -299,6 +298,7 @@ func getBurl(
 	ctx context.Context,
 	w http.ResponseWriter,
 	r *http.Request,
+	nurlClient *http.Client,
 	redisClients []*redis.Client,
 	redisNurlClient *redis.Client,
 	redisSetImpressions string,
@@ -357,6 +357,18 @@ func getBurl(
 		recordRedisError(redisWriteErrorMonitor, err, sspAdapterWorkStatusURL)
 		w.WriteHeader(http.StatusServiceUnavailable)
 		return
+	}
+	if strings.TrimSpace(input.DspURL) != "" {
+		decodedURL, err := url.QueryUnescape(input.DspURL)
+		if err != nil || strings.TrimSpace(decodedURL) == "" {
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+		resp, err := nurlClient.Get(decodedURL)
+		if err == nil {
+			defer resp.Body.Close()
+			_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 4096))
+		}
 	}
 	w.WriteHeader(http.StatusNoContent)
 }

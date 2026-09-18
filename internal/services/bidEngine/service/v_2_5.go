@@ -418,6 +418,9 @@ func FinalizeBidCallbacks(
 	}
 	if wrapBURL {
 		wrappedBURL := utils.WrapBurlURL(admDomain, globalID, format)
+		if source.GetNurl() != "" {
+			wrappedBURL = utils.WrapBurlNurlURL(admDomain, source.GetNurl(), globalID, format)
+		}
 		if wrappedBURL == "" {
 			return nil, false
 		}

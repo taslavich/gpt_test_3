@@ -46,6 +46,17 @@ func WrapBurlURL(hostname, globalID, format string) string {
 	}, "id", "f")
 }
 
+// WrapBurlNurlURL builds the exchange BURL while carrying the winner's
+// downstream NURL. The SSP calls our /burl endpoint; SSP Adapter then invokes
+// this embedded advertiser NURL after processing the exchange-side callback.
+func WrapBurlNurlURL(hostname, originalNURL, globalID, format string) string {
+	return buildCallbackURL(hostname, "burl", map[string]string{
+		"id":  globalID,
+		"url": originalNURL,
+		"f":   formatCode(format),
+	}, "id", "url", "f")
+}
+
 func WrapClicksWinsURL(hostname, globalID string) string {
 	return buildCallbackURL(hostname, "clicks_wins", map[string]string{
 		"id": globalID,

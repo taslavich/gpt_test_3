@@ -49,6 +49,9 @@ func TestADVCallbackWrappersAlwaysIncludeFormat(t *testing.T) {
 	assertQuery(WrapBurlURL(host, globalID, format), map[string]string{
 		"id": globalID, "f": constants.FormatToCodes[format],
 	})
+	assertQuery(WrapBurlNurlURL(host, original, globalID, format), map[string]string{
+		"id": globalID, "url": original, "f": constants.FormatToCodes[format],
+	})
 	assertQuery(WrapClicksWinsURL(host, globalID), map[string]string{
 		"id": globalID,
 	})
@@ -66,6 +69,9 @@ func TestCallbackWrappersRejectMissingRequiredValues(t *testing.T) {
 	}
 	if got := WrapBurlURL("adm.example.test", "id", "unknown"); got != "" {
 		t.Fatalf("BURL wrapper must reject unknown format: %q", got)
+	}
+	if got := WrapBurlNurlURL("adm.example.test", "", "id", constants.BAN); got != "" {
+		t.Fatalf("BURL+NURL wrapper must reject empty downstream NURL: %q", got)
 	}
 	if got := WrapClicksWinsURL("adm.example.test", ""); got != "" {
 		t.Fatalf("clicks_wins wrapper must reject empty winner UUID: %q", got)

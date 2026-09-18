@@ -91,6 +91,7 @@ type nurlRequest struct {
 
 type burlRequest struct {
 	GlobalId string `in:"query=id" required:"true"`
+	DspURL   string `in:"query=url"`
 	Format   string `in:"query=f" required:"true"`
 }
 
@@ -295,7 +296,7 @@ func InitHttpsRoutes(
 	httpRouter.With(
 		httpin.NewInput(burlRequest{}),
 	).Get(GetBurlUrl, func(w http.ResponseWriter, r *http.Request) {
-		getBurl(ctx, w, r, redisClientsImp, redisNurlClient, redisSetImpressions, redisWriteErrorMonitor, sspAdapterWorkStatusURL, advBillingStore, advOutbox, advControlURLs)
+		getBurl(ctx, w, r, nurlClient, redisClientsImp, redisNurlClient, redisSetImpressions, redisWriteErrorMonitor, sspAdapterWorkStatusURL, advBillingStore, advOutbox, advControlURLs)
 	})
 
 	httpRouter.With(

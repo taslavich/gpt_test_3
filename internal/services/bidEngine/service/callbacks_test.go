@@ -125,6 +125,12 @@ func TestFinalizeDSPCallbacksAddsCwinAndPreservesBidExt(t *testing.T) {
 	if !ok || got == nil {
 		t.Fatal("DSP callback finalization failed")
 	}
+	assertCallbackQuery(t, got.GetNurl(), "/nurl", map[string]string{
+		"id": "dsp-winner", "s": "ssp.example", "url": nurl, "f": constants.FormatToCodes[constants.POP],
+	})
+	assertCallbackQuery(t, got.GetBurl(), "/burl", map[string]string{
+		"id": "dsp-winner", "url": nurl, "f": constants.FormatToCodes[constants.POP],
+	})
 	assertCallbackQuery(t, got.GetExt().GetCwin(), "/clicks_wins", map[string]string{
 		"id": "dsp-winner",
 	})
@@ -255,9 +261,8 @@ func TestDSPBannerKeepsRawADMAndUsesExchangeBURL(t *testing.T) {
 		"id": uuid, "s": "ssp.example", "url": nurl, "f": constants.FormatToCodes[constants.BAN],
 	})
 	assertCallbackQuery(t, got.GetBurl(), "/burl", map[string]string{
-		"id": uuid, "f": constants.FormatToCodes[constants.BAN],
+		"id": uuid, "url": nurl, "f": constants.FormatToCodes[constants.BAN],
 	})
-	assertQueryMissing(t, got.GetBurl(), "url")
 	if len(admUUIDs) != 0 {
 		t.Fatalf("raw banner ADM must not allocate /adm UUIDs: %v", admUUIDs)
 	}

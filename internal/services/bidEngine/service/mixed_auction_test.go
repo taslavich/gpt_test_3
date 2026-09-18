@@ -274,8 +274,9 @@ func TestExternalADVWinnerUsesDSPStyleNURLWithoutRTBEntity(t *testing.T) {
 	if err != nil || parsedNURL.Query().Get("url") != nurl {
 		t.Fatalf("external NURL was not proxied: %q", bid.GetNurl())
 	}
-	if bid.GetBurl() == "" {
-		t.Fatal("exchange BURL must be synthesized for external ADV")
+	parsedBURL, err := url.Parse(bid.GetBurl())
+	if err != nil || parsedBURL.Query().Get("url") != nurl {
+		t.Fatalf("external NURL was not embedded in exchange BURL: %q", bid.GetBurl())
 	}
 	if bid.GetExt().GetCwin() == constants.ExternalADVBidMarker || bid.GetExt().GetCwin() == "" {
 		t.Fatalf("internal marker was not replaced by clicks_wins callback: %q", bid.GetExt().GetCwin())

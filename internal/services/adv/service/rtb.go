@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"net/netip"
 	"net/url"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -27,6 +28,7 @@ import (
 
 const (
 	rtb54AdsUserID      = "9cf9b083-9687-42ce-9117-3df208a2a2cd"
+	rtbBidFlyUserID     = "beab6526-7c1a-40e0-9a17-5903149fa58f"
 	rtbCodeNetworkError = "1"
 	rtbCodeInvalidJSON  = "3"
 	rtbCodeReadError    = "4"
@@ -385,6 +387,10 @@ func (s *AuctionService) callRTBCampaign(ctx context.Context, source *ortb.BidRe
 			}
 		}
 		if best != nil {
+			if strings.EqualFold(strings.TrimSpace(campaign.UserID), rtbBidFlyUserID) && strings.TrimSpace(best.GetNurl()) != "" {
+				nurl := rtbNURLWithRawBidPrice(best.GetNurl(), best.GetPrice())
+				best.Nurl = &nurl
+			}
 			result.bids[impID] = best
 			log.Printf("[ADV][RTB_BID_SELECTED] request_id=%q campaign_id=%q imp_id=%q bid_id=%q price=%.12f total_bids_for_imp=%d", strings.TrimSpace(source.GetId()), campaign.ID, impID, best.GetId(), float64(best.GetPrice()), len(items))
 			continue
@@ -399,6 +405,21 @@ func (s *AuctionService) callRTBCampaign(ctx context.Context, source *ortb.BidRe
 		}
 	}
 	return result
+}
+
+func rtbNURLWithRawBidPrice(rawNURL string, rawPrice float32) string {
+	rawNURL = strings.TrimSpace(rawNURL)
+	if rawNURL == "" {
+		return ""
+	}
+	u, err := url.Parse(rawNURL)
+	if err != nil {
+		return rawNURL
+	}
+	query := u.Query()
+	query.Set("price", strconv.FormatFloat(float64(rawPrice), 'f', -1, 32))
+	u.RawQuery = query.Encode()
+	return u.String()
 }
 
 func marshalRTBRequestForCampaign(req *ortb.BidRequest, campaign *Campaign, format string) ([]byte, error) {
