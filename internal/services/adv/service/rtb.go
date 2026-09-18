@@ -466,21 +466,31 @@ func (s *AuctionService) writeRTBResponseStats(_ context.Context, impUUID map[st
 		// endpoint timed out. Statistics must still record that timeout. Use the
 		// same short, detached write budget as Router and write only to an ORTB hash
 		// that already exists, which preserves the SSP adapter's `logged` contract.
+		logf("[ADV][RTB_STATS_WRITE_ATTEMPT] imp_id=%q uuid=%q items=%v", impID, uuid, items)
+
 		writeCtx, cancel := context.WithTimeout(context.Background(), 30*time.Millisecond)
-		client, _, err := redis_service.SelectShard(s.statsRedisClients, uuid)
+		client, shardIndex, err := redis_service.SelectShard(s.statsRedisClients, uuid)
 		if err == nil {
 			var exists bool
 			exists, err = utils.UUIDKeyExistsInRedis(writeCtx, client, uuid)
+			if err == nil {
+				logf("[ADV][RTB_STATS_KEY_CHECK] imp_id=%q uuid=%q shard=%d exists=%t", impID, uuid, shardIndex, exists)
+			}
 			if err == nil && exists {
 				pipe := client.Pipeline()
 				pipe.HSet(writeCtx, uuid, constants.ADV_RTB_RESPONSES_COLUMN, payload)
 				pipe.Expire(writeCtx, uuid, utils.RedisKeyTTL)
 				_, err = pipe.Exec(writeCtx)
+				if err == nil {
+					logf("[ADV][RTB_STATS_WRITE_OK] imp_id=%q uuid=%q shard=%d items=%v", impID, uuid, shardIndex, items)
+				}
+			} else if err == nil {
+				logf("[ADV][RTB_STATS_SKIP_NO_KEY] imp_id=%q uuid=%q shard=%d items=%v", impID, uuid, shardIndex, items)
 			}
 		}
 		cancel()
 		if err != nil {
-			logf("[ADV][RTB_STATS_ERROR] imp_id=%q error=%v", impID, err)
+			logf("[ADV][RTB_STATS_ERROR] imp_id=%q uuid=%q error=%v", impID, uuid, err)
 		}
 	}
 }
