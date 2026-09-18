@@ -171,6 +171,7 @@ func (s *AuctionService) fetchRTBCampaignBids(
 	}
 	log.Printf("[ADV][RTB_DISCOVERY] request_id=%q rtb_campaigns=%d jobs=%d", strings.TrimSpace(req.GetId()), rtbCampaignsSeen, len(jobs))
 	if len(jobs) == 0 {
+		s.writeRTBResponseStats(ctx, options.ImpIDUUID, nil, logf)
 		return out
 	}
 
@@ -495,13 +496,14 @@ func (s *AuctionService) writeRTBResponseStats(_ context.Context, impUUID map[st
 	if s == nil || len(s.statsRedisClients) == 0 {
 		return
 	}
-	for impID, items := range stats {
-		if len(items) == 0 {
-			continue
-		}
-		uuid := strings.TrimSpace(impUUID[impID])
+	for impID, rawUUID := range impUUID {
+		uuid := strings.TrimSpace(rawUUID)
 		if uuid == "" {
 			continue
+		}
+		items := stats[impID]
+		if items == nil {
+			items = map[string]string{}
 		}
 		payload, err := proto.Marshal(&eventspb.BidResponses{Items: items})
 		if err != nil {
