@@ -156,12 +156,13 @@ func (s *AuctionService) fetchRTBCampaignBids(
 				continue
 			}
 			durableUserBlocked := snapshot.UserAntiPerekrutBlocked[campaign.UserID]
-			if s.rtbPreflightEligible(campaign, req, imp, now, requestedFormat, trafficType, sspDomain, siteIDQualityValue,
-				options.ImpIDUUID[imp.GetId()], antiState, durableUserBlocked, requestIsVPN, vpnClassificationErr, logf) {
+			preflightOK, rejectReason := s.rtbPreflightEligible(campaign, req, imp, now, requestedFormat, trafficType, sspDomain, siteIDQualityValue,
+				options.ImpIDUUID[imp.GetId()], antiState, durableUserBlocked, requestIsVPN, vpnClassificationErr, logf)
+			if preflightOK {
 				eligible = append(eligible, imp)
 				log.Printf("[ADV][RTB_PREFLIGHT_PASS] request_id=%q campaign_id=%q imp_id=%q", strings.TrimSpace(req.GetId()), campaign.ID, imp.GetId())
 			} else {
-				log.Printf("[ADV][RTB_PREFLIGHT_REJECT] request_id=%q campaign_id=%q imp_id=%q", strings.TrimSpace(req.GetId()), campaign.ID, imp.GetId())
+				log.Printf("[ADV][RTB_PREFLIGHT_REJECT] request_id=%q campaign_id=%q imp_id=%q reason=%q", strings.TrimSpace(req.GetId()), campaign.ID, imp.GetId(), rejectReason)
 			}
 		}
 		if len(eligible) > 0 {
@@ -217,33 +218,57 @@ func (s *AuctionService) rtbPreflightEligible(
 	requestIsVPN bool,
 	vpnClassificationErr error,
 	logf debugLogFunc,
-) bool {
-	if campaign == nil || imp == nil || !campaign.RTB {
-		return false
+) (bool, string) {
+	if campaign == nil {
+		return false, "campaign_nil"
 	}
-	if normalizeFormat(campaign.Format) != requestedFormat || !trafficMatches(campaign.TrafficType, trafficType) || !campaignActiveAt(campaign, now) {
-		return false
+	if imp == nil {
+		return false, "imp_nil"
 	}
-	if campaign.BlockVPN && (vpnClassificationErr != nil || requestIsVPN) {
-		return false
+	if !campaign.RTB {
+		return false, "campaign_not_rtb"
+	}
+	if normalizeFormat(campaign.Format) != requestedFormat {
+		return false, "format_mismatch"
+	}
+	if !trafficMatches(campaign.TrafficType, trafficType) {
+		return false, "traffic_type_mismatch"
+	}
+	if !campaignActiveAt(campaign, now) {
+		return false, "campaign_inactive_at_request_time"
+	}
+	if campaign.BlockVPN && vpnClassificationErr != nil {
+		return false, "vpn_classification_error"
+	}
+	if campaign.BlockVPN && requestIsVPN {
+		return false, "vpn_blocked"
 	}
 	if s.antiperekrutEnabled {
-		if s.antiperekrut == nil || !s.antiperekrut.CampaignAllowed(antiState, campaign) {
-			return false
+		if s.antiperekrut == nil {
+			return false, "antiperekrut_unavailable"
+		}
+		if !s.antiperekrut.CampaignAllowed(antiState, campaign) {
+			return false, "antiperekrut_campaign_rejected"
 		}
 		hashID := strings.TrimSpace(req.GetId())
 		if hashID == "" {
 			hashID = hashFallback
 		}
 		if !trafficHashPass(hashID, campaign.ID, s.antiperekrut.EffectiveTrafficLimit(antiState, campaign, now)) {
-			return false
+			return false, "traffic_limit_hash_rejected"
 		}
 		_ = durableUserBlocked // durable state is already part of CampaignAllowed
 	}
-	if !s.quality.Contains(campaign.QualitySegment, sspDomain) || !s.siteIDQuality.allowsNormalized(campaign.QualitySegment, siteIDQualityValue) {
-		return false
+	if !s.quality.Contains(campaign.QualitySegment, sspDomain) {
+		return false, "quality_segment_mismatch"
 	}
-	return campaignPassesFiltersWithDebug(campaign, req, strings.TrimSpace(req.GetId()), imp.GetId(), logf)
+	if !s.siteIDQuality.allowsNormalized(campaign.QualitySegment, siteIDQualityValue) {
+		return false, "site_id_quality_mismatch"
+	}
+	if !campaignPassesFiltersWithDebug(campaign, req, strings.TrimSpace(req.GetId()), imp.GetId(), logf) {
+		return false, "campaign_filters_rejected"
+	}
+	return true, ""
 }
 
 func (s *AuctionService) callRTBCampaign(ctx context.Context, source *ortb.BidRequest, campaign *Campaign, imps []*ortb.Imp, format string, logf debugLogFunc) rtbCampaignResult {
