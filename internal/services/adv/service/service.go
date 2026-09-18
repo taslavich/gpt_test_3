@@ -760,13 +760,13 @@ func (s *AuctionService) auctionCore(
 				if remoteBid == nil {
 					continue
 				}
-				logf("[ADV][RTB_AUCTION_INPUT] request_id=%q imp_id=%q campaign_id=%q remote_bid_id=%q remote_price=%.12f", requestID, impID, campaign.ID, remoteBid.GetId(), float64(remoteBid.GetPrice()))
+				log.Printf("[ADV][RTB_AUCTION_INPUT] request_id=%q imp_id=%q campaign_id=%q remote_bid_id=%q remote_price=%.12f", requestID, impID, campaign.ID, remoteBid.GetId(), float64(remoteBid.GetPrice()))
 				cand, eligible, infraErr = s.evaluateRTBCandidate(ctx, campaign, remoteBid, imp, now, requestedFormat)
 				if !eligible {
 					reason = diagNoWinnerSelected
-					logf("[ADV][RTB_AUCTION_REJECT] request_id=%q imp_id=%q campaign_id=%q error=%v", requestID, impID, campaign.ID, infraErr)
+					log.Printf("[ADV][RTB_AUCTION_REJECT] request_id=%q imp_id=%q campaign_id=%q error=%v", requestID, impID, campaign.ID, infraErr)
 				} else {
-					logf("[ADV][RTB_AUCTION_CANDIDATE] request_id=%q imp_id=%q campaign_id=%q base_price=%.12f charge_price=%.12f effective_price=%.12f", requestID, impID, campaign.ID, cand.basePrice, cand.chargePrice, cand.effectivePrice)
+					log.Printf("[ADV][RTB_AUCTION_CANDIDATE] request_id=%q imp_id=%q campaign_id=%q base_price=%.12f charge_price=%.12f effective_price=%.12f", requestID, impID, campaign.ID, cand.basePrice, cand.chargePrice, cand.effectivePrice)
 				}
 			} else {
 				cand, eligible, reason, infraErr = s.evaluateCampaign(
@@ -890,7 +890,7 @@ func (s *AuctionService) auctionCore(
 			creativeID := ""
 			clickIDParam := ""
 			if cand.externalBid != nil {
-				logf("[ADV][RTB_AUCTION_ATTEMPT] request_id=%q imp_id=%q campaign_id=%q base_price=%.12f effective_price=%.12f", requestID, impID, campaignID, cand.basePrice, cand.effectivePrice)
+				log.Printf("[ADV][RTB_AUCTION_ATTEMPT] request_id=%q imp_id=%q campaign_id=%q base_price=%.12f effective_price=%.12f", requestID, impID, campaignID, cand.basePrice, cand.effectivePrice)
 				bid = buildExternalADVBid(cand)
 				creativeID = cand.externalBid.GetCrid()
 				if bid == nil {
@@ -943,7 +943,7 @@ func (s *AuctionService) auctionCore(
 			attemptResults[campaignID] = "winner"
 			setCandidateDiagnosticReason(states, cand.diagnosticSlot, diagBidWon)
 			if cand.externalBid != nil {
-				logf("[ADV][RTB_AUCTION_WINNER] request_id=%q imp_id=%q campaign_id=%q external_bid_id=%q base_price=%.12f charge_price=%.12f effective_price=%.12f", requestID, impID, campaignID, cand.externalBid.GetId(), candidateBasePrice(cand), cand.chargePrice, cand.effectivePrice)
+				log.Printf("[ADV][RTB_AUCTION_WINNER] request_id=%q imp_id=%q campaign_id=%q external_bid_id=%q base_price=%.12f charge_price=%.12f effective_price=%.12f", requestID, impID, campaignID, cand.externalBid.GetId(), candidateBasePrice(cand), cand.chargePrice, cand.effectivePrice)
 			}
 			logf(
 				"[ADV][WINNER] request_id=%q imp_id=%q format=%q winner_uuid=%q auction_position=%d auction_mode=%q campaign_id=%q creative_id=%q user_id=%q base_price=%.12f charge_price=%.12f effective_price=%.12f matched_creatives=%d",
