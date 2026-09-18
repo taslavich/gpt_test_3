@@ -22,7 +22,6 @@ import (
 	eventspb "gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/proto/buffer"
 	ortb "gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/proto/types/ortb_V2_5"
 	utils "gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/utils_grpc"
-	redis_service "gitlab.com/twinbid-exchange/RTB-exchange/internal/services/redis"
 	"google.golang.org/protobuf/proto"
 )
 
@@ -510,35 +509,26 @@ func (s *AuctionService) writeRTBResponseStats(_ context.Context, impUUID map[st
 			continue
 		}
 
-		// The auction context may already be cancelled specifically because an RTB
-		// endpoint timed out. Statistics must still record that timeout. Use the
-		// same short, detached write budget as Router and write only to an ORTB hash
-		// that already exists, which preserves the SSP adapter's `logged` contract.
+		// Use the same Redis writer contract as the other ORTB statistics writers:
+		// HSET creates the UUID hash if it does not exist yet, and the SSP adapter
+		// can safely add the remaining fields before publishing the UUID as ready.
 		log.Printf("[ADV][RTB_STATS_WRITE_ATTEMPT] imp_id=%q uuid=%q items=%v", impID, uuid, items)
 
 		writeCtx, cancel := context.WithTimeout(context.Background(), 30*time.Millisecond)
-		client, shardIndex, err := redis_service.SelectShard(s.statsRedisClients, uuid)
-		if err == nil {
-			var exists bool
-			exists, err = utils.UUIDKeyExistsInRedis(writeCtx, client, uuid)
-			if err == nil {
-				log.Printf("[ADV][RTB_STATS_KEY_CHECK] imp_id=%q uuid=%q shard=%d exists=%t", impID, uuid, shardIndex, exists)
-			}
-			if err == nil && exists {
-				pipe := client.Pipeline()
-				pipe.HSet(writeCtx, uuid, constants.ADV_RTB_RESPONSES_COLUMN, payload)
-				pipe.Expire(writeCtx, uuid, utils.RedisKeyTTL)
-				_, err = pipe.Exec(writeCtx)
-				if err == nil {
-					log.Printf("[ADV][RTB_STATS_WRITE_OK] imp_id=%q uuid=%q shard=%d items=%v", impID, uuid, shardIndex, items)
-				}
-			} else if err == nil {
-				log.Printf("[ADV][RTB_STATS_SKIP_NO_KEY] imp_id=%q uuid=%q shard=%d items=%v", impID, uuid, shardIndex, items)
-			}
-		}
+		err = utils.WriteBytesToRedis(
+			writeCtx,
+			s.statsRedisClients,
+			uuid,
+			constants.ADV_RTB_RESPONSES_COLUMN,
+			payload,
+			true,
+		)
 		cancel()
 		if err != nil {
 			log.Printf("[ADV][RTB_STATS_ERROR] imp_id=%q uuid=%q error=%v", impID, uuid, err)
+			continue
 		}
+
+		log.Printf("[ADV][RTB_STATS_WRITE_OK] imp_id=%q uuid=%q items=%v", impID, uuid, items)
 	}
 }
