@@ -27,13 +27,14 @@ import (
 )
 
 const (
-	rtb54AdsUserID      = "94416e97-6a74-42e5-8902-65e6cf7ac13c"
-	rtbBidFlyUserID     = "beab6526-7c1a-40e0-9a17-5903149fa58f"
-	rtbCodeNetworkError = "1"
-	rtbCodeInvalidJSON  = "3"
-	rtbCodeReadError    = "4"
-	rtbCodeRequestError = "55"
-	rtbCodeInvalidADM   = "800"
+	rtb54AdsUserID         = "94416e97-6a74-42e5-8902-65e6cf7ac13c"
+	rtbBidFlyUserID        = "beab6526-7c1a-40e0-9a17-5903149fa58f"
+	rtbBannerPartnerUserID = "c05e9083-91de-4b5c-b709-50ed41854844"
+	rtbCodeNetworkError    = "1"
+	rtbCodeInvalidJSON     = "3"
+	rtbCodeReadError       = "4"
+	rtbCodeRequestError    = "55"
+	rtbCodeInvalidADM      = "800"
 )
 
 type rtbCampaignResult struct {
@@ -234,6 +235,11 @@ func (s *AuctionService) rtbPreflightEligible(
 	if normalizeFormat(campaign.Format) != requestedFormat {
 		return false, "format_mismatch"
 	}
+	if strings.EqualFold(strings.TrimSpace(campaign.UserID), rtbBannerPartnerUserID) && normalizeFormat(campaign.Format) == constants.BAN {
+		if reason := bannerPartnerBANRequestRejectReason(req, imp); reason != "" {
+			return false, reason
+		}
+	}
 	if !trafficMatches(campaign.TrafficType, trafficType) {
 		return false, "traffic_type_mismatch"
 	}
@@ -427,7 +433,14 @@ func marshalRTBRequestForCampaign(req *ortb.BidRequest, campaign *Campaign, form
 	if err != nil {
 		return nil, err
 	}
-	if campaign == nil || strings.TrimSpace(campaign.UserID) != rtb54AdsUserID {
+	if campaign == nil {
+		return body, nil
+	}
+
+	userID := strings.TrimSpace(campaign.UserID)
+	is54Ads := userID == rtb54AdsUserID
+	isBannerPartnerBAN := userID == rtbBannerPartnerUserID && normalizeFormat(format) == constants.BAN
+	if !is54Ads && !isBannerPartnerBAN {
 		return body, nil
 	}
 
@@ -435,8 +448,48 @@ func marshalRTBRequestForCampaign(req *ortb.BidRequest, campaign *Campaign, form
 	if err := jsoniter.Unmarshal(body, &payload); err != nil {
 		return nil, err
 	}
-	normalize54AdsRTBRequest(payload, normalizeFormat(format) == constants.POP)
+	if is54Ads {
+		normalize54AdsRTBRequest(payload, normalizeFormat(format) == constants.POP)
+	} else {
+		normalizeBannerPartnerBANRTBRequest(payload)
+	}
 	return jsoniter.Marshal(payload)
+}
+
+func bannerPartnerBANRequestRejectReason(req *ortb.BidRequest, imp *ortb.Imp) string {
+	if imp == nil || imp.GetBanner() == nil {
+		return "banner_partner_banner_missing"
+	}
+	if req == nil || req.GetDevice() == nil {
+		return "banner_partner_device_missing"
+	}
+	if strings.TrimSpace(req.GetDevice().GetUa()) == "" {
+		return "banner_partner_device_ua_missing"
+	}
+	if strings.TrimSpace(req.GetDevice().GetIp()) == "" {
+		return "banner_partner_device_ip_missing"
+	}
+	return ""
+}
+
+func normalizeBannerPartnerBANRTBRequest(payload map[string]any) {
+	if payload == nil {
+		return
+	}
+	rawImps, ok := payload["imp"].([]any)
+	if !ok {
+		return
+	}
+	for _, rawImp := range rawImps {
+		imp, ok := rawImp.(map[string]any)
+		if !ok {
+			continue
+		}
+		// This partner-specific normalization applies only to BAN campaigns.
+		// Preserve banner exactly as received and omit parallel native payload
+		// from the outbound copy sent to this banner endpoint.
+		delete(imp, "native")
+	}
 }
 
 func normalize54AdsRTBRequest(payload map[string]any, pop bool) {

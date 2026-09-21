@@ -329,3 +329,84 @@ func TestBidFlyRTBNURLAddsMissingPrice(t *testing.T) {
 		t.Fatalf("existing query parameters changed: %q", got)
 	}
 }
+
+func TestBannerPartnerBANRequestRequirements(t *testing.T) {
+	impID := "imp-banner"
+	ua := "Mozilla/5.0"
+	ip := "203.0.113.10"
+	w := int32(300)
+	req := &ortb.BidRequest{
+		Device: &ortb.Device{Ua: &ua, Ip: &ip},
+		Imp:    []*ortb.Imp{{Id: &impID, Banner: &ortb.Banner{W: &w}}},
+	}
+	if reason := bannerPartnerBANRequestRejectReason(req, req.GetImp()[0]); reason != "" {
+		t.Fatalf("valid banner request rejected: %q", reason)
+	}
+
+	noBanner := &ortb.Imp{Id: &impID}
+	if reason := bannerPartnerBANRequestRejectReason(req, noBanner); reason != "banner_partner_banner_missing" {
+		t.Fatalf("missing banner reason=%q", reason)
+	}
+
+	reqNoUA := &ortb.BidRequest{Device: &ortb.Device{Ip: &ip}, Imp: req.GetImp()}
+	if reason := bannerPartnerBANRequestRejectReason(reqNoUA, reqNoUA.GetImp()[0]); reason != "banner_partner_device_ua_missing" {
+		t.Fatalf("missing ua reason=%q", reason)
+	}
+
+	reqNoIP := &ortb.BidRequest{Device: &ortb.Device{Ua: &ua}, Imp: req.GetImp()}
+	if reason := bannerPartnerBANRequestRejectReason(reqNoIP, reqNoIP.GetImp()[0]); reason != "banner_partner_device_ip_missing" {
+		t.Fatalf("missing ip reason=%q", reason)
+	}
+}
+
+func TestBannerPartnerNormalizationOnlyForBAN(t *testing.T) {
+	requestID := "req-banner-partner"
+	impID := "imp-banner"
+	ua := "Mozilla/5.0"
+	ip := "203.0.113.10"
+	w := int32(300)
+	h := int32(250)
+	nativeRequest := `{"native":{"ver":"1.2"}}`
+	campaign := &Campaign{ID: "campaign-banner-partner", UserID: rtbBannerPartnerUserID, RTB: true}
+	req := &ortb.BidRequest{
+		Id:     &requestID,
+		Device: &ortb.Device{Ua: &ua, Ip: &ip},
+		Imp: []*ortb.Imp{{
+			Id:     &impID,
+			Banner: &ortb.Banner{W: &w, H: &h},
+			Native: &ortb.Native{Request: &nativeRequest},
+		}},
+	}
+
+	banBody, err := marshalRTBRequestForCampaign(req, campaign, constants.BAN)
+	if err != nil {
+		t.Fatalf("marshal BAN request: %v", err)
+	}
+	var ban map[string]any
+	if err := json.Unmarshal(banBody, &ban); err != nil {
+		t.Fatalf("decode BAN request: %v", err)
+	}
+	banImp := ban["imp"].([]any)[0].(map[string]any)
+	if _, ok := banImp["banner"]; !ok {
+		t.Fatal("BAN request must preserve banner")
+	}
+	if _, ok := banImp["native"]; ok {
+		t.Fatal("BAN partner request must omit parallel native payload")
+	}
+
+	popBody, err := marshalRTBRequestForCampaign(req, campaign, constants.POP)
+	if err != nil {
+		t.Fatalf("marshal non-BAN request: %v", err)
+	}
+	var pop map[string]any
+	if err := json.Unmarshal(popBody, &pop); err != nil {
+		t.Fatalf("decode non-BAN request: %v", err)
+	}
+	popImp := pop["imp"].([]any)[0].(map[string]any)
+	if _, ok := popImp["native"]; !ok {
+		t.Fatal("non-BAN campaign must keep generic RTB request unchanged")
+	}
+	if req.GetImp()[0].GetNative() == nil {
+		t.Fatal("source request must not be mutated")
+	}
+}
