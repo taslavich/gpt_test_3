@@ -27,7 +27,7 @@ import (
 )
 
 const (
-	rtb54AdsUserID      = "9cf9b083-9687-42ce-9117-3df208a2a2cd"
+	rtb54AdsUserID      = "94416e97-6a74-42e5-8902-65e6cf7ac13c"
 	rtbBidFlyUserID     = "beab6526-7c1a-40e0-9a17-5903149fa58f"
 	rtbCodeNetworkError = "1"
 	rtbCodeInvalidJSON  = "3"
