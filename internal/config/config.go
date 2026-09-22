@@ -371,6 +371,16 @@ type PercenterConfig struct {
 	SimpleWinRateRetention    float64       `yaml:"SIMPLE_WIN_RATE_RETENTION" env:"SIMPLE_WIN_RATE_RETENTION" env-default:"0.5"`
 	SimpleMarginSearchSteps   string        `yaml:"SIMPLE_MARGIN_SEARCH_STEPS" env:"SIMPLE_MARGIN_SEARCH_STEPS" env-default:"5,2,1"`
 	SimpleMaxMargin           float64       `yaml:"SIMPLE_MAX_MARGIN" env:"SIMPLE_MAX_MARGIN" env-default:"0.9"`
+
+	ComplexOptimizeInterval    time.Duration `yaml:"COMPLEX_OPTIMIZE_INTERVAL" env:"COMPLEX_OPTIMIZE_INTERVAL" env-default:"5m"`
+	ComplexRebenchmarkInterval time.Duration `yaml:"COMPLEX_REBENCHMARK_INTERVAL" env:"COMPLEX_REBENCHMARK_INTERVAL" env-default:"6h"`
+	ComplexStateTTL            time.Duration `yaml:"COMPLEX_STATE_TTL" env:"COMPLEX_STATE_TTL" env-default:"168h"`
+	ComplexMinImpressions      uint64        `yaml:"COMPLEX_MIN_IMPRESSIONS" env:"COMPLEX_MIN_IMPRESSIONS" env-default:"5"`
+	ComplexBuyoutRetention     float64       `yaml:"COMPLEX_BUYOUT_RETENTION" env:"COMPLEX_BUYOUT_RETENTION" env-default:"0.8"`
+	ComplexEfficiencyRetention float64       `yaml:"COMPLEX_EFFICIENCY_RETENTION" env:"COMPLEX_EFFICIENCY_RETENTION" env-default:"0.8"`
+	ComplexSSPSearchSteps      string        `yaml:"COMPLEX_SSP_SEARCH_STEPS" env:"COMPLEX_SSP_SEARCH_STEPS" env-default:"10,5,2,1"`
+	ComplexMarginSearchSteps   string        `yaml:"COMPLEX_MARGIN_SEARCH_STEPS" env:"COMPLEX_MARGIN_SEARCH_STEPS" env-default:"10,5,2,1"`
+	ComplexMaxMargin           float64       `yaml:"COMPLEX_MAX_MARGIN" env:"COMPLEX_MAX_MARGIN" env-default:"0.9"`
 }
 
 type ClickhouseLoaderConfig struct {

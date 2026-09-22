@@ -47,6 +47,7 @@ const (
 	diagInvalidChargePrice
 	diagCampaignSpentReadFailed
 	diagCampaignBalanceInsufficient
+	diagUserBalanceInsufficient
 	diagPacingCheckFailed
 	diagPacingCurrentSlotReadFailed
 	diagPacingCurrentSlotKeyInvalid
@@ -187,6 +188,7 @@ var diagnosticDefinitions = [diagnosticReasonCount]diagnosticDefinition{
 	diagInvalidChargePrice:                 {Code: 310, Name: "invalid_charge_price", Description: "calculated charge price is non-positive or non-finite", Scope: diagnosticScopeCampaign},
 	diagCampaignSpentReadFailed:            {Code: 311, Name: "campaign_spent_read_failed", Description: "campaign spend could not be read from runtime Redis", Scope: diagnosticScopeCampaign},
 	diagCampaignBalanceInsufficient:        {Code: 312, Name: "campaign_balance_insufficient", Description: "campaign remaining budget is smaller than charge price", Scope: diagnosticScopeCampaign},
+	diagUserBalanceInsufficient:            {Code: 337, Name: "user_balance_insufficient", Description: "user remaining balance is smaller than the resolved candidate charge price", Scope: diagnosticScopeCampaign},
 	diagPacingCheckFailed:                  {Code: 313, Name: "pacing_check_failed", Description: "pacing eligibility check returned an unclassified infrastructure or data error", Scope: diagnosticScopeCampaign},
 	diagPacingCurrentSlotReadFailed:        {Code: 320, Name: "pacing_current_slot_read_failed", Description: "current pacing slot key could not be read from runtime Redis", Scope: diagnosticScopeCampaign},
 	diagPacingCurrentSlotKeyInvalid:        {Code: 321, Name: "pacing_current_slot_key_invalid", Description: "current pacing slot points to an invalid slot-spend key", Scope: diagnosticScopeCampaign},

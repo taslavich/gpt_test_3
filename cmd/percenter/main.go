@@ -33,7 +33,11 @@ func run() error {
 	if err != nil {
 		return fmt.Errorf("load percenter config: %w", err)
 	}
-	policy, err := simplePolicyFromConfig(cfg)
+	simplePolicy, err := simplePolicyFromConfig(cfg)
+	if err != nil {
+		return err
+	}
+	complexPolicy, err := complexPolicyFromConfig(cfg)
 	if err != nil {
 		return err
 	}
@@ -54,7 +58,8 @@ func run() error {
 	if err := redisClient.Ping(ctx).Err(); err != nil {
 		return fmt.Errorf("percenter Redis unavailable: %w", err)
 	}
-	store := percenter.NewSimpleStateStore(redisClient, policy)
+	simpleStore := percenter.NewSimpleStateStore(redisClient, simplePolicy)
+	complexStore := percenter.NewComplexStateStore(redisClient, complexPolicy)
 
 	clickhouseConn, err := clickhouse.Open(&clickhouse.Options{
 		Addr:     []string{net.JoinHostPort(cfg.Clickhouse.Host, cfg.Clickhouse.Port)},
@@ -77,20 +82,21 @@ func run() error {
 	}
 
 	log.Printf(
-		"[PERCENTER][STARTUP] simple optimizer enabled redis_db=%d interval=%s rebenchmark=%s min_impressions=%d steps_pp=%v max_margin=%.2f",
-		cfg.RedisDBAdvPercenter, policy.OptimizeInterval, policy.RebenchmarkInterval, policy.MinImpressions, policy.SearchStepsPP, policy.MaxMargin,
+		"[PERCENTER][STARTUP] simple+complex enabled redis_db=%d simple_interval=%s complex_interval=%s rebenchmark=%s min_impressions=%d simple_steps=%v complex_ssp_steps=%v complex_margin_steps=%v max_margin=%.2f",
+		cfg.RedisDBAdvPercenter, simplePolicy.OptimizeInterval, complexPolicy.OptimizeInterval, complexPolicy.RebenchmarkInterval, complexPolicy.MinImpressions,
+		simplePolicy.SearchStepsPP, complexPolicy.SSPSearchStepsPercent, complexPolicy.MarginSearchStepsPP, complexPolicy.MaxMargin,
 	)
 
-	runTick := func(now time.Time) {
+	runSimpleTick := func(now time.Time) {
 		metrics, loadErr := percenter.LoadSimpleWindowMetrics(
-			ctx, clickhouseConn, cfg.Clickhouse.Database, cfg.Clickhouse.TableOrtb, cfg.Clickhouse.TableImpressions, policy.OptimizeInterval,
+			ctx, clickhouseConn, cfg.Clickhouse.Database, cfg.Clickhouse.TableOrtb, cfg.Clickhouse.TableImpressions, simplePolicy.OptimizeInterval,
 		)
 		if loadErr != nil {
 			log.Printf("[PERCENTER][SIMPLE][METRICS_ERROR] %v", loadErr)
 			return
 		}
 		metricIndex := percenter.NewSimpleMetricsIndex(metrics)
-		states, stateErr := store.States(ctx)
+		states, stateErr := simpleStore.States(ctx)
 		if stateErr != nil {
 			log.Printf("[PERCENTER][SIMPLE][STATE_LIST_ERROR] %v", stateErr)
 			return
@@ -103,11 +109,11 @@ func run() error {
 			if !ok {
 				continue
 			}
-			next, changed := percenter.AdvanceSimple(state, metric, policy, now)
+			next, changed := percenter.AdvanceSimple(state, metric, simplePolicy, now)
 			if !changed {
 				continue
 			}
-			saved, saveErr := store.SaveCAS(ctx, next, state.PointVersion)
+			saved, saveErr := simpleStore.SaveCAS(ctx, next, state.PointVersion)
 			if saveErr != nil {
 				log.Printf("[PERCENTER][SIMPLE][STATE_SAVE_ERROR] segment_hash=%s error=%v", state.SegmentHash, saveErr)
 				continue
@@ -128,10 +134,62 @@ func run() error {
 		}
 	}
 
-	// Run once at startup; state cadence still prevents a point from moving more
-	// often than every configured optimization interval.
+	runComplexTick := func(now time.Time) {
+		metrics, loadErr := percenter.LoadComplexWindowMetrics(
+			ctx, clickhouseConn, cfg.Clickhouse.Database, cfg.Clickhouse.TableOrtb, cfg.Clickhouse.TableImpressions, complexPolicy.OptimizeInterval,
+		)
+		if loadErr != nil {
+			log.Printf("[PERCENTER][COMPLEX][METRICS_ERROR] %v", loadErr)
+			return
+		}
+		metricIndex := percenter.NewComplexMetricsIndex(metrics)
+		states, stateErr := complexStore.States(ctx)
+		if stateErr != nil {
+			log.Printf("[PERCENTER][COMPLEX][STATE_LIST_ERROR] %v", stateErr)
+			return
+		}
+		for _, state := range states {
+			if state.TypeModel != percenter.TypeModelComplex {
+				continue
+			}
+			metric, ok := metricIndex.ForState(state)
+			if !ok {
+				continue
+			}
+			next, changed := percenter.AdvanceComplex(state, metric, complexPolicy, now)
+			if !changed {
+				continue
+			}
+			saved, saveErr := complexStore.SaveCAS(ctx, next, state.PointVersion)
+			if saveErr != nil {
+				log.Printf("[PERCENTER][COMPLEX][STATE_SAVE_ERROR] segment_hash=%s error=%v", state.SegmentHash, saveErr)
+				continue
+			}
+			if !saved {
+				log.Printf("[PERCENTER][COMPLEX][STATE_RACE_SKIP] segment_hash=%s expected_point_version=%d", state.SegmentHash, state.PointVersion)
+				continue
+			}
+			reason := "state_updated"
+			if len(next.DecisionHistory) > 0 {
+				reason = next.DecisionHistory[len(next.DecisionHistory)-1].Reason
+			}
+			log.Printf(
+				"[PERCENTER][COMPLEX][STATE_UPDATED] segment_hash=%s campaign_id=%s phase=%s point_version=%d advertiser_price=%.9f margin=%.4f ssp_bid=%.9f baseline_buyout=%.6f baseline_efficiency=%.6f requests=%d impressions=%d buyout=%.6f efficiency=%.6f profit_per_opportunity=%.9f reason=%s",
+				next.SegmentHash, next.CampaignID, next.Phase, next.PointVersion, next.AdvertiserPrice, next.Margin, next.SSPBid, next.BaselineBuyout, next.BaselineEfficiency,
+				metric.Requests, metric.Impressions, metric.Buyout(), metric.Efficiency(), metric.ProfitPerRelevantOpportunity(), reason,
+			)
+		}
+	}
+
+	runTick := func(now time.Time) {
+		runSimpleTick(now)
+		runComplexTick(now)
+	}
+
+	// Both policies are fixed to 5m by validation below, so one ticker services
+	// both optimizers without changing Simple cadence.
 	runTick(time.Now().UTC())
-	ticker := time.NewTicker(policy.OptimizeInterval)
+	ticker := time.NewTicker(simplePolicy.OptimizeInterval)
 	defer ticker.Stop()
 
 	stop := make(chan os.Signal, 1)
@@ -186,13 +244,75 @@ func simplePolicyFromConfig(cfg *config.PercenterConfig) (percenter.SimplePolicy
 	return policy, nil
 }
 
+func complexPolicyFromConfig(cfg *config.PercenterConfig) (percenter.ComplexPolicy, error) {
+	if cfg == nil {
+		return percenter.ComplexPolicy{}, fmt.Errorf("percenter config is nil")
+	}
+	sspSteps, err := parseSteps(cfg.ComplexSSPSearchSteps)
+	if err != nil {
+		return percenter.ComplexPolicy{}, err
+	}
+	marginSteps, err := parseSteps(cfg.ComplexMarginSearchSteps)
+	if err != nil {
+		return percenter.ComplexPolicy{}, err
+	}
+	policy := percenter.ComplexPolicy{
+		BuyoutRetention:       cfg.ComplexBuyoutRetention,
+		EfficiencyRetention:   cfg.ComplexEfficiencyRetention,
+		MinImpressions:        cfg.ComplexMinImpressions,
+		OptimizeInterval:      cfg.ComplexOptimizeInterval,
+		RebenchmarkInterval:   cfg.ComplexRebenchmarkInterval,
+		SSPSearchStepsPercent: sspSteps,
+		MarginSearchStepsPP:   marginSteps,
+		MaxMargin:             cfg.ComplexMaxMargin,
+		StateTTL:              cfg.ComplexStateTTL,
+	}.Normalize()
+	if !stepsEqual(policy.SSPSearchStepsPercent, []float64{10, 5, 2, 1}) {
+		return percenter.ComplexPolicy{}, fmt.Errorf("COMPLEX_SSP_SEARCH_STEPS must be exactly 10,5,2,1")
+	}
+	if !stepsEqual(policy.MarginSearchStepsPP, []float64{10, 5, 2, 1}) {
+		return percenter.ComplexPolicy{}, fmt.Errorf("COMPLEX_MARGIN_SEARCH_STEPS must be exactly 10,5,2,1")
+	}
+	if policy.BuyoutRetention != 0.80 {
+		return percenter.ComplexPolicy{}, fmt.Errorf("COMPLEX_BUYOUT_RETENTION must be 0.8")
+	}
+	if policy.EfficiencyRetention != 0.80 {
+		return percenter.ComplexPolicy{}, fmt.Errorf("COMPLEX_EFFICIENCY_RETENTION must be 0.8")
+	}
+	if policy.MinImpressions != 5 {
+		return percenter.ComplexPolicy{}, fmt.Errorf("COMPLEX_MIN_IMPRESSIONS must be 5")
+	}
+	if policy.OptimizeInterval != 5*time.Minute {
+		return percenter.ComplexPolicy{}, fmt.Errorf("COMPLEX_OPTIMIZE_INTERVAL must be 5m")
+	}
+	if policy.RebenchmarkInterval != 6*time.Hour {
+		return percenter.ComplexPolicy{}, fmt.Errorf("COMPLEX_REBENCHMARK_INTERVAL must be 6h")
+	}
+	if policy.MaxMargin != 0.90 {
+		return percenter.ComplexPolicy{}, fmt.Errorf("COMPLEX_MAX_MARGIN must be 0.9")
+	}
+	return policy, nil
+}
+
+func stepsEqual(got, want []float64) bool {
+	if len(got) != len(want) {
+		return false
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			return false
+		}
+	}
+	return true
+}
+
 func parseSteps(raw string) ([]float64, error) {
 	parts := strings.Split(raw, ",")
 	steps := make([]float64, 0, len(parts))
 	for _, part := range parts {
 		value, err := strconv.ParseFloat(strings.TrimSpace(part), 64)
 		if err != nil || value <= 0 {
-			return nil, fmt.Errorf("invalid SIMPLE_MARGIN_SEARCH_STEPS %q", raw)
+			return nil, fmt.Errorf("invalid percenter search steps %q", raw)
 		}
 		steps = append(steps, value)
 	}

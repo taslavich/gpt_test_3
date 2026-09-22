@@ -123,6 +123,8 @@ func main() {
 	auctionService := auction.NewAuctionService(runtimeStore, winnerStore, percentStore, qualityStore, siteIDQualityStore)
 	simplePolicy := percenter.SimplePolicy{}.Normalize()
 	auctionService.ConfigureSimplePercenter(percenter.NewSimpleStateStore(percenterRedis, simplePolicy), simplePolicy)
+	complexPolicy := percenter.ComplexPolicy{}.Normalize()
+	auctionService.ConfigureComplexPercenter(percenter.NewComplexStateStore(percenterRedis, complexPolicy), complexPolicy)
 	auctionService.SetStatsRedisClients(statsRedisClients)
 	auctionService.SetVPNClassifier(vpnStore)
 	auctionService.SetAntiPerekrutEnabled(cfg.AntiperekrutEnabled)

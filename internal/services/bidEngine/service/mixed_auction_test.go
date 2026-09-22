@@ -291,3 +291,37 @@ func TestExternalADVWinnerUsesDSPStyleNURLWithoutRTBEntity(t *testing.T) {
 		t.Fatalf("external ADV BURL UUIDs=%v want [%s]", burlUUIDs, uuid)
 	}
 }
+
+func TestComplexWinnerBasePriceFlowsToWinDspPrice(t *testing.T) {
+	requestID, impID, uuid := "req-complex-dynamic-price", "imp-1", "uuid-1"
+	sspBid := float32(0.50)
+	advertiserPrice := 0.50 / (1.0 - 0.30)
+	adm := "https://adv.example/complex"
+
+	req := &bidEngineGrpc.BidEngineRequest_V2_5{
+		BidRequest: &ortb.BidRequest{Id: &requestID, Imp: []*ortb.Imp{{Id: &impID}}},
+		ReadyBidResponse: &ortb.BidResponse{Seatbid: []*ortb.SeatBid{{Bid: []*ortb.Bid{{
+			Impid: &impID, Price: &sspBid, Adm: &adm,
+		}}}}},
+		ImpIdUuid:        map[string]string{impID: uuid},
+		WinnerUserIds:    map[string]string{impID: "user-complex"},
+		WinnerBasePrices: map[string]float64{impID: advertiserPrice},
+		SspDomain:        "ssp.example",
+		Format:           constants.POP,
+	}
+
+	response, clickhouse, _, _ := GetWinnerBidInternal_V_2_5(
+		context.Background(), req, 0, req.ImpIdUuid, nil, nil, false, "", "callbacks.example",
+	)
+	bids := response.GetSeatbid()[0].GetBid()
+	if len(bids) != 1 || math.Abs(float64(bids[0].GetPrice())-0.50) > 1e-6 {
+		t.Fatalf("resolved SSP bid changed downstream: %+v", bids)
+	}
+	row := clickhouse[uuid]
+	if row == nil || row.WinDspPrice == nil {
+		t.Fatalf("missing ClickHouse win_dsp_price: %+v", row)
+	}
+	if math.Abs(float64(*row.WinDspPrice)-advertiserPrice) > 1e-6 {
+		t.Fatalf("win_dsp_price=%v want resolved advertiser price %v", *row.WinDspPrice, advertiserPrice)
+	}
+}

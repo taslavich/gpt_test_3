@@ -171,17 +171,19 @@ type AuctionService struct {
 	// operations even if the service is ever built for a 32-bit architecture.
 	requestCounter uint64
 
-	snapshot              atomic.Pointer[Snapshot]
-	runtime               *RuntimeStore
-	winners               *WinnerStore
-	percents              *PercentStore
-	quality               *QualityStore
-	siteIDQuality         *SiteIDQualityStore
-	simplePercenter       *percenter.SimpleStateStore
-	simplePercenterPolicy percenter.SimplePolicy
-	vpnClassifier         VPNClassifier
-	rtbHTTPClient         *http.Client
-	statsRedisClients     []*redis.Client
+	snapshot               atomic.Pointer[Snapshot]
+	runtime                *RuntimeStore
+	winners                *WinnerStore
+	percents               *PercentStore
+	quality                *QualityStore
+	siteIDQuality          *SiteIDQualityStore
+	simplePercenter        *percenter.SimpleStateStore
+	simplePercenterPolicy  percenter.SimplePolicy
+	complexPercenter       *percenter.ComplexStateStore
+	complexPercenterPolicy percenter.ComplexPolicy
+	vpnClassifier          VPNClassifier
+	rtbHTTPClient          *http.Client
+	statsRedisClients      []*redis.Client
 
 	antiperekrut        *AntiPerekrutManager
 	antiperekrutEnabled bool
@@ -1392,6 +1394,19 @@ func logCandidatePool(
 	}
 }
 
+func resolvedComplexBalanceReason(campaignRemaining, userRemaining, chargePrice float64, enforceUserRemaining bool) diagnosticReason {
+	if !finitePositive(chargePrice) {
+		return diagInvalidChargePrice
+	}
+	if campaignRemaining < chargePrice {
+		return diagCampaignBalanceInsufficient
+	}
+	if enforceUserRemaining && userRemaining < chargePrice {
+		return diagUserBalanceInsufficient
+	}
+	return diagNone
+}
+
 func candidateBasePrice(cand candidate) float64 {
 	if cand.basePrice > 0 {
 		return cand.basePrice
@@ -1615,7 +1630,10 @@ func (s *AuctionService) evaluateCampaign(
 		return candidate{}, false, diagCampaignSpentReadFailed, err
 	}
 	campaignRemaining := campaign.GoalTotalDollars - campaignSpent
-	if campaignRemaining < chargePrice {
+	// Complex pricing can change the advertiser price while preserving the original
+	// bid used for winner selection. Its final charge is checked after the persisted
+	// Complex point is resolved below. Other modes keep the legacy early guard.
+	if !shouldUseComplexPercenter(campaign) && campaignRemaining < chargePrice {
 		logf("[ADV][CAMPAIGN_REJECT] request_id=%q imp_id=%q format=%q campaign_id=%q user_id=%q reason=campaign_balance_insufficient campaign_goal_total_dollars=%.12f campaign_spent=%.12f campaign_remaining=%.12f charge_price=%.12f", requestID, impID, requestedFormat, campaignID, userID, campaign.GoalTotalDollars, campaignSpent, campaignRemaining, chargePrice)
 		return candidate{}, false, diagCampaignBalanceInsufficient, nil
 	}
@@ -1689,11 +1707,24 @@ func (s *AuctionService) evaluateCampaign(
 	pointVersion := uint64(0)
 	deduction := pricing.Percent
 	effective := CalculateEffectiveAuctionPrice(campaign.BasePrice, deduction)
+	advertiserPrice := campaign.BasePrice
 	if normalizeTypeModel(campaign.TypeModel) == TypeModelSimple {
 		simplePricing := s.resolveSimplePricing(ctx, campaign, segmentHash, campaign.BasePrice, pricing.MinMargin, false, now)
 		deduction = simplePricing.Margin
 		effective = simplePricing.SSPBid
 		pointVersion = simplePricing.PointVersion
+	} else if shouldUseComplexPercenter(campaign) {
+		complexPricing := s.resolveComplexPricing(ctx, campaign, segmentHash, campaign.BasePrice, pricing.MinMargin, now)
+		deduction = complexPricing.Margin
+		effective = complexPricing.SSPBid
+		advertiserPrice = complexPricing.AdvertiserPrice
+		pointVersion = complexPricing.PointVersion
+		chargePrice = CalculateChargePrice(advertiserPrice, campaign.PricingModel, requestedFormat)
+		balanceReason := resolvedComplexBalanceReason(campaignRemaining, userRemaining, chargePrice, s.antiperekrutEnabled)
+		if balanceReason != diagNone {
+			logf("[ADV][CAMPAIGN_REJECT] request_id=%q imp_id=%q format=%q campaign_id=%q user_id=%q reason=%q original_bid=%.12f advertiser_price=%.12f campaign_remaining=%.12f user_remaining=%.12f charge_price=%.12f", requestID, impID, requestedFormat, campaignID, userID, diagnosticReasonName(balanceReason), campaign.BasePrice, advertiserPrice, campaignRemaining, userRemaining, chargePrice)
+			return candidate{}, false, balanceReason, nil
+		}
 	}
 	if effective <= 0 || math.IsNaN(effective) || math.IsInf(effective, 0) {
 		logf("[ADV][CAMPAIGN_REJECT] request_id=%q imp_id=%q format=%q campaign_id=%q user_id=%q reason=effective_price_non_positive base_price=%.12f deduction=%.12f effective_price=%.12f", requestID, impID, requestedFormat, campaignID, userID, campaign.BasePrice, deduction, effective)
@@ -1709,14 +1740,14 @@ func (s *AuctionService) evaluateCampaign(
 		userID,
 		campaignFormat,
 		len(creatives),
-		campaign.BasePrice,
+		advertiserPrice,
 		chargePrice,
 		deduction,
 		effective,
 		campaignRemaining,
 		userRemaining,
 	)
-	return candidate{campaign: campaign, creatives: creatives, chargePrice: chargePrice, effectivePrice: effective, basePrice: campaign.BasePrice, originalBid: campaign.BasePrice, segmentHash: segmentHash, pointVersion: pointVersion}, true, diagNone, nil
+	return candidate{campaign: campaign, creatives: creatives, chargePrice: chargePrice, effectivePrice: effective, basePrice: advertiserPrice, originalBid: campaign.BasePrice, segmentHash: segmentHash, pointVersion: pointVersion}, true, diagNone, nil
 }
 
 func diagnosticReasonForAntiPerekrutEligibility(reason AntiPerekrutEligibilityReason) diagnosticReason {

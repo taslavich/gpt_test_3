@@ -343,3 +343,87 @@ func TestRTBComplexWarningIsAsyncAndDeduplicated(t *testing.T) {
 		t.Fatal("new snapshot revision must be allowed to emit a new warning")
 	}
 }
+
+func TestComplexPercenterRoutingExcludesRTBTypeModel2(t *testing.T) {
+	store := newPercentStoreForPolicyTest(t, PercentMap{
+		PercentMapDefaultKey:    0.20,
+		PercentMapRTBDefaultKey: 0.30,
+	})
+	service := &AuctionService{percents: store}
+
+	ordinary := &Campaign{ID: "ordinary-complex", TypeModel: TypeModelComplex}
+	if !shouldUseComplexPercenter(ordinary) {
+		t.Fatal("ordinary type_model=2 must use Complex percenter")
+	}
+
+	rtb := &Campaign{ID: "rtb-complex-no-explicit-key", RTB: true, TypeModel: TypeModelComplex}
+	if shouldUseComplexPercenter(rtb) {
+		t.Fatal("RTB + type_model=2 must never create/read Complex state")
+	}
+	decision, err := service.ResolvePricingDecision(rtb)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if decision.Mode != PercentRoutingRTBComplexFallback || math.Abs(decision.Percent-0.30) > 1e-12 || math.Abs(decision.MinMargin-0.30) > 1e-12 {
+		t.Fatalf("RTB + type_model=2 must use exact ALL_RTB fallback: %+v", decision)
+	}
+}
+
+func TestComplexCandidateKeepsOriginalBidSeparateFromAdvertiserPrice(t *testing.T) {
+	const originalBid = 1.00
+	const sspBid = 0.50
+	const margin = 0.30
+	advertiserPrice := sspBid / (1 - margin)
+
+	complex := candidate{
+		campaign:       &Campaign{ID: "complex", BasePrice: originalBid, TypeModel: TypeModelComplex},
+		basePrice:      advertiserPrice,
+		originalBid:    originalBid,
+		effectivePrice: sspBid,
+	}
+	other := candidate{
+		campaign:       &Campaign{ID: "other", BasePrice: 0.90, TypeModel: TypeModelSimple},
+		basePrice:      0.90,
+		originalBid:    0.90,
+		effectivePrice: 0.80,
+	}
+
+	if got := candidateOriginalBid(complex); math.Abs(got-originalBid) > 1e-12 {
+		t.Fatalf("candidateOriginalBid=%v want %v", got, originalBid)
+	}
+	if got := candidateBasePrice(complex); math.Abs(got-advertiserPrice) > 1e-12 {
+		t.Fatalf("candidateBasePrice=%v want advertiser price %v", got, advertiserPrice)
+	}
+	pool := prepareCandidatePool([]candidate{other, complex}, auctionModeMaxBid, nil)
+	if len(pool) == 0 || pool[0].campaign.ID != "complex" {
+		t.Fatalf("winner selection must use original bid: pool=%+v", pool)
+	}
+}
+
+func TestComplexResolvedBalanceUsesDynamicAdvertiserPrice(t *testing.T) {
+	const originalBid = 1.00
+	originalCharge := CalculateChargePrice(originalBid, PricingModelCPM, "POP")
+
+	lowAdvertiserPrice := 0.50 / (1 - 0.30)
+	lowCharge := CalculateChargePrice(lowAdvertiserPrice, PricingModelCPM, "POP")
+	if !(lowCharge < originalCharge) {
+		t.Fatalf("test setup invalid: low charge=%v original charge=%v", lowCharge, originalCharge)
+	}
+	remainingBetween := (lowCharge + originalCharge) / 2
+	if got := resolvedComplexBalanceReason(remainingBetween, remainingBetween, lowCharge, true); got != diagNone {
+		t.Fatalf("dynamic advertiser price below original must use lower resolved charge: reason=%s", diagnosticReasonName(got))
+	}
+
+	highAdvertiserPrice := 1.40
+	highCharge := CalculateChargePrice(highAdvertiserPrice, PricingModelCPM, "POP")
+	if !(highCharge > originalCharge) {
+		t.Fatalf("test setup invalid: high charge=%v original charge=%v", highCharge, originalCharge)
+	}
+	remainingBetweenHigh := (originalCharge + highCharge) / 2
+	if got := resolvedComplexBalanceReason(remainingBetweenHigh, highCharge*2, highCharge, true); got != diagCampaignBalanceInsufficient {
+		t.Fatalf("campaign balance must be checked against resolved higher charge: reason=%s", diagnosticReasonName(got))
+	}
+	if got := resolvedComplexBalanceReason(highCharge*2, remainingBetweenHigh, highCharge, true); got != diagUserBalanceInsufficient {
+		t.Fatalf("user balance must be checked against resolved higher charge: reason=%s", diagnosticReasonName(got))
+	}
+}
