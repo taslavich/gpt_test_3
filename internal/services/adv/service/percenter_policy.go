@@ -1,0 +1,202 @@
+package auction
+
+import (
+	"crypto/sha256"
+	"encoding/hex"
+	"fmt"
+	"math"
+	"strconv"
+	"strings"
+
+	ortb "gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/proto/types/ortb_V2_5"
+	"gitlab.com/twinbid-exchange/RTB-exchange/internal/ua"
+)
+
+const (
+	TypeModelSimple  = 1
+	TypeModelComplex = 2
+	TypeModelMapOnly = 3
+
+	DefaultBusinessMinMargin = 0.20
+	PromoPercenterMinMargin  = 0.30
+	UnknownSegmentValue      = "__unknown__"
+)
+
+type PercentRoutingMode uint8
+
+const (
+	PercentRoutingPercenterFloor PercentRoutingMode = iota + 1
+	PercentRoutingMapOnly
+	PercentRoutingRTBComplexFallback
+)
+
+type PricingDecision struct {
+	Mode       PercentRoutingMode
+	MapPercent float64
+	HardMin    float64
+	MinMargin  float64
+	MaxMargin  float64
+	Percent    float64
+}
+
+func normalizeTypeModel(value int) int {
+	if value == 0 {
+		return TypeModelSimple
+	}
+	return value
+}
+
+func validTypeModel(value int) bool {
+	value = normalizeTypeModel(value)
+	return value == TypeModelSimple || value == TypeModelComplex || value == TypeModelMapOnly
+}
+
+func businessHardMin(campaign *Campaign) float64 {
+	if campaign == nil {
+		return DefaultBusinessMinMargin
+	}
+	model := normalizeTypeModel(campaign.TypeModel)
+	if (model == TypeModelSimple || model == TypeModelComplex) && campaign.PromoSpendRemaining > 0 {
+		return PromoPercenterMinMargin
+	}
+	return DefaultBusinessMinMargin
+}
+
+func (s *AuctionService) ResolvePricingDecision(campaign *Campaign) (PricingDecision, error) {
+	if campaign == nil {
+		return PricingDecision{}, fmt.Errorf("campaign is nil")
+	}
+	model := normalizeTypeModel(campaign.TypeModel)
+	if !validTypeModel(model) {
+		return PricingDecision{}, fmt.Errorf("campaign %s has invalid type_model %d", campaign.ID, campaign.TypeModel)
+	}
+
+	mapPercent := DefaultADVPercent
+	if s != nil && s.percents != nil {
+		mapPercent = s.percents.LookupForCampaign(campaign.ID, campaign.RTB)
+	} else if campaign.RTB {
+		mapPercent = DefaultADVRTBPercent
+	}
+	if !finitePercent(mapPercent) {
+		return PricingDecision{}, fmt.Errorf("campaign %s resolved invalid percent %.12f", campaign.ID, mapPercent)
+	}
+
+	decision := PricingDecision{
+		MapPercent: mapPercent,
+		MaxMargin:  MaxAdvertiserMargin,
+	}
+
+	if model == TypeModelMapOnly {
+		decision.Mode = PercentRoutingMapOnly
+		decision.Percent = mapPercent
+		decision.MinMargin = mapPercent
+		return decision, nil
+	}
+	if campaign.RTB && model == TypeModelComplex {
+		decision.Mode = PercentRoutingRTBComplexFallback
+		decision.Percent = mapPercent
+		decision.MinMargin = mapPercent
+		return decision, nil
+	}
+
+	decision.Mode = PercentRoutingPercenterFloor
+	decision.HardMin = businessHardMin(campaign)
+	decision.MinMargin = math.Max(decision.HardMin, mapPercent)
+	if decision.MinMargin > MaxAdvertiserMargin {
+		return PricingDecision{}, fmt.Errorf("campaign %s minimum margin %.12f exceeds maximum %.12f", campaign.ID, decision.MinMargin, MaxAdvertiserMargin)
+	}
+
+	// Stage 01 has no optimizer state yet. The safe baseline working point is
+	// exactly the resolved floor; later optimizer stages may move Percent upward
+	// but can never go below MinMargin or above MaxMargin.
+	decision.Percent = decision.MinMargin
+	return decision, nil
+}
+
+func finitePercent(value float64) bool {
+	return !math.IsNaN(value) && !math.IsInf(value, 0) && value >= 0 && value <= MaxAdvertiserMargin
+}
+
+type PercenterSegment struct {
+	SSPDomain  string
+	Geo        string
+	Browser    string
+	Device     string
+	OS         string
+	SiteID     string
+	CampaignID string
+}
+
+func BuildPercenterSegment(req *ortb.BidRequest, sspDomain, campaignID string) PercenterSegment {
+	segment := PercenterSegment{
+		SSPDomain:  strings.TrimSpace(sspDomain),
+		Geo:        UnknownSegmentValue,
+		Browser:    UnknownSegmentValue,
+		Device:     UnknownSegmentValue,
+		OS:         UnknownSegmentValue,
+		SiteID:     UnknownSegmentValue,
+		CampaignID: strings.TrimSpace(campaignID),
+	}
+	if req == nil {
+		return segment
+	}
+
+	if device := req.GetDevice(); device != nil {
+		if geo := device.GetGeo(); geo != nil {
+			segment.Geo = segmentNormalizedStringPointer(geo.Country, normalizeCountry)
+		}
+
+		// An explicitly present empty OS is different from an absent OS. Only
+		// derive OS from UA when the OpenRTB OS field is actually absent.
+		if device.Os != nil {
+			segment.OS = normalizeOS(*device.Os)
+		}
+
+		if device.Ua != nil {
+			rawUA := strings.TrimSpace(*device.Ua)
+			if rawUA == "" {
+				segment.Browser = ""
+				if device.DeviceType == nil {
+					segment.Device = ""
+				}
+			} else {
+				parsed := ua.ParseUA(rawUA)
+				segment.Browser = normalizeBrowser(parsed.Browser)
+				segment.Device = normalizeDeviceType(parsed.Device)
+				if device.Os == nil {
+					segment.OS = normalizeOS(parsed.OS)
+				}
+			}
+		}
+		if device.DeviceType != nil && (device.Ua == nil || strings.TrimSpace(device.GetUa()) == "") {
+			segment.Device = normalizeDeviceType(strconv.Itoa(int(device.GetDeviceType())))
+		}
+	}
+
+	if site := req.GetSite(); site != nil {
+		segment.SiteID = segmentNormalizedStringPointer(site.Id, strings.TrimSpace)
+	}
+	return segment
+}
+
+func segmentNormalizedStringPointer(value *string, normalize func(string) string) string {
+	if value == nil {
+		return UnknownSegmentValue
+	}
+	return normalize(*value)
+}
+
+func (s PercenterSegment) Hash() string {
+	parts := []string{s.SSPDomain, s.Geo, s.Browser, s.Device, s.OS, s.SiteID, s.CampaignID}
+	h := sha256.New()
+	for _, part := range parts {
+		// Length-prefix every component so different field boundaries cannot
+		// produce the same byte stream.
+		_, _ = fmt.Fprintf(h, "%d:%s|", len(part), part)
+	}
+	return hex.EncodeToString(h.Sum(nil))
+}
+
+func BuildPercenterSegmentHash(req *ortb.BidRequest, sspDomain, campaignID string) string {
+	return BuildPercenterSegment(req, sspDomain, campaignID).Hash()
+}

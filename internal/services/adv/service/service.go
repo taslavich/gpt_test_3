@@ -86,23 +86,25 @@ type Creative struct {
 }
 
 type Campaign struct {
-	ID                 string
-	UserID             string
-	BrandName          string
-	Status             string
-	PricingModel       string
-	Format             string
-	TrafficType        string
-	QualitySegment     string
-	BasePrice          float64
-	RTB                bool
-	DSPLink            string
-	GoalTotalDollars   float64
-	EvennessBySlotMode bool
-	BlockVPN           bool
-	StartTS            time.Time
-	EndTS              time.Time
-	ActiveIntervals    []TimeRange
+	ID                  string
+	UserID              string
+	BrandName           string
+	Status              string
+	PricingModel        string
+	Format              string
+	TrafficType         string
+	QualitySegment      string
+	BasePrice           float64
+	RTB                 bool
+	DSPLink             string
+	TypeModel           int
+	PromoSpendRemaining float64
+	GoalTotalDollars    float64
+	EvennessBySlotMode  bool
+	BlockVPN            bool
+	StartTS             time.Time
+	EndTS               time.Time
+	ActiveIntervals     []TimeRange
 
 	CountryFilter    *filterV2.Filters
 	LanguageFilter   *filterV2.Filters
@@ -127,6 +129,7 @@ type Campaign struct {
 type Snapshot struct {
 	Campaigns               []*Campaign
 	UserGoals               map[string]float64
+	UserPromoSpendRemaining map[string]float64
 	UserAntiPerekrutBlocked map[string]bool
 	HasBlockVPNCampaigns    bool
 	LoadedAt                time.Time
@@ -151,7 +154,9 @@ type candidate struct {
 	chargePrice    float64
 	effectivePrice float64
 	basePrice      float64
+	originalBid    float64
 	externalBid    *ortb.Bid
+	segmentHash    string
 
 	// Diagnostics metadata is observational only. It is never read by pricing,
 	// filtering, candidate-pool construction, random selection, or bid building.
@@ -195,7 +200,7 @@ func NewAuctionService(runtime *RuntimeStore, winners *WinnerStore, percents *Pe
 		snapshotWarningSeen: make(map[string]struct{}),
 		rtbHTTPClient:       newSafeRTBHTTPClient(),
 	}
-	s.snapshot.Store(&Snapshot{Campaigns: []*Campaign{}, UserGoals: map[string]float64{}, UserAntiPerekrutBlocked: map[string]bool{}})
+	s.snapshot.Store(&Snapshot{Campaigns: []*Campaign{}, UserGoals: map[string]float64{}, UserPromoSpendRemaining: map[string]float64{}, UserAntiPerekrutBlocked: map[string]bool{}})
 	return s
 }
 
@@ -286,6 +291,7 @@ func cloneAndValidateSnapshot(src *Snapshot) (*Snapshot, error) {
 	out := &Snapshot{
 		Campaigns:               make([]*Campaign, 0, len(src.Campaigns)),
 		UserGoals:               make(map[string]float64, len(src.UserGoals)),
+		UserPromoSpendRemaining: make(map[string]float64, len(src.UserGoals)),
 		UserAntiPerekrutBlocked: make(map[string]bool, len(src.UserAntiPerekrutBlocked)),
 		LoadedAt:                src.LoadedAt.UTC(),
 	}
@@ -299,6 +305,22 @@ func cloneAndValidateSnapshot(src *Snapshot) (*Snapshot, error) {
 		}
 		out.UserGoals[id] = goal
 	}
+	for rawID, promo := range src.UserPromoSpendRemaining {
+		id := strings.TrimSpace(rawID)
+		if id == "" || !finiteNonNegative(promo) {
+			return nil, fmt.Errorf("invalid promo_spend_remaining for %q", rawID)
+		}
+		if _, ok := out.UserGoals[id]; !ok {
+			return nil, fmt.Errorf("promo_spend_remaining has no user goal for %q", id)
+		}
+		out.UserPromoSpendRemaining[id] = promo
+	}
+	for id := range out.UserGoals {
+		if _, ok := out.UserPromoSpendRemaining[id]; !ok {
+			out.UserPromoSpendRemaining[id] = 0
+		}
+	}
+
 	for rawID, blocked := range src.UserAntiPerekrutBlocked {
 		id := strings.TrimSpace(rawID)
 		if id == "" {
@@ -324,6 +346,7 @@ func cloneAndValidateSnapshot(src *Snapshot) (*Snapshot, error) {
 		clone.TrafficType = normalizeTraffic(clone.TrafficType)
 		clone.QualitySegment = strings.ToLower(strings.TrimSpace(clone.QualitySegment))
 		clone.DSPLink = strings.TrimSpace(clone.DSPLink)
+		clone.TypeModel = normalizeTypeModel(clone.TypeModel)
 		if clone.AntiPerekrutMaxTrafficPercent == 0 {
 			clone.AntiPerekrutMaxTrafficPercent = 100
 		}
@@ -335,6 +358,12 @@ func cloneAndValidateSnapshot(src *Snapshot) (*Snapshot, error) {
 			return nil, fmt.Errorf("duplicate campaign id %s", clone.ID)
 		}
 		campaignIDs[clone.ID] = struct{}{}
+		if !validTypeModel(clone.TypeModel) {
+			return nil, fmt.Errorf("campaign %s has invalid type_model %d", clone.ID, clone.TypeModel)
+		}
+		if !finiteNonNegative(clone.PromoSpendRemaining) {
+			return nil, fmt.Errorf("campaign %s has invalid promo_spend_remaining", clone.ID)
+		}
 		if clone.Status != CampaignStatusActive {
 			return nil, fmt.Errorf("campaign %s is not active", clone.ID)
 		}
@@ -382,6 +411,7 @@ func cloneAndValidateSnapshot(src *Snapshot) (*Snapshot, error) {
 		if _, ok := out.UserGoals[clone.UserID]; !ok {
 			return nil, fmt.Errorf("campaign %s has no user goal", clone.ID)
 		}
+		clone.PromoSpendRemaining = out.UserPromoSpendRemaining[clone.UserID]
 
 		clone.CountryFilter = cloneFilter(campaign.CountryFilter)
 		clone.LanguageFilter = cloneFilter(campaign.LanguageFilter)
@@ -769,6 +799,9 @@ func (s *AuctionService) auctionCore(
 				}
 				logf("[ADV][RTB_AUCTION_INPUT] request_id=%q imp_id=%q campaign_id=%q remote_bid_id=%q remote_price=%.12f", requestID, impID, campaign.ID, remoteBid.GetId(), float64(remoteBid.GetPrice()))
 				cand, eligible, infraErr = s.evaluateRTBCandidate(ctx, campaign, remoteBid, imp, now, requestedFormat)
+				if eligible {
+					cand.segmentHash = BuildPercenterSegmentHash(req, sspDomain, campaign.ID)
+				}
 				if !eligible {
 					reason = diagNoWinnerSelected
 					logf("[ADV][RTB_AUCTION_REJECT] request_id=%q imp_id=%q campaign_id=%q error=%v", requestID, impID, campaign.ID, infraErr)
@@ -846,7 +879,7 @@ func (s *AuctionService) auctionCore(
 
 		attemptResults := make(map[string]string, len(selectionPool))
 		winnerCampaignID := ""
-		winnerEffectivePrice := 0.0
+		winnerOriginalBid := 0.0
 		winnerSlot := -1
 		selectionFailure := diagNone
 		for len(candidatePool) > 0 {
@@ -930,6 +963,7 @@ func (s *AuctionService) auctionCore(
 				Price:        cand.chargePrice,
 				UserID:       cand.campaign.UserID,
 				CampaignID:   cand.campaign.ID,
+				TypeModel:    normalizeTypeModel(cand.campaign.TypeModel),
 				Format:       requestedFormat,
 				ClickIDParam: clickIDParam,
 			}
@@ -945,7 +979,7 @@ func (s *AuctionService) auctionCore(
 			winnerUsers[impID] = cand.campaign.UserID
 			winnerBasePrices[impID] = candidateBasePrice(cand)
 			winnerCampaignID = campaignID
-			winnerEffectivePrice = cand.effectivePrice
+			winnerOriginalBid = candidateOriginalBid(cand)
 			winnerSlot = cand.diagnosticSlot
 			attemptResults[campaignID] = "winner"
 			setCandidateDiagnosticReason(states, cand.diagnosticSlot, diagBidWon)
@@ -981,7 +1015,7 @@ func (s *AuctionService) auctionCore(
 			selectionPool,
 			attemptResults,
 			winnerCampaignID,
-			winnerEffectivePrice,
+			winnerOriginalBid,
 		)
 
 		if recorder != nil {
@@ -991,7 +1025,7 @@ func (s *AuctionService) auctionCore(
 					states,
 					mode,
 					winnerSlot,
-					winnerEffectivePrice,
+					winnerOriginalBid,
 					selectionFailure,
 				)
 				recorder.RecordCampaign(cand.diagnosticIndex, reason)
@@ -1038,7 +1072,7 @@ func candidateFinalDiagnosticReason(
 	states []candidateDiagnosticState,
 	mode auctionMode,
 	winnerSlot int,
-	winnerEffectivePrice float64,
+	winnerOriginalBid float64,
 	selectionFailure diagnosticReason,
 ) diagnosticReason {
 	if cand.diagnosticSlot < 0 || cand.diagnosticSlot >= len(states) {
@@ -1065,11 +1099,11 @@ func candidateFinalDiagnosticReason(
 	}
 	switch mode {
 	case auctionModeMaxBid:
-		if auctionPricesEqual(cand.effectivePrice, winnerEffectivePrice) {
+		if auctionPricesEqual(candidateOriginalBid(cand), winnerOriginalBid) {
 			return diagEqualTopPriceNotSelectedAfterShuffle
 		}
-		if cand.effectivePrice < winnerEffectivePrice {
-			return diagLowerEffectivePriceThanWinner
+		if candidateOriginalBid(cand) < winnerOriginalBid {
+			return diagLowerOriginalBidThanWinner
 		}
 		return diagWinnerSelectedBeforeAttempt
 	case auctionModeWeightedTop, auctionModeWeightedAll:
@@ -1162,11 +1196,11 @@ func prepareCandidatePool(candidates []candidate, mode auctionMode, shuffle shuf
 	switch mode {
 	case auctionModeMaxBid:
 		sort.SliceStable(pool, func(i, j int) bool {
-			return pool[i].effectivePrice > pool[j].effectivePrice
+			return candidateOriginalBid(pool[i]) > candidateOriginalBid(pool[j])
 		})
 
 		topCount := 1
-		for topCount < len(pool) && auctionPricesEqual(pool[topCount].effectivePrice, pool[0].effectivePrice) {
+		for topCount < len(pool) && auctionPricesEqual(candidateOriginalBid(pool[topCount]), candidateOriginalBid(pool[0])) {
 			topCount++
 		}
 		if topCount > 1 && shuffle != nil {
@@ -1178,17 +1212,17 @@ func prepareCandidatePool(candidates []candidate, mode auctionMode, shuffle shuf
 		return pool
 
 	case auctionModeWeightedTop:
-		maxPrice := pool[0].effectivePrice
+		maxPrice := candidateOriginalBid(pool[0])
 		for _, cand := range pool[1:] {
-			if cand.effectivePrice > maxPrice {
-				maxPrice = cand.effectivePrice
+			if candidateOriginalBid(cand) > maxPrice {
+				maxPrice = candidateOriginalBid(cand)
 			}
 		}
 
 		threshold := maxPrice * topBidPoolRatio
 		filtered := pool[:0]
 		for _, cand := range pool {
-			if cand.effectivePrice >= threshold {
+			if candidateOriginalBid(cand) >= threshold {
 				filtered = append(filtered, cand)
 			}
 		}
@@ -1215,10 +1249,11 @@ func weightedCandidateIndex(candidates []candidate, randomUnit float64) int {
 
 	totalWeight := 0.0
 	for _, cand := range candidates {
-		if !finitePositive(cand.effectivePrice) {
+		weight := candidateOriginalBid(cand)
+		if !finitePositive(weight) {
 			continue
 		}
-		totalWeight += cand.effectivePrice
+		totalWeight += weight
 	}
 	if !finitePositive(totalWeight) {
 		return -1
@@ -1228,11 +1263,12 @@ func weightedCandidateIndex(candidates []candidate, randomUnit float64) int {
 	cumulative := 0.0
 	lastValidIndex := -1
 	for index, cand := range candidates {
-		if !finitePositive(cand.effectivePrice) {
+		weight := candidateOriginalBid(cand)
+		if !finitePositive(weight) {
 			continue
 		}
 		lastValidIndex = index
-		cumulative += cand.effectivePrice
+		cumulative += weight
 		if target < cumulative {
 			return index
 		}
@@ -1266,8 +1302,8 @@ func candidateUserID(cand candidate) string {
 func candidateTotalWeight(candidates []candidate) float64 {
 	total := 0.0
 	for _, cand := range candidates {
-		if finitePositive(cand.effectivePrice) {
-			total += cand.effectivePrice
+		if weight := candidateOriginalBid(cand); finitePositive(weight) {
+			total += weight
 		}
 	}
 	return total
@@ -1293,8 +1329,8 @@ func logCandidatePool(
 	poolRanks := candidatePoolRanks(pool)
 	maxPrice := 0.0
 	for _, cand := range candidates {
-		if cand.effectivePrice > maxPrice {
-			maxPrice = cand.effectivePrice
+		if candidateOriginalBid(cand) > maxPrice {
+			maxPrice = candidateOriginalBid(cand)
 		}
 	}
 	threshold := 0.0
@@ -1303,7 +1339,7 @@ func logCandidatePool(
 	}
 
 	logf(
-		"[ADV][CANDIDATE_POOL_SUMMARY] request_id=%q imp_id=%q format=%q auction_mode=%q eligible=%d pool_size=%d max_effective_price=%.12f weighted_top_threshold=%.12f total_weight=%.12f",
+		"[ADV][CANDIDATE_POOL_SUMMARY] request_id=%q imp_id=%q format=%q auction_mode=%q eligible=%d pool_size=%d max_original_bid=%.12f weighted_top_threshold=%.12f total_weight=%.12f",
 		requestID,
 		impID,
 		requestedFormat,
@@ -1321,7 +1357,7 @@ func logCandidatePool(
 		poolReason := "included"
 		if !inPool {
 			poolReason = "excluded_by_auction_mode"
-			if mode == auctionModeWeightedTop && cand.effectivePrice < threshold {
+			if mode == auctionModeWeightedTop && candidateOriginalBid(cand) < threshold {
 				poolReason = "below_weighted_top_threshold"
 			}
 		}
@@ -1354,6 +1390,10 @@ func candidateBasePrice(cand candidate) float64 {
 	return cand.campaign.BasePrice
 }
 
+func candidateOriginalBid(cand candidate) float64 {
+	return cand.originalBid
+}
+
 func requestDeviceIPv4(req *ortb.BidRequest) string {
 	if req == nil || req.GetDevice() == nil {
 		return ""
@@ -1378,7 +1418,7 @@ func logCandidateSelectionOutcomes(
 	candidates, pool []candidate,
 	attemptResults map[string]string,
 	winnerCampaignID string,
-	winnerEffectivePrice float64,
+	winnerOriginalBid float64,
 ) {
 	poolRanks := candidatePoolRanks(pool)
 	for _, cand := range candidates {
@@ -1401,10 +1441,10 @@ func logCandidateSelectionOutcomes(
 		} else {
 			switch mode {
 			case auctionModeMaxBid:
-				if auctionPricesEqual(cand.effectivePrice, winnerEffectivePrice) {
+				if auctionPricesEqual(candidateOriginalBid(cand), winnerOriginalBid) {
 					reason = "equal_top_price_not_selected_after_shuffle"
-				} else if cand.effectivePrice < winnerEffectivePrice {
-					reason = "lower_effective_price_than_winner"
+				} else if candidateOriginalBid(cand) < winnerOriginalBid {
+					reason = "lower_original_bid_than_winner"
 				} else {
 					reason = "winner_selected_before_attempt"
 				}
@@ -1416,7 +1456,7 @@ func logCandidateSelectionOutcomes(
 		}
 
 		logf(
-			"[ADV][CAMPAIGN_NOT_SELECTED] request_id=%q imp_id=%q format=%q auction_mode=%q campaign_id=%q user_id=%q reason=%q in_pool=%t pool_rank=%d base_price=%.12f charge_price=%.12f effective_price=%.12f winner_campaign_id=%q winner_effective_price=%.12f",
+			"[ADV][CAMPAIGN_NOT_SELECTED] request_id=%q imp_id=%q format=%q auction_mode=%q campaign_id=%q user_id=%q reason=%q in_pool=%t pool_rank=%d base_price=%.12f charge_price=%.12f effective_price=%.12f winner_campaign_id=%q winner_original_bid=%.12f",
 			requestID,
 			impID,
 			requestedFormat,
@@ -1430,7 +1470,7 @@ func logCandidateSelectionOutcomes(
 			cand.chargePrice,
 			cand.effectivePrice,
 			winnerCampaignID,
-			winnerEffectivePrice,
+			winnerOriginalBid,
 		)
 	}
 }
@@ -1628,7 +1668,12 @@ func (s *AuctionService) evaluateCampaign(
 		return candidate{}, false, reason, nil
 	}
 
-	deduction := s.percents.Lookup(campaign.UserID)
+	pricing, err := s.ResolvePricingDecision(campaign)
+	if err != nil {
+		logf("[ADV][CAMPAIGN_REJECT] request_id=%q imp_id=%q format=%q campaign_id=%q user_id=%q reason=pricing_policy_invalid error=%v", requestID, impID, requestedFormat, campaignID, userID, err)
+		return candidate{}, false, diagEffectivePriceNonPositive, nil
+	}
+	deduction := pricing.Percent
 	effective := CalculateEffectiveAuctionPrice(campaign.BasePrice, deduction)
 	if effective <= 0 || math.IsNaN(effective) || math.IsInf(effective, 0) {
 		logf("[ADV][CAMPAIGN_REJECT] request_id=%q imp_id=%q format=%q campaign_id=%q user_id=%q reason=effective_price_non_positive base_price=%.12f deduction=%.12f effective_price=%.12f", requestID, impID, requestedFormat, campaignID, userID, campaign.BasePrice, deduction, effective)
@@ -1651,7 +1696,7 @@ func (s *AuctionService) evaluateCampaign(
 		campaignRemaining,
 		userRemaining,
 	)
-	return candidate{campaign: campaign, creatives: creatives, chargePrice: chargePrice, effectivePrice: effective, basePrice: campaign.BasePrice}, true, diagNone, nil
+	return candidate{campaign: campaign, creatives: creatives, chargePrice: chargePrice, effectivePrice: effective, basePrice: campaign.BasePrice, originalBid: campaign.BasePrice, segmentHash: BuildPercenterSegmentHash(req, sspDomain, campaign.ID)}, true, diagNone, nil
 }
 
 func diagnosticReasonForAntiPerekrutEligibility(reason AntiPerekrutEligibilityReason) diagnosticReason {

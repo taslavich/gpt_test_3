@@ -140,14 +140,48 @@ func (s *AuctionService) reportSnapshotWarnings(ctx context.Context, warnings []
 	s.snapshotWarningSeen = current
 	s.snapshotWarningMu.Unlock()
 
-	if notifier == nil {
+	if notifier == nil || len(newWarnings) == 0 {
 		return
 	}
+
+	asyncWarnings := make([]snapshotLoadWarning, 0, len(newWarnings))
 	for _, warning := range newWarnings {
+		if strings.HasPrefix(warning.key, "rtb_complex:") {
+			asyncWarnings = append(asyncWarnings, warning)
+			continue
+		}
+		// Preserve the existing delivery semantics for pre-stage-01 snapshot
+		// validation warnings. They run during snapshot refresh, never per bid.
 		if err := notifier(ctx, warning.message); err != nil {
 			log.Printf("ADV snapshot: failed to send bot warning %q: %v", warning.key, err)
 		}
 	}
+
+	if len(asyncWarnings) == 0 {
+		return
+	}
+	// RTB+Complex is a configuration warning. It is detached deliberately so a
+	// Telegram/network call can never delay snapshot publication or an auction.
+	queued := append([]snapshotLoadWarning(nil), asyncWarnings...)
+	go func() {
+		for _, warning := range queued {
+			notifyCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			message := warning.message
+			if s.percents != nil {
+				message += fmt.Sprintf(" percent=%.6f", s.percents.LookupForCampaign(warning.campaignID, true))
+			}
+			err := notifier(notifyCtx, message)
+			cancel()
+			if err != nil {
+				log.Printf("ADV snapshot: failed to send bot warning %q: %v", warning.key, err)
+				// Allow a later snapshot refresh to retry a warning that was never
+				// delivered. Successful warnings remain deduplicated by revision key.
+				s.snapshotWarningMu.Lock()
+				delete(s.snapshotWarningSeen, warning.key)
+				s.snapshotWarningMu.Unlock()
+			}
+		}
+	}()
 }
 
 func (s *AuctionService) excludeInvalidIPCampaignsFromCurrentSnapshot(warnings []snapshotLoadWarning) {
@@ -171,6 +205,7 @@ func (s *AuctionService) excludeInvalidIPCampaignsFromCurrentSnapshot(warnings [
 	filtered := &Snapshot{
 		Campaigns:               make([]*Campaign, 0, len(current.Campaigns)),
 		UserGoals:               cloneFloatMap(current.UserGoals),
+		UserPromoSpendRemaining: cloneFloatMap(current.UserPromoSpendRemaining),
 		UserAntiPerekrutBlocked: cloneBoolMap(current.UserAntiPerekrutBlocked),
 		LoadedAt:                current.LoadedAt,
 	}
@@ -232,6 +267,7 @@ func loadSnapshotFromPostgres(ctx context.Context, db *sql.DB) (*Snapshot, []sna
 		base_price::text,
 		rtb,
 		dsp_link,
+		COALESCE(type_model, 1),
 		evenness_by_slot_mode,
 		block_vpn,
 		start_ts,
@@ -272,7 +308,7 @@ func loadSnapshotFromPostgres(ctx context.Context, db *sql.DB) (*Snapshot, []sna
 		activeRows++
 		var row campaignDBRow
 		if err := rows.Scan(
-			&row.UserID, &row.CampaignID, &row.BasePrice, &row.RTB, &row.DSPLink,
+			&row.UserID, &row.CampaignID, &row.BasePrice, &row.RTB, &row.DSPLink, &row.TypeModel,
 			&row.Evenness, &row.BlockVPN, &row.StartTS, &row.EndTS, &row.ActiveIntervals,
 			&row.Country, &row.Language, &row.DeviceType, &row.OS, &row.Browser, &row.SiteID, &row.IP,
 			&row.Format, &row.Quality, &row.PricingModel, &row.Status, &row.TrafficType,
@@ -334,7 +370,7 @@ func loadSnapshotFromPostgres(ctx context.Context, db *sql.DB) (*Snapshot, []sna
 	for id := range userSet {
 		userIDs = append(userIDs, id)
 	}
-	userGoals, userAntiPerekrutBlocked, err := loadUsersBatch(ctx, db, userIDs)
+	userGoals, userAntiPerekrutBlocked, userPromoSpendRemaining, err := loadUsersBatch(ctx, db, userIDs)
 	if err != nil {
 		return nil, warnings, err
 	}
@@ -351,12 +387,27 @@ func loadSnapshotFromPostgres(ctx context.Context, db *sql.DB) (*Snapshot, []sna
 			)
 			continue
 		}
+		campaign.PromoSpendRemaining = userPromoSpendRemaining[campaign.UserID]
+		if campaign.RTB && normalizeTypeModel(campaign.TypeModel) == TypeModelComplex {
+			revision := campaign.UpdatedAt.UTC().Format(time.RFC3339Nano)
+			if revision == "0001-01-01T00:00:00Z" {
+				revision = fmt.Sprintf("traffic_reset_%d", campaign.TrafficResetVersion)
+			}
+			warnings = append(warnings, snapshotLoadWarning{
+				campaignID: campaign.ID,
+				key:        "rtb_complex:" + campaign.ID + ":" + revision,
+				message: fmt.Sprintf(
+					"[ADV][RTB_SMART_PERCENTER_SKIPPED] campaign_id=%s user_id=%s reason=complex percenter is not allowed for RTB campaign fallback=percent_map",
+					campaign.ID, campaign.UserID,
+				),
+			})
+		}
 		validCampaigns = append(validCampaigns, campaign)
 	}
 	if activeRows > 0 && len(validCampaigns) == 0 && invalidIPRows != activeRows {
 		return nil, warnings, fmt.Errorf("all %d active campaign rows were invalid; previous snapshot must be retained", activeRows)
 	}
-	return &Snapshot{Campaigns: validCampaigns, UserGoals: userGoals, UserAntiPerekrutBlocked: userAntiPerekrutBlocked, LoadedAt: loadedAt}, warnings, nil
+	return &Snapshot{Campaigns: validCampaigns, UserGoals: userGoals, UserPromoSpendRemaining: userPromoSpendRemaining, UserAntiPerekrutBlocked: userAntiPerekrutBlocked, LoadedAt: loadedAt}, warnings, nil
 }
 
 type campaignDBRow struct {
@@ -365,6 +416,7 @@ type campaignDBRow struct {
 	BasePrice                     sql.NullString
 	RTB                           sql.NullBool
 	DSPLink                       sql.NullString
+	TypeModel                     sql.NullInt64
 	GoalTotalDollars              sql.NullString
 	AntiPerekrutMaxTrafficPercent sql.NullString
 	TrafficResetVersion           sql.NullInt64
@@ -430,6 +482,13 @@ func (r campaignDBRow) campaign() (*Campaign, error) {
 
 	rtb := r.RTB.Valid && r.RTB.Bool
 	dspLink := strings.TrimSpace(r.DSPLink.String)
+	typeModel := TypeModelSimple
+	if r.TypeModel.Valid {
+		typeModel = int(r.TypeModel.Int64)
+	}
+	if !validTypeModel(typeModel) {
+		return nil, fmt.Errorf("campaign %s has invalid type_model %d", id, typeModel)
+	}
 	if !rtb && basePrice <= 0 {
 		return nil, fmt.Errorf("campaign %s base_price must be positive", id)
 	}
@@ -507,7 +566,7 @@ func (r campaignDBRow) campaign() (*Campaign, error) {
 		PricingModel: pricingModel,
 		Format:       format, TrafficType: trafficType,
 		QualitySegment: quality,
-		BasePrice:      basePrice, RTB: rtb, DSPLink: dspLink, GoalTotalDollars: goalTotalDollars, EvennessBySlotMode: r.Evenness.Valid && r.Evenness.Bool, BlockVPN: r.BlockVPN.Valid && r.BlockVPN.Bool,
+		BasePrice:      basePrice, RTB: rtb, DSPLink: dspLink, TypeModel: typeModel, GoalTotalDollars: goalTotalDollars, EvennessBySlotMode: r.Evenness.Valid && r.Evenness.Bool, BlockVPN: r.BlockVPN.Valid && r.BlockVPN.Bool,
 		StartTS: r.StartTS.Time.UTC(), EndTS: r.EndTS.Time.UTC(), ActiveIntervals: activeIntervals,
 		CountryFilter: country, LanguageFilter: language, DeviceTypeFilter: deviceType,
 		OSFilter: osFilter, BrowserFilter: browser, SiteIDFilter: siteID, IPFilter: ip,
@@ -609,11 +668,12 @@ func loadCreativesBatch(ctx context.Context, db *sql.DB, campaignIDs []string, c
 	return rows.Err()
 }
 
-func loadUsersBatch(ctx context.Context, db *sql.DB, userIDs []string) (map[string]float64, map[string]bool, error) {
+func loadUsersBatch(ctx context.Context, db *sql.DB, userIDs []string) (map[string]float64, map[string]bool, map[string]float64, error) {
 	goals := make(map[string]float64, len(userIDs))
 	blocked := make(map[string]bool, len(userIDs))
+	promo := make(map[string]float64, len(userIDs))
 	if len(userIDs) == 0 {
-		return goals, blocked, nil
+		return goals, blocked, promo, nil
 	}
 	rows, err := db.QueryContext(
 		ctx,
@@ -621,45 +681,48 @@ func loadUsersBatch(ctx context.Context, db *sql.DB, userIDs []string) (map[stri
 			SELECT
 				id::text,
 				goal_total_dollars::text,
-				antiperekrut_blocked
+				antiperekrut_blocked,
+				COALESCE(promo_spend_remaining, 0)::text
 			FROM users
 			WHERE id::text = ANY($1)
 		`,
 		pq.Array(userIDs),
 	)
 	if err != nil {
-		return nil, nil, fmt.Errorf(
-			"batch query users goal/antiperekrut marker: %w",
+		return nil, nil, nil, fmt.Errorf(
+			"batch query users goal/antiperekrut/promo data: %w",
 			err,
 		)
 	}
 	defer rows.Close()
 	for rows.Next() {
-		var id, rawGoal string
+		var id, rawGoal, rawPromo string
 		var isBlocked bool
-		if err := rows.Scan(&id, &rawGoal, &isBlocked); err != nil {
-			return nil, nil, fmt.Errorf(
-				"scan users goal/antiperekrut marker: %w",
+		if err := rows.Scan(&id, &rawGoal, &isBlocked, &rawPromo); err != nil {
+			return nil, nil, nil, fmt.Errorf(
+				"scan users goal/antiperekrut/promo data: %w",
 				err,
 			)
 		}
 		id = strings.TrimSpace(id)
 		goal, err := parseFiniteNonNegative(rawGoal)
-		if id == "" || err != nil {
+		promoRemaining, promoErr := parseFiniteNonNegative(rawPromo)
+		if id == "" || err != nil || promoErr != nil {
 			log.Printf(
-				"ADV snapshot: skipping invalid users.goal_total_dollars row for user %q: %v",
+				"ADV snapshot: skipping invalid user budget/promo row for user %q: goal_error=%v promo_error=%v",
 				id,
-				err,
+				err, promoErr,
 			)
 			continue
 		}
 		goals[id] = goal
 		blocked[id] = isBlocked
+		promo[id] = promoRemaining
 	}
 	if err := rows.Err(); err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
-	return goals, blocked, nil
+	return goals, blocked, promo, nil
 }
 
 func parseFiniteNonNegative(value string) (float64, error) {

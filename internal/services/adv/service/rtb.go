@@ -638,12 +638,15 @@ func (s *AuctionService) evaluateRTBCandidate(ctx context.Context, campaign *Cam
 			return candidate{}, false, err
 		}
 	}
-	deduction := s.percents.Lookup(campaign.UserID)
-	effective := CalculateEffectiveAuctionPrice(rawPrice, deduction)
+	pricing, err := s.ResolvePricingDecision(campaign)
+	if err != nil {
+		return candidate{}, false, err
+	}
+	effective := CalculateEffectiveAuctionPrice(rawPrice, pricing.Percent)
 	if !finitePositive(effective) {
 		return candidate{}, false, nil
 	}
-	return candidate{campaign: campaign, chargePrice: chargePrice, effectivePrice: effective, basePrice: rawPrice, externalBid: bid}, true, nil
+	return candidate{campaign: campaign, chargePrice: chargePrice, effectivePrice: effective, basePrice: rawPrice, originalBid: rawPrice, externalBid: bid}, true, nil
 }
 
 func buildExternalADVBid(cand candidate) *ortb.Bid {

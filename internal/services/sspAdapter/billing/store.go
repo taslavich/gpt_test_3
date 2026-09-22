@@ -2,6 +2,7 @@ package billing
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"fmt"
 	"math"
@@ -20,6 +21,7 @@ type Winner struct {
 	Price        float64
 	UserID       string
 	CampaignID   string
+	TypeModel    int
 	Format       string
 	ClickIDParam string
 }
@@ -27,14 +29,22 @@ type Winner struct {
 type Store struct {
 	runtime   *redis.Client
 	winners   *redis.Client
+	postgres  *sql.DB
 	markerTTL time.Duration
 }
 
-func NewStore(runtime, winners *redis.Client, markerTTL time.Duration) *Store {
+// NewStore keeps the previous call shape source-compatible. Production passes
+// the PostgreSQL connection as the optional fourth argument so percenter promo
+// spend is decremented durably together with ADV billing.
+func NewStore(runtime, winners *redis.Client, markerTTL time.Duration, postgres ...*sql.DB) *Store {
 	if markerTTL <= 0 {
 		markerTTL = 720 * time.Hour
 	}
-	return &Store{runtime: runtime, winners: winners, markerTTL: markerTTL}
+	var db *sql.DB
+	if len(postgres) > 0 {
+		db = postgres[0]
+	}
+	return &Store{runtime: runtime, winners: winners, postgres: db, markerTTL: markerTTL}
 }
 
 func (s *Store) ReadWinner(ctx context.Context, winnerUUID, expectedFormat string) (Winner, error) {
@@ -60,10 +70,17 @@ func (s *Store) ReadWinner(ctx context.Context, winnerUUID, expectedFormat strin
 	if format == "" || format != normalizeFormat(expectedFormat) {
 		return Winner{}, fmt.Errorf("ADV winner format mismatch: got %s expected %s", format, expectedFormat)
 	}
+	typeModel, err := strconv.Atoi(strings.TrimSpace(values["type_model"]))
+	if err != nil || typeModel < 1 || typeModel > 3 {
+		// Winner records produced before stage 01 did not carry type_model and
+		// therefore can only be treated as legacy Simple records.
+		typeModel = 1
+	}
 	winner := Winner{
 		Price:        price,
 		UserID:       strings.TrimSpace(values["user_id"]),
 		CampaignID:   strings.TrimSpace(values["campaign_id"]),
+		TypeModel:    typeModel,
 		Format:       format,
 		ClickIDParam: strings.TrimSpace(values[constants.ADVWinnerClickIDParamField]),
 	}
@@ -77,9 +94,33 @@ func (s *Store) Apply(ctx context.Context, record outbox.Record) error {
 	if s == nil || s.runtime == nil {
 		return errors.New("ADV runtime Redis client is nil")
 	}
-	if strings.TrimSpace(record.EventID) == "" || strings.TrimSpace(record.UserID) == "" || strings.TrimSpace(record.CampaignID) == "" || record.Price <= 0 {
+	if strings.TrimSpace(record.EventID) == "" || strings.TrimSpace(record.UserID) == "" || strings.TrimSpace(record.CampaignID) == "" || record.Price <= 0 || math.IsNaN(record.Price) || math.IsInf(record.Price, 0) {
 		return errors.New("invalid ADV billing event")
 	}
+	if err := s.applyRuntimeSpend(ctx, record); err != nil {
+		return err
+	}
+	if promoSpendAppliesToTypeModel(record.TypeModel) {
+		if s.postgres == nil {
+			return errors.New("PostgreSQL is required for percenter promo billing")
+		}
+		if err := s.applyPromoSpend(ctx, record); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func promoSpendAppliesToTypeModel(typeModel int) bool {
+	// Legacy winner/outbox records without type_model are Simple. Keep the
+	// same compatibility rule as ReadWinner. Map-only never consumes promo.
+	if typeModel == 0 {
+		typeModel = 1
+	}
+	return typeModel == 1 || typeModel == 2
+}
+
+func (s *Store) applyRuntimeSpend(ctx context.Context, record outbox.Record) error {
 	markerKey := "outbox:applied:" + record.EventID
 	currentKey := "pacing:current:" + record.CampaignID
 	watchKeys := []string{markerKey, currentKey}
@@ -122,6 +163,57 @@ func (s *Store) Apply(ctx context.Context, record outbox.Record) error {
 		}
 	}
 	return fmt.Errorf("ADV billing transaction conflicted after retries: %w", lastErr)
+}
+
+// applyPromoSpend is deliberately independent from the Redis marker. A crash
+// after one store commits but before the other one does is recovered by the
+// durable billing outbox: Redis has its marker and PostgreSQL has this marker,
+// so either side can be retried without double charging promo balance.
+func (s *Store) applyPromoSpend(ctx context.Context, record outbox.Record) error {
+	tx, err := s.postgres.BeginTx(ctx, &sql.TxOptions{})
+	if err != nil {
+		return fmt.Errorf("begin percenter promo transaction: %w", err)
+	}
+	defer tx.Rollback()
+
+	result, err := tx.ExecContext(ctx, `
+		INSERT INTO adv_promo_spend_events(event_id, user_id, campaign_id, spend_delta)
+		VALUES ($1, $2, $3, $4)
+		ON CONFLICT (event_id) DO NOTHING
+	`, record.EventID, record.UserID, record.CampaignID, record.Price)
+	if err != nil {
+		return fmt.Errorf("insert percenter promo billing marker: %w", err)
+	}
+	inserted, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("read percenter promo marker result: %w", err)
+	}
+	if inserted == 0 {
+		if err := tx.Commit(); err != nil {
+			return fmt.Errorf("commit existing percenter promo marker: %w", err)
+		}
+		return nil
+	}
+
+	result, err = tx.ExecContext(ctx, `
+		UPDATE users
+		SET promo_spend_remaining = GREATEST(0, promo_spend_remaining - $2)
+		WHERE id = $1::uuid
+	`, record.UserID, record.Price)
+	if err != nil {
+		return fmt.Errorf("decrement percenter promo_spend_remaining: %w", err)
+	}
+	updated, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("read percenter promo update result: %w", err)
+	}
+	if updated != 1 {
+		return fmt.Errorf("percenter promo user %q not found", record.UserID)
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit percenter promo transaction: %w", err)
+	}
+	return nil
 }
 
 func normalizeFormat(value string) string {

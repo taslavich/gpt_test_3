@@ -56,7 +56,7 @@ func TestADMOutboxPersistsUnknownWinnerAndResolution(t *testing.T) {
 	if err := store.Save(record); err != nil {
 		t.Fatal(err)
 	}
-	if err := store.UpdateResolution(record.EventID, WinnerADV, "user-1", "campaign-1", 0.5); err != nil {
+	if err := store.UpdateResolution(record.EventID, WinnerADV, "user-1", "campaign-1", 0.5, 2); err != nil {
 		t.Fatal(err)
 	}
 	records, err := store.List()
@@ -67,7 +67,7 @@ func TestADMOutboxPersistsUnknownWinnerAndResolution(t *testing.T) {
 		t.Fatalf("records=%#v", records)
 	}
 	got := records[0]
-	if got.WinnerType != WinnerADV || got.UserID != "user-1" || got.CampaignID != "campaign-1" || got.Price != 0.5 {
+	if got.WinnerType != WinnerADV || got.UserID != "user-1" || got.CampaignID != "campaign-1" || got.TypeModel != 2 || got.Price != 0.5 {
 		t.Fatalf("resolved record=%#v", got)
 	}
 }

@@ -101,7 +101,7 @@ const (
 
 	// Candidate-pool and winner-selection outcomes.
 	diagBelowWeightedTopThreshold
-	diagLowerEffectivePriceThanWinner
+	diagLowerOriginalBidThanWinner
 	diagEqualTopPriceNotSelectedAfterShuffle
 	diagNotSelectedByWeightedDraw
 	diagWinnerSelectedBeforeAttempt
@@ -236,7 +236,7 @@ var diagnosticDefinitions = [diagnosticReasonCount]diagnosticDefinition{
 	diagCreativeNotMatchedUnknown:            {Code: 429, Name: "creative_not_matched_unknown", Description: "creative did not match for an unclassified format-specific reason", Scope: diagnosticScopeCampaign},
 
 	diagBelowWeightedTopThreshold:            {Code: 500, Name: "below_weighted_top_threshold", Description: "eligible campaign was excluded from weighted-top pool", Scope: diagnosticScopeCampaign},
-	diagLowerEffectivePriceThanWinner:        {Code: 501, Name: "lower_effective_price_than_winner", Description: "eligible campaign had a lower effective price than the max-bid winner", Scope: diagnosticScopeCampaign},
+	diagLowerOriginalBidThanWinner:           {Code: 501, Name: "lower_original_bid_than_winner", Description: "eligible campaign had a lower original advertiser bid than the max-bid winner", Scope: diagnosticScopeCampaign},
 	diagEqualTopPriceNotSelectedAfterShuffle: {Code: 502, Name: "equal_top_price_not_selected_after_shuffle", Description: "equal top-price campaign was not first after tie shuffle", Scope: diagnosticScopeCampaign},
 	diagNotSelectedByWeightedDraw:            {Code: 503, Name: "not_selected_by_weighted_draw", Description: "eligible campaign was not selected before the weighted-draw winner", Scope: diagnosticScopeCampaign},
 	diagWinnerSelectedBeforeAttempt:          {Code: 504, Name: "winner_selected_before_attempt", Description: "another campaign won before this eligible campaign was attempted", Scope: diagnosticScopeCampaign},

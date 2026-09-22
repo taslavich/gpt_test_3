@@ -198,6 +198,7 @@ type WinnerRecord struct {
 	Price        float64
 	UserID       string
 	CampaignID   string
+	TypeModel    int
 	Format       string
 	ClickIDParam string
 }
@@ -227,6 +228,7 @@ func (s *WinnerStore) Put(ctx context.Context, winnerUUID string, record WinnerR
 		"price":       strconv.FormatFloat(record.Price, 'f', -1, 64),
 		"user_id":     record.UserID,
 		"campaign_id": record.CampaignID,
+		"type_model":  strconv.Itoa(normalizeTypeModel(record.TypeModel)),
 		"format":      normalizeFormat(record.Format),
 	}
 	if clickIDParam := strings.TrimSpace(record.ClickIDParam); validTrackerParameterName(clickIDParam) {

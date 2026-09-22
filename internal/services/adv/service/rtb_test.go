@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"gitlab.com/twinbid-exchange/RTB-exchange/internal/constants"
+	"gitlab.com/twinbid-exchange/RTB-exchange/internal/filter"
 	ortb "gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/proto/types/ortb_V2_5"
 )
 
@@ -69,6 +70,101 @@ func TestCallRTBCampaignChoosesMaxBidAndKeepsPerImpStatus(t *testing.T) {
 	}
 }
 
+func TestCallRTBCampaignPreservesOriginalBidfloorInOutboundOpenRTB(t *testing.T) {
+	impID := "imp-bidfloor"
+	bidfloor := float32(0.83)
+	bidfloorcur := "EUR"
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		defer r.Body.Close()
+		var got ortb.BidRequest
+		if err := json.NewDecoder(r.Body).Decode(&got); err != nil {
+			t.Fatalf("decode outbound RTB request: %v", err)
+		}
+		if len(got.GetImp()) != 1 {
+			t.Fatalf("outbound impressions=%d want 1", len(got.GetImp()))
+		}
+		gotImp := got.GetImp()[0]
+		if gotImp.GetBidfloor() != bidfloor {
+			t.Fatalf("outbound bidfloor=%v want original %v", gotImp.GetBidfloor(), bidfloor)
+		}
+		if gotImp.GetBidfloorcur() != bidfloorcur {
+			t.Fatalf("outbound bidfloorcur=%q want original %q", gotImp.GetBidfloorcur(), bidfloorcur)
+		}
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	defer server.Close()
+
+	s := &AuctionService{rtbHTTPClient: server.Client()}
+	campaign := &Campaign{ID: "campaign-bidfloor-passthrough", RTB: true, DSPLink: server.URL}
+	source := &ortb.BidRequest{Imp: []*ortb.Imp{{
+		Id:          &impID,
+		Bidfloor:    &bidfloor,
+		Bidfloorcur: &bidfloorcur,
+	}}}
+
+	result := s.callRTBCampaign(context.Background(), source, campaign, source.GetImp(), constants.POP, func(string, ...any) {})
+	if got := result.codes[impID]; got != "204" {
+		t.Fatalf("status=%q want 204", got)
+	}
+	if source.GetImp()[0].GetBidfloor() != bidfloor || source.GetImp()[0].GetBidfloorcur() != bidfloorcur {
+		t.Fatalf("source request was mutated: bidfloor=%v bidfloorcur=%q", source.GetImp()[0].GetBidfloor(), source.GetImp()[0].GetBidfloorcur())
+	}
+}
+
+func TestCallRTBCampaignDoesNotApplyDSPChangers(t *testing.T) {
+	const dspDomain = "rtb-regression-dsp"
+	impID := "imp-no-changer"
+	originalSiteID := "publisher-site"
+	changedSiteID := "changer-site"
+
+	// Prove the request is one the existing DSP changer would actually modify
+	// in the ordinary router flow. The RTB ADV flow must bypass that changer.
+	changer := &filter.ChangersBoxChanger{Changers: map[string]*filter.ChangersChanger{
+		dspDomain: {
+			Apply: true,
+			SiteIdBoxes: map[string]*filter.SiteIdBoxChanger{
+				originalSiteID: {ToChange: true, SiteId: changedSiteID},
+			},
+		},
+	}}
+	probe := &ortb.BidRequest{
+		Site: &ortb.Site{Id: &originalSiteID},
+		Imp:  []*ortb.Imp{{Id: &impID}},
+	}
+	changed, ok := changer.Change(probe, dspDomain)
+	if !ok || changed.GetSite().GetId() != changedSiteID {
+		t.Fatalf("test setup invalid: DSP changer did not change site id, changed=%v site_id=%q", ok, changed.GetSite().GetId())
+	}
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		defer r.Body.Close()
+		var got ortb.BidRequest
+		if err := json.NewDecoder(r.Body).Decode(&got); err != nil {
+			t.Fatalf("decode outbound RTB request: %v", err)
+		}
+		if got.GetSite().GetId() != originalSiteID {
+			t.Fatalf("RTB outbound site.id=%q want untouched %q; DSP changers must not run in ADV RTB flow", got.GetSite().GetId(), originalSiteID)
+		}
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	defer server.Close()
+
+	s := &AuctionService{rtbHTTPClient: server.Client()}
+	campaign := &Campaign{ID: "campaign-no-changer", RTB: true, DSPLink: server.URL}
+	source := &ortb.BidRequest{
+		Site: &ortb.Site{Id: &originalSiteID},
+		Imp:  []*ortb.Imp{{Id: &impID}},
+	}
+	result := s.callRTBCampaign(context.Background(), source, campaign, source.GetImp(), constants.POP, func(string, ...any) {})
+	if got := result.codes[impID]; got != "204" {
+		t.Fatalf("status=%q want 204", got)
+	}
+	if source.GetSite().GetId() != originalSiteID {
+		t.Fatalf("source request was mutated: site.id=%q want %q", source.GetSite().GetId(), originalSiteID)
+	}
+}
+
 func TestCallRTBCampaignTimeoutDropsCampaignForAllSentImpressions(t *testing.T) {
 	imp1, imp2 := "imp-1", "imp-2"
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -104,6 +200,7 @@ func TestBuildExternalADVBidUsesLocalCampaignAndDSPCallbackSemantics(t *testing.
 
 	bid := buildExternalADVBid(candidate{
 		campaign:       &Campaign{ID: "local-campaign"},
+		originalBid:    1.25,
 		effectivePrice: 0.875,
 		externalBid:    remote,
 	})

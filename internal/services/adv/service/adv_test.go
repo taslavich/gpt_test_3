@@ -72,11 +72,11 @@ func TestNextAuctionModeIsAtomic(t *testing.T) {
 
 func TestPrepareCandidatePoolMaxBidShufflesOnlyEqualTopPrices(t *testing.T) {
 	candidates := []candidate{
-		{campaign: &Campaign{ID: "low"}, effectivePrice: 5},
-		{campaign: &Campaign{ID: "top-a"}, effectivePrice: 10},
-		{campaign: &Campaign{ID: "middle"}, effectivePrice: 8},
-		{campaign: &Campaign{ID: "top-b"}, effectivePrice: 10},
-		{campaign: &Campaign{ID: "top-c"}, effectivePrice: 10},
+		{campaign: &Campaign{ID: "low"}, originalBid: 5, effectivePrice: 5},
+		{campaign: &Campaign{ID: "top-a"}, originalBid: 10, effectivePrice: 10},
+		{campaign: &Campaign{ID: "middle"}, originalBid: 8, effectivePrice: 8},
+		{campaign: &Campaign{ID: "top-b"}, originalBid: 10, effectivePrice: 10},
+		{campaign: &Campaign{ID: "top-c"}, originalBid: 10, effectivePrice: 10},
 	}
 
 	reverseShuffle := func(n int, swap func(i, j int)) {
@@ -104,10 +104,10 @@ func TestPrepareCandidatePoolMaxBidShufflesOnlyEqualTopPrices(t *testing.T) {
 
 func TestPrepareCandidatePoolWeightedTopDropsPricesBelowEightyPercent(t *testing.T) {
 	candidates := []candidate{
-		{campaign: &Campaign{ID: "100"}, effectivePrice: 100},
-		{campaign: &Campaign{ID: "95"}, effectivePrice: 95},
-		{campaign: &Campaign{ID: "80"}, effectivePrice: 80},
-		{campaign: &Campaign{ID: "79"}, effectivePrice: 79},
+		{campaign: &Campaign{ID: "100"}, originalBid: 100, effectivePrice: 100},
+		{campaign: &Campaign{ID: "95"}, originalBid: 95, effectivePrice: 95},
+		{campaign: &Campaign{ID: "80"}, originalBid: 80, effectivePrice: 80},
+		{campaign: &Campaign{ID: "79"}, originalBid: 79, effectivePrice: 79},
 	}
 
 	pool := prepareCandidatePool(candidates, auctionModeWeightedTop, nil)
@@ -123,8 +123,8 @@ func TestPrepareCandidatePoolWeightedTopDropsPricesBelowEightyPercent(t *testing
 
 func TestPrepareCandidatePoolWeightedAllKeepsEveryCandidate(t *testing.T) {
 	candidates := []candidate{
-		{campaign: &Campaign{ID: "a"}, effectivePrice: 100},
-		{campaign: &Campaign{ID: "b"}, effectivePrice: 1},
+		{campaign: &Campaign{ID: "a"}, originalBid: 100, effectivePrice: 100},
+		{campaign: &Campaign{ID: "b"}, originalBid: 1, effectivePrice: 1},
 	}
 
 	pool := prepareCandidatePool(candidates, auctionModeWeightedAll, nil)
@@ -133,11 +133,11 @@ func TestPrepareCandidatePoolWeightedAllKeepsEveryCandidate(t *testing.T) {
 	}
 }
 
-func TestWeightedCandidateIndexUsesEffectivePriceAsWeight(t *testing.T) {
+func TestWeightedCandidateIndexUsesOriginalBidAsWeight(t *testing.T) {
 	candidates := []candidate{
-		{campaign: &Campaign{ID: "a"}, effectivePrice: 50},
-		{campaign: &Campaign{ID: "b"}, effectivePrice: 40},
-		{campaign: &Campaign{ID: "c"}, effectivePrice: 10},
+		{campaign: &Campaign{ID: "a"}, originalBid: 50, effectivePrice: 50},
+		{campaign: &Campaign{ID: "b"}, originalBid: 40, effectivePrice: 40},
+		{campaign: &Campaign{ID: "c"}, originalBid: 10, effectivePrice: 10},
 	}
 
 	tests := []struct {
@@ -414,43 +414,52 @@ func TestTrackerMacrosUnknownAndEncoded(t *testing.T) {
 }
 
 func TestPercentMapRejectsNaN(t *testing.T) {
-	_, err := validateAndNormalizePercentMap(PercentMap{"user-id": math.NaN()})
+	_, _, _, err := validateAndNormalizePercentMap(PercentMap{"campaign-1": math.NaN()})
 	if err == nil {
 		t.Fatal("NaN percent must be rejected")
 	}
 }
 
-func TestPercentMapUsesCampaignUserIDOnly(t *testing.T) {
+func TestPercentMapUsesCampaignIDAndDefaults(t *testing.T) {
 	store := &PercentStore{}
 	store.value.Store(&percentSnapshot{Values: PercentMap{
-		"user-id": 0.25,
+		PercentMapDefaultKey:    0.20,
+		PercentMapRTBDefaultKey: 0.30,
+		"campaign-1":            0.25,
 	}})
 
-	if got := store.Lookup(" USER-ID "); math.Abs(got-0.25) > 1e-12 {
+	if got := store.LookupForCampaign(" campaign-1 ", false); math.Abs(got-0.25) > 1e-12 {
 		t.Fatalf("got %v, want 0.25", got)
 	}
-	if got := store.Lookup("other-user"); math.Abs(got-DefaultADVPercent) > 1e-12 {
-		t.Fatalf("missing user must use default deduction %v, got %v", DefaultADVPercent, got)
+	if got := store.LookupForCampaign("missing", false); math.Abs(got-0.20) > 1e-12 {
+		t.Fatalf("ordinary fallback=%v, want 0.20", got)
+	}
+	if got := store.LookupForCampaign("missing", true); math.Abs(got-0.30) > 1e-12 {
+		t.Fatalf("RTB fallback=%v, want 0.30", got)
 	}
 }
 
-func TestPercentMapEmptySnapshotUsesThirtyPercentDefault(t *testing.T) {
+func TestPercentMapEmptySnapshotUsesHardcodedDefaults(t *testing.T) {
 	store := &PercentStore{}
 	store.value.Store(&percentSnapshot{Values: PercentMap{}})
 
-	if got := store.Lookup("any-user"); math.Abs(got-0.30) > 1e-12 {
-		t.Fatalf("empty map default=%v, want 0.30", got)
+	if got := store.LookupForCampaign("any", false); math.Abs(got-0.20) > 1e-12 {
+		t.Fatalf("ordinary empty-map default=%v, want 0.20", got)
 	}
-	if got := store.Lookup(""); math.Abs(got-0.30) > 1e-12 {
-		t.Fatalf("empty user ID default=%v, want 0.30", got)
+	if got := store.LookupForCampaign("any", true); math.Abs(got-0.30) > 1e-12 {
+		t.Fatalf("RTB empty-map default=%v, want 0.30", got)
 	}
 }
 
 func TestPercentMapExplicitZeroOverridesDefault(t *testing.T) {
 	store := &PercentStore{}
-	store.value.Store(&percentSnapshot{Values: PercentMap{"user-id": 0}})
+	store.value.Store(&percentSnapshot{Values: PercentMap{
+		PercentMapDefaultKey:    0.20,
+		PercentMapRTBDefaultKey: 0.30,
+		"campaign-1":            0,
+	}})
 
-	if got := store.Lookup("user-id"); got != 0 {
+	if got := store.LookupForCampaign("campaign-1", false); got != 0 {
 		t.Fatalf("explicit zero must override the default, got %v", got)
 	}
 }

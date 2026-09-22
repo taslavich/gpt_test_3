@@ -36,6 +36,7 @@ type Record struct {
 	WinnerType          string    `json:"winner_type,omitempty"`
 	UserID              string    `json:"user_id,omitempty"`
 	CampaignID          string    `json:"campaign_id,omitempty"`
+	TypeModel           int       `json:"type_model,omitempty"`
 	Price               float64   `json:"price,omitempty"`
 	Format              string    `json:"format"`
 	Source              string    `json:"source"`
@@ -227,7 +228,7 @@ func (s *Store) UpdateFailure(eventID string, applyErr error) error {
 	})
 }
 
-func (s *Store) UpdateResolution(eventID, winnerType, userID, campaignID string, price float64) error {
+func (s *Store) UpdateResolution(eventID, winnerType, userID, campaignID string, price float64, typeModel ...int) error {
 	if s == nil || s.db == nil {
 		return errors.New("outbox is not initialized")
 	}
@@ -249,6 +250,9 @@ func (s *Store) UpdateResolution(eventID, winnerType, userID, campaignID string,
 		record.UserID = strings.TrimSpace(userID)
 		record.CampaignID = strings.TrimSpace(campaignID)
 		record.Price = price
+		if len(typeModel) > 0 {
+			record.TypeModel = typeModel[0]
+		}
 		if err := validateRecord(record); err != nil {
 			return err
 		}
@@ -320,7 +324,7 @@ func sameEvent(a, b Record) bool {
 		sameOptionalBool(a.RequiresADVRecovery, b.RequiresADVRecovery) &&
 		a.EventID == b.EventID && a.GlobalID == b.GlobalID && a.ClickID == b.ClickID &&
 		NormalizeWinnerType(a.WinnerType) == NormalizeWinnerType(b.WinnerType) &&
-		a.UserID == b.UserID && a.CampaignID == b.CampaignID && a.Price == b.Price &&
+		a.UserID == b.UserID && a.CampaignID == b.CampaignID && a.TypeModel == b.TypeModel && a.Price == b.Price &&
 		strings.EqualFold(a.Format, b.Format) && strings.EqualFold(a.Source, b.Source)
 }
 

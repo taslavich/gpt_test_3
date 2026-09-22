@@ -85,6 +85,7 @@ func getAdm(
 			record.WinnerType = outbox.WinnerADV
 			record.UserID = winner.UserID
 			record.CampaignID = winner.CampaignID
+			record.TypeModel = winner.TypeModel
 			record.Price = winner.Price
 			redirectURL = appendClickIDParameter(decodedURL, winner.ClickIDParam, clickUUID)
 			if format == constants.IPP {
