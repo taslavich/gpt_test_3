@@ -250,6 +250,7 @@ func loadSnapshotFromPostgres(ctx context.Context, db *sql.DB) (*Snapshot, []sna
 		status,
 		traffic_type,
 		goal_total_dollars::text,
+		antiperekrut_max_traffic_percent::text,
 		traffic_reset_version,
 		updated_at,
 		brand_name
@@ -276,6 +277,7 @@ func loadSnapshotFromPostgres(ctx context.Context, db *sql.DB) (*Snapshot, []sna
 			&row.Country, &row.Language, &row.DeviceType, &row.OS, &row.Browser, &row.SiteID, &row.IP,
 			&row.Format, &row.Quality, &row.PricingModel, &row.Status, &row.TrafficType,
 			&row.GoalTotalDollars,
+			&row.AntiPerekrutMaxTrafficPercent,
 			&row.TrafficResetVersion, &row.UpdatedAt, &row.BrandName,
 		); err != nil {
 			return nil, warnings, fmt.Errorf("scan active campaign: %w", err)
@@ -358,15 +360,16 @@ func loadSnapshotFromPostgres(ctx context.Context, db *sql.DB) (*Snapshot, []sna
 }
 
 type campaignDBRow struct {
-	UserID              sql.NullString
-	CampaignID          sql.NullString
-	BasePrice           sql.NullString
-	RTB                 sql.NullBool
-	DSPLink             sql.NullString
-	GoalTotalDollars    sql.NullString
-	TrafficResetVersion sql.NullInt64
-	UpdatedAt           sql.NullTime
-	BrandName           sql.NullString
+	UserID                        sql.NullString
+	CampaignID                    sql.NullString
+	BasePrice                     sql.NullString
+	RTB                           sql.NullBool
+	DSPLink                       sql.NullString
+	GoalTotalDollars              sql.NullString
+	AntiPerekrutMaxTrafficPercent sql.NullString
+	TrafficResetVersion           sql.NullInt64
+	UpdatedAt                     sql.NullTime
+	BrandName                     sql.NullString
 
 	Format       sql.NullString
 	Quality      sql.NullString
@@ -408,6 +411,20 @@ func (r campaignDBRow) campaign() (*Campaign, error) {
 			"campaign %s goal_total_dollars: %w",
 			id,
 			err,
+		)
+	}
+	antiperekrutMaxTrafficPercent, err := parseFiniteNonNegative(r.AntiPerekrutMaxTrafficPercent.String)
+	if err != nil {
+		return nil, fmt.Errorf(
+			"campaign %s antiperekrut_max_traffic_percent: %w",
+			id,
+			err,
+		)
+	}
+	if !r.AntiPerekrutMaxTrafficPercent.Valid || antiperekrutMaxTrafficPercent < 0.01 || antiperekrutMaxTrafficPercent > 100 {
+		return nil, fmt.Errorf(
+			"campaign %s antiperekrut_max_traffic_percent must be in [0.01, 100]",
+			id,
 		)
 	}
 
@@ -494,9 +511,10 @@ func (r campaignDBRow) campaign() (*Campaign, error) {
 		StartTS: r.StartTS.Time.UTC(), EndTS: r.EndTS.Time.UTC(), ActiveIntervals: activeIntervals,
 		CountryFilter: country, LanguageFilter: language, DeviceTypeFilter: deviceType,
 		OSFilter: osFilter, BrowserFilter: browser, SiteIDFilter: siteID, IPFilter: ip,
-		IPCIDRPrefixes:      ipCIDRPrefixes,
-		Creatives:           []*Creative{},
-		TrafficResetVersion: r.TrafficResetVersion.Int64,
+		IPCIDRPrefixes:                ipCIDRPrefixes,
+		Creatives:                     []*Creative{},
+		AntiPerekrutMaxTrafficPercent: antiperekrutMaxTrafficPercent,
+		TrafficResetVersion:           r.TrafficResetVersion.Int64,
 		UpdatedAt: func() time.Time {
 			if r.UpdatedAt.Valid {
 				return r.UpdatedAt.Time.UTC()

@@ -143,9 +143,23 @@ func (m *AntiPerekrutManager) TrafficPercentMap() map[string]float64 {
 	if state == nil {
 		return result
 	}
+	campaignCaps := make(map[string]uint32)
+	if m != nil && m.snapshot != nil {
+		if snapshot := m.snapshot(); snapshot != nil {
+			campaignCaps = make(map[string]uint32, len(snapshot.Campaigns))
+			for _, campaign := range snapshot.Campaigns {
+				if campaign != nil {
+					campaignCaps[campaign.ID] = campaignMaxTrafficLimit(campaign)
+				}
+			}
+		}
+	}
 	for campaignID, limit := range state.TrafficLimit {
 		if limit > TrafficLimitFull {
 			limit = TrafficLimitFull
+		}
+		if capLimit, ok := campaignCaps[campaignID]; ok && limit > capLimit {
+			limit = capLimit
 		}
 		result[campaignID] = float64(limit) * 100 / float64(TrafficLimitFull)
 	}
@@ -545,6 +559,7 @@ func applyCampaignStateTransitions(
 		if campaign == nil {
 			continue
 		}
+		maxTrafficLimit := campaignMaxTrafficLimit(campaign)
 		applied := state.AppliedCampaignResetVersion[campaign.ID]
 		if campaign.TrafficResetVersion > applied {
 			state.TrafficLimit[campaign.ID] = TrafficLimitInitial
@@ -557,6 +572,11 @@ func applyCampaignStateTransitions(
 			if _, ok := state.CampaignResetAppliedAt[campaign.ID]; !ok {
 				state.CampaignResetAppliedAt[campaign.ID] = now
 			}
+		} else if state.TrafficLimit[campaign.ID] > maxTrafficLimit {
+			// Persist a lowered campaign cap into the runtime state. This makes a
+			// later cap increase resume gradual x3 growth from the old cap instead
+			// of immediately exposing the previously accumulated higher limit.
+			state.TrafficLimit[campaign.ID] = maxTrafficLimit
 		}
 
 		if len(campaign.ActiveIntervals) == 0 {
@@ -618,6 +638,14 @@ func calculateTrafficLimits(
 		if !complete {
 			continue
 		}
+		for _, campaign := range campaigns {
+			maxTrafficLimit := campaignMaxTrafficLimit(campaign)
+			if state.TrafficLimit[campaign.ID] < TrafficLimitInitial {
+				state.TrafficLimit[campaign.ID] = TrafficLimitInitial
+			} else if state.TrafficLimit[campaign.ID] > maxTrafficLimit {
+				state.TrafficLimit[campaign.ID] = maxTrafficLimit
+			}
+		}
 		sort.Slice(campaigns, func(i, j int) bool {
 			li, lj := state.TrafficLimit[campaigns[i].ID], state.TrafficLimit[campaigns[j].ID]
 			if li == lj {
@@ -629,9 +657,17 @@ func calculateTrafficLimits(
 		accumulated := 0.0
 		for i, campaign := range campaigns {
 			point := state.CampaignSpend[campaign.ID]
+			maxTrafficLimit := campaignMaxTrafficLimit(campaign)
+			currentTrafficLimit := state.TrafficLimit[campaign.ID]
 			forecast := point.Spend * trafficLateFactor
-			if state.TrafficLimit[campaign.ID] < TrafficLimitFull {
-				forecast *= trafficMultiplier
+			nextTrafficLimit := currentTrafficLimit
+			if currentTrafficLimit < maxTrafficLimit {
+				next := uint64(currentTrafficLimit) * uint64(trafficMultiplier)
+				if next > uint64(maxTrafficLimit) {
+					next = uint64(maxTrafficLimit)
+				}
+				nextTrafficLimit = uint32(next)
+				forecast *= float64(nextTrafficLimit) / float64(currentTrafficLimit)
 			}
 			temporary := 0.0
 			for _, rest := range campaigns[i+1:] {
@@ -642,12 +678,8 @@ func calculateTrafficLimits(
 				break
 			}
 			accumulated = candidateS
-			if state.TrafficLimit[campaign.ID] < TrafficLimitFull {
-				next := uint64(state.TrafficLimit[campaign.ID]) * 3
-				if next > uint64(TrafficLimitFull) {
-					next = uint64(TrafficLimitFull)
-				}
-				state.TrafficLimit[campaign.ID] = uint32(next)
+			if nextTrafficLimit > currentTrafficLimit {
+				state.TrafficLimit[campaign.ID] = nextTrafficLimit
 			}
 		}
 	}
@@ -817,6 +849,7 @@ func EnsureAntiPerekrutSchema(ctx context.Context, db *sql.DB) error {
 	queries := []string{
 		`ALTER TABLE users ADD COLUMN IF NOT EXISTS antiperekrut_blocked BOOLEAN NOT NULL DEFAULT FALSE`,
 		`ALTER TABLE campaigns ADD COLUMN IF NOT EXISTS traffic_reset_version BIGINT NOT NULL DEFAULT 0`,
+		`ALTER TABLE campaigns ADD COLUMN IF NOT EXISTS antiperekrut_max_traffic_percent NUMERIC(5,2) NOT NULL DEFAULT 100.00 CHECK (antiperekrut_max_traffic_percent >= 0.01 AND antiperekrut_max_traffic_percent <= 100.00)`,
 		`CREATE TABLE IF NOT EXISTS antiperekrut_control_state (
 			id SMALLINT PRIMARY KEY,
 			global_reset_generation BIGINT NOT NULL DEFAULT 0,
@@ -908,10 +941,33 @@ func (m *AntiPerekrutManager) EffectiveTrafficLimit(
 	if !ok || limit < TrafficLimitInitial {
 		return TrafficLimitInitial
 	}
-	if limit > TrafficLimitFull {
-		return TrafficLimitFull
+	maxTrafficLimit := campaignMaxTrafficLimit(campaign)
+	if limit > maxTrafficLimit {
+		return maxTrafficLimit
 	}
 	return limit
+}
+
+// campaignMaxTrafficLimit converts the user-facing campaign cap in percent to
+// the internal [0, TrafficLimitFull] scale. A zero value means "not populated"
+// for in-memory Campaign values created outside the Postgres snapshot path and
+// therefore preserves the historical 100% behavior.
+func campaignMaxTrafficLimit(campaign *Campaign) uint32 {
+	if campaign == nil || campaign.AntiPerekrutMaxTrafficPercent <= 0 {
+		return TrafficLimitFull
+	}
+	percent := campaign.AntiPerekrutMaxTrafficPercent
+	if percent >= 100 {
+		return TrafficLimitFull
+	}
+	scaled := math.Round(percent * float64(TrafficLimitFull) / 100)
+	if scaled < float64(TrafficLimitInitial) {
+		return TrafficLimitInitial
+	}
+	if scaled > float64(TrafficLimitFull) {
+		return TrafficLimitFull
+	}
+	return uint32(scaled)
 }
 
 func trafficHashPass(hashID, campaignID string, limit uint32) bool {

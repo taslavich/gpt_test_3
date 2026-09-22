@@ -115,8 +115,9 @@ type Campaign struct {
 
 	Creatives []*Creative
 
-	TrafficResetVersion int64
-	UpdatedAt           time.Time
+	AntiPerekrutMaxTrafficPercent float64
+	TrafficResetVersion           int64
+	UpdatedAt                     time.Time
 
 	// diagnosticIndex is assigned only when a validated snapshot is published.
 	// It gives the diagnostics-on path O(1) array access without a UUID map lookup.
@@ -323,6 +324,9 @@ func cloneAndValidateSnapshot(src *Snapshot) (*Snapshot, error) {
 		clone.TrafficType = normalizeTraffic(clone.TrafficType)
 		clone.QualitySegment = strings.ToLower(strings.TrimSpace(clone.QualitySegment))
 		clone.DSPLink = strings.TrimSpace(clone.DSPLink)
+		if clone.AntiPerekrutMaxTrafficPercent == 0 {
+			clone.AntiPerekrutMaxTrafficPercent = 100
+		}
 
 		if clone.ID == "" || clone.UserID == "" {
 			return nil, errors.New("campaign has empty id or user_id")
@@ -345,6 +349,9 @@ func cloneAndValidateSnapshot(src *Snapshot) (*Snapshot, error) {
 		}
 		if !finiteNonNegative(clone.GoalTotalDollars) {
 			return nil, fmt.Errorf("campaign %s has invalid goal", clone.ID)
+		}
+		if !finiteNonNegative(clone.AntiPerekrutMaxTrafficPercent) || clone.AntiPerekrutMaxTrafficPercent < 0.01 || clone.AntiPerekrutMaxTrafficPercent > 100 {
+			return nil, fmt.Errorf("campaign %s has invalid antiperekrut max traffic percent", clone.ID)
 		}
 		if clone.RTB {
 			if !finiteNonNegative(clone.BasePrice) || clone.DSPLink == "" {

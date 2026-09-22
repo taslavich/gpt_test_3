@@ -437,3 +437,79 @@ func TestTrafficPercentMapReturnsDetachedPercentSnapshot(t *testing.T) {
 		t.Fatalf("returned map mutated state: limit=%d", statePercent)
 	}
 }
+
+func TestCampaignMaxTrafficLimitDefaultsToFullAndConvertsPercent(t *testing.T) {
+	if got := campaignMaxTrafficLimit(&Campaign{}); got != TrafficLimitFull {
+		t.Fatalf("unset cap=%d, want full=%d", got, TrafficLimitFull)
+	}
+	if got := campaignMaxTrafficLimit(&Campaign{AntiPerekrutMaxTrafficPercent: 10}); got != 100_000 {
+		t.Fatalf("10%% cap=%d, want 100000", got)
+	}
+	if got := campaignMaxTrafficLimit(&Campaign{AntiPerekrutMaxTrafficPercent: 0.01}); got != TrafficLimitInitial {
+		t.Fatalf("0.01%% cap=%d, want initial=%d", got, TrafficLimitInitial)
+	}
+}
+
+func TestCalculateTrafficLimitsStopsAtCampaignCap(t *testing.T) {
+	resetAt := time.Date(2026, 9, 22, 17, 0, 0, 0, time.UTC)
+	spendAt := resetAt.Add(time.Minute)
+	campaign := &Campaign{
+		ID: "c1", UserID: "u1", Status: CampaignStatusActive,
+		AntiPerekrutMaxTrafficPercent: 10,
+	}
+	snapshot := &Snapshot{Campaigns: []*Campaign{campaign}, UserGoals: map[string]float64{"u1": 100}}
+	state := &AntiPerekrutState{
+		CampaignSpend:          map[string]SpendPoint{"c1": {Spend: 1, CreatedAt: spendAt}},
+		CampaignAuctionAllowed: map[string]bool{"c1": true},
+		UserRemainingBalance:   map[string]float64{"u1": 2},
+		TrafficLimit:           map[string]uint32{"c1": 90_000},
+		CampaignResetAppliedAt: map[string]time.Time{"c1": resetAt},
+	}
+
+	calculateTrafficLimits(state, snapshot, nil, spendAt)
+	if got := state.TrafficLimit["c1"]; got != 100_000 {
+		t.Fatalf("capped growth limit=%d, want 100000 (10%%)", got)
+	}
+
+	state.CampaignSpend["c1"] = SpendPoint{Spend: 0.1, CreatedAt: spendAt.Add(time.Minute)}
+	calculateTrafficLimits(state, snapshot, nil, spendAt.Add(time.Minute))
+	if got := state.TrafficLimit["c1"]; got != 100_000 {
+		t.Fatalf("limit grew above campaign cap: %d", got)
+	}
+}
+
+func TestLoweredCampaignCapClampsStoredAndEffectiveLimit(t *testing.T) {
+	now := time.Date(2026, 9, 22, 17, 0, 0, 0, time.UTC)
+	campaign := &Campaign{
+		ID: "c1", UserID: "u1", Status: CampaignStatusActive,
+		AntiPerekrutMaxTrafficPercent: 10,
+	}
+	snapshot := &Snapshot{Campaigns: []*Campaign{campaign}}
+	state := &AntiPerekrutState{
+		TrafficLimit:                map[string]uint32{"c1": TrafficLimitFull},
+		AppliedCampaignResetVersion: map[string]int64{},
+		CampaignResetAppliedAt:      map[string]time.Time{"c1": now.Add(-time.Hour)},
+	}
+	manager := &AntiPerekrutManager{}
+
+	if got := manager.EffectiveTrafficLimit(state, campaign, now); got != 100_000 {
+		t.Fatalf("effective limit=%d, want 100000 after cap decrease", got)
+	}
+	applyCampaignStateTransitions(state, snapshot, now)
+	if got := state.TrafficLimit["c1"]; got != 100_000 {
+		t.Fatalf("stored limit=%d, want 100000 after cap decrease", got)
+	}
+}
+
+func TestTrafficPercentMapReportsCampaignCapBeforeStateRefresh(t *testing.T) {
+	campaign := &Campaign{ID: "c1", AntiPerekrutMaxTrafficPercent: 10}
+	manager := &AntiPerekrutManager{snapshot: func() *Snapshot {
+		return &Snapshot{Campaigns: []*Campaign{campaign}}
+	}}
+	manager.state.Store(&AntiPerekrutState{TrafficLimit: map[string]uint32{"c1": TrafficLimitFull}})
+
+	got := manager.TrafficPercentMap()
+	if got["c1"] != 10 {
+		t.Fatalf("reported traffic percent=%v, want 10", got["c1"])
+	}
+}
