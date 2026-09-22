@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log"
 	"math"
 	"net"
 	"net/http"
@@ -148,9 +147,9 @@ func (s *AuctionService) fetchRTBCampaignBids(
 			continue
 		}
 		rtbCampaignsSeen++
-		log.Printf("[ADV][RTB_CAMPAIGN_SEEN] request_id=%q campaign_id=%q user_id=%q dsp_link=%q request_imps=%d", strings.TrimSpace(req.GetId()), campaign.ID, campaign.UserID, campaign.DSPLink, len(req.GetImp()))
+		logf("[ADV][RTB_CAMPAIGN_SEEN] request_id=%q campaign_id=%q user_id=%q dsp_link=%q request_imps=%d", strings.TrimSpace(req.GetId()), campaign.ID, campaign.UserID, campaign.DSPLink, len(req.GetImp()))
 		if strings.TrimSpace(campaign.DSPLink) == "" {
-			log.Printf("[ADV][RTB_CAMPAIGN_SKIP] request_id=%q campaign_id=%q reason=dsp_link_empty", strings.TrimSpace(req.GetId()), campaign.ID)
+			logf("[ADV][RTB_CAMPAIGN_SKIP] request_id=%q campaign_id=%q reason=dsp_link_empty", strings.TrimSpace(req.GetId()), campaign.ID)
 			continue
 		}
 		eligible := make([]*ortb.Imp, 0, len(req.GetImp()))
@@ -163,17 +162,17 @@ func (s *AuctionService) fetchRTBCampaignBids(
 				options.ImpIDUUID[imp.GetId()], antiState, durableUserBlocked, requestIsVPN, vpnClassificationErr, logf)
 			if preflightOK {
 				eligible = append(eligible, imp)
-				log.Printf("[ADV][RTB_PREFLIGHT_PASS] request_id=%q campaign_id=%q imp_id=%q", strings.TrimSpace(req.GetId()), campaign.ID, imp.GetId())
+				logf("[ADV][RTB_PREFLIGHT_PASS] request_id=%q campaign_id=%q imp_id=%q", strings.TrimSpace(req.GetId()), campaign.ID, imp.GetId())
 			} else {
-				log.Printf("[ADV][RTB_PREFLIGHT_REJECT] request_id=%q campaign_id=%q imp_id=%q reason=%q", strings.TrimSpace(req.GetId()), campaign.ID, imp.GetId(), rejectReason)
+				logf("[ADV][RTB_PREFLIGHT_REJECT] request_id=%q campaign_id=%q imp_id=%q reason=%q", strings.TrimSpace(req.GetId()), campaign.ID, imp.GetId(), rejectReason)
 			}
 		}
 		if len(eligible) > 0 {
 			jobs = append(jobs, job{campaign: campaign, imps: eligible})
-			log.Printf("[ADV][RTB_JOB_QUEUED] request_id=%q campaign_id=%q eligible_imps=%d", strings.TrimSpace(req.GetId()), campaign.ID, len(eligible))
+			logf("[ADV][RTB_JOB_QUEUED] request_id=%q campaign_id=%q eligible_imps=%d", strings.TrimSpace(req.GetId()), campaign.ID, len(eligible))
 		}
 	}
-	log.Printf("[ADV][RTB_DISCOVERY] request_id=%q rtb_campaigns=%d jobs=%d", strings.TrimSpace(req.GetId()), rtbCampaignsSeen, len(jobs))
+	logf("[ADV][RTB_DISCOVERY] request_id=%q rtb_campaigns=%d jobs=%d", strings.TrimSpace(req.GetId()), rtbCampaignsSeen, len(jobs))
 	if len(jobs) == 0 {
 		s.writeRTBResponseStats(ctx, options.ImpIDUUID, nil, logf)
 		return out
@@ -332,15 +331,15 @@ func (s *AuctionService) callRTBCampaign(ctx context.Context, source *ortb.BidRe
 	httpReq.Header.Set("Connection", "keep-alive")
 	httpReq.Header.Set("X-Openrtb-Version", "2.5")
 	startedAt := time.Now()
-	log.Printf("[ADV][RTB_HTTP_ATTEMPT] request_id=%q campaign_id=%q url=%q imp_count=%d imp_ids=%v payload_bytes=%d", strings.TrimSpace(source.GetId()), campaign.ID, campaign.DSPLink, len(result.impIDs), result.impIDs, len(body))
+	logf("[ADV][RTB_HTTP_ATTEMPT] request_id=%q campaign_id=%q url=%q imp_count=%d imp_ids=%v payload_bytes=%d", strings.TrimSpace(source.GetId()), campaign.ID, campaign.DSPLink, len(result.impIDs), result.impIDs, len(body))
 	resp, err := s.rtbHTTPClient.Do(httpReq)
 	if err != nil {
-		log.Printf("[ADV][RTB_HTTP_ERROR] request_id=%q campaign_id=%q url=%q imp_ids=%v duration=%s error=%v", strings.TrimSpace(source.GetId()), campaign.ID, campaign.DSPLink, result.impIDs, time.Since(startedAt), err)
+		logf("[ADV][RTB_HTTP_ERROR] request_id=%q campaign_id=%q url=%q imp_ids=%v duration=%s error=%v", strings.TrimSpace(source.GetId()), campaign.ID, campaign.DSPLink, result.impIDs, time.Since(startedAt), err)
 		setAll(rtbCodeNetworkError)
 		return result
 	}
 	defer resp.Body.Close()
-	log.Printf("[ADV][RTB_HTTP_RESULT] request_id=%q campaign_id=%q url=%q imp_ids=%v status=%d duration=%s", strings.TrimSpace(source.GetId()), campaign.ID, campaign.DSPLink, result.impIDs, resp.StatusCode, time.Since(startedAt))
+	logf("[ADV][RTB_HTTP_RESULT] request_id=%q campaign_id=%q url=%q imp_ids=%v status=%d duration=%s", strings.TrimSpace(source.GetId()), campaign.ID, campaign.DSPLink, result.impIDs, resp.StatusCode, time.Since(startedAt))
 	if resp.StatusCode != http.StatusOK {
 		setAll(fmt.Sprintf("%d", resp.StatusCode))
 		return result
@@ -398,16 +397,16 @@ func (s *AuctionService) callRTBCampaign(ctx context.Context, source *ortb.BidRe
 				best.Nurl = &nurl
 			}
 			result.bids[impID] = best
-			log.Printf("[ADV][RTB_BID_SELECTED] request_id=%q campaign_id=%q imp_id=%q bid_id=%q price=%.12f total_bids_for_imp=%d", strings.TrimSpace(source.GetId()), campaign.ID, impID, best.GetId(), float64(best.GetPrice()), len(items))
+			logf("[ADV][RTB_BID_SELECTED] request_id=%q campaign_id=%q imp_id=%q bid_id=%q price=%.12f total_bids_for_imp=%d", strings.TrimSpace(source.GetId()), campaign.ID, impID, best.GetId(), float64(best.GetPrice()), len(items))
 			continue
 		}
 		if invalidADMSeen {
 			result.codes[impID] = rtbCodeInvalidADM
-			log.Printf("[ADV][RTB_BID_REJECT] request_id=%q campaign_id=%q imp_id=%q reason=no_valid_bid invalid_adm_seen=true bids=%d", strings.TrimSpace(source.GetId()), campaign.ID, impID, len(items))
+			logf("[ADV][RTB_BID_REJECT] request_id=%q campaign_id=%q imp_id=%q reason=no_valid_bid invalid_adm_seen=true bids=%d", strings.TrimSpace(source.GetId()), campaign.ID, impID, len(items))
 		} else if len(items) > 0 {
-			log.Printf("[ADV][RTB_BID_REJECT] request_id=%q campaign_id=%q imp_id=%q reason=no_valid_positive_price bids=%d", strings.TrimSpace(source.GetId()), campaign.ID, impID, len(items))
+			logf("[ADV][RTB_BID_REJECT] request_id=%q campaign_id=%q imp_id=%q reason=no_valid_positive_price bids=%d", strings.TrimSpace(source.GetId()), campaign.ID, impID, len(items))
 		} else {
-			log.Printf("[ADV][RTB_NO_BID] request_id=%q campaign_id=%q imp_id=%q", strings.TrimSpace(source.GetId()), campaign.ID, impID)
+			logf("[ADV][RTB_NO_BID] request_id=%q campaign_id=%q imp_id=%q", strings.TrimSpace(source.GetId()), campaign.ID, impID)
 		}
 	}
 	return result
@@ -707,14 +706,14 @@ func (s *AuctionService) writeRTBResponseStats(_ context.Context, impUUID map[st
 		}
 		payload, err := proto.Marshal(&eventspb.BidResponses{Items: items})
 		if err != nil {
-			log.Printf("[ADV][RTB_STATS_ERROR] imp_id=%q error=%v", impID, err)
+			logf("[ADV][RTB_STATS_ERROR] imp_id=%q error=%v", impID, err)
 			continue
 		}
 
 		// Use the same Redis writer contract as the other ORTB statistics writers:
 		// HSET creates the UUID hash if it does not exist yet, and the SSP adapter
 		// can safely add the remaining fields before publishing the UUID as ready.
-		log.Printf("[ADV][RTB_STATS_WRITE_ATTEMPT] imp_id=%q uuid=%q items=%v", impID, uuid, items)
+		logf("[ADV][RTB_STATS_WRITE_ATTEMPT] imp_id=%q uuid=%q items=%v", impID, uuid, items)
 
 		writeCtx, cancel := context.WithTimeout(context.Background(), 30*time.Millisecond)
 		err = utils.WriteBytesToRedis(
@@ -727,10 +726,10 @@ func (s *AuctionService) writeRTBResponseStats(_ context.Context, impUUID map[st
 		)
 		cancel()
 		if err != nil {
-			log.Printf("[ADV][RTB_STATS_ERROR] imp_id=%q uuid=%q error=%v", impID, uuid, err)
+			logf("[ADV][RTB_STATS_ERROR] imp_id=%q uuid=%q error=%v", impID, uuid, err)
 			continue
 		}
 
-		log.Printf("[ADV][RTB_STATS_WRITE_OK] imp_id=%q uuid=%q items=%v", impID, uuid, items)
+		logf("[ADV][RTB_STATS_WRITE_OK] imp_id=%q uuid=%q items=%v", impID, uuid, items)
 	}
 }
