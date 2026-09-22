@@ -105,6 +105,33 @@ func putSspGeoLinksMap(
 	w.WriteHeader(http.StatusNoContent)
 }
 
+func getSiteIDDspLinksMap(w http.ResponseWriter, store *SiteIDDSPLinkStore) {
+	raw, err := store.ReadRaw()
+	if err != nil {
+		http.Error(w, "Cannot read site_id/DSP link map", http.StatusInternalServerError)
+		return
+	}
+	if err := rnr.JSON(w, http.StatusOK, raw); err != nil {
+		log.Printf("Cannot make HTTP response back: %v\n", err)
+	}
+}
+
+func getSiteIDDspLinksMapDebug(w http.ResponseWriter, store *SiteIDDSPLinkStore) {
+	if err := rnr.JSON(w, http.StatusOK, store.Snapshot()); err != nil {
+		log.Printf("Cannot make HTTP response back: %v\n", err)
+	}
+}
+
+func putSiteIDDspLinksMap(w http.ResponseWriter, r *http.Request, store *SiteIDDSPLinkStore) {
+	input := r.Context().Value(httpin.Input).(*putSiteIDDspLinksMapRequest)
+	if err := store.Update(input.Mapa); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusNoContent)
+}
+
 func putDspFiltersMap(
 	w http.ResponseWriter,
 	r *http.Request,

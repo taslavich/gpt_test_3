@@ -19,6 +19,9 @@ const (
 	GetSspGeoDspLinksMapUrl = "/filter/ssp_geo_dsp_links_map"
 	PutSspGeoDspLinksMapUrl = "/filter/ssp_geo_dsp_links_map"
 
+	GetSiteIDDspLinksMapUrl = "/filter/site_id_dsp_links_map"
+	PutSiteIDDspLinksMapUrl = "/filter/site_id_dsp_links_map"
+
 	GetDspFiltersMapUrl = "/filter/dsp_filters_map"
 	PutDspFiltersMapUrl = "/filter/dsp_filters_map"
 
@@ -31,6 +34,7 @@ const (
 
 const (
 	GetDebugSspGeoDspLinksMapUrl = "/filter/debug_ssp_geo_dsp_links_map"
+	GetDebugSiteIDDspLinksMapUrl = "/filter/debug_site_id_dsp_links_map"
 	GetDebugDspFiltersMapUrl     = "/filter/debug_dsp_filters_map"
 	GetDebugDspChangersMapUrl    = "/filter/debug_dsp_changers_map"
 	GetDebugDspFiltersCidMapUrl  = "/filter/debug_dsp_filters_cid_map"
@@ -39,6 +43,10 @@ const (
 type getSspGeoDspLinksRequest_V2_5 struct {
 	Typic  string `in:"query=typic" required:"true"`
 	Format string `in:"query=format"`
+}
+
+type putSiteIDDspLinksMapRequest struct {
+	Mapa SiteIDDSPLinkMap `in:"body=json"`
 }
 
 type getDspFiltersMapRequest_V2_5 struct {
@@ -95,8 +103,14 @@ func InitHttpRoutes(
 
 	filtersCidAdl *filter.FilterCidBoxType,
 	filtersCidMc *filter.FilterCidBoxType,
+	siteIDDSPLinkStores ...*SiteIDDSPLinkStore,
 ) {
 	integration.UseGochiURLParam("path", chi.URLParam)
+
+	var siteIDDSPLinkStore *SiteIDDSPLinkStore
+	if len(siteIDDSPLinkStores) > 0 {
+		siteIDDSPLinkStore = siteIDDSPLinkStores[0]
+	}
 
 	httpRouter.With(
 		httpin.NewInput(getSspGeoDspLinksRequest_V2_5{}),
@@ -115,6 +129,20 @@ func InitHttpRoutes(
 	).Put(PutSspGeoDspLinksMapUrl, func(w http.ResponseWriter, r *http.Request) {
 		putSspGeoLinksMap(w, r, formatRoutes)
 	})
+
+	if siteIDDSPLinkStore != nil {
+		httpRouter.Get(GetSiteIDDspLinksMapUrl, func(w http.ResponseWriter, r *http.Request) {
+			getSiteIDDspLinksMap(w, siteIDDSPLinkStore)
+		})
+		httpRouter.Get(GetDebugSiteIDDspLinksMapUrl, func(w http.ResponseWriter, r *http.Request) {
+			getSiteIDDspLinksMapDebug(w, siteIDDSPLinkStore)
+		})
+		httpRouter.With(
+			httpin.NewInput(putSiteIDDspLinksMapRequest{}),
+		).Put(PutSiteIDDspLinksMapUrl, func(w http.ResponseWriter, r *http.Request) {
+			putSiteIDDspLinksMap(w, r, siteIDDSPLinkStore)
+		})
+	}
 
 	httpRouter.With(
 		httpin.NewInput(getDspFiltersMapRequest_V2_5{}),

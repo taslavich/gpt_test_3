@@ -128,6 +128,11 @@ func main() {
 	ippAdultLinks := initLinkMap(cfg.SspGeoDspLinksIppAdultFilePath)
 	ippMainstreamLinks := initLinkMap(cfg.SspGeoDspLinksIppMainstreamFilePath)
 
+	siteIDDSPLinkStore, err := dspRouterWeb.NewSiteIDDSPLinkStore(cfg.SiteIDDspLinksFilePath)
+	if err != nil {
+		log.Fatalf("Failed to initialize site_id/DSP link map from %s: %v", cfg.SiteIDDspLinksFilePath, err)
+	}
+
 	formatRoutes := &dspRouterWeb.FormatRoutesV25{
 		POP: dspRouterWeb.FormatRouteV25{
 			AdultEndpoints: cfg.DSPEndpointsAdult_v_2_5, MainstreamEndpoints: cfg.DSPEndpointsMainstream_v_2_5,
@@ -226,6 +231,7 @@ func main() {
 		cfg.SspHttpClientTimeouts,
 		redisWriteErrorMonitor,
 		advClient,
+		siteIDDSPLinkStore,
 	)
 
 	if err := routerServer.LoadNetset(cfg.AllowedIpDbPath); err != nil {
@@ -253,6 +259,7 @@ func main() {
 		cfg.CidSspDspLinksMainstreamFilePath,
 		&cidSspDspMapAdl,
 		&cidSspDspMapMc,
+		siteIDDSPLinkStore,
 	)
 	log.Println("HTTP routes initialized")
 

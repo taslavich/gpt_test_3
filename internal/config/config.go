@@ -183,6 +183,8 @@ type RouterConfig struct {
 	SspGeoDspLinksIppAdultFilePath      string `yaml:"SSP_GEO_DSP_LINKS_IPP_ADULT_FILE_PATH" env:"SSP_GEO_DSP_LINKS_IPP_ADULT_FILE_PATH"`
 	SspGeoDspLinksIppMainstreamFilePath string `yaml:"SSP_GEO_DSP_LINKS_IPP_MAINSTREAM_FILE_PATH" env:"SSP_GEO_DSP_LINKS_IPP_MAINSTREAM_FILE_PATH"`
 
+	SiteIDDspLinksFilePath string `yaml:"SITE_ID_DSP_LINKS_FILE_PATH" env:"SITE_ID_DSP_LINKS_FILE_PATH" env-default:"./site_id_dsp_links.json"`
+
 	CidSspDspLinksAdultFilePath      string `yaml:"CID_SSP_DSP_LINKS_ADULT_FILE_PATH" env:"CID_SSP_DSP_LINKS_ADULT_FILE_PATH"`
 	CidSspDspLinksMainstreamFilePath string `yaml:"CID_SSP_DSP_LINKS_MAINSTREAM_FILE_PATH" env:"CID_SSP_DSP_LINKS_MAINSTREAM_FILE_PATH"`
 
