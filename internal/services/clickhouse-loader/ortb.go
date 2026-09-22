@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"net"
+	"strconv"
 	"strings"
 	"time"
 
@@ -92,7 +93,9 @@ func insertBatchOrtb(
 			win_dsp_price,
 			win_cid,
 			win_crid,
-			win_user_id
+			win_user_id,
+			segment_hash,
+			percenter_point_version
 		)
 	`, table)
 
@@ -137,15 +140,7 @@ func insertBatchOrtb(
 
 		cityID := int32(r.CityId)
 		code := uint16(r.Code)
-		normalResponses := make(map[string]string)
-		advRTBResponses := make(map[string]string)
-		for key, value := range r.BidResponses {
-			if campaignID, ok := strings.CutPrefix(key, constants.ADVRTBResponseStatsPrefix); ok {
-				advRTBResponses[campaignID] = value
-				continue
-			}
-			normalResponses[key] = value
-		}
+		normalResponses, advRTBResponses, segmentHash, pointVersion := splitOrtbBidResponses(r.BidResponses)
 		bidResponsesRaw := encodeBidResponsesRaw(normalResponses)
 		advRTBResponsesRaw := encodeBidResponsesRaw(advRTBResponses)
 
@@ -177,6 +172,8 @@ func insertBatchOrtb(
 			r.WinCid,
 			r.WinCrid,
 			r.WinUserId,
+			segmentHash,
+			pointVersion,
 		); err != nil {
 			stats.AppendErrors++
 			return stats, fmt.Errorf("Record %d: batch.Append: %w", i, err)
@@ -188,6 +185,32 @@ func insertBatchOrtb(
 	}
 
 	return stats, nil
+}
+
+func splitOrtbBidResponses(items map[string]string) (map[string]string, map[string]string, string, uint64) {
+	normalResponses := make(map[string]string)
+	advRTBResponses := make(map[string]string)
+	segmentHash := ""
+	var pointVersion uint64
+	for key, value := range items {
+		switch key {
+		case constants.PercenterSegmentHashTransportKey:
+			segmentHash = strings.TrimSpace(value)
+			continue
+		case constants.PercenterPointVersionTransportKey:
+			parsed, err := strconv.ParseUint(strings.TrimSpace(value), 10, 64)
+			if err == nil {
+				pointVersion = parsed
+			}
+			continue
+		}
+		if campaignID, ok := strings.CutPrefix(key, constants.ADVRTBResponseStatsPrefix); ok {
+			advRTBResponses[campaignID] = value
+			continue
+		}
+		normalResponses[key] = value
+	}
+	return normalResponses, advRTBResponses, segmentHash, pointVersion
 }
 
 func encodeBidResponsesRaw(items map[string]string) string {

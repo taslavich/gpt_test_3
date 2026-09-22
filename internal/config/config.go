@@ -361,8 +361,16 @@ type BatchRatioConfig struct {
 }
 
 type PercenterConfig struct {
-	Clickhouse     ClickhouseConfig
-	UriOfBidEngine string `yaml:"URI_OF_BID_ENGINE" env:"URI_OF_BID_ENGINE"`
+	Clickhouse ClickhouseConfig
+	RedisConfig
+
+	SimpleOptimizeInterval    time.Duration `yaml:"SIMPLE_OPTIMIZE_INTERVAL" env:"SIMPLE_OPTIMIZE_INTERVAL" env-default:"5m"`
+	SimpleRebenchmarkInterval time.Duration `yaml:"SIMPLE_REBENCHMARK_INTERVAL" env:"SIMPLE_REBENCHMARK_INTERVAL" env-default:"6h"`
+	SimpleStateTTL            time.Duration `yaml:"SIMPLE_STATE_TTL" env:"SIMPLE_STATE_TTL" env-default:"168h"`
+	SimpleMinImpressions      uint64        `yaml:"SIMPLE_MIN_IMPRESSIONS" env:"SIMPLE_MIN_IMPRESSIONS" env-default:"5"`
+	SimpleWinRateRetention    float64       `yaml:"SIMPLE_WIN_RATE_RETENTION" env:"SIMPLE_WIN_RATE_RETENTION" env-default:"0.5"`
+	SimpleMarginSearchSteps   string        `yaml:"SIMPLE_MARGIN_SEARCH_STEPS" env:"SIMPLE_MARGIN_SEARCH_STEPS" env-default:"5,2,1"`
+	SimpleMaxMargin           float64       `yaml:"SIMPLE_MAX_MARGIN" env:"SIMPLE_MAX_MARGIN" env-default:"0.9"`
 }
 
 type ClickhouseLoaderConfig struct {
@@ -430,9 +438,10 @@ type RedisConfig struct {
 	BatchSizeConversionsPercent float64 `yaml:"BATCH_SIZE_CONVERSIONS_PERCENT" env:"BATCH_SIZE_CONVERSIONS_PERCENT"`
 	RedisSetConversions         string  `yaml:"REDIS_SET_CONVERSIONS" env:"REDIS_SET_CONVERSIONS" env-default:"conversions:ready"`
 
-	RedisDBAdvRuntime int    `yaml:"REDIS_DB_ADV_RUNTIME" env:"REDIS_DB_ADV_RUNTIME" env-default:"5"`
-	RedisDBAdvWinner  int    `yaml:"REDIS_DB_ADV_WINNER" env:"REDIS_DB_ADV_WINNER" env-default:"6"`
-	RedisADVAddr      string `env:"REDIS_ADV_ADDR,required"`
+	RedisDBAdvRuntime   int    `yaml:"REDIS_DB_ADV_RUNTIME" env:"REDIS_DB_ADV_RUNTIME" env-default:"5"`
+	RedisDBAdvWinner    int    `yaml:"REDIS_DB_ADV_WINNER" env:"REDIS_DB_ADV_WINNER" env-default:"6"`
+	RedisDBAdvPercenter int    `yaml:"REDIS_DB_ADV_PERCENTER" env:"REDIS_DB_ADV_PERCENTER" env-default:"7"`
+	RedisADVAddr        string `env:"REDIS_ADV_ADDR,required"`
 }
 
 type KafkaConfig struct {
@@ -468,7 +477,7 @@ type GrpcServer struct {
 }
 
 func getEnvFileNames() []string {
-	return []string{".env.local", ".env", "bid-engine.env", "clickhouse-loader.env", "kafka-loader.env", "dsp1.env", "dsp2.env", "dsp3.env", "orchestrator.env", "router.env", "spp-adapter.env", "adm-adapter.env", "adv.env"}
+	return []string{".env.local", ".env", "bid-engine.env", "clickhouse-loader.env", "kafka-loader.env", "dsp1.env", "dsp2.env", "dsp3.env", "orchestrator.env", "router.env", "spp-adapter.env", "adm-adapter.env", "adv.env", "percenter.env"}
 }
 
 func LoadConfig[

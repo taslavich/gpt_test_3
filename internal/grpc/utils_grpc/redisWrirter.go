@@ -165,6 +165,54 @@ func WriteStatsOrtb(
 	siteDomain string,
 	bidFloor float64,
 ) error {
+	return writeStatsOrtb(ctx, redisClients, globalId, logged, format, typic, ssp_domain, ip, ipv6, lang, countryISO, cityId, code, uaFields, siteId, siteDomain, bidFloor, "", 0)
+}
+
+func WriteStatsOrtbWithPercenter(
+	ctx context.Context,
+	redisClients []*redis.Client,
+	globalId string,
+	logged bool,
+	format string,
+	typic string,
+	ssp_domain string,
+	ip string,
+	ipv6 string,
+	lang string,
+	countryISO string,
+	cityId uint32,
+	code int32,
+	uaFields ua.UAFields,
+	siteId string,
+	siteDomain string,
+	bidFloor float64,
+	segmentHash string,
+	pointVersion uint64,
+) error {
+	return writeStatsOrtb(ctx, redisClients, globalId, logged, format, typic, ssp_domain, ip, ipv6, lang, countryISO, cityId, code, uaFields, siteId, siteDomain, bidFloor, segmentHash, pointVersion)
+}
+
+func writeStatsOrtb(
+	ctx context.Context,
+	redisClients []*redis.Client,
+	globalId string,
+	logged bool,
+	format string,
+	typic string,
+	ssp_domain string,
+	ip string,
+	ipv6 string,
+	lang string,
+	countryISO string,
+	cityId uint32,
+	code int32,
+	uaFields ua.UAFields,
+	siteId string,
+	siteDomain string,
+	bidFloor float64,
+	segmentHash string,
+	pointVersion uint64,
+) error {
 	if !logged {
 		return nil
 	}
@@ -193,6 +241,11 @@ func WriteStatsOrtb(
 		constants.GEO_COLUMN:             countryISO,
 		constants.CITY_ID_COLUMN:         cityId,
 		constants.CODE_COLUMN:            code,
+	}
+
+	if segmentHash != "" && pointVersion > 0 {
+		fields[constants.SEGMENT_HASH_COLUMN] = segmentHash
+		fields[constants.PERCENTER_POINT_VERSION_COLUMN] = pointVersion
 	}
 
 	pipe := client.Pipeline()

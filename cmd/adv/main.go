@@ -24,6 +24,7 @@ import (
 	auction "gitlab.com/twinbid-exchange/RTB-exchange/internal/services/adv/service"
 	advWeb "gitlab.com/twinbid-exchange/RTB-exchange/internal/services/adv/web"
 	antiControl "gitlab.com/twinbid-exchange/RTB-exchange/internal/services/antiperekrut"
+	"gitlab.com/twinbid-exchange/RTB-exchange/internal/services/percenter"
 	redisService "gitlab.com/twinbid-exchange/RTB-exchange/internal/services/redis"
 	"google.golang.org/grpc"
 )
@@ -54,11 +55,19 @@ func main() {
 		log.Fatalf("cannot initialize ADV winner Redis DB %d: %v", cfg.RedisDBAdvWinner, err)
 	}
 	defer winnerRedis.Close()
+	percenterRedis, err := redisService.NewRedisClient(strings.TrimSpace(cfg.RedisADVAddr), cfg.RedisPassword, cfg.RedisDBAdvPercenter, cfg.RedisPoolSize, cfg.RedisMinIdleConns)
+	if err != nil {
+		log.Fatalf("cannot initialize ADV Simple percenter Redis DB %d: %v", cfg.RedisDBAdvPercenter, err)
+	}
+	defer percenterRedis.Close()
 	if err := runtimeRedis.Ping(ctx).Err(); err != nil {
 		log.Fatalf("ADV runtime Redis unavailable: %v", err)
 	}
 	if err := winnerRedis.Ping(ctx).Err(); err != nil {
 		log.Fatalf("ADV winner Redis unavailable: %v", err)
+	}
+	if err := percenterRedis.Ping(ctx).Err(); err != nil {
+		log.Fatalf("ADV Simple percenter Redis unavailable: %v", err)
 	}
 
 	statsRedisAddrs := cfg.RedisShardAddrs
@@ -112,6 +121,8 @@ func main() {
 	runtimeStore := auction.NewRuntimeStore(runtimeRedis, cfg.AdvPacingCurrentTTL, cfg.AdvPacingSlotTTL)
 	winnerStore := auction.NewWinnerStore(winnerRedis, cfg.AdvWinnerTTL)
 	auctionService := auction.NewAuctionService(runtimeStore, winnerStore, percentStore, qualityStore, siteIDQualityStore)
+	simplePolicy := percenter.SimplePolicy{}.Normalize()
+	auctionService.ConfigureSimplePercenter(percenter.NewSimpleStateStore(percenterRedis, simplePolicy), simplePolicy)
 	auctionService.SetStatsRedisClients(statsRedisClients)
 	auctionService.SetVPNClassifier(vpnStore)
 	auctionService.SetAntiPerekrutEnabled(cfg.AntiperekrutEnabled)
@@ -270,11 +281,14 @@ func validateConfig(cfg *config.AdvConfig) error {
 	if cfg == nil {
 		return fmt.Errorf("config is nil")
 	}
-	if cfg.RedisDBAdvRuntime != 5 || cfg.RedisDBAdvWinner != 6 {
-		return fmt.Errorf("ADV requires Redis DB 5 for runtime and DB 6 for winners")
+	if cfg.RedisDBAdvRuntime != 5 || cfg.RedisDBAdvWinner != 6 || cfg.RedisDBAdvPercenter != 7 {
+		return fmt.Errorf("ADV requires Redis DB 5 for runtime, DB 6 for winners, and DB 7 for Simple percenter state")
 	}
 	if strings.TrimSpace(cfg.RedisUUIDAddr) == "" && len(cfg.RedisShardAddrs) == 0 {
 		return fmt.Errorf("REDIS_UUID_ADDR or REDIS_SHARD_ADDRS is required")
+	}
+	if strings.TrimSpace(cfg.RedisADVAddr) == "" {
+		return fmt.Errorf("REDIS_ADV_ADDR is required for Simple percenter state")
 	}
 	if strings.TrimSpace(cfg.AdvPercentMapFilePath) == "" {
 		return fmt.Errorf("ADV_PERCENT_MAP_FILE_PATH is required")

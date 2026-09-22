@@ -19,6 +19,7 @@ import (
 	"gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/proto/types/ortb_V2_5"
 	utils "gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/utils_grpc"
 	services "gitlab.com/twinbid-exchange/RTB-exchange/internal/services"
+	"gitlab.com/twinbid-exchange/RTB-exchange/internal/services/percenter"
 	"gitlab.com/twinbid-exchange/RTB-exchange/internal/ua"
 	"google.golang.org/grpc/status"
 )
@@ -81,6 +82,46 @@ func writeStatsOrtbAndAddToSet(
 		return false
 	}
 
+	return true
+}
+
+func writeStatsOrtbAndAddToSetWithPercenter(
+	ctx context.Context,
+	redisClients []*redis.Client,
+	redisSetOrtb string,
+	redisWriteErrorMonitor *services.RedisWriteErrorMonitor,
+	sspAdapterWorkStatusURL string,
+	globalId string,
+	logged bool,
+	format string,
+	typic string,
+	sspDomain string,
+	ip string,
+	ipv6 string,
+	lang string,
+	countryISO string,
+	cityId uint32,
+	code int32,
+	uaFields ua.UAFields,
+	siteId string,
+	siteDomain string,
+	bidFloor float64,
+	segmentHash string,
+	pointVersion uint64,
+) bool {
+	if err := utils.WriteStatsOrtbWithPercenter(
+		ctx, redisClients, globalId, logged, format, typic, sspDomain, ip, ipv6, lang,
+		countryISO, cityId, code, uaFields, siteId, siteDomain, bidFloor, segmentHash, pointVersion,
+	); err != nil {
+		log.Printf("failed to WriteStats in postBid_V2_5: %v", err)
+		recordRedisError(redisWriteErrorMonitor, err, sspAdapterWorkStatusURL)
+		return false
+	}
+	if err := utils.AddUUIDToRedisSet(ctx, redisClients, redisSetOrtb, globalId, logged); err != nil {
+		log.Printf("failed to add ORTB UUID to Redis set in postBid_V2_5: %v", err)
+		recordRedisError(redisWriteErrorMonitor, err, sspAdapterWorkStatusURL)
+		return false
+	}
 	return true
 }
 
@@ -639,67 +680,58 @@ func postBid_V2_5(
 	}
 
 	if res.Code == http.StatusNoContent {
-		for _, uuid := range impIdUuid {
-			if !writeStatsOrtbAndAddToSet(
-				ctx,
-				redisClients,
-				redisSetOrtb,
-				redisWriteErrorMonitor,
-				sspAdapterWorkStatusURL,
-				uuid,
-				logged,
-				format,
-				typic,
-				ssp_domain,
-				device.GetIp(),
-				device.GetIpv6(),
-				lang,
-				countryISO,
-				cityId,
-				204,
-				uaFileds,
-				siteId,
-				siteDomain,
-				float64(uuidBidFloor[uuid]),
+		for impID, uuid := range impIdUuid {
+			segmentHash, pointVersion := percenter.SimpleMetadata(res.GetBidResponse(), impID)
+			if !writeStatsOrtbAndAddToSetWithPercenter(
+				ctx, redisClients, redisSetOrtb, redisWriteErrorMonitor, sspAdapterWorkStatusURL,
+				uuid, logged, format, typic, ssp_domain, device.GetIp(), device.GetIpv6(), lang,
+				countryISO, cityId, 204, uaFileds, siteId, siteDomain, float64(uuidBidFloor[uuid]), segmentHash, pointVersion,
 			) {
 				w.WriteHeader(http.StatusServiceUnavailable)
 				return
 			}
 		}
 
+		percenter.StripSimpleMetadata(res.BidResponse)
 		w.WriteHeader(http.StatusNoContent)
 		return
 	}
 
 	failedImpIds := append([]string(nil), res.GetFailedImpIds()...)
+	writtenImpIDs := make(map[string]struct{}, len(res.GetImpIdUuidClone()))
 	for impID, uuid := range res.GetImpIdUuidClone() {
-		if !writeStatsOrtbAndAddToSet(
-			ctx,
-			redisClients,
-			redisSetOrtb,
-			redisWriteErrorMonitor,
-			sspAdapterWorkStatusURL,
-			uuid,
-			logged,
-			format,
-			typic,
-			ssp_domain,
-			device.GetIp(),
-			device.GetIpv6(),
-			lang,
-			countryISO,
-			cityId,
-			int32(http.StatusOK),
-			uaFileds,
-			siteId,
-			siteDomain,
-			float64(uuidBidFloor[uuid]),
+		segmentHash, pointVersion := percenter.SimpleMetadata(res.GetBidResponse(), impID)
+		if !writeStatsOrtbAndAddToSetWithPercenter(
+			ctx, redisClients, redisSetOrtb, redisWriteErrorMonitor, sspAdapterWorkStatusURL,
+			uuid, logged, format, typic, ssp_domain, device.GetIp(), device.GetIpv6(), lang,
+			countryISO, cityId, int32(http.StatusOK), uaFileds, siteId, siteDomain, float64(uuidBidFloor[uuid]), segmentHash, pointVersion,
+		) {
+			failedImpIds = append(failedImpIds, impID)
+		} else {
+			writtenImpIDs[impID] = struct{}{}
+		}
+	}
+	// If BidEngine dropped an ADV bid after ADV selected it, preserve the Simple
+	// opportunity as a no-content ORTB row so the win-rate denominator remains visible.
+	for impID, uuid := range impIdUuid {
+		if _, exists := writtenImpIDs[impID]; exists {
+			continue
+		}
+		segmentHash, pointVersion := percenter.SimpleMetadata(res.GetBidResponse(), impID)
+		if segmentHash == "" || pointVersion == 0 {
+			continue
+		}
+		if !writeStatsOrtbAndAddToSetWithPercenter(
+			ctx, redisClients, redisSetOrtb, redisWriteErrorMonitor, sspAdapterWorkStatusURL,
+			uuid, logged, format, typic, ssp_domain, device.GetIp(), device.GetIpv6(), lang,
+			countryISO, cityId, int32(http.StatusNoContent), uaFileds, siteId, siteDomain, float64(uuidBidFloor[uuid]), segmentHash, pointVersion,
 		) {
 			failedImpIds = append(failedImpIds, impID)
 		}
 	}
 
 	removeFailedImpBidsFromResponse(res.BidResponse, failedImpIds)
+	percenter.StripSimpleMetadata(res.BidResponse)
 	if !bidResponseHasBids(res.BidResponse) {
 		w.WriteHeader(http.StatusNoContent)
 		return

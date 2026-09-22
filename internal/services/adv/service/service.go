@@ -24,6 +24,7 @@ import (
 	"gitlab.com/twinbid-exchange/RTB-exchange/internal/constants"
 	filterV2 "gitlab.com/twinbid-exchange/RTB-exchange/internal/filterV2"
 	ortb "gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/proto/types/ortb_V2_5"
+	"gitlab.com/twinbid-exchange/RTB-exchange/internal/services/percenter"
 	"gitlab.com/twinbid-exchange/RTB-exchange/internal/ua"
 )
 
@@ -157,6 +158,7 @@ type candidate struct {
 	originalBid    float64
 	externalBid    *ortb.Bid
 	segmentHash    string
+	pointVersion   uint64
 
 	// Diagnostics metadata is observational only. It is never read by pricing,
 	// filtering, candidate-pool construction, random selection, or bid building.
@@ -169,15 +171,17 @@ type AuctionService struct {
 	// operations even if the service is ever built for a 32-bit architecture.
 	requestCounter uint64
 
-	snapshot          atomic.Pointer[Snapshot]
-	runtime           *RuntimeStore
-	winners           *WinnerStore
-	percents          *PercentStore
-	quality           *QualityStore
-	siteIDQuality     *SiteIDQualityStore
-	vpnClassifier     VPNClassifier
-	rtbHTTPClient     *http.Client
-	statsRedisClients []*redis.Client
+	snapshot              atomic.Pointer[Snapshot]
+	runtime               *RuntimeStore
+	winners               *WinnerStore
+	percents              *PercentStore
+	quality               *QualityStore
+	siteIDQuality         *SiteIDQualityStore
+	simplePercenter       *percenter.SimpleStateStore
+	simplePercenterPolicy percenter.SimplePolicy
+	vpnClassifier         VPNClassifier
+	rtbHTTPClient         *http.Client
+	statsRedisClients     []*redis.Client
 
 	antiperekrut        *AntiPerekrutManager
 	antiperekrutEnabled bool
@@ -717,6 +721,8 @@ func (s *AuctionService) auctionCore(
 	seat := &ortb.SeatBid{Bid: make([]*ortb.Bid, 0, len(req.GetImp()))}
 	winnerUsers := make(map[string]string)
 	winnerBasePrices := make(map[string]float64)
+	winnerSegmentHashes := make(map[string]string)
+	winnerPointVersions := make(map[string]uint64)
 	infrastructureErrors := 0
 
 	for idx, imp := range req.GetImp() {
@@ -797,11 +803,9 @@ func (s *AuctionService) auctionCore(
 				if remoteBid == nil {
 					continue
 				}
+				segmentHash := BuildPercenterSegmentHash(req, sspDomain, campaign.ID)
 				logf("[ADV][RTB_AUCTION_INPUT] request_id=%q imp_id=%q campaign_id=%q remote_bid_id=%q remote_price=%.12f", requestID, impID, campaign.ID, remoteBid.GetId(), float64(remoteBid.GetPrice()))
-				cand, eligible, infraErr = s.evaluateRTBCandidate(ctx, campaign, remoteBid, imp, now, requestedFormat)
-				if eligible {
-					cand.segmentHash = BuildPercenterSegmentHash(req, sspDomain, campaign.ID)
-				}
+				cand, eligible, infraErr = s.evaluateRTBCandidate(ctx, campaign, remoteBid, imp, now, requestedFormat, segmentHash)
 				if !eligible {
 					reason = diagNoWinnerSelected
 					logf("[ADV][RTB_AUCTION_REJECT] request_id=%q imp_id=%q campaign_id=%q error=%v", requestID, impID, campaign.ID, infraErr)
@@ -978,6 +982,10 @@ func (s *AuctionService) auctionCore(
 			seat.Bid = append(seat.Bid, bid)
 			winnerUsers[impID] = cand.campaign.UserID
 			winnerBasePrices[impID] = candidateBasePrice(cand)
+			if cand.segmentHash != "" && cand.pointVersion > 0 {
+				winnerSegmentHashes[impID] = cand.segmentHash
+				winnerPointVersions[impID] = cand.pointVersion
+			}
 			winnerCampaignID = campaignID
 			winnerOriginalBid = candidateOriginalBid(cand)
 			winnerSlot = cand.diagnosticSlot
@@ -1048,8 +1056,12 @@ func (s *AuctionService) auctionCore(
 	responseID := strings.TrimSpace(req.GetId())
 	currency := "USD"
 	logf("[ADV][AUCTION_SUCCESS] request_id=%q format=%q response_id=%q bids=%d winner_user_ids=%d", requestID, requestedFormat, responseID, len(seat.Bid), len(winnerUsers))
+	response := &ortb.BidResponse{Id: &responseID, Cur: &currency, Seatbid: []*ortb.SeatBid{seat}}
+	for impID, segmentHash := range winnerSegmentHashes {
+		percenter.AttachSimpleMetadata(response, impID, segmentHash, winnerPointVersions[impID])
+	}
 	return &AuctionOutcome{
-		BidResponse:      &ortb.BidResponse{Id: &responseID, Cur: &currency, Seatbid: []*ortb.SeatBid{seat}},
+		BidResponse:      response,
 		WinnerUserIDs:    winnerUsers,
 		WinnerBasePrices: winnerBasePrices,
 	}, nil
@@ -1673,8 +1685,16 @@ func (s *AuctionService) evaluateCampaign(
 		logf("[ADV][CAMPAIGN_REJECT] request_id=%q imp_id=%q format=%q campaign_id=%q user_id=%q reason=pricing_policy_invalid error=%v", requestID, impID, requestedFormat, campaignID, userID, err)
 		return candidate{}, false, diagEffectivePriceNonPositive, nil
 	}
+	segmentHash := BuildPercenterSegmentHash(req, sspDomain, campaign.ID)
+	pointVersion := uint64(0)
 	deduction := pricing.Percent
 	effective := CalculateEffectiveAuctionPrice(campaign.BasePrice, deduction)
+	if normalizeTypeModel(campaign.TypeModel) == TypeModelSimple {
+		simplePricing := s.resolveSimplePricing(ctx, campaign, segmentHash, campaign.BasePrice, pricing.MinMargin, false, now)
+		deduction = simplePricing.Margin
+		effective = simplePricing.SSPBid
+		pointVersion = simplePricing.PointVersion
+	}
 	if effective <= 0 || math.IsNaN(effective) || math.IsInf(effective, 0) {
 		logf("[ADV][CAMPAIGN_REJECT] request_id=%q imp_id=%q format=%q campaign_id=%q user_id=%q reason=effective_price_non_positive base_price=%.12f deduction=%.12f effective_price=%.12f", requestID, impID, requestedFormat, campaignID, userID, campaign.BasePrice, deduction, effective)
 		return candidate{}, false, diagEffectivePriceNonPositive, nil
@@ -1696,7 +1716,7 @@ func (s *AuctionService) evaluateCampaign(
 		campaignRemaining,
 		userRemaining,
 	)
-	return candidate{campaign: campaign, creatives: creatives, chargePrice: chargePrice, effectivePrice: effective, basePrice: campaign.BasePrice, originalBid: campaign.BasePrice, segmentHash: BuildPercenterSegmentHash(req, sspDomain, campaign.ID)}, true, diagNone, nil
+	return candidate{campaign: campaign, creatives: creatives, chargePrice: chargePrice, effectivePrice: effective, basePrice: campaign.BasePrice, originalBid: campaign.BasePrice, segmentHash: segmentHash, pointVersion: pointVersion}, true, diagNone, nil
 }
 
 func diagnosticReasonForAntiPerekrutEligibility(reason AntiPerekrutEligibilityReason) diagnosticReason {

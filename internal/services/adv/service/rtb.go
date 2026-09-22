@@ -611,7 +611,7 @@ func validRTBADM(format, adm string) bool {
 	}
 }
 
-func (s *AuctionService) evaluateRTBCandidate(ctx context.Context, campaign *Campaign, bid *ortb.Bid, imp *ortb.Imp, now time.Time, requestedFormat string) (candidate, bool, error) {
+func (s *AuctionService) evaluateRTBCandidate(ctx context.Context, campaign *Campaign, bid *ortb.Bid, imp *ortb.Imp, now time.Time, requestedFormat, segmentHash string) (candidate, bool, error) {
 	if campaign == nil || bid == nil || imp == nil {
 		return candidate{}, false, nil
 	}
@@ -642,11 +642,19 @@ func (s *AuctionService) evaluateRTBCandidate(ctx context.Context, campaign *Cam
 	if err != nil {
 		return candidate{}, false, err
 	}
-	effective := CalculateEffectiveAuctionPrice(rawPrice, pricing.Percent)
+	deduction := pricing.Percent
+	effective := CalculateEffectiveAuctionPrice(rawPrice, deduction)
+	pointVersion := uint64(0)
+	if normalizeTypeModel(campaign.TypeModel) == TypeModelSimple {
+		simplePricing := s.resolveSimplePricing(ctx, campaign, segmentHash, rawPrice, pricing.MinMargin, true, now)
+		deduction = simplePricing.Margin
+		effective = simplePricing.SSPBid
+		pointVersion = simplePricing.PointVersion
+	}
 	if !finitePositive(effective) {
 		return candidate{}, false, nil
 	}
-	return candidate{campaign: campaign, chargePrice: chargePrice, effectivePrice: effective, basePrice: rawPrice, originalBid: rawPrice, externalBid: bid}, true, nil
+	return candidate{campaign: campaign, chargePrice: chargePrice, effectivePrice: effective, basePrice: rawPrice, originalBid: rawPrice, externalBid: bid, segmentHash: segmentHash, pointVersion: pointVersion}, true, nil
 }
 
 func buildExternalADVBid(cand candidate) *ortb.Bid {
