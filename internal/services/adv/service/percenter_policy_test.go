@@ -198,8 +198,15 @@ func TestPercenterSegmentHashIsStableAndCampaignAware(t *testing.T) {
 	}
 
 	missing := BuildPercenterSegment(nil, "", "campaign-a")
-	if missing.SSPDomain != "" || missing.Geo != UnknownSegmentValue || missing.Browser != UnknownSegmentValue || missing.Device != UnknownSegmentValue || missing.OS != UnknownSegmentValue || missing.SiteID != UnknownSegmentValue {
-		t.Fatalf("nil request fields must use %q while explicit string arguments preserve empty: %+v", UnknownSegmentValue, missing)
+	if missing.SSPDomain != UnknownSegmentValue || missing.Geo != UnknownSegmentValue || missing.Browser != UnknownSegmentValue || missing.Device != UnknownSegmentValue || missing.OS != UnknownSegmentValue || missing.SiteID != UnknownSegmentValue {
+		t.Fatalf("nil request and ambiguous blank string dimensions must use %q: %+v", UnknownSegmentValue, missing)
+	}
+}
+
+func TestPercenterStringDimensionsUseUnknownForAmbiguousBlank(t *testing.T) {
+	segment := BuildPercenterSegment(nil, "", "")
+	if segment.SSPDomain != UnknownSegmentValue || segment.CampaignID != UnknownSegmentValue {
+		t.Fatalf("blank string-only dimensions must use %q because missing vs explicit empty is not representable: %+v", UnknownSegmentValue, segment)
 	}
 }
 

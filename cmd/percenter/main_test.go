@@ -4,6 +4,7 @@ import (
 	"context"
 	"net"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -39,5 +40,37 @@ func TestWaitForBackgroundCompletesAfterWorkerExit(t *testing.T) {
 	}()
 	if !waitForBackground(&wg, time.Second) {
 		t.Fatal("background worker should finish within shutdown budget")
+	}
+}
+
+func TestRunBoundedOptimizerTickCancelsBlockingQueryOnShutdown(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	started := make(chan struct{})
+	done := make(chan struct{})
+	var complexStarted atomic.Bool
+
+	go func() {
+		defer close(done)
+		runBoundedOptimizerTick(ctx, time.Minute, time.Now(), func(tickCtx context.Context, _ time.Time) {
+			close(started)
+			<-tickCtx.Done() // fake blocking ClickHouse query that honors cancellation
+		}, func(context.Context, time.Time) {
+			complexStarted.Store(true)
+		})
+	}()
+
+	select {
+	case <-started:
+	case <-time.After(time.Second):
+		t.Fatal("blocking tick did not start")
+	}
+	cancel()
+	select {
+	case <-done:
+	case <-time.After(500 * time.Millisecond):
+		t.Fatal("shutdown did not cancel blocking optimizer tick within bound")
+	}
+	if complexStarted.Load() {
+		t.Fatal("complex iteration must not start after shutdown cancellation")
 	}
 }

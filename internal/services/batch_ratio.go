@@ -408,8 +408,8 @@ SELECT
 		quoteTable(cfg.TableImpressions),
 		quoteTable(cfg.TableClicks),
 		quoteTable(cfg.TableClicks),
-		quoteTable(cfg.TableOrtb),
-		quoteTable(cfg.TableOrtb),
+		quoteTable(logicalOrtbTable(cfg.TableOrtb)),
+		quoteTable(logicalOrtbTable(cfg.TableOrtb)),
 	)
 
 	var clicksDiffSec int64
@@ -516,6 +516,16 @@ func writeJSON(w http.ResponseWriter, v any) {
 }
 
 var identifierRegexp = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
+
+func logicalOrtbTable(table string) string {
+	table = strings.TrimSpace(table)
+	if table == "" || strings.HasSuffix(table, "_logical") {
+		return table
+	}
+	parts := strings.Split(table, ".")
+	parts[len(parts)-1] = strings.TrimSpace(parts[len(parts)-1]) + "_logical"
+	return strings.Join(parts, ".")
+}
 
 func quoteTable(table string) string {
 	parts := strings.Split(table, ".")

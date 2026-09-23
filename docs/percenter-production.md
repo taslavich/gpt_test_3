@@ -68,6 +68,12 @@ BOT_INTERNAL_SECRET=<same internal secret configured by cabinet backend>
 
 The cabinet backend must be deployed first and expose `POST /api/internal/percenter/promo-spend`. Its own schema bootstrap/migration owns the promo columns/trigger/ledger.
 
+## ORTB Kafka replay semantics
+
+`clickhouse-loader` persists a stable `logical_event_id` for every ORTB row (the canonical auction UUID) before committing Kafka offsets. The physical `ortb` table remains append-only, so a crash after ClickHouse insert and before Kafka offset commit may leave duplicate physical rows. Logical readers must not count those rows twice. `CreateDB` therefore owns the `ortb_logical` view, which synchronously keeps the first physical row per `logical_event_id`; it does not rely on an eventual background merge. Simple/Complex optimizer metric queries apply the same logical dedupe before counting requests, impressions, advertiser spend or TwinBid profit.
+
+The seven optimizer dimensions remain `ssp_domain + geo + browser + device + os + site_id + campaign_id`. Pointer-backed OpenRTB dimensions preserve explicit empty strings and map missing values to `__unknown__`. `ssp_domain` and `campaign_id` enter the segment builder as plain Go strings, so an absent value cannot be distinguished from an explicitly supplied empty string at that boundary; ambiguous blank values are conservatively mapped to `__unknown__` rather than inventing a false distinction.
+
 ## Percenter-daemon configuration
 
 The daemon must use the same production ClickHouse host/database and ORTB/impression/click tables that `clickhouse-loader` writes, plus the existing Kafka cluster. Credentials stay in deployment secrets; do not copy a second/stale credential set into source-controlled env files:
@@ -126,7 +132,7 @@ Physical Kafka delivery is at-least-once. The final consumer is outside this rep
 1. Back up/verify the current percent-map JSON and PostgreSQL/ClickHouse targets.
 2. Deploy the matching cabinet-backend patch first. The cabinet backend owns `campaigns.type_model`, `users.promo_spend_remaining`, `users.promo_revision`, the revision trigger and `adv_promo_spend_events`; ORTB has no PostgreSQL migration for these objects.
 3. Verify `CABINET_BACKEND_URL` from `adm-adapter` reaches the cabinet backend internal promo-spend endpoint and both services use the same existing `BOT_INTERNAL_SECRET`.
-4. Start/run `clickhouse-loader` schema initialization (`CreateDB`). The main ClickHouse DDL in `internal/services/clickhouse-loader/createDb.go` adds the ORTB percenter attribution columns and creates `percenter_state_history`, `percenter_telemetry`, and their `_logical` views. No separate percenter ClickHouse migration file is required.
+4. Start/run `clickhouse-loader` schema initialization (`CreateDB`). The main ClickHouse DDL in `internal/services/clickhouse-loader/createDb.go` adds `logical_event_id` plus the ORTB percenter attribution columns, creates the synchronous `ortb_logical` replay-dedup view, and creates `percenter_state_history`, `percenter_telemetry`, and their `_logical` views. No separate ClickHouse migration file is required.
 5. Ensure the existing Redis instance is reachable as `REDIS_ADV_ADDR` and logical DB7 is available for Simple/Complex state and recovery indexes. Do not add a new Redis shard/instance.
 6. Ensure Kafka topic `KAFKA_TOPIC_PERCENTER` (default `percenter_observability`) exists on the configured existing Kafka cluster.
 7. Create/mount the two bbolt parent directories and verify service-user read/write/lock/fsync permissions.

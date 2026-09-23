@@ -486,6 +486,53 @@ func TestComplexHistoryRollbackKeepsRejectedCandidateSeparateFromResult(t *testi
 	}
 }
 
+func TestComplexHistorySSPThresholdUsesBuyoutOnly(t *testing.T) {
+	at := time.Date(2026, 9, 23, 3, 16, 0, 0, time.UTC)
+	previous := ComplexState{
+		SegmentHash: "ssp-threshold", CampaignID: "campaign", TypeModel: TypeModelComplex, Phase: ComplexPhaseSSPSearch,
+		OriginalBid: 1, EffectiveMin: .20, MaxMargin: .90, LastGoodSSPBid: .80, LastGoodMargin: .20,
+		SSPBid: .72, Margin: .20, AdvertiserPrice: .90, PointVersion: ComplexPointVersionBase + 40,
+	}
+	next := previous
+	next.PointVersion++
+	next.DecisionHistory = []ComplexDecision{{
+		At: at, Phase: ComplexPhaseSSPSearch, Reason: "ssp_buyout_guard_rollback",
+		BuyoutThresholdPassed: false, EfficiencyThresholdPassed: true,
+	}}
+	metric := ComplexMetrics{ExactSegmentHash: "exact", SegmentHash: previous.SegmentHash, PointVersion: previous.PointVersion, Requests: 100, Impressions: 10}
+	event, ok := BuildComplexHistoryEvent(previous, next, metric)
+	if !ok {
+		t.Fatal("expected history event")
+	}
+	if event.ThresholdPassed {
+		t.Fatalf("SSP history threshold_passed must follow buyout only: %#v", event)
+	}
+}
+
+func TestComplexHistoryMarginThresholdUsesEfficiencyOnly(t *testing.T) {
+	at := time.Date(2026, 9, 23, 3, 17, 0, 0, time.UTC)
+	previous := ComplexState{
+		SegmentHash: "margin-threshold", CampaignID: "campaign", TypeModel: TypeModelComplex, Phase: ComplexPhaseMarginSearch,
+		OriginalBid: 1, EffectiveMin: .20, MaxMargin: .90, LastGoodSSPBid: .70, LastGoodMargin: .20,
+		SSPBid: .70, Margin: .30, AdvertiserPrice: 1.0, PointVersion: ComplexPointVersionBase + 50,
+	}
+	next := previous
+	next.Margin = .20
+	next.PointVersion++
+	next.DecisionHistory = []ComplexDecision{{
+		At: at, Phase: ComplexPhaseMarginSearch, Reason: "margin_efficiency_guard_rollback",
+		BuyoutThresholdPassed: true, EfficiencyThresholdPassed: false,
+	}}
+	metric := ComplexMetrics{ExactSegmentHash: "exact", SegmentHash: previous.SegmentHash, PointVersion: previous.PointVersion, Requests: 100, Impressions: 10}
+	event, ok := BuildComplexHistoryEvent(previous, next, metric)
+	if !ok {
+		t.Fatal("expected history event")
+	}
+	if event.ThresholdPassed {
+		t.Fatalf("margin history threshold_passed must follow efficiency only: %#v", event)
+	}
+}
+
 func TestCommittedPendingHistoryRecoversAfterCrashExactlyOnceLogically(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "history-recovery.db")
 	at := time.Date(2026, 9, 23, 3, 20, 0, 0, time.UTC)

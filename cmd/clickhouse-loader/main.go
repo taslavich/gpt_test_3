@@ -32,8 +32,6 @@ func main() {
 	}
 	log.Println("Config initialized!")
 
-	log.Println(cfg.Clickhouse.Username, cfg.Clickhouse.Password)
-
 	addr := net.JoinHostPort(cfg.Clickhouse.Host, cfg.Clickhouse.Port)
 
 	conn, err := clickhouse.Open(&clickhouse.Options{
@@ -140,8 +138,6 @@ func main() {
 		}
 	}()
 	log.Println("✅ Kafka readers initialized")
-
-	log.Println("GROUP_ID", cfg)
 
 	log.Println("🔄 Waiting for Kafka group coordinator to be ready...")
 	time.Sleep(10 * time.Second)

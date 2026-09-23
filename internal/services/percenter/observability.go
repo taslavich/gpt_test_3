@@ -645,10 +645,21 @@ func BuildComplexHistoryEvent(previous, next ComplexState, metric ComplexMetrics
 		CandidateSSPBid: candidateSSPBid, CandidateMargin: candidateMargin,
 		ResultSSPBid: resultSSPBid, ResultMargin: resultMargin,
 		Decision: historyDecisionLabel(decision.Reason), Reason: decision.Reason, Step: step,
-		ThresholdPassed: decision.BuyoutThresholdPassed || decision.EfficiencyThresholdPassed,
+		ThresholdPassed: complexHistoryThresholdPassed(previous.Phase, decision),
 	}
 	event.EventID = stableObservabilityID("history", event.CampaignID, event.SegmentHash, strconv.Itoa(event.TypeModel), strconv.FormatUint(metric.PointVersion, 10), strconv.FormatUint(next.PointVersion, 10), event.Timestamp.Format(time.RFC3339Nano), event.Phase, event.Reason)
 	return event, true
+}
+
+func complexHistoryThresholdPassed(phase string, decision ComplexDecision) bool {
+	switch phase {
+	case ComplexPhaseBenchmark, ComplexPhaseSSPSearch:
+		return decision.BuyoutThresholdPassed
+	case ComplexPhaseMarginBaseline, ComplexPhaseMarginSearch:
+		return decision.EfficiencyThresholdPassed
+	default:
+		return false
+	}
 }
 
 func PutHistoryEvent(outbox *ObservabilityOutbox, event HistoryEvent) error {

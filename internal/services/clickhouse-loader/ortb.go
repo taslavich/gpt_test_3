@@ -68,6 +68,7 @@ func insertBatchOrtb(
 	query := fmt.Sprintf(`
 		INSERT INTO %s (
 			uuid,
+			logical_event_id,
 			event_time,
 			code,
 			format,
@@ -145,8 +146,11 @@ func insertBatchOrtb(
 		bidResponsesRaw := encodeBidResponsesRaw(normalResponses)
 		advRTBResponsesRaw := encodeBidResponsesRaw(advRTBResponses)
 
+		logicalEventID := logicalOrtbEventID(r.Uuid, u)
+
 		if err := batch.Append(
 			u,
+			logicalEventID,
 			ts,
 			code,
 			r.Format,
@@ -187,6 +191,21 @@ func insertBatchOrtb(
 	}
 
 	return stats, nil
+}
+
+func logicalOrtbEventID(raw string, parsed uuid.UUID) string {
+	id := strings.TrimSpace(raw)
+	if id == "" {
+		return parsed.String()
+	}
+	// Existing rows populated by ALTER use toString(uuid), i.e. canonical UUID
+	// text. Canonicalize valid producer UUIDs as well so replay identity matches
+	// both newly inserted and pre-existing rows. Preserve malformed raw IDs
+	// instead of collapsing every bad UUID to uuid.Nil.
+	if _, err := uuid.Parse(id); err == nil {
+		return parsed.String()
+	}
+	return id
 }
 
 func splitOrtbBidResponses(items map[string]string) (map[string]string, map[string]string, string, string, uint64) {

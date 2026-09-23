@@ -29,8 +29,8 @@ func main() {
 }
 
 func run() error {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx, stopSignals := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stopSignals()
 
 	cfg, err := config.LoadConfig[config.PercenterConfig](ctx)
 	if err != nil {
@@ -242,9 +242,9 @@ func run() error {
 		complexPolicy.OptimizeInterval, complexPolicy.RebenchmarkInterval, complexPolicy.MinImpressions, complexPolicy.BuyoutRetention, complexPolicy.EfficiencyRetention, complexPolicy.SSPSearchStepsPercent, complexPolicy.MarginSearchStepsPP, complexPolicy.MaxMargin,
 	)
 
-	runSimpleTick := func(now time.Time) {
+	runSimpleTick := func(tickCtx context.Context, now time.Time) {
 		metrics, loadErr := percenter.LoadSimpleWindowMetrics(
-			ctx, clickhouseConn, cfg.Clickhouse.Database, cfg.Clickhouse.TableOrtb, cfg.Clickhouse.TableImpressions, cfg.Clickhouse.TableClicks, simplePolicy.OptimizeInterval,
+			tickCtx, clickhouseConn, cfg.Clickhouse.Database, cfg.Clickhouse.TableOrtb, cfg.Clickhouse.TableImpressions, cfg.Clickhouse.TableClicks, simplePolicy.OptimizeInterval,
 		)
 		if loadErr != nil {
 			notifyTransition("clickhouse_simple_metrics", true, loadErr)
@@ -252,7 +252,7 @@ func run() error {
 		}
 		notifyTransition("clickhouse_simple_metrics", false, nil)
 		metricIndex := percenter.NewSimpleMetricsIndex(metrics)
-		states, stateErr := simpleStore.States(ctx)
+		states, stateErr := simpleStore.States(tickCtx)
 		if stateErr != nil {
 			notifyTransition("redis_db7_simple_state", true, stateErr)
 			return
@@ -263,7 +263,7 @@ func run() error {
 				continue
 			}
 			if state.PendingHistory != nil {
-				if err := percenter.PersistSimplePendingHistory(ctx, simpleStore, observabilityOutbox, state); err != nil {
+				if err := percenter.PersistSimplePendingHistory(tickCtx, simpleStore, observabilityOutbox, state); err != nil {
 					notifyTransition("simple_pending_history", true, err)
 					optimizerAnomalies.Add(1)
 					continue
@@ -286,7 +286,7 @@ func run() error {
 				continue
 			}
 			next.PendingHistory = &event
-			saved, saveErr := simpleStore.SaveCAS(ctx, next, state.PointVersion)
+			saved, saveErr := simpleStore.SaveCAS(tickCtx, next, state.PointVersion)
 			if saveErr != nil {
 				notifyTransition("redis_db7_simple_state", true, saveErr)
 				optimizerAnomalies.Add(1)
@@ -299,7 +299,7 @@ func run() error {
 				continue
 			}
 			simpleUpdates.Add(1)
-			if err := percenter.PersistSimplePendingHistory(ctx, simpleStore, observabilityOutbox, next); err != nil {
+			if err := percenter.PersistSimplePendingHistory(tickCtx, simpleStore, observabilityOutbox, next); err != nil {
 				optimizerAnomalies.Add(1)
 				log.Printf("[PERCENTER][SIMPLE][HISTORY_OUTBOX_ERROR] segment_hash=%s point_version=%d event_id=%s error=%v", next.SegmentHash, next.PointVersion, event.EventID, err)
 			}
@@ -315,9 +315,9 @@ func run() error {
 		}
 	}
 
-	runComplexTick := func(now time.Time) {
+	runComplexTick := func(tickCtx context.Context, now time.Time) {
 		metrics, loadErr := percenter.LoadComplexWindowMetrics(
-			ctx, clickhouseConn, cfg.Clickhouse.Database, cfg.Clickhouse.TableOrtb, cfg.Clickhouse.TableImpressions, cfg.Clickhouse.TableClicks, complexPolicy.OptimizeInterval,
+			tickCtx, clickhouseConn, cfg.Clickhouse.Database, cfg.Clickhouse.TableOrtb, cfg.Clickhouse.TableImpressions, cfg.Clickhouse.TableClicks, complexPolicy.OptimizeInterval,
 		)
 		if loadErr != nil {
 			notifyTransition("clickhouse_complex_metrics", true, loadErr)
@@ -325,7 +325,7 @@ func run() error {
 		}
 		notifyTransition("clickhouse_complex_metrics", false, nil)
 		metricIndex := percenter.NewComplexMetricsIndex(metrics)
-		states, stateErr := complexStore.States(ctx)
+		states, stateErr := complexStore.States(tickCtx)
 		if stateErr != nil {
 			notifyTransition("redis_db7_complex_state", true, stateErr)
 			return
@@ -336,7 +336,7 @@ func run() error {
 				continue
 			}
 			if state.PendingHistory != nil {
-				if err := percenter.PersistComplexPendingHistory(ctx, complexStore, observabilityOutbox, state); err != nil {
+				if err := percenter.PersistComplexPendingHistory(tickCtx, complexStore, observabilityOutbox, state); err != nil {
 					notifyTransition("complex_pending_history", true, err)
 					optimizerAnomalies.Add(1)
 					continue
@@ -359,7 +359,7 @@ func run() error {
 				continue
 			}
 			next.PendingHistory = &event
-			saved, saveErr := complexStore.SaveCAS(ctx, next, state.PointVersion)
+			saved, saveErr := complexStore.SaveCAS(tickCtx, next, state.PointVersion)
 			if saveErr != nil {
 				notifyTransition("redis_db7_complex_state", true, saveErr)
 				optimizerAnomalies.Add(1)
@@ -372,7 +372,7 @@ func run() error {
 				continue
 			}
 			complexUpdates.Add(1)
-			if err := percenter.PersistComplexPendingHistory(ctx, complexStore, observabilityOutbox, next); err != nil {
+			if err := percenter.PersistComplexPendingHistory(tickCtx, complexStore, observabilityOutbox, next); err != nil {
 				optimizerAnomalies.Add(1)
 				log.Printf("[PERCENTER][COMPLEX][HISTORY_OUTBOX_ERROR] segment_hash=%s point_version=%d event_id=%s error=%v", next.SegmentHash, next.PointVersion, event.EventID, err)
 			}
@@ -389,19 +389,22 @@ func run() error {
 	}
 
 	runTick := func(now time.Time) {
-		runSimpleTick(now)
-		runComplexTick(now)
+		runBoundedOptimizerTick(ctx, simplePolicy.OptimizeInterval, now, runSimpleTick, runComplexTick)
 	}
 
 	// Both policies are fixed to 5m by validation below, so one ticker services
-	// both optimizers without changing Simple cadence.
-	runTick(time.Now().UTC())
+	// both optimizers without changing Simple cadence. The tick context is a
+	// child of the signal-aware process context, therefore SIGTERM cancels a
+	// blocking ClickHouse/Redis operation instead of waiting for runTick.
+	if ctx.Err() == nil {
+		runTick(time.Now().UTC())
+	}
 	ticker := time.NewTicker(simplePolicy.OptimizeInterval)
 	defer ticker.Stop()
 
 	backgroundShutdownAttempted := false
 	shutdownBackground := func() error {
-		cancel()
+		stopSignals()
 		backgroundShutdownAttempted = true
 		if !waitForBackground(&backgroundWG, 6*time.Second) {
 			return fmt.Errorf("percenter background shutdown timed out after %s", 6*time.Second)
@@ -415,22 +418,46 @@ func run() error {
 		if backgroundShutdownAttempted {
 			return
 		}
-		cancel()
+		stopSignals()
 		_ = waitForBackground(&backgroundWG, 6*time.Second)
 	}()
 
-	stop := make(chan os.Signal, 1)
-	signal.Notify(stop, os.Interrupt, syscall.SIGTERM)
-	defer signal.Stop(stop)
 	for {
 		select {
 		case <-ctx.Done():
 			return shutdownBackground()
-		case <-stop:
-			return shutdownBackground()
 		case now := <-ticker.C:
+			if ctx.Err() != nil {
+				return shutdownBackground()
+			}
 			runTick(now.UTC())
 		}
+	}
+}
+
+func runBoundedOptimizerTick(
+	parent context.Context,
+	timeout time.Duration,
+	now time.Time,
+	runSimple func(context.Context, time.Time),
+	runComplex func(context.Context, time.Time),
+) {
+	if parent == nil || parent.Err() != nil {
+		return
+	}
+	if timeout <= 0 {
+		timeout = 5 * time.Minute
+	}
+	tickCtx, cancel := context.WithTimeout(parent, timeout)
+	defer cancel()
+	if runSimple != nil {
+		runSimple(tickCtx, now)
+	}
+	if tickCtx.Err() != nil {
+		return
+	}
+	if runComplex != nil {
+		runComplex(tickCtx, now)
 	}
 }
 

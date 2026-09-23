@@ -42,6 +42,7 @@ DROP VIEW IF EXISTS ads.mv_ortb_traffic_hourly SYNC;
 DROP VIEW IF EXISTS {db}.mv_campaign_dsp_price_sum SYNC;
 DROP VIEW IF EXISTS {db}.mv_recover_pop_impressions SYNC;
 DROP VIEW IF EXISTS {db}.mv_recover_clicks_from_clicks_wins SYNC;
+DROP VIEW IF EXISTS {db}.ortb_logical SYNC;
 
 -- ============================================================
 -- ORTB TABLE
@@ -50,6 +51,7 @@ DROP VIEW IF EXISTS {db}.mv_recover_clicks_from_clicks_wins SYNC;
 CREATE TABLE IF NOT EXISTS {db}.ortb
 (
     uuid              UUID,
+    logical_event_id  String DEFAULT toString(uuid),
 
     event_time        DateTime64(3, 'UTC'),
     created_at        DateTime64(3, 'UTC') DEFAULT now64(3),
@@ -103,6 +105,9 @@ SETTINGS index_granularity = 8192;
 -- Lookup by auction UUID for clicks_wins -> ORTB enrichment.
 -- ALTER is kept for compatibility with already existing tables.
 ALTER TABLE {db}.ortb
+    ADD COLUMN IF NOT EXISTS logical_event_id String DEFAULT toString(uuid) AFTER uuid;
+
+ALTER TABLE {db}.ortb
     ADD COLUMN IF NOT EXISTS adv_rtb_responses_raw String DEFAULT '' AFTER bid_responses_raw;
 
 ALTER TABLE {db}.ortb
@@ -117,6 +122,16 @@ ALTER TABLE {db}.ortb
 ALTER TABLE {db}.ortb
     ADD INDEX IF NOT EXISTS idx_ortb_uuid
     uuid TYPE bloom_filter(0.01) GRANULARITY 1;
+
+-- Kafka offset commit happens after the ClickHouse insert, so a process crash
+-- can replay the same ORTB message. Keep the physical append-only table, but
+-- expose one row per stable logical event synchronously at read time; unlike a
+-- ReplacingMergeTree-only solution this does not wait for a background merge.
+CREATE VIEW {db}.ortb_logical AS
+SELECT *
+FROM {db}.ortb
+ORDER BY created_at ASC
+LIMIT 1 BY logical_event_id;
 
 
 -- ============================================================
@@ -237,7 +252,7 @@ FROM
     SELECT
         IPv4NumToString(ip) AS ip,
         count() AS cnt
-    FROM {db}.ortb
+    FROM {db}.ortb_logical
     WHERE ip IS NOT NULL
     GROUP BY ip
     HAVING cnt > 300
@@ -277,7 +292,7 @@ FROM
     SELECT
         IPv6NumToString(ipv6) AS ip,
         count() AS cnt
-    FROM {db}.ortb
+    FROM {db}.ortb_logical
     WHERE ipv6 IS NOT NULL
     GROUP BY ip
     HAVING cnt > 300
@@ -1132,7 +1147,7 @@ FROM
 
         toFloat64(ifNull(win_dsp_price, 0)) AS win_dsp_price
 
-    FROM {db}.ortb
+    FROM {db}.ortb_logical
 
     WHERE
         toStartOfHour(toDateTime(event_time, 'UTC')) = previous_hour
@@ -2182,7 +2197,7 @@ FROM
         SELECT
             toString(code) AS code_str,
             count() AS cnt
-        FROM {db}.ortb
+        FROM {db}.ortb_logical
         WHERE event_time >= metric_minute
           AND event_time < current_minute
         GROUP BY code_str
@@ -2226,7 +2241,7 @@ CROSS JOIN
 CROSS JOIN
 (
     SELECT count() AS cnt_ortb_5m
-    FROM {db}.ortb
+    FROM {db}.ortb_logical
     WHERE event_time >= ratio_from
       AND event_time < ratio_to
 ) AS o;

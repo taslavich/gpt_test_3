@@ -132,13 +132,13 @@ type PercenterSegment struct {
 
 func BuildPercenterSegment(req *ortb.BidRequest, sspDomain, campaignID string) PercenterSegment {
 	segment := PercenterSegment{
-		SSPDomain:  strings.TrimSpace(sspDomain),
+		SSPDomain:  segmentStringValue(sspDomain),
 		Geo:        UnknownSegmentValue,
 		Browser:    UnknownSegmentValue,
 		Device:     UnknownSegmentValue,
 		OS:         UnknownSegmentValue,
 		SiteID:     UnknownSegmentValue,
-		CampaignID: strings.TrimSpace(campaignID),
+		CampaignID: segmentStringValue(campaignID),
 	}
 	if req == nil {
 		return segment
@@ -180,6 +180,17 @@ func BuildPercenterSegment(req *ortb.BidRequest, sspDomain, campaignID string) P
 		segment.SiteID = segmentNormalizedStringPointer(site.Id, strings.TrimSpace)
 	}
 	return segment
+}
+
+func segmentStringValue(value string) string {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		// These call-site dimensions are plain strings, so absent and explicit
+		// empty cannot be distinguished. Treat the ambiguous blank as missing
+		// rather than inventing a false empty-vs-missing distinction.
+		return UnknownSegmentValue
+	}
+	return value
 }
 
 func segmentNormalizedStringPointer(value *string, normalize func(string) string) string {

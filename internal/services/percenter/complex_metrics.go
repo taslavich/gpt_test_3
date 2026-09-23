@@ -30,7 +30,7 @@ SELECT
     countIf(isNotNull(c.uuid) AND ifNull(o.win_dsp_domain, '') = 'adv') AS clicks,
     sumIf(o.win_dsp_price / 1000.0, isNotNull(i.uuid) AND ifNull(o.win_dsp_domain, '') = 'adv') AS advertiser_spend,
     sumIf((o.win_dsp_price - o.win_final_price) / 1000.0, isNotNull(i.uuid) AND ifNull(o.win_dsp_domain, '') = 'adv') AS twinbid_profit
-FROM %s.%s AS o
+FROM %s AS o
 LEFT JOIN
 (
     SELECT DISTINCT uuid
@@ -48,7 +48,7 @@ WHERE o.event_time >= now64(3) - toIntervalSecond(%d)
   AND o.percenter_point_version > 0
 GROUP BY o.segment_hash, o.percenter_point_version
 SETTINGS join_use_nulls = 1
-`, quoteIdentifier(database), quoteIdentifier(ortbTable), quoteIdentifier(database), quoteIdentifier(impressionsTable), seconds, quoteIdentifier(database), quoteIdentifier(clicksTable), seconds, seconds)
+`, logicalOrtbSource(database, ortbTable, seconds), quoteIdentifier(database), quoteIdentifier(impressionsTable), seconds, quoteIdentifier(database), quoteIdentifier(clicksTable), seconds, seconds)
 
 	rows, err := conn.Query(ctx, query)
 	if err != nil {
