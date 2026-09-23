@@ -91,8 +91,11 @@ func getAdm(
 			if format == constants.IPP {
 				billingRecord := record
 				billingRecord.Kind = outbox.KindBilling
-				if applyErr := advBillingStore.Apply(ctx, billingRecord); applyErr != nil {
-					processingErr = fmt.Errorf("apply ADV ADM billing: %w", applyErr)
+				billingRecord.EventID = billing.CallbackEventID("adm", format, input.GlobalId)
+				requiresRecovery := true
+				billingRecord.RequiresADVRecovery = &requiresRecovery
+				if applyErr := billing.ApplyDurableIntent(ctx, advOutbox, advBillingStore, billingRecord); applyErr != nil {
+					processingErr = fmt.Errorf("apply durable ADV ADM billing: %w", applyErr)
 					stopADV = true
 				}
 			}
@@ -427,11 +430,14 @@ func handleADVCallback(
 	if !billable {
 		return true, nil
 	}
+	requiresRecovery := true
 	record := outbox.Record{
-		EventID: uuid.NewString(), UserID: winner.UserID, CampaignID: winner.CampaignID,
+		Kind: outbox.KindBilling, RequiresADVRecovery: &requiresRecovery,
+		EventID: billing.CallbackEventID(source, winner.Format, winnerUUID),
+		UserID:  winner.UserID, CampaignID: winner.CampaignID, TypeModel: winner.TypeModel,
 		Price: winner.Price, Format: winner.Format, Source: source, CreatedAt: time.Now().UTC(), Attempts: 1,
 	}
-	if err := store.Apply(ctx, record); err != nil {
+	if err := billing.ApplyDurableIntent(ctx, outboxStore, store, record); err != nil {
 		record.LastError = err.Error()
 		record.LastAttemptAt = time.Now().UTC()
 		handleADVWriteFailure(err, record, outboxStore, controlURLs, sspAdapterWorkStatusURL, monitor)

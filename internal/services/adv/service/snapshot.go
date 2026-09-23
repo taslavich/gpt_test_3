@@ -206,6 +206,7 @@ func (s *AuctionService) excludeInvalidIPCampaignsFromCurrentSnapshot(warnings [
 		Campaigns:               make([]*Campaign, 0, len(current.Campaigns)),
 		UserGoals:               cloneFloatMap(current.UserGoals),
 		UserPromoSpendRemaining: cloneFloatMap(current.UserPromoSpendRemaining),
+		UserPromoRevision:       cloneInt64Map(current.UserPromoRevision),
 		UserAntiPerekrutBlocked: cloneBoolMap(current.UserAntiPerekrutBlocked),
 		LoadedAt:                current.LoadedAt,
 	}
@@ -370,7 +371,7 @@ func loadSnapshotFromPostgres(ctx context.Context, db *sql.DB) (*Snapshot, []sna
 	for id := range userSet {
 		userIDs = append(userIDs, id)
 	}
-	userGoals, userAntiPerekrutBlocked, userPromoSpendRemaining, err := loadUsersBatch(ctx, db, userIDs)
+	userGoals, userAntiPerekrutBlocked, userPromoSpendRemaining, userPromoRevision, err := loadUsersBatch(ctx, db, userIDs)
 	if err != nil {
 		return nil, warnings, err
 	}
@@ -388,6 +389,7 @@ func loadSnapshotFromPostgres(ctx context.Context, db *sql.DB) (*Snapshot, []sna
 			continue
 		}
 		campaign.PromoSpendRemaining = userPromoSpendRemaining[campaign.UserID]
+		campaign.PromoRevision = userPromoRevision[campaign.UserID]
 		if campaign.RTB && normalizeTypeModel(campaign.TypeModel) == TypeModelComplex {
 			revision := campaign.UpdatedAt.UTC().Format(time.RFC3339Nano)
 			if revision == "0001-01-01T00:00:00Z" {
@@ -407,7 +409,7 @@ func loadSnapshotFromPostgres(ctx context.Context, db *sql.DB) (*Snapshot, []sna
 	if activeRows > 0 && len(validCampaigns) == 0 && invalidIPRows != activeRows {
 		return nil, warnings, fmt.Errorf("all %d active campaign rows were invalid; previous snapshot must be retained", activeRows)
 	}
-	return &Snapshot{Campaigns: validCampaigns, UserGoals: userGoals, UserPromoSpendRemaining: userPromoSpendRemaining, UserAntiPerekrutBlocked: userAntiPerekrutBlocked, LoadedAt: loadedAt}, warnings, nil
+	return &Snapshot{Campaigns: validCampaigns, UserGoals: userGoals, UserPromoSpendRemaining: userPromoSpendRemaining, UserPromoRevision: userPromoRevision, UserAntiPerekrutBlocked: userAntiPerekrutBlocked, LoadedAt: loadedAt}, warnings, nil
 }
 
 type campaignDBRow struct {
@@ -668,12 +670,13 @@ func loadCreativesBatch(ctx context.Context, db *sql.DB, campaignIDs []string, c
 	return rows.Err()
 }
 
-func loadUsersBatch(ctx context.Context, db *sql.DB, userIDs []string) (map[string]float64, map[string]bool, map[string]float64, error) {
+func loadUsersBatch(ctx context.Context, db *sql.DB, userIDs []string) (map[string]float64, map[string]bool, map[string]float64, map[string]int64, error) {
 	goals := make(map[string]float64, len(userIDs))
 	blocked := make(map[string]bool, len(userIDs))
 	promo := make(map[string]float64, len(userIDs))
+	promoRevision := make(map[string]int64, len(userIDs))
 	if len(userIDs) == 0 {
-		return goals, blocked, promo, nil
+		return goals, blocked, promo, promoRevision, nil
 	}
 	rows, err := db.QueryContext(
 		ctx,
@@ -682,14 +685,15 @@ func loadUsersBatch(ctx context.Context, db *sql.DB, userIDs []string) (map[stri
 				id::text,
 				goal_total_dollars::text,
 				antiperekrut_blocked,
-				COALESCE(promo_spend_remaining, 0)::text
+				COALESCE(promo_spend_remaining, 0)::text,
+				promo_revision
 			FROM users
 			WHERE id::text = ANY($1)
 		`,
 		pq.Array(userIDs),
 	)
 	if err != nil {
-		return nil, nil, nil, fmt.Errorf(
+		return nil, nil, nil, nil, fmt.Errorf(
 			"batch query users goal/antiperekrut/promo data: %w",
 			err,
 		)
@@ -698,8 +702,9 @@ func loadUsersBatch(ctx context.Context, db *sql.DB, userIDs []string) (map[stri
 	for rows.Next() {
 		var id, rawGoal, rawPromo string
 		var isBlocked bool
-		if err := rows.Scan(&id, &rawGoal, &isBlocked, &rawPromo); err != nil {
-			return nil, nil, nil, fmt.Errorf(
+		var revision int64
+		if err := rows.Scan(&id, &rawGoal, &isBlocked, &rawPromo, &revision); err != nil {
+			return nil, nil, nil, nil, fmt.Errorf(
 				"scan users goal/antiperekrut/promo data: %w",
 				err,
 			)
@@ -707,22 +712,23 @@ func loadUsersBatch(ctx context.Context, db *sql.DB, userIDs []string) (map[stri
 		id = strings.TrimSpace(id)
 		goal, err := parseFiniteNonNegative(rawGoal)
 		promoRemaining, promoErr := parseFiniteNonNegative(rawPromo)
-		if id == "" || err != nil || promoErr != nil {
+		if id == "" || err != nil || promoErr != nil || revision < 0 {
 			log.Printf(
-				"ADV snapshot: skipping invalid user budget/promo row for user %q: goal_error=%v promo_error=%v",
+				"ADV snapshot: skipping invalid user budget/promo row for user %q: goal_error=%v promo_error=%v promo_revision=%d",
 				id,
-				err, promoErr,
+				err, promoErr, revision,
 			)
 			continue
 		}
 		goals[id] = goal
 		blocked[id] = isBlocked
 		promo[id] = promoRemaining
+		promoRevision[id] = revision
 	}
 	if err := rows.Err(); err != nil {
-		return nil, nil, nil, err
+		return nil, nil, nil, nil, err
 	}
-	return goals, blocked, promo, nil
+	return goals, blocked, promo, promoRevision, nil
 }
 
 func parseFiniteNonNegative(value string) (float64, error) {

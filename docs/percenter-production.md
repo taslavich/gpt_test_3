@@ -54,6 +54,20 @@ The percent-map file must always contain both `ALL` (ordinary fallback) and `ALL
 Promo semantics are uniform across ordinary and RTB traffic and across `type_model=1/2/3`: while `promo_spend_remaining > 0`, the effective minimum is `max(resolved_map_percent, 30%)`. `resolved_map_percent` is campaign-specific when present, otherwise `ALL`/`ALL_RTB`. When promo is exhausted, the 30% promo floor disappears and the current resolved map value is used. Promo spend continues to decrement on billed traffic even when the resolved map value is already above 30%. RTB `type_model=2` still bypasses the Complex optimizer; promo only floors its exact map/fallback percentage.
 
 
+
+## ADM billing -> cabinet promo ownership
+
+The cabinet backend owns the PostgreSQL schema and mutations for `campaigns.type_model`, `users.promo_spend_remaining`, `users.promo_revision` and the idempotent promo-spend ledger. ORTB/ADM must not run PostgreSQL migrations or update `users` directly.
+
+`adm-adapter` keeps the durable billing intent and Redis pacing/spend mutation, then calls the cabinet backend idempotently with the same stable billing `event_id`. The cabinet returns authoritative `promo_spend_remaining` + `promo_revision`; only then does `adm-adapter` fan that state out to ADV runtime replicas. A retry after any crash therefore reuses the same cabinet idempotency key and cannot consume promo twice.
+
+```env
+CABINET_BACKEND_URL=https://twinbid.io
+BOT_INTERNAL_SECRET=<same internal secret configured by cabinet backend>
+```
+
+The cabinet backend must be deployed first and expose `POST /api/internal/percenter/promo-spend`. Its own schema bootstrap/migration owns the promo columns/trigger/ledger.
+
 ## Percenter-daemon configuration
 
 The daemon must use the same production ClickHouse host/database and ORTB/impression/click tables that `clickhouse-loader` writes, plus the existing Kafka cluster. Credentials stay in deployment secrets; do not copy a second/stale credential set into source-controlled env files:
@@ -109,16 +123,17 @@ Physical Kafka delivery is at-least-once. The final consumer is outside this rep
 
 ## Migration and deployment checklist
 
-1. Back up/verify the current percent-map JSON and PostgreSQL/ClickHouse migration targets.
-2. Apply `migrations/001_percenter_stage01.sql` to PostgreSQL. It adds/validates `campaigns.type_model`, adds `users.promo_spend_remaining`, and creates the idempotent `adv_promo_spend_events` ledger used by promo-spend logic.
-3. Apply `migrations/004_percenter_observability.sql` to the configured ClickHouse database. It adds `ortb.exact_segment_hash`, creates `percenter_state_history` and `percenter_telemetry`, and creates their `_logical` views.
-4. Ensure the existing Redis instance is reachable as `REDIS_ADV_ADDR` and logical DB7 is available for Simple/Complex state and recovery indexes. Do not add a new Redis shard/instance.
-5. Ensure Kafka topic `KAFKA_TOPIC_PERCENTER` (default `percenter_observability`) exists on the configured existing Kafka cluster.
-6. Create/mount the two bbolt parent directories and verify service-user read/write/lock/fsync permissions.
-7. Deploy the Stage 01-06-compatible stats/ClickHouse ingestion components after the ClickHouse migration so the new attribution columns are accepted.
-8. Deploy/restart the percenter daemon and ADV replicas with the same policy ENV. Starting the daemon before ADV is operationally preferable because it can drain immediately, but it is not a correctness requirement: ADV has the local bbolt/Redis recovery path for temporary downstream unavailability.
-9. Compare the ADV and percenter startup logs: `fingerprint`, Simple/Complex StateTTL, `HISTORY_PENDING_TTL`, Redis DB7, delivery-component enabled/disabled status and initial degraded dependencies must agree with the deployment. Logs must not contain Redis/PostgreSQL/ClickHouse/Kafka credentials, Telegram token/secret or credential-bearing DSNs.
-10. Verify that both `ALL` and `ALL_RTB` exist in the deployed percent map with the intended current values; confirm `percenter:observability:ready`, pending-history indexes and both local bbolt backlogs stop growing after dependencies recover.
-11. For analytics, read `percenter_state_history_logical` / `percenter_telemetry_logical` or otherwise deduplicate by stable `event_id`.
+1. Back up/verify the current percent-map JSON and PostgreSQL/ClickHouse targets.
+2. Deploy the matching cabinet-backend patch first. The cabinet backend owns `campaigns.type_model`, `users.promo_spend_remaining`, `users.promo_revision`, the revision trigger and `adv_promo_spend_events`; ORTB has no PostgreSQL migration for these objects.
+3. Verify `CABINET_BACKEND_URL` from `adm-adapter` reaches the cabinet backend internal promo-spend endpoint and both services use the same existing `BOT_INTERNAL_SECRET`.
+4. Apply `migrations/004_percenter_observability.sql` to the configured ClickHouse database. It adds `ortb.exact_segment_hash`, creates `percenter_state_history` and `percenter_telemetry`, and creates their `_logical` views.
+5. Ensure the existing Redis instance is reachable as `REDIS_ADV_ADDR` and logical DB7 is available for Simple/Complex state and recovery indexes. Do not add a new Redis shard/instance.
+6. Ensure Kafka topic `KAFKA_TOPIC_PERCENTER` (default `percenter_observability`) exists on the configured existing Kafka cluster.
+7. Create/mount the two bbolt parent directories and verify service-user read/write/lock/fsync permissions.
+8. Deploy the Stage 01-06-compatible stats/ClickHouse ingestion components after the ClickHouse migration so the new attribution columns are accepted.
+9. Deploy `adm-adapter`, percenter daemon and ADV replicas with the matching configuration. The durable billing intent retries cabinet promo mutation and ADV runtime fanout with the same stable event ID.
+10. Compare the ADV and percenter startup logs: `fingerprint`, Simple/Complex StateTTL, `HISTORY_PENDING_TTL`, Redis DB7, delivery-component enabled/disabled status and initial degraded dependencies must agree with the deployment. Logs must not contain Redis/PostgreSQL/ClickHouse/Kafka credentials, Telegram token/secret or credential-bearing DSNs.
+11. Verify that both `ALL` and `ALL_RTB` exist in the deployed percent map with the intended current values; confirm `percenter:observability:ready`, pending-history indexes and both local bbolt backlogs stop growing after dependencies recover.
+12. For analytics, read `percenter_state_history_logical` / `percenter_telemetry_logical` or otherwise deduplicate by stable `event_id`.
 
 Temporary Redis DB7, Kafka, ClickHouse or Telegram outages are degraded states and do not introduce synchronous telemetry I/O into the auction path. Missing mandatory configuration, an invalid canonical policy value or an unusable local durable outbox remains a fail-closed startup error.

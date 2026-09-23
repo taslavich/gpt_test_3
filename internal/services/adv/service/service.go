@@ -100,6 +100,7 @@ type Campaign struct {
 	DSPLink             string
 	TypeModel           int
 	PromoSpendRemaining float64
+	PromoRevision       int64
 	GoalTotalDollars    float64
 	EvennessBySlotMode  bool
 	BlockVPN            bool
@@ -131,6 +132,7 @@ type Snapshot struct {
 	Campaigns               []*Campaign
 	UserGoals               map[string]float64
 	UserPromoSpendRemaining map[string]float64
+	UserPromoRevision       map[string]int64
 	UserAntiPerekrutBlocked map[string]bool
 	HasBlockVPNCampaigns    bool
 	LoadedAt                time.Time
@@ -166,27 +168,34 @@ type candidate struct {
 	diagnosticSlot  int
 }
 
+type promoRuntimeState struct {
+	Remaining float64
+	Revision  int64
+}
+
 type AuctionService struct {
 	// Keep the uint64 counter first to preserve 64-bit alignment for atomic
 	// operations even if the service is ever built for a 32-bit architecture.
 	requestCounter uint64
 
-	snapshot               atomic.Pointer[Snapshot]
-	runtime                *RuntimeStore
-	winners                *WinnerStore
-	percents               *PercentStore
-	quality                *QualityStore
-	siteIDQuality          *SiteIDQualityStore
-	simplePercenter        *percenter.SimpleStateStore
-	simplePercenterPolicy  percenter.SimplePolicy
-	complexPercenter       *percenter.ComplexStateStore
-	complexPercenterPolicy percenter.ComplexPolicy
-	percenterTelemetry     *percenter.ADVTelemetry
-	simplePricingCache     sync.Map
-	complexPricingCache    sync.Map
-	vpnClassifier          VPNClassifier
-	rtbHTTPClient          *http.Client
-	statsRedisClients      []*redis.Client
+	snapshot                atomic.Pointer[Snapshot]
+	runtime                 *RuntimeStore
+	winners                 *WinnerStore
+	percents                *PercentStore
+	quality                 *QualityStore
+	siteIDQuality           *SiteIDQualityStore
+	simplePercenter         *percenter.SimpleStateStore
+	simplePercenterPolicy   percenter.SimplePolicy
+	complexPercenter        *percenter.ComplexStateStore
+	complexPercenterPolicy  percenter.ComplexPolicy
+	percenterTelemetry      *percenter.ADVTelemetry
+	simplePricingCache      sync.Map
+	complexPricingCache     sync.Map
+	promoRemainingOverrides sync.Map // user_id -> promoRuntimeState
+	promoStateMu            sync.Mutex
+	vpnClassifier           VPNClassifier
+	rtbHTTPClient           *http.Client
+	statsRedisClients       []*redis.Client
 
 	antiperekrut        *AntiPerekrutManager
 	antiperekrutEnabled bool
@@ -209,7 +218,7 @@ func NewAuctionService(runtime *RuntimeStore, winners *WinnerStore, percents *Pe
 		snapshotWarningSeen: make(map[string]struct{}),
 		rtbHTTPClient:       newSafeRTBHTTPClient(),
 	}
-	s.snapshot.Store(&Snapshot{Campaigns: []*Campaign{}, UserGoals: map[string]float64{}, UserPromoSpendRemaining: map[string]float64{}, UserAntiPerekrutBlocked: map[string]bool{}})
+	s.snapshot.Store(&Snapshot{Campaigns: []*Campaign{}, UserGoals: map[string]float64{}, UserPromoSpendRemaining: map[string]float64{}, UserPromoRevision: map[string]int64{}, UserAntiPerekrutBlocked: map[string]bool{}})
 	return s
 }
 
@@ -295,8 +304,165 @@ func (s *AuctionService) PublishSnapshot(snapshot *Snapshot) error {
 	if s.diagnostics != nil {
 		s.diagnostics.registerCampaigns(cloned.Campaigns)
 	}
+
+	// Snapshot refresh and billing propagation are serialized only on the
+	// control path. Auctions remain lock-free with respect to PostgreSQL/HTTP
+	// and read the immutable snapshot plus an in-process sync.Map shadow.
+	s.promoStateMu.Lock()
+	defer s.promoStateMu.Unlock()
+
+	current := s.snapshot.Load()
+	dbStates := make(map[string]promoRuntimeState, len(cloned.UserPromoSpendRemaining))
+	for userID, remaining := range cloned.UserPromoSpendRemaining {
+		dbStates[userID] = promoRuntimeState{Remaining: remaining, Revision: cloned.UserPromoRevision[userID]}
+	}
+
+	// A stale PostgreSQL snapshot must never roll promo state backwards. Merge
+	// each user by revision against both the currently published snapshot and
+	// any newer billing shadow before publishing the refreshed snapshot.
+	for userID, dbState := range dbStates {
+		effective := dbState
+		if currentState, ok := promoStateFromSnapshot(current, userID); ok && currentState.Revision >= effective.Revision {
+			effective = currentState
+		}
+		if raw, ok := s.promoRemainingOverrides.Load(userID); ok {
+			if shadow, valid := raw.(promoRuntimeState); valid && shadow.Revision >= effective.Revision {
+				effective = shadow
+			}
+		}
+		cloned.UserPromoSpendRemaining[userID] = effective.Remaining
+		cloned.UserPromoRevision[userID] = effective.Revision
+	}
+	for _, campaign := range cloned.Campaigns {
+		if campaign == nil {
+			continue
+		}
+		campaign.PromoSpendRemaining = cloned.UserPromoSpendRemaining[campaign.UserID]
+		campaign.PromoRevision = cloned.UserPromoRevision[campaign.UserID]
+	}
+
 	s.snapshot.Store(cloned)
+	s.reconcilePromoRemainingOverridesLocked(dbStates)
 	return nil
+}
+
+// ApplyPromoSpendRemaining records a versioned user-level runtime state after
+// PostgreSQL has committed an authoritative promo change. Revision, not the
+// numeric remaining value, determines freshness: a later bonus grant may
+// legitimately increase remaining. Equal revisions are idempotent and older
+// revisions are ignored.
+func (s *AuctionService) ApplyPromoSpendRemaining(userID string, remaining float64, revision int64) error {
+	if s == nil {
+		return errors.New("auction service is nil")
+	}
+	userID = strings.TrimSpace(userID)
+	if userID == "" {
+		return errors.New("promo runtime update has empty user_id")
+	}
+	if !finiteNonNegative(remaining) {
+		return fmt.Errorf("promo runtime update for %q has invalid remaining %.12f", userID, remaining)
+	}
+	if revision < 0 {
+		return fmt.Errorf("promo runtime update for %q has invalid revision %d", userID, revision)
+	}
+	incoming := promoRuntimeState{Remaining: remaining, Revision: revision}
+
+	s.promoStateMu.Lock()
+	defer s.promoStateMu.Unlock()
+
+	current := promoRuntimeState{Revision: -1}
+	if snapshotState, ok := promoStateFromSnapshot(s.snapshot.Load(), userID); ok {
+		current = snapshotState
+	}
+	var rawCurrent any
+	var hasShadow bool
+	if raw, ok := s.promoRemainingOverrides.Load(userID); ok {
+		if shadow, valid := raw.(promoRuntimeState); valid {
+			rawCurrent = raw
+			hasShadow = true
+			if shadow.Revision > current.Revision {
+				current = shadow
+			}
+		} else {
+			s.promoRemainingOverrides.Delete(userID)
+		}
+	}
+	if incoming.Revision <= current.Revision {
+		return nil
+	}
+	if hasShadow {
+		if !s.promoRemainingOverrides.CompareAndSwap(userID, rawCurrent, incoming) {
+			// promoStateMu serializes writers in this process, so a failed CAS can
+			// only mean the entry was externally corrupted; replace it safely.
+			s.promoRemainingOverrides.Store(userID, incoming)
+		}
+	} else {
+		s.promoRemainingOverrides.Store(userID, incoming)
+	}
+	return nil
+}
+
+func (s *AuctionService) effectivePromoSpendRemaining(campaign *Campaign) float64 {
+	if campaign == nil {
+		return 0
+	}
+	state := promoRuntimeState{Remaining: campaign.PromoSpendRemaining, Revision: campaign.PromoRevision}
+	if s == nil || strings.TrimSpace(campaign.UserID) == "" {
+		return state.Remaining
+	}
+	// An auction may have retained a campaign pointer from the previous immutable
+	// snapshot while a refresh is published. Consult the current in-process
+	// snapshot revision as well so clearing a caught-up shadow cannot briefly
+	// expose the older campaign promo value to that in-flight request.
+	if snapshotState, ok := promoStateFromSnapshot(s.snapshot.Load(), campaign.UserID); ok && snapshotState.Revision > state.Revision {
+		state = snapshotState
+	}
+	if raw, ok := s.promoRemainingOverrides.Load(campaign.UserID); ok {
+		if shadow, valid := raw.(promoRuntimeState); valid && shadow.Revision > state.Revision {
+			state = shadow
+		}
+	}
+	return state.Remaining
+}
+
+func promoStateFromSnapshot(snapshot *Snapshot, userID string) (promoRuntimeState, bool) {
+	if snapshot == nil {
+		return promoRuntimeState{}, false
+	}
+	remaining, ok := snapshot.UserPromoSpendRemaining[userID]
+	if !ok {
+		return promoRuntimeState{}, false
+	}
+	return promoRuntimeState{Remaining: remaining, Revision: snapshot.UserPromoRevision[userID]}, true
+}
+
+func (s *AuctionService) reconcilePromoRemainingOverrides(snapshot *Snapshot) {
+	if s == nil || snapshot == nil {
+		return
+	}
+	dbStates := make(map[string]promoRuntimeState, len(snapshot.UserPromoSpendRemaining))
+	for userID, remaining := range snapshot.UserPromoSpendRemaining {
+		dbStates[userID] = promoRuntimeState{Remaining: remaining, Revision: snapshot.UserPromoRevision[userID]}
+	}
+	s.promoStateMu.Lock()
+	defer s.promoStateMu.Unlock()
+	s.reconcilePromoRemainingOverridesLocked(dbStates)
+}
+
+func (s *AuctionService) reconcilePromoRemainingOverridesLocked(dbStates map[string]promoRuntimeState) {
+	s.promoRemainingOverrides.Range(func(key, value any) bool {
+		userID, okID := key.(string)
+		shadow, okValue := value.(promoRuntimeState)
+		if !okID || !okValue {
+			s.promoRemainingOverrides.Delete(key)
+			return true
+		}
+		dbState, exists := dbStates[userID]
+		if !exists || dbState.Revision >= shadow.Revision {
+			s.promoRemainingOverrides.CompareAndDelete(userID, value)
+		}
+		return true
+	})
 }
 
 func cloneAndValidateSnapshot(src *Snapshot) (*Snapshot, error) {
@@ -307,6 +473,7 @@ func cloneAndValidateSnapshot(src *Snapshot) (*Snapshot, error) {
 		Campaigns:               make([]*Campaign, 0, len(src.Campaigns)),
 		UserGoals:               make(map[string]float64, len(src.UserGoals)),
 		UserPromoSpendRemaining: make(map[string]float64, len(src.UserGoals)),
+		UserPromoRevision:       make(map[string]int64, len(src.UserGoals)),
 		UserAntiPerekrutBlocked: make(map[string]bool, len(src.UserAntiPerekrutBlocked)),
 		LoadedAt:                src.LoadedAt.UTC(),
 	}
@@ -333,6 +500,21 @@ func cloneAndValidateSnapshot(src *Snapshot) (*Snapshot, error) {
 	for id := range out.UserGoals {
 		if _, ok := out.UserPromoSpendRemaining[id]; !ok {
 			out.UserPromoSpendRemaining[id] = 0
+		}
+	}
+	for rawID, revision := range src.UserPromoRevision {
+		id := strings.TrimSpace(rawID)
+		if id == "" || revision < 0 {
+			return nil, fmt.Errorf("invalid promo_revision for %q", rawID)
+		}
+		if _, ok := out.UserGoals[id]; !ok {
+			return nil, fmt.Errorf("promo_revision has no user goal for %q", id)
+		}
+		out.UserPromoRevision[id] = revision
+	}
+	for id := range out.UserGoals {
+		if _, ok := out.UserPromoRevision[id]; !ok {
+			out.UserPromoRevision[id] = 0
 		}
 	}
 
@@ -378,6 +560,9 @@ func cloneAndValidateSnapshot(src *Snapshot) (*Snapshot, error) {
 		}
 		if !finiteNonNegative(clone.PromoSpendRemaining) {
 			return nil, fmt.Errorf("campaign %s has invalid promo_spend_remaining", clone.ID)
+		}
+		if clone.PromoRevision < 0 {
+			return nil, fmt.Errorf("campaign %s has invalid promo_revision", clone.ID)
 		}
 		if clone.Status != CampaignStatusActive {
 			return nil, fmt.Errorf("campaign %s is not active", clone.ID)
@@ -427,6 +612,7 @@ func cloneAndValidateSnapshot(src *Snapshot) (*Snapshot, error) {
 			return nil, fmt.Errorf("campaign %s has no user goal", clone.ID)
 		}
 		clone.PromoSpendRemaining = out.UserPromoSpendRemaining[clone.UserID]
+		clone.PromoRevision = out.UserPromoRevision[clone.UserID]
 
 		clone.CountryFilter = cloneFilter(campaign.CountryFilter)
 		clone.LanguageFilter = cloneFilter(campaign.LanguageFilter)
@@ -502,6 +688,17 @@ func cloneFloatMap(src map[string]float64) map[string]float64 {
 		return nil
 	}
 	out := make(map[string]float64, len(src))
+	for key, value := range src {
+		out[key] = value
+	}
+	return out
+}
+
+func cloneInt64Map(src map[string]int64) map[string]int64 {
+	if len(src) == 0 {
+		return nil
+	}
+	out := make(map[string]int64, len(src))
 	for key, value := range src {
 		out[key] = value
 	}

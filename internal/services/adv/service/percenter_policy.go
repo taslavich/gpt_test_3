@@ -81,7 +81,9 @@ func (s *AuctionService) ResolvePricingDecision(campaign *Campaign) (PricingDeci
 		return PricingDecision{}, fmt.Errorf("campaign %s resolved invalid percent %.12f", campaign.ID, mapPercent)
 	}
 
-	hardMin := businessHardMin(campaign)
+	effectiveCampaign := *campaign
+	effectiveCampaign.PromoSpendRemaining = s.effectivePromoSpendRemaining(campaign)
+	hardMin := businessHardMin(&effectiveCampaign)
 	effectiveMapPercent := math.Max(mapPercent, hardMin)
 	if effectiveMapPercent > MaxAdvertiserMargin {
 		return PricingDecision{}, fmt.Errorf("campaign %s minimum margin %.12f exceeds maximum %.12f", campaign.ID, effectiveMapPercent, MaxAdvertiserMargin)

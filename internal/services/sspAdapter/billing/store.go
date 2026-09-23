@@ -2,7 +2,6 @@ package billing
 
 import (
 	"context"
-	"database/sql"
 	"errors"
 	"fmt"
 	"math"
@@ -27,24 +26,30 @@ type Winner struct {
 }
 
 type Store struct {
-	runtime   *redis.Client
-	winners   *redis.Client
-	postgres  *sql.DB
-	markerTTL time.Duration
+	runtime    *redis.Client
+	winners    *redis.Client
+	markerTTL  time.Duration
+	promoDebit PromoDebitFunc
+	promoSync  PromoSyncFunc
 }
 
-// NewStore keeps the previous call shape source-compatible. Production passes
-// the PostgreSQL connection as the optional fourth argument so percenter promo
-// spend is decremented durably together with ADV billing.
-func NewStore(runtime, winners *redis.Client, markerTTL time.Duration, postgres ...*sql.DB) *Store {
+func NewStore(runtime, winners *redis.Client, markerTTL time.Duration) *Store {
 	if markerTTL <= 0 {
 		markerTTL = 720 * time.Hour
 	}
-	var db *sql.DB
-	if len(postgres) > 0 {
-		db = postgres[0]
+	return &Store{runtime: runtime, winners: winners, markerTTL: markerTTL}
+}
+
+func (s *Store) SetPromoDebit(debit PromoDebitFunc) {
+	if s != nil {
+		s.promoDebit = debit
 	}
-	return &Store{runtime: runtime, winners: winners, postgres: db, markerTTL: markerTTL}
+}
+
+func (s *Store) SetPromoSync(sync PromoSyncFunc) {
+	if s != nil {
+		s.promoSync = sync
+	}
 }
 
 func (s *Store) ReadWinner(ctx context.Context, winnerUUID, expectedFormat string) (Winner, error) {
@@ -101,11 +106,18 @@ func (s *Store) Apply(ctx context.Context, record outbox.Record) error {
 		return err
 	}
 	if promoSpendAppliesToTypeModel(record.TypeModel) {
-		if s.postgres == nil {
-			return errors.New("PostgreSQL is required for percenter promo billing")
+		if s.promoDebit == nil {
+			return errors.New("cabinet promo debit is not configured")
 		}
-		if err := s.applyPromoSpend(ctx, record); err != nil {
-			return err
+		state, err := s.promoDebit(ctx, record.EventID, record.UserID, record.CampaignID, record.Price)
+		if err != nil {
+			return fmt.Errorf("apply cabinet promo spend: %w", err)
+		}
+		if s.promoSync == nil {
+			return errors.New("ADV promo runtime sync is not configured")
+		}
+		if err := s.promoSync(ctx, record.UserID, state.Remaining, state.Revision); err != nil {
+			return fmt.Errorf("sync ADV promo runtime state: %w", err)
 		}
 	}
 	return nil
@@ -165,57 +177,6 @@ func (s *Store) applyRuntimeSpend(ctx context.Context, record outbox.Record) err
 		}
 	}
 	return fmt.Errorf("ADV billing transaction conflicted after retries: %w", lastErr)
-}
-
-// applyPromoSpend is deliberately independent from the Redis marker. A crash
-// after one store commits but before the other one does is recovered by the
-// durable billing outbox: Redis has its marker and PostgreSQL has this marker,
-// so either side can be retried without double charging promo balance.
-func (s *Store) applyPromoSpend(ctx context.Context, record outbox.Record) error {
-	tx, err := s.postgres.BeginTx(ctx, &sql.TxOptions{})
-	if err != nil {
-		return fmt.Errorf("begin percenter promo transaction: %w", err)
-	}
-	defer tx.Rollback()
-
-	result, err := tx.ExecContext(ctx, `
-		INSERT INTO adv_promo_spend_events(event_id, user_id, campaign_id, spend_delta)
-		VALUES ($1, $2, $3, $4)
-		ON CONFLICT (event_id) DO NOTHING
-	`, record.EventID, record.UserID, record.CampaignID, record.Price)
-	if err != nil {
-		return fmt.Errorf("insert percenter promo billing marker: %w", err)
-	}
-	inserted, err := result.RowsAffected()
-	if err != nil {
-		return fmt.Errorf("read percenter promo marker result: %w", err)
-	}
-	if inserted == 0 {
-		if err := tx.Commit(); err != nil {
-			return fmt.Errorf("commit existing percenter promo marker: %w", err)
-		}
-		return nil
-	}
-
-	result, err = tx.ExecContext(ctx, `
-		UPDATE users
-		SET promo_spend_remaining = GREATEST(0, promo_spend_remaining - $2)
-		WHERE id = $1::uuid
-	`, record.UserID, record.Price)
-	if err != nil {
-		return fmt.Errorf("decrement percenter promo_spend_remaining: %w", err)
-	}
-	updated, err := result.RowsAffected()
-	if err != nil {
-		return fmt.Errorf("read percenter promo update result: %w", err)
-	}
-	if updated != 1 {
-		return fmt.Errorf("percenter promo user %q not found", record.UserID)
-	}
-	if err := tx.Commit(); err != nil {
-		return fmt.Errorf("commit percenter promo transaction: %w", err)
-	}
-	return nil
 }
 
 func normalizeFormat(value string) string {

@@ -36,6 +36,7 @@ const (
 	GetAntiPerekrutTrafficPercentURL = "/internal/antiperekrut/traffic-percent"
 	GetAuctionDiagnosticsURL         = "/internal/auction-diagnostics"
 	AuctionDiagnosticsStatusURL      = "/internal/auction-diagnostics/status"
+	PutPromoSpendRemainingURL        = "/internal/promo-spend-remaining"
 )
 
 // Backward-compatible aliases for callers that used the previous Go constant spelling.
@@ -55,6 +56,12 @@ type antiPerekrutRestartRequest struct {
 	SourceService  string `json:"source_service"`
 	SourceInstance string `json:"source_instance"`
 	Reason         string `json:"reason"`
+}
+
+type promoSpendRemainingRequest struct {
+	UserID    string  `json:"user_id"`
+	Remaining float64 `json:"remaining"`
+	Revision  int64   `json:"revision"`
 }
 
 func InitHttpRoutes(httpRouter *chi.Mux, percentStore *auction.PercentStore, qualityStore *auction.QualityStore, siteIDQualityStore *auction.SiteIDQualityStore, work *WorkController, antiConfig ...AntiPerekrutHTTPConfig) {
@@ -262,6 +269,25 @@ func InitHttpRoutes(httpRouter *chi.Mux, percentStore *auction.PercentStore, qua
 
 	if len(antiConfig) > 0 && antiConfig[0].AuctionService != nil {
 		service := antiConfig[0].AuctionService
+		httpRouter.Put(PutPromoSpendRemainingURL, func(w http.ResponseWriter, r *http.Request) {
+			defer r.Body.Close()
+			decoder := json.NewDecoder(http.MaxBytesReader(w, r.Body, 64<<10))
+			decoder.DisallowUnknownFields()
+			var input promoSpendRemainingRequest
+			if err := decoder.Decode(&input); err != nil {
+				http.Error(w, err.Error(), http.StatusBadRequest)
+				return
+			}
+			if err := ensureJSONEOF(decoder); err != nil {
+				http.Error(w, err.Error(), http.StatusBadRequest)
+				return
+			}
+			if err := service.ApplyPromoSpendRemaining(input.UserID, input.Remaining, input.Revision); err != nil {
+				http.Error(w, err.Error(), http.StatusBadRequest)
+				return
+			}
+			w.WriteHeader(http.StatusNoContent)
+		})
 		httpRouter.Get(GetAuctionDiagnosticsURL, func(w http.ResponseWriter, _ *http.Request) {
 			snapshot := service.DiagnosticsSnapshot()
 			if snapshot == nil {

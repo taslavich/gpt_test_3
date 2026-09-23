@@ -277,7 +277,7 @@ type AdmAdapterConfig struct {
 	AdvOutboxRetryInterval  time.Duration `yaml:"ADV_OUTBOX_RETRY_INTERVAL" env:"ADV_OUTBOX_RETRY_INTERVAL" env-default:"2s"`
 	AdvOutboxMaxBackoff     time.Duration `yaml:"ADV_OUTBOX_MAX_BACKOFF" env:"ADV_OUTBOX_MAX_BACKOFF" env-default:"1m"`
 	AdvAppliedMarkerTTL     time.Duration `yaml:"ADV_APPLIED_MARKER_TTL" env:"ADV_APPLIED_MARKER_TTL" env-default:"720h"`
-	PostgresDSN             string        `yaml:"POSTGRES_DSN" env:"POSTGRES_DSN"`
+	CabinetBackendURL       string        `yaml:"CABINET_BACKEND_URL" env:"CABINET_BACKEND_URL"`
 	RedisWriteErrorMonitorConfig
 	BotBaseURL        string `yaml:"BOT_BASE_URL" env:"BOT_BASE_URL"`
 	BotInternalSecret string `yaml:"BOT_INTERNAL_SECRET" env:"BOT_INTERNAL_SECRET"`

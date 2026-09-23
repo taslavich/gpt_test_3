@@ -2,14 +2,12 @@ package main
 
 import (
 	"context"
-	"database/sql"
 	"fmt"
 	"log"
 	"os"
 	"strings"
 
 	"github.com/go-chi/chi/v5"
-	_ "github.com/lib/pq"
 	"github.com/redis/go-redis/v9"
 	"gitlab.com/twinbid-exchange/RTB-exchange/internal/config"
 	utils "gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/utils_grpc"
@@ -161,21 +159,14 @@ func main() {
 		log.Println("✅ Connected to ADV winner Redis")
 	}
 
-	promoDB, err := sql.Open("postgres", cfg.PostgresDSN)
-	if err != nil {
-		log.Fatalf("Cannot open PostgreSQL for ADV promo billing: %v", err)
-	}
-	defer promoDB.Close()
-	if err := promoDB.PingContext(ctx); err != nil {
-		log.Fatalf("PostgreSQL for ADV promo billing unavailable: %v", err)
-	}
-
 	advOutbox, err := outbox.Open(cfg.AdvOutboxPath)
 	if err != nil {
 		log.Fatalf("Cannot open ADV billing outbox: %v", err)
 	}
 	defer advOutbox.Close()
-	advBillingStore := billing.NewStore(advRuntimeRedis, advWinnerRedis, cfg.AdvAppliedMarkerTTL, promoDB)
+	advBillingStore := billing.NewStore(advRuntimeRedis, advWinnerRedis, cfg.AdvAppliedMarkerTTL)
+	advBillingStore.SetPromoDebit(billing.NewHTTPPromoDebit(cfg.CabinetBackendURL, cfg.BotInternalSecret))
+	advBillingStore.SetPromoSync(billing.NewHTTPPromoSync([]string(cfg.AdvServiceControlURLs)))
 
 	redisWriteErrorMonitor := services.NewRedisWriteErrorMonitorWithSettings(
 		"adm-adapter",
@@ -307,8 +298,8 @@ func validateConfig(cfg *config.AdmAdapterConfig) error {
 	if strings.TrimSpace(cfg.AdvOutboxPath) == "" {
 		return fmt.Errorf("ADV_OUTBOX_PATH is required")
 	}
-	if strings.TrimSpace(cfg.PostgresDSN) == "" {
-		return fmt.Errorf("POSTGRES_DSN is required for percenter promo billing")
+	if strings.TrimSpace(cfg.CabinetBackendURL) == "" {
+		return fmt.Errorf("CABINET_BACKEND_URL is required for percenter promo billing")
 	}
 	if strings.TrimSpace(cfg.SspAdapterWorkStatusURL) == "" {
 		return fmt.Errorf("SSP_ADAPTER_WORK_STATUS_URL is required for the existing Redis error monitor")

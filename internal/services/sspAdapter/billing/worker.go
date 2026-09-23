@@ -352,7 +352,10 @@ func (w *Worker) processADM(ctx context.Context, record outbox.Record) (bool, er
 		if strings.EqualFold(record.Format, constants.IPP) {
 			billingRecord := record
 			billingRecord.Kind = outbox.KindBilling
-			if err := w.store.Apply(ctx, billingRecord); err != nil {
+			billingRecord.EventID = CallbackEventID("adm", record.Format, record.GlobalID)
+			requiresRecovery := true
+			billingRecord.RequiresADVRecovery = &requiresRecovery
+			if err := ApplyDurableIntent(ctx, w.outbox, w.store, billingRecord); err != nil {
 				return true, err
 			}
 		}
