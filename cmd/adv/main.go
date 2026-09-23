@@ -11,6 +11,7 @@ import (
 	"os/signal"
 	"strconv"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
@@ -30,16 +31,32 @@ import (
 )
 
 func main() {
+	if err := run(); err != nil {
+		log.Printf("ADV terminated with error: %v", err)
+		os.Exit(1)
+	}
+}
+
+func run() error {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
 	cfg, err := config.LoadConfig[config.AdvConfig](ctx)
 	if err != nil {
-		log.Fatalf("cannot load ADV config: %v", err)
+		return fmt.Errorf("cannot load ADV config: %w", err)
 	}
 	if err := validateConfig(cfg); err != nil {
-		log.Fatalf("invalid ADV config: %v", err)
+		return fmt.Errorf("invalid ADV config: %w", err)
 	}
+	simplePolicy, complexPolicy, err := percenter.PoliciesFromConfig(cfg.PercenterPolicyConfig)
+	if err != nil {
+		return fmt.Errorf("invalid ADV percenter policy config: %w", err)
+	}
+	log.Printf(
+		"[ADV][PERCENTER_POLICY] simple_interval=%s simple_rebenchmark=%s simple_ttl=%s simple_min_impressions=%d simple_retention=%.2f simple_steps=%v complex_interval=%s complex_rebenchmark=%s complex_ttl=%s complex_min_impressions=%d complex_buyout_retention=%.2f complex_efficiency_retention=%.2f complex_ssp_steps=%v complex_margin_steps=%v max_margin=%.2f",
+		simplePolicy.OptimizeInterval, simplePolicy.RebenchmarkInterval, simplePolicy.StateTTL, simplePolicy.MinImpressions, simplePolicy.WinRateRetention, simplePolicy.SearchStepsPP,
+		complexPolicy.OptimizeInterval, complexPolicy.RebenchmarkInterval, complexPolicy.StateTTL, complexPolicy.MinImpressions, complexPolicy.BuyoutRetention, complexPolicy.EfficiencyRetention, complexPolicy.SSPSearchStepsPercent, complexPolicy.MarginSearchStepsPP, complexPolicy.MaxMargin,
+	)
 	redisAddr := strings.TrimSpace(cfg.RedisUUIDAddr)
 	if redisAddr == "" && len(cfg.RedisShardAddrs) > 0 {
 		redisAddr = strings.TrimSpace(cfg.RedisShardAddrs[0])
@@ -47,24 +64,24 @@ func main() {
 
 	runtimeRedis, err := redisService.NewRedisClient(redisAddr, cfg.RedisPassword, cfg.RedisDBAdvRuntime, cfg.RedisPoolSize, cfg.RedisMinIdleConns)
 	if err != nil {
-		log.Fatalf("cannot initialize ADV runtime Redis DB %d: %v", cfg.RedisDBAdvRuntime, err)
+		return fmt.Errorf("cannot initialize ADV runtime Redis DB %d: %w", cfg.RedisDBAdvRuntime, err)
 	}
 	defer runtimeRedis.Close()
 	winnerRedis, err := redisService.NewRedisClient(redisAddr, cfg.RedisPassword, cfg.RedisDBAdvWinner, cfg.RedisPoolSize, cfg.RedisMinIdleConns)
 	if err != nil {
-		log.Fatalf("cannot initialize ADV winner Redis DB %d: %v", cfg.RedisDBAdvWinner, err)
+		return fmt.Errorf("cannot initialize ADV winner Redis DB %d: %w", cfg.RedisDBAdvWinner, err)
 	}
 	defer winnerRedis.Close()
 	percenterRedis, err := redisService.NewRedisClient(strings.TrimSpace(cfg.RedisADVAddr), cfg.RedisPassword, cfg.RedisDBAdvPercenter, cfg.RedisPoolSize, cfg.RedisMinIdleConns)
 	if err != nil {
-		log.Fatalf("cannot initialize ADV Simple percenter Redis DB %d: %v", cfg.RedisDBAdvPercenter, err)
+		return fmt.Errorf("cannot initialize ADV percenter Redis DB %d: %w", cfg.RedisDBAdvPercenter, err)
 	}
 	defer percenterRedis.Close()
 	if err := runtimeRedis.Ping(ctx).Err(); err != nil {
-		log.Fatalf("ADV runtime Redis unavailable: %v", err)
+		return fmt.Errorf("ADV runtime Redis unavailable: %w", err)
 	}
 	if err := winnerRedis.Ping(ctx).Err(); err != nil {
-		log.Fatalf("ADV winner Redis unavailable: %v", err)
+		return fmt.Errorf("ADV winner Redis unavailable: %w", err)
 	}
 	if err := percenterRedis.Ping(ctx).Err(); err != nil {
 		// DB7 is fail-open for auction pricing. The percenter state stores will
@@ -81,7 +98,7 @@ func main() {
 		statsRedisAddrs, cfg.RedisPassword, cfg.RedisDBOrtb, cfg.RedisUseTLS, cfg.RedisPoolSize, cfg.RedisMinIdleConns,
 	)
 	if err != nil {
-		log.Fatalf("cannot initialize ADV ORTB stats Redis: %v", err)
+		return fmt.Errorf("cannot initialize ADV ORTB stats Redis: %w", err)
 	}
 	defer func() {
 		if err := redisService.CloseClients(statsRedisClients); err != nil {
@@ -89,44 +106,44 @@ func main() {
 		}
 	}()
 	if err := redisService.PingClients(ctx, "adv-stats", statsRedisClients); err != nil {
-		log.Fatalf("ADV ORTB stats Redis unavailable: %v", err)
+		return fmt.Errorf("ADV ORTB stats Redis unavailable: %w", err)
 	}
 
 	percentStore, err := auction.NewPercentStore(cfg.AdvPercentMapFilePath)
 	if err != nil {
-		log.Fatalf("cannot initialize ADV percent map: %v", err)
+		return fmt.Errorf("cannot initialize ADV percent map: %w", err)
 	}
 	qualityStore, err := auction.NewQualityStore(cfg.AdvQualityMapFilePath)
 	if err != nil {
-		log.Fatalf("cannot initialize ADV quality map: %v", err)
+		return fmt.Errorf("cannot initialize ADV quality map: %w", err)
 	}
 	siteIDQualityStore, err := auction.NewSiteIDQualityStore(cfg.AdvSiteIDQualityMapFilePath)
 	if err != nil {
-		log.Fatalf("[ADV][SITE_ID_QUALITY_MAP][startup] initialization failed: %v", err)
+		return fmt.Errorf("[ADV][SITE_ID_QUALITY_MAP][startup] initialization failed: %w", err)
 	}
 	vpnStore, err := auction.NewVPNStore(cfg.AdvVPNDBPath)
 	if err != nil {
-		log.Fatalf("[ADV][VPN_DB][startup] initialization failed: %v", err)
+		return fmt.Errorf("[ADV][VPN_DB][startup] initialization failed: %w", err)
 	}
 	defer vpnStore.Close()
 
 	if strings.TrimSpace(cfg.PostgresDSN) == "" {
-		log.Fatal("POSTGRES_DSN is required for ADV")
+		return fmt.Errorf("POSTGRES_DSN is required for ADV")
 	}
 	db, err := sql.Open("postgres", cfg.PostgresDSN)
 	if err != nil {
-		log.Fatalf("cannot open ADV PostgreSQL: %v", err)
+		return fmt.Errorf("cannot open ADV PostgreSQL: %w", err)
 	}
 	defer db.Close()
 	if err := db.PingContext(ctx); err != nil {
-		log.Fatalf("ADV PostgreSQL unavailable: %v", err)
+		return fmt.Errorf("ADV PostgreSQL unavailable: %w", err)
 	}
 	runtimeStore := auction.NewRuntimeStore(runtimeRedis, cfg.AdvPacingCurrentTTL, cfg.AdvPacingSlotTTL)
 	winnerStore := auction.NewWinnerStore(winnerRedis, cfg.AdvWinnerTTL)
 	auctionService := auction.NewAuctionService(runtimeStore, winnerStore, percentStore, qualityStore, siteIDQualityStore)
 	telemetryOutbox, err := percenter.OpenObservabilityOutbox(cfg.AdvPercenterTelemetryOutboxPath)
 	if err != nil {
-		log.Fatalf("cannot initialize ADV percenter telemetry outbox: %v", err)
+		return fmt.Errorf("cannot initialize ADV percenter telemetry outbox: %w", err)
 	}
 	defer telemetryOutbox.Close()
 	hostname, _ := os.Hostname()
@@ -140,7 +157,10 @@ func main() {
 	if telemetryFlush <= 0 {
 		telemetryFlush = time.Minute
 	}
+	var telemetryWG sync.WaitGroup
+	telemetryWG.Add(1)
 	go func() {
+		defer telemetryWG.Done()
 		ticker := time.NewTicker(telemetryFlush)
 		defer ticker.Stop()
 		flushClosed := func(now time.Time) {
@@ -172,9 +192,14 @@ func main() {
 			}
 		}
 	}()
-	simplePolicy := percenter.SimplePolicy{}.Normalize()
+	// Any startup error after the telemetry worker is running must cancel and
+	// wait for it before deferred outbox/Redis closes execute. Runtime/signal
+	// shutdown normally completes this wait first, making this defer a no-op.
+	defer func() {
+		cancel()
+		waitForADVBackground(&telemetryWG, 4*time.Second)
+	}()
 	auctionService.ConfigureSimplePercenter(percenter.NewSimpleStateStore(percenterRedis, simplePolicy), simplePolicy)
-	complexPolicy := percenter.ComplexPolicy{}.Normalize()
 	auctionService.ConfigureComplexPercenter(percenter.NewComplexStateStore(percenterRedis, complexPolicy), complexPolicy)
 	auctionService.SetStatsRedisClients(statsRedisClients)
 	auctionService.SetVPNClassifier(vpnStore)
@@ -182,12 +207,23 @@ func main() {
 	auctionService.StartDiagnostics(ctx)
 	diagnosticsEnabled, err := boolEnvironment("AUCTION_DIAGNOSTICS_ENABLED", false)
 	if err != nil {
-		log.Fatalf("invalid AUCTION_DIAGNOSTICS_ENABLED: %v", err)
+		return fmt.Errorf("invalid AUCTION_DIAGNOSTICS_ENABLED: %w", err)
 	}
 	auctionService.SetDiagnosticsEnabled(diagnosticsEnabled)
 
 	botNotifier := utils.NewBotMessageWithTimeout(cfg.BotBaseURL, cfg.BotInternalSecret, cfg.AntiperekrutControlTimeout)
-	auctionService.SetSnapshotWarningNotifier(botNotifier.SendTextMessageToBot)
+	telegramConfigured := strings.TrimSpace(cfg.BotBaseURL) != "" && strings.TrimSpace(cfg.BotInternalSecret) != ""
+	botSend := func(sendCtx context.Context, text string) error {
+		if !telegramConfigured {
+			return nil
+		}
+		return botNotifier.SendTextMessageToBot(sendCtx, text)
+	}
+	if telegramConfigured {
+		auctionService.SetSnapshotWarningNotifier(botSend)
+	} else {
+		log.Printf("[ADV][TELEGRAM_DISABLED] credentials are not configured; auction continues without snapshot/percenter warnings")
+	}
 	var antiManager *auction.AntiPerekrutManager
 	var startupEvent antiControl.StartupEvent
 
@@ -197,7 +233,7 @@ func main() {
 		// have DML permissions without ALTER TABLE privileges.
 		if cfg.AntiperekrutAutoMigrate {
 			if err := auction.EnsureAntiPerekrutSchema(ctx, db); err != nil {
-				log.Fatalf("cannot migrate antiperekrut schema: %v", err)
+				return fmt.Errorf("cannot migrate antiperekrut schema: %w", err)
 			}
 		}
 
@@ -220,7 +256,7 @@ func main() {
 			},
 		)
 		if err != nil {
-			log.Fatalf("cannot initialize ADV ClickHouse client: %v", err)
+			return fmt.Errorf("cannot initialize ADV ClickHouse client: %w", err)
 		}
 		defer func() {
 			if err := clickhouseConn.Close(); err != nil {
@@ -229,42 +265,42 @@ func main() {
 		}()
 
 		if err := auctionService.RefreshFromPostgres(ctx, db); err != nil {
-			log.Fatalf("initial ADV snapshot failed: %v", err)
+			return fmt.Errorf("initial ADV snapshot failed: %w", err)
 		}
 
 		antiManager, err = auction.NewAntiPerekrutManager(
 			db, clickhouseConn, cfg.ClickhouseConfig.Database, runtimeStore,
-			auctionService.CurrentSnapshot, cfg.AntiperekrutTickOffset, botNotifier.SendTextMessageToBot,
+			auctionService.CurrentSnapshot, cfg.AntiperekrutTickOffset, botSend,
 		)
 		if err != nil {
-			log.Fatalf("cannot initialize antiperekrut: %v", err)
+			return fmt.Errorf("cannot initialize antiperekrut: %w", err)
 		}
 		auctionService.SetAntiPerekrutManager(antiManager)
 
 		antiperekrutHostname, _ := os.Hostname()
 		startupEvent = antiControl.NewStartupEvent("adv", antiperekrutHostname)
 		if _, err := antiManager.RegisterStartupEvent(ctx, startupEvent.EventID, startupEvent.SourceService, startupEvent.SourceInstance); err != nil {
-			_ = botNotifier.SendTextMessageToBot(ctx, fmt.Sprintf("[ADV][ANTIPEREKRUT_STARTUP_ERROR] %v", err))
-			log.Fatalf("cannot register ADV startup reset: %v", err)
+			_ = botSend(ctx, fmt.Sprintf("[ADV][ANTIPEREKRUT_STARTUP_ERROR] %v", err))
+			return fmt.Errorf("cannot register ADV startup reset: %w", err)
 		}
 		if err := antiManager.Refresh(ctx); err != nil {
-			_ = botNotifier.SendTextMessageToBot(ctx, fmt.Sprintf("[ADV][ANTIPEREKRUT_INITIAL_REFRESH_ERROR] %v", err))
-			log.Fatalf("initial antiperekrut state failed: %v", err)
+			_ = botSend(ctx, fmt.Sprintf("[ADV][ANTIPEREKRUT_INITIAL_REFRESH_ERROR] %v", err))
+			return fmt.Errorf("initial antiperekrut state failed: %w", err)
 		}
 		if state := antiManager.State(); state == nil || state.LoadedAt.IsZero() {
-			log.Fatal("initial antiperekrut state has not completed ClickHouse/Redis loading")
+			return fmt.Errorf("initial antiperekrut state has not completed ClickHouse/Redis loading")
 		}
 		antiManager.Start(ctx)
 	} else {
 		if err := auctionService.RefreshFromPostgres(ctx, db); err != nil {
-			log.Fatalf("initial ADV snapshot failed: %v", err)
+			return fmt.Errorf("initial ADV snapshot failed: %w", err)
 		}
 		log.Print("antiperekrut is disabled by ANTIPEREKRUT_ENABLED=true")
 	}
 	log.Printf("AdvServiceControlURLs: %q", cfg.AdvServiceControlURLs)
 
 	auctionService.StartPostgresRefreshTicker(ctx, db, cfg.CampaignRefreshInterval, func(err error) {
-		_ = botNotifier.SendTextMessageToBot(ctx, fmt.Sprintf("[ADV][SNAPSHOT_REFRESH_ERROR] %v", err))
+		_ = botSend(ctx, fmt.Sprintf("[ADV][SNAPSHOT_REFRESH_ERROR] %v", err))
 		log.Printf("ADV snapshot refresh failed; previous snapshot retained: %v", err)
 	})
 	auctionService.StartPacingTicker(ctx, cfg.AdvPacingTickInterval, func(err error) {
@@ -283,7 +319,7 @@ func main() {
 
 	listener, err := net.Listen("tcp", fmt.Sprintf("%s:%d", cfg.GrpcServer.Host, cfg.GrpcServer.Port))
 	if err != nil {
-		log.Fatalf("ADV gRPC listen failed: %v", err)
+		return fmt.Errorf("ADV gRPC listen failed: %w", err)
 	}
 	errChan := make(chan error, 1)
 	// The control endpoint must be reachable before startup fan-out, while the
@@ -294,10 +330,10 @@ func main() {
 		err = antiControl.FanoutStartupEvent(ctx, antiControl.ClientConfig{
 			Enabled: true, URLs: []string(cfg.AdvServiceControlURLs),
 			RequestTimeout: cfg.AntiperekrutControlTimeout, RetryInitial: cfg.AntiperekrutRetryInitial, RetryMax: cfg.AntiperekrutRetryMax,
-		}, startupEvent, botNotifier.SendTextMessageToBot)
+		}, startupEvent, botSend)
 		if err != nil {
-			_ = botNotifier.SendTextMessageToBot(ctx, fmt.Sprintf("[ADV][ANTIPEREKRUT_FANOUT_ERROR] %v", err))
-			log.Fatalf("ADV startup reset fan-out failed: %v", err)
+			_ = botSend(ctx, fmt.Sprintf("[ADV][ANTIPEREKRUT_FANOUT_ERROR] %v", err))
+			return fmt.Errorf("ADV startup reset fan-out failed: %w", err)
 		}
 	}
 	go func() {
@@ -307,15 +343,17 @@ func main() {
 
 	stop := make(chan os.Signal, 1)
 	signal.Notify(stop, os.Interrupt, syscall.SIGTERM)
-	select {
-	case <-stop:
-		cancel()
-		grpcServer.GracefulStop()
-	case err := <-errChan:
-		if err != nil {
-			log.Fatalf("ADV server stopped: %v", err)
-		}
-	}
+	defer signal.Stop(stop)
+	return waitForADVTermination(
+		stop,
+		errChan,
+		cancel,
+		grpcServer.GracefulStop,
+		grpcServer.Stop,
+		&telemetryWG,
+		4*time.Second,
+		4*time.Second,
+	)
 }
 
 func boolEnvironment(name string, fallback bool) (bool, error) {
@@ -341,7 +379,7 @@ func validateConfig(cfg *config.AdvConfig) error {
 		return fmt.Errorf("REDIS_UUID_ADDR or REDIS_SHARD_ADDRS is required")
 	}
 	if strings.TrimSpace(cfg.RedisADVAddr) == "" {
-		return fmt.Errorf("REDIS_ADV_ADDR is required for Simple percenter state")
+		return fmt.Errorf("REDIS_ADV_ADDR is required for percenter state")
 	}
 	if strings.TrimSpace(cfg.AdvPercentMapFilePath) == "" {
 		return fmt.Errorf("ADV_PERCENT_MAP_FILE_PATH is required")
@@ -373,4 +411,88 @@ func validateConfig(cfg *config.AdvConfig) error {
 		}
 	}
 	return nil
+}
+
+func waitForADVTermination(
+	stop <-chan os.Signal,
+	errChan <-chan error,
+	cancel context.CancelFunc,
+	gracefulStop func(),
+	forceStop func(),
+	telemetryWG *sync.WaitGroup,
+	grpcGracefulTimeout time.Duration,
+	backgroundTimeout time.Duration,
+) error {
+	select {
+	case <-stop:
+		cancel()
+		if !stopADVGRPCServerBounded(gracefulStop, forceStop, grpcGracefulTimeout) {
+			log.Printf("[ADV][GRPC_FORCE_STOP] GracefulStop exceeded %s; forced Stop was requested", grpcGracefulTimeout)
+		}
+		if !waitForADVBackground(telemetryWG, backgroundTimeout) {
+			return fmt.Errorf("ADV telemetry shutdown timed out after %s", backgroundTimeout)
+		}
+		return nil
+	case runtimeErr := <-errChan:
+		// Serve has already terminated. Cancel first so the telemetry worker
+		// executes FlushAll + its final relay, then wait only for a bounded
+		// interval before returning the original server error to run(). run()
+		// returns before main calls os.Exit(1), so all run() defers execute.
+		cancel()
+		if !waitForADVBackground(telemetryWG, backgroundTimeout) {
+			if runtimeErr != nil {
+				return fmt.Errorf("ADV server stopped: %w; telemetry shutdown timed out after %s", runtimeErr, backgroundTimeout)
+			}
+			return fmt.Errorf("ADV telemetry shutdown timed out after %s", backgroundTimeout)
+		}
+		return runtimeErr
+	}
+}
+
+func stopADVGRPCServerBounded(gracefulStop, forceStop func(), timeout time.Duration) bool {
+	if gracefulStop == nil {
+		return true
+	}
+	if timeout <= 0 {
+		if forceStop != nil {
+			forceStop()
+		}
+		return false
+	}
+
+	done := make(chan struct{})
+	go func() {
+		gracefulStop()
+		close(done)
+	}()
+
+	timer := time.NewTimer(timeout)
+	defer timer.Stop()
+	select {
+	case <-done:
+		return true
+	case <-timer.C:
+		if forceStop != nil {
+			forceStop()
+		}
+		return false
+	}
+}
+
+func waitForADVBackground(wg *sync.WaitGroup, timeout time.Duration) bool {
+	if wg == nil {
+		return true
+	}
+	done := make(chan struct{})
+	go func() {
+		wg.Wait()
+		close(done)
+	}()
+	select {
+	case <-done:
+		return true
+	case <-time.After(timeout):
+		log.Printf("[ADV][SHUTDOWN_TIMEOUT] telemetry worker did not stop within %s", timeout)
+		return false
+	}
 }

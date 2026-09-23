@@ -290,6 +290,7 @@ type AdvConfig struct {
 	GrpcServer GrpcServer
 	RedisConfig
 	ClickhouseConfig
+	PercenterPolicyConfig
 
 	AdvPercentMapFilePath           string        `yaml:"ADV_PERCENT_MAP_FILE_PATH" env:"ADV_PERCENT_MAP_FILE_PATH"`
 	AdvQualityMapFilePath           string        `yaml:"ADV_QUALITY_MAP_FILE_PATH" env:"ADV_QUALITY_MAP_FILE_PATH"`
@@ -362,20 +363,7 @@ type BatchRatioConfig struct {
 	HTTPPort                uint16  `yaml:"BATCH_RATIO_HTTP_PORT" env:"BATCH_RATIO_HTTP_PORT" env-default:"8090"`
 }
 
-type PercenterConfig struct {
-	Clickhouse ClickhouseConfig
-	RedisConfig
-
-	PercenterOutboxPath     string        `yaml:"PERCENTER_OUTBOX_PATH" env:"PERCENTER_OUTBOX_PATH" env-default:"./data/percenter-observability-outbox.db"`
-	PercenterRelayInterval  time.Duration `yaml:"PERCENTER_RELAY_INTERVAL" env:"PERCENTER_RELAY_INTERVAL" env-default:"1m"`
-	PercenterHistoryTable   string        `yaml:"PERCENTER_HISTORY_TABLE" env:"PERCENTER_HISTORY_TABLE" env-default:"percenter_state_history"`
-	PercenterTelemetryTable string        `yaml:"PERCENTER_TELEMETRY_TABLE" env:"PERCENTER_TELEMETRY_TABLE" env-default:"percenter_telemetry"`
-	KafkaTopicPercenter     string        `yaml:"KAFKA_TOPIC_PERCENTER" env:"KAFKA_TOPIC_PERCENTER" env-default:"percenter_observability"`
-	KafkaBrokers            []string      `yaml:"KAFKA_BROKERS" env:"KAFKA_BROKERS"`
-	PercenterDigestInterval time.Duration `yaml:"PERCENTER_DIGEST_INTERVAL" env:"PERCENTER_DIGEST_INTERVAL" env-default:"30m"`
-	BotBaseURL              string        `yaml:"BOT_BASE_URL" env:"BOT_BASE_URL"`
-	BotInternalSecret       string        `yaml:"BOT_INTERNAL_SECRET" env:"BOT_INTERNAL_SECRET"`
-
+type PercenterPolicyConfig struct {
 	SimpleOptimizeInterval    time.Duration `yaml:"SIMPLE_OPTIMIZE_INTERVAL" env:"SIMPLE_OPTIMIZE_INTERVAL" env-default:"5m"`
 	SimpleRebenchmarkInterval time.Duration `yaml:"SIMPLE_REBENCHMARK_INTERVAL" env:"SIMPLE_REBENCHMARK_INTERVAL" env-default:"6h"`
 	SimpleStateTTL            time.Duration `yaml:"SIMPLE_STATE_TTL" env:"SIMPLE_STATE_TTL" env-default:"168h"`
@@ -393,6 +381,22 @@ type PercenterConfig struct {
 	ComplexSSPSearchSteps      string        `yaml:"COMPLEX_SSP_SEARCH_STEPS" env:"COMPLEX_SSP_SEARCH_STEPS" env-default:"10,5,2,1"`
 	ComplexMarginSearchSteps   string        `yaml:"COMPLEX_MARGIN_SEARCH_STEPS" env:"COMPLEX_MARGIN_SEARCH_STEPS" env-default:"10,5,2,1"`
 	ComplexMaxMargin           float64       `yaml:"COMPLEX_MAX_MARGIN" env:"COMPLEX_MAX_MARGIN" env-default:"0.9"`
+}
+
+type PercenterConfig struct {
+	Clickhouse ClickhouseConfig
+	RedisConfig
+	PercenterPolicyConfig
+
+	PercenterOutboxPath     string        `yaml:"PERCENTER_OUTBOX_PATH" env:"PERCENTER_OUTBOX_PATH" env-default:"./data/percenter-observability-outbox.db"`
+	PercenterRelayInterval  time.Duration `yaml:"PERCENTER_RELAY_INTERVAL" env:"PERCENTER_RELAY_INTERVAL" env-default:"1m"`
+	PercenterHistoryTable   string        `yaml:"PERCENTER_HISTORY_TABLE" env:"PERCENTER_HISTORY_TABLE" env-default:"percenter_state_history"`
+	PercenterTelemetryTable string        `yaml:"PERCENTER_TELEMETRY_TABLE" env:"PERCENTER_TELEMETRY_TABLE" env-default:"percenter_telemetry"`
+	KafkaTopicPercenter     string        `yaml:"KAFKA_TOPIC_PERCENTER" env:"KAFKA_TOPIC_PERCENTER" env-default:"percenter_observability"`
+	KafkaBrokers            []string      `yaml:"KAFKA_BROKERS" env:"KAFKA_BROKERS"`
+	PercenterDigestInterval time.Duration `yaml:"PERCENTER_DIGEST_INTERVAL" env:"PERCENTER_DIGEST_INTERVAL" env-default:"30m"`
+	BotBaseURL              string        `yaml:"BOT_BASE_URL" env:"BOT_BASE_URL"`
+	BotInternalSecret       string        `yaml:"BOT_INTERNAL_SECRET" env:"BOT_INTERNAL_SECRET"`
 }
 
 type ClickhouseLoaderConfig struct {

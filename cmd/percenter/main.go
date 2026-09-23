@@ -8,8 +8,8 @@ import (
 	"net"
 	"os"
 	"os/signal"
-	"strconv"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"syscall"
 	"time"
@@ -36,13 +36,9 @@ func run() error {
 	if err != nil {
 		return fmt.Errorf("load percenter config: %w", err)
 	}
-	simplePolicy, err := simplePolicyFromConfig(cfg)
+	simplePolicy, complexPolicy, err := percenter.PoliciesFromConfig(cfg.PercenterPolicyConfig)
 	if err != nil {
-		return err
-	}
-	complexPolicy, err := complexPolicyFromConfig(cfg)
-	if err != nil {
-		return err
+		return fmt.Errorf("invalid percenter policy config: %w", err)
 	}
 	if cfg.RedisDBAdvPercenter != 7 {
 		return fmt.Errorf("REDIS_DB_ADV_PERCENTER must be 7, got %d", cfg.RedisDBAdvPercenter)
@@ -92,6 +88,13 @@ func run() error {
 	if len(cfg.KafkaBrokers) == 0 {
 		return fmt.Errorf("KAFKA_BROKERS is required for durable history delivery")
 	}
+	probeCtx, probeCancel := context.WithTimeout(ctx, 3*time.Second)
+	if err := probeKafkaBrokers(probeCtx, cfg.KafkaBrokers); err != nil {
+		// A configured but temporarily unavailable broker must not prevent the
+		// optimizer process from starting. Redis/bbolt retain pending delivery.
+		log.Printf("[PERCENTER][KAFKA_DEGRADED] error=%v", err)
+	}
+	probeCancel()
 	kafkaWriter := &kafka.Writer{
 		Addr:         kafka.TCP(cfg.KafkaBrokers...),
 		Topic:        strings.TrimSpace(cfg.KafkaTopicPercenter),
@@ -107,7 +110,28 @@ func run() error {
 	var simpleUpdates atomic.Uint64
 	var complexUpdates atomic.Uint64
 	var optimizerAnomalies atomic.Uint64
-	botNotifier := utils.NewBotMessage(cfg.BotBaseURL, cfg.BotInternalSecret)
+	var botNotifier *utils.BotMessage
+	botURL := strings.TrimSpace(cfg.BotBaseURL)
+	botSecret := strings.TrimSpace(cfg.BotInternalSecret)
+	if botURL != "" && botSecret != "" {
+		botNotifier = utils.NewBotMessage(botURL, botSecret)
+	} else if botURL != "" || botSecret != "" {
+		log.Printf("[PERCENTER][TELEGRAM_DISABLED] BOT_BASE_URL and BOT_INTERNAL_SECRET must both be set; continuing without Telegram")
+	} else {
+		log.Printf("[PERCENTER][TELEGRAM_DISABLED] credentials are not configured")
+	}
+	sendBotAsync := func(logPrefix, text string) {
+		if botNotifier == nil {
+			return
+		}
+		go func() {
+			notifyCtx, notifyCancel := context.WithTimeout(context.Background(), 10*time.Second)
+			defer notifyCancel()
+			if err := botNotifier.SendTextMessageToBot(notifyCtx, text); err != nil {
+				log.Printf("%s %v", logPrefix, err)
+			}
+		}()
+	}
 	notifyTransition := func(name string, failed bool, detail error) {
 		transition := transitions.Update(name, failed)
 		if transition == "" {
@@ -117,48 +141,47 @@ func run() error {
 		if detail != nil {
 			message += fmt.Sprintf(" error=%v", detail)
 		}
-		go func(text string) {
-			notifyCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-			defer cancel()
-			if err := botNotifier.SendTextMessageToBot(notifyCtx, text); err != nil {
-				log.Printf("[PERCENTER][TELEGRAM_ERROR] %v", err)
-			}
-		}(message)
+		sendBotAsync("[PERCENTER][TELEGRAM_ERROR]", message)
 	}
 	relayInterval := cfg.PercenterRelayInterval
 	if relayInterval <= 0 {
 		relayInterval = time.Minute
 	}
+	var backgroundWG sync.WaitGroup
+	backgroundWG.Add(1)
 	go func() {
+		defer backgroundWG.Done()
 		ticker := time.NewTicker(relayInterval)
 		defer ticker.Stop()
-		runDelivery := func() {
-			_, pendingErr := percenter.RecoverPendingHistory(ctx, redisClient, observabilityOutbox, 1000)
+		runDelivery := func(deliveryCtx context.Context) {
+			_, pendingErr := percenter.RecoverPendingHistory(deliveryCtx, redisClient, observabilityOutbox, 1000)
 			notifyTransition("redis_db7_pending_history", pendingErr != nil, pendingErr)
 			if pendingErr != nil {
 				log.Printf("[PERCENTER][PENDING_HISTORY_RECOVERY_ERROR] %v", pendingErr)
 				return
 			}
-			relayErr := percenter.RelayObservabilityOutbox(ctx, observabilityOutbox, redisClient)
+			relayErr := percenter.RelayObservabilityOutbox(deliveryCtx, observabilityOutbox, redisClient)
 			notifyTransition("redis_db7_delivery", relayErr != nil, relayErr)
 			if relayErr != nil {
 				log.Printf("[PERCENTER][OBSERVABILITY_RELAY_ERROR] %v", relayErr)
 				return
 			}
-			_, sinkErr := sink.DrainOnce(ctx, 1000)
+			_, sinkErr := sink.DrainOnce(deliveryCtx, 1000)
 			notifyTransition("kafka_clickhouse_delivery", sinkErr != nil, sinkErr)
 			if sinkErr != nil {
 				log.Printf("[PERCENTER][OBSERVABILITY_SINK_ERROR] %v", sinkErr)
 			}
 		}
-		runDelivery()
+		runDelivery(ctx)
 		for {
 			select {
 			case <-ctx.Done():
-				runDelivery()
+				shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 5*time.Second)
+				runDelivery(shutdownCtx)
+				shutdownCancel()
 				return
 			case <-ticker.C:
-				runDelivery()
+				runDelivery(ctx)
 			}
 		}
 	}()
@@ -166,7 +189,9 @@ func run() error {
 	if digestInterval <= 0 {
 		digestInterval = 30 * time.Minute
 	}
+	backgroundWG.Add(1)
 	go func() {
+		defer backgroundWG.Done()
 		ticker := time.NewTicker(digestInterval)
 		defer ticker.Stop()
 		for {
@@ -180,21 +205,15 @@ func run() error {
 					"[PERCENTER][30M_HEALTH] active_errors=%v local_outbox=%d redis_ready=%d simple_updates=%d complex_updates=%d anomalies=%d",
 					transitions.Active(), localBacklog, redisBacklog, simpleUpdates.Swap(0), complexUpdates.Swap(0), optimizerAnomalies.Swap(0),
 				)
-				go func(text string) {
-					notifyCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-					defer cancel()
-					if err := botNotifier.SendTextMessageToBot(notifyCtx, text); err != nil {
-						log.Printf("[PERCENTER][TELEGRAM_DIGEST_ERROR] %v", err)
-					}
-				}(message)
+				sendBotAsync("[PERCENTER][TELEGRAM_DIGEST_ERROR]", message)
 			}
 		}
 	}()
 
 	log.Printf(
-		"[PERCENTER][STARTUP] simple+complex enabled redis_db=%d simple_interval=%s complex_interval=%s rebenchmark=%s min_impressions=%d simple_steps=%v complex_ssp_steps=%v complex_margin_steps=%v max_margin=%.2f",
-		cfg.RedisDBAdvPercenter, simplePolicy.OptimizeInterval, complexPolicy.OptimizeInterval, complexPolicy.RebenchmarkInterval, complexPolicy.MinImpressions,
-		simplePolicy.SearchStepsPP, complexPolicy.SSPSearchStepsPercent, complexPolicy.MarginSearchStepsPP, complexPolicy.MaxMargin,
+		"[PERCENTER][STARTUP] redis_db=%d simple_interval=%s simple_rebenchmark=%s simple_ttl=%s simple_min_impressions=%d simple_retention=%.2f simple_steps=%v complex_interval=%s complex_rebenchmark=%s complex_ttl=%s complex_min_impressions=%d complex_buyout_retention=%.2f complex_efficiency_retention=%.2f complex_ssp_steps=%v complex_margin_steps=%v max_margin=%.2f",
+		cfg.RedisDBAdvPercenter, simplePolicy.OptimizeInterval, simplePolicy.RebenchmarkInterval, simplePolicy.StateTTL, simplePolicy.MinImpressions, simplePolicy.WinRateRetention, simplePolicy.SearchStepsPP,
+		complexPolicy.OptimizeInterval, complexPolicy.RebenchmarkInterval, complexPolicy.StateTTL, complexPolicy.MinImpressions, complexPolicy.BuyoutRetention, complexPolicy.EfficiencyRetention, complexPolicy.SSPSearchStepsPercent, complexPolicy.MarginSearchStepsPP, complexPolicy.MaxMargin,
 	)
 
 	runSimpleTick := func(now time.Time) {
@@ -363,8 +382,11 @@ func run() error {
 	for {
 		select {
 		case <-ctx.Done():
+			waitForBackground(&backgroundWG, 6*time.Second)
 			return nil
 		case <-stop:
+			cancel()
+			waitForBackground(&backgroundWG, 6*time.Second)
 			return nil
 		case now := <-ticker.C:
 			runTick(now.UTC())
@@ -372,115 +394,47 @@ func run() error {
 	}
 }
 
-func simplePolicyFromConfig(cfg *config.PercenterConfig) (percenter.SimplePolicy, error) {
-	if cfg == nil {
-		return percenter.SimplePolicy{}, fmt.Errorf("percenter config is nil")
+func probeKafkaBrokers(ctx context.Context, brokers []string) error {
+	if len(brokers) == 0 {
+		return fmt.Errorf("Kafka brokers list is empty")
 	}
-	steps, err := parseSteps(cfg.SimpleMarginSearchSteps)
-	if err != nil {
-		return percenter.SimplePolicy{}, err
+	var lastErr error
+	for _, broker := range brokers {
+		broker = strings.TrimSpace(broker)
+		if broker == "" {
+			continue
+		}
+		conn, err := (&net.Dialer{}).DialContext(ctx, "tcp", broker)
+		if err == nil {
+			_ = conn.Close()
+			return nil
+		}
+		lastErr = err
 	}
-	policy := percenter.SimplePolicy{
-		WinRateRetention:    cfg.SimpleWinRateRetention,
-		MinImpressions:      cfg.SimpleMinImpressions,
-		OptimizeInterval:    cfg.SimpleOptimizeInterval,
-		RebenchmarkInterval: cfg.SimpleRebenchmarkInterval,
-		SearchStepsPP:       steps,
-		MaxMargin:           cfg.SimpleMaxMargin,
-		StateTTL:            cfg.SimpleStateTTL,
-	}.Normalize()
-	if len(policy.SearchStepsPP) != 3 || policy.SearchStepsPP[0] != 5 || policy.SearchStepsPP[1] != 2 || policy.SearchStepsPP[2] != 1 {
-		return percenter.SimplePolicy{}, fmt.Errorf("SIMPLE_MARGIN_SEARCH_STEPS must be exactly 5,2,1")
+	if lastErr == nil {
+		lastErr = fmt.Errorf("Kafka brokers list contains no usable address")
 	}
-	if policy.WinRateRetention != 0.50 {
-		return percenter.SimplePolicy{}, fmt.Errorf("SIMPLE_WIN_RATE_RETENTION must be 0.5")
-	}
-	if policy.MinImpressions != 5 {
-		return percenter.SimplePolicy{}, fmt.Errorf("SIMPLE_MIN_IMPRESSIONS must be 5")
-	}
-	if policy.OptimizeInterval != 5*time.Minute {
-		return percenter.SimplePolicy{}, fmt.Errorf("SIMPLE_OPTIMIZE_INTERVAL must be 5m")
-	}
-	if policy.RebenchmarkInterval != 6*time.Hour {
-		return percenter.SimplePolicy{}, fmt.Errorf("SIMPLE_REBENCHMARK_INTERVAL must be 6h")
-	}
-	if policy.MaxMargin != 0.90 {
-		return percenter.SimplePolicy{}, fmt.Errorf("SIMPLE_MAX_MARGIN must be 0.9")
-	}
-	return policy, nil
+	return lastErr
 }
 
-func complexPolicyFromConfig(cfg *config.PercenterConfig) (percenter.ComplexPolicy, error) {
-	if cfg == nil {
-		return percenter.ComplexPolicy{}, fmt.Errorf("percenter config is nil")
+func waitForBackground(wg *sync.WaitGroup, timeout time.Duration) bool {
+	if wg == nil {
+		return true
 	}
-	sspSteps, err := parseSteps(cfg.ComplexSSPSearchSteps)
-	if err != nil {
-		return percenter.ComplexPolicy{}, err
+	done := make(chan struct{})
+	go func() {
+		wg.Wait()
+		close(done)
+	}()
+	if timeout <= 0 {
+		<-done
+		return true
 	}
-	marginSteps, err := parseSteps(cfg.ComplexMarginSearchSteps)
-	if err != nil {
-		return percenter.ComplexPolicy{}, err
-	}
-	policy := percenter.ComplexPolicy{
-		BuyoutRetention:       cfg.ComplexBuyoutRetention,
-		EfficiencyRetention:   cfg.ComplexEfficiencyRetention,
-		MinImpressions:        cfg.ComplexMinImpressions,
-		OptimizeInterval:      cfg.ComplexOptimizeInterval,
-		RebenchmarkInterval:   cfg.ComplexRebenchmarkInterval,
-		SSPSearchStepsPercent: sspSteps,
-		MarginSearchStepsPP:   marginSteps,
-		MaxMargin:             cfg.ComplexMaxMargin,
-		StateTTL:              cfg.ComplexStateTTL,
-	}.Normalize()
-	if !stepsEqual(policy.SSPSearchStepsPercent, []float64{10, 5, 2, 1}) {
-		return percenter.ComplexPolicy{}, fmt.Errorf("COMPLEX_SSP_SEARCH_STEPS must be exactly 10,5,2,1")
-	}
-	if !stepsEqual(policy.MarginSearchStepsPP, []float64{10, 5, 2, 1}) {
-		return percenter.ComplexPolicy{}, fmt.Errorf("COMPLEX_MARGIN_SEARCH_STEPS must be exactly 10,5,2,1")
-	}
-	if policy.BuyoutRetention != 0.80 {
-		return percenter.ComplexPolicy{}, fmt.Errorf("COMPLEX_BUYOUT_RETENTION must be 0.8")
-	}
-	if policy.EfficiencyRetention != 0.80 {
-		return percenter.ComplexPolicy{}, fmt.Errorf("COMPLEX_EFFICIENCY_RETENTION must be 0.8")
-	}
-	if policy.MinImpressions != 5 {
-		return percenter.ComplexPolicy{}, fmt.Errorf("COMPLEX_MIN_IMPRESSIONS must be 5")
-	}
-	if policy.OptimizeInterval != 5*time.Minute {
-		return percenter.ComplexPolicy{}, fmt.Errorf("COMPLEX_OPTIMIZE_INTERVAL must be 5m")
-	}
-	if policy.RebenchmarkInterval != 6*time.Hour {
-		return percenter.ComplexPolicy{}, fmt.Errorf("COMPLEX_REBENCHMARK_INTERVAL must be 6h")
-	}
-	if policy.MaxMargin != 0.90 {
-		return percenter.ComplexPolicy{}, fmt.Errorf("COMPLEX_MAX_MARGIN must be 0.9")
-	}
-	return policy, nil
-}
-
-func stepsEqual(got, want []float64) bool {
-	if len(got) != len(want) {
+	select {
+	case <-done:
+		return true
+	case <-time.After(timeout):
+		log.Printf("[PERCENTER][SHUTDOWN_TIMEOUT] background workers did not stop within %s", timeout)
 		return false
 	}
-	for i := range want {
-		if got[i] != want[i] {
-			return false
-		}
-	}
-	return true
-}
-
-func parseSteps(raw string) ([]float64, error) {
-	parts := strings.Split(raw, ",")
-	steps := make([]float64, 0, len(parts))
-	for _, part := range parts {
-		value, err := strconv.ParseFloat(strings.TrimSpace(part), 64)
-		if err != nil || value <= 0 {
-			return nil, fmt.Errorf("invalid percenter search steps %q", raw)
-		}
-		steps = append(steps, value)
-	}
-	return steps, nil
 }

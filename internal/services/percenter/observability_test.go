@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"math"
+	"os"
 	"path/filepath"
 	"sync"
 	"testing"
@@ -607,5 +608,38 @@ func TestComplexMetricsIndexCarriesClicks(t *testing.T) {
 	metric, ok := index.ForState(ComplexState{SegmentHash: "s", PointVersion: 7})
 	if !ok || metric.Clicks != 8 {
 		t.Fatalf("complex metrics clicks were not loaded/indexed: ok=%t metric=%#v", ok, metric)
+	}
+}
+
+func TestObservabilityOutboxRejectsCorruptFileWithoutTruncatingIt(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "corrupt.db")
+	original := []byte("this-is-not-a-bbolt-database-and-must-not-be-overwritten")
+	if err := os.WriteFile(path, original, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	outbox, err := OpenObservabilityOutbox(path)
+	if err == nil {
+		if outbox != nil {
+			_ = outbox.Close()
+		}
+		t.Fatal("corrupt bbolt outbox must fail closed instead of being silently recreated")
+	}
+	got, readErr := os.ReadFile(path)
+	if readErr != nil {
+		t.Fatal(readErr)
+	}
+	if string(got) != string(original) {
+		t.Fatalf("corrupt outbox was modified during failed startup: got=%q want=%q", got, original)
+	}
+}
+
+func TestObservabilityOutboxRejectsDirectoryAsFilePath(t *testing.T) {
+	path := t.TempDir()
+	outbox, err := OpenObservabilityOutbox(path)
+	if err == nil {
+		if outbox != nil {
+			_ = outbox.Close()
+		}
+		t.Fatal("directory path must not be accepted as bbolt outbox file")
 	}
 }

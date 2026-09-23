@@ -132,8 +132,8 @@ func TestEvaluateCampaignRejectsMatchedVPNWhenBlockEnabled(t *testing.T) {
 
 	_, eligible, reason, err := (&AuctionService{}).evaluateCampaign(
 		context.Background(), campaign, req, imp, testVPNStart.Add(time.Hour),
-		"BAN", "mainstream", "ssp", "", "hash", nil, false,
-		true, nil, true, func(string, ...any) {},
+		"BAN", "mainstream", "ssp", "", "hash", "",
+		nil, false, true, nil, true, func(string, ...any) {},
 	)
 	if err != nil {
 		t.Fatalf("evaluateCampaign returned error: %v", err)
