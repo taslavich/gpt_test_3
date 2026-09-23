@@ -4,6 +4,8 @@ import (
 	"context"
 	"math"
 	"net/url"
+	"os"
+	"path/filepath"
 	"testing"
 
 	"gitlab.com/twinbid-exchange/RTB-exchange/internal/constants"
@@ -323,5 +325,143 @@ func TestComplexWinnerBasePriceFlowsToWinDspPrice(t *testing.T) {
 	}
 	if math.Abs(float64(*row.WinDspPrice)-advertiserPrice) > 1e-6 {
 		t.Fatalf("win_dsp_price=%v want resolved advertiser price %v", *row.WinDspPrice, advertiserPrice)
+	}
+}
+
+func TestSiteIDDSPPercentOverridesLegacyDSPPercentOnly(t *testing.T) {
+	requestID, impID, uuid := "req-site-percent", "imp-site", "uuid-site"
+	siteID := "site-123"
+	country := "US"
+	price := float32(1.0)
+	adm := "https://dsp.example/adm"
+
+	req := &bidEngineGrpc.BidEngineRequest_V2_5{
+		BidRequest: &ortb.BidRequest{
+			Id:     &requestID,
+			Site:   &ortb.Site{Id: &siteID},
+			Imp:    []*ortb.Imp{{Id: &impID}},
+			Device: &ortb.Device{Geo: &ortb.Geo{Country: &country}},
+		},
+		BidResponses: map[string]*ortb.BidResponse{
+			"dsp-main": {Seatbid: []*ortb.SeatBid{{Bid: []*ortb.Bid{{Impid: &impID, Price: &price, Adm: &adm}}}}},
+		},
+		ImpIdUuid: map[string]string{impID: uuid},
+		SspDomain: "ssp.example",
+		Format:    constants.POP,
+	}
+
+	legacyPercent := &types.PercentAndBidfloor{Percent: 0.10}
+	legacyMap := types.GeoDspPercentMap{"ssp.example": {"US": {"dsp-main": legacyPercent}}}
+	routes := &types.FormatPercentRoutesV25{POP: types.FormatPercentRouteV25{AdultMap: &legacyMap}}
+
+	filename := filepath.Join(t.TempDir(), "site_id_dsp_percents.json")
+	if err := os.WriteFile(filename, []byte(`{"site-123":{"dsp-main":0.40}}`), 0644); err != nil {
+		t.Fatal(err)
+	}
+	store, err := NewStore(filename)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	response, _, _, _ := GetWinnerBidInternalWithRoutes_V_2_5(
+		context.Background(), req, 0.20, req.ImpIdUuid, routes, false, "ADULT", "callbacks.example", store,
+	)
+	bids := response.GetSeatbid()[0].GetBid()
+	if len(bids) != 1 {
+		t.Fatalf("winners=%d want 1", len(bids))
+	}
+	if got, want := bids[0].GetPrice(), float32(0.60); math.Abs(float64(got-want)) > 1e-6 {
+		t.Fatalf("site_id/DSP override final price=%f want %f", got, want)
+	}
+}
+
+func TestSiteIDDSPPercentFallsBackToLegacyMapWhenMissing(t *testing.T) {
+	requestID, impID, uuid := "req-site-fallback", "imp-site", "uuid-site"
+	siteID := "site-unmapped"
+	country := "US"
+	price := float32(1.0)
+	adm := "https://dsp.example/adm"
+
+	req := &bidEngineGrpc.BidEngineRequest_V2_5{
+		BidRequest: &ortb.BidRequest{
+			Id:     &requestID,
+			Site:   &ortb.Site{Id: &siteID},
+			Imp:    []*ortb.Imp{{Id: &impID}},
+			Device: &ortb.Device{Geo: &ortb.Geo{Country: &country}},
+		},
+		BidResponses: map[string]*ortb.BidResponse{
+			"dsp-main": {Seatbid: []*ortb.SeatBid{{Bid: []*ortb.Bid{{Impid: &impID, Price: &price, Adm: &adm}}}}},
+		},
+		ImpIdUuid: map[string]string{impID: uuid},
+		SspDomain: "ssp.example",
+		Format:    constants.POP,
+	}
+
+	legacyPercent := &types.PercentAndBidfloor{Percent: 0.10}
+	legacyMap := types.GeoDspPercentMap{"ssp.example": {"US": {"dsp-main": legacyPercent}}}
+	routes := &types.FormatPercentRoutesV25{POP: types.FormatPercentRouteV25{AdultMap: &legacyMap}}
+
+	filename := filepath.Join(t.TempDir(), "site_id_dsp_percents.json")
+	if err := os.WriteFile(filename, []byte(`{"other-site":{"dsp-main":0.40}}`), 0644); err != nil {
+		t.Fatal(err)
+	}
+	store, err := NewStore(filename)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	response, _, _, _ := GetWinnerBidInternalWithRoutes_V_2_5(
+		context.Background(), req, 0.20, req.ImpIdUuid, routes, false, "ADULT", "callbacks.example", store,
+	)
+	bids := response.GetSeatbid()[0].GetBid()
+	if len(bids) != 1 {
+		t.Fatalf("winners=%d want 1", len(bids))
+	}
+	if got, want := bids[0].GetPrice(), float32(0.90); math.Abs(float64(got-want)) > 1e-6 {
+		t.Fatalf("legacy fallback final price=%f want %f", got, want)
+	}
+}
+
+func TestSiteIDDSPPercentDoesNotTouchADVResponse(t *testing.T) {
+	requestID, impID, uuid := "req-site-adv", "imp-adv", "uuid-adv"
+	siteID := "site-123"
+	advPrice := float32(0.70)
+	basePrice := 1.0
+	adm := "https://adv.example/adm"
+
+	req := &bidEngineGrpc.BidEngineRequest_V2_5{
+		BidRequest: &ortb.BidRequest{
+			Id:   &requestID,
+			Site: &ortb.Site{Id: &siteID},
+			Imp:  []*ortb.Imp{{Id: &impID}},
+		},
+		ReadyBidResponse: &ortb.BidResponse{Seatbid: []*ortb.SeatBid{{Bid: []*ortb.Bid{{
+			Impid: &impID, Price: &advPrice, Adm: &adm,
+		}}}}},
+		ImpIdUuid:        map[string]string{impID: uuid},
+		WinnerUserIds:    map[string]string{impID: "user-1"},
+		WinnerBasePrices: map[string]float64{impID: basePrice},
+		SspDomain:        "ssp.example",
+		Format:           constants.POP,
+	}
+
+	filename := filepath.Join(t.TempDir(), "site_id_dsp_percents.json")
+	if err := os.WriteFile(filename, []byte(`{"site-123":{"ALL":0.95}}`), 0644); err != nil {
+		t.Fatal(err)
+	}
+	store, err := NewStore(filename)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	response, _, _, _ := GetWinnerBidInternalWithRoutes_V_2_5(
+		context.Background(), req, 0.20, req.ImpIdUuid, nil, false, "ADULT", "callbacks.example", store,
+	)
+	bids := response.GetSeatbid()[0].GetBid()
+	if len(bids) != 1 {
+		t.Fatalf("ADV winners=%d want 1", len(bids))
+	}
+	if got := bids[0].GetPrice(); math.Abs(float64(got-advPrice)) > 1e-6 {
+		t.Fatalf("ADV price changed by site_id/DSP map: got=%f want=%f", got, advPrice)
 	}
 }

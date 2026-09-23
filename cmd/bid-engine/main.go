@@ -13,6 +13,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"gitlab.com/twinbid-exchange/RTB-exchange/internal/config"
 	bidEngineGrpc "gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/proto/services/bidEngine"
+	"gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/proto/types/ortb_V2_5"
 	utils "gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/utils_grpc"
 	httpServer "gitlab.com/twinbid-exchange/RTB-exchange/internal/http"
 	services "gitlab.com/twinbid-exchange/RTB-exchange/internal/services"
@@ -21,6 +22,7 @@ import (
 	bidEngineWeb "gitlab.com/twinbid-exchange/RTB-exchange/internal/services/bidEngine/web"
 	redis_service "gitlab.com/twinbid-exchange/RTB-exchange/internal/services/redis"
 	"gitlab.com/twinbid-exchange/RTB-exchange/internal/types"
+	clickhouse_types "gitlab.com/twinbid-exchange/RTB-exchange/internal/types/clickhouse"
 
 	"google.golang.org/grpc"
 )
@@ -126,6 +128,11 @@ func main() {
 	ippAdultPercents := initPercentMap(cfg.SspGeoDspPercentsIppAdultFilePath)
 	ippMainstreamPercents := initPercentMap(cfg.SspGeoDspPercentsIppMainstreamFilePath)
 
+	siteDSPPercentStore, err := bidEngine.NewStore(cfg.SiteIDDspPercentsFilePath)
+	if err != nil {
+		log.Fatalf("Failed to initialize site_id/DSP percents from %s: %v", cfg.SiteIDDspPercentsFilePath, err)
+	}
+
 	percentRoutes := &types.FormatPercentRoutesV25{
 		POP: types.FormatPercentRouteV25{
 			AdultFilename: cfg.SspGeoDspPercentsAdultFilePath, MainstreamFilename: cfg.SspGeoDspPercentsMainstreamFilePath,
@@ -179,7 +186,20 @@ func main() {
 			redisBurlClient,
 			cfg.RedisUUIDKeyTTL,
 			cfg.RedisSetOrtb,
-			bidEngine.GetWinnerBidInternalWithRoutes_V_2_5,
+			func(
+				ctx context.Context,
+				req *bidEngineGrpc.BidEngineRequest_V2_5,
+				profitPercent float32,
+				impIDUUID map[string]string,
+				routes *types.FormatPercentRoutesV25,
+				logged bool,
+				typic string,
+				admDomain string,
+			) (*ortb_V2_5.BidResponse, clickhouse_types.UuidImpBidResponse, []string, []string) {
+				return bidEngine.GetWinnerBidInternalWithRoutes_V_2_5(
+					ctx, req, profitPercent, impIDUUID, routes, logged, typic, admDomain, siteDSPPercentStore,
+				)
+			},
 			percentRoutes,
 			cfg.AdmDomain,
 			redisWriteErrorMonitor,
@@ -187,7 +207,7 @@ func main() {
 	)
 
 	router := httpServer.InitHttpRouter(chi.NewRouter())
-	bidEngineWeb.InitHttpRoutes(router, percentRoutes)
+	bidEngineWeb.InitHttpRoutes(router, percentRoutes, siteDSPPercentStore)
 	log.Println("HTTP routes initialized")
 
 	if cfg.AntiperekrutEnabled {

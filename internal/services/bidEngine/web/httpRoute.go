@@ -7,6 +7,7 @@ import (
 	"github.com/ggicci/httpin/integration"
 	"github.com/go-chi/chi/v5"
 	"github.com/unrolled/render"
+	bidEngine "gitlab.com/twinbid-exchange/RTB-exchange/internal/services/bidEngine/service"
 	"gitlab.com/twinbid-exchange/RTB-exchange/internal/types"
 )
 
@@ -22,6 +23,10 @@ const (
 
 const (
 	GetDebugSspGeoDspPercentsMapUrl = "/filter/debug_ssp_geo_dsp_percents_map"
+
+	GetSiteIDDspPercentsMapUrl      = "/filter/site_id_dsp_percents_map"
+	PutSiteIDDspPercentsMapUrl      = "/filter/site_id_dsp_percents_map"
+	GetDebugSiteIDDspPercentsMapUrl = "/filter/debug_site_id_dsp_percents_map"
 )
 
 type getSspGeoDspPercentsRequest_V2_5 struct {
@@ -35,11 +40,21 @@ type putSspGeoDspPercentsRequest_V2_5 struct {
 	Mapa   types.GeoDspPercentMap `in:"body=json"`
 }
 
+type putSiteIDDspPercentsMapRequest struct {
+	Mapa bidEngine.Map `in:"body=json"`
+}
+
 func InitHttpRoutes(
 	httpRouter *chi.Mux,
 	percentRoutes *types.FormatPercentRoutesV25,
+	sitePercentStores ...*bidEngine.Store,
 ) {
 	integration.UseGochiURLParam("path", chi.URLParam)
+
+	var sitePercentStore *bidEngine.Store
+	if len(sitePercentStores) > 0 {
+		sitePercentStore = sitePercentStores[0]
+	}
 
 	httpRouter.With(
 		httpin.NewInput(getSspGeoDspPercentsRequest_V2_5{}),
@@ -58,4 +73,18 @@ func InitHttpRoutes(
 	).Put(PutSspGeoDspPercentsMapUrl, func(w http.ResponseWriter, r *http.Request) {
 		putSspGeoPercentsMap(w, r, percentRoutes)
 	})
+
+	if sitePercentStore != nil {
+		httpRouter.Get(GetSiteIDDspPercentsMapUrl, func(w http.ResponseWriter, r *http.Request) {
+			getSiteIDDspPercentsMap(w, sitePercentStore)
+		})
+		httpRouter.Get(GetDebugSiteIDDspPercentsMapUrl, func(w http.ResponseWriter, r *http.Request) {
+			getSiteIDDspPercentsMapDebug(w, sitePercentStore)
+		})
+		httpRouter.With(
+			httpin.NewInput(putSiteIDDspPercentsMapRequest{}),
+		).Put(PutSiteIDDspPercentsMapUrl, func(w http.ResponseWriter, r *http.Request) {
+			putSiteIDDspPercentsMap(w, r, sitePercentStore)
+		})
+	}
 }

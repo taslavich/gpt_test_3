@@ -41,7 +41,6 @@ type Server struct {
 	dspEndpoints_adult_v_2_5      config.MapStringToString
 	dspEndpoints_mainstream_v_2_5 config.MapStringToString
 	formatRoutes                  *FormatRoutesV25
-	siteIDDSPLinkStore            *SiteIDDSPLinkStore
 
 	redisClients           []*redis.Client
 	redisWriteErrorMonitor *services.RedisWriteErrorMonitor
@@ -90,7 +89,6 @@ func NewServer(
 	configTimeouts config.MapStringToDuration,
 	redisWriteErrorMonitor *services.RedisWriteErrorMonitor,
 	advClient advGrpc.AdvServiceClient,
-	siteIDDSPLinkStores ...*SiteIDDSPLinkStore,
 ) *Server {
 	rang := cidranger.NewPCTrieRanger()
 
@@ -98,17 +96,11 @@ func NewServer(
 		formatRoutes.prepare(processor)
 	}
 
-	var siteIDDSPLinkStore *SiteIDDSPLinkStore
-	if len(siteIDDSPLinkStores) > 0 {
-		siteIDDSPLinkStore = siteIDDSPLinkStores[0]
-	}
-
 	server := &Server{
 		ruleManager:            ruleManager,
 		fileLoader:             fileLoader,
 		processor:              processor,
 		formatRoutes:           formatRoutes,
-		siteIDDSPLinkStore:     siteIDDSPLinkStore,
 		redisClients:           redisClients,
 		redisWriteErrorMonitor: redisWriteErrorMonitor,
 		clients:                clients,
@@ -383,14 +375,13 @@ func (s *Server) GetBids_V2_5(
 	}
 	jobs := make([]demandJob, 0, len(dspList))
 	preCodes := make(map[string]string)
-	siteID := req.GetBidRequest().GetSite().GetId()
 	for _, demandEndpoint := range dspList {
 		endpoint, domain := demandEndpoint.Endpoint, demandEndpoint.Domain
 		country := ""
 		if req.GetBidRequest().GetDevice() != nil && req.GetBidRequest().GetDevice().GetGeo() != nil {
 			country = req.GetBidRequest().GetDevice().GetGeo().GetCountry()
 		}
-		if !shouldRouteDSPByMaps(siteID, domain, req.SspDomain, country, s.siteIDDSPLinkStore, linkMap) {
+		if linkMap != nil && !utils.GetValueFomSspGeoDspMap(req.SspDomain, country, domain, linkMap, false) {
 			preCodes[domain] = "-2"
 			continue
 		}

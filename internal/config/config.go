@@ -144,9 +144,12 @@ type BiddingEngineConfig struct {
 	SspGeoDspPercentsNatMainstreamFilePath string `yaml:"SSP_GEO_DSP_PERCENTS_NAT_MAINSTREAM_FILE_PATH" env:"SSP_GEO_DSP_PERCENTS_NAT_MAINSTREAM_FILE_PATH"`
 	SspGeoDspPercentsIppAdultFilePath      string `yaml:"SSP_GEO_DSP_PERCENTS_IPP_ADULT_FILE_PATH" env:"SSP_GEO_DSP_PERCENTS_IPP_ADULT_FILE_PATH"`
 	SspGeoDspPercentsIppMainstreamFilePath string `yaml:"SSP_GEO_DSP_PERCENTS_IPP_MAINSTREAM_FILE_PATH" env:"SSP_GEO_DSP_PERCENTS_IPP_MAINSTREAM_FILE_PATH"`
-	AdmDomain                              string `yaml:"ADM_DOMAIN" env:"ADM_DOMAIN"`
-	BotBaseURL                             string `yaml:"BOT_BASE_URL" env:"BOT_BASE_URL"`
-	BotInternalSecret                      string `yaml:"BOT_INTERNAL_SECRET" env:"BOT_INTERNAL_SECRET"`
+
+	SiteIDDspPercentsFilePath string `yaml:"SITE_ID_DSP_PERCENTS_FILE_PATH" env:"SITE_ID_DSP_PERCENTS_FILE_PATH" env-default:"./site_id_dsp_percents.json"`
+
+	AdmDomain         string `yaml:"ADM_DOMAIN" env:"ADM_DOMAIN"`
+	BotBaseURL        string `yaml:"BOT_BASE_URL" env:"BOT_BASE_URL"`
+	BotInternalSecret string `yaml:"BOT_INTERNAL_SECRET" env:"BOT_INTERNAL_SECRET"`
 	RedisWriteErrorMonitorConfig
 
 	RedisConfig
@@ -182,8 +185,6 @@ type RouterConfig struct {
 	SspGeoDspLinksNatMainstreamFilePath string `yaml:"SSP_GEO_DSP_LINKS_NAT_MAINSTREAM_FILE_PATH" env:"SSP_GEO_DSP_LINKS_NAT_MAINSTREAM_FILE_PATH"`
 	SspGeoDspLinksIppAdultFilePath      string `yaml:"SSP_GEO_DSP_LINKS_IPP_ADULT_FILE_PATH" env:"SSP_GEO_DSP_LINKS_IPP_ADULT_FILE_PATH"`
 	SspGeoDspLinksIppMainstreamFilePath string `yaml:"SSP_GEO_DSP_LINKS_IPP_MAINSTREAM_FILE_PATH" env:"SSP_GEO_DSP_LINKS_IPP_MAINSTREAM_FILE_PATH"`
-
-	SiteIDDspLinksFilePath string `yaml:"SITE_ID_DSP_LINKS_FILE_PATH" env:"SITE_ID_DSP_LINKS_FILE_PATH" env-default:"./site_id_dsp_links.json"`
 
 	CidSspDspLinksAdultFilePath      string `yaml:"CID_SSP_DSP_LINKS_ADULT_FILE_PATH" env:"CID_SSP_DSP_LINKS_ADULT_FILE_PATH"`
 	CidSspDspLinksMainstreamFilePath string `yaml:"CID_SSP_DSP_LINKS_MAINSTREAM_FILE_PATH" env:"CID_SSP_DSP_LINKS_MAINSTREAM_FILE_PATH"`

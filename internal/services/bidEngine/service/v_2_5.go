@@ -48,7 +48,7 @@ func GetWinnerBidInternal_V_2_5(
 		NAT: legacyRoute,
 		IPP: legacyRoute,
 	}
-	return getWinnerBidInternalV25(ctx, req, profitPercent, ImpIdUuid, routes, logged, typic, admDomain)
+	return getWinnerBidInternalV25(ctx, req, profitPercent, ImpIdUuid, routes, nil, logged, typic, admDomain)
 }
 
 // GetWinnerBidInternalWithRoutes_V_2_5 selects DSP margin/bidfloor overrides
@@ -62,8 +62,13 @@ func GetWinnerBidInternalWithRoutes_V_2_5(
 	logged bool,
 	typic string,
 	admDomain string,
+	sitePercentStores ...*Store,
 ) (*ortb_V2_5.BidResponse, clickhouse_types.UuidImpBidResponse, []string, []string) {
-	return getWinnerBidInternalV25(ctx, req, profitPercent, ImpIdUuid, percentRoutes, logged, typic, admDomain)
+	var sitePercentStore *Store
+	if len(sitePercentStores) > 0 {
+		sitePercentStore = sitePercentStores[0]
+	}
+	return getWinnerBidInternalV25(ctx, req, profitPercent, ImpIdUuid, percentRoutes, sitePercentStore, logged, typic, admDomain)
 }
 
 func getWinnerBidInternalV25(
@@ -72,6 +77,7 @@ func getWinnerBidInternalV25(
 	profitPercent float32,
 	ImpIdUuid map[string]string,
 	percentRoutes *types.FormatPercentRoutesV25,
+	sitePercentStore *Store,
 	logged bool,
 	typic string,
 	admDomain string,
@@ -164,6 +170,7 @@ func getWinnerBidInternalV25(
 	if req.GetBidRequest().GetDevice() != nil && req.GetBidRequest().GetDevice().GetGeo() != nil {
 		country = req.GetBidRequest().GetDevice().GetGeo().GetCountry()
 	}
+	siteID := req.GetBidRequest().GetSite().GetId()
 	advDomain := "adv"
 
 	for _, imp := range req.GetBidRequest().GetImp() {
@@ -232,11 +239,26 @@ func getWinnerBidInternalV25(
 			if rawPrice <= 0 || math.IsNaN(float64(rawPrice)) || math.IsInf(float64(rawPrice), 0) {
 				continue
 			}
-			value := utils.GetValueFomSspGeoDspMap(req.SspDomain, country, bids[k].domain, percentMap, &types.PercentAndBidfloor{
-				Percent: profitPercent,
-			})
+			percent := profitPercent
+			if sitePercentStore != nil {
+				if sitePercent, matched := sitePercentStore.Lookup(siteID, bids[k].domain); matched {
+					// site_id + DSP is authoritative for ordinary DSP responses.
+					// When it matches, the legacy SSP + GEO + DSP percent map is ignored.
+					percent = sitePercent
+				} else {
+					value := utils.GetValueFomSspGeoDspMap(req.SspDomain, country, bids[k].domain, percentMap, &types.PercentAndBidfloor{
+						Percent: profitPercent,
+					})
+					percent = value.Percent
+				}
+			} else {
+				value := utils.GetValueFomSspGeoDspMap(req.SspDomain, country, bids[k].domain, percentMap, &types.PercentAndBidfloor{
+					Percent: profitPercent,
+				})
+				percent = value.Percent
+			}
 
-			finalPrice := applyPercent(rawPrice, value.Percent)
+			finalPrice := applyPercent(rawPrice, percent)
 			if finalPrice <= 0 || math.IsNaN(float64(finalPrice)) || math.IsInf(float64(finalPrice), 0) {
 				continue
 			}
