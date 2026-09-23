@@ -31,6 +31,7 @@ type SimplePolicy struct {
 	SearchStepsPP       []float64
 	MaxMargin           float64
 	StateTTL            time.Duration
+	PendingHistoryTTL   time.Duration
 }
 
 func (p SimplePolicy) Normalize() SimplePolicy {
@@ -64,6 +65,9 @@ func (p SimplePolicy) Normalize() SimplePolicy {
 	}
 	if p.StateTTL <= 0 {
 		p.StateTTL = 7 * 24 * time.Hour
+	}
+	if p.PendingHistoryTTL <= 0 {
+		p.PendingHistoryTTL = DefaultPendingHistoryTTL
 	}
 	return p
 }
@@ -345,7 +349,7 @@ func (s *SimpleStateStore) GetOrInitPricing(ctx context.Context, segmentHash, ca
 			raw, err := tx.Get(ctx, key).Bytes()
 			if errors.Is(err, redis.Nil) {
 				result = NewSimpleState(segmentHash, campaignID, originalBid, effectiveMin, rtb, policy, now, source)
-				return saveSimpleStateTx(ctx, tx, key, result, policy.StateTTL, true)
+				return saveSimpleStateTx(ctx, tx, key, result, policy.StateTTL, policy.PendingHistoryTTL, true)
 			}
 			if err != nil {
 				return err
@@ -354,14 +358,14 @@ func (s *SimpleStateStore) GetOrInitPricing(ctx context.Context, segmentHash, ca
 			if err := json.Unmarshal(raw, &state); err != nil {
 				// Corrupt state is replaced by a safe baseline rather than used for pricing.
 				result = NewSimpleState(segmentHash, campaignID, originalBid, effectiveMin, rtb, policy, now, source)
-				return saveSimpleStateTx(ctx, tx, key, result, policy.StateTTL, true)
+				return saveSimpleStateTx(ctx, tx, key, result, policy.StateTTL, policy.PendingHistoryTTL, true)
 			}
 			if !state.Compatible(segmentHash, campaignID, originalBid, effectiveMin, rtb, policy) {
 				oldPointVersion := state.PointVersion
 				state = NewSimpleState(segmentHash, campaignID, originalBid, effectiveMin, rtb, policy, now, source)
 				state.PointVersion = nextPointVersion(oldPointVersion)
 				result = state
-				return saveSimpleStateTx(ctx, tx, key, state, policy.StateTTL, true)
+				return saveSimpleStateTx(ctx, tx, key, state, policy.StateTTL, policy.PendingHistoryTTL, true)
 			}
 			repaired, changed := RepairSimpleState(state, originalBid, effectiveMin, rtb, policy, now)
 			if source != "" && repaired.MapSource != source {
@@ -372,7 +376,7 @@ func (s *SimpleStateStore) GetOrInitPricing(ctx context.Context, segmentHash, ca
 			if !changed {
 				return nil
 			}
-			return saveSimpleStateTx(ctx, tx, key, repaired, policy.StateTTL, true)
+			return saveSimpleStateTx(ctx, tx, key, repaired, policy.StateTTL, policy.PendingHistoryTTL, true)
 		}, key)
 		if err == nil {
 			return result.PricingForOriginalBid(originalBid), nil
@@ -404,7 +408,7 @@ func (s *SimpleStateStore) SaveCAS(ctx context.Context, state SimpleState, expec
 			if persisted.PointVersion != expectedPointVersion {
 				return nil
 			}
-			if err := saveSimpleStateTx(ctx, tx, key, state, policy.StateTTL, true); err != nil {
+			if err := saveSimpleStateTx(ctx, tx, key, state, policy.StateTTL, policy.PendingHistoryTTL, true); err != nil {
 				return err
 			}
 			saved = true
@@ -420,14 +424,14 @@ func (s *SimpleStateStore) SaveCAS(ctx context.Context, state SimpleState, expec
 	return false, redis.TxFailedErr
 }
 
-func saveSimpleStateTx(ctx context.Context, tx *redis.Tx, key string, state SimpleState, ttl time.Duration, addIndex bool) error {
+func saveSimpleStateTx(ctx context.Context, tx *redis.Tx, key string, state SimpleState, stateTTL, pendingHistoryTTL time.Duration, addIndex bool) error {
 	payload, err := json.Marshal(state)
 	if err != nil {
 		return err
 	}
 	_, err = tx.TxPipelined(ctx, func(pipe redis.Pipeliner) error {
-		pipe.Set(ctx, key, payload, ttl)
-		if err := stagePendingHistoryRedis(ctx, pipe, state.PendingHistory, ttl); err != nil {
+		pipe.Set(ctx, key, payload, stateTTL)
+		if err := stagePendingHistoryRedis(ctx, pipe, state.PendingHistory, pendingHistoryTTL); err != nil {
 			return err
 		}
 		if addIndex {

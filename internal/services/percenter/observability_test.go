@@ -542,7 +542,7 @@ type atomicKafkaObservabilityTestApplier struct {
 	applyCalls int
 }
 
-func (a *atomicKafkaObservabilityTestApplier) ApplyObservabilityEventOnce(eventID string, payload []byte) (bool, error) {
+func (a *atomicKafkaObservabilityTestApplier) ApplyEventAndDedupeAtomically(eventID string, payload []byte) (bool, error) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	if a.applied == nil {
@@ -579,7 +579,7 @@ func TestKafkaDuplicateMessagesConcurrentApplyOneLogicalObservabilityEvent(t *te
 		go func() {
 			defer wg.Done()
 			<-start
-			errs <- ApplyKafkaObservabilityMessageIdempotent(message, applier)
+			errs <- ApplyKafkaObservabilityMessageAtomically(message, applier)
 		}()
 	}
 	close(start)
@@ -641,5 +641,120 @@ func TestObservabilityOutboxRejectsDirectoryAsFilePath(t *testing.T) {
 			_ = outbox.Close()
 		}
 		t.Fatal("directory path must not be accepted as bbolt outbox file")
+	}
+}
+
+func TestADVTelemetryDiagnosticsExposeLatenessBacklogAndLastFlushError(t *testing.T) {
+	outbox, err := OpenObservabilityOutbox(filepath.Join(t.TempDir(), "telemetry-diagnostics.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	telemetry := NewADVTelemetry("adv", "diagnostics", outbox)
+	minuteN := time.Date(2026, 9, 23, 3, 1, 0, 0, time.UTC)
+	boundary := minuteN.Add(ADVTelemetryMinuteBucketPeriod)
+	telemetry.recordAt(minuteN.Add(10*time.Second), "requests", "c", "exact", "segment", TypeModelSimple, 1)
+
+	lateNow := boundary.Add(17 * time.Second)
+	diagnostics := telemetry.Diagnostics(lateNow)
+	if diagnostics.PendingClosedBuckets != 1 || diagnostics.PendingClosedCounters != 1 {
+		t.Fatalf("closed RAM-only backlog buckets=%d counters=%d, want 1/1", diagnostics.PendingClosedBuckets, diagnostics.PendingClosedCounters)
+	}
+	if diagnostics.OldestRAMOnlyClosedBucketAge != 17*time.Second {
+		t.Fatalf("oldest RAM-only closed bucket age=%s want 17s", diagnostics.OldestRAMOnlyClosedBucketAge)
+	}
+	if !diagnostics.LastDurableClosedMinute.IsZero() {
+		t.Fatalf("no boundary has been flushed yet, got last durable minute %s", diagnostics.LastDurableClosedMinute)
+	}
+
+	if err := telemetry.Flush(lateNow); err != nil {
+		t.Fatal(err)
+	}
+	diagnostics = telemetry.Diagnostics(lateNow)
+	if !diagnostics.LastDurableClosedMinute.Equal(minuteN) {
+		t.Fatalf("last durable closed minute=%s want %s", diagnostics.LastDurableClosedMinute, minuteN)
+	}
+	if diagnostics.PendingClosedBuckets != 0 || diagnostics.PendingClosedCounters != 0 || diagnostics.OldestRAMOnlyClosedBucketAge != 0 {
+		t.Fatalf("successful flush left RAM-only closed backlog: %#v", diagnostics)
+	}
+
+	telemetry.recordAt(boundary.Add(10*time.Second), "requests", "c", "exact", "segment", TypeModelSimple, 2)
+	if err := outbox.Close(); err != nil {
+		t.Fatal(err)
+	}
+	failedAt := boundary.Add(ADVTelemetryMinuteBucketPeriod + 5*time.Second)
+	if err := telemetry.Flush(failedAt); err == nil {
+		t.Fatal("closed bbolt outbox must surface a durable flush error")
+	}
+	diagnostics = telemetry.Diagnostics(failedAt)
+	if diagnostics.LastFlushError == "" || diagnostics.LastFlushErrorAt.IsZero() {
+		t.Fatalf("last flush failure was not observable: %#v", diagnostics)
+	}
+	if diagnostics.PendingClosedCounters != 1 {
+		t.Fatalf("failed durable flush must restore the closed RAM-only counter, got %#v", diagnostics)
+	}
+}
+
+func TestStage06CalendarMinuteBoundaryPersistsClosedBucketOnly(t *testing.T) {
+	if ADVTelemetryMinuteBucketPeriod != time.Minute {
+		t.Fatalf("unexpected telemetry minute bucket period: %s", ADVTelemetryMinuteBucketPeriod)
+	}
+	outbox, err := OpenObservabilityOutbox(filepath.Join(t.TempDir(), "calendar-boundary.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer outbox.Close()
+
+	telemetry := NewADVTelemetry("adv", "stage06", outbox)
+	minuteN := time.Date(2026, 9, 23, 3, 1, 0, 0, time.UTC)
+	boundary := minuteN.Add(time.Minute)
+
+	// Model the adverse process phase from the Stage 06 regression: the old
+	// process-relative ticker could have last fired at 03:01:59. The calendar
+	// boundary close must still durably persist minute N as soon as N+1 opens.
+	telemetry.recordAt(minuteN.Add(59*time.Second+900*time.Millisecond), "counter", "c", "exact-n", "segment-n", TypeModelSimple, 1)
+	if err := telemetry.Flush(boundary); err != nil {
+		t.Fatal(err)
+	}
+
+	records, err := outbox.List()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(records) != 1 {
+		t.Fatalf("closed minute N must be durable at N+1 boundary, got %d records", len(records))
+	}
+	var closed TelemetryEvent
+	if err := json.Unmarshal(records[0].Payload, &closed); err != nil {
+		t.Fatal(err)
+	}
+	if !closed.Bucket.Equal(minuteN) || closed.Value != 1 {
+		t.Fatalf("unexpected closed minute event: %#v", closed)
+	}
+
+	// The current N+1 bucket remains open in RAM after the boundary has been
+	// processed. Scheduler lateness before that processing is intentionally not
+	// represented as a strict wall-clock crash-loss bound. A normal closed-bucket
+	// Flush inside N+1 must not persist the open bucket.
+	telemetry.recordAt(boundary.Add(10*time.Second), "counter", "c", "exact-n1", "segment-n1", TypeModelSimple, 2)
+	if err := telemetry.Flush(boundary.Add(30 * time.Second)); err != nil {
+		t.Fatal(err)
+	}
+	records, err = outbox.List()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(records) != 1 {
+		t.Fatalf("current N+1 bucket must remain RAM-only; closed N must remain durable, got %d records", len(records))
+	}
+
+	if err := telemetry.FlushAll(boundary.Add(40 * time.Second)); err != nil {
+		t.Fatal(err)
+	}
+	records, err = outbox.List()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(records) != 2 {
+		t.Fatalf("graceful shutdown must persist the current open minute once, got %d", len(records))
 	}
 }

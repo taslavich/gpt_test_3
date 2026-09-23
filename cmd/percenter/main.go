@@ -40,13 +40,19 @@ func run() error {
 	if err != nil {
 		return fmt.Errorf("invalid percenter policy config: %w", err)
 	}
+	policyFingerprint := percenter.PolicyFingerprint(simplePolicy, complexPolicy)
+	log.Printf("[PERCENTER][POLICY] fingerprint=%s history_pending_ttl=%s simple_ttl=%s complex_ttl=%s simple_steps=%v complex_ssp_steps=%v complex_margin_steps=%v", policyFingerprint, simplePolicy.PendingHistoryTTL, simplePolicy.StateTTL, complexPolicy.StateTTL, simplePolicy.SearchStepsPP, complexPolicy.SSPSearchStepsPercent, complexPolicy.MarginSearchStepsPP)
 	if cfg.RedisDBAdvPercenter != 7 {
-		return fmt.Errorf("REDIS_DB_ADV_PERCENTER must be 7, got %d", cfg.RedisDBAdvPercenter)
+		return fmt.Errorf("REDIS_DB_ADV_PERCENTER=%d is invalid: production invariant requires 7", cfg.RedisDBAdvPercenter)
 	}
 	if strings.TrimSpace(cfg.RedisADVAddr) == "" {
 		return fmt.Errorf("REDIS_ADV_ADDR is required")
 	}
 
+	degradedDependencies := make([]string, 0, 3)
+	redisState := "enabled"
+	clickhouseState := "enabled"
+	kafkaState := "enabled"
 	redisClient, err := redisService.NewRedisClient(
 		strings.TrimSpace(cfg.RedisADVAddr), cfg.RedisPassword, cfg.RedisDBAdvPercenter, cfg.RedisPoolSize, cfg.RedisMinIdleConns,
 	)
@@ -55,6 +61,8 @@ func run() error {
 	}
 	defer redisClient.Close()
 	if err := redisClient.Ping(ctx).Err(); err != nil {
+		redisState = "degraded"
+		degradedDependencies = append(degradedDependencies, "redis_db7")
 		log.Printf("[PERCENTER][REDIS_DEGRADED] redis_db=%d error=%v", cfg.RedisDBAdvPercenter, err)
 	}
 	simpleStore := percenter.NewSimpleStateStore(redisClient, simplePolicy)
@@ -77,6 +85,8 @@ func run() error {
 	}
 	defer clickhouseConn.Close()
 	if err := clickhouseConn.Ping(ctx); err != nil {
+		clickhouseState = "degraded"
+		degradedDependencies = append(degradedDependencies, "clickhouse")
 		log.Printf("[PERCENTER][CLICKHOUSE_DEGRADED] error=%v", err)
 	}
 
@@ -86,12 +96,17 @@ func run() error {
 	}
 	defer observabilityOutbox.Close()
 	if len(cfg.KafkaBrokers) == 0 {
-		return fmt.Errorf("KAFKA_BROKERS is required for durable history delivery")
+		return fmt.Errorf("KAFKA_BROKERS is invalid: at least one broker is required for durable history delivery")
+	}
+	if strings.TrimSpace(cfg.KafkaTopicPercenter) == "" {
+		return fmt.Errorf("KAFKA_TOPIC_PERCENTER=%q is invalid: a non-empty topic is required", cfg.KafkaTopicPercenter)
 	}
 	probeCtx, probeCancel := context.WithTimeout(ctx, 3*time.Second)
 	if err := probeKafkaBrokers(probeCtx, cfg.KafkaBrokers); err != nil {
+		kafkaState = "degraded"
 		// A configured but temporarily unavailable broker must not prevent the
 		// optimizer process from starting. Redis/bbolt retain pending delivery.
+		degradedDependencies = append(degradedDependencies, "kafka")
 		log.Printf("[PERCENTER][KAFKA_DEGRADED] error=%v", err)
 	}
 	probeCancel()
@@ -120,6 +135,14 @@ func run() error {
 	} else {
 		log.Printf("[PERCENTER][TELEGRAM_DISABLED] credentials are not configured")
 	}
+	telegramState := "disabled"
+	if botNotifier != nil {
+		telegramState = "enabled"
+	}
+	log.Printf(
+		"[PERCENTER][COMPONENTS] redis_state=%s redis_db=%d clickhouse=%s kafka=%s telegram=%s local_outbox=enabled",
+		redisState, cfg.RedisDBAdvPercenter, clickhouseState, kafkaState, telegramState,
+	)
 	sendBotAsync := func(logPrefix, text string) {
 		if botNotifier == nil {
 			return
@@ -141,6 +164,7 @@ func run() error {
 		if detail != nil {
 			message += fmt.Sprintf(" error=%v", detail)
 		}
+		log.Print(message)
 		sendBotAsync("[PERCENTER][TELEGRAM_ERROR]", message)
 	}
 	relayInterval := cfg.PercenterRelayInterval
@@ -157,19 +181,16 @@ func run() error {
 			_, pendingErr := percenter.RecoverPendingHistory(deliveryCtx, redisClient, observabilityOutbox, 1000)
 			notifyTransition("redis_db7_pending_history", pendingErr != nil, pendingErr)
 			if pendingErr != nil {
-				log.Printf("[PERCENTER][PENDING_HISTORY_RECOVERY_ERROR] %v", pendingErr)
 				return
 			}
 			relayErr := percenter.RelayObservabilityOutbox(deliveryCtx, observabilityOutbox, redisClient)
 			notifyTransition("redis_db7_delivery", relayErr != nil, relayErr)
 			if relayErr != nil {
-				log.Printf("[PERCENTER][OBSERVABILITY_RELAY_ERROR] %v", relayErr)
 				return
 			}
 			_, sinkErr := sink.DrainOnce(deliveryCtx, 1000)
 			notifyTransition("kafka_clickhouse_delivery", sinkErr != nil, sinkErr)
 			if sinkErr != nil {
-				log.Printf("[PERCENTER][OBSERVABILITY_SINK_ERROR] %v", sinkErr)
 			}
 		}
 		runDelivery(ctx)
@@ -210,10 +231,15 @@ func run() error {
 		}
 	}()
 
+	degradedState := "none"
+	if len(degradedDependencies) > 0 {
+		degradedState = strings.Join(degradedDependencies, ",")
+	}
 	log.Printf(
-		"[PERCENTER][STARTUP] redis_db=%d simple_interval=%s simple_rebenchmark=%s simple_ttl=%s simple_min_impressions=%d simple_retention=%.2f simple_steps=%v complex_interval=%s complex_rebenchmark=%s complex_ttl=%s complex_min_impressions=%d complex_buyout_retention=%.2f complex_efficiency_retention=%.2f complex_ssp_steps=%v complex_margin_steps=%v max_margin=%.2f",
-		cfg.RedisDBAdvPercenter, simplePolicy.OptimizeInterval, simplePolicy.RebenchmarkInterval, simplePolicy.StateTTL, simplePolicy.MinImpressions, simplePolicy.WinRateRetention, simplePolicy.SearchStepsPP,
-		complexPolicy.OptimizeInterval, complexPolicy.RebenchmarkInterval, complexPolicy.StateTTL, complexPolicy.MinImpressions, complexPolicy.BuyoutRetention, complexPolicy.EfficiencyRetention, complexPolicy.SSPSearchStepsPercent, complexPolicy.MarginSearchStepsPP, complexPolicy.MaxMargin,
+		"[PERCENTER][STARTUP] fingerprint=%s simple_state_ttl=%s complex_state_ttl=%s history_pending_ttl=%s redis_db=%d local_outbox=enabled redis_relay=enabled kafka=%s clickhouse=%s telegram=%s degraded=%s kafka_topic=%q simple_interval=%s simple_rebenchmark=%s simple_min_impressions=%d simple_retention=%.2f simple_steps=%v complex_interval=%s complex_rebenchmark=%s complex_min_impressions=%d complex_buyout_retention=%.2f complex_efficiency_retention=%.2f complex_ssp_steps=%v complex_margin_steps=%v max_margin=%.2f",
+		policyFingerprint, simplePolicy.StateTTL, complexPolicy.StateTTL, simplePolicy.PendingHistoryTTL, cfg.RedisDBAdvPercenter, kafkaState, clickhouseState, telegramState, degradedState, strings.TrimSpace(cfg.KafkaTopicPercenter),
+		simplePolicy.OptimizeInterval, simplePolicy.RebenchmarkInterval, simplePolicy.MinImpressions, simplePolicy.WinRateRetention, simplePolicy.SearchStepsPP,
+		complexPolicy.OptimizeInterval, complexPolicy.RebenchmarkInterval, complexPolicy.MinImpressions, complexPolicy.BuyoutRetention, complexPolicy.EfficiencyRetention, complexPolicy.SSPSearchStepsPercent, complexPolicy.MarginSearchStepsPP, complexPolicy.MaxMargin,
 	)
 
 	runSimpleTick := func(now time.Time) {
@@ -222,7 +248,6 @@ func run() error {
 		)
 		if loadErr != nil {
 			notifyTransition("clickhouse_simple_metrics", true, loadErr)
-			log.Printf("[PERCENTER][SIMPLE][METRICS_ERROR] %v", loadErr)
 			return
 		}
 		notifyTransition("clickhouse_simple_metrics", false, nil)
@@ -230,7 +255,6 @@ func run() error {
 		states, stateErr := simpleStore.States(ctx)
 		if stateErr != nil {
 			notifyTransition("redis_db7_simple_state", true, stateErr)
-			log.Printf("[PERCENTER][SIMPLE][STATE_LIST_ERROR] %v", stateErr)
 			return
 		}
 		notifyTransition("redis_db7_simple_state", false, nil)
@@ -240,10 +264,11 @@ func run() error {
 			}
 			if state.PendingHistory != nil {
 				if err := percenter.PersistSimplePendingHistory(ctx, simpleStore, observabilityOutbox, state); err != nil {
+					notifyTransition("simple_pending_history", true, err)
 					optimizerAnomalies.Add(1)
-					log.Printf("[PERCENTER][SIMPLE][PENDING_HISTORY_RECOVERY_ERROR] segment_hash=%s point_version=%d event_id=%s error=%v", state.SegmentHash, state.PointVersion, state.PendingHistory.EventID, err)
 					continue
 				}
+				notifyTransition("simple_pending_history", false, nil)
 				state.PendingHistory = nil
 			}
 			metric, ok := metricIndex.ForState(state)
@@ -265,7 +290,6 @@ func run() error {
 			if saveErr != nil {
 				notifyTransition("redis_db7_simple_state", true, saveErr)
 				optimizerAnomalies.Add(1)
-				log.Printf("[PERCENTER][SIMPLE][STATE_SAVE_ERROR] segment_hash=%s error=%v", state.SegmentHash, saveErr)
 				continue
 			}
 			notifyTransition("redis_db7_simple_state", false, nil)
@@ -297,7 +321,6 @@ func run() error {
 		)
 		if loadErr != nil {
 			notifyTransition("clickhouse_complex_metrics", true, loadErr)
-			log.Printf("[PERCENTER][COMPLEX][METRICS_ERROR] %v", loadErr)
 			return
 		}
 		notifyTransition("clickhouse_complex_metrics", false, nil)
@@ -305,7 +328,6 @@ func run() error {
 		states, stateErr := complexStore.States(ctx)
 		if stateErr != nil {
 			notifyTransition("redis_db7_complex_state", true, stateErr)
-			log.Printf("[PERCENTER][COMPLEX][STATE_LIST_ERROR] %v", stateErr)
 			return
 		}
 		notifyTransition("redis_db7_complex_state", false, nil)
@@ -315,10 +337,11 @@ func run() error {
 			}
 			if state.PendingHistory != nil {
 				if err := percenter.PersistComplexPendingHistory(ctx, complexStore, observabilityOutbox, state); err != nil {
+					notifyTransition("complex_pending_history", true, err)
 					optimizerAnomalies.Add(1)
-					log.Printf("[PERCENTER][COMPLEX][PENDING_HISTORY_RECOVERY_ERROR] segment_hash=%s point_version=%d event_id=%s error=%v", state.SegmentHash, state.PointVersion, state.PendingHistory.EventID, err)
 					continue
 				}
+				notifyTransition("complex_pending_history", false, nil)
 				state.PendingHistory = nil
 			}
 			metric, ok := metricIndex.ForState(state)
@@ -340,7 +363,6 @@ func run() error {
 			if saveErr != nil {
 				notifyTransition("redis_db7_complex_state", true, saveErr)
 				optimizerAnomalies.Add(1)
-				log.Printf("[PERCENTER][COMPLEX][STATE_SAVE_ERROR] segment_hash=%s error=%v", state.SegmentHash, saveErr)
 				continue
 			}
 			notifyTransition("redis_db7_complex_state", false, nil)
@@ -377,17 +399,35 @@ func run() error {
 	ticker := time.NewTicker(simplePolicy.OptimizeInterval)
 	defer ticker.Stop()
 
+	backgroundShutdownAttempted := false
+	shutdownBackground := func() error {
+		cancel()
+		backgroundShutdownAttempted = true
+		if !waitForBackground(&backgroundWG, 6*time.Second) {
+			return fmt.Errorf("percenter background shutdown timed out after %s", 6*time.Second)
+		}
+		return nil
+	}
+	// Keep cleanup ahead of the resource-closing defers even if a future runtime
+	// error adds another return path after workers have started. main() calls
+	// log.Fatalf only after run() returns, so this bounded cleanup runs first.
+	defer func() {
+		if backgroundShutdownAttempted {
+			return
+		}
+		cancel()
+		_ = waitForBackground(&backgroundWG, 6*time.Second)
+	}()
+
 	stop := make(chan os.Signal, 1)
 	signal.Notify(stop, os.Interrupt, syscall.SIGTERM)
+	defer signal.Stop(stop)
 	for {
 		select {
 		case <-ctx.Done():
-			waitForBackground(&backgroundWG, 6*time.Second)
-			return nil
+			return shutdownBackground()
 		case <-stop:
-			cancel()
-			waitForBackground(&backgroundWG, 6*time.Second)
-			return nil
+			return shutdownBackground()
 		case now := <-ticker.C:
 			runTick(now.UTC())
 		}

@@ -52,9 +52,10 @@ func run() error {
 	if err != nil {
 		return fmt.Errorf("invalid ADV percenter policy config: %w", err)
 	}
+	policyFingerprint := percenter.PolicyFingerprint(simplePolicy, complexPolicy)
 	log.Printf(
-		"[ADV][PERCENTER_POLICY] simple_interval=%s simple_rebenchmark=%s simple_ttl=%s simple_min_impressions=%d simple_retention=%.2f simple_steps=%v complex_interval=%s complex_rebenchmark=%s complex_ttl=%s complex_min_impressions=%d complex_buyout_retention=%.2f complex_efficiency_retention=%.2f complex_ssp_steps=%v complex_margin_steps=%v max_margin=%.2f",
-		simplePolicy.OptimizeInterval, simplePolicy.RebenchmarkInterval, simplePolicy.StateTTL, simplePolicy.MinImpressions, simplePolicy.WinRateRetention, simplePolicy.SearchStepsPP,
+		"[ADV][PERCENTER_POLICY] fingerprint=%s history_pending_ttl=%s simple_interval=%s simple_rebenchmark=%s simple_ttl=%s simple_min_impressions=%d simple_retention=%.2f simple_steps=%v complex_interval=%s complex_rebenchmark=%s complex_ttl=%s complex_min_impressions=%d complex_buyout_retention=%.2f complex_efficiency_retention=%.2f complex_ssp_steps=%v complex_margin_steps=%v max_margin=%.2f",
+		policyFingerprint, simplePolicy.PendingHistoryTTL, simplePolicy.OptimizeInterval, simplePolicy.RebenchmarkInterval, simplePolicy.StateTTL, simplePolicy.MinImpressions, simplePolicy.WinRateRetention, simplePolicy.SearchStepsPP,
 		complexPolicy.OptimizeInterval, complexPolicy.RebenchmarkInterval, complexPolicy.StateTTL, complexPolicy.MinImpressions, complexPolicy.BuyoutRetention, complexPolicy.EfficiencyRetention, complexPolicy.SSPSearchStepsPercent, complexPolicy.MarginSearchStepsPP, complexPolicy.MaxMargin,
 	)
 	redisAddr := strings.TrimSpace(cfg.RedisUUIDAddr)
@@ -83,10 +84,12 @@ func run() error {
 	if err := winnerRedis.Ping(ctx).Err(); err != nil {
 		return fmt.Errorf("ADV winner Redis unavailable: %w", err)
 	}
+	percenterRedisDegraded := false
 	if err := percenterRedis.Ping(ctx).Err(); err != nil {
 		// DB7 is fail-open for auction pricing. The percenter state stores will
 		// return errors and AuctionService will use its last known local point or
 		// a bounded baseline while durable telemetry keeps retrying.
+		percenterRedisDegraded = true
 		log.Printf("[ADV][PERCENTER_REDIS_DEGRADED] redis_db=%d error=%v", cfg.RedisDBAdvPercenter, err)
 	}
 
@@ -141,6 +144,19 @@ func run() error {
 	runtimeStore := auction.NewRuntimeStore(runtimeRedis, cfg.AdvPacingCurrentTTL, cfg.AdvPacingSlotTTL)
 	winnerStore := auction.NewWinnerStore(winnerRedis, cfg.AdvWinnerTTL)
 	auctionService := auction.NewAuctionService(runtimeStore, winnerStore, percentStore, qualityStore, siteIDQualityStore)
+	botNotifier := utils.NewBotMessageWithTimeout(cfg.BotBaseURL, cfg.BotInternalSecret, cfg.AntiperekrutControlTimeout)
+	telegramConfigured := strings.TrimSpace(cfg.BotBaseURL) != "" && strings.TrimSpace(cfg.BotInternalSecret) != ""
+	botSend := func(sendCtx context.Context, text string) error {
+		if !telegramConfigured {
+			return nil
+		}
+		return botNotifier.SendTextMessageToBot(sendCtx, text)
+	}
+	if telegramConfigured {
+		auctionService.SetSnapshotWarningNotifier(botSend)
+	} else {
+		log.Printf("[ADV][TELEGRAM_DISABLED] credentials are not configured; auction continues without snapshot/percenter warnings")
+	}
 	telemetryOutbox, err := percenter.OpenObservabilityOutbox(cfg.AdvPercenterTelemetryOutboxPath)
 	if err != nil {
 		return fmt.Errorf("cannot initialize ADV percenter telemetry outbox: %w", err)
@@ -152,43 +168,116 @@ func run() error {
 	// an earlier minute bucket from that host is still pending in bbolt.
 	telemetryInstance := fmt.Sprintf("%s/%d/%d", hostname, os.Getpid(), time.Now().UTC().UnixNano())
 	advTelemetry := percenter.NewADVTelemetry("adv", telemetryInstance, telemetryOutbox)
+	log.Printf(
+		"[ADV][PERCENTER_TELEMETRY_DURABILITY] record_io=ram_only minute_bucket_period=%s crash_exposure=current_open_bucket_plus_scheduler_lateness graceful_shutdown=FlushAll",
+		percenter.ADVTelemetryMinuteBucketPeriod,
+	)
 	auctionService.SetPercenterTelemetry(advTelemetry)
-	telemetryFlush := cfg.AdvPercenterTelemetryFlush
-	if telemetryFlush <= 0 {
-		telemetryFlush = time.Minute
+	// ADV_PERCENTER_TELEMETRY_FLUSH keeps its legacy name but controls only the
+	// Redis relay cadence. Closed buckets are persisted by a separate timer aligned
+	// to UTC minute boundaries. Scheduler lateness is observable and is not treated
+	// as a strict wall-clock crash-loss guarantee.
+	telemetryRelay := cfg.AdvPercenterTelemetryFlush
+	if telemetryRelay <= 0 {
+		telemetryRelay = time.Minute
 	}
+	telegramState := "disabled"
+	if telegramConfigured {
+		telegramState = "enabled"
+	}
+	degradedState := "none"
+	if percenterRedisDegraded {
+		degradedState = "redis_db7"
+	}
+	log.Printf(
+		"[ADV][PERCENTER_STARTUP] fingerprint=%s simple_state_ttl=%s complex_state_ttl=%s history_pending_ttl=%s redis_db=%d telemetry_outbox=enabled telemetry_redis_relay=enabled telegram=%s degraded=%s",
+		policyFingerprint, simplePolicy.StateTTL, complexPolicy.StateTTL, simplePolicy.PendingHistoryTTL, cfg.RedisDBAdvPercenter, telegramState, degradedState,
+	)
+
+	telemetryTransitions := percenter.NewDependencyTransitions()
+	reportTelemetryTransition := func(name string, failed bool, detail error) {
+		transition := telemetryTransitions.Update(name, failed)
+		if transition == "" {
+			return
+		}
+		message := fmt.Sprintf("[ADV][PERCENTER_TELEMETRY_%s] dependency=%s", transition, name)
+		if detail != nil {
+			message += fmt.Sprintf(" error=%v", detail)
+		}
+		log.Print(message)
+		if telegramConfigured {
+			go func(text string) {
+				notifyCtx, notifyCancel := context.WithTimeout(context.Background(), 5*time.Second)
+				defer notifyCancel()
+				if err := botSend(notifyCtx, text); err != nil {
+					log.Printf("[ADV][PERCENTER_TELEMETRY_TELEGRAM_ERROR] %v", err)
+				}
+			}(message)
+		}
+	}
+
 	var telemetryWG sync.WaitGroup
 	telemetryWG.Add(1)
 	go func() {
 		defer telemetryWG.Done()
-		ticker := time.NewTicker(telemetryFlush)
-		defer ticker.Stop()
-		flushClosed := func(now time.Time) {
-			if err := advTelemetry.Flush(now); err != nil {
-				log.Printf("[ADV][PERCENTER_TELEMETRY_OUTBOX_ERROR] %v", err)
+		relayTicker := time.NewTicker(telemetryRelay)
+		defer relayTicker.Stop()
+		nextBoundary := nextADVTelemetryMinuteBoundary(time.Now().UTC())
+		minuteTimer := time.NewTimer(time.Until(nextBoundary))
+		defer minuteTimer.Stop()
+
+		flushClosed := func(now, scheduledBoundary time.Time) {
+			lateness := now.Sub(scheduledBoundary)
+			if lateness < 0 {
+				lateness = 0
 			}
-			if err := percenter.RelayObservabilityOutbox(ctx, telemetryOutbox, percenterRedis); err != nil {
-				log.Printf("[ADV][PERCENTER_TELEMETRY_RELAY_ERROR] %v", err)
+			// Snapshot before persistence so a late-but-successful worker still exposes
+			// how much closed data was RAM-only while the callback was delayed.
+			beforeFlush := advTelemetry.Diagnostics(now)
+			flushErr := advTelemetry.Flush(now)
+			afterFlush := advTelemetry.Diagnostics(now)
+			outboxRecords, countErr := telemetryOutbox.Count()
+			if countErr != nil && flushErr == nil {
+				flushErr = countErr
 			}
+			log.Printf(
+				"[ADV][PERCENTER_TELEMETRY_FLUSH_STATUS] scheduled_boundary=%s processed_at=%s boundary_lateness=%s last_durable_closed_minute=%s oldest_ram_only_closed_bucket_age_before_flush=%s pending_closed_buckets_before_flush=%d pending_closed_counters_before_flush=%d pending_closed_buckets_after_flush=%d pending_closed_counters_after_flush=%d durable_outbox_records=%d last_flush_error=%q last_flush_error_at=%s",
+				scheduledBoundary.UTC().Format(time.RFC3339Nano), now.UTC().Format(time.RFC3339Nano), lateness, formatOptionalUTCTime(afterFlush.LastDurableClosedMinute), beforeFlush.OldestRAMOnlyClosedBucketAge, beforeFlush.PendingClosedBuckets, beforeFlush.PendingClosedCounters, afterFlush.PendingClosedBuckets, afterFlush.PendingClosedCounters, outboxRecords, afterFlush.LastFlushError, formatOptionalUTCTime(afterFlush.LastFlushErrorAt),
+			)
+			late := lateness > 2*percenter.ADVTelemetryMinuteBucketPeriod
+			reportTelemetryTransition("minute_boundary_lateness", late, telemetryLatenessError(lateness, 2*percenter.ADVTelemetryMinuteBucketPeriod))
+			flushUnhealthy := flushErr != nil || afterFlush.PendingClosedCounters > 0
+			reportTelemetryTransition("durable_flush", flushUnhealthy, flushErr)
 		}
-		flushClosed(time.Now().UTC())
+		relay := func(relayCtx context.Context) {
+			err := percenter.RelayObservabilityOutbox(relayCtx, telemetryOutbox, percenterRedis)
+			reportTelemetryTransition("redis_db7_relay", err != nil, err)
+		}
+
 		for {
 			select {
 			case <-ctx.Done():
 				shutdownAt := time.Now().UTC()
 				if err := advTelemetry.FlushAll(shutdownAt); err != nil {
-					log.Printf("[ADV][PERCENTER_TELEMETRY_SHUTDOWN_OUTBOX_ERROR] %v", err)
+					reportTelemetryTransition("durable_flush", true, err)
 				}
 				// Use a short independent context: the parent is already cancelled, but
 				// a best-effort final relay must still be allowed to persist to Redis.
 				relayCtx, relayCancel := context.WithTimeout(context.Background(), 2*time.Second)
-				if err := percenter.RelayObservabilityOutbox(relayCtx, telemetryOutbox, percenterRedis); err != nil {
-					log.Printf("[ADV][PERCENTER_TELEMETRY_SHUTDOWN_RELAY_ERROR] %v", err)
-				}
+				relay(relayCtx)
 				relayCancel()
 				return
-			case now := <-ticker.C:
-				flushClosed(now.UTC())
+			case <-minuteTimer.C:
+				// A delayed userspace callback can run after the nominal boundary. Flush
+				// persists every bucket older than the current minute; diagnostics expose
+				// the actual lateness rather than claiming a strict one-minute bound.
+				now := time.Now().UTC()
+				flushClosed(now, nextBoundary)
+				relay(ctx)
+				nextBoundary = nextADVTelemetryMinuteBoundary(time.Now().UTC())
+				minuteTimer.Reset(time.Until(nextBoundary))
+			case <-relayTicker.C:
+				relay(ctx)
 			}
 		}
 	}()
@@ -211,19 +300,6 @@ func run() error {
 	}
 	auctionService.SetDiagnosticsEnabled(diagnosticsEnabled)
 
-	botNotifier := utils.NewBotMessageWithTimeout(cfg.BotBaseURL, cfg.BotInternalSecret, cfg.AntiperekrutControlTimeout)
-	telegramConfigured := strings.TrimSpace(cfg.BotBaseURL) != "" && strings.TrimSpace(cfg.BotInternalSecret) != ""
-	botSend := func(sendCtx context.Context, text string) error {
-		if !telegramConfigured {
-			return nil
-		}
-		return botNotifier.SendTextMessageToBot(sendCtx, text)
-	}
-	if telegramConfigured {
-		auctionService.SetSnapshotWarningNotifier(botSend)
-	} else {
-		log.Printf("[ADV][TELEGRAM_DISABLED] credentials are not configured; auction continues without snapshot/percenter warnings")
-	}
 	var antiManager *auction.AntiPerekrutManager
 	var startupEvent antiControl.StartupEvent
 
@@ -372,8 +448,14 @@ func validateConfig(cfg *config.AdvConfig) error {
 	if cfg == nil {
 		return fmt.Errorf("config is nil")
 	}
-	if cfg.RedisDBAdvRuntime != 5 || cfg.RedisDBAdvWinner != 6 || cfg.RedisDBAdvPercenter != 7 {
-		return fmt.Errorf("ADV requires Redis DB 5 for runtime, DB 6 for winners, and DB 7 for Simple percenter state")
+	if cfg.RedisDBAdvRuntime != 5 {
+		return fmt.Errorf("REDIS_DB_ADV_RUNTIME=%d is invalid: production invariant requires 5", cfg.RedisDBAdvRuntime)
+	}
+	if cfg.RedisDBAdvWinner != 6 {
+		return fmt.Errorf("REDIS_DB_ADV_WINNER=%d is invalid: production invariant requires 6", cfg.RedisDBAdvWinner)
+	}
+	if cfg.RedisDBAdvPercenter != 7 {
+		return fmt.Errorf("REDIS_DB_ADV_PERCENTER=%d is invalid: production invariant requires 7", cfg.RedisDBAdvPercenter)
 	}
 	if strings.TrimSpace(cfg.RedisUUIDAddr) == "" && len(cfg.RedisShardAddrs) == 0 {
 		return fmt.Errorf("REDIS_UUID_ADDR or REDIS_SHARD_ADDRS is required")
@@ -401,7 +483,7 @@ func validateConfig(cfg *config.AdvConfig) error {
 	}
 	if cfg.AntiperekrutEnabled {
 		if cfg.AntiperekrutTickOffset < 0 || cfg.AntiperekrutTickOffset >= time.Minute {
-			return fmt.Errorf("ANTIPEREKRUT_TICK_OFFSET must be in [0,1m)")
+			return fmt.Errorf("ANTIPEREKRUT_TICK_OFFSET=%s is invalid: expected range [0,1m)", cfg.AntiperekrutTickOffset)
 		}
 		if len(cfg.AdvServiceControlURLs) == 0 {
 			return fmt.Errorf("antiperekrut requires ADV_SERVICE_CONTROL_URLS")
@@ -411,6 +493,28 @@ func validateConfig(cfg *config.AdvConfig) error {
 		}
 	}
 	return nil
+}
+
+func formatOptionalUTCTime(value time.Time) string {
+	if value.IsZero() {
+		return "none"
+	}
+	return value.UTC().Format(time.RFC3339Nano)
+}
+
+func telemetryLatenessError(lateness, threshold time.Duration) error {
+	if lateness <= threshold {
+		return nil
+	}
+	return fmt.Errorf("boundary lateness %s exceeds warning threshold %s", lateness, threshold)
+}
+
+func nextADVTelemetryMinuteBoundary(now time.Time) time.Time {
+	if now.IsZero() {
+		now = time.Now().UTC()
+	}
+	now = now.UTC()
+	return now.Truncate(time.Minute).Add(time.Minute)
 }
 
 func waitForADVTermination(

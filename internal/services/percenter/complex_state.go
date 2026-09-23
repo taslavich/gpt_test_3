@@ -35,6 +35,7 @@ type ComplexPolicy struct {
 	MarginSearchStepsPP   []float64
 	MaxMargin             float64
 	StateTTL              time.Duration
+	PendingHistoryTTL     time.Duration
 }
 
 func (p ComplexPolicy) Normalize() ComplexPolicy {
@@ -60,6 +61,9 @@ func (p ComplexPolicy) Normalize() ComplexPolicy {
 	}
 	if p.StateTTL <= 0 {
 		p.StateTTL = 7 * 24 * time.Hour
+	}
+	if p.PendingHistoryTTL <= 0 {
+		p.PendingHistoryTTL = DefaultPendingHistoryTTL
 	}
 	return p
 }
@@ -335,7 +339,7 @@ func (s *ComplexStateStore) GetOrInitPricing(ctx context.Context, segmentHash, c
 			raw, err := tx.Get(ctx, key).Bytes()
 			if errors.Is(err, redis.Nil) {
 				result = NewComplexState(segmentHash, campaignID, originalBid, effectiveMin, policy, now, source)
-				return saveComplexStateTx(ctx, tx, key, result, policy.StateTTL, true)
+				return saveComplexStateTx(ctx, tx, key, result, policy.StateTTL, policy.PendingHistoryTTL, true)
 			}
 			if err != nil {
 				return err
@@ -343,14 +347,14 @@ func (s *ComplexStateStore) GetOrInitPricing(ctx context.Context, segmentHash, c
 			var state ComplexState
 			if err := json.Unmarshal(raw, &state); err != nil {
 				result = NewComplexState(segmentHash, campaignID, originalBid, effectiveMin, policy, now, source)
-				return saveComplexStateTx(ctx, tx, key, result, policy.StateTTL, true)
+				return saveComplexStateTx(ctx, tx, key, result, policy.StateTTL, policy.PendingHistoryTTL, true)
 			}
 			if !state.Compatible(segmentHash, campaignID, originalBid, effectiveMin, policy) {
 				oldPointVersion := state.PointVersion
 				state = NewComplexState(segmentHash, campaignID, originalBid, effectiveMin, policy, now, source)
 				state.PointVersion = nextPointVersion(oldPointVersion)
 				result = state
-				return saveComplexStateTx(ctx, tx, key, state, policy.StateTTL, true)
+				return saveComplexStateTx(ctx, tx, key, state, policy.StateTTL, policy.PendingHistoryTTL, true)
 			}
 			repaired, changed := RepairComplexState(state, originalBid, effectiveMin, policy, now)
 			if source != "" && repaired.MapSource != source {
@@ -361,7 +365,7 @@ func (s *ComplexStateStore) GetOrInitPricing(ctx context.Context, segmentHash, c
 			if !changed {
 				return nil
 			}
-			return saveComplexStateTx(ctx, tx, key, repaired, policy.StateTTL, true)
+			return saveComplexStateTx(ctx, tx, key, repaired, policy.StateTTL, policy.PendingHistoryTTL, true)
 		}, key)
 		if err == nil {
 			return result.Pricing(), nil
@@ -393,7 +397,7 @@ func (s *ComplexStateStore) SaveCAS(ctx context.Context, state ComplexState, exp
 			if persisted.PointVersion != expectedPointVersion {
 				return nil
 			}
-			if err := saveComplexStateTx(ctx, tx, key, state, policy.StateTTL, true); err != nil {
+			if err := saveComplexStateTx(ctx, tx, key, state, policy.StateTTL, policy.PendingHistoryTTL, true); err != nil {
 				return err
 			}
 			saved = true
@@ -409,14 +413,14 @@ func (s *ComplexStateStore) SaveCAS(ctx context.Context, state ComplexState, exp
 	return false, redis.TxFailedErr
 }
 
-func saveComplexStateTx(ctx context.Context, tx *redis.Tx, key string, state ComplexState, ttl time.Duration, addIndex bool) error {
+func saveComplexStateTx(ctx context.Context, tx *redis.Tx, key string, state ComplexState, stateTTL, pendingHistoryTTL time.Duration, addIndex bool) error {
 	payload, err := json.Marshal(state)
 	if err != nil {
 		return err
 	}
 	_, err = tx.TxPipelined(ctx, func(pipe redis.Pipeliner) error {
-		pipe.Set(ctx, key, payload, ttl)
-		if err := stagePendingHistoryRedis(ctx, pipe, state.PendingHistory, ttl); err != nil {
+		pipe.Set(ctx, key, payload, stateTTL)
+		if err := stagePendingHistoryRedis(ctx, pipe, state.PendingHistory, pendingHistoryTTL); err != nil {
 			return err
 		}
 		if addIndex {

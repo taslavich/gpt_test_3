@@ -1,15 +1,15 @@
 # Percenter production deployment contract
 
-This document is the Stage 05 deployment checklist for the Simple/Complex percenter stack. It does not change the auction algorithm.
+This is the final Stage 01-06 deployment/hardening checklist for the Simple/Complex percenter stack. It does not change routing, pricing, optimizer state machines, thresholds, step sequences or RTB semantics.
 
-## Required configuration
+## Shared policy and required configuration
 
-ADV and the percenter daemon must receive the same policy values. Both processes now parse the same `PercenterPolicyConfig` and reject drift from the agreed production thresholds.
+ADV and the percenter daemon must receive the same policy values. Both processes parse the same `PercenterPolicyConfig`, validate canonical values before normalization and log the same deterministic policy fingerprint.
 
 ```env
 # Existing Redis instance only; no new shard/instance.
 REDIS_ADV_ADDR=<existing-redis-host:port>
-REDIS_PASSWORD=<secret>
+REDIS_PASSWORD=<secret-if-required-by-that-instance>
 REDIS_DB_ADV_PERCENTER=7
 
 SIMPLE_OPTIMIZE_INTERVAL=5m
@@ -29,24 +29,38 @@ COMPLEX_EFFICIENCY_RETENTION=0.8
 COMPLEX_SSP_SEARCH_STEPS=10,5,2,1
 COMPLEX_MARGIN_SEARCH_STEPS=10,5,2,1
 COMPLEX_MAX_MARGIN=0.9
+
+# Independent recovery retention, not optimizer StateTTL.
+HISTORY_PENDING_TTL=720h
 ```
 
-ADV additionally requires its existing PostgreSQL/snapshot configuration and:
+`SIMPLE_STATE_TTL` and `COMPLEX_STATE_TTL` are positive storage TTLs and do not participate in optimizer-point compatibility. `HISTORY_PENDING_TTL` is intentionally independent from both state TTLs.
+
+The default `HISTORY_PENDING_TTL=720h` is an explicit 30-day operational retention for a committed history transition that is still mirrored in Redis DB7 before it has been made durable in the local bbolt outbox/recovery path. There is no separate project-approved business minimum, so startup validation enforces only `>0` rather than inventing a new threshold. Operations must keep the configured value large enough for the expected Redis/ClickHouse/Kafka incident window, restart/deployment time and recovery backlog. Once a record is in the local bbolt outbox, downstream Redis/Kafka/ClickHouse retries are retained by that durable outbox until acknowledgement; shortening Simple/Complex StateTTL does not shorten this recovery chain.
+
+## ADV-specific configuration
+
+ADV still requires its existing PostgreSQL, snapshot, percent/quality map and VPN configuration. Stage 01-06 additionally relies on:
 
 ```env
-ADV_PERCENT_MAP_FILE_PATH=<writable-json-path>
+POSTGRES_DSN=<secret-dsn>
+ADV_PERCENT_MAP_FILE_PATH=<percent-map-json-path>
 ADV_PERCENTER_TELEMETRY_OUTBOX_PATH=./data/adv-percenter-telemetry-outbox.db
-ADV_PERCENTER_TELEMETRY_FLUSH=1m
+ADV_PERCENTER_TELEMETRY_FLUSH=1m  # Redis relay cadence, not minute cut-over
 ```
 
-The percenter daemon requires the ClickHouse database that receives the ORTB rows containing `exact_segment_hash`, `segment_hash`, and `percenter_point_version`:
+The percent-map file must contain the accepted fallback values, including `ALL=0.20` and `ALL_RTB=0.30`. `REDIS_DB_ADV_RUNTIME=5`, `REDIS_DB_ADV_WINNER=6` and `REDIS_DB_ADV_PERCENTER=7` are canonical ADV DB assignments and invalid values fail startup with the ENV name, actual value and required value.
+
+## Percenter-daemon configuration
+
+The daemon needs the ClickHouse database containing the Stage 04 ORTB attribution fields and the existing Kafka cluster:
 
 ```env
 CLICKHOUSE_HOST=<host>
 CLICKHOUSE_PORT=9440
 CLICKHOUSE_USERNAME=<user>
 CLICKHOUSE_PASSWORD=<secret>
-CLICKHOUSE_DB=<same-database-containing-ortb/impressions/clicks>
+CLICKHOUSE_DB=<database-containing-ortb-impressions-clicks>
 CLICKHOUSE_TABLE_ORTB=ortb
 CLICKHOUSE_TABLE_IMPRESSIONS=impressions_in
 CLICKHOUSE_TABLE_CLICKS=clicks_in
@@ -60,22 +74,48 @@ KAFKA_TOPIC_PERCENTER=percenter_observability
 PERCENTER_DIGEST_INTERVAL=30m
 ```
 
-`BOT_BASE_URL` and `BOT_INTERNAL_SECRET` are optional for percenter operational telemetry. If either is absent, Telegram delivery is disabled and auction/optimizer processing continues. Existing antiperekrut startup-control rules are unchanged and may still require their bot configuration when that unrelated feature is enabled.
+`KAFKA_BROKERS` and a non-empty `KAFKA_TOPIC_PERCENTER` are required. A configured but temporarily unreachable broker is a degraded dependency rather than a startup blocker because Redis/bbolt retain pending delivery.
 
-## Filesystem permissions
+`BOT_BASE_URL` and `BOT_INTERNAL_SECRET` are optional for percenter/telemetry alerts. Both must be present to enable Telegram; otherwise Telegram is disabled and processing continues. Existing antiperekrut startup-control requirements are unchanged and may still require bot configuration when that separate feature is enabled.
 
-The service account must be able to create and fsync the parent directories of both bbolt files. A corrupt bbolt file is not silently truncated/recreated: startup fails with the original file preserved, because silently replacing it would violate durable-delivery guarantees.
+## bbolt files and filesystem permissions
 
-## Migrations and topic order
+Two local durable files are used by this stack:
 
-1. Apply `migrations/001_percenter_stage01.sql` to PostgreSQL before deploying snapshot readers that expect `type_model` and `promo_spend_remaining`.
-2. Apply `migrations/004_percenter_observability.sql` to the same ClickHouse database configured for the percenter daemon.
-3. Ensure Kafka topic `percenter_observability` exists on the existing Kafka cluster. The repository Kafka topic bootstrap includes this topic.
-4. Ensure the bbolt parent directories are writable by the ADV/percenter service users.
-5. Deploy/restart the stats loaders, then ADV replicas, then the single active percenter daemon.
+- ADV telemetry: `ADV_PERCENTER_TELEMETRY_OUTBOX_PATH` (default `./data/adv-percenter-telemetry-outbox.db`);
+- percenter history/observability: `PERCENTER_OUTBOX_PATH` (default `./data/percenter-observability-outbox.db`).
 
-Temporary Redis DB7, Kafka, ClickHouse, or Telegram outages are degraded states. They must not block the auction hot path. Missing mandatory configuration or an unusable/corrupt local durable outbox is a startup configuration/storage error and is intentionally fail-closed.
+Create/mount their parent directories on persistent storage. The service account must be able to create, read, write, lock and fsync the files/directories. Do not place them on an ephemeral filesystem if restart durability is required. A corrupt/unopenable bbolt file fails startup and is not silently truncated or recreated.
 
-## Verification after deployment
+## ADV telemetry durability semantics and observability
 
-Check logs for the shared policy values and Redis DB7, verify `ALL=0.20` and `ALL_RTB=0.30` are physically present in the percent-map JSON, and confirm no growing `percenter:observability:ready` or local bbolt backlog after dependencies recover. Analytics that require logical deduplication should query `percenter_state_history_logical` / `percenter_telemetry_logical` or otherwise deduplicate by `event_id`.
+`ADVTelemetry.Record()` remains RAM-only and performs no synchronous disk/network I/O in the auction hot path. Logical buckets are one UTC calendar minute wide (`ADVTelemetryMinuteBucketPeriod=1m`). A background worker wakes for the nominal minute boundary and durably closes older buckets into bbolt.
+
+The one-minute value is **not** a strict wall-clock hard-crash-loss upper bound. Userspace execution of the boundary callback may be delayed by process freeze, stop-the-world pauses, CPU starvation, VM pause or OS scheduling. The exact semantics are:
+
+- after a minute boundary has actually been processed successfully, the previous closed minute is durable;
+- RAM-only exposure is the current open bucket plus any scheduler lateness before the worker processes a boundary;
+- graceful shutdown calls `FlushAll()` and durably closes the open bucket;
+- SIGKILL/power loss can lose only buckets/counters the worker has not yet made durable.
+
+Each processed boundary logs `PERCENTER_TELEMETRY_FLUSH_STATUS` with the scheduled boundary, actual processing time/boundary lateness, last successfully durable closed minute, oldest RAM-only closed-bucket age, pending closed bucket/counter counts, durable outbox count, and last flush error/time. Lateness beyond the warning threshold and durable/relay failures use transition-based `ERROR -> silence -> RECOVERED` reporting, so retry loops do not send Telegram on every retry.
+
+## Kafka consumer contract
+
+Physical Kafka delivery is at-least-once. The final consumer is outside this repository. Consumer storage MUST atomically combine the `event_id` dedupe marker and the logical mutation in one transaction/equivalent atomic primitive. A split `exists(event_id) -> apply` sequence and a permanent pre-claim before a non-transactional mutation are invalid. See `docs/percenter-kafka-consumer-contract.md` for the integration API contract.
+
+## Migration and deployment checklist
+
+1. Back up/verify the current percent-map JSON and PostgreSQL/ClickHouse migration targets.
+2. Apply `migrations/001_percenter_stage01.sql` to PostgreSQL. It adds/validates `campaigns.type_model`, adds `users.promo_spend_remaining`, and creates the idempotent `adv_promo_spend_events` ledger used by promo-spend logic.
+3. Apply `migrations/004_percenter_observability.sql` to the configured ClickHouse database. It adds `ortb.exact_segment_hash`, creates `percenter_state_history` and `percenter_telemetry`, and creates their `_logical` views.
+4. Ensure the existing Redis instance is reachable as `REDIS_ADV_ADDR` and logical DB7 is available for Simple/Complex state and recovery indexes. Do not add a new Redis shard/instance.
+5. Ensure Kafka topic `KAFKA_TOPIC_PERCENTER` (default `percenter_observability`) exists on the configured existing Kafka cluster.
+6. Create/mount the two bbolt parent directories and verify service-user read/write/lock/fsync permissions.
+7. Deploy the Stage 01-06-compatible stats/ClickHouse ingestion components after the ClickHouse migration so the new attribution columns are accepted.
+8. Deploy/restart the percenter daemon and ADV replicas with the same policy ENV. Starting the daemon before ADV is operationally preferable because it can drain immediately, but it is not a correctness requirement: ADV has the local bbolt/Redis recovery path for temporary downstream unavailability.
+9. Compare the ADV and percenter startup logs: `fingerprint`, Simple/Complex StateTTL, `HISTORY_PENDING_TTL`, Redis DB7, delivery-component enabled/disabled status and initial degraded dependencies must agree with the deployment. Logs must not contain Redis/PostgreSQL/ClickHouse/Kafka credentials, Telegram token/secret or credential-bearing DSNs.
+10. Verify `ALL=0.20` and `ALL_RTB=0.30` in the deployed percent map; confirm `percenter:observability:ready`, pending-history indexes and both local bbolt backlogs stop growing after dependencies recover.
+11. For analytics, read `percenter_state_history_logical` / `percenter_telemetry_logical` or otherwise deduplicate by stable `event_id`.
+
+Temporary Redis DB7, Kafka, ClickHouse or Telegram outages are degraded states and do not introduce synchronous telemetry I/O into the auction path. Missing mandatory configuration, an invalid canonical policy value or an unusable local durable outbox remains a fail-closed startup error.

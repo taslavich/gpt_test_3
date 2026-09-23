@@ -381,6 +381,11 @@ type PercenterPolicyConfig struct {
 	ComplexSSPSearchSteps      string        `yaml:"COMPLEX_SSP_SEARCH_STEPS" env:"COMPLEX_SSP_SEARCH_STEPS" env-default:"10,5,2,1"`
 	ComplexMarginSearchSteps   string        `yaml:"COMPLEX_MARGIN_SEARCH_STEPS" env:"COMPLEX_MARGIN_SEARCH_STEPS" env-default:"10,5,2,1"`
 	ComplexMaxMargin           float64       `yaml:"COMPLEX_MAX_MARGIN" env:"COMPLEX_MAX_MARGIN" env-default:"0.9"`
+
+	// HistoryPendingTTL is recovery retention, deliberately independent from
+	// optimizer state TTL. Shortening SIMPLE_STATE_TTL/COMPLEX_STATE_TTL must
+	// never expire a committed-but-not-yet-durable history transition.
+	HistoryPendingTTL time.Duration `yaml:"HISTORY_PENDING_TTL" env:"HISTORY_PENDING_TTL" env-default:"720h"`
 }
 
 type PercenterConfig struct {

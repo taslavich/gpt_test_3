@@ -40,6 +40,13 @@ const (
 
 var observabilityBucket = []byte("percenter_observability")
 
+// ADVTelemetryMinuteBucketPeriod is the nominal width of one in-memory telemetry
+// bucket. It is intentionally not a hard wall-clock crash-loss bound: userspace
+// scheduling can delay processing of a UTC minute boundary. Record() remains
+// RAM-only; once the worker successfully processes a boundary, all older closed
+// buckets have been made durable.
+const ADVTelemetryMinuteBucketPeriod = time.Minute
+
 // ObservabilityRecord is the crash-safe envelope shared by ADV minute telemetry
 // and optimizer decision history. ID is stable and is used at every hop for
 // retry deduplication.
@@ -285,6 +292,23 @@ type ADVTelemetry struct {
 	mu       sync.RWMutex
 	closed   bool
 	counters sync.Map // map[telemetryCounterKey]*telemetryCounter
+
+	diagnosticsMu           sync.RWMutex
+	lastDurableClosedMinute time.Time
+	lastFlushError          string
+	lastFlushErrorAt        time.Time
+}
+
+// ADVTelemetryDiagnostics is intentionally collected outside Record()/auction
+// hot paths. PendingClosed* describes closed logical minute data that is still
+// RAM-only because the boundary worker has not durably flushed it yet.
+type ADVTelemetryDiagnostics struct {
+	LastDurableClosedMinute      time.Time
+	OldestRAMOnlyClosedBucketAge time.Duration
+	PendingClosedBuckets         int
+	PendingClosedCounters        int
+	LastFlushError               string
+	LastFlushErrorAt             time.Time
 }
 
 func NewADVTelemetry(service, instance string, outbox *ObservabilityOutbox) *ADVTelemetry {
@@ -323,7 +347,7 @@ func (t *ADVTelemetry) recordAt(at time.Time, counter, campaignID, exactSegmentH
 }
 
 func (t *ADVTelemetry) recordAtLocked(at time.Time, counter, campaignID, exactSegmentHash, segmentHash string, typeModel int, pointVersion uint64) {
-	bucket := at.UTC().Truncate(time.Minute)
+	bucket := at.UTC().Truncate(ADVTelemetryMinuteBucketPeriod)
 	key := telemetryCounterKey{
 		BucketUnix: bucket.Unix(), CampaignID: strings.TrimSpace(campaignID), ExactSegmentHash: strings.TrimSpace(exactSegmentHash),
 		SegmentHash: strings.TrimSpace(segmentHash), TypeModel: typeModel, PointVersion: pointVersion, Counter: strings.TrimSpace(counter),
@@ -344,6 +368,56 @@ func (t *ADVTelemetry) FlushAll(now time.Time) error {
 	return t.flush(now, true)
 }
 
+// Diagnostics snapshots telemetry durability state without performing disk or
+// network I/O. It may scan in-memory counters and therefore belongs only in the
+// background observability path, never in Record().
+func (t *ADVTelemetry) Diagnostics(now time.Time) ADVTelemetryDiagnostics {
+	if t == nil {
+		return ADVTelemetryDiagnostics{}
+	}
+	if now.IsZero() {
+		now = time.Now().UTC()
+	}
+	now = now.UTC()
+	cutoff := now.Truncate(ADVTelemetryMinuteBucketPeriod).Unix()
+	closedBuckets := make(map[int64]struct{})
+	pendingCounters := 0
+	oldestBucketUnix := int64(0)
+	t.counters.Range(func(rawKey, raw any) bool {
+		key, ok := rawKey.(telemetryCounterKey)
+		if !ok || key.BucketUnix >= cutoff {
+			return true
+		}
+		counter, ok := raw.(*telemetryCounter)
+		if !ok || counter.value.Load() == 0 {
+			return true
+		}
+		pendingCounters++
+		closedBuckets[key.BucketUnix] = struct{}{}
+		if oldestBucketUnix == 0 || key.BucketUnix < oldestBucketUnix {
+			oldestBucketUnix = key.BucketUnix
+		}
+		return true
+	})
+
+	t.diagnosticsMu.RLock()
+	diagnostics := ADVTelemetryDiagnostics{
+		LastDurableClosedMinute: t.lastDurableClosedMinute,
+		PendingClosedBuckets:    len(closedBuckets),
+		PendingClosedCounters:   pendingCounters,
+		LastFlushError:          t.lastFlushError,
+		LastFlushErrorAt:        t.lastFlushErrorAt,
+	}
+	t.diagnosticsMu.RUnlock()
+	if oldestBucketUnix != 0 {
+		closedAt := time.Unix(oldestBucketUnix, 0).UTC().Add(ADVTelemetryMinuteBucketPeriod)
+		if now.After(closedAt) {
+			diagnostics.OldestRAMOnlyClosedBucketAge = now.Sub(closedAt)
+		}
+	}
+	return diagnostics
+}
+
 type telemetryFlushItem struct {
 	key   telemetryCounterKey
 	value uint64
@@ -356,7 +430,7 @@ func (t *ADVTelemetry) flush(now time.Time, includeOpen bool) error {
 	if now.IsZero() {
 		now = time.Now().UTC()
 	}
-	cutoff := now.UTC().Truncate(time.Minute).Unix()
+	cutoff := now.UTC().Truncate(ADVTelemetryMinuteBucketPeriod).Unix()
 	items := make([]telemetryFlushItem, 0)
 
 	// Wait for in-flight Record calls, detach complete buckets, then release the
@@ -408,6 +482,17 @@ func (t *ADVTelemetry) flush(now time.Time, includeOpen bool) error {
 			}
 		}
 	}
+
+	t.diagnosticsMu.Lock()
+	if firstErr != nil {
+		t.lastFlushError = firstErr.Error()
+		t.lastFlushErrorAt = time.Now().UTC()
+	} else if !includeOpen {
+		// A successful closed-bucket flush at cutoff C makes every logical
+		// bucket strictly before C durable, including an empty C-1 bucket.
+		t.lastDurableClosedMinute = time.Unix(cutoff, 0).UTC().Add(-ADVTelemetryMinuteBucketPeriod)
+	}
+	t.diagnosticsMu.Unlock()
 	return firstErr
 }
 
@@ -600,6 +685,38 @@ func stagePendingHistoryRedis(ctx context.Context, pipe redis.Pipeliner, event *
 	return nil
 }
 
+// removeIndexedMemberIfRecordMissing removes a stale set membership only if
+// the indexed object is still absent at EXEC time. WATCH prevents a concurrent
+// recreation from becoming an orphaned record with no recovery/index entry.
+func removeIndexedMemberIfRecordMissing(ctx context.Context, client *redis.Client, indexKey, member, recordKey string) error {
+	if client == nil {
+		return errors.New("Redis client is nil")
+	}
+	for attempt := 0; attempt < 4; attempt++ {
+		err := client.Watch(ctx, func(tx *redis.Tx) error {
+			exists, err := tx.Exists(ctx, recordKey).Result()
+			if err != nil {
+				return err
+			}
+			if exists > 0 {
+				return nil
+			}
+			_, err = tx.TxPipelined(ctx, func(pipe redis.Pipeliner) error {
+				pipe.SRem(ctx, indexKey, member)
+				return nil
+			})
+			return err
+		}, recordKey)
+		if err == nil {
+			return nil
+		}
+		if !errors.Is(err, redis.TxFailedErr) {
+			return err
+		}
+	}
+	return redis.TxFailedErr
+}
+
 // RecoverPendingHistory moves Redis-committed history transitions into the local
 // durable bbolt outbox. The pending Redis marker is written in the same MULTI
 // transaction as optimizer state, so a successful SaveCAS cannot be followed by
@@ -623,7 +740,9 @@ func RecoverPendingHistory(ctx context.Context, client *redis.Client, outbox *Ob
 		}
 		raw, err := client.Get(ctx, pendingHistoryRecordPrefix+id).Bytes()
 		if errors.Is(err, redis.Nil) {
-			_ = client.SRem(ctx, pendingHistoryReadyKey, id).Err()
+			if err := removeIndexedMemberIfRecordMissing(ctx, client, pendingHistoryReadyKey, id, pendingHistoryRecordPrefix+id); err != nil {
+				return recovered, err
+			}
 			continue
 		}
 		if err != nil {
@@ -718,7 +837,7 @@ func (s *SimpleStateStore) clearPendingHistory(ctx context.Context, segmentHash 
 				return nil
 			}
 			current.PendingHistory = nil
-			if err := saveSimpleStateTx(ctx, tx, key, current, s.policy.Normalize().StateTTL, true); err != nil {
+			if err := saveSimpleStateTx(ctx, tx, key, current, s.policy.Normalize().StateTTL, s.policy.Normalize().PendingHistoryTTL, true); err != nil {
 				return err
 			}
 			cleared = true
@@ -754,7 +873,7 @@ func (s *ComplexStateStore) clearPendingHistory(ctx context.Context, segmentHash
 				return nil
 			}
 			current.PendingHistory = nil
-			if err := saveComplexStateTx(ctx, tx, key, current, s.policy.Normalize().StateTTL, true); err != nil {
+			if err := saveComplexStateTx(ctx, tx, key, current, s.policy.Normalize().StateTTL, s.policy.Normalize().PendingHistoryTTL, true); err != nil {
 				return err
 			}
 			cleared = true
@@ -859,7 +978,9 @@ func (s *ObservabilitySink) drainOne(ctx context.Context, id string) (bool, erro
 	}
 	raw, err := s.Redis.Get(ctx, observabilityRecordPrefix+id).Bytes()
 	if errors.Is(err, redis.Nil) {
-		_ = s.Redis.SRem(ctx, ObservabilityReadyKey, id).Err()
+		if err := removeIndexedMemberIfRecordMissing(ctx, s.Redis, ObservabilityReadyKey, id, observabilityRecordPrefix+id); err != nil {
+			return false, err
+		}
 		return false, nil
 	}
 	if err != nil {
@@ -968,21 +1089,21 @@ func (s *ObservabilitySink) writeClickHouseRecordIdempotent(ctx context.Context,
 // KafkaObservabilityAtomicApplier is the downstream-consumer storage contract
 // for the percenter observability topic. Kafka transport is at-least-once, so a
 // physical message can be replayed after crash/rebalance or processed by
-// concurrent workers. ApplyObservabilityEventOnce MUST atomically commit both
+// concurrent workers. ApplyEventAndDedupeAtomically MUST atomically commit both
 // the logical mutation and the event_id dedupe marker in the same storage
 // transaction (or an equivalent atomic primitive). A crash must therefore make
 // either both visible or neither visible; a permanent claim written before the
 // logical mutation is not a valid implementation.
 type KafkaObservabilityAtomicApplier interface {
-	ApplyObservabilityEventOnce(eventID string, payload []byte) (applied bool, err error)
+	ApplyEventAndDedupeAtomically(eventID string, payload []byte) (applied bool, err error)
 }
 
-// ApplyKafkaObservabilityMessageIdempotent validates the stable Kafka identity
-// and delegates logical idempotency to consumer storage through one atomic
-// operation. This repository does not contain the final Kafka consumer storage,
-// so this helper intentionally does not implement a non-atomic exists->apply
-// sequence and does not claim exactly-once physical Kafka delivery.
-func ApplyKafkaObservabilityMessageIdempotent(message kafka.Message, applier KafkaObservabilityAtomicApplier) error {
+// ApplyKafkaObservabilityMessageAtomically validates the stable Kafka identity
+// and requires the consumer to expose exactly one atomic dedupe+mutation method.
+// There is deliberately no Exists(eventID)->Apply(payload) split helper in this
+// repository: such an API would make a check/apply race look safe. Physical
+// Kafka delivery remains at-least-once.
+func ApplyKafkaObservabilityMessageAtomically(message kafka.Message, applier KafkaObservabilityAtomicApplier) error {
 	if applier == nil {
 		return errors.New("invalid Kafka observability atomic applier")
 	}
@@ -999,7 +1120,7 @@ func ApplyKafkaObservabilityMessageIdempotent(message kafka.Message, applier Kaf
 	if len(message.Key) > 0 && strings.TrimSpace(string(message.Key)) != identity.EventID {
 		return fmt.Errorf("Kafka observability key %q does not match event_id %q", string(message.Key), identity.EventID)
 	}
-	_, err := applier.ApplyObservabilityEventOnce(identity.EventID, message.Value)
+	_, err := applier.ApplyEventAndDedupeAtomically(identity.EventID, message.Value)
 	return err
 }
 

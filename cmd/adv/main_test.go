@@ -209,3 +209,46 @@ func TestWaitForADVTerminationSignalDoesNotForceStopWhenGracefulCompletes(t *tes
 		t.Fatal("force Stop must not be called when GracefulStop completes within timeout")
 	}
 }
+
+func TestNextADVTelemetryMinuteBoundaryIgnoresProcessTickerPhase(t *testing.T) {
+	startedNearBoundary := time.Date(2026, 9, 23, 3, 1, 59, 900*int(time.Millisecond), time.UTC)
+	got := nextADVTelemetryMinuteBoundary(startedNearBoundary)
+	want := time.Date(2026, 9, 23, 3, 2, 0, 0, time.UTC)
+	if !got.Equal(want) {
+		t.Fatalf("next boundary=%s want %s", got, want)
+	}
+	if delay := got.Sub(startedNearBoundary); delay != 100*time.Millisecond {
+		t.Fatalf("boundary delay=%s want 100ms", delay)
+	}
+}
+
+func TestValidateConfigCanonicalRedisErrorsNameActualAndExpected(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		mutate func(*config.AdvConfig)
+		want   string
+	}{
+		{name: "runtime", mutate: func(c *config.AdvConfig) { c.RedisDBAdvRuntime = 4 }, want: "REDIS_DB_ADV_RUNTIME=4 is invalid: production invariant requires 5"},
+		{name: "winner", mutate: func(c *config.AdvConfig) { c.RedisDBAdvWinner = 5 }, want: "REDIS_DB_ADV_WINNER=5 is invalid: production invariant requires 6"},
+		{name: "percenter", mutate: func(c *config.AdvConfig) { c.RedisDBAdvPercenter = 6 }, want: "REDIS_DB_ADV_PERCENTER=6 is invalid: production invariant requires 7"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			cfg := validADVConfigForStartupTest()
+			tc.mutate(cfg)
+			err := validateConfig(cfg)
+			if err == nil || err.Error() != tc.want {
+				t.Fatalf("validateConfig error=%v want %q", err, tc.want)
+			}
+		})
+	}
+}
+
+func TestTelemetryLatenessErrorUsesWarningThresholdNotHardBound(t *testing.T) {
+	threshold := 2 * time.Minute
+	if err := telemetryLatenessError(threshold, threshold); err != nil {
+		t.Fatalf("lateness equal to warning threshold must not be reported as an error: %v", err)
+	}
+	if err := telemetryLatenessError(threshold+time.Second, threshold); err == nil {
+		t.Fatal("lateness above warning threshold must be observable")
+	}
+}
