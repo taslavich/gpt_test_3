@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/ClickHouse/clickhouse-go/v2"
 )
@@ -24,6 +25,7 @@ CREATE DATABASE IF NOT EXISTS {db};
 
 DROP VIEW IF EXISTS {db}.mv_fact_conversions_to_agg_stats SYNC;
 DROP VIEW IF EXISTS {db}.mv_fact_clicks_to_agg_stats SYNC;
+DROP VIEW IF EXISTS {db}.mv_fact_clicks_wins_to_agg_stats SYNC;
 DROP VIEW IF EXISTS {db}.mv_fact_impressions_to_agg_stats SYNC;
 
 DROP VIEW IF EXISTS {db}.mv_conversions_to_fact SYNC;
@@ -726,6 +728,170 @@ ALTER TABLE {db}.agg_stats
     ADD COLUMN IF NOT EXISTS conversions_approved UInt64 DEFAULT 0,
     ADD COLUMN IF NOT EXISTS payout_approved Float64 DEFAULT 0;
 
+-- ============================================================
+-- IPP CUTOVER REPAIR
+-- ============================================================
+--
+-- Before this version IPP clicks/spend in agg_stats were fed from fact_clicks.
+-- fact_clicks_wins is the authoritative partner-confirmed source for IPP.
+-- Ordinary INSERT-triggered materialized views do not replay rows that were
+-- already present before the new view was created, so a deployment could lose
+-- the not-yet-recovered tail. All agg_stats writer views are dropped above,
+-- therefore this bounded rebuild is race-free with respect to agg_stats.
+--
+-- Rebuild the current and previous two hours for IPP from authoritative fact
+-- tables. The operation is intentionally idempotent across restarts: delete
+-- the bounded IPP aggregate slice first, then reconstruct all its components.
+ALTER TABLE {db}.agg_stats
+    DELETE WHERE
+        format = 'IPP'
+        AND event_hour >= toDateTime('{ipp_cutover_from}', 'UTC')
+    SETTINGS mutations_sync = 1;
+
+INSERT INTO {db}.agg_stats
+(
+    win_user_id,
+    win_cid,
+    win_crid,
+    event_date,
+    device_type,
+    os,
+    event_hour,
+    browser,
+    geo,
+    site_id,
+    format,
+    typic,
+    impressions,
+    clicks,
+    conversions,
+    payout,
+    conversions_approved,
+    payout_approved,
+    spend_clicks_table,
+    spend_views_table
+)
+SELECT
+    win_user_id,
+    win_cid,
+    win_crid,
+    event_date,
+    device_type,
+    os,
+    event_hour,
+    browser,
+    geo,
+    site_id,
+    format,
+    typic,
+    count() AS impressions,
+    toUInt64(0) AS clicks,
+    toUInt64(0) AS conversions,
+    toFloat64(0) AS payout,
+    toUInt64(0) AS conversions_approved,
+    toFloat64(0) AS payout_approved,
+    toFloat64(0) AS spend_clicks_table,
+    sum(win_dsp_price / 1000) AS spend_views_table
+FROM {db}.fact_impressions
+WHERE
+    format = 'IPP'
+    AND event_hour >= toDateTime('{ipp_cutover_from}', 'UTC')
+GROUP BY
+    win_user_id,
+    win_cid,
+    win_crid,
+    event_date,
+    device_type,
+    os,
+    event_hour,
+    browser,
+    geo,
+    site_id,
+    format,
+    typic
+
+UNION ALL
+
+SELECT
+    win_user_id,
+    win_cid,
+    win_crid,
+    event_date,
+    device_type,
+    os,
+    event_hour,
+    browser,
+    geo,
+    site_id,
+    format,
+    typic,
+    toUInt64(0) AS impressions,
+    count() AS clicks,
+    toUInt64(0) AS conversions,
+    toFloat64(0) AS payout,
+    toUInt64(0) AS conversions_approved,
+    toFloat64(0) AS payout_approved,
+    sum(win_dsp_price) AS spend_clicks_table,
+    toFloat64(0) AS spend_views_table
+FROM {db}.fact_clicks_wins
+WHERE
+    format = 'IPP'
+    AND event_hour >= toDateTime('{ipp_cutover_from}', 'UTC')
+GROUP BY
+    win_user_id,
+    win_cid,
+    win_crid,
+    event_date,
+    device_type,
+    os,
+    event_hour,
+    browser,
+    geo,
+    site_id,
+    format,
+    typic
+
+UNION ALL
+
+SELECT
+    win_user_id,
+    win_cid,
+    win_crid,
+    event_date,
+    device_type,
+    os,
+    event_hour,
+    browser,
+    geo,
+    site_id,
+    format,
+    typic,
+    toUInt64(0) AS impressions,
+    toUInt64(0) AS clicks,
+    toUInt64(countIf(approved != 1)) AS conversions,
+    toFloat64(sumIf(payout, approved != 1)) AS payout,
+    toUInt64(countIf(approved = 1)) AS conversions_approved,
+    toFloat64(sumIf(payout, approved = 1)) AS payout_approved,
+    toFloat64(0) AS spend_clicks_table,
+    toFloat64(0) AS spend_views_table
+FROM {db}.fact_conversions
+WHERE
+    format = 'IPP'
+    AND event_hour >= toDateTime('{ipp_cutover_from}', 'UTC')
+GROUP BY
+    win_user_id,
+    win_cid,
+    win_crid,
+    event_date,
+    device_type,
+    os,
+    event_hour,
+    browser,
+    geo,
+    site_id,
+    format,
+    typic;
+
 
 CREATE TABLE IF NOT EXISTS {db}.user_dsp_price_sum
 (
@@ -764,17 +930,17 @@ FROM
 
     UNION ALL
 
-    /* IPP оплачивается по кликам: CPC без деления */
+    /* IPP оплачивается только по подтверждённым clicks_wins: CPC без деления */
     SELECT
         argMax(win_user_id, created_at) AS user_id,
         argMax(win_dsp_price, created_at) AS spend
-    FROM {db}.fact_clicks
+    FROM {db}.fact_clicks_wins
     WHERE
         created_at >= batch_created_at - INTERVAL 1 MINUTE
         AND created_at < batch_created_at
         AND format = 'IPP'
         AND notEmpty(trimBoth(win_user_id))
-    GROUP BY clicks_uuid
+    GROUP BY clicks_wins_uuid
 
     UNION ALL
 
@@ -826,17 +992,21 @@ FROM
 
     UNION ALL
 
-    /* IPP оплачивается по кликам: CPC без деления */
+    /*
+       IPP оплачивается только по подтверждённым clicks_wins: CPC без деления.
+       Используем created_at, а не auction event_time: click-win может прийти позже
+       исходного аукциона и всё равно должен попасть в ближайший минутный batch.
+    */
     SELECT
-        argMax(win_cid, event_time) AS cid,
-        argMax(win_dsp_price, event_time) AS spend
-    FROM {db}.fact_clicks
+        argMax(win_cid, created_at) AS cid,
+        argMax(win_dsp_price, created_at) AS spend
+    FROM {db}.fact_clicks_wins
     WHERE
-        event_time >= toStartOfMinute(batch_created_at - INTERVAL 1 MINUTE)
-        AND event_time < toStartOfMinute(batch_created_at)
+        created_at >= batch_created_at - INTERVAL 1 MINUTE
+        AND created_at < batch_created_at
         AND format = 'IPP'
         AND notEmpty(trimBoth(win_cid))
-    GROUP BY clicks_uuid
+    GROUP BY clicks_wins_uuid
 
     UNION ALL
 
@@ -1530,6 +1700,9 @@ INNER JOIN base_impression AS b USING (uuid)
 ARRAY JOIN range(toUInt64(d.missing_cnt)) AS copy_number
 WHERE d.impression_cnt > 0;
 
+-- Keep this recovery for downstream click/conversion attribution. IPP billing
+-- and agg_stats no longer read IPP spend/clicks from fact_clicks, so recovered
+-- IPP rows cannot double-count the authoritative fact_clicks_wins aggregates.
 CREATE MATERIALIZED VIEW {db}.mv_recover_clicks_from_clicks_wins
 REFRESH EVERY 1 HOUR OFFSET 10 MINUTE
 APPEND TO {db}.fact_clicks
@@ -1766,6 +1939,8 @@ GROUP BY
 
 -- ============================================================
 -- MV: FACT CLICKS -> AGG STATS
+-- IPP intentionally excluded: partner-confirmed fact_clicks_wins is the
+-- authoritative source for IPP clicks and click spend.
 -- browser_version здесь специально НЕ группируется
 -- ============================================================
 
@@ -1798,12 +1973,69 @@ SELECT
     toUInt64(0) AS conversions_approved,
     toFloat64(0) AS payout_approved,
 
-    CASE 
+    CASE
         WHEN format = 'POP' THEN sum(win_dsp_price) / 1000
         ELSE sum(win_dsp_price)
     END AS spend_clicks_table,
     toFloat64(0) AS spend_views_table
 FROM {db}.fact_clicks
+WHERE format != 'IPP'
+GROUP BY
+    win_user_id,
+    win_cid,
+    win_crid,
+
+    event_date,
+
+    device_type,
+    os,
+    event_hour,
+
+    browser,
+    geo,
+    site_id,
+
+    format,
+    typic;
+
+-- ============================================================
+-- MV: FACT CLICKS WINS -> AGG STATS (IPP ONLY)
+-- For IPP the partner-confirmed click-win is the billable/statistical click.
+-- ============================================================
+
+CREATE MATERIALIZED VIEW IF NOT EXISTS {db}.mv_fact_clicks_wins_to_agg_stats
+TO {db}.agg_stats
+AS
+SELECT
+    win_user_id,
+    win_cid,
+    win_crid,
+
+    event_date,
+
+    device_type,
+    os,
+    event_hour,
+
+    browser,
+    geo,
+    site_id,
+
+    format,
+    typic,
+
+    toUInt64(0) AS impressions,
+    count() AS clicks,
+
+    toUInt64(0) AS conversions,
+    toFloat64(0) AS payout,
+    toUInt64(0) AS conversions_approved,
+    toFloat64(0) AS payout_approved,
+
+    sum(win_dsp_price) AS spend_clicks_table,
+    toFloat64(0) AS spend_views_table
+FROM {db}.fact_clicks_wins
+WHERE format = 'IPP'
 GROUP BY
     win_user_id,
     win_cid,
@@ -1959,10 +2191,28 @@ FROM
 
 CROSS JOIN
 (
-    SELECT count() AS cnt_clicks_5m
-    FROM {db}.fact_clicks
-    WHERE event_time >= ratio_from
-      AND event_time < ratio_to
+    /*
+       Keep the diagnostic click count on the same source semantics as billing:
+       IPP comes from partner-confirmed fact_clicks_wins, other formats from
+       fact_clicks.
+    */
+    SELECT sum(cnt) AS cnt_clicks_5m
+    FROM
+    (
+        SELECT count() AS cnt
+        FROM {db}.fact_clicks
+        WHERE event_time >= ratio_from
+          AND event_time < ratio_to
+          AND format != 'IPP'
+
+        UNION ALL
+
+        SELECT count() AS cnt
+        FROM {db}.fact_clicks_wins
+        WHERE event_time >= ratio_from
+          AND event_time < ratio_to
+          AND format = 'IPP'
+    )
 ) AS c
 
 CROSS JOIN
@@ -1982,7 +2232,14 @@ CROSS JOIN
 ) AS o;
 `
 
+	// Keep the cutover repair range stable for the whole CreateDB call. Apart
+	// from making DELETE deterministic for ClickHouse mutations, this guarantees
+	// the DELETE and the subsequent rebuild use exactly the same lower bound even
+	// if startup crosses an hour boundary.
+	ippCutoverFrom := time.Now().UTC().Add(-2 * time.Hour).Truncate(time.Hour)
+
 	ddl := strings.ReplaceAll(ddlTemplate, "{db}", database)
+	ddl = strings.ReplaceAll(ddl, "{ipp_cutover_from}", ippCutoverFrom.Format("2006-01-02 15:04:05"))
 	statements := splitClickHouseStatements(ddl)
 
 	for i, statement := range statements {
