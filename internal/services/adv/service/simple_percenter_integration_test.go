@@ -2,6 +2,7 @@ package auction
 
 import (
 	"math"
+	"os"
 	"path/filepath"
 	"testing"
 	"time"
@@ -10,7 +11,11 @@ import (
 )
 
 func TestRTBSimpleFallbackUsesALLRTBAsEffectiveMinimum(t *testing.T) {
-	store, err := NewPercentStore(filepath.Join(t.TempDir(), "percent_map.json"))
+	mapPath := filepath.Join(t.TempDir(), "percent_map.json")
+	if err := os.WriteFile(mapPath, []byte(`{"ALL":0.20,"ALL_RTB":0.30}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	store, err := NewPercentStore(mapPath)
 	if err != nil {
 		t.Fatalf("NewPercentStore: %v", err)
 	}

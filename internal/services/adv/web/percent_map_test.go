@@ -14,7 +14,7 @@ import (
 
 func TestADVPercentMapRoutesPreserveGroupedConfigAndExpandRuntime(t *testing.T) {
 	filename := t.TempDir() + "/adv_percent_map.json"
-	if err := os.WriteFile(filename, []byte("{}\n"), 0o600); err != nil {
+	if err := os.WriteFile(filename, []byte(`{"ALL":0.20,"ALL_RTB":0.30}`+"\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	store, err := auction.NewPercentStore(filename)
@@ -25,7 +25,7 @@ func TestADVPercentMapRoutesPreserveGroupedConfigAndExpandRuntime(t *testing.T) 
 	router := chi.NewRouter()
 	InitHttpRoutes(router, store, nil, nil, NewWorkController())
 
-	put := httptest.NewRequest(http.MethodPut, GetADVPercentMapURL, strings.NewReader(`{"123, 456,789":0.25}`))
+	put := httptest.NewRequest(http.MethodPut, GetADVPercentMapURL, strings.NewReader(`{"ALL":0.20,"ALL_RTB":0.30,"123, 456,789":0.25}`))
 	putRecorder := httptest.NewRecorder()
 	router.ServeHTTP(putRecorder, put)
 	if putRecorder.Code != http.StatusNoContent {

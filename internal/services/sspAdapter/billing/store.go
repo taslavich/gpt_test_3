@@ -112,12 +112,14 @@ func (s *Store) Apply(ctx context.Context, record outbox.Record) error {
 }
 
 func promoSpendAppliesToTypeModel(typeModel int) bool {
-	// Legacy winner/outbox records without type_model are Simple. Keep the
-	// same compatibility rule as ReadWinner. Map-only never consumes promo.
+	// Promo is a user-level spend-window counter, not a discount tied to one
+	// optimizer mode. Every valid campaign mode consumes it while traffic is
+	// billed, including map-only and RTB fallback campaigns. Legacy records
+	// without type_model are treated as Simple, as in ReadWinner.
 	if typeModel == 0 {
 		typeModel = 1
 	}
-	return typeModel == 1 || typeModel == 2
+	return typeModel == 1 || typeModel == 2 || typeModel == 3
 }
 
 func (s *Store) applyRuntimeSpend(ctx context.Context, record outbox.Record) error {

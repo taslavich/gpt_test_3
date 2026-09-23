@@ -17,9 +17,8 @@ const (
 	TypeModelComplex = 2
 	TypeModelMapOnly = 3
 
-	DefaultBusinessMinMargin = 0.20
-	PromoPercenterMinMargin  = 0.30
-	UnknownSegmentValue      = "__unknown__"
+	PromoPercenterMinMargin = 0.30
+	UnknownSegmentValue     = "__unknown__"
 )
 
 type PercentRoutingMode uint8
@@ -53,14 +52,13 @@ func validTypeModel(value int) bool {
 }
 
 func businessHardMin(campaign *Campaign) float64 {
-	if campaign == nil {
-		return DefaultBusinessMinMargin
-	}
-	model := normalizeTypeModel(campaign.TypeModel)
-	if (model == TypeModelSimple || model == TypeModelComplex) && campaign.PromoSpendRemaining > 0 {
+	if campaign != nil && campaign.PromoSpendRemaining > 0 {
 		return PromoPercenterMinMargin
 	}
-	return DefaultBusinessMinMargin
+	// Outside an active promo there is no hard-coded business minimum. The
+	// campaign-specific map entry, or ALL/ALL_RTB fallback from the map, is the
+	// only floor.
+	return 0
 }
 
 func (s *AuctionService) ResolvePricingDecision(campaign *Campaign) (PricingDecision, error) {
@@ -72,48 +70,47 @@ func (s *AuctionService) ResolvePricingDecision(campaign *Campaign) (PricingDeci
 		return PricingDecision{}, fmt.Errorf("campaign %s has invalid type_model %d", campaign.ID, campaign.TypeModel)
 	}
 
-	mapPercent := DefaultADVPercent
-	mapSource := PercentMapDefaultKey
-	if s != nil && s.percents != nil {
-		mapPercent, mapSource = s.percents.LookupForCampaignWithSource(campaign.ID, campaign.RTB)
-	} else if campaign.RTB {
-		mapPercent = DefaultADVRTBPercent
-		mapSource = PercentMapRTBDefaultKey
+	if s == nil || s.percents == nil {
+		return PricingDecision{}, fmt.Errorf("campaign %s percent map is not configured", campaign.ID)
+	}
+	mapPercent, mapSource := s.percents.LookupForCampaignWithSource(campaign.ID, campaign.RTB)
+	if mapSource == "" {
+		return PricingDecision{}, fmt.Errorf("campaign %s percent map has no required fallback", campaign.ID)
 	}
 	if !finitePercent(mapPercent) {
 		return PricingDecision{}, fmt.Errorf("campaign %s resolved invalid percent %.12f", campaign.ID, mapPercent)
 	}
 
+	hardMin := businessHardMin(campaign)
+	effectiveMapPercent := math.Max(mapPercent, hardMin)
+	if effectiveMapPercent > MaxAdvertiserMargin {
+		return PricingDecision{}, fmt.Errorf("campaign %s minimum margin %.12f exceeds maximum %.12f", campaign.ID, effectiveMapPercent, MaxAdvertiserMargin)
+	}
+
 	decision := PricingDecision{
 		MapPercent: mapPercent,
 		MapSource:  mapSource,
+		HardMin:    hardMin,
+		MinMargin:  effectiveMapPercent,
 		MaxMargin:  MaxAdvertiserMargin,
 	}
 
 	if model == TypeModelMapOnly {
 		decision.Mode = PercentRoutingMapOnly
-		decision.Percent = mapPercent
-		decision.MinMargin = mapPercent
+		decision.Percent = effectiveMapPercent
 		return decision, nil
 	}
 	if campaign.RTB && model == TypeModelComplex {
 		decision.Mode = PercentRoutingRTBComplexFallback
-		decision.Percent = mapPercent
-		decision.MinMargin = mapPercent
+		decision.Percent = effectiveMapPercent
 		return decision, nil
 	}
 
 	decision.Mode = PercentRoutingPercenterFloor
-	decision.HardMin = businessHardMin(campaign)
-	decision.MinMargin = math.Max(decision.HardMin, mapPercent)
-	if decision.MinMargin > MaxAdvertiserMargin {
-		return PricingDecision{}, fmt.Errorf("campaign %s minimum margin %.12f exceeds maximum %.12f", campaign.ID, decision.MinMargin, MaxAdvertiserMargin)
-	}
-
-	// Stage 01 has no optimizer state yet. The safe baseline working point is
-	// exactly the resolved floor; later optimizer stages may move Percent upward
-	// but can never go below MinMargin or above MaxMargin.
 	decision.Percent = decision.MinMargin
+	// The safe baseline working point is exactly the resolved map/promo floor;
+	// optimizer modes may move Percent upward but can never go below MinMargin
+	// or above MaxMargin.
 	return decision, nil
 }
 

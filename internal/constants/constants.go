@@ -11,14 +11,6 @@ const (
 	ZERO_BIDFLOOR     = 0
 )
 
-// DefaultAdvertiserDeduction is the baseline exchange margin for ordinary
-// campaigns when no campaign-specific percent-map entry exists.
-const DefaultAdvertiserDeduction = 0.20
-
-// DefaultRTBAdvertiserDeduction is the baseline exchange margin for RTB
-// campaigns when no campaign-specific percent-map entry exists.
-const DefaultRTBAdvertiserDeduction = 0.30
-
 const (
 	EVENT_TIME_COLUMN              = "EVENT_TIME"
 	TYPIC_COLUMN                   = "TYPIC"

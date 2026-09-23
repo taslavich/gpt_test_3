@@ -30,18 +30,19 @@ func newPercentStoreForPolicyTest(t *testing.T, values PercentMap) *PercentStore
 	return store
 }
 
-func TestPercentStorePersistsDefaultsAndExpandsGroupedCampaignKeys(t *testing.T) {
-	store := newPercentStoreForPolicyTest(t, PercentMap{"123, 456,789": 0.25})
+func TestPercentStoreRequiresMapFallbacksAndExpandsGroupedCampaignKeys(t *testing.T) {
+	store := newPercentStoreForPolicyTest(t, PercentMap{
+		PercentMapDefaultKey:    0.17,
+		PercentMapRTBDefaultKey: 0.34,
+		"123, 456,789":          0.25,
+	})
 
 	saved, err := store.Saved()
 	if err != nil {
 		t.Fatal(err)
 	}
-	if saved[PercentMapDefaultKey] != DefaultADVPercent {
-		t.Fatalf("ALL=%v want %v", saved[PercentMapDefaultKey], DefaultADVPercent)
-	}
-	if saved[PercentMapRTBDefaultKey] != DefaultADVRTBPercent {
-		t.Fatalf("ALL_RTB=%v want %v", saved[PercentMapRTBDefaultKey], DefaultADVRTBPercent)
+	if saved[PercentMapDefaultKey] != 0.17 || saved[PercentMapRTBDefaultKey] != 0.34 {
+		t.Fatalf("map fallbacks changed unexpectedly: %#v", saved)
 	}
 	if saved["123, 456,789"] != 0.25 {
 		t.Fatalf("grouped key was not preserved: %#v", saved)
@@ -51,17 +52,30 @@ func TestPercentStorePersistsDefaultsAndExpandsGroupedCampaignKeys(t *testing.T)
 			t.Fatalf("campaign %s percent=%v want 0.25", id, got)
 		}
 	}
+}
 
-	raw, err := os.ReadFile(store.filename)
-	if err != nil {
-		t.Fatal(err)
-	}
-	var persisted PercentMap
-	if err := json.Unmarshal(raw, &persisted); err != nil {
-		t.Fatal(err)
-	}
-	if persisted[PercentMapDefaultKey] != 0.20 || persisted[PercentMapRTBDefaultKey] != 0.30 {
-		t.Fatalf("defaults were not physically persisted: %#v", persisted)
+func TestPercentStoreRejectsMissingRequiredFallbacks(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		m    PercentMap
+	}{
+		{name: "missing ALL", m: PercentMap{PercentMapRTBDefaultKey: 0.31}},
+		{name: "missing ALL_RTB", m: PercentMap{PercentMapDefaultKey: 0.19}},
+		{name: "missing both", m: PercentMap{}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			filename := filepath.Join(t.TempDir(), "adv_percent_map.json")
+			data, err := json.Marshal(tc.m)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(filename, data, 0o600); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := NewPercentStore(filename); err == nil {
+				t.Fatal("percent map without ALL/ALL_RTB must fail closed")
+			}
+		})
 	}
 }
 
@@ -87,7 +101,7 @@ func TestPercentStoreKeepsExplicitDefaults(t *testing.T) {
 
 func TestPercentStoreRejectsMarginAboveNinetyPercent(t *testing.T) {
 	filename := filepath.Join(t.TempDir(), "adv_percent_map.json")
-	if err := os.WriteFile(filename, []byte(`{"campaign-1":0.91}`), 0o600); err != nil {
+	if err := os.WriteFile(filename, []byte(`{"ALL":0.20,"ALL_RTB":0.30,"campaign-1":0.91}`), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := NewPercentStore(filename); err == nil {
@@ -119,9 +133,9 @@ func TestPricingDecisionFloorsAndMapOnly(t *testing.T) {
 		{name: "smart promo floor", campaign: &Campaign{ID: "smart-low", TypeModel: TypeModelComplex, PromoSpendRemaining: 1}, wantMode: PercentRoutingPercenterFloor, wantMin: 0.30, wantPercent: 0.30},
 		{name: "smart map above promo", campaign: &Campaign{ID: "smart-high", TypeModel: TypeModelComplex, PromoSpendRemaining: 1}, wantMode: PercentRoutingPercenterFloor, wantMin: 0.40, wantPercent: 0.40},
 		{name: "smart promo exhausted", campaign: &Campaign{ID: "smart-low", TypeModel: TypeModelComplex, PromoSpendRemaining: 0}, wantMode: PercentRoutingPercenterFloor, wantMin: 0.20, wantPercent: 0.20},
-		{name: "map only exact ignores promo floor", campaign: &Campaign{ID: "map-only", TypeModel: TypeModelMapOnly, PromoSpendRemaining: 100}, wantMode: PercentRoutingMapOnly, wantMin: 0.10, wantPercent: 0.10},
+		{name: "map only applies promo floor", campaign: &Campaign{ID: "map-only", TypeModel: TypeModelMapOnly, PromoSpendRemaining: 100}, wantMode: PercentRoutingMapOnly, wantMin: 0.30, wantPercent: 0.30},
 		{name: "rtb simple ALL_RTB floor", campaign: &Campaign{ID: "rtb-simple", TypeModel: TypeModelSimple, RTB: true}, wantMode: PercentRoutingPercenterFloor, wantMin: 0.30, wantPercent: 0.30},
-		{name: "rtb complex exact fallback", campaign: &Campaign{ID: "rtb-complex", TypeModel: TypeModelComplex, RTB: true, PromoSpendRemaining: 10}, wantMode: PercentRoutingRTBComplexFallback, wantMin: 0.25, wantPercent: 0.25},
+		{name: "rtb complex fallback applies promo floor", campaign: &Campaign{ID: "rtb-complex", TypeModel: TypeModelComplex, RTB: true, PromoSpendRemaining: 10}, wantMode: PercentRoutingRTBComplexFallback, wantMin: 0.30, wantPercent: 0.30},
 		{name: "rtb map only exact", campaign: &Campaign{ID: "rtb-map", TypeModel: TypeModelMapOnly, RTB: true}, wantMode: PercentRoutingMapOnly, wantMin: 0.30, wantPercent: 0.30},
 	}
 
@@ -138,6 +152,32 @@ func TestPricingDecisionFloorsAndMapOnly(t *testing.T) {
 				t.Fatalf("MaxMargin=%v want 0.90", got.MaxMargin)
 			}
 		})
+	}
+}
+
+func TestCampaignSpecificPercentOverridesALLAndALLRTBEvenWhenLower(t *testing.T) {
+	store := newPercentStoreForPolicyTest(t, PercentMap{
+		PercentMapDefaultKey:    0.40,
+		PercentMapRTBDefaultKey: 0.35,
+		"ordinary-specific":     0.20,
+		"rtb-specific":          0.25,
+	})
+	service := &AuctionService{percents: store}
+
+	ordinary, err := service.ResolvePricingDecision(&Campaign{ID: "ordinary-specific", TypeModel: TypeModelMapOnly})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ordinary.MapSource != "campaign" || math.Abs(ordinary.Percent-0.20) > 1e-12 {
+		t.Fatalf("campaign-specific ordinary percent must override ALL: %+v", ordinary)
+	}
+
+	rtbPromo, err := service.ResolvePricingDecision(&Campaign{ID: "rtb-specific", RTB: true, TypeModel: TypeModelComplex, PromoSpendRemaining: 1})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rtbPromo.MapSource != "campaign" || math.Abs(rtbPromo.MapPercent-0.25) > 1e-12 || math.Abs(rtbPromo.Percent-0.30) > 1e-12 {
+		t.Fatalf("campaign-specific RTB percent must override ALL_RTB, then promo floor applies: %+v", rtbPromo)
 	}
 }
 

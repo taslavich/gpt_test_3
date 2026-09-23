@@ -161,9 +161,10 @@ func nextSimpleProbe(state SimpleState, policy SimplePolicy) (float64, bool) {
 		base = state.EffectiveMin
 	}
 	candidate := base + policy.SearchStepsPP[idx]/100.0
-	if candidate > policy.MaxMargin+1e-12 {
-		return 0, false
-	}
+	// MaxMargin itself is a legal probe. Do not settle below the cap only
+	// because the current coarse step overshoots it (for example 88% + 5pp).
+	// Clamp to the boundary once; a subsequent probe from MaxMargin becomes a
+	// no-op and correctly completes the search.
 	candidate = clampMargin(candidate, state.EffectiveMin, policy.MaxMargin)
 	if math.Abs(candidate-base) <= 1e-12 {
 		return 0, false

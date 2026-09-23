@@ -2,7 +2,7 @@ package billing
 
 import "testing"
 
-func TestPromoSpendAppliesToSimpleAndComplexButNotMapOnly(t *testing.T) {
+func TestPromoSpendAppliesToEveryValidCampaignMode(t *testing.T) {
 	tests := []struct {
 		name      string
 		typeModel int
@@ -11,7 +11,7 @@ func TestPromoSpendAppliesToSimpleAndComplexButNotMapOnly(t *testing.T) {
 		{name: "legacy simple", typeModel: 0, want: true},
 		{name: "simple", typeModel: 1, want: true},
 		{name: "complex", typeModel: 2, want: true},
-		{name: "map only", typeModel: 3, want: false},
+		{name: "map only", typeModel: 3, want: true},
 		{name: "invalid", typeModel: 99, want: false},
 	}
 	for _, tt := range tests {

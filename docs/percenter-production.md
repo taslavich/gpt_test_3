@@ -49,11 +49,14 @@ ADV_PERCENTER_TELEMETRY_OUTBOX_PATH=./data/adv-percenter-telemetry-outbox.db
 ADV_PERCENTER_TELEMETRY_FLUSH=1m  # Redis relay cadence, not minute cut-over
 ```
 
-The percent-map file must contain the accepted fallback values, including `ALL=0.20` and `ALL_RTB=0.30`. `REDIS_DB_ADV_RUNTIME=5`, `REDIS_DB_ADV_WINNER=6` and `REDIS_DB_ADV_PERCENTER=7` are canonical ADV DB assignments and invalid values fail startup with the ENV name, actual value and required value.
+The percent-map file must always contain both `ALL` (ordinary fallback) and `ALL_RTB` (RTB fallback). Their numeric values are runtime configuration, not hard-coded business defaults, and may be changed within the accepted 0..90% range. A campaign-specific entry always has priority over `ALL`/`ALL_RTB`, even when it is lower. Missing fallback keys are a fail-closed startup/update error. `REDIS_DB_ADV_RUNTIME=5`, `REDIS_DB_ADV_WINNER=6` and `REDIS_DB_ADV_PERCENTER=7` are canonical ADV DB assignments and invalid values fail startup with the ENV name, actual value and required value.
+
+Promo semantics are uniform across ordinary and RTB traffic and across `type_model=1/2/3`: while `promo_spend_remaining > 0`, the effective minimum is `max(resolved_map_percent, 30%)`. `resolved_map_percent` is campaign-specific when present, otherwise `ALL`/`ALL_RTB`. When promo is exhausted, the 30% promo floor disappears and the current resolved map value is used. Promo spend continues to decrement on billed traffic even when the resolved map value is already above 30%. RTB `type_model=2` still bypasses the Complex optimizer; promo only floors its exact map/fallback percentage.
+
 
 ## Percenter-daemon configuration
 
-The daemon needs the ClickHouse database containing the Stage 04 ORTB attribution fields and the existing Kafka cluster:
+The daemon must use the same production ClickHouse host/database and ORTB/impression/click tables that `clickhouse-loader` writes, plus the existing Kafka cluster. Credentials stay in deployment secrets; do not copy a second/stale credential set into source-controlled env files:
 
 ```env
 CLICKHOUSE_HOST=<host>
@@ -115,7 +118,7 @@ Physical Kafka delivery is at-least-once. The final consumer is outside this rep
 7. Deploy the Stage 01-06-compatible stats/ClickHouse ingestion components after the ClickHouse migration so the new attribution columns are accepted.
 8. Deploy/restart the percenter daemon and ADV replicas with the same policy ENV. Starting the daemon before ADV is operationally preferable because it can drain immediately, but it is not a correctness requirement: ADV has the local bbolt/Redis recovery path for temporary downstream unavailability.
 9. Compare the ADV and percenter startup logs: `fingerprint`, Simple/Complex StateTTL, `HISTORY_PENDING_TTL`, Redis DB7, delivery-component enabled/disabled status and initial degraded dependencies must agree with the deployment. Logs must not contain Redis/PostgreSQL/ClickHouse/Kafka credentials, Telegram token/secret or credential-bearing DSNs.
-10. Verify `ALL=0.20` and `ALL_RTB=0.30` in the deployed percent map; confirm `percenter:observability:ready`, pending-history indexes and both local bbolt backlogs stop growing after dependencies recover.
+10. Verify that both `ALL` and `ALL_RTB` exist in the deployed percent map with the intended current values; confirm `percenter:observability:ready`, pending-history indexes and both local bbolt backlogs stop growing after dependencies recover.
 11. For analytics, read `percenter_state_history_logical` / `percenter_telemetry_logical` or otherwise deduplicate by stable `event_id`.
 
 Temporary Redis DB7, Kafka, ClickHouse or Telegram outages are degraded states and do not introduce synchronous telemetry I/O into the auction path. Missing mandatory configuration, an invalid canonical policy value or an unusable local durable outbox remains a fail-closed startup error.

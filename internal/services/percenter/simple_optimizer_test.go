@@ -201,6 +201,27 @@ func TestSimpleRepairRespectsFloorAndNinetyPercentCap(t *testing.T) {
 	assertFloat(t, high.LastConfirmedMargin, 0.90)
 }
 
+func TestSimpleProbeClampsToNinetyPercentBoundary(t *testing.T) {
+	policy := simpleTestPolicy()
+	state := SimpleState{
+		LastConfirmedMargin: 0.88,
+		EffectiveMin:        0.20,
+		MaxMargin:           0.90,
+		StepIndex:           0, // 5pp would otherwise overshoot to 93%.
+	}
+
+	probe, ok := nextSimpleProbe(state, policy)
+	if !ok {
+		t.Fatal("90% boundary must be probed before Simple search settles")
+	}
+	assertFloat(t, probe, 0.90)
+
+	state.LastConfirmedMargin = 0.90
+	if probe, ok := nextSimpleProbe(state, policy); ok {
+		t.Fatalf("search at the 90%% cap must settle, got extra probe %.12f", probe)
+	}
+}
+
 func TestRTBSimpleStateIgnoresDynamicExternalRawBid(t *testing.T) {
 	policy := simpleTestPolicy()
 	now := time.Now().UTC()

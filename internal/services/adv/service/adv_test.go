@@ -439,15 +439,15 @@ func TestPercentMapUsesCampaignIDAndDefaults(t *testing.T) {
 	}
 }
 
-func TestPercentMapEmptySnapshotUsesHardcodedDefaults(t *testing.T) {
+func TestPercentMapCorruptSnapshotDoesNotInventHardcodedFallback(t *testing.T) {
 	store := &PercentStore{}
 	store.value.Store(&percentSnapshot{Values: PercentMap{}})
 
-	if got := store.LookupForCampaign("any", false); math.Abs(got-0.20) > 1e-12 {
-		t.Fatalf("ordinary empty-map default=%v, want 0.20", got)
+	if got, source := store.LookupForCampaignWithSource("any", false); got != 0 || source != "" {
+		t.Fatalf("ordinary corrupt snapshot must fail closed without invented fallback: percent=%v source=%q", got, source)
 	}
-	if got := store.LookupForCampaign("any", true); math.Abs(got-0.30) > 1e-12 {
-		t.Fatalf("RTB empty-map default=%v, want 0.30", got)
+	if got, source := store.LookupForCampaignWithSource("any", true); got != 0 || source != "" {
+		t.Fatalf("RTB corrupt snapshot must fail closed without invented fallback: percent=%v source=%q", got, source)
 	}
 }
 

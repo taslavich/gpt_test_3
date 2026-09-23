@@ -10,15 +10,11 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
-
-	"gitlab.com/twinbid-exchange/RTB-exchange/internal/constants"
 )
 
 const (
 	PercentMapDefaultKey    = "ALL"
 	PercentMapRTBDefaultKey = "ALL_RTB"
-	DefaultADVPercent       = constants.DefaultAdvertiserDeduction
-	DefaultADVRTBPercent    = constants.DefaultRTBAdvertiserDeduction
 	MaxAdvertiserMargin     = 0.90
 )
 
@@ -43,14 +39,9 @@ func NewPercentStore(filename string) (*PercentStore, error) {
 	if store.filename == "" {
 		return nil, errors.New("ADV percent map filename is empty")
 	}
-	saved, runtime, changed, err := loadPercentMap(store.filename)
+	saved, runtime, _, err := loadPercentMap(store.filename)
 	if err != nil {
 		return nil, fmt.Errorf("load ADV percent map: %w", err)
-	}
-	if changed {
-		if err := writeJSONAtomic(store.filename, saved); err != nil {
-			return nil, fmt.Errorf("persist ADV percent map defaults: %w", err)
-		}
 	}
 	store.value.Store(&percentSnapshot{Saved: saved, Values: runtime})
 	return store, nil
@@ -121,18 +112,13 @@ func validateAndNormalizePercentMap(input PercentMap) (PercentMap, PercentMap, b
 		}
 	}
 
-	changed := false
 	if _, exists := saved[PercentMapDefaultKey]; !exists {
-		saved[PercentMapDefaultKey] = DefaultADVPercent
-		runtime[PercentMapDefaultKey] = DefaultADVPercent
-		changed = true
+		return nil, nil, false, errors.New("ADV percent map must contain ALL fallback")
 	}
 	if _, exists := saved[PercentMapRTBDefaultKey]; !exists {
-		saved[PercentMapRTBDefaultKey] = DefaultADVRTBPercent
-		runtime[PercentMapRTBDefaultKey] = DefaultADVRTBPercent
-		changed = true
+		return nil, nil, false, errors.New("ADV percent map must contain ALL_RTB fallback")
 	}
-	return saved, runtime, changed, nil
+	return saved, runtime, false, nil
 }
 
 func normalizePercentCampaignID(value string) string {
@@ -149,18 +135,16 @@ func (s *PercentStore) LookupForCampaign(campaignID string, rtb bool) float64 {
 }
 
 func (s *PercentStore) LookupForCampaignWithSource(campaignID string, rtb bool) (float64, string) {
-	defaultValue := DefaultADVPercent
 	defaultKey := PercentMapDefaultKey
 	if rtb {
-		defaultValue = DefaultADVRTBPercent
 		defaultKey = PercentMapRTBDefaultKey
 	}
 	if s == nil {
-		return defaultValue, defaultKey
+		return 0, ""
 	}
 	snapshot := s.value.Load()
 	if snapshot == nil {
-		return defaultValue, defaultKey
+		return 0, ""
 	}
 	if percent, exists := snapshot.Values[normalizePercentCampaignID(campaignID)]; exists {
 		return percent, "campaign"
@@ -168,7 +152,10 @@ func (s *PercentStore) LookupForCampaignWithSource(campaignID string, rtb bool) 
 	if percent, exists := snapshot.Values[defaultKey]; exists {
 		return percent, defaultKey
 	}
-	return defaultValue, defaultKey
+	// load/update validation requires both ALL and ALL_RTB. Returning an empty
+	// source here makes an impossible/corrupt snapshot fail closed in pricing
+	// instead of silently reintroducing a hard-coded runtime default.
+	return 0, ""
 }
 
 func (s *PercentStore) Saved() (PercentMap, error) {
