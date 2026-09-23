@@ -67,7 +67,10 @@ func main() {
 		log.Fatalf("ADV winner Redis unavailable: %v", err)
 	}
 	if err := percenterRedis.Ping(ctx).Err(); err != nil {
-		log.Fatalf("ADV Simple percenter Redis unavailable: %v", err)
+		// DB7 is fail-open for auction pricing. The percenter state stores will
+		// return errors and AuctionService will use its last known local point or
+		// a bounded baseline while durable telemetry keeps retrying.
+		log.Printf("[ADV][PERCENTER_REDIS_DEGRADED] redis_db=%d error=%v", cfg.RedisDBAdvPercenter, err)
 	}
 
 	statsRedisAddrs := cfg.RedisShardAddrs
@@ -121,6 +124,54 @@ func main() {
 	runtimeStore := auction.NewRuntimeStore(runtimeRedis, cfg.AdvPacingCurrentTTL, cfg.AdvPacingSlotTTL)
 	winnerStore := auction.NewWinnerStore(winnerRedis, cfg.AdvWinnerTTL)
 	auctionService := auction.NewAuctionService(runtimeStore, winnerStore, percentStore, qualityStore, siteIDQualityStore)
+	telemetryOutbox, err := percenter.OpenObservabilityOutbox(cfg.AdvPercenterTelemetryOutboxPath)
+	if err != nil {
+		log.Fatalf("cannot initialize ADV percenter telemetry outbox: %v", err)
+	}
+	defer telemetryOutbox.Close()
+	hostname, _ := os.Hostname()
+	// Instance identifies one process incarnation, not only the host. This avoids
+	// EventID collisions if ADV is orderly restarted inside the same minute while
+	// an earlier minute bucket from that host is still pending in bbolt.
+	telemetryInstance := fmt.Sprintf("%s/%d/%d", hostname, os.Getpid(), time.Now().UTC().UnixNano())
+	advTelemetry := percenter.NewADVTelemetry("adv", telemetryInstance, telemetryOutbox)
+	auctionService.SetPercenterTelemetry(advTelemetry)
+	telemetryFlush := cfg.AdvPercenterTelemetryFlush
+	if telemetryFlush <= 0 {
+		telemetryFlush = time.Minute
+	}
+	go func() {
+		ticker := time.NewTicker(telemetryFlush)
+		defer ticker.Stop()
+		flushClosed := func(now time.Time) {
+			if err := advTelemetry.Flush(now); err != nil {
+				log.Printf("[ADV][PERCENTER_TELEMETRY_OUTBOX_ERROR] %v", err)
+			}
+			if err := percenter.RelayObservabilityOutbox(ctx, telemetryOutbox, percenterRedis); err != nil {
+				log.Printf("[ADV][PERCENTER_TELEMETRY_RELAY_ERROR] %v", err)
+			}
+		}
+		flushClosed(time.Now().UTC())
+		for {
+			select {
+			case <-ctx.Done():
+				shutdownAt := time.Now().UTC()
+				if err := advTelemetry.FlushAll(shutdownAt); err != nil {
+					log.Printf("[ADV][PERCENTER_TELEMETRY_SHUTDOWN_OUTBOX_ERROR] %v", err)
+				}
+				// Use a short independent context: the parent is already cancelled, but
+				// a best-effort final relay must still be allowed to persist to Redis.
+				relayCtx, relayCancel := context.WithTimeout(context.Background(), 2*time.Second)
+				if err := percenter.RelayObservabilityOutbox(relayCtx, telemetryOutbox, percenterRedis); err != nil {
+					log.Printf("[ADV][PERCENTER_TELEMETRY_SHUTDOWN_RELAY_ERROR] %v", err)
+				}
+				relayCancel()
+				return
+			case now := <-ticker.C:
+				flushClosed(now.UTC())
+			}
+		}
+	}()
 	simplePolicy := percenter.SimplePolicy{}.Normalize()
 	auctionService.ConfigureSimplePercenter(percenter.NewSimpleStateStore(percenterRedis, simplePolicy), simplePolicy)
 	complexPolicy := percenter.ComplexPolicy{}.Normalize()
@@ -190,8 +241,8 @@ func main() {
 		}
 		auctionService.SetAntiPerekrutManager(antiManager)
 
-		hostname, _ := os.Hostname()
-		startupEvent = antiControl.NewStartupEvent("adv", hostname)
+		antiperekrutHostname, _ := os.Hostname()
+		startupEvent = antiControl.NewStartupEvent("adv", antiperekrutHostname)
 		if _, err := antiManager.RegisterStartupEvent(ctx, startupEvent.EventID, startupEvent.SourceService, startupEvent.SourceInstance); err != nil {
 			_ = botNotifier.SendTextMessageToBot(ctx, fmt.Sprintf("[ADV][ANTIPEREKRUT_STARTUP_ERROR] %v", err))
 			log.Fatalf("cannot register ADV startup reset: %v", err)

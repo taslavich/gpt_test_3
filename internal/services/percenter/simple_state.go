@@ -92,6 +92,7 @@ type SimpleState struct {
 	RTB                  bool             `json:"rtb"`
 	ReferenceOriginalBid float64          `json:"reference_original_bid"`
 	EffectiveMin         float64          `json:"effective_min"`
+	MapSource            string           `json:"map_source,omitempty"`
 	MaxMargin            float64          `json:"max_margin"`
 	Margin               float64          `json:"margin"`
 	SSPBid               float64          `json:"ssp_bid"`
@@ -108,14 +109,19 @@ type SimpleState struct {
 	LastRebenchmarkAt    time.Time        `json:"last_rebenchmark_at"`
 	UpdatedAt            time.Time        `json:"updated_at"`
 	DecisionHistory      []SimpleDecision `json:"decision_history,omitempty"`
+	PendingHistory       *HistoryEvent    `json:"pending_history,omitempty"`
 }
 
-func NewSimpleState(segmentHash, campaignID string, originalBid, effectiveMin float64, rtb bool, policy SimplePolicy, now time.Time) SimpleState {
+func NewSimpleState(segmentHash, campaignID string, originalBid, effectiveMin float64, rtb bool, policy SimplePolicy, now time.Time, mapSource ...string) SimpleState {
 	policy = policy.Normalize()
 	if now.IsZero() {
 		now = time.Now().UTC()
 	}
 	effectiveMin = clampMargin(effectiveMin, 0, policy.MaxMargin)
+	source := ""
+	if len(mapSource) > 0 {
+		source = strings.TrimSpace(mapSource[0])
+	}
 	state := SimpleState{
 		SegmentHash:          strings.TrimSpace(segmentHash),
 		CampaignID:           strings.TrimSpace(campaignID),
@@ -123,6 +129,7 @@ func NewSimpleState(segmentHash, campaignID string, originalBid, effectiveMin fl
 		RTB:                  rtb,
 		ReferenceOriginalBid: originalBid,
 		EffectiveMin:         effectiveMin,
+		MapSource:            source,
 		MaxMargin:            policy.MaxMargin,
 		Margin:               effectiveMin,
 		BaselineWinRate:      0,
@@ -184,7 +191,7 @@ func RepairSimpleState(state SimpleState, originalBid, effectiveMin float64, rtb
 		state.PointVersion == 0 || state.StepIndex < 0 || state.StepIndex >= len(policy.SearchStepsPP) ||
 		(state.Phase != SimplePhaseBaseline && state.Phase != SimplePhaseSearch && state.Phase != SimplePhaseSettled)
 	if invalid {
-		reset := NewSimpleState(state.SegmentHash, state.CampaignID, originalBid, effectiveMin, rtb, policy, now)
+		reset := NewSimpleState(state.SegmentHash, state.CampaignID, originalBid, effectiveMin, rtb, policy, now, state.MapSource)
 		reset.PointVersion = nextPointVersion(state.PointVersion)
 		return reset, true
 	}
@@ -322,18 +329,22 @@ func (s *SimpleStateStore) Get(ctx context.Context, segmentHash string) (SimpleS
 	return state, nil
 }
 
-func (s *SimpleStateStore) GetOrInitPricing(ctx context.Context, segmentHash, campaignID string, originalBid, effectiveMin float64, rtb bool, now time.Time) (SimplePricing, error) {
+func (s *SimpleStateStore) GetOrInitPricing(ctx context.Context, segmentHash, campaignID string, originalBid, effectiveMin float64, rtb bool, now time.Time, mapSource ...string) (SimplePricing, error) {
 	if s == nil || s.redis == nil {
 		return SimplePricing{}, errors.New("simple percenter Redis store is not configured")
 	}
 	policy := s.policy.Normalize()
+	source := ""
+	if len(mapSource) > 0 {
+		source = strings.TrimSpace(mapSource[0])
+	}
 	key := SimpleStateKey(segmentHash)
 	var result SimpleState
 	for attempt := 0; attempt < 4; attempt++ {
 		err := s.redis.Watch(ctx, func(tx *redis.Tx) error {
 			raw, err := tx.Get(ctx, key).Bytes()
 			if errors.Is(err, redis.Nil) {
-				result = NewSimpleState(segmentHash, campaignID, originalBid, effectiveMin, rtb, policy, now)
+				result = NewSimpleState(segmentHash, campaignID, originalBid, effectiveMin, rtb, policy, now, source)
 				return saveSimpleStateTx(ctx, tx, key, result, policy.StateTTL, true)
 			}
 			if err != nil {
@@ -342,17 +353,21 @@ func (s *SimpleStateStore) GetOrInitPricing(ctx context.Context, segmentHash, ca
 			var state SimpleState
 			if err := json.Unmarshal(raw, &state); err != nil {
 				// Corrupt state is replaced by a safe baseline rather than used for pricing.
-				result = NewSimpleState(segmentHash, campaignID, originalBid, effectiveMin, rtb, policy, now)
+				result = NewSimpleState(segmentHash, campaignID, originalBid, effectiveMin, rtb, policy, now, source)
 				return saveSimpleStateTx(ctx, tx, key, result, policy.StateTTL, true)
 			}
 			if !state.Compatible(segmentHash, campaignID, originalBid, effectiveMin, rtb, policy) {
 				oldPointVersion := state.PointVersion
-				state = NewSimpleState(segmentHash, campaignID, originalBid, effectiveMin, rtb, policy, now)
+				state = NewSimpleState(segmentHash, campaignID, originalBid, effectiveMin, rtb, policy, now, source)
 				state.PointVersion = nextPointVersion(oldPointVersion)
 				result = state
 				return saveSimpleStateTx(ctx, tx, key, state, policy.StateTTL, true)
 			}
 			repaired, changed := RepairSimpleState(state, originalBid, effectiveMin, rtb, policy, now)
+			if source != "" && repaired.MapSource != source {
+				repaired.MapSource = source
+				changed = true
+			}
 			result = repaired
 			if !changed {
 				return nil
@@ -412,6 +427,9 @@ func saveSimpleStateTx(ctx context.Context, tx *redis.Tx, key string, state Simp
 	}
 	_, err = tx.TxPipelined(ctx, func(pipe redis.Pipeliner) error {
 		pipe.Set(ctx, key, payload, ttl)
+		if err := stagePendingHistoryRedis(ctx, pipe, state.PendingHistory, ttl); err != nil {
+			return err
+		}
 		if addIndex {
 			pipe.SAdd(ctx, SimpleStateIndexKey, state.SegmentHash)
 		}

@@ -165,7 +165,7 @@ func WriteStatsOrtb(
 	siteDomain string,
 	bidFloor float64,
 ) error {
-	return writeStatsOrtb(ctx, redisClients, globalId, logged, format, typic, ssp_domain, ip, ipv6, lang, countryISO, cityId, code, uaFields, siteId, siteDomain, bidFloor, "", 0)
+	return writeStatsOrtb(ctx, redisClients, globalId, logged, format, typic, ssp_domain, ip, ipv6, lang, countryISO, cityId, code, uaFields, siteId, siteDomain, bidFloor, "", "", 0)
 }
 
 func WriteStatsOrtbWithPercenter(
@@ -186,10 +186,11 @@ func WriteStatsOrtbWithPercenter(
 	siteId string,
 	siteDomain string,
 	bidFloor float64,
+	exactSegmentHash string,
 	segmentHash string,
 	pointVersion uint64,
 ) error {
-	return writeStatsOrtb(ctx, redisClients, globalId, logged, format, typic, ssp_domain, ip, ipv6, lang, countryISO, cityId, code, uaFields, siteId, siteDomain, bidFloor, segmentHash, pointVersion)
+	return writeStatsOrtb(ctx, redisClients, globalId, logged, format, typic, ssp_domain, ip, ipv6, lang, countryISO, cityId, code, uaFields, siteId, siteDomain, bidFloor, exactSegmentHash, segmentHash, pointVersion)
 }
 
 func writeStatsOrtb(
@@ -210,6 +211,7 @@ func writeStatsOrtb(
 	siteId string,
 	siteDomain string,
 	bidFloor float64,
+	exactSegmentHash string,
 	segmentHash string,
 	pointVersion uint64,
 ) error {
@@ -244,6 +246,9 @@ func writeStatsOrtb(
 	}
 
 	if segmentHash != "" && pointVersion > 0 {
+		if exactSegmentHash != "" {
+			fields[constants.EXACT_SEGMENT_HASH_COLUMN] = exactSegmentHash
+		}
 		fields[constants.SEGMENT_HASH_COLUMN] = segmentHash
 		fields[constants.PERCENTER_POINT_VERSION_COLUMN] = pointVersion
 	}

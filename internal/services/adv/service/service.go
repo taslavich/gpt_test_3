@@ -181,6 +181,9 @@ type AuctionService struct {
 	simplePercenterPolicy  percenter.SimplePolicy
 	complexPercenter       *percenter.ComplexStateStore
 	complexPercenterPolicy percenter.ComplexPolicy
+	percenterTelemetry     *percenter.ADVTelemetry
+	simplePricingCache     sync.Map
+	complexPricingCache    sync.Map
 	vpnClassifier          VPNClassifier
 	rtbHTTPClient          *http.Client
 	statsRedisClients      []*redis.Client
@@ -208,6 +211,12 @@ func NewAuctionService(runtime *RuntimeStore, winners *WinnerStore, percents *Pe
 	}
 	s.snapshot.Store(&Snapshot{Campaigns: []*Campaign{}, UserGoals: map[string]float64{}, UserPromoSpendRemaining: map[string]float64{}, UserAntiPerekrutBlocked: map[string]bool{}})
 	return s
+}
+
+func (s *AuctionService) SetPercenterTelemetry(telemetry *percenter.ADVTelemetry) {
+	if s != nil {
+		s.percenterTelemetry = telemetry
+	}
 }
 
 func (s *AuctionService) SetAntiPerekrutManager(manager *AntiPerekrutManager) {
@@ -655,6 +664,8 @@ func (s *AuctionService) auctionCore(
 		return nil, ErrInvalidAuctionRequest
 	}
 
+	requestExactSegmentHash := BuildPercenterRequestHash(req, sspDomain)
+
 	siteIDQualityValue := ""
 	if site := req.GetSite(); site != nil {
 		siteIDQualityValue = normalizeSiteID(site.GetId())
@@ -807,7 +818,7 @@ func (s *AuctionService) auctionCore(
 				}
 				segmentHash := BuildPercenterSegmentHash(req, sspDomain, campaign.ID)
 				logf("[ADV][RTB_AUCTION_INPUT] request_id=%q imp_id=%q campaign_id=%q remote_bid_id=%q remote_price=%.12f", requestID, impID, campaign.ID, remoteBid.GetId(), float64(remoteBid.GetPrice()))
-				cand, eligible, infraErr = s.evaluateRTBCandidate(ctx, campaign, remoteBid, imp, now, requestedFormat, segmentHash)
+				cand, eligible, infraErr = s.evaluateRTBCandidate(ctx, campaign, remoteBid, imp, now, requestedFormat, requestExactSegmentHash, segmentHash)
 				if !eligible {
 					reason = diagNoWinnerSelected
 					logf("[ADV][RTB_AUCTION_REJECT] request_id=%q imp_id=%q campaign_id=%q error=%v", requestID, impID, campaign.ID, infraErr)
@@ -816,7 +827,7 @@ func (s *AuctionService) auctionCore(
 				}
 			} else {
 				cand, eligible, reason, infraErr = s.evaluateCampaign(
-					ctx, campaign, req, imp, now, requestedFormat, trafficType, sspDomain, siteIDQualityValue,
+					ctx, campaign, req, imp, now, requestedFormat, trafficType, sspDomain, siteIDQualityValue, requestExactSegmentHash,
 					winnerUUID, antiState, durableUserBlocked, requestIsVPN, vpnClassificationErr, recorder != nil, logf,
 				)
 			}
@@ -1060,7 +1071,7 @@ func (s *AuctionService) auctionCore(
 	logf("[ADV][AUCTION_SUCCESS] request_id=%q format=%q response_id=%q bids=%d winner_user_ids=%d", requestID, requestedFormat, responseID, len(seat.Bid), len(winnerUsers))
 	response := &ortb.BidResponse{Id: &responseID, Cur: &currency, Seatbid: []*ortb.SeatBid{seat}}
 	for impID, segmentHash := range winnerSegmentHashes {
-		percenter.AttachSimpleMetadata(response, impID, segmentHash, winnerPointVersions[impID])
+		percenter.AttachPercenterMetadata(response, impID, requestExactSegmentHash, segmentHash, winnerPointVersions[impID])
 	}
 	return &AuctionOutcome{
 		BidResponse:      response,
@@ -1508,7 +1519,7 @@ func (s *AuctionService) evaluateCampaign(
 	req *ortb.BidRequest,
 	imp *ortb.Imp,
 	now time.Time,
-	requestedFormat, trafficType, sspDomain, siteIDQualityValue string,
+	requestedFormat, trafficType, sspDomain, siteIDQualityValue, requestExactSegmentHash string,
 	hashFallback string,
 	antiState *AntiPerekrutState,
 	durableUserBlocked bool,
@@ -1709,12 +1720,12 @@ func (s *AuctionService) evaluateCampaign(
 	effective := CalculateEffectiveAuctionPrice(campaign.BasePrice, deduction)
 	advertiserPrice := campaign.BasePrice
 	if normalizeTypeModel(campaign.TypeModel) == TypeModelSimple {
-		simplePricing := s.resolveSimplePricing(ctx, campaign, segmentHash, campaign.BasePrice, pricing.MinMargin, false, now)
+		simplePricing := s.resolveSimplePricing(ctx, campaign, requestExactSegmentHash, segmentHash, campaign.BasePrice, pricing.MinMargin, pricing.MapSource, false, now)
 		deduction = simplePricing.Margin
 		effective = simplePricing.SSPBid
 		pointVersion = simplePricing.PointVersion
 	} else if shouldUseComplexPercenter(campaign) {
-		complexPricing := s.resolveComplexPricing(ctx, campaign, segmentHash, campaign.BasePrice, pricing.MinMargin, now)
+		complexPricing := s.resolveComplexPricing(ctx, campaign, requestExactSegmentHash, segmentHash, campaign.BasePrice, pricing.MinMargin, pricing.MapSource, now)
 		deduction = complexPricing.Margin
 		effective = complexPricing.SSPBid
 		advertiserPrice = complexPricing.AdvertiserPrice

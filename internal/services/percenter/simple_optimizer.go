@@ -6,11 +6,14 @@ import (
 )
 
 type SimpleMetrics struct {
-	SegmentHash   string
-	PointVersion  uint64
-	Requests      uint64
-	Impressions   uint64
-	TwinBidProfit float64
+	ExactSegmentHash string
+	SegmentHash      string
+	PointVersion     uint64
+	Requests         uint64
+	Impressions      uint64
+	Clicks           uint64
+	AdvertiserSpend  float64
+	TwinBidProfit    float64
 }
 
 func (m SimpleMetrics) WinRate() float64 {

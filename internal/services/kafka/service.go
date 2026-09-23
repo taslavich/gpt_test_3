@@ -80,6 +80,7 @@ func kafkaTopics(cfg config.KafkaConfig) []string {
 		cfg.KafkaTopicClicks,
 		cfg.KafkaTopicClicksWins,
 		cfg.KafkaTopicConversions,
+		cfg.KafkaTopicPercenter,
 	}
 }
 

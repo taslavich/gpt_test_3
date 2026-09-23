@@ -291,20 +291,22 @@ type AdvConfig struct {
 	RedisConfig
 	ClickhouseConfig
 
-	AdvPercentMapFilePath       string        `yaml:"ADV_PERCENT_MAP_FILE_PATH" env:"ADV_PERCENT_MAP_FILE_PATH"`
-	AdvQualityMapFilePath       string        `yaml:"ADV_QUALITY_MAP_FILE_PATH" env:"ADV_QUALITY_MAP_FILE_PATH"`
-	AdvSiteIDQualityMapFilePath string        `yaml:"ADV_SITE_ID_QUALITY_MAP_FILE_PATH" env:"ADV_SITE_ID_QUALITY_MAP_FILE_PATH"`
-	AdvVPNDBPath                string        `yaml:"ADV_VPN_DB_PATH" env:"ADV_VPN_DB_PATH"`
-	PostgresDSN                 string        `yaml:"POSTGRES_DSN" env:"POSTGRES_DSN"`
-	CampaignRefreshInterval     time.Duration `yaml:"CAMPAIGN_REFRESH_INTERVAL" env:"CAMPAIGN_REFRESH_INTERVAL" env-default:"30s"`
-	AdvWinnerTTL                time.Duration `yaml:"ADV_WINNER_TTL" env:"ADV_WINNER_TTL" env-default:"45m"`
-	AdvPacingTickInterval       time.Duration `yaml:"ADV_PACING_TICK_INTERVAL" env:"ADV_PACING_TICK_INTERVAL" env-default:"5s"`
-	AdvPacingCurrentTTL         time.Duration `yaml:"ADV_PACING_CURRENT_TTL" env:"ADV_PACING_CURRENT_TTL" env-default:"10m"`
-	AdvPacingSlotTTL            time.Duration `yaml:"ADV_PACING_SLOT_TTL" env:"ADV_PACING_SLOT_TTL" env-default:"48h"`
-	AntiperekrutTickOffset      time.Duration `yaml:"ANTIPEREKRUT_TICK_OFFSET" env:"ANTIPEREKRUT_TICK_OFFSET" env-default:"8s"`
-	AntiperekrutAutoMigrate     bool          `yaml:"ANTIPEREKRUT_AUTO_MIGRATE" env:"ANTIPEREKRUT_AUTO_MIGRATE" env-default:"false"`
-	BotBaseURL                  string        `yaml:"BOT_BASE_URL" env:"BOT_BASE_URL"`
-	BotInternalSecret           string        `yaml:"BOT_INTERNAL_SECRET" env:"BOT_INTERNAL_SECRET"`
+	AdvPercentMapFilePath           string        `yaml:"ADV_PERCENT_MAP_FILE_PATH" env:"ADV_PERCENT_MAP_FILE_PATH"`
+	AdvQualityMapFilePath           string        `yaml:"ADV_QUALITY_MAP_FILE_PATH" env:"ADV_QUALITY_MAP_FILE_PATH"`
+	AdvSiteIDQualityMapFilePath     string        `yaml:"ADV_SITE_ID_QUALITY_MAP_FILE_PATH" env:"ADV_SITE_ID_QUALITY_MAP_FILE_PATH"`
+	AdvVPNDBPath                    string        `yaml:"ADV_VPN_DB_PATH" env:"ADV_VPN_DB_PATH"`
+	PostgresDSN                     string        `yaml:"POSTGRES_DSN" env:"POSTGRES_DSN"`
+	CampaignRefreshInterval         time.Duration `yaml:"CAMPAIGN_REFRESH_INTERVAL" env:"CAMPAIGN_REFRESH_INTERVAL" env-default:"30s"`
+	AdvWinnerTTL                    time.Duration `yaml:"ADV_WINNER_TTL" env:"ADV_WINNER_TTL" env-default:"45m"`
+	AdvPacingTickInterval           time.Duration `yaml:"ADV_PACING_TICK_INTERVAL" env:"ADV_PACING_TICK_INTERVAL" env-default:"5s"`
+	AdvPacingCurrentTTL             time.Duration `yaml:"ADV_PACING_CURRENT_TTL" env:"ADV_PACING_CURRENT_TTL" env-default:"10m"`
+	AdvPacingSlotTTL                time.Duration `yaml:"ADV_PACING_SLOT_TTL" env:"ADV_PACING_SLOT_TTL" env-default:"48h"`
+	AntiperekrutTickOffset          time.Duration `yaml:"ANTIPEREKRUT_TICK_OFFSET" env:"ANTIPEREKRUT_TICK_OFFSET" env-default:"8s"`
+	AntiperekrutAutoMigrate         bool          `yaml:"ANTIPEREKRUT_AUTO_MIGRATE" env:"ANTIPEREKRUT_AUTO_MIGRATE" env-default:"false"`
+	BotBaseURL                      string        `yaml:"BOT_BASE_URL" env:"BOT_BASE_URL"`
+	BotInternalSecret               string        `yaml:"BOT_INTERNAL_SECRET" env:"BOT_INTERNAL_SECRET"`
+	AdvPercenterTelemetryOutboxPath string        `yaml:"ADV_PERCENTER_TELEMETRY_OUTBOX_PATH" env:"ADV_PERCENTER_TELEMETRY_OUTBOX_PATH" env-default:"./data/adv-percenter-telemetry-outbox.db"`
+	AdvPercenterTelemetryFlush      time.Duration `yaml:"ADV_PERCENTER_TELEMETRY_FLUSH" env:"ADV_PERCENTER_TELEMETRY_FLUSH" env-default:"1m"`
 }
 
 type KafkaLoaderConfig struct {
@@ -363,6 +365,16 @@ type BatchRatioConfig struct {
 type PercenterConfig struct {
 	Clickhouse ClickhouseConfig
 	RedisConfig
+
+	PercenterOutboxPath     string        `yaml:"PERCENTER_OUTBOX_PATH" env:"PERCENTER_OUTBOX_PATH" env-default:"./data/percenter-observability-outbox.db"`
+	PercenterRelayInterval  time.Duration `yaml:"PERCENTER_RELAY_INTERVAL" env:"PERCENTER_RELAY_INTERVAL" env-default:"1m"`
+	PercenterHistoryTable   string        `yaml:"PERCENTER_HISTORY_TABLE" env:"PERCENTER_HISTORY_TABLE" env-default:"percenter_state_history"`
+	PercenterTelemetryTable string        `yaml:"PERCENTER_TELEMETRY_TABLE" env:"PERCENTER_TELEMETRY_TABLE" env-default:"percenter_telemetry"`
+	KafkaTopicPercenter     string        `yaml:"KAFKA_TOPIC_PERCENTER" env:"KAFKA_TOPIC_PERCENTER" env-default:"percenter_observability"`
+	KafkaBrokers            []string      `yaml:"KAFKA_BROKERS" env:"KAFKA_BROKERS"`
+	PercenterDigestInterval time.Duration `yaml:"PERCENTER_DIGEST_INTERVAL" env:"PERCENTER_DIGEST_INTERVAL" env-default:"30m"`
+	BotBaseURL              string        `yaml:"BOT_BASE_URL" env:"BOT_BASE_URL"`
+	BotInternalSecret       string        `yaml:"BOT_INTERNAL_SECRET" env:"BOT_INTERNAL_SECRET"`
 
 	SimpleOptimizeInterval    time.Duration `yaml:"SIMPLE_OPTIMIZE_INTERVAL" env:"SIMPLE_OPTIMIZE_INTERVAL" env-default:"5m"`
 	SimpleRebenchmarkInterval time.Duration `yaml:"SIMPLE_REBENCHMARK_INTERVAL" env:"SIMPLE_REBENCHMARK_INTERVAL" env-default:"6h"`
@@ -466,6 +478,7 @@ type KafkaConfig struct {
 	KafkaTopicClicks           string `yaml:"KAFKA_TOPIC_CLICKS" env:"KAFKA_TOPIC_CLICKS" env-default:"clicks"`
 	KafkaTopicClicksWins       string `yaml:"KAFKA_TOPIC_CLICKS_WINS" env:"KAFKA_TOPIC_CLICKS_WINS" env-default:"clicks_wins_v2"`
 	KafkaTopicConversions      string `yaml:"KAFKA_TOPIC_CONVERSIONS" env:"KAFKA_TOPIC_CONVERSIONS" env-default:"conversions"`
+	KafkaTopicPercenter        string `yaml:"KAFKA_TOPIC_PERCENTER" env:"KAFKA_TOPIC_PERCENTER" env-default:"percenter_observability"`
 	ClicksWinsFlushIntervalSec int    `yaml:"CLICKS_WINS_FLUSH_INTERVAL_SEC" env:"CLICKS_WINS_FLUSH_INTERVAL_SEC" env-default:"2"`
 
 	// Kafka consumer groups

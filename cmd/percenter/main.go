@@ -10,11 +10,14 @@ import (
 	"os/signal"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"syscall"
 	"time"
 
 	"github.com/ClickHouse/clickhouse-go/v2"
+	"github.com/segmentio/kafka-go"
 	"gitlab.com/twinbid-exchange/RTB-exchange/internal/config"
+	utils "gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/utils_grpc"
 	"gitlab.com/twinbid-exchange/RTB-exchange/internal/services/percenter"
 	redisService "gitlab.com/twinbid-exchange/RTB-exchange/internal/services/redis"
 )
@@ -56,7 +59,7 @@ func run() error {
 	}
 	defer redisClient.Close()
 	if err := redisClient.Ping(ctx).Err(); err != nil {
-		return fmt.Errorf("percenter Redis unavailable: %w", err)
+		log.Printf("[PERCENTER][REDIS_DEGRADED] redis_db=%d error=%v", cfg.RedisDBAdvPercenter, err)
 	}
 	simpleStore := percenter.NewSimpleStateStore(redisClient, simplePolicy)
 	complexStore := percenter.NewComplexStateStore(redisClient, complexPolicy)
@@ -78,8 +81,115 @@ func run() error {
 	}
 	defer clickhouseConn.Close()
 	if err := clickhouseConn.Ping(ctx); err != nil {
-		return fmt.Errorf("ClickHouse unavailable: %w", err)
+		log.Printf("[PERCENTER][CLICKHOUSE_DEGRADED] error=%v", err)
 	}
+
+	observabilityOutbox, err := percenter.OpenObservabilityOutbox(cfg.PercenterOutboxPath)
+	if err != nil {
+		return fmt.Errorf("open percenter observability outbox: %w", err)
+	}
+	defer observabilityOutbox.Close()
+	if len(cfg.KafkaBrokers) == 0 {
+		return fmt.Errorf("KAFKA_BROKERS is required for durable history delivery")
+	}
+	kafkaWriter := &kafka.Writer{
+		Addr:         kafka.TCP(cfg.KafkaBrokers...),
+		Topic:        strings.TrimSpace(cfg.KafkaTopicPercenter),
+		RequiredAcks: kafka.RequireAll,
+		Async:        false,
+	}
+	defer kafkaWriter.Close()
+	sink := &percenter.ObservabilitySink{
+		Redis: redisClient, Kafka: kafkaWriter, ClickHouse: clickhouseConn,
+		HistoryTable: cfg.PercenterHistoryTable, TelemetryTable: cfg.PercenterTelemetryTable,
+	}
+	transitions := percenter.NewDependencyTransitions()
+	var simpleUpdates atomic.Uint64
+	var complexUpdates atomic.Uint64
+	var optimizerAnomalies atomic.Uint64
+	botNotifier := utils.NewBotMessage(cfg.BotBaseURL, cfg.BotInternalSecret)
+	notifyTransition := func(name string, failed bool, detail error) {
+		transition := transitions.Update(name, failed)
+		if transition == "" {
+			return
+		}
+		message := fmt.Sprintf("[PERCENTER][%s] dependency=%s", transition, name)
+		if detail != nil {
+			message += fmt.Sprintf(" error=%v", detail)
+		}
+		go func(text string) {
+			notifyCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			defer cancel()
+			if err := botNotifier.SendTextMessageToBot(notifyCtx, text); err != nil {
+				log.Printf("[PERCENTER][TELEGRAM_ERROR] %v", err)
+			}
+		}(message)
+	}
+	relayInterval := cfg.PercenterRelayInterval
+	if relayInterval <= 0 {
+		relayInterval = time.Minute
+	}
+	go func() {
+		ticker := time.NewTicker(relayInterval)
+		defer ticker.Stop()
+		runDelivery := func() {
+			_, pendingErr := percenter.RecoverPendingHistory(ctx, redisClient, observabilityOutbox, 1000)
+			notifyTransition("redis_db7_pending_history", pendingErr != nil, pendingErr)
+			if pendingErr != nil {
+				log.Printf("[PERCENTER][PENDING_HISTORY_RECOVERY_ERROR] %v", pendingErr)
+				return
+			}
+			relayErr := percenter.RelayObservabilityOutbox(ctx, observabilityOutbox, redisClient)
+			notifyTransition("redis_db7_delivery", relayErr != nil, relayErr)
+			if relayErr != nil {
+				log.Printf("[PERCENTER][OBSERVABILITY_RELAY_ERROR] %v", relayErr)
+				return
+			}
+			_, sinkErr := sink.DrainOnce(ctx, 1000)
+			notifyTransition("kafka_clickhouse_delivery", sinkErr != nil, sinkErr)
+			if sinkErr != nil {
+				log.Printf("[PERCENTER][OBSERVABILITY_SINK_ERROR] %v", sinkErr)
+			}
+		}
+		runDelivery()
+		for {
+			select {
+			case <-ctx.Done():
+				runDelivery()
+				return
+			case <-ticker.C:
+				runDelivery()
+			}
+		}
+	}()
+	digestInterval := cfg.PercenterDigestInterval
+	if digestInterval <= 0 {
+		digestInterval = 30 * time.Minute
+	}
+	go func() {
+		ticker := time.NewTicker(digestInterval)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				localBacklog, _ := observabilityOutbox.Count()
+				redisBacklog := percenter.RedisObservabilityBacklog(ctx, redisClient)
+				message := fmt.Sprintf(
+					"[PERCENTER][30M_HEALTH] active_errors=%v local_outbox=%d redis_ready=%d simple_updates=%d complex_updates=%d anomalies=%d",
+					transitions.Active(), localBacklog, redisBacklog, simpleUpdates.Swap(0), complexUpdates.Swap(0), optimizerAnomalies.Swap(0),
+				)
+				go func(text string) {
+					notifyCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+					defer cancel()
+					if err := botNotifier.SendTextMessageToBot(notifyCtx, text); err != nil {
+						log.Printf("[PERCENTER][TELEGRAM_DIGEST_ERROR] %v", err)
+					}
+				}(message)
+			}
+		}
+	}()
 
 	log.Printf(
 		"[PERCENTER][STARTUP] simple+complex enabled redis_db=%d simple_interval=%s complex_interval=%s rebenchmark=%s min_impressions=%d simple_steps=%v complex_ssp_steps=%v complex_margin_steps=%v max_margin=%.2f",
@@ -89,21 +199,33 @@ func run() error {
 
 	runSimpleTick := func(now time.Time) {
 		metrics, loadErr := percenter.LoadSimpleWindowMetrics(
-			ctx, clickhouseConn, cfg.Clickhouse.Database, cfg.Clickhouse.TableOrtb, cfg.Clickhouse.TableImpressions, simplePolicy.OptimizeInterval,
+			ctx, clickhouseConn, cfg.Clickhouse.Database, cfg.Clickhouse.TableOrtb, cfg.Clickhouse.TableImpressions, cfg.Clickhouse.TableClicks, simplePolicy.OptimizeInterval,
 		)
 		if loadErr != nil {
+			notifyTransition("clickhouse_simple_metrics", true, loadErr)
 			log.Printf("[PERCENTER][SIMPLE][METRICS_ERROR] %v", loadErr)
 			return
 		}
+		notifyTransition("clickhouse_simple_metrics", false, nil)
 		metricIndex := percenter.NewSimpleMetricsIndex(metrics)
 		states, stateErr := simpleStore.States(ctx)
 		if stateErr != nil {
+			notifyTransition("redis_db7_simple_state", true, stateErr)
 			log.Printf("[PERCENTER][SIMPLE][STATE_LIST_ERROR] %v", stateErr)
 			return
 		}
+		notifyTransition("redis_db7_simple_state", false, nil)
 		for _, state := range states {
 			if state.TypeModel != percenter.TypeModelSimple {
 				continue
+			}
+			if state.PendingHistory != nil {
+				if err := percenter.PersistSimplePendingHistory(ctx, simpleStore, observabilityOutbox, state); err != nil {
+					optimizerAnomalies.Add(1)
+					log.Printf("[PERCENTER][SIMPLE][PENDING_HISTORY_RECOVERY_ERROR] segment_hash=%s point_version=%d event_id=%s error=%v", state.SegmentHash, state.PointVersion, state.PendingHistory.EventID, err)
+					continue
+				}
+				state.PendingHistory = nil
 			}
 			metric, ok := metricIndex.ForState(state)
 			if !ok {
@@ -113,14 +235,30 @@ func run() error {
 			if !changed {
 				continue
 			}
+			event, ok := percenter.BuildSimpleHistoryEvent(state, next, metric)
+			if !ok {
+				optimizerAnomalies.Add(1)
+				log.Printf("[PERCENTER][SIMPLE][HISTORY_BUILD_ERROR] segment_hash=%s point_version=%d", state.SegmentHash, state.PointVersion)
+				continue
+			}
+			next.PendingHistory = &event
 			saved, saveErr := simpleStore.SaveCAS(ctx, next, state.PointVersion)
 			if saveErr != nil {
+				notifyTransition("redis_db7_simple_state", true, saveErr)
+				optimizerAnomalies.Add(1)
 				log.Printf("[PERCENTER][SIMPLE][STATE_SAVE_ERROR] segment_hash=%s error=%v", state.SegmentHash, saveErr)
 				continue
 			}
+			notifyTransition("redis_db7_simple_state", false, nil)
 			if !saved {
+				optimizerAnomalies.Add(1)
 				log.Printf("[PERCENTER][SIMPLE][STATE_RACE_SKIP] segment_hash=%s expected_point_version=%d", state.SegmentHash, state.PointVersion)
 				continue
+			}
+			simpleUpdates.Add(1)
+			if err := percenter.PersistSimplePendingHistory(ctx, simpleStore, observabilityOutbox, next); err != nil {
+				optimizerAnomalies.Add(1)
+				log.Printf("[PERCENTER][SIMPLE][HISTORY_OUTBOX_ERROR] segment_hash=%s point_version=%d event_id=%s error=%v", next.SegmentHash, next.PointVersion, event.EventID, err)
 			}
 			reason := "state_updated"
 			if len(next.DecisionHistory) > 0 {
@@ -136,21 +274,33 @@ func run() error {
 
 	runComplexTick := func(now time.Time) {
 		metrics, loadErr := percenter.LoadComplexWindowMetrics(
-			ctx, clickhouseConn, cfg.Clickhouse.Database, cfg.Clickhouse.TableOrtb, cfg.Clickhouse.TableImpressions, complexPolicy.OptimizeInterval,
+			ctx, clickhouseConn, cfg.Clickhouse.Database, cfg.Clickhouse.TableOrtb, cfg.Clickhouse.TableImpressions, cfg.Clickhouse.TableClicks, complexPolicy.OptimizeInterval,
 		)
 		if loadErr != nil {
+			notifyTransition("clickhouse_complex_metrics", true, loadErr)
 			log.Printf("[PERCENTER][COMPLEX][METRICS_ERROR] %v", loadErr)
 			return
 		}
+		notifyTransition("clickhouse_complex_metrics", false, nil)
 		metricIndex := percenter.NewComplexMetricsIndex(metrics)
 		states, stateErr := complexStore.States(ctx)
 		if stateErr != nil {
+			notifyTransition("redis_db7_complex_state", true, stateErr)
 			log.Printf("[PERCENTER][COMPLEX][STATE_LIST_ERROR] %v", stateErr)
 			return
 		}
+		notifyTransition("redis_db7_complex_state", false, nil)
 		for _, state := range states {
 			if state.TypeModel != percenter.TypeModelComplex {
 				continue
+			}
+			if state.PendingHistory != nil {
+				if err := percenter.PersistComplexPendingHistory(ctx, complexStore, observabilityOutbox, state); err != nil {
+					optimizerAnomalies.Add(1)
+					log.Printf("[PERCENTER][COMPLEX][PENDING_HISTORY_RECOVERY_ERROR] segment_hash=%s point_version=%d event_id=%s error=%v", state.SegmentHash, state.PointVersion, state.PendingHistory.EventID, err)
+					continue
+				}
+				state.PendingHistory = nil
 			}
 			metric, ok := metricIndex.ForState(state)
 			if !ok {
@@ -160,14 +310,30 @@ func run() error {
 			if !changed {
 				continue
 			}
+			event, ok := percenter.BuildComplexHistoryEvent(state, next, metric)
+			if !ok {
+				optimizerAnomalies.Add(1)
+				log.Printf("[PERCENTER][COMPLEX][HISTORY_BUILD_ERROR] segment_hash=%s point_version=%d", state.SegmentHash, state.PointVersion)
+				continue
+			}
+			next.PendingHistory = &event
 			saved, saveErr := complexStore.SaveCAS(ctx, next, state.PointVersion)
 			if saveErr != nil {
+				notifyTransition("redis_db7_complex_state", true, saveErr)
+				optimizerAnomalies.Add(1)
 				log.Printf("[PERCENTER][COMPLEX][STATE_SAVE_ERROR] segment_hash=%s error=%v", state.SegmentHash, saveErr)
 				continue
 			}
+			notifyTransition("redis_db7_complex_state", false, nil)
 			if !saved {
+				optimizerAnomalies.Add(1)
 				log.Printf("[PERCENTER][COMPLEX][STATE_RACE_SKIP] segment_hash=%s expected_point_version=%d", state.SegmentHash, state.PointVersion)
 				continue
+			}
+			complexUpdates.Add(1)
+			if err := percenter.PersistComplexPendingHistory(ctx, complexStore, observabilityOutbox, next); err != nil {
+				optimizerAnomalies.Add(1)
+				log.Printf("[PERCENTER][COMPLEX][HISTORY_OUTBOX_ERROR] segment_hash=%s point_version=%d event_id=%s error=%v", next.SegmentHash, next.PointVersion, event.EventID, err)
 			}
 			reason := "state_updated"
 			if len(next.DecisionHistory) > 0 {

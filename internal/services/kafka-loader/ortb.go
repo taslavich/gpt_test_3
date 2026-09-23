@@ -40,6 +40,7 @@ var ortbHMGetFields = []string{
 	constants.WIN_CID_COLUMN,
 	constants.WIN_CRID_COLUMN,
 	constants.WIN_USER_ID_COLUMN,
+	constants.EXACT_SEGMENT_HASH_COLUMN,
 	constants.SEGMENT_HASH_COLUMN,
 	constants.PERCENTER_POINT_VERSION_COLUMN,
 }
@@ -104,8 +105,9 @@ func buildOrtbKafkaMessage(
 		WIN_CID:                 valueAsString(values, 23),
 		WIN_CRID:                valueAsString(values, 24),
 		WIN_USER_ID:             valueAsString(values, 25),
-		SEGMENT_HASH:            valueAsString(values, 26),
-		PERCENTER_POINT_VERSION: valueAsString(values, 27),
+		EXACT_SEGMENT_HASH:      valueAsString(values, 26),
+		SEGMENT_HASH:            valueAsString(values, 27),
+		PERCENTER_POINT_VERSION: valueAsString(values, 28),
 	}
 
 	if !HasDataOrtb(rawRecord) {
@@ -125,6 +127,9 @@ func buildOrtbKafkaMessage(
 	}
 	for campaignID, code := range advRTBResponses {
 		bidResponses[constants.ADVRTBResponseStatsPrefix+campaignID] = code
+	}
+	if rawRecord.EXACT_SEGMENT_HASH != "" {
+		bidResponses[constants.PercenterExactSegmentHashTransportKey] = rawRecord.EXACT_SEGMENT_HASH
 	}
 	if rawRecord.SEGMENT_HASH != "" {
 		bidResponses[constants.PercenterSegmentHashTransportKey] = rawRecord.SEGMENT_HASH

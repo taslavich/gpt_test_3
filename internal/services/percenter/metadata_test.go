@@ -8,21 +8,30 @@ import (
 
 func TestSimpleMetadataRoundTripMergeAndStrip(t *testing.T) {
 	source := &ortb.BidResponse{}
-	AttachSimpleMetadata(source, "imp-1", "segment-1", 7)
-	segment, point := SimpleMetadata(source, "imp-1")
-	if segment != "segment-1" || point != 7 {
-		t.Fatalf("metadata=(%q,%d)", segment, point)
+	AttachPercenterMetadata(source, "imp-1", "request-exact", "segment-1", 7)
+	exact, segment, point := PercenterMetadata(source, "imp-1")
+	if exact != "request-exact" || segment != "segment-1" || point != 7 {
+		t.Fatalf("metadata=(%q,%q,%d)", exact, segment, point)
 	}
 
 	destination := &ortb.BidResponse{}
 	MergeSimpleMetadata(destination, source)
-	segment, point = SimpleMetadata(destination, "imp-1")
-	if segment != "segment-1" || point != 7 {
-		t.Fatalf("merged metadata=(%q,%d)", segment, point)
+	exact, segment, point = PercenterMetadata(destination, "imp-1")
+	if exact != "request-exact" || segment != "segment-1" || point != 7 {
+		t.Fatalf("merged metadata=(%q,%q,%d)", exact, segment, point)
 	}
 
 	StripSimpleMetadata(destination)
-	if segment, point := SimpleMetadata(destination, "imp-1"); segment != "" || point != 0 {
-		t.Fatalf("metadata leaked after strip=(%q,%d)", segment, point)
+	if exact, segment, point := PercenterMetadata(destination, "imp-1"); exact != "" || segment != "" || point != 0 {
+		t.Fatalf("metadata leaked after strip=(%q,%q,%d)", exact, segment, point)
+	}
+}
+
+func TestAttachSimpleMetadataKeepsBackwardCompatibleExactAttribution(t *testing.T) {
+	response := &ortb.BidResponse{}
+	AttachSimpleMetadata(response, "imp", "segment", 5)
+	exact, segment, point := PercenterMetadata(response, "imp")
+	if exact != "segment" || segment != "segment" || point != 5 {
+		t.Fatalf("metadata=(%q,%q,%d)", exact, segment, point)
 	}
 }

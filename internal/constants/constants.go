@@ -2,6 +2,7 @@ package constants
 
 const ExternalADVBidMarker = "__external_adv__"
 const ADVRTBResponseStatsPrefix = "__adv_rtb_stats__:"
+const PercenterExactSegmentHashTransportKey = "__twinbid_exact_segment_hash"
 const PercenterSegmentHashTransportKey = "__twinbid_segment_hash"
 const PercenterPointVersionTransportKey = "__twinbid_percenter_point_version"
 
@@ -45,6 +46,7 @@ const (
 	WIN_CID_COLUMN                 = "WIN_CID"
 	WIN_CRID_COLUMN                = "WIN_CRID"
 	WIN_USER_ID_COLUMN             = "WIN_USER_ID"
+	EXACT_SEGMENT_HASH_COLUMN      = "EXACT_SEGMENT_HASH"
 	SEGMENT_HASH_COLUMN            = "SEGMENT_HASH"
 	PERCENTER_POINT_VERSION_COLUMN = "PERCENTER_POINT_VERSION"
 )

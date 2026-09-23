@@ -144,6 +144,11 @@ func (s *PercentStore) Lookup(campaignID string) float64 {
 }
 
 func (s *PercentStore) LookupForCampaign(campaignID string, rtb bool) float64 {
+	percent, _ := s.LookupForCampaignWithSource(campaignID, rtb)
+	return percent
+}
+
+func (s *PercentStore) LookupForCampaignWithSource(campaignID string, rtb bool) (float64, string) {
 	defaultValue := DefaultADVPercent
 	defaultKey := PercentMapDefaultKey
 	if rtb {
@@ -151,19 +156,19 @@ func (s *PercentStore) LookupForCampaign(campaignID string, rtb bool) float64 {
 		defaultKey = PercentMapRTBDefaultKey
 	}
 	if s == nil {
-		return defaultValue
+		return defaultValue, defaultKey
 	}
 	snapshot := s.value.Load()
 	if snapshot == nil {
-		return defaultValue
+		return defaultValue, defaultKey
 	}
 	if percent, exists := snapshot.Values[normalizePercentCampaignID(campaignID)]; exists {
-		return percent
+		return percent, "campaign"
 	}
 	if percent, exists := snapshot.Values[defaultKey]; exists {
-		return percent
+		return percent, defaultKey
 	}
-	return defaultValue
+	return defaultValue, defaultKey
 }
 
 func (s *PercentStore) Saved() (PercentMap, error) {

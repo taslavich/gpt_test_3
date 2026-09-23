@@ -94,6 +94,7 @@ func insertBatchOrtb(
 			win_cid,
 			win_crid,
 			win_user_id,
+			exact_segment_hash,
 			segment_hash,
 			percenter_point_version
 		)
@@ -140,7 +141,7 @@ func insertBatchOrtb(
 
 		cityID := int32(r.CityId)
 		code := uint16(r.Code)
-		normalResponses, advRTBResponses, segmentHash, pointVersion := splitOrtbBidResponses(r.BidResponses)
+		normalResponses, advRTBResponses, exactSegmentHash, segmentHash, pointVersion := splitOrtbBidResponses(r.BidResponses)
 		bidResponsesRaw := encodeBidResponsesRaw(normalResponses)
 		advRTBResponsesRaw := encodeBidResponsesRaw(advRTBResponses)
 
@@ -172,6 +173,7 @@ func insertBatchOrtb(
 			r.WinCid,
 			r.WinCrid,
 			r.WinUserId,
+			exactSegmentHash,
 			segmentHash,
 			pointVersion,
 		); err != nil {
@@ -187,13 +189,17 @@ func insertBatchOrtb(
 	return stats, nil
 }
 
-func splitOrtbBidResponses(items map[string]string) (map[string]string, map[string]string, string, uint64) {
+func splitOrtbBidResponses(items map[string]string) (map[string]string, map[string]string, string, string, uint64) {
 	normalResponses := make(map[string]string)
 	advRTBResponses := make(map[string]string)
+	exactSegmentHash := ""
 	segmentHash := ""
 	var pointVersion uint64
 	for key, value := range items {
 		switch key {
+		case constants.PercenterExactSegmentHashTransportKey:
+			exactSegmentHash = strings.TrimSpace(value)
+			continue
 		case constants.PercenterSegmentHashTransportKey:
 			segmentHash = strings.TrimSpace(value)
 			continue
@@ -210,7 +216,7 @@ func splitOrtbBidResponses(items map[string]string) (map[string]string, map[stri
 		}
 		normalResponses[key] = value
 	}
-	return normalResponses, advRTBResponses, segmentHash, pointVersion
+	return normalResponses, advRTBResponses, exactSegmentHash, segmentHash, pointVersion
 }
 
 func encodeBidResponsesRaw(items map[string]string) string {

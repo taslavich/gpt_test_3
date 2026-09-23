@@ -88,6 +88,7 @@ CREATE TABLE IF NOT EXISTS {db}.ortb
     win_crid          String DEFAULT '',
     win_user_id       String DEFAULT '',
 
+    exact_segment_hash       String DEFAULT '',
     segment_hash             String DEFAULT '',
     percenter_point_version  UInt64 DEFAULT 0
 )
@@ -103,7 +104,10 @@ ALTER TABLE {db}.ortb
     ADD COLUMN IF NOT EXISTS adv_rtb_responses_raw String DEFAULT '' AFTER bid_responses_raw;
 
 ALTER TABLE {db}.ortb
-    ADD COLUMN IF NOT EXISTS segment_hash String DEFAULT '' AFTER win_user_id;
+    ADD COLUMN IF NOT EXISTS exact_segment_hash String DEFAULT '' AFTER win_user_id;
+
+ALTER TABLE {db}.ortb
+    ADD COLUMN IF NOT EXISTS segment_hash String DEFAULT '' AFTER exact_segment_hash;
 
 ALTER TABLE {db}.ortb
     ADD COLUMN IF NOT EXISTS percenter_point_version UInt64 DEFAULT 0 AFTER segment_hash;

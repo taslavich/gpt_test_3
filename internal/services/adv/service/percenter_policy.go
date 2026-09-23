@@ -33,6 +33,7 @@ const (
 type PricingDecision struct {
 	Mode       PercentRoutingMode
 	MapPercent float64
+	MapSource  string
 	HardMin    float64
 	MinMargin  float64
 	MaxMargin  float64
@@ -72,10 +73,12 @@ func (s *AuctionService) ResolvePricingDecision(campaign *Campaign) (PricingDeci
 	}
 
 	mapPercent := DefaultADVPercent
+	mapSource := PercentMapDefaultKey
 	if s != nil && s.percents != nil {
-		mapPercent = s.percents.LookupForCampaign(campaign.ID, campaign.RTB)
+		mapPercent, mapSource = s.percents.LookupForCampaignWithSource(campaign.ID, campaign.RTB)
 	} else if campaign.RTB {
 		mapPercent = DefaultADVRTBPercent
+		mapSource = PercentMapRTBDefaultKey
 	}
 	if !finitePercent(mapPercent) {
 		return PricingDecision{}, fmt.Errorf("campaign %s resolved invalid percent %.12f", campaign.ID, mapPercent)
@@ -83,6 +86,7 @@ func (s *AuctionService) ResolvePricingDecision(campaign *Campaign) (PricingDeci
 
 	decision := PricingDecision{
 		MapPercent: mapPercent,
+		MapSource:  mapSource,
 		MaxMargin:  MaxAdvertiserMargin,
 	}
 
@@ -199,4 +203,11 @@ func (s PercenterSegment) Hash() string {
 
 func BuildPercenterSegmentHash(req *ortb.BidRequest, sspDomain, campaignID string) string {
 	return BuildPercenterSegment(req, sspDomain, campaignID).Hash()
+}
+
+// BuildPercenterRequestHash is the pre-campaign exact request identity used for
+// Stage 04 attribution. It intentionally omits campaign_id; the final
+// BuildPercenterSegmentHash remains campaign-aware and is used for optimizer state.
+func BuildPercenterRequestHash(req *ortb.BidRequest, sspDomain string) string {
+	return BuildPercenterSegment(req, sspDomain, "").Hash()
 }

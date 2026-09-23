@@ -114,6 +114,7 @@ type ComplexState struct {
 	SSPBid              float64           `json:"ssp_bid"`
 	Margin              float64           `json:"margin"`
 	EffectiveMin        float64           `json:"effective_min"`
+	MapSource           string            `json:"map_source,omitempty"`
 	MaxMargin           float64           `json:"max_margin"`
 	BaselineBuyout      float64           `json:"baseline_buyout"`
 	BaselineEfficiency  float64           `json:"baseline_efficiency"`
@@ -129,6 +130,7 @@ type ComplexState struct {
 	LastRebenchmarkAt   time.Time         `json:"last_rebenchmark_at"`
 	UpdatedAt           time.Time         `json:"updated_at"`
 	DecisionHistory     []ComplexDecision `json:"decision_history,omitempty"`
+	PendingHistory      *HistoryEvent     `json:"pending_history,omitempty"`
 }
 
 type ComplexPricing struct {
@@ -139,13 +141,17 @@ type ComplexPricing struct {
 	PointVersion    uint64
 }
 
-func NewComplexState(segmentHash, campaignID string, originalBid, effectiveMin float64, policy ComplexPolicy, now time.Time) ComplexState {
+func NewComplexState(segmentHash, campaignID string, originalBid, effectiveMin float64, policy ComplexPolicy, now time.Time, mapSource ...string) ComplexState {
 	policy = policy.Normalize()
 	if now.IsZero() {
 		now = time.Now().UTC()
 	}
 	effectiveMin = clampMargin(effectiveMin, 0, policy.MaxMargin)
 	sspBid := priceAfterMargin(originalBid, effectiveMin)
+	source := ""
+	if len(mapSource) > 0 {
+		source = strings.TrimSpace(mapSource[0])
+	}
 	return ComplexState{
 		SegmentHash:     strings.TrimSpace(segmentHash),
 		CampaignID:      strings.TrimSpace(campaignID),
@@ -156,6 +162,7 @@ func NewComplexState(segmentHash, campaignID string, originalBid, effectiveMin f
 		SSPBid:          sspBid,
 		Margin:          effectiveMin,
 		EffectiveMin:    effectiveMin,
+		MapSource:       source,
 		MaxMargin:       policy.MaxMargin,
 		LastGoodSSPBid:  sspBid,
 		LastGoodMargin:  effectiveMin,
@@ -204,7 +211,7 @@ func RepairComplexState(state ComplexState, originalBid, effectiveMin float64, p
 		state.PointVersion == 0 || !phaseOK || state.SSPStepIndex < 0 || state.SSPStepIndex >= len(policy.SSPSearchStepsPercent) ||
 		state.MarginStepIndex < 0 || state.MarginStepIndex >= len(policy.MarginSearchStepsPP)
 	if invalid {
-		reset := NewComplexState(state.SegmentHash, state.CampaignID, originalBid, effectiveMin, policy, now)
+		reset := NewComplexState(state.SegmentHash, state.CampaignID, originalBid, effectiveMin, policy, now, state.MapSource)
 		reset.PointVersion = nextPointVersion(state.PointVersion)
 		return reset, true
 	}
@@ -212,7 +219,7 @@ func RepairComplexState(state ComplexState, originalBid, effectiveMin float64, p
 	newMin := clampMargin(effectiveMin, 0, policy.MaxMargin)
 	if !approximatelyEqual(state.OriginalBid, originalBid) || !approximatelyEqual(state.EffectiveMin, newMin) || !approximatelyEqual(state.MaxMargin, policy.MaxMargin) ||
 		state.Margin < newMin-1e-12 || state.Margin > policy.MaxMargin+1e-12 || state.LastGoodMargin < newMin-1e-12 || state.LastGoodMargin > policy.MaxMargin+1e-12 {
-		reset := NewComplexState(state.SegmentHash, state.CampaignID, originalBid, newMin, policy, now)
+		reset := NewComplexState(state.SegmentHash, state.CampaignID, originalBid, newMin, policy, now, state.MapSource)
 		reset.PointVersion = nextPointVersion(state.PointVersion)
 		reset.appendDecision(ComplexDecision{
 			At: now, Phase: ComplexPhaseBenchmark, Reason: "state_repaired_rebenchmark",
@@ -312,18 +319,22 @@ func (s *ComplexStateStore) Get(ctx context.Context, segmentHash string) (Comple
 	return state, nil
 }
 
-func (s *ComplexStateStore) GetOrInitPricing(ctx context.Context, segmentHash, campaignID string, originalBid, effectiveMin float64, now time.Time) (ComplexPricing, error) {
+func (s *ComplexStateStore) GetOrInitPricing(ctx context.Context, segmentHash, campaignID string, originalBid, effectiveMin float64, now time.Time, mapSource ...string) (ComplexPricing, error) {
 	if s == nil || s.redis == nil {
 		return ComplexPricing{}, errors.New("complex percenter Redis store is not configured")
 	}
 	policy := s.policy.Normalize()
+	source := ""
+	if len(mapSource) > 0 {
+		source = strings.TrimSpace(mapSource[0])
+	}
 	key := ComplexStateKey(segmentHash)
 	var result ComplexState
 	for attempt := 0; attempt < 4; attempt++ {
 		err := s.redis.Watch(ctx, func(tx *redis.Tx) error {
 			raw, err := tx.Get(ctx, key).Bytes()
 			if errors.Is(err, redis.Nil) {
-				result = NewComplexState(segmentHash, campaignID, originalBid, effectiveMin, policy, now)
+				result = NewComplexState(segmentHash, campaignID, originalBid, effectiveMin, policy, now, source)
 				return saveComplexStateTx(ctx, tx, key, result, policy.StateTTL, true)
 			}
 			if err != nil {
@@ -331,17 +342,21 @@ func (s *ComplexStateStore) GetOrInitPricing(ctx context.Context, segmentHash, c
 			}
 			var state ComplexState
 			if err := json.Unmarshal(raw, &state); err != nil {
-				result = NewComplexState(segmentHash, campaignID, originalBid, effectiveMin, policy, now)
+				result = NewComplexState(segmentHash, campaignID, originalBid, effectiveMin, policy, now, source)
 				return saveComplexStateTx(ctx, tx, key, result, policy.StateTTL, true)
 			}
 			if !state.Compatible(segmentHash, campaignID, originalBid, effectiveMin, policy) {
 				oldPointVersion := state.PointVersion
-				state = NewComplexState(segmentHash, campaignID, originalBid, effectiveMin, policy, now)
+				state = NewComplexState(segmentHash, campaignID, originalBid, effectiveMin, policy, now, source)
 				state.PointVersion = nextPointVersion(oldPointVersion)
 				result = state
 				return saveComplexStateTx(ctx, tx, key, state, policy.StateTTL, true)
 			}
 			repaired, changed := RepairComplexState(state, originalBid, effectiveMin, policy, now)
+			if source != "" && repaired.MapSource != source {
+				repaired.MapSource = source
+				changed = true
+			}
 			result = repaired
 			if !changed {
 				return nil
@@ -401,6 +416,9 @@ func saveComplexStateTx(ctx context.Context, tx *redis.Tx, key string, state Com
 	}
 	_, err = tx.TxPipelined(ctx, func(pipe redis.Pipeliner) error {
 		pipe.Set(ctx, key, payload, ttl)
+		if err := stagePendingHistoryRedis(ctx, pipe, state.PendingHistory, ttl); err != nil {
+			return err
+		}
 		if addIndex {
 			pipe.SAdd(ctx, ComplexStateIndexKey, state.SegmentHash)
 		}
