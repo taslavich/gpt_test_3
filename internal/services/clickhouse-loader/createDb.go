@@ -118,6 +118,96 @@ ALTER TABLE {db}.ortb
 
 
 -- ============================================================
+-- PERCENTER OBSERVABILITY / DECISION HISTORY
+-- ============================================================
+
+-- Durable percenter decision history. event_id is stable across retries.
+-- ReplacingMergeTree + FINAL logical view make physical replay logically
+-- idempotent without relying on background merge timing.
+CREATE TABLE IF NOT EXISTS {db}.percenter_state_history
+(
+    event_id String,
+    timestamp DateTime64(3, 'UTC'),
+    bucket DateTime64(3, 'UTC'),
+    campaign_id String,
+    exact_segment_hash String,
+    segment_hash String,
+    type_model UInt8,
+    phase LowCardinality(String),
+    point_version UInt64,
+    original_bid Float64,
+    advertiser_price Float64,
+    ssp_bid Float64,
+    margin Float64,
+    effective_min Float64,
+    map_source LowCardinality(String),
+    baseline_buyout Float64,
+    baseline_winrate Float64,
+    baseline_efficiency Float64,
+    requests UInt64,
+    impressions UInt64,
+    wins UInt64,
+    clicks UInt64,
+    advertiser_spend Float64,
+    revenue Float64,
+    buyout Float64,
+    winrate Float64,
+    efficiency Float64,
+    profit Float64,
+    profit_per_relevant_opportunity Float64,
+    previous_ssp_bid Float64,
+    previous_margin Float64,
+    candidate_ssp_bid Float64,
+    candidate_margin Float64,
+    result_ssp_bid Float64,
+    result_margin Float64,
+    decision LowCardinality(String),
+    reason String,
+    step Float64,
+    threshold_passed Bool,
+    inserted_at DateTime64(3, 'UTC') DEFAULT now64(3)
+)
+ENGINE = ReplacingMergeTree(inserted_at)
+ORDER BY event_id;
+
+-- Compatibility with an installation that briefly ran an earlier schema
+-- before result-point fields were added.
+ALTER TABLE {db}.percenter_state_history
+    ADD COLUMN IF NOT EXISTS result_ssp_bid Float64 AFTER candidate_margin;
+
+ALTER TABLE {db}.percenter_state_history
+    ADD COLUMN IF NOT EXISTS result_margin Float64 AFTER result_ssp_bid;
+
+CREATE TABLE IF NOT EXISTS {db}.percenter_telemetry
+(
+    event_id String,
+    bucket DateTime64(3, 'UTC'),
+    service LowCardinality(String),
+    instance String,
+    campaign_id String,
+    exact_segment_hash String,
+    segment_hash String,
+    type_model UInt8,
+    point_version UInt64,
+    counter LowCardinality(String),
+    value UInt64,
+    inserted_at DateTime64(3, 'UTC') DEFAULT now64(3)
+)
+ENGINE = ReplacingMergeTree(inserted_at)
+ORDER BY event_id;
+
+-- Analytics must read logical views (or otherwise deduplicate by event_id),
+-- so retries/crash replays cannot double-apply one logical observation.
+CREATE VIEW IF NOT EXISTS {db}.percenter_state_history_logical AS
+SELECT *
+FROM {db}.percenter_state_history FINAL;
+
+CREATE VIEW IF NOT EXISTS {db}.percenter_telemetry_logical AS
+SELECT *
+FROM {db}.percenter_telemetry FINAL;
+
+
+-- ============================================================
 -- IP LIMIT IPV4
 -- ============================================================
 

@@ -126,7 +126,7 @@ Physical Kafka delivery is at-least-once. The final consumer is outside this rep
 1. Back up/verify the current percent-map JSON and PostgreSQL/ClickHouse targets.
 2. Deploy the matching cabinet-backend patch first. The cabinet backend owns `campaigns.type_model`, `users.promo_spend_remaining`, `users.promo_revision`, the revision trigger and `adv_promo_spend_events`; ORTB has no PostgreSQL migration for these objects.
 3. Verify `CABINET_BACKEND_URL` from `adm-adapter` reaches the cabinet backend internal promo-spend endpoint and both services use the same existing `BOT_INTERNAL_SECRET`.
-4. Apply `migrations/004_percenter_observability.sql` to the configured ClickHouse database. It adds `ortb.exact_segment_hash`, creates `percenter_state_history` and `percenter_telemetry`, and creates their `_logical` views.
+4. Start/run `clickhouse-loader` schema initialization (`CreateDB`). The main ClickHouse DDL in `internal/services/clickhouse-loader/createDb.go` adds the ORTB percenter attribution columns and creates `percenter_state_history`, `percenter_telemetry`, and their `_logical` views. No separate percenter ClickHouse migration file is required.
 5. Ensure the existing Redis instance is reachable as `REDIS_ADV_ADDR` and logical DB7 is available for Simple/Complex state and recovery indexes. Do not add a new Redis shard/instance.
 6. Ensure Kafka topic `KAFKA_TOPIC_PERCENTER` (default `percenter_observability`) exists on the configured existing Kafka cluster.
 7. Create/mount the two bbolt parent directories and verify service-user read/write/lock/fsync permissions.
