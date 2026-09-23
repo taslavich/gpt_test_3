@@ -112,7 +112,7 @@ func TestPromoRuntimeShadowAppliesUserWideWithoutAuctionIO(t *testing.T) {
 		}
 	}
 
-	if err := service.ApplyPromoSpendRemaining("user-1", 0, 11); err != nil {
+	if err := service.ApplyPromoSpendRemaining("user-1", 0, 11, 4); err != nil {
 		t.Fatal(err)
 	}
 	wants := map[string]float64{
@@ -128,10 +128,13 @@ func TestPromoRuntimeShadowAppliesUserWideWithoutAuctionIO(t *testing.T) {
 		if math.Abs(decision.Percent-wants[campaign.ID]) > 1e-12 {
 			t.Fatalf("runtime promo exhaustion did not apply user-wide: campaign=%s decision=%+v want=%v", campaign.ID, decision, wants[campaign.ID])
 		}
+		if decision.PromoActive || decision.PromoGeneration != 4 {
+			t.Fatalf("pricing decision did not capture exhausted generation: campaign=%s decision=%+v", campaign.ID, decision)
+		}
 	}
 
 	// A lower revision is stale even if its remaining value is higher.
-	if err := service.ApplyPromoSpendRemaining("user-1", 3, 10); err != nil {
+	if err := service.ApplyPromoSpendRemaining("user-1", 3, 10, 4); err != nil {
 		t.Fatal(err)
 	}
 	if got := service.effectivePromoSpendRemaining(campaigns[0]); got != 0 {
@@ -141,18 +144,18 @@ func TestPromoRuntimeShadowAppliesUserWideWithoutAuctionIO(t *testing.T) {
 
 func TestPromoRevisionStaleSnapshotDoesNotRollbackBillingUpdate(t *testing.T) {
 	service := NewAuctionService(nil, nil, nil, nil, nil)
-	if err := service.PublishSnapshot(promoSnapshotForTest("user-1", 5, 10)); err != nil {
+	if err := service.PublishSnapshot(promoSnapshotForTest("user-1", 5, 10, 4)); err != nil {
 		t.Fatal(err)
 	}
-	if err := service.ApplyPromoSpendRemaining("user-1", 0, 11); err != nil {
+	if err := service.ApplyPromoSpendRemaining("user-1", 0, 11, 4); err != nil {
 		t.Fatal(err)
 	}
-	if err := service.PublishSnapshot(promoSnapshotForTest("user-1", 5, 10)); err != nil {
+	if err := service.PublishSnapshot(promoSnapshotForTest("user-1", 5, 10, 4)); err != nil {
 		t.Fatal(err)
 	}
 
 	state, ok := promoStateFromSnapshot(service.currentSnapshot(), "user-1")
-	if !ok || state.Remaining != 0 || state.Revision != 11 {
+	if !ok || state.Remaining != 0 || state.Revision != 11 || state.Generation != 4 {
 		t.Fatalf("stale snapshot rolled promo state back: state=%+v present=%t", state, ok)
 	}
 	if raw, ok := service.promoRemainingOverrides.Load("user-1"); !ok || raw.(promoRuntimeState).Revision != 11 {
@@ -162,18 +165,18 @@ func TestPromoRevisionStaleSnapshotDoesNotRollbackBillingUpdate(t *testing.T) {
 
 func TestPromoRevisionNewGrantAfterExhaustionApplies(t *testing.T) {
 	service := NewAuctionService(nil, nil, nil, nil, nil)
-	if err := service.PublishSnapshot(promoSnapshotForTest("user-1", 5, 10)); err != nil {
+	if err := service.PublishSnapshot(promoSnapshotForTest("user-1", 5, 10, 4)); err != nil {
 		t.Fatal(err)
 	}
-	if err := service.ApplyPromoSpendRemaining("user-1", 0, 11); err != nil {
+	if err := service.ApplyPromoSpendRemaining("user-1", 0, 11, 4); err != nil {
 		t.Fatal(err)
 	}
-	if err := service.PublishSnapshot(promoSnapshotForTest("user-1", 100, 12)); err != nil {
+	if err := service.PublishSnapshot(promoSnapshotForTest("user-1", 100, 12, 5)); err != nil {
 		t.Fatal(err)
 	}
 
 	state, ok := promoStateFromSnapshot(service.currentSnapshot(), "user-1")
-	if !ok || state.Remaining != 100 || state.Revision != 12 {
+	if !ok || state.Remaining != 100 || state.Revision != 12 || state.Generation != 5 {
 		t.Fatalf("new promo grant was not applied: state=%+v present=%t", state, ok)
 	}
 	if _, ok := service.promoRemainingOverrides.Load("user-1"); ok {
@@ -183,13 +186,13 @@ func TestPromoRevisionNewGrantAfterExhaustionApplies(t *testing.T) {
 
 func TestPromoRevisionDuplicateUpdateIsIdempotent(t *testing.T) {
 	service := NewAuctionService(nil, nil, nil, nil, nil)
-	if err := service.PublishSnapshot(promoSnapshotForTest("user-1", 0, 11)); err != nil {
+	if err := service.PublishSnapshot(promoSnapshotForTest("user-1", 0, 11, 4)); err != nil {
 		t.Fatal(err)
 	}
-	if err := service.ApplyPromoSpendRemaining("user-1", 100, 12); err != nil {
+	if err := service.ApplyPromoSpendRemaining("user-1", 100, 12, 5); err != nil {
 		t.Fatal(err)
 	}
-	if err := service.ApplyPromoSpendRemaining("user-1", 100, 12); err != nil {
+	if err := service.ApplyPromoSpendRemaining("user-1", 100, 12, 5); err != nil {
 		t.Fatal(err)
 	}
 
@@ -198,20 +201,20 @@ func TestPromoRevisionDuplicateUpdateIsIdempotent(t *testing.T) {
 		t.Fatal("versioned runtime promo shadow is missing")
 	}
 	state := raw.(promoRuntimeState)
-	if state.Remaining != 100 || state.Revision != 12 {
+	if state.Remaining != 100 || state.Revision != 12 || state.Generation != 5 {
 		t.Fatalf("duplicate update changed state: %+v", state)
 	}
 }
 
 func TestPromoRevisionOutOfOrderUpdatesUseRevisionNotRemaining(t *testing.T) {
 	service := NewAuctionService(nil, nil, nil, nil, nil)
-	if err := service.PublishSnapshot(promoSnapshotForTest("user-1", 0, 11)); err != nil {
+	if err := service.PublishSnapshot(promoSnapshotForTest("user-1", 0, 11, 4)); err != nil {
 		t.Fatal(err)
 	}
-	if err := service.ApplyPromoSpendRemaining("user-1", 100, 12); err != nil {
+	if err := service.ApplyPromoSpendRemaining("user-1", 100, 12, 5); err != nil {
 		t.Fatal(err)
 	}
-	if err := service.ApplyPromoSpendRemaining("user-1", 0, 11); err != nil {
+	if err := service.ApplyPromoSpendRemaining("user-1", 0, 11, 4); err != nil {
 		t.Fatal(err)
 	}
 
@@ -220,62 +223,80 @@ func TestPromoRevisionOutOfOrderUpdatesUseRevisionNotRemaining(t *testing.T) {
 		t.Fatal("runtime promo shadow is missing")
 	}
 	state := raw.(promoRuntimeState)
-	if state.Remaining != 100 || state.Revision != 12 {
+	if state.Remaining != 100 || state.Revision != 12 || state.Generation != 5 {
 		t.Fatalf("lower-revision update won because of remaining magnitude: %+v", state)
 	}
 
-	if err := service.ApplyPromoSpendRemaining("user-1", 1, 13); err != nil {
+	if err := service.ApplyPromoSpendRemaining("user-1", 1, 13, 5); err != nil {
 		t.Fatal(err)
 	}
 	state = mustPromoShadowForTest(t, service, "user-1")
-	if state.Remaining != 1 || state.Revision != 13 {
+	if state.Remaining != 1 || state.Revision != 13 || state.Generation != 5 {
 		t.Fatalf("newer revision did not win when remaining decreased: %+v", state)
 	}
 }
 
 func TestPromoRevisionSnapshotRefreshReconcilesShadowByRevision(t *testing.T) {
 	service := NewAuctionService(nil, nil, nil, nil, nil)
-	if err := service.PublishSnapshot(promoSnapshotForTest("user-1", 5, 10)); err != nil {
+	if err := service.PublishSnapshot(promoSnapshotForTest("user-1", 5, 10, 4)); err != nil {
 		t.Fatal(err)
 	}
-	if err := service.ApplyPromoSpendRemaining("user-1", 0, 11); err != nil {
+	if err := service.ApplyPromoSpendRemaining("user-1", 0, 11, 4); err != nil {
 		t.Fatal(err)
 	}
 
-	if err := service.PublishSnapshot(promoSnapshotForTest("user-1", 5, 10)); err != nil {
+	if err := service.PublishSnapshot(promoSnapshotForTest("user-1", 5, 10, 4)); err != nil {
 		t.Fatal(err)
 	}
 	if state := mustPromoShadowForTest(t, service, "user-1"); state.Revision != 11 || state.Remaining != 0 {
 		t.Fatalf("stale snapshot incorrectly replaced runtime shadow: %+v", state)
 	}
 
-	if err := service.PublishSnapshot(promoSnapshotForTest("user-1", 0, 11)); err != nil {
+	if err := service.PublishSnapshot(promoSnapshotForTest("user-1", 0, 11, 4)); err != nil {
 		t.Fatal(err)
 	}
 	if _, ok := service.promoRemainingOverrides.Load("user-1"); ok {
 		t.Fatal("equal-revision snapshot did not clear caught-up runtime shadow")
 	}
 
-	if err := service.ApplyPromoSpendRemaining("user-1", 25, 12); err != nil {
+	if err := service.ApplyPromoSpendRemaining("user-1", 25, 12, 5); err != nil {
 		t.Fatal(err)
 	}
-	if err := service.PublishSnapshot(promoSnapshotForTest("user-1", 100, 13)); err != nil {
+	if err := service.PublishSnapshot(promoSnapshotForTest("user-1", 100, 13, 5)); err != nil {
 		t.Fatal(err)
 	}
 	if _, ok := service.promoRemainingOverrides.Load("user-1"); ok {
 		t.Fatal("newer snapshot did not replace older runtime shadow")
 	}
 	state, ok := promoStateFromSnapshot(service.currentSnapshot(), "user-1")
-	if !ok || state.Remaining != 100 || state.Revision != 13 {
+	if !ok || state.Remaining != 100 || state.Revision != 13 || state.Generation != 5 {
 		t.Fatalf("newer snapshot state not published: state=%+v present=%t", state, ok)
 	}
 }
 
-func promoSnapshotForTest(userID string, remaining float64, revision int64) *Snapshot {
+func TestPromoGenerationSupersedesOlderGenerationEvenWithHigherOldRevision(t *testing.T) {
+	service := NewAuctionService(nil, nil, nil, nil, nil)
+	if err := service.PublishSnapshot(promoSnapshotForTest("user-1", 0, 100, 4)); err != nil {
+		t.Fatal(err)
+	}
+	if err := service.ApplyPromoSpendRemaining("user-1", 100, 101, 5); err != nil {
+		t.Fatal(err)
+	}
+	if err := service.ApplyPromoSpendRemaining("user-1", 0, 999, 4); err != nil {
+		t.Fatal(err)
+	}
+	state := mustPromoShadowForTest(t, service, "user-1")
+	if state.Generation != 5 || state.Revision != 101 || state.Remaining != 100 {
+		t.Fatalf("older generation overrode current generation: %+v", state)
+	}
+}
+
+func promoSnapshotForTest(userID string, remaining float64, revision, generation int64) *Snapshot {
 	return &Snapshot{
 		UserGoals:               map[string]float64{userID: 1},
 		UserPromoSpendRemaining: map[string]float64{userID: remaining},
 		UserPromoRevision:       map[string]int64{userID: revision},
+		UserPromoGeneration:     map[string]int64{userID: generation},
 	}
 }
 

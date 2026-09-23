@@ -101,6 +101,7 @@ type Campaign struct {
 	TypeModel           int
 	PromoSpendRemaining float64
 	PromoRevision       int64
+	PromoGeneration     int64
 	GoalTotalDollars    float64
 	EvennessBySlotMode  bool
 	BlockVPN            bool
@@ -133,6 +134,7 @@ type Snapshot struct {
 	UserGoals               map[string]float64
 	UserPromoSpendRemaining map[string]float64
 	UserPromoRevision       map[string]int64
+	UserPromoGeneration     map[string]int64
 	UserAntiPerekrutBlocked map[string]bool
 	HasBlockVPNCampaigns    bool
 	LoadedAt                time.Time
@@ -152,15 +154,18 @@ type AuctionOutcome struct {
 }
 
 type candidate struct {
-	campaign       *Campaign
-	creatives      []*Creative
-	chargePrice    float64
-	effectivePrice float64
-	basePrice      float64
-	originalBid    float64
-	externalBid    *ortb.Bid
-	segmentHash    string
-	pointVersion   uint64
+	campaign           *Campaign
+	creatives          []*Creative
+	chargePrice        float64
+	effectivePrice     float64
+	basePrice          float64
+	originalBid        float64
+	externalBid        *ortb.Bid
+	segmentHash        string
+	pointVersion       uint64
+	promoStateCaptured bool
+	promoActive        bool
+	promoGeneration    int64
 
 	// Diagnostics metadata is observational only. It is never read by pricing,
 	// filtering, candidate-pool construction, random selection, or bid building.
@@ -169,8 +174,23 @@ type candidate struct {
 }
 
 type promoRuntimeState struct {
-	Remaining float64
-	Revision  int64
+	Remaining  float64
+	Revision   int64
+	Generation int64
+}
+
+func promoStateNewer(a, b promoRuntimeState) bool {
+	if a.Generation != b.Generation {
+		return a.Generation > b.Generation
+	}
+	return a.Revision > b.Revision
+}
+
+func promoStateAtLeastAsNew(a, b promoRuntimeState) bool {
+	if a.Generation != b.Generation {
+		return a.Generation > b.Generation
+	}
+	return a.Revision >= b.Revision
 }
 
 type AuctionService struct {
@@ -218,7 +238,7 @@ func NewAuctionService(runtime *RuntimeStore, winners *WinnerStore, percents *Pe
 		snapshotWarningSeen: make(map[string]struct{}),
 		rtbHTTPClient:       newSafeRTBHTTPClient(),
 	}
-	s.snapshot.Store(&Snapshot{Campaigns: []*Campaign{}, UserGoals: map[string]float64{}, UserPromoSpendRemaining: map[string]float64{}, UserPromoRevision: map[string]int64{}, UserAntiPerekrutBlocked: map[string]bool{}})
+	s.snapshot.Store(&Snapshot{Campaigns: []*Campaign{}, UserGoals: map[string]float64{}, UserPromoSpendRemaining: map[string]float64{}, UserPromoRevision: map[string]int64{}, UserPromoGeneration: map[string]int64{}, UserAntiPerekrutBlocked: map[string]bool{}})
 	return s
 }
 
@@ -314,24 +334,29 @@ func (s *AuctionService) PublishSnapshot(snapshot *Snapshot) error {
 	current := s.snapshot.Load()
 	dbStates := make(map[string]promoRuntimeState, len(cloned.UserPromoSpendRemaining))
 	for userID, remaining := range cloned.UserPromoSpendRemaining {
-		dbStates[userID] = promoRuntimeState{Remaining: remaining, Revision: cloned.UserPromoRevision[userID]}
+		dbStates[userID] = promoRuntimeState{
+			Remaining:  remaining,
+			Revision:   cloned.UserPromoRevision[userID],
+			Generation: cloned.UserPromoGeneration[userID],
+		}
 	}
 
 	// A stale PostgreSQL snapshot must never roll promo state backwards. Merge
-	// each user by revision against both the currently published snapshot and
+	// each user by generation/revision against both the currently published snapshot and
 	// any newer billing shadow before publishing the refreshed snapshot.
 	for userID, dbState := range dbStates {
 		effective := dbState
-		if currentState, ok := promoStateFromSnapshot(current, userID); ok && currentState.Revision >= effective.Revision {
+		if currentState, ok := promoStateFromSnapshot(current, userID); ok && promoStateAtLeastAsNew(currentState, effective) {
 			effective = currentState
 		}
 		if raw, ok := s.promoRemainingOverrides.Load(userID); ok {
-			if shadow, valid := raw.(promoRuntimeState); valid && shadow.Revision >= effective.Revision {
+			if shadow, valid := raw.(promoRuntimeState); valid && promoStateAtLeastAsNew(shadow, effective) {
 				effective = shadow
 			}
 		}
 		cloned.UserPromoSpendRemaining[userID] = effective.Remaining
 		cloned.UserPromoRevision[userID] = effective.Revision
+		cloned.UserPromoGeneration[userID] = effective.Generation
 	}
 	for _, campaign := range cloned.Campaigns {
 		if campaign == nil {
@@ -339,6 +364,7 @@ func (s *AuctionService) PublishSnapshot(snapshot *Snapshot) error {
 		}
 		campaign.PromoSpendRemaining = cloned.UserPromoSpendRemaining[campaign.UserID]
 		campaign.PromoRevision = cloned.UserPromoRevision[campaign.UserID]
+		campaign.PromoGeneration = cloned.UserPromoGeneration[campaign.UserID]
 	}
 
 	s.snapshot.Store(cloned)
@@ -347,11 +373,12 @@ func (s *AuctionService) PublishSnapshot(snapshot *Snapshot) error {
 }
 
 // ApplyPromoSpendRemaining records a versioned user-level runtime state after
-// PostgreSQL has committed an authoritative promo change. Revision, not the
-// numeric remaining value, determines freshness: a later bonus grant may
-// legitimately increase remaining. Equal revisions are idempotent and older
-// revisions are ignored.
-func (s *AuctionService) ApplyPromoSpendRemaining(userID string, remaining float64, revision int64) error {
+// PostgreSQL has committed an authoritative promo change. Generation selects
+// the promo period; revision orders updates within that period. Numeric
+// remaining is never used as a freshness signal, because a later grant may
+// legitimately increase it. Equal versions are idempotent and older versions
+// are ignored.
+func (s *AuctionService) ApplyPromoSpendRemaining(userID string, remaining float64, revision, generation int64) error {
 	if s == nil {
 		return errors.New("auction service is nil")
 	}
@@ -365,12 +392,15 @@ func (s *AuctionService) ApplyPromoSpendRemaining(userID string, remaining float
 	if revision < 0 {
 		return fmt.Errorf("promo runtime update for %q has invalid revision %d", userID, revision)
 	}
-	incoming := promoRuntimeState{Remaining: remaining, Revision: revision}
+	if generation < 0 {
+		return fmt.Errorf("promo runtime update for %q has invalid generation %d", userID, generation)
+	}
+	incoming := promoRuntimeState{Remaining: remaining, Revision: revision, Generation: generation}
 
 	s.promoStateMu.Lock()
 	defer s.promoStateMu.Unlock()
 
-	current := promoRuntimeState{Revision: -1}
+	current := promoRuntimeState{Revision: -1, Generation: -1}
 	if snapshotState, ok := promoStateFromSnapshot(s.snapshot.Load(), userID); ok {
 		current = snapshotState
 	}
@@ -380,14 +410,14 @@ func (s *AuctionService) ApplyPromoSpendRemaining(userID string, remaining float
 		if shadow, valid := raw.(promoRuntimeState); valid {
 			rawCurrent = raw
 			hasShadow = true
-			if shadow.Revision > current.Revision {
+			if promoStateNewer(shadow, current) {
 				current = shadow
 			}
 		} else {
 			s.promoRemainingOverrides.Delete(userID)
 		}
 	}
-	if incoming.Revision <= current.Revision {
+	if !promoStateNewer(incoming, current) {
 		return nil
 	}
 	if hasShadow {
@@ -402,27 +432,35 @@ func (s *AuctionService) ApplyPromoSpendRemaining(userID string, remaining float
 	return nil
 }
 
-func (s *AuctionService) effectivePromoSpendRemaining(campaign *Campaign) float64 {
+func (s *AuctionService) effectivePromoState(campaign *Campaign) promoRuntimeState {
 	if campaign == nil {
-		return 0
+		return promoRuntimeState{}
 	}
-	state := promoRuntimeState{Remaining: campaign.PromoSpendRemaining, Revision: campaign.PromoRevision}
+	state := promoRuntimeState{
+		Remaining:  campaign.PromoSpendRemaining,
+		Revision:   campaign.PromoRevision,
+		Generation: campaign.PromoGeneration,
+	}
 	if s == nil || strings.TrimSpace(campaign.UserID) == "" {
-		return state.Remaining
+		return state
 	}
 	// An auction may have retained a campaign pointer from the previous immutable
 	// snapshot while a refresh is published. Consult the current in-process
-	// snapshot revision as well so clearing a caught-up shadow cannot briefly
-	// expose the older campaign promo value to that in-flight request.
-	if snapshotState, ok := promoStateFromSnapshot(s.snapshot.Load(), campaign.UserID); ok && snapshotState.Revision > state.Revision {
+	// snapshot version as well so clearing a caught-up shadow cannot briefly
+	// expose an older promo generation/revision to that in-flight request.
+	if snapshotState, ok := promoStateFromSnapshot(s.snapshot.Load(), campaign.UserID); ok && promoStateNewer(snapshotState, state) {
 		state = snapshotState
 	}
 	if raw, ok := s.promoRemainingOverrides.Load(campaign.UserID); ok {
-		if shadow, valid := raw.(promoRuntimeState); valid && shadow.Revision > state.Revision {
+		if shadow, valid := raw.(promoRuntimeState); valid && promoStateNewer(shadow, state) {
 			state = shadow
 		}
 	}
-	return state.Remaining
+	return state
+}
+
+func (s *AuctionService) effectivePromoSpendRemaining(campaign *Campaign) float64 {
+	return s.effectivePromoState(campaign).Remaining
 }
 
 func promoStateFromSnapshot(snapshot *Snapshot, userID string) (promoRuntimeState, bool) {
@@ -433,7 +471,11 @@ func promoStateFromSnapshot(snapshot *Snapshot, userID string) (promoRuntimeStat
 	if !ok {
 		return promoRuntimeState{}, false
 	}
-	return promoRuntimeState{Remaining: remaining, Revision: snapshot.UserPromoRevision[userID]}, true
+	return promoRuntimeState{
+		Remaining:  remaining,
+		Revision:   snapshot.UserPromoRevision[userID],
+		Generation: snapshot.UserPromoGeneration[userID],
+	}, true
 }
 
 func (s *AuctionService) reconcilePromoRemainingOverrides(snapshot *Snapshot) {
@@ -442,7 +484,11 @@ func (s *AuctionService) reconcilePromoRemainingOverrides(snapshot *Snapshot) {
 	}
 	dbStates := make(map[string]promoRuntimeState, len(snapshot.UserPromoSpendRemaining))
 	for userID, remaining := range snapshot.UserPromoSpendRemaining {
-		dbStates[userID] = promoRuntimeState{Remaining: remaining, Revision: snapshot.UserPromoRevision[userID]}
+		dbStates[userID] = promoRuntimeState{
+			Remaining:  remaining,
+			Revision:   snapshot.UserPromoRevision[userID],
+			Generation: snapshot.UserPromoGeneration[userID],
+		}
 	}
 	s.promoStateMu.Lock()
 	defer s.promoStateMu.Unlock()
@@ -458,7 +504,7 @@ func (s *AuctionService) reconcilePromoRemainingOverridesLocked(dbStates map[str
 			return true
 		}
 		dbState, exists := dbStates[userID]
-		if !exists || dbState.Revision >= shadow.Revision {
+		if !exists || promoStateAtLeastAsNew(dbState, shadow) {
 			s.promoRemainingOverrides.CompareAndDelete(userID, value)
 		}
 		return true
@@ -474,6 +520,7 @@ func cloneAndValidateSnapshot(src *Snapshot) (*Snapshot, error) {
 		UserGoals:               make(map[string]float64, len(src.UserGoals)),
 		UserPromoSpendRemaining: make(map[string]float64, len(src.UserGoals)),
 		UserPromoRevision:       make(map[string]int64, len(src.UserGoals)),
+		UserPromoGeneration:     make(map[string]int64, len(src.UserGoals)),
 		UserAntiPerekrutBlocked: make(map[string]bool, len(src.UserAntiPerekrutBlocked)),
 		LoadedAt:                src.LoadedAt.UTC(),
 	}
@@ -515,6 +562,21 @@ func cloneAndValidateSnapshot(src *Snapshot) (*Snapshot, error) {
 	for id := range out.UserGoals {
 		if _, ok := out.UserPromoRevision[id]; !ok {
 			out.UserPromoRevision[id] = 0
+		}
+	}
+	for rawID, generation := range src.UserPromoGeneration {
+		id := strings.TrimSpace(rawID)
+		if id == "" || generation < 0 {
+			return nil, fmt.Errorf("invalid promo_generation for %q", rawID)
+		}
+		if _, ok := out.UserGoals[id]; !ok {
+			return nil, fmt.Errorf("promo_generation has no user goal for %q", id)
+		}
+		out.UserPromoGeneration[id] = generation
+	}
+	for id := range out.UserGoals {
+		if _, ok := out.UserPromoGeneration[id]; !ok {
+			out.UserPromoGeneration[id] = 0
 		}
 	}
 
@@ -563,6 +625,9 @@ func cloneAndValidateSnapshot(src *Snapshot) (*Snapshot, error) {
 		}
 		if clone.PromoRevision < 0 {
 			return nil, fmt.Errorf("campaign %s has invalid promo_revision", clone.ID)
+		}
+		if clone.PromoGeneration < 0 {
+			return nil, fmt.Errorf("campaign %s has invalid promo_generation", clone.ID)
 		}
 		if clone.Status != CampaignStatusActive {
 			return nil, fmt.Errorf("campaign %s is not active", clone.ID)
@@ -613,6 +678,7 @@ func cloneAndValidateSnapshot(src *Snapshot) (*Snapshot, error) {
 		}
 		clone.PromoSpendRemaining = out.UserPromoSpendRemaining[clone.UserID]
 		clone.PromoRevision = out.UserPromoRevision[clone.UserID]
+		clone.PromoGeneration = out.UserPromoGeneration[clone.UserID]
 
 		clone.CountryFilter = cloneFilter(campaign.CountryFilter)
 		clone.LanguageFilter = cloneFilter(campaign.LanguageFilter)
@@ -1174,12 +1240,15 @@ func (s *AuctionService) auctionCore(
 			}
 
 			winner := WinnerRecord{
-				Price:        cand.chargePrice,
-				UserID:       cand.campaign.UserID,
-				CampaignID:   cand.campaign.ID,
-				TypeModel:    normalizeTypeModel(cand.campaign.TypeModel),
-				Format:       requestedFormat,
-				ClickIDParam: clickIDParam,
+				Price:              cand.chargePrice,
+				UserID:             cand.campaign.UserID,
+				CampaignID:         cand.campaign.ID,
+				TypeModel:          normalizeTypeModel(cand.campaign.TypeModel),
+				Format:             requestedFormat,
+				ClickIDParam:       clickIDParam,
+				PromoStateCaptured: cand.promoStateCaptured,
+				PromoActive:        cand.promoActive,
+				PromoGeneration:    cand.promoGeneration,
 			}
 			if err := s.winners.Put(ctx, winnerUUID, winner); err != nil {
 				attemptResults[campaignID] = "winner_redis_write_failed"
@@ -1955,7 +2024,7 @@ func (s *AuctionService) evaluateCampaign(
 		campaignRemaining,
 		userRemaining,
 	)
-	return candidate{campaign: campaign, creatives: creatives, chargePrice: chargePrice, effectivePrice: effective, basePrice: advertiserPrice, originalBid: campaign.BasePrice, segmentHash: segmentHash, pointVersion: pointVersion}, true, diagNone, nil
+	return candidate{campaign: campaign, creatives: creatives, chargePrice: chargePrice, effectivePrice: effective, basePrice: advertiserPrice, originalBid: campaign.BasePrice, segmentHash: segmentHash, pointVersion: pointVersion, promoStateCaptured: true, promoActive: pricing.PromoActive, promoGeneration: pricing.PromoGeneration}, true, diagNone, nil
 }
 
 func diagnosticReasonForAntiPerekrutEligibility(reason AntiPerekrutEligibilityReason) diagnosticReason {

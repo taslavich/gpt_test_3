@@ -86,6 +86,9 @@ func getAdm(
 			record.UserID = winner.UserID
 			record.CampaignID = winner.CampaignID
 			record.TypeModel = winner.TypeModel
+			record.PromoStateCaptured = winner.PromoStateCaptured
+			record.PromoActive = winner.PromoActive
+			record.PromoGeneration = winner.PromoGeneration
 			record.Price = winner.Price
 			redirectURL = appendClickIDParameter(decodedURL, winner.ClickIDParam, clickUUID)
 			if format == constants.IPP {
@@ -435,6 +438,7 @@ func handleADVCallback(
 		Kind: outbox.KindBilling, RequiresADVRecovery: &requiresRecovery,
 		EventID: billing.CallbackEventID(source, winner.Format, winnerUUID),
 		UserID:  winner.UserID, CampaignID: winner.CampaignID, TypeModel: winner.TypeModel,
+		PromoStateCaptured: winner.PromoStateCaptured, PromoActive: winner.PromoActive, PromoGeneration: winner.PromoGeneration,
 		Price: winner.Price, Format: winner.Format, Source: source, CreatedAt: time.Now().UTC(), Attempts: 1,
 	}
 	if err := billing.ApplyDurableIntent(ctx, outboxStore, store, record); err != nil {

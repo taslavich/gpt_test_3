@@ -15,7 +15,7 @@ func TestPromoSpendRemainingControlEndpoint(t *testing.T) {
 	router := chi.NewRouter()
 	InitHttpRoutes(router, nil, nil, nil, NewWorkController(), AntiPerekrutHTTPConfig{AuctionService: service})
 
-	req := httptest.NewRequest(http.MethodPut, PutPromoSpendRemainingURL, bytes.NewBufferString(`{"user_id":"user-1","remaining":0,"revision":11}`))
+	req := httptest.NewRequest(http.MethodPut, PutPromoSpendRemainingURL, bytes.NewBufferString(`{"user_id":"user-1","remaining":0,"revision":11,"generation":4}`))
 	req.Header.Set("Content-Type", "application/json")
 	response := httptest.NewRecorder()
 	router.ServeHTTP(response, req)
@@ -23,7 +23,7 @@ func TestPromoSpendRemainingControlEndpoint(t *testing.T) {
 		t.Fatalf("status=%d body=%q", response.Code, response.Body.String())
 	}
 
-	badReq := httptest.NewRequest(http.MethodPut, PutPromoSpendRemainingURL, bytes.NewBufferString(`{"user_id":"","remaining":0,"revision":11}`))
+	badReq := httptest.NewRequest(http.MethodPut, PutPromoSpendRemainingURL, bytes.NewBufferString(`{"user_id":"","remaining":0,"revision":11,"generation":4}`))
 	badResponse := httptest.NewRecorder()
 	router.ServeHTTP(badResponse, badReq)
 	if badResponse.Code != http.StatusBadRequest {

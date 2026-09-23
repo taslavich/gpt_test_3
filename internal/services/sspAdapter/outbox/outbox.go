@@ -37,6 +37,9 @@ type Record struct {
 	UserID              string    `json:"user_id,omitempty"`
 	CampaignID          string    `json:"campaign_id,omitempty"`
 	TypeModel           int       `json:"type_model,omitempty"`
+	PromoStateCaptured  bool      `json:"promo_state_captured,omitempty"`
+	PromoActive         bool      `json:"promo_active,omitempty"`
+	PromoGeneration     int64     `json:"promo_generation,omitempty"`
 	Price               float64   `json:"price,omitempty"`
 	Format              string    `json:"format"`
 	Source              string    `json:"source"`
@@ -228,7 +231,7 @@ func (s *Store) UpdateFailure(eventID string, applyErr error) error {
 	})
 }
 
-func (s *Store) UpdateResolution(eventID, winnerType, userID, campaignID string, price float64, typeModel ...int) error {
+func (s *Store) UpdateResolution(eventID, winnerType, userID, campaignID string, price float64, typeModel int, promoStateCaptured, promoActive bool, promoGeneration int64) error {
 	if s == nil || s.db == nil {
 		return errors.New("outbox is not initialized")
 	}
@@ -250,9 +253,10 @@ func (s *Store) UpdateResolution(eventID, winnerType, userID, campaignID string,
 		record.UserID = strings.TrimSpace(userID)
 		record.CampaignID = strings.TrimSpace(campaignID)
 		record.Price = price
-		if len(typeModel) > 0 {
-			record.TypeModel = typeModel[0]
-		}
+		record.TypeModel = typeModel
+		record.PromoStateCaptured = promoStateCaptured
+		record.PromoActive = promoActive
+		record.PromoGeneration = promoGeneration
 		if err := validateRecord(record); err != nil {
 			return err
 		}
@@ -292,6 +296,9 @@ func validateRecord(record Record) error {
 	if record.Format == "" || record.Source == "" {
 		return errors.New("outbox record has empty format or source")
 	}
+	if record.PromoStateCaptured && record.PromoGeneration < 0 {
+		return errors.New("outbox record has invalid promo_generation")
+	}
 	switch NormalizeKind(record.Kind) {
 	case KindBilling:
 		if record.UserID == "" || record.CampaignID == "" {
@@ -324,7 +331,9 @@ func sameEvent(a, b Record) bool {
 		sameOptionalBool(a.RequiresADVRecovery, b.RequiresADVRecovery) &&
 		a.EventID == b.EventID && a.GlobalID == b.GlobalID && a.ClickID == b.ClickID &&
 		NormalizeWinnerType(a.WinnerType) == NormalizeWinnerType(b.WinnerType) &&
-		a.UserID == b.UserID && a.CampaignID == b.CampaignID && a.TypeModel == b.TypeModel && a.Price == b.Price &&
+		a.UserID == b.UserID && a.CampaignID == b.CampaignID && a.TypeModel == b.TypeModel &&
+		a.PromoStateCaptured == b.PromoStateCaptured && a.PromoActive == b.PromoActive && a.PromoGeneration == b.PromoGeneration &&
+		a.Price == b.Price &&
 		strings.EqualFold(a.Format, b.Format) && strings.EqualFold(a.Source, b.Source)
 }
 

@@ -57,9 +57,9 @@ Promo semantics are uniform across ordinary and RTB traffic and across `type_mod
 
 ## ADM billing -> cabinet promo ownership
 
-The cabinet backend owns the PostgreSQL schema and mutations for `campaigns.type_model`, `users.promo_spend_remaining`, `users.promo_revision` and the idempotent promo-spend ledger. ORTB/ADM must not run PostgreSQL migrations or update `users` directly.
+The cabinet backend owns the PostgreSQL schema and mutations for `campaigns.type_model`, `users.promo_spend_remaining`, `users.promo_revision`, `users.promo_generation` and the idempotent promo-spend ledger. ORTB/ADM must not run PostgreSQL migrations or update `users` directly.
 
-`adm-adapter` keeps the durable billing intent and Redis pacing/spend mutation, then calls the cabinet backend idempotently with the same stable billing `event_id`. The cabinet returns authoritative `promo_spend_remaining` + `promo_revision`; only then does `adm-adapter` fan that state out to ADV runtime replicas. A retry after any crash therefore reuses the same cabinet idempotency key and cannot consume promo twice.
+`adm-adapter` keeps the durable billing intent and Redis pacing/spend mutation, then calls the cabinet backend idempotently with the same stable billing `event_id`. ADV captures `promo_generation` and whether promo was active at the same pricing decision that produced the winner; that state is persisted in winner Redis and then in the durable billing intent. A delayed callback therefore sends the generation that was actually priced, never the user's current generation. Legacy winners without captured promo state and winners priced while promo was inactive skip promo mutation rather than risk consuming a later grant. The cabinet returns authoritative `promo_spend_remaining` + `promo_revision` + `promo_generation`; only then does `adm-adapter` fan that state out to ADV runtime replicas. A retry after any crash therefore reuses both the same cabinet idempotency key and the captured promo generation.
 
 ```env
 CABINET_BACKEND_URL=https://twinbid.io
@@ -130,7 +130,7 @@ Physical Kafka delivery is at-least-once. The final consumer is outside this rep
 ## Migration and deployment checklist
 
 1. Back up/verify the current percent-map JSON and PostgreSQL/ClickHouse targets.
-2. Deploy the matching cabinet-backend patch first. The cabinet backend owns `campaigns.type_model`, `users.promo_spend_remaining`, `users.promo_revision`, the revision trigger and `adv_promo_spend_events`; ORTB has no PostgreSQL migration for these objects.
+2. Deploy the matching cabinet-backend patch first. The cabinet backend owns `campaigns.type_model`, `users.promo_spend_remaining`, `users.promo_revision`, `users.promo_generation`, the revision/generation rules and `adv_promo_spend_events`; ORTB has no PostgreSQL migration for these objects. The cabinet patch must be live before this ORTB build because ADV snapshots read `promo_generation` from PostgreSQL and the promo-spend API contract includes it.
 3. Verify `CABINET_BACKEND_URL` from `adm-adapter` reaches the cabinet backend internal promo-spend endpoint and both services use the same existing `BOT_INTERNAL_SECRET`.
 4. Start/run `clickhouse-loader` schema initialization (`CreateDB`). The main ClickHouse DDL in `internal/services/clickhouse-loader/createDb.go` adds `logical_event_id` plus the ORTB percenter attribution columns, creates the synchronous `ortb_logical` replay-dedup view, and creates `percenter_state_history`, `percenter_telemetry`, and their `_logical` views. No separate ClickHouse migration file is required.
 5. Ensure the existing Redis instance is reachable as `REDIS_ADV_ADDR` and logical DB7 is available for Simple/Complex state and recovery indexes. Do not add a new Redis shard/instance.

@@ -15,12 +15,13 @@ import (
 
 const promoSyncPath = "/internal/promo-spend-remaining"
 
-type PromoSyncFunc func(context.Context, string, float64, int64) error
+type PromoSyncFunc func(context.Context, string, float64, int64, int64) error
 
 type promoSyncRequest struct {
-	UserID    string  `json:"user_id"`
-	Remaining float64 `json:"remaining"`
-	Revision  int64   `json:"revision"`
+	UserID     string  `json:"user_id"`
+	Remaining  float64 `json:"remaining"`
+	Revision   int64   `json:"revision"`
+	Generation int64   `json:"generation"`
 }
 
 // NewHTTPPromoSync returns a synchronous durability boundary for the billing
@@ -36,7 +37,7 @@ func NewHTTPPromoSync(endpoints []string) PromoSyncFunc {
 	}
 
 	client := &http.Client{Timeout: 3 * time.Second}
-	return func(ctx context.Context, userID string, remaining float64, revision int64) error {
+	return func(ctx context.Context, userID string, remaining float64, revision, generation int64) error {
 		userID = strings.TrimSpace(userID)
 		if userID == "" {
 			return fmt.Errorf("promo runtime sync has empty user_id")
@@ -44,10 +45,13 @@ func NewHTTPPromoSync(endpoints []string) PromoSyncFunc {
 		if revision < 0 {
 			return fmt.Errorf("promo runtime sync has invalid revision %d", revision)
 		}
+		if generation < 0 {
+			return fmt.Errorf("promo runtime sync has invalid generation %d", generation)
+		}
 		if len(clean) == 0 {
 			return fmt.Errorf("promo runtime sync has no ADV endpoints")
 		}
-		payload, err := json.Marshal(promoSyncRequest{UserID: userID, Remaining: remaining, Revision: revision})
+		payload, err := json.Marshal(promoSyncRequest{UserID: userID, Remaining: remaining, Revision: revision, Generation: generation})
 		if err != nil {
 			return fmt.Errorf("marshal promo runtime sync: %w", err)
 		}

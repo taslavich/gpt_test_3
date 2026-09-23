@@ -30,13 +30,15 @@ const (
 )
 
 type PricingDecision struct {
-	Mode       PercentRoutingMode
-	MapPercent float64
-	MapSource  string
-	HardMin    float64
-	MinMargin  float64
-	MaxMargin  float64
-	Percent    float64
+	Mode            PercentRoutingMode
+	MapPercent      float64
+	MapSource       string
+	HardMin         float64
+	MinMargin       float64
+	MaxMargin       float64
+	Percent         float64
+	PromoActive     bool
+	PromoGeneration int64
 }
 
 func normalizeTypeModel(value int) int {
@@ -81,8 +83,11 @@ func (s *AuctionService) ResolvePricingDecision(campaign *Campaign) (PricingDeci
 		return PricingDecision{}, fmt.Errorf("campaign %s resolved invalid percent %.12f", campaign.ID, mapPercent)
 	}
 
+	promoState := s.effectivePromoState(campaign)
 	effectiveCampaign := *campaign
-	effectiveCampaign.PromoSpendRemaining = s.effectivePromoSpendRemaining(campaign)
+	effectiveCampaign.PromoSpendRemaining = promoState.Remaining
+	effectiveCampaign.PromoRevision = promoState.Revision
+	effectiveCampaign.PromoGeneration = promoState.Generation
 	hardMin := businessHardMin(&effectiveCampaign)
 	effectiveMapPercent := math.Max(mapPercent, hardMin)
 	if effectiveMapPercent > MaxAdvertiserMargin {
@@ -90,11 +95,13 @@ func (s *AuctionService) ResolvePricingDecision(campaign *Campaign) (PricingDeci
 	}
 
 	decision := PricingDecision{
-		MapPercent: mapPercent,
-		MapSource:  mapSource,
-		HardMin:    hardMin,
-		MinMargin:  effectiveMapPercent,
-		MaxMargin:  MaxAdvertiserMargin,
+		MapPercent:      mapPercent,
+		MapSource:       mapSource,
+		HardMin:         hardMin,
+		MinMargin:       effectiveMapPercent,
+		MaxMargin:       MaxAdvertiserMargin,
+		PromoActive:     promoState.Remaining > 0,
+		PromoGeneration: promoState.Generation,
 	}
 
 	if model == TypeModelMapOnly {

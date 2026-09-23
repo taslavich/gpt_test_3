@@ -21,19 +21,19 @@ func TestHTTPPromoDebitUsesCabinetEndpointAndStableEventID(t *testing.T) {
 			t.Fatalf("decode request: %v", err)
 		}
 		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{"success":true,"errorMsg":"","data":{"remaining":12.5,"revision":7}}`))
+		_, _ = w.Write([]byte(`{"success":true,"errorMsg":"","data":{"remaining":12.5,"revision":7,"generation":4}}`))
 	}))
 	defer server.Close()
 
 	debit := NewHTTPPromoDebit(server.URL, "secret")
-	state, err := debit(context.Background(), "billing:v1:event", "user", "campaign", 0.75)
+	state, err := debit(context.Background(), "billing:v1:event", "user", "campaign", 4, 0.75)
 	if err != nil {
 		t.Fatalf("promo debit: %v", err)
 	}
-	if got.EventID != "billing:v1:event" || got.UserID != "user" || got.CampaignID != "campaign" || got.SpendDelta != 0.75 {
+	if got.EventID != "billing:v1:event" || got.UserID != "user" || got.CampaignID != "campaign" || got.PromoGeneration != 4 || got.SpendDelta != 0.75 {
 		t.Fatalf("unexpected request payload: %+v", got)
 	}
-	if state.Remaining != 12.5 || state.Revision != 7 {
+	if state.Remaining != 12.5 || state.Revision != 7 || state.Generation != 4 {
 		t.Fatalf("unexpected state: %+v", state)
 	}
 }
@@ -46,7 +46,7 @@ func TestHTTPPromoDebitFailsOnCabinetError(t *testing.T) {
 	defer server.Close()
 
 	debit := NewHTTPPromoDebit(server.URL, "secret")
-	if _, err := debit(context.Background(), "event", "user", "campaign", 1); err == nil {
+	if _, err := debit(context.Background(), "event", "user", "campaign", 4, 1); err == nil {
 		t.Fatal("expected cabinet error")
 	}
 }

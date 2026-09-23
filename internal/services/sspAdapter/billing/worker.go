@@ -319,6 +319,9 @@ func (w *Worker) processADM(ctx context.Context, record outbox.Record) (bool, er
 			advWinner.CampaignID,
 			advWinner.Price,
 			advWinner.TypeModel,
+			advWinner.PromoStateCaptured,
+			advWinner.PromoActive,
+			advWinner.PromoGeneration,
 		); err != nil {
 			return false, fmt.Errorf("persist ADM winner resolution: %w", err)
 		}
@@ -327,6 +330,9 @@ func (w *Worker) processADM(ctx context.Context, record outbox.Record) (bool, er
 			record.UserID = advWinner.UserID
 			record.CampaignID = advWinner.CampaignID
 			record.TypeModel = advWinner.TypeModel
+			record.PromoStateCaptured = advWinner.PromoStateCaptured
+			record.PromoActive = advWinner.PromoActive
+			record.PromoGeneration = advWinner.PromoGeneration
 			record.Price = advWinner.Price
 		}
 	}
@@ -344,8 +350,11 @@ func (w *Worker) processADM(ctx context.Context, record outbox.Record) (bool, er
 			record.UserID = advWinner.UserID
 			record.CampaignID = advWinner.CampaignID
 			record.TypeModel = advWinner.TypeModel
+			record.PromoStateCaptured = advWinner.PromoStateCaptured
+			record.PromoActive = advWinner.PromoActive
+			record.PromoGeneration = advWinner.PromoGeneration
 			record.Price = advWinner.Price
-			if err := w.outbox.UpdateResolution(record.EventID, winnerType, record.UserID, record.CampaignID, record.Price, record.TypeModel); err != nil {
+			if err := w.outbox.UpdateResolution(record.EventID, winnerType, record.UserID, record.CampaignID, record.Price, record.TypeModel, record.PromoStateCaptured, record.PromoActive, record.PromoGeneration); err != nil {
 				return false, fmt.Errorf("persist ADV winner details: %w", err)
 			}
 		}

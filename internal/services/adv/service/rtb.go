@@ -654,7 +654,7 @@ func (s *AuctionService) evaluateRTBCandidate(ctx context.Context, campaign *Cam
 	if !finitePositive(effective) {
 		return candidate{}, false, nil
 	}
-	return candidate{campaign: campaign, chargePrice: chargePrice, effectivePrice: effective, basePrice: rawPrice, originalBid: rawPrice, externalBid: bid, segmentHash: segmentHash, pointVersion: pointVersion}, true, nil
+	return candidate{campaign: campaign, chargePrice: chargePrice, effectivePrice: effective, basePrice: rawPrice, originalBid: rawPrice, externalBid: bid, segmentHash: segmentHash, pointVersion: pointVersion, promoStateCaptured: true, promoActive: pricing.PromoActive, promoGeneration: pricing.PromoGeneration}, true, nil
 }
 
 func buildExternalADVBid(cand candidate) *ortb.Bid {

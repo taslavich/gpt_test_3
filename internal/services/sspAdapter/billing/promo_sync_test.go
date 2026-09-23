@@ -25,7 +25,7 @@ func TestHTTPPromoSyncFanout(t *testing.T) {
 	defer server.Close()
 
 	syncPromo := NewHTTPPromoSync([]string{server.URL})
-	if err := syncPromo(context.Background(), "user-1", 0, 11); err != nil {
+	if err := syncPromo(context.Background(), "user-1", 0, 11, 4); err != nil {
 		t.Fatal(err)
 	}
 	got := <-observed
@@ -35,7 +35,7 @@ func TestHTTPPromoSyncFanout(t *testing.T) {
 	if got.method != http.MethodPut || got.path != promoSyncPath {
 		t.Fatalf("request=%s %s", got.method, got.path)
 	}
-	if got.input.UserID != "user-1" || got.input.Remaining != 0 || got.input.Revision != 11 {
+	if got.input.UserID != "user-1" || got.input.Remaining != 0 || got.input.Revision != 11 || got.input.Generation != 4 {
 		t.Fatalf("payload=%+v", got.input)
 	}
 }
@@ -51,7 +51,7 @@ func TestHTTPPromoSyncRequiresEveryADVInstance(t *testing.T) {
 	defer badServer.Close()
 
 	syncPromo := NewHTTPPromoSync([]string{okServer.URL, badServer.URL})
-	if err := syncPromo(context.Background(), "user-1", 1, 12); err == nil {
+	if err := syncPromo(context.Background(), "user-1", 1, 12, 5); err == nil {
 		t.Fatal("expected fanout failure when one ADV instance rejects the update")
 	}
 }

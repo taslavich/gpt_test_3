@@ -16,17 +16,19 @@ import (
 const cabinetPromoSpendPath = "/api/internal/percenter/promo-spend"
 
 type PromoState struct {
-	Remaining float64 `json:"remaining"`
-	Revision  int64   `json:"revision"`
+	Remaining  float64 `json:"remaining"`
+	Revision   int64   `json:"revision"`
+	Generation int64   `json:"generation"`
 }
 
-type PromoDebitFunc func(context.Context, string, string, string, float64) (PromoState, error)
+type PromoDebitFunc func(context.Context, string, string, string, int64, float64) (PromoState, error)
 
 type cabinetPromoSpendRequest struct {
-	EventID    string  `json:"event_id"`
-	UserID     string  `json:"user_id"`
-	CampaignID string  `json:"campaign_id"`
-	SpendDelta float64 `json:"spend_delta"`
+	EventID         string  `json:"event_id"`
+	UserID          string  `json:"user_id"`
+	CampaignID      string  `json:"campaign_id"`
+	PromoGeneration int64   `json:"promo_generation"`
+	SpendDelta      float64 `json:"spend_delta"`
 }
 
 type cabinetPromoSpendEnvelope struct {
@@ -44,7 +46,7 @@ func NewHTTPPromoDebit(baseURL, internalSecret string) PromoDebitFunc {
 	internalSecret = strings.TrimSpace(internalSecret)
 	client := &http.Client{Timeout: 3 * time.Second}
 
-	return func(ctx context.Context, eventID, userID, campaignID string, spendDelta float64) (PromoState, error) {
+	return func(ctx context.Context, eventID, userID, campaignID string, promoGeneration int64, spendDelta float64) (PromoState, error) {
 		if baseURL == "" {
 			return PromoState{}, fmt.Errorf("cabinet promo debit has empty base URL")
 		}
@@ -53,6 +55,9 @@ func NewHTTPPromoDebit(baseURL, internalSecret string) PromoDebitFunc {
 		}
 		if strings.TrimSpace(eventID) == "" || strings.TrimSpace(userID) == "" || strings.TrimSpace(campaignID) == "" {
 			return PromoState{}, fmt.Errorf("cabinet promo debit has empty event/user/campaign id")
+		}
+		if promoGeneration < 0 {
+			return PromoState{}, fmt.Errorf("cabinet promo debit has invalid promo_generation %d", promoGeneration)
 		}
 		if spendDelta <= 0 || math.IsNaN(spendDelta) || math.IsInf(spendDelta, 0) {
 			return PromoState{}, fmt.Errorf("cabinet promo debit has invalid spend_delta %v", spendDelta)
@@ -63,7 +68,7 @@ func NewHTTPPromoDebit(baseURL, internalSecret string) PromoDebitFunc {
 			return PromoState{}, err
 		}
 		payload, err := json.Marshal(cabinetPromoSpendRequest{
-			EventID: eventID, UserID: userID, CampaignID: campaignID, SpendDelta: spendDelta,
+			EventID: eventID, UserID: userID, CampaignID: campaignID, PromoGeneration: promoGeneration, SpendDelta: spendDelta,
 		})
 		if err != nil {
 			return PromoState{}, fmt.Errorf("marshal cabinet promo spend: %w", err)
@@ -94,8 +99,8 @@ func NewHTTPPromoDebit(baseURL, internalSecret string) PromoDebitFunc {
 			}
 			return PromoState{}, fmt.Errorf("cabinet promo spend failed: HTTP %d: %s", resp.StatusCode, envelope.ErrorMsg)
 		}
-		if envelope.Data.Remaining < 0 || math.IsNaN(envelope.Data.Remaining) || math.IsInf(envelope.Data.Remaining, 0) || envelope.Data.Revision < 0 {
-			return PromoState{}, fmt.Errorf("cabinet promo spend returned invalid state: remaining=%v revision=%d", envelope.Data.Remaining, envelope.Data.Revision)
+		if envelope.Data.Remaining < 0 || math.IsNaN(envelope.Data.Remaining) || math.IsInf(envelope.Data.Remaining, 0) || envelope.Data.Revision < 0 || envelope.Data.Generation < 0 {
+			return PromoState{}, fmt.Errorf("cabinet promo spend returned invalid state: remaining=%v revision=%d generation=%d", envelope.Data.Remaining, envelope.Data.Revision, envelope.Data.Generation)
 		}
 		return envelope.Data, nil
 	}

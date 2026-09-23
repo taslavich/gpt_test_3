@@ -195,12 +195,15 @@ func (s *RuntimeStore) removeStaleCurrentKeys(ctx context.Context, active map[st
 }
 
 type WinnerRecord struct {
-	Price        float64
-	UserID       string
-	CampaignID   string
-	TypeModel    int
-	Format       string
-	ClickIDParam string
+	Price              float64
+	UserID             string
+	CampaignID         string
+	TypeModel          int
+	Format             string
+	ClickIDParam       string
+	PromoStateCaptured bool
+	PromoActive        bool
+	PromoGeneration    int64
 }
 
 type WinnerStore struct {
@@ -224,12 +227,20 @@ func (s *WinnerStore) Put(ctx context.Context, winnerUUID string, record WinnerR
 		return errors.New("invalid ADV winner record")
 	}
 	pipe := s.client.TxPipeline()
+	if record.PromoStateCaptured && record.PromoGeneration < 0 {
+		return errors.New("invalid ADV winner promo generation")
+	}
 	fields := map[string]any{
 		"price":       strconv.FormatFloat(record.Price, 'f', -1, 64),
 		"user_id":     record.UserID,
 		"campaign_id": record.CampaignID,
 		"type_model":  strconv.Itoa(normalizeTypeModel(record.TypeModel)),
 		"format":      normalizeFormat(record.Format),
+	}
+	if record.PromoStateCaptured {
+		fields["promo_state_captured"] = "1"
+		fields["promo_active"] = strconv.FormatBool(record.PromoActive)
+		fields["promo_generation"] = strconv.FormatInt(record.PromoGeneration, 10)
 	}
 	if clickIDParam := strings.TrimSpace(record.ClickIDParam); validTrackerParameterName(clickIDParam) {
 		fields[constants.ADVWinnerClickIDParamField] = clickIDParam

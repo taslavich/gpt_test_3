@@ -59,9 +59,10 @@ type antiPerekrutRestartRequest struct {
 }
 
 type promoSpendRemainingRequest struct {
-	UserID    string  `json:"user_id"`
-	Remaining float64 `json:"remaining"`
-	Revision  int64   `json:"revision"`
+	UserID     string  `json:"user_id"`
+	Remaining  float64 `json:"remaining"`
+	Revision   int64   `json:"revision"`
+	Generation int64   `json:"generation"`
 }
 
 func InitHttpRoutes(httpRouter *chi.Mux, percentStore *auction.PercentStore, qualityStore *auction.QualityStore, siteIDQualityStore *auction.SiteIDQualityStore, work *WorkController, antiConfig ...AntiPerekrutHTTPConfig) {
@@ -282,7 +283,7 @@ func InitHttpRoutes(httpRouter *chi.Mux, percentStore *auction.PercentStore, qua
 				http.Error(w, err.Error(), http.StatusBadRequest)
 				return
 			}
-			if err := service.ApplyPromoSpendRemaining(input.UserID, input.Remaining, input.Revision); err != nil {
+			if err := service.ApplyPromoSpendRemaining(input.UserID, input.Remaining, input.Revision, input.Generation); err != nil {
 				http.Error(w, err.Error(), http.StatusBadRequest)
 				return
 			}
