@@ -2271,18 +2271,135 @@ CROSS JOIN
 	return nil
 }
 
+// splitClickHouseStatements splits only on executable SQL delimiters. A raw
+// strings.Split(sql, ";") is unsafe because comments and quoted literals may
+// legitimately contain semicolons.
 func splitClickHouseStatements(sql string) []string {
-	rawStatements := strings.Split(sql, ";")
-	statements := make([]string, 0, len(rawStatements))
+	statements := make([]string, 0, strings.Count(sql, ";")+1)
+	var current strings.Builder
+	hasExecutableSQL := false
+	inSingleQuote := false
+	inDoubleQuote := false
+	inBacktick := false
+	inLineComment := false
+	inBlockComment := false
 
-	for _, statement := range rawStatements {
-		statement = strings.TrimSpace(statement)
-		if statement == "" {
+	flush := func() {
+		statement := strings.TrimSpace(current.String())
+		if hasExecutableSQL && statement != "" {
+			statements = append(statements, statement)
+		}
+		current.Reset()
+		hasExecutableSQL = false
+	}
+
+	for i := 0; i < len(sql); i++ {
+		c := sql[i]
+		var next byte
+		if i+1 < len(sql) {
+			next = sql[i+1]
+		}
+
+		if inLineComment {
+			current.WriteByte(c)
+			if c == '\n' {
+				inLineComment = false
+			}
 			continue
 		}
 
-		statements = append(statements, statement)
+		if inBlockComment {
+			current.WriteByte(c)
+			if c == '*' && next == '/' {
+				current.WriteByte(next)
+				i++
+				inBlockComment = false
+			}
+			continue
+		}
+
+		if inSingleQuote {
+			current.WriteByte(c)
+			if c == '\\' && i+1 < len(sql) {
+				i++
+				current.WriteByte(sql[i])
+				continue
+			}
+			if c == '\'' {
+				if next == '\'' {
+					current.WriteByte(next)
+					i++
+				} else {
+					inSingleQuote = false
+				}
+			}
+			continue
+		}
+
+		if inDoubleQuote {
+			current.WriteByte(c)
+			if c == '\\' && i+1 < len(sql) {
+				i++
+				current.WriteByte(sql[i])
+				continue
+			}
+			if c == '"' {
+				if next == '"' {
+					current.WriteByte(next)
+					i++
+				} else {
+					inDoubleQuote = false
+				}
+			}
+			continue
+		}
+
+		if inBacktick {
+			current.WriteByte(c)
+			if c == '`' {
+				if next == '`' {
+					current.WriteByte(next)
+					i++
+				} else {
+					inBacktick = false
+				}
+			}
+			continue
+		}
+
+		switch {
+		case c == '-' && next == '-':
+			current.WriteByte(c)
+			current.WriteByte(next)
+			i++
+			inLineComment = true
+		case c == '/' && next == '*':
+			current.WriteByte(c)
+			current.WriteByte(next)
+			i++
+			inBlockComment = true
+		case c == '\'':
+			current.WriteByte(c)
+			inSingleQuote = true
+			hasExecutableSQL = true
+		case c == '"':
+			current.WriteByte(c)
+			inDoubleQuote = true
+			hasExecutableSQL = true
+		case c == '`':
+			current.WriteByte(c)
+			inBacktick = true
+			hasExecutableSQL = true
+		case c == ';':
+			flush()
+		default:
+			current.WriteByte(c)
+			if !strings.ContainsRune(" \t\r\n", rune(c)) {
+				hasExecutableSQL = true
+			}
+		}
 	}
 
+	flush()
 	return statements
 }
