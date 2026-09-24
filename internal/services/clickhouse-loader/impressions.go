@@ -20,6 +20,8 @@ func ProcessKafkaMessagesImpressions(
 	batchSize int,
 	timeoutSec int,
 	timeoutMs int,
+	retryAttempts int,
+	retryDelay time.Duration,
 ) error {
 	_, err := processKafkaMessagesBatch(
 		ctx,
@@ -29,6 +31,8 @@ func ProcessKafkaMessagesImpressions(
 		batchSize,
 		timeoutSec,
 		timeoutMs,
+		retryAttempts,
+		retryDelay,
 		clickhouseBatchConfig[eventspb.ImpressionEvent]{
 			LogName:    "IMPRESSIONS",
 			CommitName: "impression",

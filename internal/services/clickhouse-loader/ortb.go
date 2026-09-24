@@ -25,6 +25,8 @@ func ProcessKafkaMessagesOrtb(
 	batchSize int,
 	timeoutSec int,
 	timeoutMs int,
+	retryAttempts int,
+	retryDelay time.Duration,
 ) (int, error) {
 	return processKafkaMessagesBatch(
 		ctx,
@@ -34,6 +36,8 @@ func ProcessKafkaMessagesOrtb(
 		batchSize,
 		timeoutSec,
 		timeoutMs,
+		retryAttempts,
+		retryDelay,
 		clickhouseBatchConfig[eventspb.OrtbEvent]{
 			LogName:    "ORTB",
 			CommitName: "ORTB",

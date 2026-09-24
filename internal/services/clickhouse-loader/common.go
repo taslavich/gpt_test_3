@@ -27,6 +27,73 @@ type clickhouseBatchConfig[T any] struct {
 	Insert    func(ctx context.Context, ch clickhouse.Conn, table string, records []T) (clickhouseInsertStats, error)
 }
 
+func insertBatchWithRetry(
+	ctx context.Context,
+	logName string,
+	retryAttempts int,
+	retryDelay time.Duration,
+	insert func() (clickhouseInsertStats, error),
+) (clickhouseInsertStats, error) {
+	if retryAttempts < 0 {
+		retryAttempts = 0
+	}
+	if retryDelay < 0 {
+		retryDelay = 0
+	}
+
+	stats, err := insert()
+	if err == nil {
+		return stats, nil
+	}
+
+	for retry := 1; retry <= retryAttempts; retry++ {
+		log.Printf(
+			"⚠️ %s ClickHouse insert failed; retry=%d/%d after delay=%s: %v",
+			logName,
+			retry,
+			retryAttempts,
+			retryDelay,
+			err,
+		)
+
+		if retryDelay > 0 {
+			timer := time.NewTimer(retryDelay)
+			select {
+			case <-ctx.Done():
+				if !timer.Stop() {
+					select {
+					case <-timer.C:
+					default:
+					}
+				}
+				return stats, ctx.Err()
+			case <-timer.C:
+			}
+		} else if err := ctx.Err(); err != nil {
+			return stats, err
+		}
+
+		stats, err = insert()
+		if err == nil {
+			log.Printf(
+				"✅ %s ClickHouse insert recovered on retry=%d/%d",
+				logName,
+				retry,
+				retryAttempts,
+			)
+			return stats, nil
+		}
+	}
+
+	return stats, fmt.Errorf(
+		"%s ClickHouse insert failed after %d retries (%d total attempts): %w",
+		logName,
+		retryAttempts,
+		retryAttempts+1,
+		err,
+	)
+}
+
 func processKafkaMessagesBatch[T any](
 	ctx context.Context,
 	reader *kafka.Reader,
@@ -35,6 +102,8 @@ func processKafkaMessagesBatch[T any](
 	batchSize int,
 	timeoutSec int,
 	timeoutMs int,
+	retryAttempts int,
+	retryDelay time.Duration,
 	cfg clickhouseBatchConfig[T],
 ) (int, error) {
 	if batchSize <= 0 {
@@ -122,7 +191,15 @@ func processKafkaMessagesBatch[T any](
 		return 0, nil
 	}
 
-	stats, err := cfg.Insert(ctx, ch, table, records)
+	stats, err := insertBatchWithRetry(
+		ctx,
+		cfg.LogName,
+		retryAttempts,
+		retryDelay,
+		func() (clickhouseInsertStats, error) {
+			return cfg.Insert(ctx, ch, table, records)
+		},
+	)
 	if err != nil {
 		return 0, err
 	}

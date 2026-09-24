@@ -21,6 +21,8 @@ func ProcessKafkaMessagesConversions(
 	batchSize int,
 	timeoutSec int,
 	timeoutMs int,
+	retryAttempts int,
+	retryDelay time.Duration,
 ) error {
 	_, err := processKafkaMessagesBatch(
 		ctx,
@@ -30,6 +32,8 @@ func ProcessKafkaMessagesConversions(
 		batchSize,
 		timeoutSec,
 		timeoutMs,
+		retryAttempts,
+		retryDelay,
 		clickhouseBatchConfig[eventspb.ConversionEvent]{
 			LogName:    "CONVERSIONS",
 			CommitName: "conversion",

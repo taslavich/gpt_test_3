@@ -182,6 +182,22 @@ func main() {
 		}
 		loaderControl.Stop()
 	}
+	retryAttempts := cfg.ClickhouseInsertRetryCount
+	if retryAttempts < 0 {
+		log.Printf("⚠️ CLICKHOUSE_INSERT_RETRY_COUNT=%d is invalid; using 0", retryAttempts)
+		retryAttempts = 0
+	}
+	retryDelay := cfg.ClickhouseInsertRetryDelay
+	if retryDelay < 0 {
+		log.Printf("⚠️ CLICKHOUSE_INSERT_RETRY_DELAY=%s is invalid; using 0", retryDelay)
+		retryDelay = 0
+	}
+	log.Printf(
+		"ClickHouse insert retry policy: retries=%d delay=%s",
+		retryAttempts,
+		retryDelay,
+	)
+
 	emptyPause := time.Duration(cfg.EmptyLoopPauseMS) * time.Millisecond
 	if emptyPause <= 0 {
 		emptyPause = 200 * time.Millisecond
@@ -203,6 +219,8 @@ func main() {
 				cfg.Clickhouse.BatchSizeOrtb,
 				cfg.TimeoutSec,
 				cfg.Clickhouse.BatchTimeoutMS,
+				retryAttempts,
+				retryDelay,
 			)
 			if err != nil {
 				handleStreamError(err)
@@ -235,6 +253,8 @@ func main() {
 				clicksWinsBatchSize,
 				cfg.TimeoutSec,
 				cfg.Clickhouse.BatchTimeoutMS,
+				retryAttempts,
+				retryDelay,
 			)
 			if err != nil {
 				handleStreamError(err)
@@ -263,6 +283,8 @@ func main() {
 				batchSizeImpressions,
 				cfg.TimeoutSec,
 				cfg.Clickhouse.BatchTimeoutMS,
+				retryAttempts,
+				retryDelay,
 			)
 			if err != nil {
 				handleStreamError(err)
@@ -291,6 +313,8 @@ func main() {
 				batchSizeClicks,
 				cfg.TimeoutSec,
 				cfg.Clickhouse.BatchTimeoutMS,
+				retryAttempts,
+				retryDelay,
 			)
 			if err != nil {
 				handleStreamError(err)
@@ -316,6 +340,8 @@ func main() {
 				cfg.Clickhouse.BatchSizeConversions*60,
 				cfg.TimeoutSec,
 				cfg.Clickhouse.BatchTimeoutMS,
+				retryAttempts,
+				retryDelay,
 			)
 			if err != nil {
 				handleStreamError(err)

@@ -413,6 +413,9 @@ type ClickhouseLoaderConfig struct {
 	TimeoutSec     int `yaml:"TIMEOUT_SEC" env:"TIMEOUT_SEC"`
 	BatchTimeoutMS int `yaml:"CLICKHOUSE_BATCH_TIMEOUT_MS" env:"CLICKHOUSE_BATCH_TIMEOUT_MS" env-default:"800"`
 
+	ClickhouseInsertRetryCount int           `yaml:"CLICKHOUSE_INSERT_RETRY_COUNT" env:"CLICKHOUSE_INSERT_RETRY_COUNT" env-default:"10"`
+	ClickhouseInsertRetryDelay time.Duration `yaml:"CLICKHOUSE_INSERT_RETRY_DELAY" env:"CLICKHOUSE_INSERT_RETRY_DELAY" env-default:"1s"`
+
 	ImpressionClickFlushIntervalSec int    `yaml:"IMPRESSION_CLICK_FLUSH_INTERVAL_SEC" env:"IMPRESSION_CLICK_FLUSH_INTERVAL_SEC" env-default:"30"`
 	EmptyLoopPauseMS                int    `yaml:"EMPTY_LOOP_PAUSE_MS" env:"EMPTY_LOOP_PAUSE_MS" env-default:"200"`
 	BotBaseURL                      string `yaml:"BOT_BASE_URL" env:"BOT_BASE_URL"`
