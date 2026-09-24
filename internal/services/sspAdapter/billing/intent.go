@@ -7,12 +7,31 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	"gitlab.com/twinbid-exchange/RTB-exchange/internal/services/sspAdapter/outbox"
 )
 
 type intentApplier interface {
 	Apply(context.Context, outbox.Record) error
+}
+
+const callbackApplyTimeout = 15 * time.Second
+
+// ApplyDurableCallbackIntent is the HTTP-callback variant of ApplyDurableIntent.
+// Once a callback has reached the durable write-ahead boundary, a client
+// disconnect must not cancel the billing mutation and be misclassified as a
+// Redis outage. Keep request-scoped values, detach cancellation/deadline, and
+// apply a bounded timeout so a genuinely unhealthy dependency still fails
+// closed and remains recoverable through the durable outbox.
+func ApplyDurableCallbackIntent(requestCtx context.Context, outboxStore *outbox.Store, applier intentApplier, record outbox.Record) error {
+	base := context.Background()
+	if requestCtx != nil {
+		base = context.WithoutCancel(requestCtx)
+	}
+	applyCtx, cancel := context.WithTimeout(base, callbackApplyTimeout)
+	defer cancel()
+	return ApplyDurableIntent(applyCtx, outboxStore, applier, record)
 }
 
 // CallbackEventID derives the stable logical billing event ID from the stable

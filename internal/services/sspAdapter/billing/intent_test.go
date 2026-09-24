@@ -177,3 +177,65 @@ func TestCallbackEventIDIsStableAndSeparatesLogicalEvents(t *testing.T) {
 		t.Fatal("different upstream winner IDs must not share an idempotency key")
 	}
 }
+
+type contextAwareApplier struct {
+	applied int
+}
+
+func (a *contextAwareApplier) Apply(ctx context.Context, _ outbox.Record) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	a.applied++
+	return nil
+}
+
+func TestApplyDurableCallbackIntentSurvivesCanceledRequestContext(t *testing.T) {
+	store, err := outbox.Open(filepath.Join(t.TempDir(), "outbox.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+
+	requestCtx, cancel := context.WithCancel(context.Background())
+	cancel()
+	applier := &contextAwareApplier{}
+	record := billingCrashRecord()
+
+	if err := ApplyDurableCallbackIntent(requestCtx, store, applier, record); err != nil {
+		t.Fatalf("callback billing inherited request cancellation: %v", err)
+	}
+	if applier.applied != 1 {
+		t.Fatalf("applied=%d want 1", applier.applied)
+	}
+	if records, err := store.List(); err != nil || len(records) != 0 {
+		t.Fatalf("completed callback intent remained in outbox: records=%#v err=%v", records, err)
+	}
+}
+
+func TestApplyDurableIntentStillHonorsCallerCancellation(t *testing.T) {
+	store, err := outbox.Open(filepath.Join(t.TempDir(), "outbox.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	applier := &contextAwareApplier{}
+	record := billingCrashRecord()
+
+	if err := ApplyDurableIntent(ctx, store, applier, record); !errors.Is(err, context.Canceled) {
+		t.Fatalf("ApplyDurableIntent error=%v want context.Canceled", err)
+	}
+	if applier.applied != 0 {
+		t.Fatalf("applied=%d want 0", applier.applied)
+	}
+	records, err := store.List()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(records) != 1 || records[0].EventID != record.EventID {
+		t.Fatalf("durable intent was not retained after cancellation: %#v", records)
+	}
+}

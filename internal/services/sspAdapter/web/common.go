@@ -441,7 +441,7 @@ func handleADVCallback(
 		PromoStateCaptured: winner.PromoStateCaptured, PromoActive: winner.PromoActive, PromoGeneration: winner.PromoGeneration,
 		Price: winner.Price, Format: winner.Format, Source: source, CreatedAt: time.Now().UTC(), Attempts: 1,
 	}
-	if err := billing.ApplyDurableIntent(ctx, outboxStore, store, record); err != nil {
+	if err := billing.ApplyDurableCallbackIntent(ctx, outboxStore, store, record); err != nil {
 		record.LastError = err.Error()
 		record.LastAttemptAt = time.Now().UTC()
 		handleADVWriteFailure(err, record, outboxStore, controlURLs, sspAdapterWorkStatusURL, monitor)
