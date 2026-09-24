@@ -54,14 +54,16 @@ func TestPercentStoreRequiresMapFallbacksAndExpandsGroupedCampaignKeys(t *testin
 	}
 }
 
-func TestPercentStoreRejectsMissingRequiredFallbacks(t *testing.T) {
+func TestPercentStoreRepairsMissingRequiredFallbacksOnLoad(t *testing.T) {
 	for _, tc := range []struct {
-		name string
-		m    PercentMap
+		name    string
+		m       PercentMap
+		wantALL float64
+		wantRTB float64
 	}{
-		{name: "missing ALL", m: PercentMap{PercentMapRTBDefaultKey: 0.31}},
-		{name: "missing ALL_RTB", m: PercentMap{PercentMapDefaultKey: 0.19}},
-		{name: "missing both", m: PercentMap{}},
+		{name: "missing ALL", m: PercentMap{PercentMapRTBDefaultKey: 0.31}, wantALL: 0.30, wantRTB: 0.31},
+		{name: "missing ALL_RTB", m: PercentMap{PercentMapDefaultKey: 0.19}, wantALL: 0.19, wantRTB: 0.30},
+		{name: "missing both", m: PercentMap{"campaign-1": 0.25}, wantALL: 0.30, wantRTB: 0.30},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			filename := filepath.Join(t.TempDir(), "adv_percent_map.json")
@@ -72,10 +74,49 @@ func TestPercentStoreRejectsMissingRequiredFallbacks(t *testing.T) {
 			if err := os.WriteFile(filename, data, 0o600); err != nil {
 				t.Fatal(err)
 			}
-			if _, err := NewPercentStore(filename); err == nil {
-				t.Fatal("percent map without ALL/ALL_RTB must fail closed")
+
+			store, err := NewPercentStore(filename)
+			if err != nil {
+				t.Fatal(err)
+			}
+			saved, err := store.Saved()
+			if err != nil {
+				t.Fatal(err)
+			}
+			if saved[PercentMapDefaultKey] != tc.wantALL || saved[PercentMapRTBDefaultKey] != tc.wantRTB {
+				t.Fatalf("repaired fallbacks=%#v want ALL=%v ALL_RTB=%v", saved, tc.wantALL, tc.wantRTB)
+			}
+
+			persistedData, err := os.ReadFile(filename)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var persisted PercentMap
+			if err := json.Unmarshal(persistedData, &persisted); err != nil {
+				t.Fatal(err)
+			}
+			if persisted[PercentMapDefaultKey] != tc.wantALL || persisted[PercentMapRTBDefaultKey] != tc.wantRTB {
+				t.Fatalf("fallback repair was not persisted: %#v", persisted)
 			}
 		})
+	}
+}
+
+func TestPercentStoreUpdateRepairsMissingRequiredFallbacks(t *testing.T) {
+	store := newPercentStoreForPolicyTest(t, PercentMap{
+		PercentMapDefaultKey:    0.20,
+		PercentMapRTBDefaultKey: 0.30,
+	})
+
+	if err := store.Update(PercentMap{"campaign-1": 0.42}); err != nil {
+		t.Fatal(err)
+	}
+	saved, err := store.Saved()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if saved["campaign-1"] != 0.42 || saved[PercentMapDefaultKey] != 0.30 || saved[PercentMapRTBDefaultKey] != 0.30 {
+		t.Fatalf("update did not auto-fill fallbacks: %#v", saved)
 	}
 }
 

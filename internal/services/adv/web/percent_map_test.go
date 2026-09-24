@@ -65,3 +65,36 @@ func TestADVPercentMapRoutesPreserveGroupedConfigAndExpandRuntime(t *testing.T) 
 		}
 	}
 }
+
+func TestADVPercentMapPUTAutoFillsMissingFallbacks(t *testing.T) {
+	filename := t.TempDir() + "/adv_percent_map.json"
+	if err := os.WriteFile(filename, []byte(`{"ALL":0.20,"ALL_RTB":0.30}`+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	store, err := auction.NewPercentStore(filename)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	router := chi.NewRouter()
+	InitHttpRoutes(router, store, nil, nil, NewWorkController())
+
+	put := httptest.NewRequest(http.MethodPut, PutADVPercentMapURL, strings.NewReader(`{"campaign-1":0.25}`))
+	putRecorder := httptest.NewRecorder()
+	router.ServeHTTP(putRecorder, put)
+	if putRecorder.Code != http.StatusNoContent {
+		t.Fatalf("PUT status=%d body=%s", putRecorder.Code, putRecorder.Body.String())
+	}
+
+	data, err := os.ReadFile(filename)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var persisted auction.PercentMap
+	if err := json.Unmarshal(data, &persisted); err != nil {
+		t.Fatal(err)
+	}
+	if persisted["campaign-1"] != 0.25 || persisted[auction.PercentMapDefaultKey] != 0.30 || persisted[auction.PercentMapRTBDefaultKey] != 0.30 {
+		t.Fatalf("PUT did not persist repaired fallbacks: %#v", persisted)
+	}
+}

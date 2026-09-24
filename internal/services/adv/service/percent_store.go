@@ -13,9 +13,10 @@ import (
 )
 
 const (
-	PercentMapDefaultKey    = "ALL"
-	PercentMapRTBDefaultKey = "ALL_RTB"
-	MaxAdvertiserMargin     = 0.90
+	PercentMapDefaultKey      = "ALL"
+	PercentMapRTBDefaultKey   = "ALL_RTB"
+	PercentMapDefaultFallback = 0.30
+	MaxAdvertiserMargin       = 0.90
 )
 
 // PercentMap is the persisted ADV percentage configuration. Campaign keys may
@@ -39,9 +40,14 @@ func NewPercentStore(filename string) (*PercentStore, error) {
 	if store.filename == "" {
 		return nil, errors.New("ADV percent map filename is empty")
 	}
-	saved, runtime, _, err := loadPercentMap(store.filename)
+	saved, runtime, repaired, err := loadPercentMap(store.filename)
 	if err != nil {
 		return nil, fmt.Errorf("load ADV percent map: %w", err)
+	}
+	if repaired {
+		if err := writeJSONAtomic(store.filename, saved); err != nil {
+			return nil, fmt.Errorf("persist repaired ADV percent map: %w", err)
+		}
 	}
 	store.value.Store(&percentSnapshot{Saved: saved, Values: runtime})
 	return store, nil
@@ -112,13 +118,18 @@ func validateAndNormalizePercentMap(input PercentMap) (PercentMap, PercentMap, b
 		}
 	}
 
+	repaired := false
 	if _, exists := saved[PercentMapDefaultKey]; !exists {
-		return nil, nil, false, errors.New("ADV percent map must contain ALL fallback")
+		saved[PercentMapDefaultKey] = PercentMapDefaultFallback
+		runtime[PercentMapDefaultKey] = PercentMapDefaultFallback
+		repaired = true
 	}
 	if _, exists := saved[PercentMapRTBDefaultKey]; !exists {
-		return nil, nil, false, errors.New("ADV percent map must contain ALL_RTB fallback")
+		saved[PercentMapRTBDefaultKey] = PercentMapDefaultFallback
+		runtime[PercentMapRTBDefaultKey] = PercentMapDefaultFallback
+		repaired = true
 	}
-	return saved, runtime, false, nil
+	return saved, runtime, repaired, nil
 }
 
 func normalizePercentCampaignID(value string) string {
