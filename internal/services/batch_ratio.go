@@ -369,7 +369,29 @@ func FetchBatchRatioDiffsWithRetries(ctx context.Context, ch clickhouse.Conn, cf
 }
 
 func FetchBatchRatioDiffs(ctx context.Context, ch clickhouse.Conn, cfg config.BatchRatioConfig) (int64, int64, error) {
-	query := fmt.Sprintf(`
+	query := buildBatchRatioDiffsQuery(cfg)
+
+	var clicksDiffSec int64
+	var impressionsDiffSec int64
+	if err := ch.QueryRow(ctx, query).Scan(&clicksDiffSec, &impressionsDiffSec); err != nil {
+		return 0, 0, err
+	}
+	return impressionsDiffSec, clicksDiffSec, nil
+}
+
+func buildBatchRatioDiffsQuery(cfg config.BatchRatioConfig) string {
+	// Batch-ratio is an ingestion-control signal, not an analytical/deduped
+	// metric. It only needs the newest physical insert batch. Reading
+	// ortb_logical here is prohibitively expensive at production ORTB volume:
+	// that view performs ORDER BY ... LIMIT 1 BY logical_event_id across the
+	// retained ORTB data before this query can obtain the latest batch. With a
+	// 2s ticker/request timeout this turns into a permanent timeout/retry loop.
+	//
+	// Kafka replay can duplicate a physical ORTB event, but for this control
+	// signal we select only max(created_at) and then min(event_time). Duplicates
+	// inside that newest batch do not change min(event_time), so global logical
+	// deduplication is unnecessary here.
+	return fmt.Sprintf(`
 WITH
     (
         SELECT toDateTime(quantileExact(0.10)(toUnixTimestamp(event_time_impressions)), 'UTC')
@@ -408,16 +430,9 @@ SELECT
 		quoteTable(cfg.TableImpressions),
 		quoteTable(cfg.TableClicks),
 		quoteTable(cfg.TableClicks),
-		quoteTable(logicalOrtbTable(cfg.TableOrtb)),
-		quoteTable(logicalOrtbTable(cfg.TableOrtb)),
+		quoteTable(cfg.TableOrtb),
+		quoteTable(cfg.TableOrtb),
 	)
-
-	var clicksDiffSec int64
-	var impressionsDiffSec int64
-	if err := ch.QueryRow(ctx, query).Scan(&clicksDiffSec, &impressionsDiffSec); err != nil {
-		return 0, 0, err
-	}
-	return impressionsDiffSec, clicksDiffSec, nil
 }
 
 func (m *BatchRatioManager) StartHTTPServer(ctx context.Context, cfg config.BatchRatioConfig, loaderControl *LoaderControl) *http.Server {
