@@ -187,13 +187,88 @@ CREATE TABLE IF NOT EXISTS {db}.percenter_state_history
 ENGINE = ReplacingMergeTree(inserted_at)
 ORDER BY event_id;
 
--- Compatibility with an installation that briefly ran an earlier schema
--- before result-point fields were added.
+-- Compatibility with installations that already have an older
+-- percenter_state_history schema. CREATE TABLE IF NOT EXISTS does not evolve an
+-- existing table, so explicitly add every column used by the current history
+-- writer that may be absent. Do not use AFTER here: schema-drifted installations
+-- may not have the referenced predecessor column yet, which makes ClickHouse
+-- reject an otherwise idempotent ADD COLUMN IF NOT EXISTS migration.
 ALTER TABLE {db}.percenter_state_history
-    ADD COLUMN IF NOT EXISTS result_ssp_bid Float64 AFTER candidate_margin;
-
+    ADD COLUMN IF NOT EXISTS timestamp DateTime64(3, 'UTC');
 ALTER TABLE {db}.percenter_state_history
-    ADD COLUMN IF NOT EXISTS result_margin Float64 AFTER result_ssp_bid;
+    ADD COLUMN IF NOT EXISTS bucket DateTime64(3, 'UTC');
+ALTER TABLE {db}.percenter_state_history
+    ADD COLUMN IF NOT EXISTS campaign_id String;
+ALTER TABLE {db}.percenter_state_history
+    ADD COLUMN IF NOT EXISTS exact_segment_hash String;
+ALTER TABLE {db}.percenter_state_history
+    ADD COLUMN IF NOT EXISTS segment_hash String;
+ALTER TABLE {db}.percenter_state_history
+    ADD COLUMN IF NOT EXISTS type_model UInt8;
+ALTER TABLE {db}.percenter_state_history
+    ADD COLUMN IF NOT EXISTS phase LowCardinality(String);
+ALTER TABLE {db}.percenter_state_history
+    ADD COLUMN IF NOT EXISTS point_version UInt64;
+ALTER TABLE {db}.percenter_state_history
+    ADD COLUMN IF NOT EXISTS original_bid Float64;
+ALTER TABLE {db}.percenter_state_history
+    ADD COLUMN IF NOT EXISTS advertiser_price Float64;
+ALTER TABLE {db}.percenter_state_history
+    ADD COLUMN IF NOT EXISTS ssp_bid Float64;
+ALTER TABLE {db}.percenter_state_history
+    ADD COLUMN IF NOT EXISTS margin Float64;
+ALTER TABLE {db}.percenter_state_history
+    ADD COLUMN IF NOT EXISTS effective_min Float64;
+ALTER TABLE {db}.percenter_state_history
+    ADD COLUMN IF NOT EXISTS map_source LowCardinality(String);
+ALTER TABLE {db}.percenter_state_history
+    ADD COLUMN IF NOT EXISTS baseline_buyout Float64;
+ALTER TABLE {db}.percenter_state_history
+    ADD COLUMN IF NOT EXISTS baseline_winrate Float64;
+ALTER TABLE {db}.percenter_state_history
+    ADD COLUMN IF NOT EXISTS baseline_efficiency Float64;
+ALTER TABLE {db}.percenter_state_history
+    ADD COLUMN IF NOT EXISTS requests UInt64;
+ALTER TABLE {db}.percenter_state_history
+    ADD COLUMN IF NOT EXISTS impressions UInt64;
+ALTER TABLE {db}.percenter_state_history
+    ADD COLUMN IF NOT EXISTS wins UInt64;
+ALTER TABLE {db}.percenter_state_history
+    ADD COLUMN IF NOT EXISTS clicks UInt64;
+ALTER TABLE {db}.percenter_state_history
+    ADD COLUMN IF NOT EXISTS advertiser_spend Float64;
+ALTER TABLE {db}.percenter_state_history
+    ADD COLUMN IF NOT EXISTS revenue Float64;
+ALTER TABLE {db}.percenter_state_history
+    ADD COLUMN IF NOT EXISTS buyout Float64;
+ALTER TABLE {db}.percenter_state_history
+    ADD COLUMN IF NOT EXISTS winrate Float64;
+ALTER TABLE {db}.percenter_state_history
+    ADD COLUMN IF NOT EXISTS efficiency Float64;
+ALTER TABLE {db}.percenter_state_history
+    ADD COLUMN IF NOT EXISTS profit Float64;
+ALTER TABLE {db}.percenter_state_history
+    ADD COLUMN IF NOT EXISTS profit_per_relevant_opportunity Float64;
+ALTER TABLE {db}.percenter_state_history
+    ADD COLUMN IF NOT EXISTS previous_ssp_bid Float64;
+ALTER TABLE {db}.percenter_state_history
+    ADD COLUMN IF NOT EXISTS previous_margin Float64;
+ALTER TABLE {db}.percenter_state_history
+    ADD COLUMN IF NOT EXISTS candidate_ssp_bid Float64;
+ALTER TABLE {db}.percenter_state_history
+    ADD COLUMN IF NOT EXISTS candidate_margin Float64;
+ALTER TABLE {db}.percenter_state_history
+    ADD COLUMN IF NOT EXISTS result_ssp_bid Float64;
+ALTER TABLE {db}.percenter_state_history
+    ADD COLUMN IF NOT EXISTS result_margin Float64;
+ALTER TABLE {db}.percenter_state_history
+    ADD COLUMN IF NOT EXISTS decision LowCardinality(String);
+ALTER TABLE {db}.percenter_state_history
+    ADD COLUMN IF NOT EXISTS reason String;
+ALTER TABLE {db}.percenter_state_history
+    ADD COLUMN IF NOT EXISTS step Float64;
+ALTER TABLE {db}.percenter_state_history
+    ADD COLUMN IF NOT EXISTS threshold_passed Bool;
 
 CREATE TABLE IF NOT EXISTS {db}.percenter_telemetry
 (
@@ -212,6 +287,30 @@ CREATE TABLE IF NOT EXISTS {db}.percenter_telemetry
 )
 ENGINE = ReplacingMergeTree(inserted_at)
 ORDER BY event_id;
+
+-- Apply the same schema-drift protection to telemetry. These statements are
+-- metadata-only when the columns already exist and let an older installation
+-- converge to the writer contract without dropping telemetry data.
+ALTER TABLE {db}.percenter_telemetry
+    ADD COLUMN IF NOT EXISTS bucket DateTime64(3, 'UTC');
+ALTER TABLE {db}.percenter_telemetry
+    ADD COLUMN IF NOT EXISTS service LowCardinality(String);
+ALTER TABLE {db}.percenter_telemetry
+    ADD COLUMN IF NOT EXISTS instance String;
+ALTER TABLE {db}.percenter_telemetry
+    ADD COLUMN IF NOT EXISTS campaign_id String;
+ALTER TABLE {db}.percenter_telemetry
+    ADD COLUMN IF NOT EXISTS exact_segment_hash String;
+ALTER TABLE {db}.percenter_telemetry
+    ADD COLUMN IF NOT EXISTS segment_hash String;
+ALTER TABLE {db}.percenter_telemetry
+    ADD COLUMN IF NOT EXISTS type_model UInt8;
+ALTER TABLE {db}.percenter_telemetry
+    ADD COLUMN IF NOT EXISTS point_version UInt64;
+ALTER TABLE {db}.percenter_telemetry
+    ADD COLUMN IF NOT EXISTS counter LowCardinality(String);
+ALTER TABLE {db}.percenter_telemetry
+    ADD COLUMN IF NOT EXISTS value UInt64;
 
 -- Analytics must read logical views (or otherwise deduplicate by event_id),
 -- so retries/crash replays cannot double-apply one logical observation.
