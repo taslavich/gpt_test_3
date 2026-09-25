@@ -1,7 +1,9 @@
 package utils
 
 import (
+	"os"
 	"reflect"
+	"strings"
 	"testing"
 
 	"gitlab.com/twinbid-exchange/RTB-exchange/internal/types"
@@ -404,5 +406,33 @@ func TestSplitAndTrimKeys(t *testing.T) {
 					tt.input, result, tt.expected)
 			}
 		})
+	}
+}
+
+func TestInitOptionalSspGeoDspMapCreatesMissingFile(t *testing.T) {
+	filename := t.TempDir() + "/video-map.json"
+	got, err := InitOptionalSspGeoDspMap[bool](filename)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 0 {
+		t.Fatalf("new optional map must be empty: %#v", got)
+	}
+	data, err := os.ReadFile(filename)
+	if err != nil {
+		t.Fatalf("optional map file was not created: %v", err)
+	}
+	if strings.TrimSpace(string(data)) != "{}" {
+		t.Fatalf("unexpected initial optional map: %q", data)
+	}
+}
+
+func TestInitOptionalSspGeoDspMapDoesNotHideInvalidJSON(t *testing.T) {
+	filename := t.TempDir() + "/video-map.json"
+	if err := os.WriteFile(filename, []byte("{"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := InitOptionalSspGeoDspMap[bool](filename); err == nil {
+		t.Fatal("invalid existing VIDEO map must remain a startup error")
 	}
 }

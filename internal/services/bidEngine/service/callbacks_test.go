@@ -398,3 +398,32 @@ func TestVideoDSPADMValidation(t *testing.T) {
 		t.Fatal("VIDEO DSP ADM must not be POP-wrapped")
 	}
 }
+
+func TestFinalizeADVVideoVAST4PreservesNamespaceAndMediaCDATA(t *testing.T) {
+	adm := `<?xml version="1.0" encoding="UTF-8"?><VAST xmlns="http://www.iab.com/VAST" version="4.0"><Ad id="v1"><InLine><AdSystem version="1.0">TwinBid</AdSystem><Impression>https://invalid.twinbid.local/video-impression</Impression><AdTitle>video</AdTitle><Creatives><Creative><UniversalAdId idRegistry="twinbidexchange.com" idValue="v1">v1</UniversalAdId><Linear><Duration>00:00:20</Duration><MediaFiles><MediaFile delivery="progressive" type="video/mp4" width="1920" height="1080"><![CDATA[https://cdn.example/video.mp4?a=1&b=2]]></MediaFile></MediaFiles><VideoClicks><ClickThrough><![CDATA[https://advertiser.example/landing?a=1&b=2]]></ClickThrough></VideoClicks></Linear></Creative></Creatives></InLine></Ad></VAST>`
+	bid := &ortb.Bid{Adm: &adm}
+
+	got, ok := FinalizeADVCallbacks(bid, "callbacks.example", "video-v4", "vid_mc_test", constants.VID)
+	if !ok || got == nil {
+		t.Fatal("VAST 4 callback finalization failed")
+	}
+	finalADM := got.GetAdm()
+	if !strings.Contains(finalADM, `<VAST xmlns="http://www.iab.com/VAST" version="4.0">`) {
+		t.Fatalf("VAST 4 namespace changed: %s", finalADM)
+	}
+	if strings.Count(finalADM, `xmlns="http://www.iab.com/VAST"`) != 1 {
+		t.Fatalf("VAST 4 namespace duplicated: %s", finalADM)
+	}
+	if !strings.Contains(finalADM, `<![CDATA[https://cdn.example/video.mp4?a=1&b=2]]>`) {
+		t.Fatalf("MediaFile CDATA was not preserved: %s", finalADM)
+	}
+	if !strings.Contains(finalADM, `<ClickThrough><![CDATA[https://callbacks.example/adm?`) {
+		t.Fatalf("ClickThrough was not rewritten as CDATA: %s", finalADM)
+	}
+	if strings.Index(finalADM, "<MediaFiles>") > strings.Index(finalADM, "<VideoClicks>") {
+		t.Fatalf("VAST 4 Linear order changed: %s", finalADM)
+	}
+	if !validVASTADM(finalADM) {
+		t.Fatalf("finalized VAST 4 is not well-formed: %s", finalADM)
+	}
+}

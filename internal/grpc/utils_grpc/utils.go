@@ -2,6 +2,7 @@ package utils
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"os"
@@ -42,6 +43,34 @@ func InitSspGeoDspMap[T *types.PercentAndBidfloor | bool](filename string) (map[
 	}
 
 	return SetAndConvertNonGoodMap(tmp), nil
+}
+
+// InitOptionalSspGeoDspMap is used for format-specific maps that may be absent
+// on an older deployment. A missing file is initialized to an empty JSON map
+// and persisted so the existing control-plane rewrite endpoints can populate it
+// later. Invalid/unreadable existing files remain fatal and are never hidden.
+func InitOptionalSspGeoDspMap[T *types.PercentAndBidfloor | bool](filename string) (map[string]map[string]map[string]T, error) {
+	filename = strings.TrimSpace(filename)
+	if filename == "" {
+		return make(map[string]map[string]map[string]T), nil
+	}
+
+	value, err := InitSspGeoDspMap[T](filename)
+	if err == nil {
+		return value, nil
+	}
+	if !errors.Is(err, os.ErrNotExist) {
+		return nil, err
+	}
+
+	if writeErr := os.WriteFile(filename, []byte("{}\n"), 0644); writeErr != nil {
+		// Another process may have created the file between the read and write.
+		if value, retryErr := InitSspGeoDspMap[T](filename); retryErr == nil {
+			return value, nil
+		}
+		return nil, fmt.Errorf("initialize optional SSP/GEO/DSP map %s: %w", filename, writeErr)
+	}
+	return make(map[string]map[string]map[string]T), nil
 }
 
 func SetAndConvertNonGoodMap[T *types.PercentAndBidfloor | bool](tmp map[string]map[string]map[string]T) map[string]map[string]map[string]T {

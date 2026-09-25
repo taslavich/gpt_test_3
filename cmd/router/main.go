@@ -127,8 +127,15 @@ func main() {
 	natMainstreamLinks := initLinkMap(cfg.SspGeoDspLinksNatMainstreamFilePath)
 	ippAdultLinks := initLinkMap(cfg.SspGeoDspLinksIppAdultFilePath)
 	ippMainstreamLinks := initLinkMap(cfg.SspGeoDspLinksIppMainstreamFilePath)
-	vidAdultLinks := initLinkMap(cfg.SspGeoDspLinksVidAdultFilePath)
-	vidMainstreamLinks := initLinkMap(cfg.SspGeoDspLinksVidMainstreamFilePath)
+	initOptionalLinkMap := func(path string) dspRouterWeb.GeoDspLinkMap {
+		value, err := utils.InitOptionalSspGeoDspMap[bool](path)
+		if err != nil {
+			log.Fatalf("Failed to initialize optional VIDEO SSP/GEO/DSP links from %s: %v", path, err)
+		}
+		return dspRouterWeb.GeoDspLinkMap(value)
+	}
+	vidAdultLinks := initOptionalLinkMap(cfg.SspGeoDspLinksVidAdultFilePath)
+	vidMainstreamLinks := initOptionalLinkMap(cfg.SspGeoDspLinksVidMainstreamFilePath)
 
 	formatRoutes := &dspRouterWeb.FormatRoutesV25{
 		POP: dspRouterWeb.FormatRouteV25{

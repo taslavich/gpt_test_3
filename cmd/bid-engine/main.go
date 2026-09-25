@@ -127,8 +127,15 @@ func main() {
 	natMainstreamPercents := initPercentMap(cfg.SspGeoDspPercentsNatMainstreamFilePath)
 	ippAdultPercents := initPercentMap(cfg.SspGeoDspPercentsIppAdultFilePath)
 	ippMainstreamPercents := initPercentMap(cfg.SspGeoDspPercentsIppMainstreamFilePath)
-	vidAdultPercents := initPercentMap(cfg.SspGeoDspPercentsVidAdultFilePath)
-	vidMainstreamPercents := initPercentMap(cfg.SspGeoDspPercentsVidMainstreamFilePath)
+	initOptionalPercentMap := func(path string) types.GeoDspPercentMap {
+		value, err := utils.InitOptionalSspGeoDspMap[*types.PercentAndBidfloor](path)
+		if err != nil {
+			log.Fatalf("Failed to initialize optional VIDEO SSP/GEO/DSP percents from %s: %v", path, err)
+		}
+		return types.GeoDspPercentMap(value)
+	}
+	vidAdultPercents := initOptionalPercentMap(cfg.SspGeoDspPercentsVidAdultFilePath)
+	vidMainstreamPercents := initOptionalPercentMap(cfg.SspGeoDspPercentsVidMainstreamFilePath)
 
 	siteDSPPercentStore, err := bidEngine.NewStore(cfg.SiteIDDspPercentsFilePath)
 	if err != nil {

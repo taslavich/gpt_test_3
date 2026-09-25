@@ -36,15 +36,12 @@ func TestVideoFormatMatchesImpression(t *testing.T) {
 		plcmt     *int32
 		want      bool
 	}{
-		{name: "instream modern", format: VideoFormatInstream, plcmt: i32(1), want: true},
-		{name: "instream legacy", format: VideoFormatInstream, placement: i32(1), want: true},
-		{name: "outstream accompanying content", format: VideoFormatOutstream, plcmt: i32(2), want: true},
-		{name: "outstream standalone", format: VideoFormatOutstream, plcmt: i32(4), want: true},
-		{name: "outstream legacy in article", format: VideoFormatOutstream, placement: i32(3), want: true},
-		{name: "popup modern", format: VideoFormatPopup, plcmt: i32(3), want: true},
-		{name: "popup legacy", format: VideoFormatPopup, placement: i32(5), want: true},
-		{name: "wrong format", format: VideoFormatInstream, plcmt: i32(3), want: false},
-		{name: "placement has priority", format: VideoFormatPopup, placement: i32(5), plcmt: i32(1), want: true},
+		{name: "instream placement", format: VideoFormatInstream, placement: i32(1), want: true},
+		{name: "outstream placement", format: VideoFormatOutstream, placement: i32(3), want: true},
+		{name: "popup placement", format: VideoFormatPopup, placement: i32(5), want: true},
+		{name: "wrong placement", format: VideoFormatInstream, placement: i32(3), want: false},
+		{name: "placement has priority over plcmt", format: VideoFormatPopup, placement: i32(5), plcmt: i32(1), want: true},
+		{name: "generic plcmt is not a fallback", format: VideoFormatInstream, plcmt: i32(1), want: false},
 		{name: "missing classification", format: VideoFormatOutstream, want: false},
 		{name: "legacy frontend alias", format: "outstream_slider", placement: i32(4), want: true},
 	}
@@ -117,10 +114,16 @@ func TestBuildOwnVideoVASTSelectsHighestSupportedInlineVersion(t *testing.T) {
 	if !ok {
 		t.Fatal("failed to build own VIDEO VAST")
 	}
-	for _, want := range []string{`<VAST version="4.0">`, `<UniversalAdId idRegistry="twinbidexchange.com">v1</UniversalAdId>`, videoImpressionPlaceholder, creative.ADMURL, creative.ImageURL, `<Duration>00:00:20</Duration>`} {
+	for _, want := range []string{`<VAST xmlns="http://www.iab.com/VAST" version="4.0">`, `<UniversalAdId idRegistry="twinbidexchange.com" idValue="v1">v1</UniversalAdId>`, videoImpressionPlaceholder, creative.ADMURL, `<![CDATA[` + creative.ImageURL + `]]>`, `<Duration>00:00:20</Duration>`} {
 		if !strings.Contains(vast, want) {
 			t.Fatalf("generated VAST missing %q: %s", want, vast)
 		}
+	}
+	if strings.Index(vast, "<MediaFiles>") > strings.Index(vast, "<VideoClicks>") {
+		t.Fatalf("VAST 4 Linear order must be Duration -> MediaFiles -> VideoClicks: %s", vast)
+	}
+	if strings.Index(vast, "<Impression>") > strings.Index(vast, "<AdTitle>") {
+		t.Fatalf("VAST 4 InLine order must place Impression before AdTitle: %s", vast)
 	}
 	if strings.Contains(vast, "ClickTracking") || strings.Contains(vast, "TrackingEvents") || strings.Contains(vast, "Wrapper") {
 		t.Fatalf("generated VAST contains forbidden tracking/wrapper markup: %s", vast)

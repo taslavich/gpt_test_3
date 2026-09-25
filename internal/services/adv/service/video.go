@@ -52,9 +52,9 @@ func normalizeVideoFormat(value string) string {
 }
 
 // videoFormatMatchesImpression is the only advertiser-selectable VIDEO-specific
-// eligibility check. OpenRTB 2.5 placement is primary; plcmt remains a generic
-// compatibility fallback. MyBid imp.ext.pl is normalized into placement in the
-// SSP adapter before the request enters the internal gRPC pipeline.
+// eligibility check. OpenRTB 2.5 placement is authoritative. MyBid imp.ext.pl is
+// normalized into placement in the SSP adapter before the request enters the
+// internal gRPC pipeline; generic plcmt is deliberately not used here.
 func videoFormatMatchesImpression(videoFormat string, imp *ortb.Imp) bool {
 	if imp == nil || imp.GetVideo() == nil {
 		return false
@@ -71,18 +71,6 @@ func videoFormatMatchesImpression(videoFormat string, imp *ortb.Imp) bool {
 		case 2, 3, 4:
 			return format == VideoFormatOutstream
 		case 5:
-			return format == VideoFormatPopup
-		default:
-			return false
-		}
-	}
-	if video.Plcmt != nil && video.GetPlcmt() > 0 {
-		switch video.GetPlcmt() {
-		case 1:
-			return format == VideoFormatInstream
-		case 2, 4:
-			return format == VideoFormatOutstream
-		case 3:
 			return format == VideoFormatPopup
 		default:
 			return false
@@ -293,12 +281,12 @@ type vastCreatives struct {
 }
 
 type vastCreative struct {
-	UniversalAdID *vastUniversalAdID `xml:"UniversalAdId,omitempty"`
-	Linear        vastLinear         `xml:"Linear"`
+	Linear vastLinear `xml:"Linear"`
 }
 
 type vastUniversalAdID struct {
 	IDRegistry string `xml:"idRegistry,attr"`
+	IDValue    string `xml:"idValue,attr"`
 	Value      string `xml:",chardata"`
 }
 
@@ -309,7 +297,11 @@ type vastLinear struct {
 }
 
 type vastVideoClicks struct {
-	ClickThrough string `xml:"ClickThrough"`
+	ClickThrough vastCDATAValue `xml:"ClickThrough"`
+}
+
+type vastCDATAValue struct {
+	Value string `xml:",cdata"`
 }
 
 type vastMediaFiles struct {
@@ -323,7 +315,44 @@ type vastMediaFile struct {
 	Height   int    `xml:"height,attr"`
 	Bitrate  int32  `xml:"bitrate,attr,omitempty"`
 	Codec    string `xml:"codec,attr,omitempty"`
-	URL      string `xml:",chardata"`
+	URL      string `xml:",cdata"`
+}
+
+// VAST 4 uses a namespace and a different schema order than VAST 2/3. Keep a
+// dedicated representation so VAST 2/3 compatibility is not changed while the
+// protocol=7 response validates against the IAB VAST 4 schema.
+type vast4Document struct {
+	XMLName xml.Name `xml:"VAST"`
+	XMLNS   string   `xml:"xmlns,attr"`
+	Version string   `xml:"version,attr"`
+	Ad      vast4Ad  `xml:"Ad"`
+}
+
+type vast4Ad struct {
+	ID     string      `xml:"id,attr,omitempty"`
+	Inline vast4Inline `xml:"InLine"`
+}
+
+type vast4Inline struct {
+	AdSystem   vastAdSystem   `xml:"AdSystem"`
+	Impression string         `xml:"Impression"`
+	AdTitle    string         `xml:"AdTitle"`
+	Creatives  vast4Creatives `xml:"Creatives"`
+}
+
+type vast4Creatives struct {
+	Creative vast4Creative `xml:"Creative"`
+}
+
+type vast4Creative struct {
+	UniversalAdID vastUniversalAdID `xml:"UniversalAdId"`
+	Linear        vast4Linear       `xml:"Linear"`
+}
+
+type vast4Linear struct {
+	Duration    string          `xml:"Duration"`
+	MediaFiles  vastMediaFiles  `xml:"MediaFiles"`
+	VideoClicks vastVideoClicks `xml:"VideoClicks"`
 }
 
 func buildOwnVideoVAST(imp *ortb.Imp, creative *Creative, clickURL string) (string, bool) {
@@ -345,38 +374,58 @@ func buildOwnVideoVAST(imp *ortb.Imp, creative *Creative, clickURL string) (stri
 	if title == "" {
 		title = "TwinBid Video"
 	}
-	linear := vastLinear{
-		Duration:    formatVASTDuration(meta.Duration),
-		VideoClicks: vastVideoClicks{ClickThrough: clickURL},
-		MediaFiles: vastMediaFiles{MediaFile: vastMediaFile{
-			Delivery: "progressive",
-			Type:     "video/mp4",
-			Width:    creative.W,
-			Height:   creative.H,
-			Bitrate:  meta.Bitrate,
-			// ffprobe codec_name is stored for compatibility/debugging but is
-			// not necessarily an RFC 6381 codec string, so do not mislabel it
-			// in VAST's optional codec attribute.
-			Codec: "",
-			URL:   creative.ImageURL,
-		}},
-	}
-	creativeNode := vastCreative{Linear: linear}
+	mediaFiles := vastMediaFiles{MediaFile: vastMediaFile{
+		Delivery: "progressive",
+		Type:     "video/mp4",
+		Width:    creative.W,
+		Height:   creative.H,
+		Bitrate:  meta.Bitrate,
+		// ffprobe codec_name is stored for compatibility/debugging but is
+		// not necessarily an RFC 6381 codec string, so do not mislabel it
+		// in VAST's optional codec attribute.
+		Codec: "",
+		URL:   creative.ImageURL,
+	}}
+	videoClicks := vastVideoClicks{ClickThrough: vastCDATAValue{Value: clickURL}}
+	duration := formatVASTDuration(meta.Duration)
+
+	var payload []byte
+	var err error
 	if version == "4.0" {
-		// UniversalAdId is required by the VAST 4 schema. We use our stable
-		// creative UUID under TwinBid's own registry namespace.
-		creativeNode.UniversalAdID = &vastUniversalAdID{IDRegistry: "twinbidexchange.com", Value: creative.ID}
+		id := strings.TrimSpace(creative.ID)
+		if id == "" {
+			id = "unknown"
+		}
+		doc := vast4Document{
+			XMLNS:   "http://www.iab.com/VAST",
+			Version: version,
+			Ad: vast4Ad{ID: creative.ID, Inline: vast4Inline{
+				AdSystem:   vastAdSystem{Version: "1.0", Value: "TwinBid"},
+				Impression: videoImpressionPlaceholder,
+				AdTitle:    title,
+				Creatives: vast4Creatives{Creative: vast4Creative{
+					UniversalAdID: vastUniversalAdID{IDRegistry: "twinbidexchange.com", IDValue: id, Value: id},
+					Linear: vast4Linear{
+						Duration: duration, MediaFiles: mediaFiles, VideoClicks: videoClicks,
+					},
+				}},
+			}},
+		}
+		payload, err = xml.Marshal(doc)
+	} else {
+		doc := vastDocument{
+			Version: version,
+			Ad: vastAd{ID: creative.ID, Inline: vastInline{
+				AdSystem:   vastAdSystem{Version: "1.0", Value: "TwinBid"},
+				AdTitle:    title,
+				Impression: videoImpressionPlaceholder,
+				Creatives: vastCreatives{Creative: vastCreative{Linear: vastLinear{
+					Duration: duration, VideoClicks: videoClicks, MediaFiles: mediaFiles,
+				}}},
+			}},
+		}
+		payload, err = xml.Marshal(doc)
 	}
-	doc := vastDocument{
-		Version: version,
-		Ad: vastAd{ID: creative.ID, Inline: vastInline{
-			AdSystem:   vastAdSystem{Version: "1.0", Value: "TwinBid"},
-			AdTitle:    title,
-			Impression: videoImpressionPlaceholder,
-			Creatives:  vastCreatives{Creative: creativeNode},
-		}},
-	}
-	payload, err := xml.Marshal(doc)
 	if err != nil {
 		return "", false
 	}
