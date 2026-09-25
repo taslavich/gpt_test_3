@@ -25,6 +25,7 @@ message Imp {
     optional Imp_Ext ext = 7;
     optional Banner banner = 8;
     optional Native native = 9;  // только request и ver
+    optional Video video = 10;
 }
 
 message Banner {
@@ -49,6 +50,7 @@ message Native {
     optional string request = 1;  // JSON строка
     optional string ver = 2;
 }
+
 
 message Imp_Ext {
     optional string subid = 1;
@@ -144,4 +146,26 @@ message BidResponse {
 
 message Ext {
     map<string, string> values = 1;
+}
+message Video {
+    repeated string mimes = 1;
+    optional int32 minduration = 2;
+    optional int32 maxduration = 3;
+    optional int32 startdelay = 4;
+    repeated int32 protocols = 5;
+    optional int32 w = 6;
+    optional int32 h = 7;
+    optional int32 placement = 8;
+    optional int32 plcmt = 9;
+    optional int32 linearity = 10;
+    repeated int32 battr = 11;
+    optional int32 minbitrate = 12;
+    optional int32 maxbitrate = 13;
+    optional int32 boxingallowed = 14;
+    repeated int32 playbackmethod = 15;
+    optional int32 pos = 16;
+    repeated int32 api = 17;
+    optional int32 skip = 18;
+    optional int32 skipmin = 19;
+    optional int32 skipafter = 20;
 }

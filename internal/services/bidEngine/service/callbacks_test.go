@@ -325,3 +325,38 @@ func TestDSPNativeRejectsMalformedADMJSON(t *testing.T) {
 		t.Fatalf("malformed Native ADM created callback UUIDs: burl=%v adm=%v", burlUUIDs, admUUIDs)
 	}
 }
+
+func TestFinalizeADVVideoKeepsVASTAndUsesExchangeCallbacks(t *testing.T) {
+	adm := `<?xml version="1.0"?><VAST version="3.0"><Ad id="x"></Ad></VAST>`
+	dspNURL := "https://dsp.example/win"
+	dspBURL := "https://dsp.example/bill"
+	bid := &ortb.Bid{Adm: &adm, Nurl: &dspNURL, Burl: &dspBURL}
+
+	got, ok := FinalizeADVCallbacks(bid, "callbacks.example", "video-winner", "vid_mc_test", constants.VID)
+	if !ok || got == nil {
+		t.Fatal("VIDEO callback finalization failed")
+	}
+	if got.GetAdm() != adm {
+		t.Fatalf("VAST ADM was changed: %q", got.GetAdm())
+	}
+	if strings.Contains(got.GetAdm(), "/adm?") {
+		t.Fatalf("VAST was wrapped as POP ADM: %q", got.GetAdm())
+	}
+	assertCallbackQuery(t, got.GetNurl(), "/nurl", map[string]string{"id": "video-winner", "s": "vid_mc_test", "f": constants.FormatToCodes[constants.VID]})
+	assertCallbackQuery(t, got.GetBurl(), "/burl", map[string]string{"id": "video-winner", "f": constants.FormatToCodes[constants.VID]})
+	if bid.GetNurl() != dspNURL || bid.GetBurl() != dspBURL {
+		t.Fatal("source VIDEO bid was mutated")
+	}
+}
+
+func TestVideoDSPADMValidation(t *testing.T) {
+	if !validRawDSPADM(constants.VID, `<VAST version="3.0"></VAST>`) {
+		t.Fatal("valid VAST rejected")
+	}
+	if validRawDSPADM(constants.VID, `<html></html>`) {
+		t.Fatal("non-VAST markup accepted")
+	}
+	if shouldWrapDSPADM(constants.VID) {
+		t.Fatal("VIDEO DSP ADM must not be POP-wrapped")
+	}
+}

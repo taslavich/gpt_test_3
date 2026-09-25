@@ -127,6 +127,8 @@ func main() {
 	natMainstreamLinks := initLinkMap(cfg.SspGeoDspLinksNatMainstreamFilePath)
 	ippAdultLinks := initLinkMap(cfg.SspGeoDspLinksIppAdultFilePath)
 	ippMainstreamLinks := initLinkMap(cfg.SspGeoDspLinksIppMainstreamFilePath)
+	vidAdultLinks := initLinkMap(cfg.SspGeoDspLinksVidAdultFilePath)
+	vidMainstreamLinks := initLinkMap(cfg.SspGeoDspLinksVidMainstreamFilePath)
 
 	formatRoutes := &dspRouterWeb.FormatRoutesV25{
 		POP: dspRouterWeb.FormatRouteV25{
@@ -148,6 +150,11 @@ func main() {
 			AdultEndpoints: cfg.DSPEndpointsIppAdultV25, MainstreamEndpoints: cfg.DSPEndpointsIppMainstreamV25,
 			AdultLinkFilename: cfg.SspGeoDspLinksIppAdultFilePath, MainstreamLinkFilename: cfg.SspGeoDspLinksIppMainstreamFilePath,
 			AdultLinkMap: &ippAdultLinks, MainstreamLinkMap: &ippMainstreamLinks,
+		},
+		VID: dspRouterWeb.FormatRouteV25{
+			AdultEndpoints: cfg.DSPEndpointsVidAdultV25, MainstreamEndpoints: cfg.DSPEndpointsVidMainstreamV25,
+			AdultLinkFilename: cfg.SspGeoDspLinksVidAdultFilePath, MainstreamLinkFilename: cfg.SspGeoDspLinksVidMainstreamFilePath,
+			AdultLinkMap: &vidAdultLinks, MainstreamLinkMap: &vidMainstreamLinks,
 		},
 	}
 

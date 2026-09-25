@@ -179,6 +179,9 @@ func inferV25Format(req *ortb_V2_5.BidRequest) string {
 		if imp == nil {
 			continue
 		}
+		if imp.GetVideo() != nil {
+			return "VID"
+		}
 		if imp.GetNative() != nil {
 			return "NAT"
 		}

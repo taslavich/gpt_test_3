@@ -14,6 +14,8 @@ type WorkStatus struct {
 	banMainstream atomic.Bool
 	natAdult      atomic.Bool
 	natMainstream atomic.Bool
+	vidAdult      atomic.Bool
+	vidMainstream atomic.Bool
 }
 
 func NewWorkStatus(workAdult, workMainstream bool) *WorkStatus {
@@ -22,10 +24,12 @@ func NewWorkStatus(workAdult, workMainstream bool) *WorkStatus {
 	status.Set(PostBid_IPP_ADL_V_2_5_URL, workAdult)
 	status.Set(PostBid_BAN_ADL_V_2_5_URL, workAdult)
 	status.Set(PostBid_NAT_ADL_V_2_5_URL, workAdult)
+	status.Set(PostBid_VID_ADL_V_2_5_URL, workAdult)
 	status.Set(PostBid_POP_MC_V_2_5_URL, workMainstream)
 	status.Set(PostBid_IPP_MC_V_2_5_URL, workMainstream)
 	status.Set(PostBid_BAN_MC_V_2_5_URL, workMainstream)
 	status.Set(PostBid_NAT_MC_V_2_5_URL, workMainstream)
+	status.Set(PostBid_VID_MC_V_2_5_URL, workMainstream)
 	return status
 }
 
@@ -50,6 +54,10 @@ func (s *WorkStatus) Get(stream string) (bool, error) {
 		return s.natAdult.Load(), nil
 	case PostBid_NAT_MC_V_2_5_URL:
 		return s.natMainstream.Load(), nil
+	case PostBid_VID_ADL_V_2_5_URL:
+		return s.vidAdult.Load(), nil
+	case PostBid_VID_MC_V_2_5_URL:
+		return s.vidMainstream.Load(), nil
 	default:
 		return false, fmt.Errorf("unknown ORTB stream url %q", stream)
 	}
@@ -76,6 +84,10 @@ func (s *WorkStatus) Set(stream string, work bool) error {
 		s.natAdult.Store(work)
 	case PostBid_NAT_MC_V_2_5_URL:
 		s.natMainstream.Store(work)
+	case PostBid_VID_ADL_V_2_5_URL:
+		s.vidAdult.Store(work)
+	case PostBid_VID_MC_V_2_5_URL:
+		s.vidMainstream.Store(work)
 	default:
 		return fmt.Errorf("unknown ORTB stream url %q", stream)
 	}
@@ -94,6 +106,8 @@ func (s *WorkStatus) SetAll(work bool) {
 	s.banMainstream.Store(work)
 	s.natAdult.Store(work)
 	s.natMainstream.Store(work)
+	s.vidAdult.Store(work)
+	s.vidMainstream.Store(work)
 }
 
 func (s *WorkStatus) StopAll() {

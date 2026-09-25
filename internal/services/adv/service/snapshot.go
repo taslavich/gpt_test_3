@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/lib/pq"
+	"gitlab.com/twinbid-exchange/RTB-exchange/internal/constants"
 	filterV2 "gitlab.com/twinbid-exchange/RTB-exchange/internal/filterV2"
 )
 
@@ -610,7 +611,9 @@ func loadCreativesBatch(ctx context.Context, db *sql.DB, campaignIDs []string, c
 	rows, err := db.QueryContext(ctx, `
 		SELECT cr.id::text, cr.campaign_id::text, cr.trackers_macros, cr.w, cr.h,
 		       cr.adm, ci.web_url, COALESCE(ci.mime_type, cr.file_format), cr.banner_type,
-		       cr.name, cr.creative_name, cr.title, cr.description
+		       cr.name, cr.creative_name, cr.title, cr.description,
+		       COALESCE(to_jsonb(cr)->>'video_format', '') AS video_format,
+		       COALESCE(to_jsonb(cr)->'video_metadata', '{}'::jsonb) AS video_metadata
 		FROM creatives cr
 		LEFT JOIN creative_images ci ON ci.creative_id=cr.id
 		WHERE cr.campaign_id::text = ANY($1)`, pq.Array(campaignIDs))
@@ -620,10 +623,10 @@ func loadCreativesBatch(ctx context.Context, db *sql.DB, campaignIDs []string, c
 	defer rows.Close()
 	creativeIDs := make(map[string]map[string]struct{}, len(campaigns))
 	for rows.Next() {
-		var id, campaignID, adm, imageURL, fileFormat, bannerType, name, creativeName, title, description sql.NullString
-		var trackers []byte
+		var id, campaignID, adm, imageURL, fileFormat, bannerType, name, creativeName, title, description, videoFormat sql.NullString
+		var trackers, videoMetadataRaw []byte
 		var w, h sql.NullInt64
-		if err := rows.Scan(&id, &campaignID, &trackers, &w, &h, &adm, &imageURL, &fileFormat, &bannerType, &name, &creativeName, &title, &description); err != nil {
+		if err := rows.Scan(&id, &campaignID, &trackers, &w, &h, &adm, &imageURL, &fileFormat, &bannerType, &name, &creativeName, &title, &description, &videoFormat, &videoMetadataRaw); err != nil {
 			return fmt.Errorf("scan creative: %w", err)
 		}
 		campaign := campaigns[strings.TrimSpace(campaignID.String)]
@@ -654,6 +657,16 @@ func loadCreativesBatch(ctx context.Context, db *sql.DB, campaignIDs []string, c
 			log.Printf("ADV snapshot: skipping creative %s with invalid trackers_macros: %v", creativeID, err)
 			continue
 		}
+		videoMetadata, err := parseVideoCreativeMetadataJSONB(videoMetadataRaw)
+		if err != nil {
+			log.Printf("ADV snapshot: skipping creative %s with invalid video_metadata: %v", creativeID, err)
+			continue
+		}
+		videoFormatValue := normalizeVideoFormat(videoFormat.String)
+		if normalizeFormat(campaign.Format) == constants.VID && videoFormatValue == "" {
+			log.Printf("ADV snapshot: skipping VIDEO creative %s without valid video_format for campaign %s", creativeID, campaign.ID)
+			continue
+		}
 		seen[creativeID] = struct{}{}
 		creativeW, creativeH := 0, 0
 		if w.Valid && w.Int64 > 0 {
@@ -666,7 +679,7 @@ func loadCreativesBatch(ctx context.Context, db *sql.DB, campaignIDs []string, c
 			ID: creativeID, CampaignID: campaign.ID, ADMURL: admURL, ImageURL: strings.TrimSpace(imageURL.String),
 			FileFormat: strings.TrimSpace(fileFormat.String), BannerType: strings.TrimSpace(bannerType.String),
 			TrackersMacros: macros, W: creativeW, H: creativeH, Name: name.String,
-			CreativeName: creativeName.String, Title: title.String, Description: description.String,
+			CreativeName: creativeName.String, Title: title.String, Description: description.String, VideoFormat: videoFormatValue, VideoMetadata: videoMetadata,
 		})
 	}
 	return rows.Err()

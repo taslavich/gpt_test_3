@@ -148,6 +148,7 @@ type Imp struct {
 	Ext           *Imp_Ext               `protobuf:"bytes,7,opt,name=ext,proto3,oneof" json:"ext,omitempty"`
 	Banner        *Banner                `protobuf:"bytes,8,opt,name=banner,proto3,oneof" json:"banner,omitempty"`
 	Native        *Native                `protobuf:"bytes,9,opt,name=native,proto3,oneof" json:"native,omitempty"` // только request и ver
+	Video         *Video                 `protobuf:"bytes,10,opt,name=video,proto3,oneof" json:"video,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -241,6 +242,13 @@ func (x *Imp) GetBanner() *Banner {
 func (x *Imp) GetNative() *Native {
 	if x != nil {
 		return x.Native
+	}
+	return nil
+}
+
+func (x *Imp) GetVideo() *Video {
+	if x != nil {
+		return x.Video
 	}
 	return nil
 }
@@ -1367,221 +1375,250 @@ func (x *Ext) GetValues() map[string]string {
 
 var File_types_ortb_V2_5_ortb_proto protoreflect.FileDescriptor
 
+type Video struct {
+	state          protoimpl.MessageState `protogen:"open.v1"`
+	Mimes          []string               `protobuf:"bytes,1,rep,name=mimes,proto3" json:"mimes,omitempty"`
+	Minduration    *int32                 `protobuf:"varint,2,opt,name=minduration,proto3,oneof" json:"minduration,omitempty"`
+	Maxduration    *int32                 `protobuf:"varint,3,opt,name=maxduration,proto3,oneof" json:"maxduration,omitempty"`
+	Startdelay     *int32                 `protobuf:"varint,4,opt,name=startdelay,proto3,oneof" json:"startdelay,omitempty"`
+	Protocols      []int32                `protobuf:"varint,5,rep,packed,name=protocols,proto3" json:"protocols,omitempty"`
+	W              *int32                 `protobuf:"varint,6,opt,name=w,proto3,oneof" json:"w,omitempty"`
+	H              *int32                 `protobuf:"varint,7,opt,name=h,proto3,oneof" json:"h,omitempty"`
+	Placement      *int32                 `protobuf:"varint,8,opt,name=placement,proto3,oneof" json:"placement,omitempty"`
+	Plcmt          *int32                 `protobuf:"varint,9,opt,name=plcmt,proto3,oneof" json:"plcmt,omitempty"`
+	Linearity      *int32                 `protobuf:"varint,10,opt,name=linearity,proto3,oneof" json:"linearity,omitempty"`
+	Battr          []int32                `protobuf:"varint,11,rep,packed,name=battr,proto3" json:"battr,omitempty"`
+	Minbitrate     *int32                 `protobuf:"varint,12,opt,name=minbitrate,proto3,oneof" json:"minbitrate,omitempty"`
+	Maxbitrate     *int32                 `protobuf:"varint,13,opt,name=maxbitrate,proto3,oneof" json:"maxbitrate,omitempty"`
+	Boxingallowed  *int32                 `protobuf:"varint,14,opt,name=boxingallowed,proto3,oneof" json:"boxingallowed,omitempty"`
+	Playbackmethod []int32                `protobuf:"varint,15,rep,packed,name=playbackmethod,proto3" json:"playbackmethod,omitempty"`
+	Pos            *int32                 `protobuf:"varint,16,opt,name=pos,proto3,oneof" json:"pos,omitempty"`
+	Api            []int32                `protobuf:"varint,17,rep,packed,name=api,proto3" json:"api,omitempty"`
+	Skip           *int32                 `protobuf:"varint,18,opt,name=skip,proto3,oneof" json:"skip,omitempty"`
+	Skipmin        *int32                 `protobuf:"varint,19,opt,name=skipmin,proto3,oneof" json:"skipmin,omitempty"`
+	Skipafter      *int32                 `protobuf:"varint,20,opt,name=skipafter,proto3,oneof" json:"skipafter,omitempty"`
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
+}
+
+func (x *Video) Reset() {
+	*x = Video{}
+	mi := &file_types_ortb_V2_5_ortb_proto_msgTypes[16]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *Video) String() string { return protoimpl.X.MessageStringOf(x) }
+func (*Video) ProtoMessage()    {}
+func (x *Video) ProtoReflect() protoreflect.Message {
+	mi := &file_types_ortb_V2_5_ortb_proto_msgTypes[16]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use Video.ProtoReflect.Descriptor instead.
+func (*Video) Descriptor() ([]byte, []int) {
+	return file_types_ortb_V2_5_ortb_proto_rawDescGZIP(), []int{16}
+}
+func (x *Video) GetMimes() []string {
+	if x != nil {
+		return x.Mimes
+	}
+	return nil
+}
+func (x *Video) GetMinduration() int32 {
+	if x != nil && x.Minduration != nil {
+		return *x.Minduration
+	}
+	return 0
+}
+func (x *Video) GetMaxduration() int32 {
+	if x != nil && x.Maxduration != nil {
+		return *x.Maxduration
+	}
+	return 0
+}
+func (x *Video) GetStartdelay() int32 {
+	if x != nil && x.Startdelay != nil {
+		return *x.Startdelay
+	}
+	return 0
+}
+func (x *Video) GetProtocols() []int32 {
+	if x != nil {
+		return x.Protocols
+	}
+	return nil
+}
+func (x *Video) GetW() int32 {
+	if x != nil && x.W != nil {
+		return *x.W
+	}
+	return 0
+}
+func (x *Video) GetH() int32 {
+	if x != nil && x.H != nil {
+		return *x.H
+	}
+	return 0
+}
+func (x *Video) GetPlacement() int32 {
+	if x != nil && x.Placement != nil {
+		return *x.Placement
+	}
+	return 0
+}
+func (x *Video) GetPlcmt() int32 {
+	if x != nil && x.Plcmt != nil {
+		return *x.Plcmt
+	}
+	return 0
+}
+func (x *Video) GetLinearity() int32 {
+	if x != nil && x.Linearity != nil {
+		return *x.Linearity
+	}
+	return 0
+}
+func (x *Video) GetBattr() []int32 {
+	if x != nil {
+		return x.Battr
+	}
+	return nil
+}
+func (x *Video) GetMinbitrate() int32 {
+	if x != nil && x.Minbitrate != nil {
+		return *x.Minbitrate
+	}
+	return 0
+}
+func (x *Video) GetMaxbitrate() int32 {
+	if x != nil && x.Maxbitrate != nil {
+		return *x.Maxbitrate
+	}
+	return 0
+}
+func (x *Video) GetBoxingallowed() int32 {
+	if x != nil && x.Boxingallowed != nil {
+		return *x.Boxingallowed
+	}
+	return 0
+}
+func (x *Video) GetPlaybackmethod() []int32 {
+	if x != nil {
+		return x.Playbackmethod
+	}
+	return nil
+}
+func (x *Video) GetPos() int32 {
+	if x != nil && x.Pos != nil {
+		return *x.Pos
+	}
+	return 0
+}
+func (x *Video) GetApi() []int32 {
+	if x != nil {
+		return x.Api
+	}
+	return nil
+}
+func (x *Video) GetSkip() int32 {
+	if x != nil && x.Skip != nil {
+		return *x.Skip
+	}
+	return 0
+}
+func (x *Video) GetSkipmin() int32 {
+	if x != nil && x.Skipmin != nil {
+		return *x.Skipmin
+	}
+	return 0
+}
+func (x *Video) GetSkipafter() int32 {
+	if x != nil && x.Skipafter != nil {
+		return *x.Skipafter
+	}
+	return 0
+}
+
 const file_types_ortb_V2_5_ortb_proto_rawDesc = "" +
-	"\n" +
-	"\x1atypes/ortb_V2_5/ortb.proto\x12\tortb_V2_5\"\xf1\x02\n" +
-	"\n" +
-	"BidRequest\x12\x13\n" +
-	"\x02id\x18\x01 \x01(\tH\x00R\x02id\x88\x01\x01\x12\x13\n" +
-	"\x02at\x18\x02 \x01(\x05H\x01R\x02at\x88\x01\x01\x12 \n" +
-	"\x03imp\x18\x03 \x03(\v2\x0e.ortb_V2_5.ImpR\x03imp\x12.\n" +
-	"\x06device\x18\x04 \x01(\v2\x11.ortb_V2_5.DeviceH\x02R\x06device\x88\x01\x01\x12(\n" +
-	"\x04site\x18\x05 \x01(\v2\x0f.ortb_V2_5.SiteH\x03R\x04site\x88\x01\x01\x12(\n" +
-	"\x04user\x18\x06 \x01(\v2\x0f.ortb_V2_5.UserH\x04R\x04user\x88\x01\x01\x12\x17\n" +
-	"\x04tmax\x18\a \x01(\x05H\x05R\x04tmax\x88\x01\x01\x12\x10\n" +
-	"\x03cur\x18\b \x03(\tR\x03cur\x12\x12\n" +
-	"\x04bcat\x18\t \x03(\tR\x04bcat\x12\x17\n" +
-	"\x04test\x18\n" +
-	" \x01(\x05H\x06R\x04test\x88\x01\x01B\x05\n" +
-	"\x03_idB\x05\n" +
-	"\x03_atB\t\n" +
-	"\a_deviceB\a\n" +
-	"\x05_siteB\a\n" +
-	"\x05_userB\a\n" +
-	"\x05_tmaxB\a\n" +
-	"\x05_test\"\xa1\x03\n" +
-	"\x03Imp\x12\x13\n" +
-	"\x02id\x18\x01 \x01(\tH\x00R\x02id\x88\x01\x01\x12\x1f\n" +
-	"\bbidfloor\x18\x02 \x01(\x02H\x01R\bbidfloor\x88\x01\x01\x12\x19\n" +
-	"\x05tagid\x18\x03 \x01(\tH\x02R\x05tagid\x88\x01\x01\x12\x1b\n" +
-	"\x06secure\x18\x04 \x01(\x05H\x03R\x06secure\x88\x01\x01\x12\x19\n" +
-	"\x05instl\x18\x05 \x01(\x05H\x04R\x05instl\x88\x01\x01\x12%\n" +
-	"\vbidfloorcur\x18\x06 \x01(\tH\x05R\vbidfloorcur\x88\x01\x01\x12)\n" +
-	"\x03ext\x18\a \x01(\v2\x12.ortb_V2_5.Imp_ExtH\x06R\x03ext\x88\x01\x01\x12.\n" +
-	"\x06banner\x18\b \x01(\v2\x11.ortb_V2_5.BannerH\aR\x06banner\x88\x01\x01\x12.\n" +
-	"\x06native\x18\t \x01(\v2\x11.ortb_V2_5.NativeH\bR\x06native\x88\x01\x01B\x05\n" +
-	"\x03_idB\v\n" +
-	"\t_bidfloorB\b\n" +
-	"\x06_tagidB\t\n" +
-	"\a_secureB\b\n" +
-	"\x06_instlB\x0e\n" +
-	"\f_bidfloorcurB\x06\n" +
-	"\x04_extB\t\n" +
-	"\a_bannerB\t\n" +
-	"\a_native\"\xa5\x02\n" +
-	"\x06Banner\x12\x11\n" +
-	"\x01w\x18\x01 \x01(\x05H\x00R\x01w\x88\x01\x01\x12\x11\n" +
-	"\x01h\x18\x02 \x01(\x05H\x01R\x01h\x88\x01\x01\x12\x15\n" +
-	"\x03pos\x18\x03 \x01(\x05H\x02R\x03pos\x88\x01\x01\x12\x14\n" +
-	"\x05mimes\x18\x04 \x03(\tR\x05mimes\x12\x15\n" +
-	"\x03api\x18\x05 \x01(\tH\x03R\x03api\x88\x01\x01\x12\x1f\n" +
-	"\btopframe\x18\x06 \x01(\x05H\x04R\btopframe\x88\x01\x01\x12\x14\n" +
-	"\x05btype\x18\a \x03(\x05R\x05btype\x12\x14\n" +
-	"\x05battr\x18\b \x03(\x05R\x05battr\x12\x10\n" +
-	"\x03ext\x18\t \x03(\tR\x03ext\x12)\n" +
-	"\x06format\x18\n" +
-	" \x03(\v2\x11.ortb_V2_5.FormatR\x06formatB\x04\n" +
-	"\x02_wB\x04\n" +
-	"\x02_hB\x06\n" +
-	"\x04_posB\x06\n" +
-	"\x04_apiB\v\n" +
-	"\t_topframe\":\n" +
-	"\x06Format\x12\x11\n" +
-	"\x01w\x18\x01 \x01(\x05H\x00R\x01w\x88\x01\x01\x12\x11\n" +
-	"\x01h\x18\x02 \x01(\x05H\x01R\x01h\x88\x01\x01B\x04\n" +
-	"\x02_wB\x04\n" +
-	"\x02_h\"R\n" +
-	"\x06Native\x12\x1d\n" +
-	"\arequest\x18\x01 \x01(\tH\x00R\arequest\x88\x01\x01\x12\x15\n" +
-	"\x03ver\x18\x02 \x01(\tH\x01R\x03ver\x88\x01\x01B\n" +
-	"\n" +
-	"\b_requestB\x06\n" +
-	"\x04_ver\".\n" +
-	"\aImp_Ext\x12\x19\n" +
-	"\x05subid\x18\x01 \x01(\tH\x00R\x05subid\x88\x01\x01B\b\n" +
-	"\x06_subid\"\x8b\x04\n" +
-	"\x06Device\x12\x13\n" +
-	"\x02ip\x18\x01 \x01(\tH\x00R\x02ip\x88\x01\x01\x12%\n" +
-	"\x03geo\x18\x02 \x01(\v2\x0e.ortb_V2_5.GeoH\x01R\x03geo\x88\x01\x01\x12\x13\n" +
-	"\x02ua\x18\x03 \x01(\tH\x02R\x02ua\x88\x01\x01\x12\x13\n" +
-	"\x02js\x18\x04 \x01(\x05H\x03R\x02js\x88\x01\x01\x12\x1f\n" +
-	"\blanguage\x18\x05 \x01(\tH\x04R\blanguage\x88\x01\x01\x122\n" +
-	"\n" +
-	"device_ext\x18\x06 \x01(\v2\x0e.ortb_V2_5.ExtH\x05R\tdeviceExt\x88\x01\x01\x12\x17\n" +
-	"\x04ipv6\x18\a \x01(\tH\x06R\x04ipv6\x88\x01\x01\x12+\n" +
-	"\x0econnectiontype\x18\b \x01(\x05H\aR\x0econnectiontype\x88\x01\x01\x12\x1d\n" +
-	"\acarrier\x18\t \x01(\tH\bR\acarrier\x88\x01\x01\x12\x13\n" +
-	"\x02os\x18\n" +
-	" \x01(\tH\tR\x02os\x88\x01\x01\x12#\n" +
-	"\n" +
-	"deviceType\x18\v \x01(\x05H\n" +
-	"R\n" +
-	"deviceType\x88\x01\x01\x12\x11\n" +
-	"\x01w\x18\f \x01(\x05H\vR\x01w\x88\x01\x01\x12\x11\n" +
-	"\x01h\x18\r \x01(\x05H\fR\x01h\x88\x01\x01B\x05\n" +
-	"\x03_ipB\x06\n" +
-	"\x04_geoB\x05\n" +
-	"\x03_uaB\x05\n" +
-	"\x03_jsB\v\n" +
-	"\t_languageB\r\n" +
-	"\v_device_extB\a\n" +
-	"\x05_ipv6B\x11\n" +
-	"\x0f_connectiontypeB\n" +
-	"\n" +
-	"\b_carrierB\x05\n" +
-	"\x03_osB\r\n" +
-	"\v_deviceTypeB\x04\n" +
-	"\x02_wB\x04\n" +
-	"\x02_h\"\xf9\x01\n" +
-	"\x03Geo\x12\x1d\n" +
-	"\acountry\x18\x01 \x01(\tH\x00R\acountry\x88\x01\x01\x12\x15\n" +
-	"\x03lat\x18\x02 \x01(\x02H\x01R\x03lat\x88\x01\x01\x12\x15\n" +
-	"\x03lon\x18\x03 \x01(\x02H\x02R\x03lon\x88\x01\x01\x12\x1b\n" +
-	"\x06region\x18\x04 \x01(\tH\x03R\x06region\x88\x01\x01\x12\x17\n" +
-	"\x04city\x18\x05 \x01(\tH\x04R\x04city\x88\x01\x01\x12\x15\n" +
-	"\x03zip\x18\x06 \x01(\tH\x05R\x03zip\x88\x01\x01\x12\x17\n" +
-	"\x04type\x18\a \x01(\x05H\x06R\x04type\x88\x01\x01B\n" +
-	"\n" +
-	"\b_countryB\x06\n" +
-	"\x04_latB\x06\n" +
-	"\x04_lonB\t\n" +
-	"\a_regionB\a\n" +
-	"\x05_cityB\x06\n" +
-	"\x04_zipB\a\n" +
-	"\x05_type\"\xb4\x02\n" +
-	"\x04Site\x12\x13\n" +
-	"\x02id\x18\x01 \x01(\tH\x00R\x02id\x88\x01\x01\x12\x17\n" +
-	"\x04name\x18\x02 \x01(\tH\x01R\x04name\x88\x01\x01\x12\x17\n" +
-	"\x04page\x18\x03 \x01(\tH\x02R\x04page\x88\x01\x01\x12\x1b\n" +
-	"\x06domain\x18\x04 \x01(\tH\x03R\x06domain\x88\x01\x01\x12\x15\n" +
-	"\x03ref\x18\x05 \x01(\tH\x04R\x03ref\x88\x01\x01\x12\x10\n" +
-	"\x03cat\x18\x06 \x03(\tR\x03cat\x127\n" +
-	"\tpublisher\x18\a \x01(\v2\x14.ortb_V2_5.PublisherH\x05R\tpublisher\x88\x01\x01\x12\x1f\n" +
-	"\bkeywords\x18\b \x01(\tH\x06R\bkeywords\x88\x01\x01B\x05\n" +
-	"\x03_idB\a\n" +
-	"\x05_nameB\a\n" +
-	"\x05_pageB\t\n" +
-	"\a_domainB\x06\n" +
-	"\x04_refB\f\n" +
-	"\n" +
-	"_publisherB\v\n" +
-	"\t_keywords\"I\n" +
-	"\tPublisher\x12\x13\n" +
-	"\x02id\x18\x01 \x01(\tH\x00R\x02id\x88\x01\x01\x12\x17\n" +
-	"\x04name\x18\x02 \x01(\tH\x01R\x04name\x88\x01\x01B\x05\n" +
-	"\x03_idB\a\n" +
-	"\x05_name\"~\n" +
-	"\x04User\x12\x13\n" +
-	"\x02id\x18\x01 \x01(\tH\x00R\x02id\x88\x01\x01\x12\x1f\n" +
-	"\bkeywords\x18\x02 \x01(\tH\x01R\bkeywords\x88\x01\x01\x12\x1f\n" +
-	"\bbuyeruid\x18\x03 \x01(\tH\x02R\bbuyeruid\x88\x01\x01B\x05\n" +
-	"\x03_idB\v\n" +
-	"\t_keywordsB\v\n" +
-	"\t_buyeruid\"M\n" +
-	"\aSeatBid\x12 \n" +
-	"\x03bid\x18\x01 \x03(\v2\x0e.ortb_V2_5.BidR\x03bid\x12\x17\n" +
-	"\x04seat\x18\x02 \x01(\tH\x00R\x04seat\x88\x01\x01B\a\n" +
-	"\x05_seat\"\xb5\x04\n" +
-	"\x03Bid\x12\x13\n" +
-	"\x02id\x18\x01 \x01(\tH\x00R\x02id\x88\x01\x01\x12\x19\n" +
-	"\x05impid\x18\x02 \x01(\tH\x01R\x05impid\x88\x01\x01\x12\x19\n" +
-	"\x05price\x18\x03 \x01(\x02H\x02R\x05price\x88\x01\x01\x12\x17\n" +
-	"\x04adid\x18\x04 \x01(\tH\x03R\x04adid\x88\x01\x01\x12\x17\n" +
-	"\x04nurl\x18\x05 \x01(\tH\x04R\x04nurl\x88\x01\x01\x12\x17\n" +
-	"\x04burl\x18\x06 \x01(\tH\x05R\x04burl\x88\x01\x01\x12\x15\n" +
-	"\x03adm\x18\a \x01(\tH\x06R\x03adm\x88\x01\x01\x12\x18\n" +
-	"\aadomain\x18\b \x03(\tR\aadomain\x12\x1b\n" +
-	"\x06bundle\x18\t \x01(\tH\aR\x06bundle\x88\x01\x01\x12\x17\n" +
-	"\x04iurl\x18\n" +
-	" \x01(\tH\bR\x04iurl\x88\x01\x01\x12\x15\n" +
-	"\x03cid\x18\v \x01(\tH\tR\x03cid\x88\x01\x01\x12\x17\n" +
-	"\x04crid\x18\f \x01(\tH\n" +
-	"R\x04crid\x88\x01\x01\x12\x12\n" +
-	"\x04attr\x18\r \x03(\x05R\x04attr\x12\x1b\n" +
-	"\x06dealid\x18\x0e \x01(\tH\vR\x06dealid\x88\x01\x01\x12\x11\n" +
-	"\x01w\x18\x0f \x01(\x05H\fR\x01w\x88\x01\x01\x12\x11\n" +
-	"\x01h\x18\x10 \x01(\x05H\rR\x01h\x88\x01\x01\x12(\n" +
-	"\x03ext\x18\x11 \x01(\v2\x11.ortb_V2_5.BidExtH\x0eR\x03ext\x88\x01\x01B\x05\n" +
-	"\x03_idB\b\n" +
-	"\x06_impidB\b\n" +
-	"\x06_priceB\a\n" +
-	"\x05_adidB\a\n" +
-	"\x05_nurlB\a\n" +
-	"\x05_burlB\x06\n" +
-	"\x04_admB\t\n" +
-	"\a_bundleB\a\n" +
-	"\x05_iurlB\x06\n" +
-	"\x04_cidB\a\n" +
-	"\x05_cridB\t\n" +
-	"\a_dealidB\x04\n" +
-	"\x02_wB\x04\n" +
-	"\x02_hB\x06\n" +
-	"\x04_ext\"\x85\x01\n" +
-	"\x06BidExt\x12\x19\n" +
-	"\x05btype\x18\x01 \x01(\x05H\x00R\x05btype\x88\x01\x01\x12$\n" +
-	"\vvertical_id\x18\x02 \x01(\x05H\x01R\n" +
-	"verticalId\x88\x01\x01\x12\x17\n" +
-	"\x04cwin\x18\x03 \x01(\tH\x02R\x04cwin\x88\x01\x01B\b\n" +
-	"\x06_btypeB\x0e\n" +
-	"\f_vertical_idB\a\n" +
-	"\x05_cwin\"\xe9\x01\n" +
-	"\vBidResponse\x12\x13\n" +
-	"\x02id\x18\x01 \x01(\tH\x00R\x02id\x88\x01\x01\x12,\n" +
-	"\aseatbid\x18\x02 \x03(\v2\x12.ortb_V2_5.SeatBidR\aseatbid\x12\x19\n" +
-	"\x05bidid\x18\x03 \x01(\tH\x01R\x05bidid\x88\x01\x01\x12\x15\n" +
-	"\x03cur\x18\x04 \x01(\tH\x02R\x03cur\x88\x01\x01\x12\x15\n" +
-	"\x03nbr\x18\x05 \x01(\x05H\x03R\x03nbr\x88\x01\x01\x12%\n" +
-	"\x03ext\x18\x06 \x01(\v2\x0e.ortb_V2_5.ExtH\x04R\x03ext\x88\x01\x01B\x05\n" +
-	"\x03_idB\b\n" +
-	"\x06_bididB\x06\n" +
-	"\x04_curB\x06\n" +
-	"\x04_nbrB\x06\n" +
-	"\x04_ext\"t\n" +
-	"\x03Ext\x122\n" +
-	"\x06values\x18\x01 \x03(\v2\x1a.ortb_V2_5.Ext.ValuesEntryR\x06values\x1a9\n" +
-	"\vValuesEntry\x12\x10\n" +
-	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01BXZVgitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/proto/types/ortb_V2_5;ortb_V2_5b\x06proto3"
+	"\n\x1atypes/ortb_V2_5/ortb.proto\x12\tortb_V2_5\"\xf1\x02\n\nBidRequest\x12\x13\n\x02id\x18\x01 \x01" +
+	"(\tH\x00R\x02id\x88\x01\x01\x12\x13\n\x02at\x18\x02 \x01(\x05H\x01R\x02at\x88\x01\x01\x12 \n\x03imp\x18\x03 \x03(\x0b2\x0e.ortb_V2_5.ImpR\x03i" +
+	"mp\x12.\n\x06device\x18\x04 \x01(\x0b2\x11.ortb_V2_5.DeviceH\x02R\x06device\x88\x01\x01\x12(\n\x04site\x18\x05 \x01(\x0b" +
+	"2\x0f.ortb_V2_5.SiteH\x03R\x04site\x88\x01\x01\x12(\n\x04user\x18\x06 \x01(\x0b2\x0f.ortb_V2_5.UserH\x04R\x04u" +
+	"ser\x88\x01\x01\x12\x17\n\x04tmax\x18\x07 \x01(\x05H\x05R\x04tmax\x88\x01\x01\x12\x10\n\x03cur\x18\x08 \x03(\tR\x03cur\x12\x12\n\x04bcat\x18\t \x03(\tR" +
+	"\x04bcat\x12\x17\n\x04test\x18\n \x01(\x05H\x06R\x04test\x88\x01\x01B\x05\n\x03_idB\x05\n\x03_atB\t\n\x07_deviceB\x07\n\x05_site" +
+	"B\x07\n\x05_userB\x07\n\x05_tmaxB\x07\n\x05_test\"\xd1\x03\n\x03Imp\x12\x13\n\x02id\x18\x01 \x01(\tH\x00R\x02id\x88\x01\x01\x12\x1f\n\x08bidf" +
+	"loor\x18\x02 \x01(\x02H\x01R\x08bidfloor\x88\x01\x01\x12\x19\n\x05tagid\x18\x03 \x01(\tH\x02R\x05tagid\x88\x01\x01\x12\x1b\n\x06secure\x18\x04" +
+	" \x01(\x05H\x03R\x06secure\x88\x01\x01\x12\x19\n\x05instl\x18\x05 \x01(\x05H\x04R\x05instl\x88\x01\x01\x12%\n\x0bbidfloorcur\x18\x06 \x01(" +
+	"\tH\x05R\x0bbidfloorcur\x88\x01\x01\x12)\n\x03ext\x18\x07 \x01(\x0b2\x12.ortb_V2_5.Imp_ExtH\x06R\x03ext\x88\x01\x01\x12." +
+	"\n\x06banner\x18\x08 \x01(\x0b2\x11.ortb_V2_5.BannerH\x07R\x06banner\x88\x01\x01\x12.\n\x06native\x18\t \x01(\x0b2\x11" +
+	".ortb_V2_5.NativeH\x08R\x06native\x88\x01\x01\x12$\n\x05video\x18\n \x01(\x0b2\x10.ortb_V2_5.VideoH" +
+	"\t\x88\x01\x01B\x05\n\x03_idB\x0b\n\t_bidfloorB\x08\n\x06_tagidB\t\n\x07_secureB\x08\n\x06_instlB\x0e\n\x0c_bidf" +
+	"loorcurB\x06\n\x04_extB\t\n\x07_bannerB\t\n\x07_nativeB\x08\n\x06_video\"\xa5\x02\n\x06Banner\x12\x11\n\x01w\x18" +
+	"\x01 \x01(\x05H\x00R\x01w\x88\x01\x01\x12\x11\n\x01h\x18\x02 \x01(\x05H\x01R\x01h\x88\x01\x01\x12\x15\n\x03pos\x18\x03 \x01(\x05H\x02R\x03pos\x88\x01\x01\x12\x14\n\x05mimes" +
+	"\x18\x04 \x03(\tR\x05mimes\x12\x15\n\x03api\x18\x05 \x01(\tH\x03R\x03api\x88\x01\x01\x12\x1f\n\x08topframe\x18\x06 \x01(\x05H\x04R\x08topfra" +
+	"me\x88\x01\x01\x12\x14\n\x05btype\x18\x07 \x03(\x05R\x05btype\x12\x14\n\x05battr\x18\x08 \x03(\x05R\x05battr\x12\x10\n\x03ext\x18\t \x03(\tR\x03" +
+	"ext\x12)\n\x06format\x18\n \x03(\x0b2\x11.ortb_V2_5.FormatR\x06formatB\x04\n\x02_wB\x04\n\x02_hB\x06\n\x04_p" +
+	"osB\x06\n\x04_apiB\x0b\n\t_topframe\":\n\x06Format\x12\x11\n\x01w\x18\x01 \x01(\x05H\x00R\x01w\x88\x01\x01\x12\x11\n\x01h\x18\x02 \x01(\x05H" +
+	"\x01R\x01h\x88\x01\x01B\x04\n\x02_wB\x04\n\x02_h\"R\n\x06Native\x12\x1d\n\x07request\x18\x01 \x01(\tH\x00R\x07request\x88\x01\x01\x12\x15\n\x03" +
+	"ver\x18\x02 \x01(\tH\x01R\x03ver\x88\x01\x01B\n\n\x08_requestB\x06\n\x04_ver\".\n\x07Imp_Ext\x12\x19\n\x05subid\x18\x01 \x01(" +
+	"\tH\x00R\x05subid\x88\x01\x01B\x08\n\x06_subid\"\x8b\x04\n\x06Device\x12\x13\n\x02ip\x18\x01 \x01(\tH\x00R\x02ip\x88\x01\x01\x12%\n\x03geo\x18\x02" +
+	" \x01(\x0b2\x0e.ortb_V2_5.GeoH\x01R\x03geo\x88\x01\x01\x12\x13\n\x02ua\x18\x03 \x01(\tH\x02R\x02ua\x88\x01\x01\x12\x13\n\x02js\x18\x04 \x01(\x05H" +
+	"\x03R\x02js\x88\x01\x01\x12\x1f\n\x08language\x18\x05 \x01(\tH\x04R\x08language\x88\x01\x01\x122\n\ndevice_ext\x18\x06 \x01(\x0b2\x0e." +
+	"ortb_V2_5.ExtH\x05R\tdeviceExt\x88\x01\x01\x12\x17\n\x04ipv6\x18\x07 \x01(\tH\x06R\x04ipv6\x88\x01\x01\x12+\n\x0econnec" +
+	"tiontype\x18\x08 \x01(\x05H\x07R\x0econnectiontype\x88\x01\x01\x12\x1d\n\x07carrier\x18\t \x01(\tH\x08R\x07carrier\x88" +
+	"\x01\x01\x12\x13\n\x02os\x18\n \x01(\tH\tR\x02os\x88\x01\x01\x12#\n\ndeviceType\x18\x0b \x01(\x05H\nR\ndeviceType\x88\x01\x01\x12\x11\n\x01" +
+	"w\x18\x0c \x01(\x05H\x0bR\x01w\x88\x01\x01\x12\x11\n\x01h\x18\r \x01(\x05H\x0cR\x01h\x88\x01\x01B\x05\n\x03_ipB\x06\n\x04_geoB\x05\n\x03_uaB\x05\n\x03_jsB" +
+	"\x0b\n\t_languageB\r\n\x0b_device_extB\x07\n\x05_ipv6B\x11\n\x0f_connectiontypeB\n\n\x08_carr" +
+	"ierB\x05\n\x03_osB\r\n\x0b_deviceTypeB\x04\n\x02_wB\x04\n\x02_h\"\xf9\x01\n\x03Geo\x12\x1d\n\x07country\x18\x01 \x01(\tH\x00" +
+	"R\x07country\x88\x01\x01\x12\x15\n\x03lat\x18\x02 \x01(\x02H\x01R\x03lat\x88\x01\x01\x12\x15\n\x03lon\x18\x03 \x01(\x02H\x02R\x03lon\x88\x01\x01\x12\x1b\n\x06re" +
+	"gion\x18\x04 \x01(\tH\x03R\x06region\x88\x01\x01\x12\x17\n\x04city\x18\x05 \x01(\tH\x04R\x04city\x88\x01\x01\x12\x15\n\x03zip\x18\x06 \x01(\tH\x05R" +
+	"\x03zip\x88\x01\x01\x12\x17\n\x04type\x18\x07 \x01(\x05H\x06R\x04type\x88\x01\x01B\n\n\x08_countryB\x06\n\x04_latB\x06\n\x04_lonB\t\n\x07" +
+	"_regionB\x07\n\x05_cityB\x06\n\x04_zipB\x07\n\x05_type\"\xb4\x02\n\x04Site\x12\x13\n\x02id\x18\x01 \x01(\tH\x00R\x02id\x88\x01\x01\x12" +
+	"\x17\n\x04name\x18\x02 \x01(\tH\x01R\x04name\x88\x01\x01\x12\x17\n\x04page\x18\x03 \x01(\tH\x02R\x04page\x88\x01\x01\x12\x1b\n\x06domain\x18\x04 \x01(" +
+	"\tH\x03R\x06domain\x88\x01\x01\x12\x15\n\x03ref\x18\x05 \x01(\tH\x04R\x03ref\x88\x01\x01\x12\x10\n\x03cat\x18\x06 \x03(\tR\x03cat\x127\n\tpubli" +
+	"sher\x18\x07 \x01(\x0b2\x14.ortb_V2_5.PublisherH\x05R\tpublisher\x88\x01\x01\x12\x1f\n\x08keywords\x18\x08 \x01" +
+	"(\tH\x06R\x08keywords\x88\x01\x01B\x05\n\x03_idB\x07\n\x05_nameB\x07\n\x05_pageB\t\n\x07_domainB\x06\n\x04_refB\x0c\n" +
+	"\n_publisherB\x0b\n\t_keywords\"I\n\tPublisher\x12\x13\n\x02id\x18\x01 \x01(\tH\x00R\x02id\x88\x01\x01\x12\x17\n\x04na" +
+	"me\x18\x02 \x01(\tH\x01R\x04name\x88\x01\x01B\x05\n\x03_idB\x07\n\x05_name\"~\n\x04User\x12\x13\n\x02id\x18\x01 \x01(\tH\x00R\x02id\x88\x01\x01" +
+	"\x12\x1f\n\x08keywords\x18\x02 \x01(\tH\x01R\x08keywords\x88\x01\x01\x12\x1f\n\x08buyeruid\x18\x03 \x01(\tH\x02R\x08buyeruid\x88" +
+	"\x01\x01B\x05\n\x03_idB\x0b\n\t_keywordsB\x0b\n\t_buyeruid\"M\n\x07SeatBid\x12 \n\x03bid\x18\x01 \x03(\x0b2\x0e.or" +
+	"tb_V2_5.BidR\x03bid\x12\x17\n\x04seat\x18\x02 \x01(\tH\x00R\x04seat\x88\x01\x01B\x07\n\x05_seat\"\xb5\x04\n\x03Bid\x12\x13\n\x02id" +
+	"\x18\x01 \x01(\tH\x00R\x02id\x88\x01\x01\x12\x19\n\x05impid\x18\x02 \x01(\tH\x01R\x05impid\x88\x01\x01\x12\x19\n\x05price\x18\x03 \x01(\x02H\x02R\x05pri" +
+	"ce\x88\x01\x01\x12\x17\n\x04adid\x18\x04 \x01(\tH\x03R\x04adid\x88\x01\x01\x12\x17\n\x04nurl\x18\x05 \x01(\tH\x04R\x04nurl\x88\x01\x01\x12\x17\n\x04burl\x18" +
+	"\x06 \x01(\tH\x05R\x04burl\x88\x01\x01\x12\x15\n\x03adm\x18\x07 \x01(\tH\x06R\x03adm\x88\x01\x01\x12\x18\n\x07adomain\x18\x08 \x03(\tR\x07adomai" +
+	"n\x12\x1b\n\x06bundle\x18\t \x01(\tH\x07R\x06bundle\x88\x01\x01\x12\x17\n\x04iurl\x18\n \x01(\tH\x08R\x04iurl\x88\x01\x01\x12\x15\n\x03cid\x18\x0b" +
+	" \x01(\tH\tR\x03cid\x88\x01\x01\x12\x17\n\x04crid\x18\x0c \x01(\tH\nR\x04crid\x88\x01\x01\x12\x12\n\x04attr\x18\r \x03(\x05R\x04attr\x12\x1b\n\x06d" +
+	"ealid\x18\x0e \x01(\tH\x0bR\x06dealid\x88\x01\x01\x12\x11\n\x01w\x18\x0f \x01(\x05H\x0cR\x01w\x88\x01\x01\x12\x11\n\x01h\x18\x10 \x01(\x05H\rR\x01h\x88\x01\x01\x12(" +
+	"\n\x03ext\x18\x11 \x01(\x0b2\x11.ortb_V2_5.BidExtH\x0eR\x03ext\x88\x01\x01B\x05\n\x03_idB\x08\n\x06_impidB\x08\n\x06_pr" +
+	"iceB\x07\n\x05_adidB\x07\n\x05_nurlB\x07\n\x05_burlB\x06\n\x04_admB\t\n\x07_bundleB\x07\n\x05_iurlB\x06\n\x04_c" +
+	"idB\x07\n\x05_cridB\t\n\x07_dealidB\x04\n\x02_wB\x04\n\x02_hB\x06\n\x04_ext\"\x85\x01\n\x06BidExt\x12\x19\n\x05btype\x18\x01" +
+	" \x01(\x05H\x00R\x05btype\x88\x01\x01\x12$\n\x0bvertical_id\x18\x02 \x01(\x05H\x01R\nverticalId\x88\x01\x01\x12\x17\n\x04cwin\x18\x03" +
+	" \x01(\tH\x02R\x04cwin\x88\x01\x01B\x08\n\x06_btypeB\x0e\n\x0c_vertical_idB\x07\n\x05_cwin\"\xe9\x01\n\x0bBidRespon" +
+	"se\x12\x13\n\x02id\x18\x01 \x01(\tH\x00R\x02id\x88\x01\x01\x12,\n\x07seatbid\x18\x02 \x03(\x0b2\x12.ortb_V2_5.SeatBidR\x07se" +
+	"atbid\x12\x19\n\x05bidid\x18\x03 \x01(\tH\x01R\x05bidid\x88\x01\x01\x12\x15\n\x03cur\x18\x04 \x01(\tH\x02R\x03cur\x88\x01\x01\x12\x15\n\x03nbr\x18\x05" +
+	" \x01(\x05H\x03R\x03nbr\x88\x01\x01\x12%\n\x03ext\x18\x06 \x01(\x0b2\x0e.ortb_V2_5.ExtH\x04R\x03ext\x88\x01\x01B\x05\n\x03_idB\x08\n\x06" +
+	"_bididB\x06\n\x04_curB\x06\n\x04_nbrB\x06\n\x04_ext\"t\n\x03Ext\x122\n\x06values\x18\x01 \x03(\x0b2\x1a.ortb_V2_" +
+	"5.Ext.ValuesEntryR\x06values\x1a9\n\x0bValuesEntry\x12\x10\n\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n\x05va" +
+	"lue\x18\x02 \x01(\tR\x05value:\x028\x01\"\xeb\x04\n\x05Video\x12\r\n\x05mimes\x18\x01 \x03(\t\x12\x18\n\x0bminduration\x18\x02 \x01" +
+	"(\x05H\x00\x88\x01\x01\x12\x18\n\x0bmaxduration\x18\x03 \x01(\x05H\x01\x88\x01\x01\x12\x17\n\nstartdelay\x18\x04 \x01(\x05H\x02\x88\x01\x01\x12\x11\n\tpr" +
+	"otocols\x18\x05 \x03(\x05\x12\x0e\n\x01w\x18\x06 \x01(\x05H\x03\x88\x01\x01\x12\x0e\n\x01h\x18\x07 \x01(\x05H\x04\x88\x01\x01\x12\x16\n\tplacement\x18\x08 \x01(\x05" +
+	"H\x05\x88\x01\x01\x12\x12\n\x05plcmt\x18\t \x01(\x05H\x06\x88\x01\x01\x12\x16\n\tlinearity\x18\n \x01(\x05H\x07\x88\x01\x01\x12\r\n\x05battr\x18\x0b \x03(\x05" +
+	"\x12\x17\n\nminbitrate\x18\x0c \x01(\x05H\x08\x88\x01\x01\x12\x17\n\nmaxbitrate\x18\r \x01(\x05H\t\x88\x01\x01\x12\x1a\n\rboxingallo" +
+	"wed\x18\x0e \x01(\x05H\n\x88\x01\x01\x12\x16\n\x0eplaybackmethod\x18\x0f \x03(\x05\x12\x10\n\x03pos\x18\x10 \x01(\x05H\x0b\x88\x01\x01\x12\x0b\n\x03api\x18" +
+	"\x11 \x03(\x05\x12\x11\n\x04skip\x18\x12 \x01(\x05H\x0c\x88\x01\x01\x12\x14\n\x07skipmin\x18\x13 \x01(\x05H\r\x88\x01\x01\x12\x16\n\tskipafter\x18\x14 \x01(" +
+	"\x05H\x0e\x88\x01\x01B\x0e\n\x0c_mindurationB\x0e\n\x0c_maxdurationB\r\n\x0b_startdelayB\x04\n\x02_wB\x04\n\x02_" +
+	"hB\x0c\n\n_placementB\x08\n\x06_plcmtB\x0c\n\n_linearityB\r\n\x0b_minbitrateB\r\n\x0b_maxbi" +
+	"trateB\x10\n\x0e_boxingallowedB\x06\n\x04_posB\x07\n\x05_skipB\n\n\x08_skipminB\x0c\n\n_skipaft" +
+	"erBXZVgitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/pro" +
+	"to/types/ortb_V2_5;ortb_V2_5b\x06proto3"
 
 var (
 	file_types_ortb_V2_5_ortb_proto_rawDescOnce sync.Once
@@ -1595,7 +1632,7 @@ func file_types_ortb_V2_5_ortb_proto_rawDescGZIP() []byte {
 	return file_types_ortb_V2_5_ortb_proto_rawDescData
 }
 
-var file_types_ortb_V2_5_ortb_proto_msgTypes = make([]protoimpl.MessageInfo, 17)
+var file_types_ortb_V2_5_ortb_proto_msgTypes = make([]protoimpl.MessageInfo, 18)
 var file_types_ortb_V2_5_ortb_proto_goTypes = []any{
 	(*BidRequest)(nil),  // 0: ortb_V2_5.BidRequest
 	(*Imp)(nil),         // 1: ortb_V2_5.Imp
@@ -1613,7 +1650,8 @@ var file_types_ortb_V2_5_ortb_proto_goTypes = []any{
 	(*BidExt)(nil),      // 13: ortb_V2_5.BidExt
 	(*BidResponse)(nil), // 14: ortb_V2_5.BidResponse
 	(*Ext)(nil),         // 15: ortb_V2_5.Ext
-	nil,                 // 16: ortb_V2_5.Ext.ValuesEntry
+	(*Video)(nil),       // 16: ortb_V2_5.Video
+	nil,                 // 17: ortb_V2_5.Ext.ValuesEntry
 }
 var file_types_ortb_V2_5_ortb_proto_depIdxs = []int32{
 	1,  // 0: ortb_V2_5.BidRequest.imp:type_name -> ortb_V2_5.Imp
@@ -1623,20 +1661,21 @@ var file_types_ortb_V2_5_ortb_proto_depIdxs = []int32{
 	5,  // 4: ortb_V2_5.Imp.ext:type_name -> ortb_V2_5.Imp_Ext
 	2,  // 5: ortb_V2_5.Imp.banner:type_name -> ortb_V2_5.Banner
 	4,  // 6: ortb_V2_5.Imp.native:type_name -> ortb_V2_5.Native
-	3,  // 7: ortb_V2_5.Banner.format:type_name -> ortb_V2_5.Format
-	7,  // 8: ortb_V2_5.Device.geo:type_name -> ortb_V2_5.Geo
-	15, // 9: ortb_V2_5.Device.device_ext:type_name -> ortb_V2_5.Ext
-	9,  // 10: ortb_V2_5.Site.publisher:type_name -> ortb_V2_5.Publisher
-	12, // 11: ortb_V2_5.SeatBid.bid:type_name -> ortb_V2_5.Bid
-	13, // 12: ortb_V2_5.Bid.ext:type_name -> ortb_V2_5.BidExt
-	11, // 13: ortb_V2_5.BidResponse.seatbid:type_name -> ortb_V2_5.SeatBid
-	15, // 14: ortb_V2_5.BidResponse.ext:type_name -> ortb_V2_5.Ext
-	16, // 15: ortb_V2_5.Ext.values:type_name -> ortb_V2_5.Ext.ValuesEntry
-	16, // [16:16] is the sub-list for method output_type
-	16, // [16:16] is the sub-list for method input_type
-	16, // [16:16] is the sub-list for extension type_name
-	16, // [16:16] is the sub-list for extension extendee
-	0,  // [0:16] is the sub-list for field type_name
+	16, // 7: ortb_V2_5.Imp.video:type_name -> ortb_V2_5.Video
+	3,  // 8: ortb_V2_5.Banner.format:type_name -> ortb_V2_5.Format
+	7,  // 9: ortb_V2_5.Device.geo:type_name -> ortb_V2_5.Geo
+	15, // 10: ortb_V2_5.Device.device_ext:type_name -> ortb_V2_5.Ext
+	9,  // 11: ortb_V2_5.Site.publisher:type_name -> ortb_V2_5.Publisher
+	12, // 12: ortb_V2_5.SeatBid.bid:type_name -> ortb_V2_5.Bid
+	13, // 13: ortb_V2_5.Bid.ext:type_name -> ortb_V2_5.BidExt
+	11, // 14: ortb_V2_5.BidResponse.seatbid:type_name -> ortb_V2_5.SeatBid
+	15, // 15: ortb_V2_5.BidResponse.ext:type_name -> ortb_V2_5.Ext
+	17, // 16: ortb_V2_5.Ext.values:type_name -> ortb_V2_5.Ext.ValuesEntry
+	17, // [17:17] is the sub-list for method output_type
+	17, // [17:17] is the sub-list for method input_type
+	17, // [17:17] is the sub-list for extension type_name
+	17, // [17:17] is the sub-list for extension extendee
+	0,  // [0:17] is the sub-list for field type_name
 }
 
 func init() { file_types_ortb_V2_5_ortb_proto_init() }
@@ -1659,13 +1698,14 @@ func file_types_ortb_V2_5_ortb_proto_init() {
 	file_types_ortb_V2_5_ortb_proto_msgTypes[12].OneofWrappers = []any{}
 	file_types_ortb_V2_5_ortb_proto_msgTypes[13].OneofWrappers = []any{}
 	file_types_ortb_V2_5_ortb_proto_msgTypes[14].OneofWrappers = []any{}
+	file_types_ortb_V2_5_ortb_proto_msgTypes[16].OneofWrappers = []any{}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_types_ortb_V2_5_ortb_proto_rawDesc), len(file_types_ortb_V2_5_ortb_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   17,
+			NumMessages:   18,
 			NumExtensions: 0,
 			NumServices:   0,
 		},

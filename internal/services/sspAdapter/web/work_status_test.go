@@ -39,6 +39,8 @@ func TestWorkStatusSetAllSetsEveryStream(t *testing.T) {
 		PostBid_BAN_MC_V_2_5_URL,
 		PostBid_NAT_ADL_V_2_5_URL,
 		PostBid_NAT_MC_V_2_5_URL,
+		PostBid_VID_ADL_V_2_5_URL,
+		PostBid_VID_MC_V_2_5_URL,
 	} {
 		work, err := status.Get(stream)
 		if err != nil {

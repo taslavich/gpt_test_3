@@ -20,6 +20,7 @@ type FormatPercentRoutesV25 struct {
 	BAN FormatPercentRouteV25
 	NAT FormatPercentRouteV25
 	IPP FormatPercentRouteV25
+	VID FormatPercentRouteV25
 }
 
 func normalizeFormatForPercentRoute(value string) string {
@@ -37,6 +38,8 @@ func normalizeFormatForPercentRoute(value string) string {
 		return constants.NAT
 	case constants.IPP:
 		return constants.IPP
+	case constants.VID:
+		return constants.VID
 	default:
 		return ""
 	}
@@ -55,6 +58,8 @@ func (r *FormatPercentRoutesV25) Route(format string) *FormatPercentRouteV25 {
 		return &r.NAT
 	case constants.IPP:
 		return &r.IPP
+	case constants.VID:
+		return &r.VID
 	default:
 		return nil
 	}

@@ -46,6 +46,9 @@ const (
 	PostBid_IPP_ADL_V_2_5_URL = "/bid_v_2_5_ipp_adl"
 	PostBid_IPP_MC_V_2_5_URL  = "/bid_v_2_5_ipp_mc"
 
+	PostBid_VID_ADL_V_2_5_URL = "/bid_v_2_5_vid_adl"
+	PostBid_VID_MC_V_2_5_URL  = "/bid_v_2_5_vid_mc"
+
 	GetAdmUrl        = "/adm"
 	GetNurlUrl       = "/nurl"
 	GetBurlUrl       = "/burl"
@@ -63,6 +66,8 @@ const (
 	PutWorkStatusBanMainstreamUrl = "/work_status/ban_mc"
 	PutWorkStatusNatAdultUrl      = "/work_status/nat_adl"
 	PutWorkStatusNatMainstreamUrl = "/work_status/nat_mc"
+	PutWorkStatusVidAdultUrl      = "/work_status/vid_adl"
+	PutWorkStatusVidMainstreamUrl = "/work_status/vid_mc"
 )
 
 type postBidRequest_V2_5 struct {
@@ -118,6 +123,8 @@ type getWorkStatusResponse struct {
 	BanMainstream bool `json:"banMainstream"`
 	NatAdult      bool `json:"natAdult"`
 	NatMainstream bool `json:"natMainstream"`
+	VidAdult      bool `json:"vidAdult"`
+	VidMainstream bool `json:"vidMainstream"`
 }
 
 func InitHttpRoutes(
@@ -137,6 +144,8 @@ func InitHttpRoutes(
 	sspFeedsBanMc map[string]string, // MAINSTREAM + BAN
 	sspFeedsNatAdl map[string]string, // ADULT + NAT
 	sspFeedsNatMc map[string]string, // MAINSTREAM + NAT
+	sspFeedsVidAdl map[string]string, // ADULT + VID
+	sspFeedsVidMc map[string]string, // MAINSTREAM + VID
 	workStatus *WorkStatus,
 	siteIdsAndDomains *utils.SiteIdsAndDomains,
 	geoToLang geoBadIp.GeoToLang,
@@ -204,6 +213,16 @@ func InitHttpRoutes(
 	).Put(PutWorkStatusNatMainstreamUrl, func(w http.ResponseWriter, r *http.Request) {
 		putWorkStatus(w, r, workStatus, PostBid_NAT_MC_V_2_5_URL)
 	})
+	httpRouter.With(
+		httpin.NewInput(putWorkStatusRequest{}),
+	).Put(PutWorkStatusVidAdultUrl, func(w http.ResponseWriter, r *http.Request) {
+		putWorkStatus(w, r, workStatus, PostBid_VID_ADL_V_2_5_URL)
+	})
+	httpRouter.With(
+		httpin.NewInput(putWorkStatusRequest{}),
+	).Put(PutWorkStatusVidMainstreamUrl, func(w http.ResponseWriter, r *http.Request) {
+		putWorkStatus(w, r, workStatus, PostBid_VID_MC_V_2_5_URL)
+	})
 
 	httpRouter.With(
 		httpin.NewInput(getWorkStatusResponse{}),
@@ -257,6 +276,20 @@ func InitHttpRoutes(
 		httpin.NewInput(postBidRequest_V2_5{}),
 	).Post(PostBid_NAT_MC_V_2_5_URL, func(w http.ResponseWriter, r *http.Request) {
 		postBid_V2_5(ctx, w, r, redisClients, redisSetOrtb, isBadIp, getCountryISO, orchestratorClient, bidRequestTimeout, sspFeedsNatMc, &counter, MAINSTREAM, constants.NAT, siteIdsAndDomains, geoToLang, redisWriteErrorMonitor, sspAdapterWorkStatusURL, ipLimitStore)
+	})
+
+	//---------------------------------------------------------------
+
+	httpRouter.With(
+		httpin.NewInput(postBidRequest_V2_5{}),
+	).Post(PostBid_VID_ADL_V_2_5_URL, func(w http.ResponseWriter, r *http.Request) {
+		postBid_V2_5(ctx, w, r, redisClients, redisSetOrtb, isBadIp, getCountryISO, orchestratorClient, bidRequestTimeout, sspFeedsVidAdl, &counter, ADULT, constants.VID, siteIdsAndDomains, geoToLang, redisWriteErrorMonitor, sspAdapterWorkStatusURL, ipLimitStore)
+	})
+
+	httpRouter.With(
+		httpin.NewInput(postBidRequest_V2_5{}),
+	).Post(PostBid_VID_MC_V_2_5_URL, func(w http.ResponseWriter, r *http.Request) {
+		postBid_V2_5(ctx, w, r, redisClients, redisSetOrtb, isBadIp, getCountryISO, orchestratorClient, bidRequestTimeout, sspFeedsVidMc, &counter, MAINSTREAM, constants.VID, siteIdsAndDomains, geoToLang, redisWriteErrorMonitor, sspAdapterWorkStatusURL, ipLimitStore)
 	})
 }
 

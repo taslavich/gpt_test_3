@@ -325,7 +325,7 @@ func getBurl(
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
-	billable := format == constants.NAT || format == constants.BAN || format == constants.POP
+	billable := format == constants.NAT || format == constants.BAN || format == constants.POP || format == constants.VID
 	isADV, err := handleADVCallback(
 		r.Context(),
 		input.GlobalId,

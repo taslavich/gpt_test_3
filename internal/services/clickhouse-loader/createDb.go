@@ -1048,7 +1048,7 @@ SELECT
     sum(spend) AS sum_cum_per_period
 FROM
 (
-    /* NAT, BAN, POP оплачиваются по показам: CPM / 1000 */
+    /* NAT, BAN, POP, VID оплачиваются по показам: CPM / 1000 */
     SELECT
         argMax(win_user_id, created_at) AS user_id,
         argMax(win_dsp_price, created_at) / 1000 AS spend
@@ -1056,7 +1056,7 @@ FROM
     WHERE
         created_at >= batch_created_at - INTERVAL 1 MINUTE
         AND created_at < batch_created_at
-        AND format IN ('NAT', 'BAN', 'POP')
+        AND format IN ('NAT', 'BAN', 'POP', 'VID')
         AND notEmpty(trimBoth(win_user_id))
     GROUP BY impressions_uuid
 
@@ -1110,7 +1110,7 @@ SELECT
     sum(spend) AS sum_cum_per_period
 FROM
 (
-    /* NAT, BAN, POP оплачиваются по показам: CPM / 1000 */
+    /* NAT, BAN, POP, VID оплачиваются по показам: CPM / 1000 */
     SELECT
         argMax(win_cid, event_time) AS cid,
         argMax(win_dsp_price, event_time) / 1000 AS spend
@@ -1118,7 +1118,7 @@ FROM
     WHERE
         event_time >= toStartOfMinute(batch_created_at - INTERVAL 1 MINUTE)
         AND event_time < toStartOfMinute(batch_created_at)
-        AND format IN ('NAT', 'BAN', 'POP')
+        AND format IN ('NAT', 'BAN', 'POP', 'VID')
         AND notEmpty(trimBoth(win_cid))
     GROUP BY impressions_uuid
 

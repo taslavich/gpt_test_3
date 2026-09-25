@@ -144,6 +144,8 @@ type BiddingEngineConfig struct {
 	SspGeoDspPercentsNatMainstreamFilePath string `yaml:"SSP_GEO_DSP_PERCENTS_NAT_MAINSTREAM_FILE_PATH" env:"SSP_GEO_DSP_PERCENTS_NAT_MAINSTREAM_FILE_PATH"`
 	SspGeoDspPercentsIppAdultFilePath      string `yaml:"SSP_GEO_DSP_PERCENTS_IPP_ADULT_FILE_PATH" env:"SSP_GEO_DSP_PERCENTS_IPP_ADULT_FILE_PATH"`
 	SspGeoDspPercentsIppMainstreamFilePath string `yaml:"SSP_GEO_DSP_PERCENTS_IPP_MAINSTREAM_FILE_PATH" env:"SSP_GEO_DSP_PERCENTS_IPP_MAINSTREAM_FILE_PATH"`
+	SspGeoDspPercentsVidAdultFilePath      string `yaml:"SSP_GEO_DSP_PERCENTS_VID_ADULT_FILE_PATH" env:"SSP_GEO_DSP_PERCENTS_VID_ADULT_FILE_PATH"`
+	SspGeoDspPercentsVidMainstreamFilePath string `yaml:"SSP_GEO_DSP_PERCENTS_VID_MAINSTREAM_FILE_PATH" env:"SSP_GEO_DSP_PERCENTS_VID_MAINSTREAM_FILE_PATH"`
 
 	SiteIDDspPercentsFilePath string `yaml:"SITE_ID_DSP_PERCENTS_FILE_PATH" env:"SITE_ID_DSP_PERCENTS_FILE_PATH" env-default:"./site_id_dsp_percents.json"`
 
@@ -170,6 +172,8 @@ type RouterConfig struct {
 	DSPEndpointsNatMainstreamV25 MapStringToString `yaml:"DSP_ENDPOINTS_NAT_MAINSTREAM_V_2_5" env:"DSP_ENDPOINTS_NAT_MAINSTREAM_V_2_5"`
 	DSPEndpointsIppAdultV25      MapStringToString `yaml:"DSP_ENDPOINTS_IPP_ADULT_V_2_5" env:"DSP_ENDPOINTS_IPP_ADULT_V_2_5"`
 	DSPEndpointsIppMainstreamV25 MapStringToString `yaml:"DSP_ENDPOINTS_IPP_MAINSTREAM_V_2_5" env:"DSP_ENDPOINTS_IPP_MAINSTREAM_V_2_5"`
+	DSPEndpointsVidAdultV25      MapStringToString `yaml:"DSP_ENDPOINTS_VID_ADULT_V_2_5" env:"DSP_ENDPOINTS_VID_ADULT_V_2_5"`
+	DSPEndpointsVidMainstreamV25 MapStringToString `yaml:"DSP_ENDPOINTS_VID_MAINSTREAM_V_2_5" env:"DSP_ENDPOINTS_VID_MAINSTREAM_V_2_5"`
 
 	DspRulesConfigPathV25 string `yaml:"DSP_RULES_CONFIG_PATH" env:"DSP_RULES_CONFIG_PATH_V_25"`
 	SppRulesConfigPathV25 string `yaml:"SPP_RULES_CONFIG_PATH" env:"SPP_RULES_CONFIG_PATH_V_25"`
@@ -185,6 +189,8 @@ type RouterConfig struct {
 	SspGeoDspLinksNatMainstreamFilePath string `yaml:"SSP_GEO_DSP_LINKS_NAT_MAINSTREAM_FILE_PATH" env:"SSP_GEO_DSP_LINKS_NAT_MAINSTREAM_FILE_PATH"`
 	SspGeoDspLinksIppAdultFilePath      string `yaml:"SSP_GEO_DSP_LINKS_IPP_ADULT_FILE_PATH" env:"SSP_GEO_DSP_LINKS_IPP_ADULT_FILE_PATH"`
 	SspGeoDspLinksIppMainstreamFilePath string `yaml:"SSP_GEO_DSP_LINKS_IPP_MAINSTREAM_FILE_PATH" env:"SSP_GEO_DSP_LINKS_IPP_MAINSTREAM_FILE_PATH"`
+	SspGeoDspLinksVidAdultFilePath      string `yaml:"SSP_GEO_DSP_LINKS_VID_ADULT_FILE_PATH" env:"SSP_GEO_DSP_LINKS_VID_ADULT_FILE_PATH"`
+	SspGeoDspLinksVidMainstreamFilePath string `yaml:"SSP_GEO_DSP_LINKS_VID_MAINSTREAM_FILE_PATH" env:"SSP_GEO_DSP_LINKS_VID_MAINSTREAM_FILE_PATH"`
 
 	CidSspDspLinksAdultFilePath      string `yaml:"CID_SSP_DSP_LINKS_ADULT_FILE_PATH" env:"CID_SSP_DSP_LINKS_ADULT_FILE_PATH"`
 	CidSspDspLinksMainstreamFilePath string `yaml:"CID_SSP_DSP_LINKS_MAINSTREAM_FILE_PATH" env:"CID_SSP_DSP_LINKS_MAINSTREAM_FILE_PATH"`
@@ -246,6 +252,10 @@ type SppAdapterConfig struct {
 	// IPP
 	SspIppAdlFeeds MapStringToString `yaml:"SSP_IPP_ADL_FEEDS" env:"SSP_IPP_ADL_FEEDS"`
 	SspIppMcFeeds  MapStringToString `yaml:"SSP_IPP_MC_FEEDS" env:"SSP_IPP_MC_FEEDS"`
+
+	// VID
+	SspVidAdlFeeds MapStringToString `yaml:"SSP_VID_ADL_FEEDS" env:"SSP_VID_ADL_FEEDS"`
+	SspVidMcFeeds  MapStringToString `yaml:"SSP_VID_MC_FEEDS" env:"SSP_VID_MC_FEEDS"`
 
 	SiteIdDomainPath              string `yaml:"SITE_ID_DOMAIN_PATH" env:"SITE_ID_DOMAIN_PATH"`
 	Domains1LevelPath             string `yaml:"DOMAINS_1_LEVEL_PATH" env:"DOMAINS_1_LEVEL_PATH"`

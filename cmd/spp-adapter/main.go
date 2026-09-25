@@ -180,6 +180,8 @@ func main() {
 		cfg.SspBanMcFeeds,
 		cfg.SspNatAdlFeeds,
 		cfg.SspNatMcFeeds,
+		cfg.SspVidAdlFeeds,
+		cfg.SspVidMcFeeds,
 		workStatus,
 		siteIdsAndDomains,
 		geoToLang,

@@ -37,12 +37,13 @@ type FormatRouteV25 struct {
 }
 
 // FormatRoutesV25 keeps POP deployment backwards-compatible while allowing
-// BAN/NAT/IPP to be configured independently.
+// BAN/NAT/IPP/VID to be configured independently.
 type FormatRoutesV25 struct {
 	POP FormatRouteV25
 	BAN FormatRouteV25
 	NAT FormatRouteV25
 	IPP FormatRouteV25
+	VID FormatRouteV25
 }
 
 func normalizeDSPFormat(format string) string {
@@ -55,6 +56,8 @@ func normalizeDSPFormat(format string) string {
 		return constants.NAT
 	case constants.IPP:
 		return constants.IPP
+	case constants.VID:
+		return constants.VID
 	default:
 		return ""
 	}
@@ -73,6 +76,8 @@ func (r *FormatRoutesV25) route(format string) *FormatRouteV25 {
 		return &r.NAT
 	case constants.IPP:
 		return &r.IPP
+	case constants.VID:
+		return &r.VID
 	default:
 		return nil
 	}
@@ -155,6 +160,7 @@ func (r *FormatRoutesV25) prepare(processor *filter.OptimizedFilterProcessor) {
 	prepareRoute(&r.BAN)
 	prepareRoute(&r.NAT)
 	prepareRoute(&r.IPP)
+	prepareRoute(&r.VID)
 }
 
 func (r *FormatRoutesV25) EndpointSets() []config.MapStringToString {
@@ -166,5 +172,6 @@ func (r *FormatRoutesV25) EndpointSets() []config.MapStringToString {
 		r.BAN.AdultEndpoints, r.BAN.MainstreamEndpoints,
 		r.NAT.AdultEndpoints, r.NAT.MainstreamEndpoints,
 		r.IPP.AdultEndpoints, r.IPP.MainstreamEndpoints,
+		r.VID.AdultEndpoints, r.VID.MainstreamEndpoints,
 	}
 }

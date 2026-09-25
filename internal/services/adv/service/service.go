@@ -84,6 +84,8 @@ type Creative struct {
 	CreativeName   string
 	Title          string
 	Description    string
+	VideoFormat    string
+	VideoMetadata  *VideoCreativeMetadata
 }
 
 type Campaign struct {
@@ -702,6 +704,7 @@ func cloneAndValidateSnapshot(src *Snapshot) (*Snapshot, error) {
 				cc.ImageURL = strings.TrimSpace(cc.ImageURL)
 				cc.FileFormat = strings.TrimSpace(cc.FileFormat)
 				cc.BannerType = strings.TrimSpace(cc.BannerType)
+				cc.VideoFormat = normalizeVideoFormat(cc.VideoFormat)
 				if cc.ID == "" || cc.ADMURL == "" {
 					return nil, fmt.Errorf("campaign %s has invalid creative", clone.ID)
 				}
@@ -719,6 +722,7 @@ func cloneAndValidateSnapshot(src *Snapshot) (*Snapshot, error) {
 				}
 				creativeIDs[cc.ID] = struct{}{}
 				cc.TrackersMacros = cloneStringMap(creative.TrackersMacros)
+				cc.VideoMetadata = cloneVideoCreativeMetadata(creative.VideoMetadata)
 				clone.Creatives = append(clone.Creatives, &cc)
 			}
 		}
@@ -2528,7 +2532,7 @@ func (s *AuctionService) buildBid(req *ortb.BidRequest, imp *ortb.Imp, campaign 
 		Crid:  &crid,
 	}
 
-	if format == constants.BAN {
+	if format == constants.BAN || format == constants.VID {
 		w, h := int32(creative.W), int32(creative.H)
 		bid.W = &w
 		bid.H = &h
@@ -2597,6 +2601,18 @@ func matchingCreatives(campaign *Campaign, imp *ortb.Imp, format string) []*Crea
 				continue
 			}
 			if _, ok := buildNativeADM(imp, campaign, creative, creative.ADMURL); ok {
+				out = append(out, creative)
+			}
+		}
+		return out
+	}
+	if normalized == constants.VID {
+		out := make([]*Creative, 0, len(creatives))
+		for _, creative := range creatives {
+			if creative == nil || strings.TrimSpace(creative.ID) == "" || strings.TrimSpace(creative.ADMURL) == "" {
+				continue
+			}
+			if matched, _ := videoCreativeMatchesImpression(creative, imp); matched {
 				out = append(out, creative)
 			}
 		}
@@ -2689,6 +2705,9 @@ func creativeMatchesImpression(campaign *Campaign, creative *Creative, imp *ortb
 			return false, diagBannerMimeMismatch
 		}
 		return true, diagNone
+
+	case constants.VID:
+		return videoCreativeMatchesImpression(creative, imp)
 
 	case constants.POP:
 		return true, diagNone
@@ -2797,6 +2816,8 @@ func normalizeFormat(value string) string {
 		return "NAT"
 	case "IPP", "PUSH", "IN-PAGE-PUSH", "IN_PAGE_PUSH":
 		return "IPP"
+	case "VID", "VIDEO":
+		return constants.VID
 	default:
 		return ""
 	}

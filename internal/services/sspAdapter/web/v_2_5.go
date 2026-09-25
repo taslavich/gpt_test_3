@@ -558,6 +558,16 @@ func postBid_V2_5(
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
+		if format == constants.VID {
+			if imp.GetVideo() == nil {
+				http.Error(w, fmt.Sprintf("invalid VIDEO request: impression %q has no video object", imp.GetId()), http.StatusBadRequest)
+				return
+			}
+			if len(imp.GetVideo().GetMimes()) == 0 {
+				http.Error(w, fmt.Sprintf("invalid VIDEO request: impression %q has empty video.mimes", imp.GetId()), http.StatusBadRequest)
+				return
+			}
+		}
 
 		globalId := uuid.New().String()
 		impIdUuid[imp.GetId()] = globalId
@@ -761,6 +771,8 @@ func getWorkStatus(
 	banMainstream, _ := workStatus.Get(PostBid_BAN_MC_V_2_5_URL)
 	natAdult, _ := workStatus.Get(PostBid_NAT_ADL_V_2_5_URL)
 	natMainstream, _ := workStatus.Get(PostBid_NAT_MC_V_2_5_URL)
+	vidAdult, _ := workStatus.Get(PostBid_VID_ADL_V_2_5_URL)
+	vidMainstream, _ := workStatus.Get(PostBid_VID_MC_V_2_5_URL)
 
 	if err := rnr.JSON(w, http.StatusOK, getWorkStatusResponse{
 		PopAdult:      popAdult,
@@ -771,6 +783,8 @@ func getWorkStatus(
 		BanMainstream: banMainstream,
 		NatAdult:      natAdult,
 		NatMainstream: natMainstream,
+		VidAdult:      vidAdult,
+		VidMainstream: vidMainstream,
 	}); err != nil {
 		log.Printf("Cannot make HTTP response back in getWorkStatus: %v\n", err)
 	}

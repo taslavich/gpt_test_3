@@ -127,6 +127,8 @@ func main() {
 	natMainstreamPercents := initPercentMap(cfg.SspGeoDspPercentsNatMainstreamFilePath)
 	ippAdultPercents := initPercentMap(cfg.SspGeoDspPercentsIppAdultFilePath)
 	ippMainstreamPercents := initPercentMap(cfg.SspGeoDspPercentsIppMainstreamFilePath)
+	vidAdultPercents := initPercentMap(cfg.SspGeoDspPercentsVidAdultFilePath)
+	vidMainstreamPercents := initPercentMap(cfg.SspGeoDspPercentsVidMainstreamFilePath)
 
 	siteDSPPercentStore, err := bidEngine.NewStore(cfg.SiteIDDspPercentsFilePath)
 	if err != nil {
@@ -149,6 +151,10 @@ func main() {
 		IPP: types.FormatPercentRouteV25{
 			AdultFilename: cfg.SspGeoDspPercentsIppAdultFilePath, MainstreamFilename: cfg.SspGeoDspPercentsIppMainstreamFilePath,
 			AdultMap: &ippAdultPercents, MainstreamMap: &ippMainstreamPercents,
+		},
+		VID: types.FormatPercentRouteV25{
+			AdultFilename: cfg.SspGeoDspPercentsVidAdultFilePath, MainstreamFilename: cfg.SspGeoDspPercentsVidMainstreamFilePath,
+			AdultMap: &vidAdultPercents, MainstreamMap: &vidMainstreamPercents,
 		},
 	}
 

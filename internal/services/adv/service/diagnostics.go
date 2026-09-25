@@ -99,6 +99,18 @@ const (
 	diagNativeRequiredAssetTypeUnsupported
 	diagNativeADMBuildFailedUnknown
 	diagCreativeNotMatchedUnknown
+	diagVideoObjectMissing
+	diagVideoVASTInvalid
+	diagVideoMimeMismatch
+	diagVideoDurationMismatch
+	diagVideoProtocolMismatch
+	diagVideoAPIMismatch
+	diagVideoBlockedAttribute
+	diagVideoBitrateMismatch
+	diagVideoLinearityMismatch
+	diagVideoSkipMismatch
+	diagVideoSizeMismatch
+	diagVideoFormatMismatch
 
 	// Candidate-pool and winner-selection outcomes.
 	diagBelowWeightedTopThreshold
@@ -236,6 +248,18 @@ var diagnosticDefinitions = [diagnosticReasonCount]diagnosticDefinition{
 	diagNativeRequiredAssetTypeUnsupported:   {Code: 427, Name: "native_required_asset_type_unsupported", Description: "required native asset kind is unsupported", Scope: diagnosticScopeCampaign},
 	diagNativeADMBuildFailedUnknown:          {Code: 428, Name: "native_adm_build_failed_unknown", Description: "native ADM build failed for an unclassified reason", Scope: diagnosticScopeCampaign},
 	diagCreativeNotMatchedUnknown:            {Code: 429, Name: "creative_not_matched_unknown", Description: "creative did not match for an unclassified format-specific reason", Scope: diagnosticScopeCampaign},
+	diagVideoObjectMissing:                   {Code: 430, Name: "video_object_missing", Description: "VID request impression has no video object", Scope: diagnosticScopeCampaign},
+	diagVideoVASTInvalid:                     {Code: 431, Name: "video_vast_invalid", Description: "VIDEO creative ADM is not valid VAST XML", Scope: diagnosticScopeCampaign},
+	diagVideoMimeMismatch:                    {Code: 432, Name: "video_mime_mismatch", Description: "VIDEO creative MIME is not accepted", Scope: diagnosticScopeCampaign},
+	diagVideoDurationMismatch:                {Code: 433, Name: "video_duration_mismatch", Description: "VIDEO creative duration is outside requested range", Scope: diagnosticScopeCampaign},
+	diagVideoProtocolMismatch:                {Code: 434, Name: "video_protocol_mismatch", Description: "VIDEO creative protocol is not accepted", Scope: diagnosticScopeCampaign},
+	diagVideoAPIMismatch:                     {Code: 435, Name: "video_api_mismatch", Description: "VIDEO creative API framework is not accepted", Scope: diagnosticScopeCampaign},
+	diagVideoBlockedAttribute:                {Code: 436, Name: "video_blocked_attribute", Description: "VIDEO creative has a blocked attribute", Scope: diagnosticScopeCampaign},
+	diagVideoBitrateMismatch:                 {Code: 437, Name: "video_bitrate_mismatch", Description: "VIDEO creative bitrate is outside requested range", Scope: diagnosticScopeCampaign},
+	diagVideoLinearityMismatch:               {Code: 438, Name: "video_linearity_mismatch", Description: "VIDEO creative linearity is incompatible", Scope: diagnosticScopeCampaign},
+	diagVideoSkipMismatch:                    {Code: 439, Name: "video_skip_mismatch", Description: "VIDEO creative skip behavior is incompatible", Scope: diagnosticScopeCampaign},
+	diagVideoSizeMismatch:                    {Code: 440, Name: "video_size_mismatch", Description: "VIDEO creative aspect ratio is incompatible and boxing is disallowed", Scope: diagnosticScopeCampaign},
+	diagVideoFormatMismatch:                  {Code: 441, Name: "video_format_mismatch", Description: "VIDEO creative format (instream/outstream/video_popup) does not match request placement/plcmt", Scope: diagnosticScopeCampaign},
 
 	diagBelowWeightedTopThreshold:            {Code: 500, Name: "below_weighted_top_threshold", Description: "eligible campaign was excluded from weighted-top pool", Scope: diagnosticScopeCampaign},
 	diagLowerOriginalBidThanWinner:           {Code: 501, Name: "lower_original_bid_than_winner", Description: "eligible campaign had a lower original advertiser bid than the max-bid winner", Scope: diagnosticScopeCampaign},

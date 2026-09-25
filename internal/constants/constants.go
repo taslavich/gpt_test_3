@@ -76,6 +76,7 @@ const (
 	POP string = "POP"
 	BAN string = "BAN"
 	NAT string = "NAT"
+	VID string = "VID"
 )
 
 // ADVImpressionFormatMarkerPrefix is attached only to the cloned request sent
@@ -97,6 +98,7 @@ var FormatToCodes = map[string]string{
 	BAN: "1",
 	NAT: "2",
 	IPP: "3",
+	VID: "4",
 }
 
 var CodeToFormat = map[string]string{
@@ -104,4 +106,5 @@ var CodeToFormat = map[string]string{
 	"1": BAN,
 	"2": NAT,
 	"3": IPP,
+	"4": VID,
 }

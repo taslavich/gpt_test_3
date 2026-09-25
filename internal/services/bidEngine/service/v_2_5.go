@@ -3,6 +3,8 @@ package bidEngine
 import (
 	"context"
 	"encoding/json"
+	"encoding/xml"
+	"io"
 	"log"
 	"math"
 	"sort"
@@ -375,7 +377,7 @@ func isExternalADVBid(bid *ortb_V2_5.Bid) bool {
 
 func shouldWrapDSPADM(format string) bool {
 	switch strings.ToUpper(strings.TrimSpace(format)) {
-	case constants.BAN, constants.NAT, constants.IPP:
+	case constants.BAN, constants.NAT, constants.IPP, constants.VID:
 		return false
 	default:
 		// Preserve legacy POP/unknown behavior.
@@ -394,8 +396,40 @@ func validRawDSPADM(format, adm string) bool {
 	case constants.NAT, constants.IPP:
 		// Native/IPP DSP ADM is a Native response JSON payload, not a URL.
 		return json.Valid([]byte(adm))
+	case constants.VID:
+		return validVASTADM(adm)
 	default:
 		return false
+	}
+}
+
+func validVASTADM(adm string) bool {
+	decoder := xml.NewDecoder(strings.NewReader(strings.TrimSpace(adm)))
+	rootSeen := false
+	depth := 0
+	for {
+		token, err := decoder.Token()
+		if err == io.EOF {
+			return rootSeen && depth == 0
+		}
+		if err != nil {
+			return false
+		}
+		switch t := token.(type) {
+		case xml.StartElement:
+			if !rootSeen {
+				if !strings.EqualFold(t.Name.Local, "VAST") {
+					return false
+				}
+				rootSeen = true
+			}
+			depth++
+		case xml.EndElement:
+			depth--
+			if depth < 0 {
+				return false
+			}
+		}
 	}
 }
 
@@ -474,6 +508,25 @@ func FinalizeADVCallbacks(
 		if !ok || !setClicksWinsCallback(finalBid, admDomain, globalID) {
 			return nil, false
 		}
+		return finalBid, true
+	}
+	if strings.EqualFold(strings.TrimSpace(format), constants.VID) {
+		if !validVASTADM(source.GetAdm()) {
+			return nil, false
+		}
+		finalBid, ok := proto.Clone(source).(*ortb_V2_5.Bid)
+		if !ok || finalBid == nil {
+			return nil, false
+		}
+		finalBid.Nurl = nil
+		finalBid.Burl = nil
+		nurl := utils.WrapADVNurlURL(admDomain, globalID, sspDomain, format)
+		burl := utils.WrapBurlURL(admDomain, globalID, format)
+		if strings.TrimSpace(nurl) == "" || strings.TrimSpace(burl) == "" || !setClicksWinsCallback(finalBid, admDomain, globalID) {
+			return nil, false
+		}
+		finalBid.Nurl = &nurl
+		finalBid.Burl = &burl
 		return finalBid, true
 	}
 
