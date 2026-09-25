@@ -38,7 +38,7 @@ DROP VIEW IF EXISTS {db}.mv_ortb_minute_metrics SYNC;
 DROP VIEW IF EXISTS {db}.mv_ip_limit_ipv6 SYNC;
 DROP VIEW IF EXISTS {db}.mv_ip_limit_ipv4 SYNC;
 DROP VIEW IF EXISTS {db}.mv_user_dsp_price_sum SYNC;
-DROP VIEW IF EXISTS ads.mv_ortb_traffic_hourly SYNC;
+DROP VIEW IF EXISTS {db}.mv_ortb_traffic_hourly SYNC;
 DROP VIEW IF EXISTS {db}.mv_campaign_dsp_price_sum SYNC;
 DROP VIEW IF EXISTS {db}.mv_recover_pop_impressions SYNC;
 DROP VIEW IF EXISTS {db}.mv_recover_clicks_from_clicks_wins SYNC;
@@ -796,6 +796,7 @@ CREATE TABLE IF NOT EXISTS {db}.agg_stats
 
     device_type         LowCardinality(String),
     os                  LowCardinality(String),
+    os_version          LowCardinality(String),
 
     event_hour          DateTime('UTC'),
 
@@ -832,15 +833,37 @@ ORDER BY
     geo,
     site_id,
     format,
-    typic
+    typic,
+    os_version
 )
 SETTINGS index_granularity = 8192;
 
+-- os_version must be added to the SummingMergeTree sorting key in the same
+-- ALTER that adds the column. ClickHouse only permits extending an existing
+-- sorting key with a newly added column; keeping both operations atomic also
+-- avoids a partial migration where the column exists but is not in ORDER BY.
 ALTER TABLE {db}.agg_stats
     ADD COLUMN IF NOT EXISTS conversions UInt64 DEFAULT 0,
     ADD COLUMN IF NOT EXISTS payout Float64 DEFAULT 0,
     ADD COLUMN IF NOT EXISTS conversions_approved UInt64 DEFAULT 0,
-    ADD COLUMN IF NOT EXISTS payout_approved Float64 DEFAULT 0;
+    ADD COLUMN IF NOT EXISTS payout_approved Float64 DEFAULT 0,
+    ADD COLUMN IF NOT EXISTS os_version LowCardinality(String),
+    MODIFY ORDER BY
+    (
+        win_user_id,
+        win_cid,
+        win_crid,
+        event_date,
+        device_type,
+        os,
+        event_hour,
+        browser,
+        geo,
+        site_id,
+        format,
+        typic,
+        os_version
+    );
 
 -- ============================================================
 -- IPP CUTOVER REPAIR
@@ -870,6 +893,7 @@ INSERT INTO {db}.agg_stats
     event_date,
     device_type,
     os,
+    os_version,
     event_hour,
     browser,
     geo,
@@ -892,6 +916,7 @@ SELECT
     event_date,
     device_type,
     os,
+    os_version,
     event_hour,
     browser,
     geo,
@@ -917,6 +942,7 @@ GROUP BY
     event_date,
     device_type,
     os,
+    os_version,
     event_hour,
     browser,
     geo,
@@ -933,6 +959,7 @@ SELECT
     event_date,
     device_type,
     os,
+    os_version,
     event_hour,
     browser,
     geo,
@@ -958,6 +985,7 @@ GROUP BY
     event_date,
     device_type,
     os,
+    os_version,
     event_hour,
     browser,
     geo,
@@ -974,6 +1002,7 @@ SELECT
     event_date,
     device_type,
     os,
+    os_version,
     event_hour,
     browser,
     geo,
@@ -997,6 +1026,7 @@ FROM
         event_date,
         device_type,
         os,
+        os_version,
         event_hour,
         browser,
         geo,
@@ -1017,6 +1047,7 @@ GROUP BY
     event_date,
     device_type,
     os,
+    os_version,
     event_hour,
     browser,
     geo,
@@ -1191,6 +1222,7 @@ CREATE TABLE IF NOT EXISTS {db}.traffic_volume_hourly
     lang LowCardinality(String),
     device LowCardinality(String),
     os LowCardinality(String),
+    os_version LowCardinality(String),
     browser LowCardinality(String),
     site_id LowCardinality(String),
 
@@ -1211,10 +1243,27 @@ ORDER BY
     device,
     os,
     browser,
-    site_id
+    site_id,
+    os_version
 )
 TTL event_hour + INTERVAL 10 DAY DELETE
 SETTINGS index_granularity = 8192;
+
+ALTER TABLE {db}.traffic_volume_hourly
+    ADD COLUMN IF NOT EXISTS os_version LowCardinality(String),
+    MODIFY ORDER BY
+    (
+        event_hour,
+        format,
+        typic,
+        geo,
+        lang,
+        device,
+        os,
+        browser,
+        site_id,
+        os_version
+    );
 
 
 CREATE MATERIALIZED VIEW {db}.mv_ortb_traffic_hourly
@@ -1234,6 +1283,7 @@ SELECT
     lang,
     device,
     os,
+    os_version,
     browser,
     site_id,
     count() AS requests,
@@ -1259,6 +1309,7 @@ FROM
         ifNull(lang, '') AS lang,
         ifNull(device, '') AS device,
         ifNull(os, '') AS os,
+        ifNull(os_version, '') AS os_version,
         ifNull(browser, '') AS browser,
         ifNull(toString(site_id), '') AS site_id,
 
@@ -1277,6 +1328,7 @@ GROUP BY
     lang,
     device,
     os,
+    os_version,
     browser,
     site_id;
 
@@ -2029,6 +2081,7 @@ SELECT
 
     device_type,
     os,
+    os_version,
     event_hour,
 
     browser,
@@ -2059,6 +2112,7 @@ GROUP BY
 
     device_type,
     os,
+    os_version,
     event_hour,
 
     browser,
@@ -2088,6 +2142,7 @@ SELECT
 
     device_type,
     os,
+    os_version,
     event_hour,
 
     browser,
@@ -2121,6 +2176,7 @@ GROUP BY
 
     device_type,
     os,
+    os_version,
     event_hour,
 
     browser,
@@ -2147,6 +2203,7 @@ SELECT
 
     device_type,
     os,
+    os_version,
     event_hour,
 
     browser,
@@ -2177,6 +2234,7 @@ GROUP BY
 
     device_type,
     os,
+    os_version,
     event_hour,
 
     browser,
@@ -2196,6 +2254,7 @@ SELECT
     event_date,
     device_type,
     os,
+    os_version,
     event_hour,
     browser,
     geo,
@@ -2223,6 +2282,7 @@ FROM
         event_date,
         device_type,
         os,
+        os_version,
         event_hour,
         browser,
         geo,
@@ -2240,6 +2300,7 @@ GROUP BY
     event_date,
     device_type,
     os,
+    os_version,
     event_hour,
     browser,
     geo,

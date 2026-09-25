@@ -280,6 +280,7 @@ func loadSnapshotFromPostgres(ctx context.Context, db *sql.DB) (*Snapshot, []sna
 		language,
 		device_type,
 		os,
+		COALESCE(to_jsonb(campaigns)->'os_version', '{}'::jsonb) AS os_version,
 		browser,
 		site_id,
 		ip,
@@ -313,7 +314,7 @@ func loadSnapshotFromPostgres(ctx context.Context, db *sql.DB) (*Snapshot, []sna
 		if err := rows.Scan(
 			&row.UserID, &row.CampaignID, &row.BasePrice, &row.RTB, &row.DSPLink, &row.TypeModel,
 			&row.Evenness, &row.BlockVPN, &row.StartTS, &row.EndTS, &row.ActiveIntervals,
-			&row.Country, &row.Language, &row.DeviceType, &row.OS, &row.Browser, &row.SiteID, &row.IP,
+			&row.Country, &row.Language, &row.DeviceType, &row.OS, &row.OSVersion, &row.Browser, &row.SiteID, &row.IP,
 			&row.Format, &row.Quality, &row.PricingModel, &row.Status, &row.TrafficType,
 			&row.GoalTotalDollars,
 			&row.AntiPerekrutMaxTrafficPercent,
@@ -445,6 +446,7 @@ type campaignDBRow struct {
 	Language        []byte
 	DeviceType      []byte
 	OS              []byte
+	OSVersion       []byte
 	Browser         []byte
 	SiteID          []byte
 	IP              []byte
@@ -552,6 +554,10 @@ func (r campaignDBRow) campaign() (*Campaign, error) {
 		return nil, err
 	}
 	normalizeFilterObjects(osFilter, normalizeOS)
+	osVersionFilter, err := parseOSVersionCampaignFilter(r.OSVersion, osFilter)
+	if err != nil {
+		return nil, fmt.Errorf("campaign %s os_version filter: %w", id, err)
+	}
 	browser, err := parseFilter(r.Browser, "browser")
 	if err != nil {
 		return nil, err
@@ -574,7 +580,7 @@ func (r campaignDBRow) campaign() (*Campaign, error) {
 		BasePrice:      basePrice, RTB: rtb, DSPLink: dspLink, TypeModel: typeModel, GoalTotalDollars: goalTotalDollars, EvennessBySlotMode: r.Evenness.Valid && r.Evenness.Bool, BlockVPN: r.BlockVPN.Valid && r.BlockVPN.Bool,
 		StartTS: r.StartTS.Time.UTC(), EndTS: r.EndTS.Time.UTC(), ActiveIntervals: activeIntervals,
 		CountryFilter: country, LanguageFilter: language, DeviceTypeFilter: deviceType,
-		OSFilter: osFilter, BrowserFilter: browser, SiteIDFilter: siteID, IPFilter: ip,
+		OSFilter: osFilter, OSVersionFilter: osVersionFilter, BrowserFilter: browser, SiteIDFilter: siteID, IPFilter: ip,
 		IPCIDRPrefixes:                ipCIDRPrefixes,
 		Creatives:                     []*Creative{},
 		AntiPerekrutMaxTrafficPercent: antiperekrutMaxTrafficPercent,

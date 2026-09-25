@@ -65,6 +65,7 @@ const (
 	diagLanguageFilterRejected
 	diagDeviceTypeFilterRejected
 	diagOSFilterRejected
+	diagOSVersionFilterRejected
 	diagBrowserFilterRejected
 	diagSiteIDFilterRejected
 	diagIPFilterRejected
@@ -217,6 +218,7 @@ var diagnosticDefinitions = [diagnosticReasonCount]diagnosticDefinition{
 	diagLanguageFilterRejected:             {Code: 331, Name: "language_filter_rejected", Description: "request failed campaign language filter", Scope: diagnosticScopeCampaign},
 	diagDeviceTypeFilterRejected:           {Code: 332, Name: "device_type_filter_rejected", Description: "request failed campaign device-type filter", Scope: diagnosticScopeCampaign},
 	diagOSFilterRejected:                   {Code: 333, Name: "os_filter_rejected", Description: "request failed campaign OS filter", Scope: diagnosticScopeCampaign},
+	diagOSVersionFilterRejected:            {Code: 338, Name: "os_version_filter_rejected", Description: "request failed campaign OS-version filter", Scope: diagnosticScopeCampaign},
 	diagBrowserFilterRejected:              {Code: 334, Name: "browser_filter_rejected", Description: "request failed campaign browser filter", Scope: diagnosticScopeCampaign},
 	diagSiteIDFilterRejected:               {Code: 335, Name: "site_id_filter_rejected", Description: "request failed campaign site_id filter", Scope: diagnosticScopeCampaign},
 	diagIPFilterRejected:                   {Code: 336, Name: "ip_filter_rejected", Description: "request failed campaign IP filter", Scope: diagnosticScopeCampaign},

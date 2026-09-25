@@ -115,6 +115,7 @@ type Campaign struct {
 	LanguageFilter   *filterV2.Filters
 	DeviceTypeFilter *filterV2.Filters
 	OSFilter         *filterV2.Filters
+	OSVersionFilter  *osVersionCampaignFilter
 	BrowserFilter    *filterV2.Filters
 	SiteIDFilter     *filterV2.Filters
 	IPFilter         *filterV2.Filters
@@ -686,6 +687,7 @@ func cloneAndValidateSnapshot(src *Snapshot) (*Snapshot, error) {
 		clone.LanguageFilter = cloneFilter(campaign.LanguageFilter)
 		clone.DeviceTypeFilter = cloneFilter(campaign.DeviceTypeFilter)
 		clone.OSFilter = cloneFilter(campaign.OSFilter)
+		clone.OSVersionFilter = cloneOSVersionFilter(campaign.OSVersionFilter)
 		clone.BrowserFilter = cloneFilter(campaign.BrowserFilter)
 		clone.SiteIDFilter = cloneFilter(campaign.SiteIDFilter)
 		clone.IPFilter = cloneFilter(campaign.IPFilter)
@@ -2862,13 +2864,15 @@ func trafficMatches(campaignTraffic, requestTraffic string) bool {
 }
 
 type requestFilterValues struct {
-	country    *string
-	language   *string
-	deviceType *string
-	osName     *string
-	browser    *string
-	siteID     *string
-	ip         *string
+	country     *string
+	language    *string
+	deviceType  *string
+	osName      *string
+	osVersionOS *string
+	osVersion   *string
+	browser     *string
+	siteID      *string
+	ip          *string
 }
 
 func extractRequestFilterValues(req *ortb.BidRequest) requestFilterValues {
@@ -2889,8 +2893,16 @@ func extractRequestFilterValues(req *ortb.BidRequest) requestFilterValues {
 			parsed := ua.ParseUA(rawUA)
 			values.deviceType = nonEmptyStringPtr(normalizeDeviceType(parsed.Device))
 			values.browser = nonEmptyStringPtr(normalizeBrowser(parsed.Browser))
+			parsedOS := nonEmptyStringPtr(normalizeOS(parsed.OS))
 			if values.osName == nil {
-				values.osName = nonEmptyStringPtr(normalizeOS(parsed.OS))
+				values.osName = parsedOS
+			}
+			values.osVersionOS = parsedOS
+			if values.osVersionOS == nil {
+				values.osVersionOS = values.osName
+			}
+			if _, _, ok := parseRequestOSVersion(parsed.OSVersion); ok {
+				values.osVersion = nonEmptyStringPtr(strings.TrimSpace(parsed.OSVersion))
 			}
 		} else if device.DeviceType != nil {
 			values.deviceType = nonEmptyStringPtr(normalizeDeviceType(strconv.Itoa(int(device.GetDeviceType()))))
@@ -2968,6 +2980,26 @@ func campaignPassesFiltersWithDebug(
 			mode,
 			listed,
 			configuredObjects,
+		)
+	}
+
+	osVersionAllowed, osVersionMatched := osVersionFilterAllowed(c.OSVersionFilter, values.osVersionOS, values.osVersion)
+	if !osVersionAllowed {
+		allAllowed = false
+		mode := "disabled"
+		configuredObjects := 0
+		if c.OSVersionFilter != nil {
+			configuredObjects = len(c.OSVersionFilter.Targets)
+			if c.OSVersionFilter.IsWhiteList {
+				mode = "whitelist"
+			} else {
+				mode = "blacklist"
+			}
+		}
+		logf(
+			"[ADV][FILTER_REJECT] request_id=%q imp_id=%q format=%q campaign_id=%q user_id=%q filter=%q value=%q mode=%q listed=%t configured_objects=%d",
+			requestID, impID, normalizeFormat(c.Format), c.ID, c.UserID, "os_version",
+			osVersionRequestValue(values.osVersionOS, values.osVersion), mode, osVersionMatched, configuredObjects,
 		)
 	}
 
@@ -3091,6 +3123,31 @@ func campaignFilterRejectionWithDebug(
 		return check.reason
 	}
 
+	osVersionAllowed, osVersionMatched := osVersionFilterAllowed(c.OSVersionFilter, values.osVersionOS, values.osVersion)
+	if !osVersionAllowed {
+		mode := "disabled"
+		configuredObjects := 0
+		if c.OSVersionFilter != nil {
+			configuredObjects = len(c.OSVersionFilter.Targets)
+			if c.OSVersionFilter.IsWhiteList {
+				mode = "whitelist"
+			} else {
+				mode = "blacklist"
+			}
+		}
+		logf(
+			"[ADV][FILTER_REJECT] request_id=%q imp_id=%q format=%q campaign_id=%q user_id=%q filter=%q value=%q mode=%q listed=%t configured_objects=%d diagnostic_code=%d",
+			requestID, impID, normalizeFormat(c.Format), c.ID, c.UserID, "os_version",
+			osVersionRequestValue(values.osVersionOS, values.osVersion), mode, osVersionMatched, configuredObjects,
+			diagnosticDefinitions[diagOSVersionFilterRejected].Code,
+		)
+		logf(
+			"[ADV][CAMPAIGN_REJECT] request_id=%q imp_id=%q format=%q campaign_id=%q user_id=%q reason=%q",
+			requestID, impID, normalizeFormat(c.Format), c.ID, c.UserID, diagnosticReasonName(diagOSVersionFilterRejected),
+		)
+		return diagOSVersionFilterRejected
+	}
+
 	ipAllowed, ipMatched := ipv4CampaignFilterAllowed(c.IPFilter, c.IPCIDRPrefixes, values.ip)
 	if ipAllowed {
 		return diagNone
@@ -3148,8 +3205,10 @@ func normalizeCountry(value string) string {
 
 func normalizeOS(value string) string {
 	switch strings.ToLower(strings.TrimSpace(value)) {
-	case "ios", "iphone os", "ipad os":
+	case "ios", "iphone os", "ipad os", "iphoneos", "ipados", "iphone", "ipad":
 		return "ios"
+	case "android", "android os", "androidos":
+		return "android"
 	case "macos", "mac os", "mac os x", "os x":
 		return "macos"
 	case "chromeos", "chrome os":
