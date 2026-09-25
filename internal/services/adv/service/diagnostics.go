@@ -111,6 +111,7 @@ const (
 	diagVideoSkipMismatch
 	diagVideoSizeMismatch
 	diagVideoFormatMismatch
+	diagVideoSourceInvalid
 
 	// Candidate-pool and winner-selection outcomes.
 	diagBelowWeightedTopThreshold
@@ -260,6 +261,7 @@ var diagnosticDefinitions = [diagnosticReasonCount]diagnosticDefinition{
 	diagVideoSkipMismatch:                    {Code: 439, Name: "video_skip_mismatch", Description: "VIDEO creative skip behavior is incompatible", Scope: diagnosticScopeCampaign},
 	diagVideoSizeMismatch:                    {Code: 440, Name: "video_size_mismatch", Description: "VIDEO creative aspect ratio is incompatible and boxing is disallowed", Scope: diagnosticScopeCampaign},
 	diagVideoFormatMismatch:                  {Code: 441, Name: "video_format_mismatch", Description: "VIDEO creative format (instream/outstream/video_popup) does not match request placement/plcmt", Scope: diagnosticScopeCampaign},
+	diagVideoSourceInvalid:                   {Code: 442, Name: "video_source_invalid", Description: "VIDEO creative advertiser or media URL is invalid", Scope: diagnosticScopeCampaign},
 
 	diagBelowWeightedTopThreshold:            {Code: 500, Name: "below_weighted_top_threshold", Description: "eligible campaign was excluded from weighted-top pool", Scope: diagnosticScopeCampaign},
 	diagLowerOriginalBidThanWinner:           {Code: 501, Name: "lower_original_bid_than_winner", Description: "eligible campaign had a lower original advertiser bid than the max-bid winner", Scope: diagnosticScopeCampaign},

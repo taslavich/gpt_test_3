@@ -23,6 +23,10 @@ import (
 	"gitlab.com/twinbid-exchange/RTB-exchange/internal/services/sspAdapter/outbox"
 )
 
+func videoImpressionNoop(w http.ResponseWriter) {
+	w.WriteHeader(http.StatusNoContent)
+}
+
 func getAdm(
 	ctx context.Context,
 	w http.ResponseWriter,

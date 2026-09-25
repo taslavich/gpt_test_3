@@ -49,11 +49,12 @@ const (
 	PostBid_VID_ADL_V_2_5_URL = "/bid_v_2_5_vid_adl"
 	PostBid_VID_MC_V_2_5_URL  = "/bid_v_2_5_vid_mc"
 
-	GetAdmUrl        = "/adm"
-	GetNurlUrl       = "/nurl"
-	GetBurlUrl       = "/burl"
-	GetCurlUrl       = "/curl"
-	GetClicksWinsUrl = "/clicks_wins"
+	GetAdmUrl             = "/adm"
+	GetNurlUrl            = "/nurl"
+	GetBurlUrl            = "/burl"
+	GetCurlUrl            = "/curl"
+	GetClicksWinsUrl      = "/clicks_wins"
+	GetVideoImpressionURL = "/video_impression"
 
 	GetWorkStatusUrl = "/work_status"
 
@@ -71,10 +72,8 @@ const (
 )
 
 type postBidRequest_V2_5 struct {
-	Feed    string `in:"query=feed" required:"true"`
-	Payload *struct {
-		*ortb_V2_5.BidRequest
-	} `in:"body=json"`
+	Feed    string             `in:"query=feed" required:"true"`
+	Payload *postBidPayloadV25 `in:"body=json"`
 }
 
 type postBidResponse_V2_5 struct {
@@ -361,6 +360,12 @@ func InitHttpsRoutes(
 		httpin.NewInput(clicksWinsRequest{}),
 	).Get(GetClicksWinsUrl, func(w http.ResponseWriter, r *http.Request) {
 		getClicksWins(ctx, w, r, redisClientsClicksWins, redisSetClicksWins, redisWriteErrorMonitor, sspAdapterWorkStatusURL)
+	})
+
+	// VAST requires a non-empty Impression URL. This endpoint is deliberately
+	// stateless: VIDEO accounting remains on the existing top-level BURL.
+	httpRouter.Get(GetVideoImpressionURL, func(w http.ResponseWriter, r *http.Request) {
+		videoImpressionNoop(w)
 	})
 }
 

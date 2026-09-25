@@ -63,6 +63,14 @@ func WrapClicksWinsURL(hostname, globalID string) string {
 	}, "id")
 }
 
+// WrapVideoImpressionNoopURL returns the public VAST Impression endpoint for
+// our own VIDEO creatives. It intentionally carries no event identifier: the
+// endpoint is a player-compatibility beacon only and must never write stats or
+// perform billing. Real impression/billing semantics remain on bid.burl.
+func WrapVideoImpressionNoopURL(hostname string) string {
+	return buildCallbackURL(hostname, "video_impression", nil)
+}
+
 func formatCode(format string) string {
 	return constants.FormatToCodes[strings.ToUpper(strings.TrimSpace(format))]
 }

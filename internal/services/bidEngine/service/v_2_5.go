@@ -406,19 +406,23 @@ func validRawDSPADM(format, adm string) bool {
 func validVASTADM(adm string) bool {
 	decoder := xml.NewDecoder(strings.NewReader(strings.TrimSpace(adm)))
 	rootSeen := false
+	rootClosed := false
 	depth := 0
 	for {
 		token, err := decoder.Token()
 		if err == io.EOF {
-			return rootSeen && depth == 0
+			return rootSeen && rootClosed && depth == 0
 		}
 		if err != nil {
 			return false
 		}
 		switch t := token.(type) {
 		case xml.StartElement:
-			if !rootSeen {
-				if !strings.EqualFold(t.Name.Local, "VAST") {
+			// A VAST document must have exactly one document element. encoding/xml
+			// accepts an XML token stream with multiple top-level elements, so
+			// enforce the document-level invariant explicitly.
+			if depth == 0 {
+				if rootSeen || rootClosed || !strings.EqualFold(t.Name.Local, "VAST") {
 					return false
 				}
 				rootSeen = true
@@ -427,6 +431,13 @@ func validVASTADM(adm string) bool {
 		case xml.EndElement:
 			depth--
 			if depth < 0 {
+				return false
+			}
+			if rootSeen && depth == 0 {
+				rootClosed = true
+			}
+		case xml.CharData:
+			if depth == 0 && strings.TrimSpace(string(t)) != "" {
 				return false
 			}
 		}
@@ -511,13 +522,15 @@ func FinalizeADVCallbacks(
 		return finalBid, true
 	}
 	if strings.EqualFold(strings.TrimSpace(format), constants.VID) {
-		if !validVASTADM(source.GetAdm()) {
+		publicVAST, vastOK := finalizeADVVideoVAST(source.GetAdm(), admDomain, globalID)
+		if !vastOK {
 			return nil, false
 		}
 		finalBid, ok := proto.Clone(source).(*ortb_V2_5.Bid)
 		if !ok || finalBid == nil {
 			return nil, false
 		}
+		finalBid.Adm = &publicVAST
 		finalBid.Nurl = nil
 		finalBid.Burl = nil
 		nurl := utils.WrapADVNurlURL(admDomain, globalID, sspDomain, format)

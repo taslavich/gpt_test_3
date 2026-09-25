@@ -3,6 +3,7 @@ package bidEngine
 import (
 	"context"
 	"encoding/json"
+	"encoding/xml"
 	"html"
 	"net/url"
 	"strings"
@@ -326,25 +327,53 @@ func TestDSPNativeRejectsMalformedADMJSON(t *testing.T) {
 	}
 }
 
-func TestFinalizeADVVideoKeepsVASTAndUsesExchangeCallbacks(t *testing.T) {
-	adm := `<?xml version="1.0"?><VAST version="3.0"><Ad id="x"></Ad></VAST>`
-	dspNURL := "https://dsp.example/win"
-	dspBURL := "https://dsp.example/bill"
+func TestFinalizeADVVideoRewritesOnlyOwnVASTCallbacks(t *testing.T) {
+	adm := `<?xml version="1.0"?><VAST version="3.0"><Ad id="x"><InLine><AdSystem>TwinBid</AdSystem><AdTitle>video</AdTitle><Impression>https://invalid.twinbid.local/video-impression</Impression><Creatives><Creative><Linear><Duration>00:00:20</Duration><VideoClicks><ClickThrough>https://advertiser.example/landing?a=1&amp;b=2</ClickThrough></VideoClicks><MediaFiles><MediaFile delivery="progressive" type="video/mp4" width="1920" height="1080">https://cdn.example/video.mp4</MediaFile></MediaFiles></Linear></Creative></Creatives></InLine></Ad></VAST>`
+	dspNURL := "https://should-be-discarded.example/win"
+	dspBURL := "https://should-be-discarded.example/bill"
 	bid := &ortb.Bid{Adm: &adm, Nurl: &dspNURL, Burl: &dspBURL}
 
 	got, ok := FinalizeADVCallbacks(bid, "callbacks.example", "video-winner", "vid_mc_test", constants.VID)
 	if !ok || got == nil {
 		t.Fatal("VIDEO callback finalization failed")
 	}
-	if got.GetAdm() != adm {
-		t.Fatalf("VAST ADM was changed: %q", got.GetAdm())
+	if got.GetAdm() == adm {
+		t.Fatal("private ADV VAST was not finalized")
 	}
-	if strings.Contains(got.GetAdm(), "/adm?") {
-		t.Fatalf("VAST was wrapped as POP ADM: %q", got.GetAdm())
+	if !validVASTADM(got.GetAdm()) {
+		t.Fatalf("finalized VAST is invalid: %s", got.GetAdm())
+	}
+	if strings.Contains(got.GetAdm(), "invalid.twinbid.local") {
+		t.Fatalf("private VIDEO impression placeholder leaked: %s", got.GetAdm())
+	}
+	if strings.Contains(got.GetAdm(), "ClickTracking") || strings.Contains(got.GetAdm(), "TrackingEvents") {
+		t.Fatalf("unexpected VIDEO tracking added: %s", got.GetAdm())
+	}
+	if !strings.Contains(got.GetAdm(), "https://callbacks.example/video_impression") {
+		t.Fatalf("no-op impression URL missing: %s", got.GetAdm())
+	}
+
+	var parsed advVideoClickVAST
+	if err := xml.Unmarshal([]byte(got.GetAdm()), &parsed); err != nil {
+		t.Fatal(err)
+	}
+	clickThrough := parsed.Ad.Inline.Creatives.Creative.Linear.VideoClicks.ClickThrough
+	parsedClick, err := url.Parse(clickThrough)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if parsedClick.Path != "/adm" || parsedClick.Query().Get("id") != "video-winner" || parsedClick.Query().Get("f") != constants.FormatToCodes[constants.VID] {
+		t.Fatalf("unexpected VIDEO ClickThrough: %s", clickThrough)
+	}
+	if gotURL := parsedClick.Query().Get("url"); gotURL != "https://advertiser.example/landing?a=1&b=2" {
+		t.Fatalf("advertiser destination changed: %q", gotURL)
+	}
+	if !strings.Contains(got.GetAdm(), "https://cdn.example/video.mp4") {
+		t.Fatalf("media URL was changed: %s", got.GetAdm())
 	}
 	assertCallbackQuery(t, got.GetNurl(), "/nurl", map[string]string{"id": "video-winner", "s": "vid_mc_test", "f": constants.FormatToCodes[constants.VID]})
 	assertCallbackQuery(t, got.GetBurl(), "/burl", map[string]string{"id": "video-winner", "f": constants.FormatToCodes[constants.VID]})
-	if bid.GetNurl() != dspNURL || bid.GetBurl() != dspBURL {
+	if bid.GetNurl() != dspNURL || bid.GetBurl() != dspBURL || bid.GetAdm() != adm {
 		t.Fatal("source VIDEO bid was mutated")
 	}
 }
@@ -355,6 +384,15 @@ func TestVideoDSPADMValidation(t *testing.T) {
 	}
 	if validRawDSPADM(constants.VID, `<html></html>`) {
 		t.Fatal("non-VAST markup accepted")
+	}
+	if validRawDSPADM(constants.VID, `<VAST version="3.0"></VAST><broken`) {
+		t.Fatal("VAST with malformed trailing XML must be rejected")
+	}
+	if validRawDSPADM(constants.VID, `<VAST version="3.0"></VAST><Other/>`) {
+		t.Fatal("VAST with a second top-level element must be rejected")
+	}
+	if validRawDSPADM(constants.VID, `<VAST version="3.0"></VAST>garbage`) {
+		t.Fatal("VAST with non-whitespace trailing text must be rejected")
 	}
 	if shouldWrapDSPADM(constants.VID) {
 		t.Fatal("VIDEO DSP ADM must not be POP-wrapped")

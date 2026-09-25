@@ -2497,27 +2497,41 @@ func (s *AuctionService) buildBid(req *ortb.BidRequest, imp *ortb.Imp, campaign 
 	if s == nil || imp == nil || campaign == nil || creative == nil || bidPrice <= 0 || math.IsNaN(bidPrice) || math.IsInf(bidPrice, 0) {
 		return nil
 	}
-	clickURL := applyTrackerMacrosToADM(
-		creative.ADMURL,
-		creative.TrackersMacros,
-		campaign.Format,
-		creative.BannerType,
-		campaign.ID,
-		creative.ID,
-		req,
-	)
+	format := normalizeFormat(campaign.Format)
+	clickURL := ""
+	if format == constants.VID {
+		// VIDEO ADM is generated VAST. Business macros belong only on the
+		// advertiser destination embedded in ClickThrough; never run the URL
+		// macro processor over the VAST XML itself.
+		clickURL = appendTrackerMacros(creative.ADMURL, creative.TrackersMacros, campaign.ID, creative.ID, req)
+	} else {
+		clickURL = applyTrackerMacrosToADM(
+			creative.ADMURL,
+			creative.TrackersMacros,
+			campaign.Format,
+			creative.BannerType,
+			campaign.ID,
+			creative.ID,
+			req,
+		)
+	}
 	if strings.TrimSpace(clickURL) == "" {
 		return nil
 	}
 
 	adm := clickURL
-	format := normalizeFormat(campaign.Format)
 	if format == constants.NAT || format == constants.IPP {
 		nativeADM, ok := buildNativeADM(imp, campaign, creative, clickURL)
 		if !ok {
 			return nil
 		}
 		adm = nativeADM
+	} else if format == constants.VID {
+		videoADM, ok := buildOwnVideoVAST(imp, creative, clickURL)
+		if !ok {
+			return nil
+		}
+		adm = videoADM
 	}
 
 	id, impID, cid, crid := uuid.NewString(), imp.GetId(), campaign.ID, creative.ID

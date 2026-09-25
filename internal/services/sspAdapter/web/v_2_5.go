@@ -233,6 +233,7 @@ func postBid_V2_5(
 		http.Error(w, err.Error(), http.StatusForbidden)
 		return
 	}
+	normalizePartnerVideoPlacement(input.Payload, ssp_domain, format)
 	traceRequest := utils.ShouldTraceSSPDomain(ssp_domain)
 	if traceRequest {
 		log.Printf(

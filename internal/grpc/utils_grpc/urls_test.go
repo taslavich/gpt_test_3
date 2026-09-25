@@ -55,6 +55,14 @@ func TestADVCallbackWrappersAlwaysIncludeFormat(t *testing.T) {
 	assertQuery(WrapClicksWinsURL(host, globalID), map[string]string{
 		"id": globalID,
 	})
+	videoImpression := WrapVideoImpressionNoopURL(host)
+	parsedVideoImpression, err := url.Parse(videoImpression)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if parsedVideoImpression.Scheme != "https" || parsedVideoImpression.Host != host || parsedVideoImpression.Path != "/video_impression" || parsedVideoImpression.RawQuery != "" {
+		t.Fatalf("unexpected VIDEO impression no-op URL: %q", videoImpression)
+	}
 }
 
 func TestCallbackWrappersRejectMissingRequiredValues(t *testing.T) {
