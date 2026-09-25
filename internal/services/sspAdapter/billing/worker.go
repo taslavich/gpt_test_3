@@ -6,11 +6,9 @@ import (
 	"fmt"
 	"log"
 	"net/http"
-	"strings"
 	"time"
 
 	"github.com/redis/go-redis/v9"
-	"gitlab.com/twinbid-exchange/RTB-exchange/internal/constants"
 	utils "gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/utils_grpc"
 	"gitlab.com/twinbid-exchange/RTB-exchange/internal/services"
 	"gitlab.com/twinbid-exchange/RTB-exchange/internal/services/sspAdapter/outbox"
@@ -356,16 +354,6 @@ func (w *Worker) processADM(ctx context.Context, record outbox.Record) (bool, er
 			record.Price = advWinner.Price
 			if err := w.outbox.UpdateResolution(record.EventID, winnerType, record.UserID, record.CampaignID, record.Price, record.TypeModel, record.PromoStateCaptured, record.PromoActive, record.PromoGeneration); err != nil {
 				return false, fmt.Errorf("persist ADV winner details: %w", err)
-			}
-		}
-		if strings.EqualFold(record.Format, constants.IPP) {
-			billingRecord := record
-			billingRecord.Kind = outbox.KindBilling
-			billingRecord.EventID = CallbackEventID("adm", record.Format, record.GlobalID)
-			requiresRecovery := true
-			billingRecord.RequiresADVRecovery = &requiresRecovery
-			if err := ApplyDurableIntent(ctx, w.outbox, w.store, billingRecord); err != nil {
-				return true, err
 			}
 		}
 	}

@@ -95,17 +95,6 @@ func getAdm(
 			record.PromoGeneration = winner.PromoGeneration
 			record.Price = winner.Price
 			redirectURL = appendClickIDParameter(decodedURL, winner.ClickIDParam, clickUUID)
-			if format == constants.IPP {
-				billingRecord := record
-				billingRecord.Kind = outbox.KindBilling
-				billingRecord.EventID = billing.CallbackEventID("adm", format, input.GlobalId)
-				requiresRecovery := true
-				billingRecord.RequiresADVRecovery = &requiresRecovery
-				if applyErr := billing.ApplyDurableIntent(ctx, advOutbox, advBillingStore, billingRecord); applyErr != nil {
-					processingErr = fmt.Errorf("apply durable ADV ADM billing: %w", applyErr)
-					stopADV = true
-				}
-			}
 		}
 	}
 
@@ -392,6 +381,9 @@ func getClicksWins(
 	redisSetClicksWins string,
 	redisWriteErrorMonitor *services.RedisWriteErrorMonitor,
 	sspAdapterWorkStatusURL string,
+	advBillingStore *billing.Store,
+	advOutbox *outbox.Store,
+	advControlURLs []string,
 ) {
 	input, ok := r.Context().Value(httpin.Input).(*clicksWinsRequest)
 	if !ok || input == nil {
@@ -400,6 +392,42 @@ func getClicksWins(
 	}
 
 	clicksWinsUUID := uuid.NewString()
+	if advBillingStore != nil {
+		winner, err := advBillingStore.ReadWinner(ctx, input.GlobalId, constants.IPP)
+		if err != nil && !errors.Is(err, redis.Nil) {
+			recordRedisError(redisWriteErrorMonitor, err, sspAdapterWorkStatusURL)
+			w.WriteHeader(http.StatusServiceUnavailable)
+			return
+		}
+		if err == nil {
+			requiresRecovery := true
+			billingRecord := outbox.Record{
+				Kind:                outbox.KindBilling,
+				RequiresADVRecovery: &requiresRecovery,
+				EventID:             billing.CallbackEventID("clicks_wins", constants.IPP, clicksWinsUUID),
+				GlobalID:            strings.TrimSpace(input.GlobalId),
+				UserID:              winner.UserID,
+				CampaignID:          winner.CampaignID,
+				TypeModel:           winner.TypeModel,
+				PromoStateCaptured:  winner.PromoStateCaptured,
+				PromoActive:         winner.PromoActive,
+				PromoGeneration:     winner.PromoGeneration,
+				Price:               winner.Price,
+				Format:              winner.Format,
+				Source:              "clicks_wins",
+				CreatedAt:           time.Now().UTC(),
+				Attempts:            1,
+			}
+			if err := billing.ApplyDurableCallbackIntent(ctx, advOutbox, advBillingStore, billingRecord); err != nil {
+				billingRecord.LastError = err.Error()
+				billingRecord.LastAttemptAt = time.Now().UTC()
+				handleADVWriteFailure(err, billingRecord, advOutbox, advControlURLs, sspAdapterWorkStatusURL, redisWriteErrorMonitor)
+				w.WriteHeader(http.StatusServiceUnavailable)
+				return
+			}
+		}
+	}
+
 	if err := utils.WriteClicksWinStats(ctx, redisClients, clicksWinsUUID, input.GlobalId, true); err != nil {
 		recordRedisError(redisWriteErrorMonitor, err, sspAdapterWorkStatusURL)
 		w.WriteHeader(http.StatusServiceUnavailable)

@@ -359,7 +359,18 @@ func InitHttpsRoutes(
 	httpRouter.With(
 		httpin.NewInput(clicksWinsRequest{}),
 	).Get(GetClicksWinsUrl, func(w http.ResponseWriter, r *http.Request) {
-		getClicksWins(ctx, w, r, redisClientsClicksWins, redisSetClicksWins, redisWriteErrorMonitor, sspAdapterWorkStatusURL)
+		getClicksWins(
+			ctx,
+			w,
+			r,
+			redisClientsClicksWins,
+			redisSetClicksWins,
+			redisWriteErrorMonitor,
+			sspAdapterWorkStatusURL,
+			advBillingStore,
+			advOutbox,
+			advControlURLs,
+		)
 	})
 
 	// VAST requires a non-empty Impression URL. This endpoint is deliberately
