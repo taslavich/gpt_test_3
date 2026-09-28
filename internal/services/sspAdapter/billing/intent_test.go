@@ -10,32 +10,18 @@ import (
 )
 
 type crashTestApplier struct {
-	regularApplied map[string]bool
-	promoApplied   map[string]bool
-	regularCount   int
-	promoCount     int
-	failPromoOnce  bool
+	applied map[string]bool
+	count   int
 }
 
 func newCrashTestApplier() *crashTestApplier {
-	return &crashTestApplier{
-		regularApplied: make(map[string]bool),
-		promoApplied:   make(map[string]bool),
-	}
+	return &crashTestApplier{applied: make(map[string]bool)}
 }
 
 func (a *crashTestApplier) Apply(_ context.Context, record outbox.Record) error {
-	if !a.regularApplied[record.EventID] {
-		a.regularApplied[record.EventID] = true
-		a.regularCount++
-	}
-	if a.failPromoOnce {
-		a.failPromoOnce = false
-		return errors.New("injected crash between Redis and PostgreSQL")
-	}
-	if !a.promoApplied[record.EventID] {
-		a.promoApplied[record.EventID] = true
-		a.promoCount++
+	if !a.applied[record.EventID] {
+		a.applied[record.EventID] = true
+		a.count++
 	}
 	return nil
 }
@@ -49,9 +35,6 @@ func billingCrashRecord() outbox.Record {
 		UserID:              "user-1",
 		CampaignID:          "campaign-1",
 		TypeModel:           2,
-		PromoStateCaptured:  true,
-		PromoActive:         true,
-		PromoGeneration:     4,
 		Price:               0.25,
 		Format:              "POP",
 		Source:              "burl",
@@ -71,10 +54,10 @@ func reopenOutbox(t *testing.T, path string, store *outbox.Store) *outbox.Store 
 	return reopened
 }
 
-func assertCrashCounts(t *testing.T, applier *crashTestApplier, regular, promo int) {
+func assertApplyCount(t *testing.T, applier *crashTestApplier, want int) {
 	t.Helper()
-	if applier.regularCount != regular || applier.promoCount != promo {
-		t.Fatalf("side effects regular=%d promo=%d want regular=%d promo=%d", applier.regularCount, applier.promoCount, regular, promo)
+	if applier.count != want {
+		t.Fatalf("side effects=%d want %d", applier.count, want)
 	}
 }
 
@@ -95,35 +78,13 @@ func TestBillingCrashAfterDurableIntentBeforeRedisRecoversExactlyOnce(t *testing
 	if err := ApplyDurableIntent(context.Background(), store, applier, record); err != nil {
 		t.Fatal(err)
 	}
-	assertCrashCounts(t, applier, 1, 1)
+	assertApplyCount(t, applier, 1)
 	if records, err := store.List(); err != nil || len(records) != 0 {
 		t.Fatalf("completed intent remained after recovery: records=%#v err=%v", records, err)
 	}
 }
 
-func TestBillingCrashAfterRedisBeforePostgresRecoversExactlyOnce(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "outbox.db")
-	store, err := outbox.Open(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	record := billingCrashRecord()
-	applier := newCrashTestApplier()
-	applier.failPromoOnce = true
-	if err := ApplyDurableIntent(context.Background(), store, applier, record); err == nil {
-		t.Fatal("expected injected failure")
-	}
-	assertCrashCounts(t, applier, 1, 0)
-
-	store = reopenOutbox(t, path, store)
-	defer store.Close()
-	if err := ApplyDurableIntent(context.Background(), store, applier, record); err != nil {
-		t.Fatal(err)
-	}
-	assertCrashCounts(t, applier, 1, 1)
-}
-
-func TestBillingCrashAfterPostgresBeforeACKRecoversExactlyOnce(t *testing.T) {
+func TestBillingCrashAfterRedisBeforeACKRecoversExactlyOnce(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "outbox.db")
 	store, err := outbox.Open(path)
 	if err != nil {
@@ -137,14 +98,14 @@ func TestBillingCrashAfterPostgresBeforeACKRecoversExactlyOnce(t *testing.T) {
 	if err := applier.Apply(context.Background(), record); err != nil {
 		t.Fatal(err)
 	}
-	assertCrashCounts(t, applier, 1, 1)
+	assertApplyCount(t, applier, 1)
 
 	store = reopenOutbox(t, path, store)
 	defer store.Close()
 	if err := ApplyDurableIntent(context.Background(), store, applier, record); err != nil {
 		t.Fatal(err)
 	}
-	assertCrashCounts(t, applier, 1, 1)
+	assertApplyCount(t, applier, 1)
 }
 
 func TestCompletedBillingIntentCanBeReplayedWithoutDoubleSpend(t *testing.T) {
@@ -161,7 +122,7 @@ func TestCompletedBillingIntentCanBeReplayedWithoutDoubleSpend(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	assertCrashCounts(t, applier, 1, 1)
+	assertApplyCount(t, applier, 1)
 }
 
 func TestCallbackEventIDIsStableAndSeparatesLogicalEvents(t *testing.T) {

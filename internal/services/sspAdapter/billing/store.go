@@ -17,23 +17,18 @@ import (
 const maxTransactionRetries = 5
 
 type Winner struct {
-	Price              float64
-	UserID             string
-	CampaignID         string
-	TypeModel          int
-	Format             string
-	ClickIDParam       string
-	PromoStateCaptured bool
-	PromoActive        bool
-	PromoGeneration    int64
+	Price        float64
+	UserID       string
+	CampaignID   string
+	TypeModel    int
+	Format       string
+	ClickIDParam string
 }
 
 type Store struct {
-	runtime    *redis.Client
-	winners    *redis.Client
-	markerTTL  time.Duration
-	promoDebit PromoDebitFunc
-	promoSync  PromoSyncFunc
+	runtime   *redis.Client
+	winners   *redis.Client
+	markerTTL time.Duration
 }
 
 func NewStore(runtime, winners *redis.Client, markerTTL time.Duration) *Store {
@@ -41,18 +36,6 @@ func NewStore(runtime, winners *redis.Client, markerTTL time.Duration) *Store {
 		markerTTL = 720 * time.Hour
 	}
 	return &Store{runtime: runtime, winners: winners, markerTTL: markerTTL}
-}
-
-func (s *Store) SetPromoDebit(debit PromoDebitFunc) {
-	if s != nil {
-		s.promoDebit = debit
-	}
-}
-
-func (s *Store) SetPromoSync(sync PromoSyncFunc) {
-	if s != nil {
-		s.promoSync = sync
-	}
 }
 
 func (s *Store) ReadWinner(ctx context.Context, winnerUUID, expectedFormat string) (Winner, error) {
@@ -84,28 +67,13 @@ func (s *Store) ReadWinner(ctx context.Context, winnerUUID, expectedFormat strin
 		// therefore can only be treated as legacy Simple records.
 		typeModel = 1
 	}
-	promoStateCaptured := strings.TrimSpace(values["promo_state_captured"]) == "1"
-	promoActive := false
-	promoGeneration := int64(0)
-	if promoStateCaptured {
-		parsedActive, parseActiveErr := strconv.ParseBool(strings.TrimSpace(values["promo_active"]))
-		parsedGeneration, parseGenerationErr := strconv.ParseInt(strings.TrimSpace(values["promo_generation"]), 10, 64)
-		if parseActiveErr != nil || parseGenerationErr != nil || parsedGeneration < 0 {
-			return Winner{}, errors.New("ADV winner has invalid captured promo state")
-		}
-		promoActive = parsedActive
-		promoGeneration = parsedGeneration
-	}
 	winner := Winner{
-		Price:              price,
-		UserID:             strings.TrimSpace(values["user_id"]),
-		CampaignID:         strings.TrimSpace(values["campaign_id"]),
-		TypeModel:          typeModel,
-		Format:             format,
-		ClickIDParam:       strings.TrimSpace(values[constants.ADVWinnerClickIDParamField]),
-		PromoStateCaptured: promoStateCaptured,
-		PromoActive:        promoActive,
-		PromoGeneration:    promoGeneration,
+		Price:        price,
+		UserID:       strings.TrimSpace(values["user_id"]),
+		CampaignID:   strings.TrimSpace(values["campaign_id"]),
+		TypeModel:    typeModel,
+		Format:       format,
+		ClickIDParam: strings.TrimSpace(values[constants.ADVWinnerClickIDParamField]),
 	}
 	if winner.UserID == "" || winner.CampaignID == "" {
 		return Winner{}, errors.New("ADV winner has empty user_id or campaign_id")
@@ -120,50 +88,7 @@ func (s *Store) Apply(ctx context.Context, record outbox.Record) error {
 	if strings.TrimSpace(record.EventID) == "" || strings.TrimSpace(record.UserID) == "" || strings.TrimSpace(record.CampaignID) == "" || record.Price <= 0 || math.IsNaN(record.Price) || math.IsInf(record.Price, 0) {
 		return errors.New("invalid ADV billing event")
 	}
-	if err := s.applyRuntimeSpend(ctx, record); err != nil {
-		return err
-	}
-	if promoDebitRequired(record) {
-		if record.PromoGeneration < 0 {
-			return errors.New("billing event has invalid promo_generation")
-		}
-		if s.promoDebit == nil {
-			return errors.New("cabinet promo debit is not configured")
-		}
-		state, err := s.promoDebit(ctx, record.EventID, record.UserID, record.CampaignID, record.PromoGeneration, record.Price)
-		if err != nil {
-			return fmt.Errorf("apply cabinet promo spend: %w", err)
-		}
-		if state.Generation < record.PromoGeneration {
-			return fmt.Errorf("cabinet promo state generation %d is older than billed generation %d", state.Generation, record.PromoGeneration)
-		}
-		if s.promoSync == nil {
-			return errors.New("ADV promo runtime sync is not configured")
-		}
-		if err := s.promoSync(ctx, record.UserID, state.Remaining, state.Revision, state.Generation); err != nil {
-			return fmt.Errorf("sync ADV promo runtime state: %w", err)
-		}
-	}
-	return nil
-}
-
-func promoDebitRequired(record outbox.Record) bool {
-	// Billing must consume only the promo generation that was actually active
-	// when ADV priced this winner. Legacy winner records do not carry this
-	// state, so they intentionally skip promo mutation rather than risk
-	// consuming a newly granted promo period after a delayed callback.
-	return promoSpendAppliesToTypeModel(record.TypeModel) && record.PromoStateCaptured && record.PromoActive
-}
-
-func promoSpendAppliesToTypeModel(typeModel int) bool {
-	// Promo is a user-level spend-window counter, not a discount tied to one
-	// optimizer mode. Every valid campaign mode consumes it while traffic is
-	// billed, including map-only and RTB fallback campaigns. Legacy records
-	// without type_model are treated as Simple, as in ReadWinner.
-	if typeModel == 0 {
-		typeModel = 1
-	}
-	return typeModel == 1 || typeModel == 2 || typeModel == 3
+	return s.applyRuntimeSpend(ctx, record)
 }
 
 func (s *Store) applyRuntimeSpend(ctx context.Context, record outbox.Record) error {

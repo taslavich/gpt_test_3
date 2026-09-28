@@ -165,8 +165,6 @@ func main() {
 	}
 	defer advOutbox.Close()
 	advBillingStore := billing.NewStore(advRuntimeRedis, advWinnerRedis, cfg.AdvAppliedMarkerTTL)
-	advBillingStore.SetPromoDebit(billing.NewHTTPPromoDebit(cfg.CabinetBackendURL, cfg.BotInternalSecret))
-	advBillingStore.SetPromoSync(billing.NewHTTPPromoSync([]string(cfg.AdvServiceControlURLs)))
 
 	redisWriteErrorMonitor := services.NewRedisWriteErrorMonitorWithSettings(
 		"adm-adapter",
@@ -297,9 +295,6 @@ func validateConfig(cfg *config.AdmAdapterConfig) error {
 	}
 	if strings.TrimSpace(cfg.AdvOutboxPath) == "" {
 		return fmt.Errorf("ADV_OUTBOX_PATH is required")
-	}
-	if strings.TrimSpace(cfg.CabinetBackendURL) == "" {
-		return fmt.Errorf("CABINET_BACKEND_URL is required for percenter promo billing")
 	}
 	if strings.TrimSpace(cfg.SspAdapterWorkStatusURL) == "" {
 		return fmt.Errorf("SSP_ADAPTER_WORK_STATUS_URL is required for the existing Redis error monitor")

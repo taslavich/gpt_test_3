@@ -157,18 +157,15 @@ type AuctionOutcome struct {
 }
 
 type candidate struct {
-	campaign           *Campaign
-	creatives          []*Creative
-	chargePrice        float64
-	effectivePrice     float64
-	basePrice          float64
-	originalBid        float64
-	externalBid        *ortb.Bid
-	segmentHash        string
-	pointVersion       uint64
-	promoStateCaptured bool
-	promoActive        bool
-	promoGeneration    int64
+	campaign       *Campaign
+	creatives      []*Creative
+	chargePrice    float64
+	effectivePrice float64
+	basePrice      float64
+	originalBid    float64
+	externalBid    *ortb.Bid
+	segmentHash    string
+	pointVersion   uint64
 
 	// Diagnostics metadata is observational only. It is never read by pricing,
 	// filtering, candidate-pool construction, random selection, or bid building.
@@ -1246,15 +1243,12 @@ func (s *AuctionService) auctionCore(
 			}
 
 			winner := WinnerRecord{
-				Price:              cand.chargePrice,
-				UserID:             cand.campaign.UserID,
-				CampaignID:         cand.campaign.ID,
-				TypeModel:          normalizeTypeModel(cand.campaign.TypeModel),
-				Format:             requestedFormat,
-				ClickIDParam:       clickIDParam,
-				PromoStateCaptured: cand.promoStateCaptured,
-				PromoActive:        cand.promoActive,
-				PromoGeneration:    cand.promoGeneration,
+				Price:        cand.chargePrice,
+				UserID:       cand.campaign.UserID,
+				CampaignID:   cand.campaign.ID,
+				TypeModel:    normalizeTypeModel(cand.campaign.TypeModel),
+				Format:       requestedFormat,
+				ClickIDParam: clickIDParam,
 			}
 			if err := s.winners.Put(ctx, winnerUUID, winner); err != nil {
 				attemptResults[campaignID] = "winner_redis_write_failed"
@@ -2030,7 +2024,7 @@ func (s *AuctionService) evaluateCampaign(
 		campaignRemaining,
 		userRemaining,
 	)
-	return candidate{campaign: campaign, creatives: creatives, chargePrice: chargePrice, effectivePrice: effective, basePrice: advertiserPrice, originalBid: campaign.BasePrice, segmentHash: segmentHash, pointVersion: pointVersion, promoStateCaptured: true, promoActive: pricing.PromoActive, promoGeneration: pricing.PromoGeneration}, true, diagNone, nil
+	return candidate{campaign: campaign, creatives: creatives, chargePrice: chargePrice, effectivePrice: effective, basePrice: advertiserPrice, originalBid: campaign.BasePrice, segmentHash: segmentHash, pointVersion: pointVersion}, true, diagNone, nil
 }
 
 func diagnosticReasonForAntiPerekrutEligibility(reason AntiPerekrutEligibilityReason) diagnosticReason {
