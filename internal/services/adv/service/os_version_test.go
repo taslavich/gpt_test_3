@@ -93,3 +93,49 @@ func TestNormalizeOSSynonyms(t *testing.T) {
 		}
 	}
 }
+
+func TestOSVersionDebugLogValues(t *testing.T) {
+	osFilter := filterV2.NewFilters(true, true, []string{"ios"})
+	filter, err := parseOSVersionCampaignFilter([]byte(`{"isWhiteList":true,"objects":["iOS 18.7","iOS 17"]}`), osFilter)
+	if err != nil {
+		t.Fatalf("parse filter: %v", err)
+	}
+
+	requestOS := "iPhone OS"
+	requestVersion := "18_7_1"
+	if got := osVersionTargetsLogValue(filter); got != "iOS 17=>ios|17,iOS 18.7=>ios|18.7" {
+		t.Fatalf("unexpected db target log value: %q", got)
+	}
+	if got := osVersionOSLogValue(&requestOS); got != "ios" {
+		t.Fatalf("unexpected normalized request OS: %q", got)
+	}
+	if got := osVersionNormalizedRequestVersion(&requestVersion); got != "18.7.1" {
+		t.Fatalf("unexpected normalized request version: %q", got)
+	}
+	if got := osVersionComparisonLogValue(filter, &requestOS, &requestVersion); got != "iOS 17:false,iOS 18.7:true" {
+		t.Fatalf("unexpected comparison log value: %q", got)
+	}
+	allowed, matched := osVersionFilterAllowed(filter, &requestOS, &requestVersion)
+	if !matched || !allowed {
+		t.Fatalf("expected matching whitelist request to pass: matched=%t allowed=%t", matched, allowed)
+	}
+}
+
+func TestOSVersionDebugLogUnknownRequest(t *testing.T) {
+	filter := &osVersionCampaignFilter{
+		Apply:       true,
+		IsWhiteList: true,
+		Targets: []osVersionTarget{{
+			os:         "ios",
+			components: []uint64{18},
+			canonical:  "ios|18",
+			raw:        "iOS 18",
+		}},
+	}
+	if got := osVersionComparisonLogValue(filter, nil, nil); got != "<request_unknown>" {
+		t.Fatalf("unexpected unknown-request comparison: %q", got)
+	}
+	if got := osVersionNormalizedRequestVersion(nil); got != "<nil>" {
+		t.Fatalf("unexpected nil version log value: %q", got)
+	}
+}

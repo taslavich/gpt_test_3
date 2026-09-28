@@ -73,6 +73,40 @@ func TestVideoCreativeCompatibility(t *testing.T) {
 	}
 }
 
+func TestVideoFilterTraceReportsExactDecision(t *testing.T) {
+	creative := testVideoCreative()
+	imp := &ortb.Imp{Video: &ortb.Video{
+		Mimes: []string{"video/mp4"}, Minduration: i32(5), Maxduration: i32(30),
+		Protocols: []int32{2, 3, 7}, W: i32(1920), H: i32(1080), Placement: i32(1),
+	}}
+	trace := evaluateVideoCreativeCompatibility(creative, imp)
+	if !trace.Matched || trace.Reason != diagNone {
+		t.Fatalf("expected matching trace, got matched=%v reason=%v", trace.Matched, trace.Reason)
+	}
+	if trace.RequestFormat != VideoFormatInstream || trace.CreativeFormat != VideoFormatInstream {
+		t.Fatalf("unexpected format trace: request=%q creative=%q", trace.RequestFormat, trace.CreativeFormat)
+	}
+	for name, got := range map[string]string{
+		"format": trace.FormatCheck, "source": trace.SourceCheck, "protocol": trace.ProtocolCheck,
+		"mime": trace.MimeCheck, "duration": trace.DurationCheck, "api": trace.APICheck,
+		"battr": trace.BattrCheck, "bitrate": trace.BitrateCheck, "linearity": trace.LinearityCheck,
+		"skip": trace.SkipCheck, "size": trace.SizeCheck,
+	} {
+		if got != "pass" {
+			t.Fatalf("%s check=%q want pass", name, got)
+		}
+	}
+
+	imp.Video.Placement = i32(3)
+	trace = evaluateVideoCreativeCompatibility(creative, imp)
+	if trace.Matched || trace.Reason != diagVideoFormatMismatch || trace.FormatCheck != "fail" {
+		t.Fatalf("format mismatch trace is wrong: %+v", trace)
+	}
+	if trace.MimeCheck != "not_checked" {
+		t.Fatalf("later checks must remain not_checked after format reject: %+v", trace)
+	}
+}
+
 func TestVideoCreativeRejectsMissingMIMEAllowList(t *testing.T) {
 	creative := testVideoCreative()
 	imp := &ortb.Imp{Video: &ortb.Video{Protocols: []int32{3}, Placement: i32(1)}}

@@ -220,6 +220,7 @@ type AuctionService struct {
 	antiperekrut        *AntiPerekrutManager
 	antiperekrutEnabled bool
 	diagnostics         *AuctionDiagnostics
+	testLogsEnabled     atomic.Bool
 
 	snapshotWarningMu       sync.Mutex
 	snapshotWarningSeen     map[string]struct{}
@@ -271,6 +272,15 @@ func (s *AuctionService) SetSnapshotWarningNotifier(notifier func(context.Contex
 func (s *AuctionService) SetAntiPerekrutEnabled(enabled bool) {
 	if s != nil {
 		s.antiperekrutEnabled = enabled
+	}
+}
+
+// SetTestLogsEnabled forces the existing per-request ADV test logs on for all
+// auction traffic. Requests whose normalized SSP domain ends with "_test" keep
+// their historical always-on test logging even when this switch is false.
+func (s *AuctionService) SetTestLogsEnabled(enabled bool) {
+	if s != nil {
+		s.testLogsEnabled.Store(enabled)
 	}
 }
 
@@ -837,7 +847,7 @@ func (s *AuctionService) auctionCore(
 	}
 
 	logf := debugLogFunc(func(string, ...any) {})
-	if strings.HasSuffix(sspDomain, "_test") {
+	if s.testLogsEnabled.Load() || strings.HasSuffix(sspDomain, "_test") {
 		logf = log.Printf
 	}
 
@@ -1946,6 +1956,9 @@ func (s *AuctionService) evaluateCampaign(
 		if creative == nil {
 			continue
 		}
+		if normalizeFormat(requestedFormat) == constants.VID {
+			logVideoFilterTrace(logf, requestID, impID, campaign, creative, imp)
+		}
 		logf(
 			"[ADV][CREATIVE_MATCH] request_id=%q imp_id=%q format=%q campaign_id=%q user_id=%q creative_id=%q banner_type=%q file_format=%q width=%d height=%d has_adm=%t has_image=%t has_title=%t has_description=%t",
 			requestID,
@@ -2442,6 +2455,9 @@ func logCreativeRejections(
 				strings.TrimSpace(campaign.BrandName) != "",
 			)
 
+		case constants.VID:
+			logVideoFilterTrace(logf, requestID, impID, campaign, creative, imp)
+
 		default:
 			logf(
 				"[ADV][CREATIVE_REJECT] request_id=%q imp_id=%q format=%q campaign_id=%q creative_id=%q reason=creative_not_matched_unknown has_adm=%t",
@@ -2858,15 +2874,18 @@ func trafficMatches(campaignTraffic, requestTraffic string) bool {
 }
 
 type requestFilterValues struct {
-	country     *string
-	language    *string
-	deviceType  *string
-	osName      *string
-	osVersionOS *string
-	osVersion   *string
-	browser     *string
-	siteID      *string
-	ip          *string
+	country            *string
+	language           *string
+	deviceType         *string
+	osName             *string
+	osVersionOS        *string
+	osVersion          *string
+	uaRaw              string
+	uaParsedOSRaw      string
+	uaParsedVersionRaw string
+	browser            *string
+	siteID             *string
+	ip                 *string
 }
 
 func extractRequestFilterValues(req *ortb.BidRequest) requestFilterValues {
@@ -2883,8 +2902,11 @@ func extractRequestFilterValues(req *ortb.BidRequest) requestFilterValues {
 		values.ip = nonEmptyStringPtr(device.GetIp())
 
 		rawUA := strings.TrimSpace(device.GetUa())
+		values.uaRaw = rawUA
 		if rawUA != "" {
 			parsed := ua.ParseUA(rawUA)
+			values.uaParsedOSRaw = strings.TrimSpace(parsed.OS)
+			values.uaParsedVersionRaw = strings.TrimSpace(parsed.OSVersion)
 			values.deviceType = nonEmptyStringPtr(normalizeDeviceType(parsed.Device))
 			values.browser = nonEmptyStringPtr(normalizeBrowser(parsed.Browser))
 			parsedOS := nonEmptyStringPtr(normalizeOS(parsed.OS))
@@ -2978,22 +3000,32 @@ func campaignPassesFiltersWithDebug(
 	}
 
 	osVersionAllowed, osVersionMatched := osVersionFilterAllowed(c.OSVersionFilter, values.osVersionOS, values.osVersion)
-	if !osVersionAllowed {
-		allAllowed = false
-		mode := "disabled"
-		configuredObjects := 0
-		if c.OSVersionFilter != nil {
-			configuredObjects = len(c.OSVersionFilter.Targets)
+	osVersionMode := "disabled"
+	configuredOSVersions := 0
+	if c.OSVersionFilter != nil {
+		configuredOSVersions = len(c.OSVersionFilter.Targets)
+		if c.OSVersionFilter.Apply {
 			if c.OSVersionFilter.IsWhiteList {
-				mode = "whitelist"
+				osVersionMode = "whitelist"
 			} else {
-				mode = "blacklist"
+				osVersionMode = "blacklist"
 			}
 		}
+	}
+	logf(
+		"[ADV][OS_VERSION_FILTER] request_id=%q imp_id=%q format=%q campaign_id=%q user_id=%q filter_applied=%t mode=%q db_targets=%q ua_raw=%q ua_os_raw=%q ua_version_raw=%q request_os_normalized=%q request_version_normalized=%q comparisons=%q matched=%t filter_passed=%t",
+		requestID, impID, normalizeFormat(c.Format), c.ID, c.UserID,
+		c.OSVersionFilter != nil && c.OSVersionFilter.Apply, osVersionMode, osVersionTargetsLogValue(c.OSVersionFilter),
+		values.uaRaw, values.uaParsedOSRaw, values.uaParsedVersionRaw, osVersionOSLogValue(values.osVersionOS),
+		osVersionNormalizedRequestVersion(values.osVersion), osVersionComparisonLogValue(c.OSVersionFilter, values.osVersionOS, values.osVersion),
+		osVersionMatched, osVersionAllowed,
+	)
+	if !osVersionAllowed {
+		allAllowed = false
 		logf(
 			"[ADV][FILTER_REJECT] request_id=%q imp_id=%q format=%q campaign_id=%q user_id=%q filter=%q value=%q mode=%q listed=%t configured_objects=%d",
 			requestID, impID, normalizeFormat(c.Format), c.ID, c.UserID, "os_version",
-			osVersionRequestValue(values.osVersionOS, values.osVersion), mode, osVersionMatched, configuredObjects,
+			osVersionRequestValue(values.osVersionOS, values.osVersion), osVersionMode, osVersionMatched, configuredOSVersions,
 		)
 	}
 

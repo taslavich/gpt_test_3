@@ -3,6 +3,7 @@ package auction
 import (
 	"fmt"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -19,6 +20,7 @@ type osVersionTarget struct {
 	components []uint64
 	special    string
 	canonical  string
+	raw        string
 }
 
 type osVersionCampaignFilter struct {
@@ -30,7 +32,7 @@ type osVersionCampaignFilter struct {
 func parseCampaignOSVersionTarget(raw string) (osVersionTarget, error) {
 	value := strings.TrimSpace(raw)
 	if strings.EqualFold(value, "Android 12L") {
-		return osVersionTarget{os: "android", special: "12l", canonical: "android|12l"}, nil
+		return osVersionTarget{os: "android", special: "12l", canonical: "android|12l", raw: value}, nil
 	}
 	match := campaignOSVersionRE.FindStringSubmatch(value)
 	if match == nil {
@@ -56,6 +58,7 @@ func parseCampaignOSVersionTarget(raw string) (osVersionTarget, error) {
 		os:         osName,
 		components: components,
 		canonical:  osName + "|" + strings.Join(canonicalParts, "."),
+		raw:        value,
 	}, nil
 }
 
@@ -169,4 +172,63 @@ func osVersionRequestValue(osName, version *string) string {
 		return "<nil>"
 	}
 	return normalizeOS(*osName) + "|" + strings.TrimSpace(*version)
+}
+func osVersionTargetsLogValue(filter *osVersionCampaignFilter) string {
+	if filter == nil || !filter.Apply || len(filter.Targets) == 0 {
+		return "<disabled>"
+	}
+	values := make([]string, 0, len(filter.Targets))
+	for _, target := range filter.Targets {
+		raw := strings.TrimSpace(target.raw)
+		if raw == "" {
+			raw = target.canonical
+		}
+		values = append(values, raw+"=>"+target.canonical)
+	}
+	sort.Strings(values)
+	return strings.Join(values, ",")
+}
+
+func osVersionOSLogValue(value *string) string {
+	if value == nil {
+		return "<nil>"
+	}
+	return normalizeOS(*value)
+}
+
+func osVersionNormalizedRequestVersion(value *string) string {
+	if value == nil {
+		return "<nil>"
+	}
+	components, special, ok := parseRequestOSVersion(*value)
+	if !ok {
+		return "<invalid>"
+	}
+	if special != "" {
+		return special
+	}
+	parts := make([]string, len(components))
+	for i, component := range components {
+		parts[i] = strconv.FormatUint(component, 10)
+	}
+	return strings.Join(parts, ".")
+}
+
+func osVersionComparisonLogValue(filter *osVersionCampaignFilter, requestOS, requestVersion *string) string {
+	if filter == nil || !filter.Apply || len(filter.Targets) == 0 {
+		return "<disabled>"
+	}
+	if requestOS == nil || requestVersion == nil {
+		return "<request_unknown>"
+	}
+	comparisons := make([]string, 0, len(filter.Targets))
+	for _, target := range filter.Targets {
+		targetValue := strings.TrimSpace(target.raw)
+		if targetValue == "" {
+			targetValue = target.canonical
+		}
+		comparisons = append(comparisons, fmt.Sprintf("%s:%t", targetValue, osVersionTargetMatches(target, *requestOS, *requestVersion)))
+	}
+	sort.Strings(comparisons)
+	return strings.Join(comparisons, ",")
 }

@@ -318,6 +318,7 @@ type AdvConfig struct {
 	BotInternalSecret               string        `yaml:"BOT_INTERNAL_SECRET" env:"BOT_INTERNAL_SECRET"`
 	AdvPercenterTelemetryOutboxPath string        `yaml:"ADV_PERCENTER_TELEMETRY_OUTBOX_PATH" env:"ADV_PERCENTER_TELEMETRY_OUTBOX_PATH" env-default:"./data/adv-percenter-telemetry-outbox.db"`
 	AdvPercenterTelemetryFlush      time.Duration `yaml:"ADV_PERCENTER_TELEMETRY_FLUSH" env:"ADV_PERCENTER_TELEMETRY_FLUSH" env-default:"1m"`
+	AdvTestLogsEnabled              bool          `yaml:"ADV_TEST_LOGS_ENABLED" env:"ADV_TEST_LOGS_ENABLED" env-default:"false"`
 }
 
 type KafkaLoaderConfig struct {

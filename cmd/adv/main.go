@@ -144,6 +144,8 @@ func run() error {
 	runtimeStore := auction.NewRuntimeStore(runtimeRedis, cfg.AdvPacingCurrentTTL, cfg.AdvPacingSlotTTL)
 	winnerStore := auction.NewWinnerStore(winnerRedis, cfg.AdvWinnerTTL)
 	auctionService := auction.NewAuctionService(runtimeStore, winnerStore, percentStore, qualityStore, siteIDQualityStore)
+	auctionService.SetTestLogsEnabled(cfg.AdvTestLogsEnabled)
+	log.Printf("[ADV][TEST_LOGS] enabled=%t test_domain_suffix_always_enabled=true", cfg.AdvTestLogsEnabled)
 	botNotifier := utils.NewBotMessageWithTimeout(cfg.BotBaseURL, cfg.BotInternalSecret, cfg.AntiperekrutControlTimeout)
 	telegramConfigured := strings.TrimSpace(cfg.BotBaseURL) != "" && strings.TrimSpace(cfg.BotInternalSecret) != ""
 	botSend := func(sendCtx context.Context, text string) error {
