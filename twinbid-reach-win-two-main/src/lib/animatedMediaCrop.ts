@@ -1,12 +1,10 @@
-import { FFmpeg } from "@ffmpeg/ffmpeg";
-import { fetchFile, toBlobURL } from "@ffmpeg/util";
+import { ALL_FORMATS, BlobSource, BufferTarget, Conversion, Input, Mp4OutputFormat, Output, Quality } from "mediabunny";
 import { decompressFrames, parseGIF } from "gifuct-js";
 import { GIFEncoder, applyPalette, quantize } from "gifenc";
 import { buildDerivedCreativeFilename } from "@/lib/creativeApi";
 
 const MAX_GIF_BYTES = 1 * 1024 * 1024;
 const MAX_VIDEO_BYTES = 10 * 1024 * 1024;
-const FFMPEG_CORE_BASE_URL = "https://unpkg.com/@ffmpeg/core@0.12.10/dist/umd";
 
 export interface MediaCropRect {
   sx: number;
@@ -52,6 +50,7 @@ export async function cropAnimatedGif(
   sourceUrl: string,
   crop: MediaCropRect,
   fileNameHint?: string,
+  onProgress?: (percent: number) => void,
 ): Promise<CroppedMedia> {
   const bytes = await fetch(sourceUrl).then((response) => {
     if (!response.ok) throw new Error("gif-load");
@@ -84,7 +83,7 @@ export async function cropAnimatedGif(
       }
     | undefined;
 
-  for (const frame of frames) {
+  for (const [index, frame] of frames.entries()) {
     if (previous?.disposalType === 2) {
       sourceContext.clearRect(
         previous.dims.left,
@@ -145,6 +144,10 @@ export async function cropAnimatedGif(
       dims: frame.dims,
       restore,
     };
+    if (index % 8 === 7) {
+      onProgress?.(Math.round(((index + 1) / frames.length) * 100));
+      await new Promise<void>(resolve => setTimeout(resolve, 0));
+    }
   }
 
   encoder.finish();
@@ -163,92 +166,52 @@ export async function cropAnimatedGif(
   };
 }
 
-let ffmpegPromise: Promise<FFmpeg> | null = null;
-
-async function getFFmpeg(): Promise<FFmpeg> {
-  if (!ffmpegPromise) {
-    ffmpegPromise = (async () => {
-      const ffmpeg = new FFmpeg();
-      // Sites limits individual static assets to 25 MiB, while the ffmpeg
-      // core WASM is about 32 MiB. Load the exact package version lazily from
-      // the public CDN so normal application startup stays small and MP4 crop
-      // support remains available when a legacy/banner creative needs it.
-      await ffmpeg.load({
-        coreURL: await toBlobURL(`${FFMPEG_CORE_BASE_URL}/ffmpeg-core.js`, "text/javascript"),
-        wasmURL: await toBlobURL(`${FFMPEG_CORE_BASE_URL}/ffmpeg-core.wasm`, "application/wasm"),
-      });
-      return ffmpeg;
-    })().catch((error) => {
-      ffmpegPromise = null;
-      throw error;
-    });
-  }
-  return ffmpegPromise;
-}
-
-function evenFloor(value: number): number {
-  return Math.max(2, Math.floor(value / 2) * 2);
-}
-
 /**
- * Crops the visible frame of an MP4 without changing its time range. The full
- * video is re-encoded to MP4 with the selected crop and target dimensions.
+ * Decode/encode with the browser's media codecs. Audio is copied when possible;
+ * no external FFmpeg core download or software-only 1080p transcoding is needed.
  */
 export async function cropMp4Video(
   sourceUrl: string,
   crop: MediaCropRect,
   fileNameHint?: string,
+  onProgress?: (percent: number) => void,
 ): Promise<CroppedMedia> {
-  const ffmpeg = await getFFmpeg();
-  const token = `${Date.now()}_${Math.random().toString(36).slice(2)}`;
-  const inputName = `input_${token}.mp4`;
-  const outputName = `output_${token}.mp4`;
-
-  const sourceW = Math.max(2, Math.floor(crop.sourceWidth));
-  const sourceH = Math.max(2, Math.floor(crop.sourceHeight));
-  const cropW = Math.min(sourceW, evenFloor(crop.sw));
-  const cropH = Math.min(sourceH, evenFloor(crop.sh));
-  const cropX = Math.max(0, Math.min(Math.floor(crop.sx), sourceW - cropW));
-  const cropY = Math.max(0, Math.min(Math.floor(crop.sy), sourceH - cropH));
-  const outW = evenFloor(crop.outW);
-  const outH = evenFloor(crop.outH);
-  const filter = `crop=${cropW}:${cropH}:${cropX}:${cropY},scale=${outW}:${outH}:flags=lanczos`;
-
-  try {
-    await ffmpeg.writeFile(inputName, await fetchFile(sourceUrl));
-    const exitCode = await ffmpeg.exec([
-      "-i", inputName,
-      "-vf", filter,
-      "-c:v", "libx264",
-      "-preset", "veryfast",
-      "-crf", "28",
-      "-pix_fmt", "yuv420p",
-      "-c:a", "aac",
-      "-b:a", "96k",
-      "-movflags", "+faststart",
-      outputName,
-    ]);
-    if (exitCode !== 0) throw new Error("video-encode");
-
-    const result = await ffmpeg.readFile(outputName);
-    if (typeof result === "string") throw new Error("video-output");
-    const blob = new Blob([result], { type: "video/mp4" });
-    if (blob.size > MAX_VIDEO_BYTES) throw new Error("video-too-large");
-
-    const file = new File(
-      [blob],
-      buildDerivedCreativeFilename(fileNameHint, "cropped", "mp4"),
-      { type: "video/mp4" },
-    );
-    return {
-      file,
-      dataUrl: URL.createObjectURL(file),
-      dimensions: { w: outW, h: outH },
-    };
-  } finally {
-    await Promise.allSettled([
-      ffmpeg.deleteFile(inputName),
-      ffmpeg.deleteFile(outputName),
-    ]);
+  if (typeof VideoEncoder === "undefined" || typeof VideoDecoder === "undefined") {
+    throw new Error("video-codec-unsupported");
   }
+  const response = await fetch(sourceUrl);
+  if (!response.ok) throw new Error("video-load");
+  const input = new Input({ formats: ALL_FORMATS, source: new BlobSource(await response.blob()) });
+  const videoTrack = await input.getPrimaryVideoTrack();
+  if (!videoTrack) throw new Error("video-track-missing");
+  const audioTrack = await input.getPrimaryAudioTrack();
+  const target = new BufferTarget();
+  const output = new Output({ format: new Mp4OutputFormat(), target });
+  const conversion = await Conversion.init({
+    input, output, tracks: "primary",
+    video: {
+      crop: { left: crop.sx, top: crop.sy, width: crop.sw, height: crop.sh },
+      width: crop.outW, height: crop.outH, fit: "fill", codec: "avc",
+      quality: new Quality("medium"), hardwareAcceleration: "no-preference",
+      allowTransformationMetadata: false,
+    },
+  });
+  if (!conversion.isValid || !conversion.utilizedTracks.includes(videoTrack)
+    || (audioTrack && !conversion.utilizedTracks.includes(audioTrack))) {
+    throw new Error("video-codec-unsupported");
+  }
+  conversion.onProgress = value => onProgress?.(Math.round(value * 100));
+  try {
+    await conversion.execute();
+  } catch (error) {
+    if (error instanceof Error && /encoder configuration|codec.*unsupported|not supported in this environment/i.test(error.message)) {
+      throw new Error("video-codec-unsupported");
+    }
+    throw error;
+  }
+  if (!target.buffer) throw new Error("video-output");
+  const blob = new Blob([target.buffer], { type: "video/mp4" });
+  if (blob.size > MAX_VIDEO_BYTES) throw new Error("video-too-large");
+  const file = new File([blob], buildDerivedCreativeFilename(fileNameHint, "cropped", "mp4"), { type: "video/mp4" });
+  return { file, dataUrl: URL.createObjectURL(file), dimensions: { w: crop.outW, h: crop.outH } };
 }

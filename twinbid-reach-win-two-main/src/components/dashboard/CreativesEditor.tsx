@@ -5,10 +5,10 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Dialog, DialogContent } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Upload, Plus, Trash2, Loader2, Pencil, AlertTriangle, Eye, Info, LayoutGrid } from "lucide-react";
+import { Upload, Plus, Trash2, Loader2, Pencil, AlertTriangle, Eye, Info, LayoutGrid, Play } from "lucide-react";
 import { toast } from "sonner";
 import { useLanguage } from "@/contexts/LanguageContext";
 import type { Creative, CreativeType } from "@/contexts/CampaignContext";
@@ -245,6 +245,12 @@ export const CreativesEditor = forwardRef<CreativesEditorHandle, CreativesEditor
   const fileInputRefs = useRef<Record<string, HTMLInputElement | null>>({});
   const htmlFileInputRefs = useRef<Record<string, HTMLInputElement | null>>({});
   const ownedPreviewUrlsRef = useRef(new Set<string>());
+  // Auto-crop confirmation also supplies blob URLs, outside the upload handler.
+  useEffect(() => {
+    creatives.forEach(creative => {
+      if (creative.imageUrl?.startsWith("blob:")) ownedPreviewUrlsRef.current.add(creative.imageUrl);
+    });
+  }, [creatives]);
 
   useEffect(() => () => {
     ownedPreviewUrlsRef.current.forEach(url => URL.revokeObjectURL(url));
@@ -281,7 +287,7 @@ export const CreativesEditor = forwardRef<CreativesEditorHandle, CreativesEditor
     }
   };
   const [uploadingId, setUploadingId] = useState<string | null>(null);
-  const [previewMedia, setPreviewMedia] = useState<{ url: string; video: boolean } | null>(null);
+  const [previewMedia, setPreviewMedia] = useState<string | null>(null);
   // Original source per creative (for re-opening cropper)
   const [origSources, setOrigSources] = useState<Record<string, { dataUrl: string; naturalWidth: number; naturalHeight: number; fileName: string; isGif: boolean; isVideo: boolean }>>({});
   const [cropperCreativeId, setCropperCreativeId] = useState<string | null>(null);
@@ -647,6 +653,8 @@ export const CreativesEditor = forwardRef<CreativesEditorHandle, CreativesEditor
         const type: CreativeType = (isBanner ? (creative.creativeType || "image") : "image");
         const target = getCreativeTarget(formatKey, creative);
         const canCrop = type === "image" && !!src && !!target;
+        const isVideoCreative = isVideoFormat || src?.isVideo || creative.mediaType === "video"
+          || creative.imageMimeType === "video/mp4" || /\.mp4$/i.test(creative.imageFileName || "");
         const meas = measured[creative.id];
         const titleLength = Array.from(creative.title || "").length;
         const descriptionLength = Array.from(creative.description || "").length;
@@ -908,12 +916,9 @@ export const CreativesEditor = forwardRef<CreativesEditorHandle, CreativesEditor
                   </div>
                 )}
                 {creative.imageUrl && (
-                  <button type="button" onClick={() => setPreviewMedia({
-                    url: creative.imageUrl!,
-                    video: creative.mediaType === "video" || creative.imageMimeType === "video/mp4" || /\.mp4$/i.test(creative.imageFileName || ""),
-                  })} className="block">
-                    {creative.mediaType === "video" || creative.imageMimeType === "video/mp4" || /\.mp4$/i.test(creative.imageFileName || "")
-                      ? <video src={creative.imageUrl} muted loop autoPlay playsInline className="mt-2 max-h-32 rounded border border-border cursor-zoom-in hover:opacity-90 transition-opacity" />
+                  <button type="button" onClick={() => isVideoCreative ? setPreviewCreativeId(creative.id) : setPreviewMedia(creative.imageUrl!)} className="block" aria-label={t("create.previewCreative")}>
+                    {isVideoCreative
+                      ? <span className="mt-2 flex h-24 w-40 items-center justify-center gap-2 rounded border border-border bg-slate-900 text-sm text-white"><Play className="h-5 w-5" /> MP4</span>
                       : <img src={creative.imageUrl} alt="Preview" className="mt-2 max-h-32 rounded border border-border cursor-zoom-in hover:opacity-90 transition-opacity" />}
                   </button>
                 )}
@@ -1224,9 +1229,9 @@ export const CreativesEditor = forwardRef<CreativesEditorHandle, CreativesEditor
                   </div>
                 )}
                 {creative.imageUrl && (
-                  <button type="button" onClick={() => setPreviewMedia({ url: creative.imageUrl!, video: isVideoFormat })} className="block">
-                    {isVideoFormat
-                      ? <video src={creative.imageUrl} muted loop autoPlay playsInline className="mt-2 max-h-32 rounded border border-border cursor-zoom-in transition-opacity hover:opacity-90" />
+                  <button type="button" onClick={() => isVideoCreative ? setPreviewCreativeId(creative.id) : setPreviewMedia(creative.imageUrl!)} className="block" aria-label={t("create.previewCreative")}>
+                    {isVideoCreative
+                      ? <span className="mt-2 flex h-24 w-40 items-center justify-center gap-2 rounded border border-border bg-slate-900 text-sm text-white"><Play className="h-5 w-5" /> MP4</span>
                       : <img src={creative.imageUrl} alt="Preview" className="mt-2 max-h-32 rounded border border-border cursor-zoom-in hover:opacity-90 transition-opacity" />}
                   </button>
                 )}
@@ -1247,11 +1252,8 @@ export const CreativesEditor = forwardRef<CreativesEditorHandle, CreativesEditor
     </div>
     <Dialog open={!!previewMedia} onOpenChange={(o) => { if (!o) setPreviewMedia(null); }}>
       <DialogContent className="max-w-4xl p-2 bg-card border-border">
-        {previewMedia && (
-          previewMedia.video
-            ? <video src={previewMedia.url} controls autoPlay muted playsInline className="h-auto max-h-[85vh] w-full rounded object-contain" />
-            : <img src={previewMedia.url} alt="Preview" className="w-full h-auto max-h-[85vh] object-contain rounded" />
-        )}
+        <DialogTitle className="sr-only">{t("create.previewTitle")}</DialogTitle>
+        {previewMedia && <img src={previewMedia} alt="Preview" className="w-full h-auto max-h-[85vh] object-contain rounded" />}
       </DialogContent>
     </Dialog>
     <ImageCropperDialog

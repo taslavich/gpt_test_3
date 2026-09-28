@@ -27,6 +27,15 @@ import {
 import { getLocalizedErrorMessage } from "@/lib/apiStatus";
 import { isValidVideoMetadata } from "@/lib/videoMetadata";
 
+function videoCreativeChanged(next: Creative[], original: Creative[]): boolean {
+  const editable = (list: Creative[]) => list.map(c => ({
+    id: c.id, name: c.name, url: c.url, videoFormat: c.videoFormat,
+    imageUrl: c.imageUrl, imageFileName: c.imageFileName,
+    pendingFile: c.pendingFile ? [c.pendingFile.name, c.pendingFile.size, c.pendingFile.lastModified] : null,
+  }));
+  return JSON.stringify(editable(next)) !== JSON.stringify(editable(original));
+}
+
 export default function EditCampaign() {
   const navigate = useNavigate();
   const { id } = useParams();
@@ -121,12 +130,7 @@ export default function EditCampaign() {
 
   const hasCreativeChanged = useMemo(() => {
     if (campaign?.formatKey === "video") {
-      const editable = (list: Creative[]) => list.map(c => ({
-        id: c.id, name: c.name, url: c.url, videoFormat: c.videoFormat,
-        imageUrl: c.imageUrl, imageFileName: c.imageFileName,
-        pendingFile: c.pendingFile ? [c.pendingFile.name, c.pendingFile.size, c.pendingFile.lastModified] : null,
-      }));
-      return JSON.stringify(editable(creatives)) !== JSON.stringify(editable(initialCreatives));
+      return videoCreativeChanged(creatives, initialCreatives);
     }
     return JSON.stringify(creatives) !== JSON.stringify(initialCreatives);
   }, [campaign?.formatKey, creatives, initialCreatives]);
@@ -204,6 +208,10 @@ export default function EditCampaign() {
 
   const handleSave = async (skipMismatchCheck = false, overrideCreatives?: Creative[]) => {
     const crvs = overrideCreatives ?? creatives;
+    const creativeChanged = campaign.formatKey === "video"
+      ? videoCreativeChanged(crvs, initialCreatives)
+      : hasCreativeChanged;
+    const moderationNeeded = creativeChanged || hasTrafficTypeChanged || hasRtbEndpointChanged;
     const e: Record<string, string> = {};
     const tb = parseNum(totalBudget);
     if (!totalBudget || isNaN(tb) || tb < 1) e.totalBudget = t("edit.errorBudgetMin");
@@ -330,10 +338,10 @@ export default function EditCampaign() {
     if (campaign.status === "draft") {
       newStatus = "moderation";
     } else if (isRestart) {
-      newStatus = needsModeration ? "moderation" : "active";
+      newStatus = moderationNeeded ? "moderation" : "active";
     } else if (campaign.status === "no_budget") {
-      newStatus = needsModeration ? "moderation" : "active";
-    } else if (needsModeration) {
+      newStatus = moderationNeeded ? "moderation" : "active";
+    } else if (moderationNeeded) {
       newStatus = "moderation";
     }
 
@@ -342,7 +350,7 @@ export default function EditCampaign() {
         name: name.trim(),
         launchType: campaign.launchType || "cabinet",
         rtbEndpoint: isRtb ? rtbEndpoint.trim() : undefined,
-        ...(isRtb || (campaign.formatKey === "video" && !hasCreativeChanged) ? {} : { creatives: crvs }),
+        ...(isRtb || (campaign.formatKey === "video" && !creativeChanged) ? {} : { creatives: crvs }),
         trafficType, verticals,
         targeting: Object.fromEntries(Object.entries(lists).map(([k, v]) => [k, { mode: v.mode, items: v.items }])),
         blockVpnTraffic,
@@ -365,11 +373,11 @@ export default function EditCampaign() {
     if (campaign.status === "draft") {
       toast.success(t("edit.savedModeration"));
     } else if (isRestart) {
-      toast.success(needsModeration ? t("edit.savedModeration") : t("edit.restartedActive"));
+      toast.success(moderationNeeded ? t("edit.savedModeration") : t("edit.restartedActive"));
     } else if (campaign.status === "no_budget") {
-      toast.success(needsModeration ? t("edit.savedModeration") : t("campaigns.started"));
+      toast.success(moderationNeeded ? t("edit.savedModeration") : t("campaigns.started"));
     } else {
-      toast.success(needsModeration ? t("edit.savedModeration") : t("edit.saved"));
+      toast.success(moderationNeeded ? t("edit.savedModeration") : t("edit.saved"));
     }
     navigate("/dashboard/campaigns");
   };

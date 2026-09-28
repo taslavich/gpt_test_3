@@ -1,8 +1,8 @@
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useLanguage } from "@/contexts/LanguageContext";
 import type { Creative } from "@/contexts/CampaignContext";
-import { X, MoreHorizontal, Bell } from "lucide-react";
+import { X, MoreHorizontal, Bell, Play } from "lucide-react";
 
 interface CreativePreviewDialogProps {
   open: boolean;
@@ -96,7 +96,7 @@ function BannerSlot({ size, creative }: { size: string; creative: Creative }) {
         || creative.imageMimeType === "video/mp4"
         || /\.mp4$/i.test(creative.imageFileName || "");
       content = video
-        ? <video src={creative.imageUrl} autoPlay muted loop playsInline className="h-full w-full object-cover" />
+        ? <div className="flex h-full w-full items-center justify-center bg-slate-900 text-white"><Play className="h-6 w-6" aria-hidden="true" /></div>
         : <img src={creative.imageUrl} alt="ad" className="w-full h-full object-cover" />;
     } else {
       content = <span>Advertisement {w}×{h}</span>;
@@ -224,10 +224,11 @@ function NativePreview({ title, description, imageUrl, brandName }: { title?: st
 
 function VideoPreview({ creative, label }: { creative: Creative; label: string }) {
   const player = (
-    <div className="relative aspect-video w-full overflow-hidden rounded border border-slate-300 bg-slate-950 shadow-lg">
-      {creative.imageUrl
-        ? <video src={creative.imageUrl} controls autoPlay muted loop playsInline className="h-full w-full object-cover" />
-        : <div className="flex h-full items-center justify-center text-sm text-slate-400">1920×1080</div>}
+    <div className="relative aspect-video w-full overflow-hidden rounded border border-slate-300 bg-gradient-to-br from-slate-800 to-slate-950 shadow-lg">
+      <div className="absolute inset-0 flex items-center justify-center">
+        <div className="rounded-full bg-white/15 p-4 text-white"><Play className="h-7 w-7 fill-current" aria-hidden="true" /></div>
+      </div>
+      <span className="absolute top-2 right-2 rounded bg-black/50 px-2 py-1 text-[10px] text-white">1920×1080</span>
       <span className="pointer-events-none absolute bottom-2 left-2 rounded bg-black/65 px-2 py-1 text-[10px] font-medium text-white">
         {label}
       </span>
@@ -301,7 +302,7 @@ export function CreativePreviewDialog({ open, onClose, formatKey, bannerSize, br
           </div>
         )}
 
-        <p className="text-xs text-muted-foreground text-center">{t("create.previewDisclaimer")}</p>
+        <DialogDescription className="text-xs text-muted-foreground text-center">{t("create.previewDisclaimer")}</DialogDescription>
       </DialogContent>
     </Dialog>
   );

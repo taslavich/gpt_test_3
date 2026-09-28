@@ -1,5 +1,6 @@
 import type { Creative } from "@/contexts/CampaignContext";
 import type { CropperTarget } from "@/components/dashboard/ImageCropperDialog";
+import type { MediaCropRect } from "@/lib/animatedMediaCrop";
 import { buildDerivedCreativeFilename } from "@/lib/creativeApi";
 
 const MAX_BYTES = 1 * 1024 * 1024;
@@ -15,7 +16,7 @@ function loadImage(src: string): Promise<HTMLImageElement> {
 }
 
 /** Compute source crop rect (center-cover) for the target. */
-function computeCoverCrop(sw: number, sh: number, target: CropperTarget) {
+export function computeCoverCrop(sw: number, sh: number, target: CropperTarget): MediaCropRect {
   if (target.mode === "fixed") {
     const targetAspect = target.w / target.h;
     const srcAspect = sw / sh;
@@ -29,14 +30,14 @@ function computeCoverCrop(sw: number, sh: number, target: CropperTarget) {
     }
     const cx = (sw - cw) / 2;
     const cy = (sh - ch) / 2;
-    return { sx: cx, sy: cy, sw: cw, sh: ch, outW: target.w, outH: target.h };
+    return { sx: cx, sy: cy, sw: cw, sh: ch, sourceWidth: sw, sourceHeight: sh, outW: target.w, outH: target.h };
   }
   // square-resizable: centered square
   const side = Math.min(sw, sh);
   const outSide = Math.max(target.minSide ?? 200, Math.round(side));
   const cx = (sw - side) / 2;
   const cy = (sh - side) / 2;
-  return { sx: cx, sy: cy, sw: side, sh: side, outW: outSide, outH: outSide };
+  return { sx: cx, sy: cy, sw: side, sh: side, sourceWidth: sw, sourceHeight: sh, outW: outSide, outH: outSide };
 }
 
 export function isGifDataUrl(src: string): boolean {
