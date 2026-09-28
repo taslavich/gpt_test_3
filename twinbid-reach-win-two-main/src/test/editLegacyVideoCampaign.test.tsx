@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { describe, expect, it, vi } from "vitest";
 
@@ -24,7 +24,7 @@ const legacyVideoCampaign = {
   startDate: "2026-01-01",
   endDate: "2026-01-31",
   creatives: [],
-  creativesLoaded: false,
+  creativesLoaded: true,
   targeting: {},
   blockVpnTraffic: false,
   evenSpend: false,
@@ -47,8 +47,7 @@ const labels: Record<string, string> = {
   "edit.title": "Edit campaign",
   "edit.name": "Name",
   "edit.formatLabel": "Ad format",
-  "edit.legacyVideoReadOnlyTitle": "Legacy video campaign",
-  "edit.legacyVideoReadOnlyDescription": "This campaign is available in read-only mode.",
+  "create.creatives": "Creatives",
   "create.back": "Back",
 };
 
@@ -69,8 +68,8 @@ vi.mock("@/components/dashboard/CreativesEditor", async () => {
 
 import EditCampaign from "@/pages/EditCampaign";
 
-describe("legacy video campaign editing", () => {
-  it("renders the campaign read-only without loading an editor", () => {
+describe("existing video campaign editing", () => {
+  it("renders existing Video with the creative editor and editable name", async () => {
     render(
       <MemoryRouter initialEntries={["/dashboard/campaigns/legacy-video-1/edit"]}>
         <Routes>
@@ -79,12 +78,20 @@ describe("legacy video campaign editing", () => {
       </MemoryRouter>,
     );
 
-    expect(screen.getByText("Legacy video campaign")).toBeInTheDocument();
-    expect(screen.getByText("This campaign is available in read-only mode.")).toBeInTheDocument();
-    expect(screen.getByDisplayValue("Old video campaign")).toBeDisabled();
+    await waitFor(() => expect(screen.getByDisplayValue("Old video campaign")).not.toBeDisabled());
     expect(screen.getByDisplayValue("video")).toBeDisabled();
-    expect(screen.queryByText("Creative editor")).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "edit.save" })).not.toBeInTheDocument();
+    expect(screen.getByText("Creative editor")).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "edit.conversion" })).toBeInTheDocument();
     expect(loadCampaignCreatives).not.toHaveBeenCalled();
+  });
+
+  it("requests creatives for an existing Video campaign when they are not loaded", async () => {
+    legacyVideoCampaign.creativesLoaded = false;
+    loadCampaignCreatives.mockResolvedValueOnce([]);
+    render(<MemoryRouter initialEntries={["/dashboard/campaigns/legacy-video-1/edit"]}><Routes>
+      <Route path="/dashboard/campaigns/:id/edit" element={<EditCampaign />} />
+    </Routes></MemoryRouter>);
+    await waitFor(() => expect(loadCampaignCreatives).toHaveBeenCalledWith("legacy-video-1"));
+    legacyVideoCampaign.creativesLoaded = true;
   });
 });

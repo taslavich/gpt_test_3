@@ -29,6 +29,7 @@ import {
 } from "@/lib/creativeApi";
 import { useIsMobileImmediate } from "@/hooks/use-mobile";
 import { getLocalizedErrorMessage } from "@/lib/apiStatus";
+import { isValidVideoMetadata } from "@/lib/videoMetadata";
 
 const allScheduleItems = (): string[] => {
   const days = ["monday","tuesday","wednesday","thursday","friday","saturday","sunday"];
@@ -116,12 +117,6 @@ export default function CreateCampaign() {
     // mobile select is closing can leave some Android WebViews in a locked
     // overlay state. Duplicate values are ignored so existing input is kept.
     if (nextFormat === adFormat) return;
-    if (nextFormat === "video") {
-      const message = t("create.videoCampaignUnsupported");
-      setErrors(prev => ({ ...prev, adFormat: message }));
-      toast.error(message);
-      return;
-    }
     setAdFormat(nextFormat);
     clearError("adFormat");
     if (!isRtb) {
@@ -131,7 +126,7 @@ export default function CreateCampaign() {
         creativeType: nextFormat === "banner" ? "image" : undefined,
       }]);
     }
-  }, [adFormat, clearError, isRtb, t]);
+  }, [adFormat, clearError, isRtb]);
 
   const chooseLaunchType = (nextType: CampaignLaunchType) => {
     setLaunchType(nextType);
@@ -157,7 +152,6 @@ export default function CreateCampaign() {
     const e: Record<string, string> = {};
     if (!name.trim()) e.name = t("create.required");
     if (!adFormat) e.adFormat = t("create.selectFormatError");
-    if (adFormat === "video") e.adFormat = t("create.videoCampaignUnsupported");
 
     if (isRtb) {
       const endpoint = rtbEndpoint.trim();
@@ -201,9 +195,15 @@ export default function CreateCampaign() {
         if (creativeRequiresImage(adFormat, c) && !c.imageUrl && !c.pendingFile) {
           e[`creative_${c.id}_image`] = t("create.required");
         }
-        if (adFormat === "video" && c.pendingFile && c.mediaType !== "video") {
-          e[`creative_${c.id}_image`] = t("create.videoFormatError");
-        }
+      if (adFormat === "video" && c.pendingFile && c.mediaType !== "video") {
+        e[`creative_${c.id}_image`] = t("create.videoFormatError");
+      }
+      if (adFormat === "video" && c.pendingFile && !isValidVideoMetadata(c.videoMetadata)) {
+        e[`creative_${c.id}_image`] = t("create.videoMetadataError");
+      }
+      if (adFormat === "video" && c.url.trim() && !isValidCreativeUrl(c.url)) {
+        e[`creative_${c.id}_url`] = t("create.urlInvalid");
+      }
       }
       if ((adFormat === "native" || adFormat === "push") && !c.title?.trim()) e[`creative_${c.id}_title`] = t("create.required");
       if ((adFormat === "native" || adFormat === "push") && !c.description?.trim()) e[`creative_${c.id}_description`] = t("create.required");
@@ -306,12 +306,6 @@ export default function CreateCampaign() {
 
   const handleCreateWith = async (crvs: Creative[]) => {
     if (isCreating) return;
-    if (adFormat === "video") {
-      const message = t("create.videoCampaignUnsupported");
-      setErrors(prev => ({ ...prev, adFormat: message }));
-      toast.error(message);
-      return;
-    }
     setIsCreating(true);
     try {
       // Create as draft first, then PATCH to moderation (per backend flow)
@@ -360,12 +354,6 @@ export default function CreateCampaign() {
     if (savedAsDraft.current) return;
     if (!launchType) return;
     if (!name.trim() && !adFormat) return;
-    if (adFormat === "video") {
-      const message = t("create.videoCampaignUnsupported");
-      setErrors(prev => ({ ...prev, adFormat: message }));
-      toast.error(message);
-      return;
-    }
     savedAsDraft.current = true;
     try {
       await addCampaign({
@@ -516,8 +504,8 @@ export default function CreateCampaign() {
                   >
                     <option value="" disabled>{t("create.selectFormat")}</option>
                     {Object.entries(formatLabels).map(([value, label]) => (
-                      <option key={value} value={value} disabled={value === "video"}>
-                        {label}{value === "video" ? ` — ${t("create.videoUnavailable")}` : ""}
+                      <option key={value} value={value}>
+                        {label}
                       </option>
                     ))}
                   </select>
@@ -528,8 +516,8 @@ export default function CreateCampaign() {
                     </SelectTrigger>
                     <SelectContent className="bg-card border-border">
                       {Object.entries(formatLabels).map(([val, label]) => (
-                        <SelectItem key={val} value={val} disabled={val === "video"}>
-                          {label}{val === "video" ? ` — ${t("create.videoUnavailable")}` : ""}
+                        <SelectItem key={val} value={val}>
+                          {label}
                         </SelectItem>
                       ))}
                     </SelectContent>

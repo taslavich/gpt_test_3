@@ -15,6 +15,7 @@ import {
   X,
 } from "lucide-react";
 import { api, type CalculatorResponse } from "@/api";
+import type { FormatType } from "@/api/types";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -39,6 +40,7 @@ import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { useTouchScrollSelectionGuard } from "@/hooks/use-touch-scroll-selection-guard";
 import { getCampaignPricingLabel } from "@/lib/campaignPricing";
+import { availableOsVersions, normalizeSelectedOsVersions, selectableOsVersions } from "@/lib/osVersions";
 
 const copy = {
   ru: {
@@ -252,6 +254,7 @@ const formats = [
   { value: "native", label: "Native" },
   { value: "push", label: "In-page Push" },
   { value: "popunder", label: "Popunder" },
+  { value: "video", label: "Video" },
 ] as const;
 
 type FilterState = {
@@ -265,6 +268,8 @@ type FilterState = {
   deviceTypeMode: "include" | "exclude";
   os: string[];
   osMode: "include" | "exclude";
+  osVersion: string[];
+  osVersionMode: "include" | "exclude";
   browser: string[];
   browserMode: "include" | "exclude";
   sites: string[];
@@ -282,6 +287,8 @@ const defaults: FilterState = {
   deviceTypeMode: "include",
   os: [],
   osMode: "include",
+  osVersion: [],
+  osVersionMode: "include",
   browser: [],
   browserMode: "include",
   sites: [],
@@ -302,6 +309,8 @@ function fromCampaign(campaign: Campaign): FilterState {
     deviceTypeMode: mode("deviceType"),
     os: items("os"),
     osMode: mode("os"),
+    osVersion: normalizeSelectedOsVersions(items("osVersion")),
+    osVersionMode: mode("osVersion"),
     browser: items("browser"),
     browserMode: mode("browser"),
     sites: items("sites"),
@@ -343,6 +352,10 @@ export default function TrafficCalculator() {
     () => getTargetingDimensionOptions("language", lang),
     [lang],
   );
+  const versionOptions = useMemo(
+    () => availableOsVersions({ mode: filters.osMode === "include" ? "white" : "black", items: filters.os }),
+    [filters.os, filters.osMode],
+  );
   const resetResult = () => {
     setResult(null);
     setActual(null);
@@ -350,7 +363,12 @@ export default function TrafficCalculator() {
   };
 
   const updateFilters = (patch: Partial<FilterState>) => {
-    setFilters((current) => ({ ...current, ...patch }));
+    setFilters((current) => {
+      const next = { ...current, ...patch };
+      const allowed = new Set(availableOsVersions({ mode: next.osMode === "include" ? "white" : "black", items: next.os }));
+      next.osVersion = normalizeSelectedOsVersions(next.osVersion.filter(version => allowed.has(version)));
+      return next;
+    });
     resetResult();
   };
 
@@ -374,7 +392,7 @@ export default function TrafficCalculator() {
     setActual(null);
     try {
       const calculation = await api.calculator({
-        format_type: filters.format as "banner" | "native" | "push" | "popunder",
+        format_type: filters.format as FormatType,
         traffic_type: filters.trafficType,
         country: filters.country,
         country_mode: filters.countryMode,
@@ -384,6 +402,8 @@ export default function TrafficCalculator() {
         device_type_mode: filters.deviceTypeMode,
         os: filters.os,
         os_mode: filters.osMode,
+        os_version: filters.osVersion.filter(version => versionOptions.includes(version)),
+        os_version_mode: filters.osVersionMode,
         browser: filters.browser,
         browser_mode: filters.browserMode,
         site_id: filters.sites,
@@ -497,7 +517,13 @@ export default function TrafficCalculator() {
             <MultiChoice label={text.languages} text={text} mode={filters.languageMode} values={filters.language} options={languageOptions} onModeChange={(languageMode) => updateFilters({ languageMode })} onChange={(language) => updateFilters({ language })} />
             <MultiChoice label={text.devices} text={text} mode={filters.deviceTypeMode} values={filters.deviceType} options={DEVICE_FILTER_KEYS.filter((item) => item !== OTHER_KEY).map(simpleOption)} onModeChange={(deviceTypeMode) => updateFilters({ deviceTypeMode })} onChange={(deviceType) => updateFilters({ deviceType })} />
             <MultiChoice label="OS" text={text} mode={filters.osMode} values={filters.os} options={OS_FILTER_KEYS.filter((item) => item !== OTHER_KEY).map(simpleOption)} onModeChange={(osMode) => updateFilters({ osMode })} onChange={(os) => updateFilters({ os })} />
-            <MultiChoice label={text.browsers} text={text} mode={filters.browserMode} values={filters.browser} options={BROWSER_FILTER_KEYS.filter((item) => item !== OTHER_KEY).map(simpleOption)} onModeChange={(browserMode) => updateFilters({ browserMode })} onChange={(browser) => updateFilters({ browser })} />
+            <div className="space-y-1">
+              <MultiChoice label={t("targeting.osVersion")} text={text} mode={filters.osVersionMode} values={filters.osVersion} options={selectableOsVersions({ mode: filters.osMode === "include" ? "white" : "black", items: filters.os }, filters.osVersion).map(simpleOption)} onModeChange={(osVersionMode) => updateFilters({ osVersionMode })} onChange={(osVersion) => updateFilters({ osVersion })} disabled={versionOptions.length === 0} />
+              <p className="text-xs text-muted-foreground">{t(versionOptions.length ? "targeting.osVersionPrecisionHint" : "targeting.osVersionHint")}</p>
+            </div>
+            <div className="self-start">
+              <MultiChoice label={text.browsers} text={text} mode={filters.browserMode} values={filters.browser} options={BROWSER_FILTER_KEYS.filter((item) => item !== OTHER_KEY).map(simpleOption)} onModeChange={(browserMode) => updateFilters({ browserMode })} onChange={(browser) => updateFilters({ browser })} />
+            </div>
             <SiteChoice
               label={text.sites}
               text={text}
@@ -543,7 +569,7 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 
 type TextCopy = typeof copy.en;
 
-function MultiChoice({ label, text, mode, values, options, onModeChange, onChange }: {
+function MultiChoice({ label, text, mode, values, options, onModeChange, onChange, disabled = false }: {
   label: string;
   text: TextCopy;
   mode: "include" | "exclude";
@@ -551,13 +577,14 @@ function MultiChoice({ label, text, mode, values, options, onModeChange, onChang
   options: { value: string; label: string }[];
   onModeChange: (mode: "include" | "exclude") => void;
   onChange: (values: string[]) => void;
+  disabled?: boolean;
 }) {
   const summary = values.length
     ? (mode === "exclude" ? `${text.excluded} ${values.length}` : values.length <= 2 ? options.filter((item) => values.includes(item.value)).map((item) => item.label).join(", ") : `${values.length}`)
     : text.all;
   return (
     <DropdownMenu>
-      <DropdownMenuTrigger asChild><Button variant="outline" className="h-auto min-h-10 w-full min-w-0 justify-between px-3 font-normal"><span className="min-w-0 truncate text-left"><span className="text-muted-foreground">{label}:</span> {summary}</span><ChevronDown className="ml-2 h-4 w-4 shrink-0 text-muted-foreground" /></Button></DropdownMenuTrigger>
+      <DropdownMenuTrigger asChild><Button variant="outline" disabled={disabled} className="h-auto min-h-10 w-full min-w-0 justify-between px-3 font-normal"><span className="min-w-0 truncate text-left"><span className="text-muted-foreground">{label}:</span> {summary}</span><ChevronDown className="ml-2 h-4 w-4 shrink-0 text-muted-foreground" /></Button></DropdownMenuTrigger>
       <DropdownMenuContent data-traffic-calculator-menu className="max-h-72 w-[min(16rem,calc(100vw-1rem))] overflow-y-auto"><DropdownMenuLabel>{label}</DropdownMenuLabel><div className="flex gap-1 px-2 pb-2"><button type="button" onClick={(event) => { event.preventDefault(); onModeChange("include"); }} className={cn("flex-1 rounded-md px-2 py-1.5 text-xs", mode === "include" ? "bg-primary/15 text-primary" : "bg-muted text-muted-foreground")}>{text.include}</button><button type="button" onClick={(event) => { event.preventDefault(); onModeChange("exclude"); }} className={cn("flex-1 rounded-md px-2 py-1.5 text-xs", mode === "exclude" ? "bg-primary/15 text-primary" : "bg-muted text-muted-foreground")}>{text.exclude}</button></div>{values.length > 0 && <><DropdownMenuCheckboxItem checked={false} onCheckedChange={() => onChange([])}>{text.clear}</DropdownMenuCheckboxItem><DropdownMenuSeparator /></>}{options.map((option) => <DropdownMenuCheckboxItem key={option.value} checked={values.includes(option.value)} onCheckedChange={(checked) => onChange(checked ? [...values, option.value] : values.filter((value) => value !== option.value))}>{option.label}</DropdownMenuCheckboxItem>)}</DropdownMenuContent>
     </DropdownMenu>
   );

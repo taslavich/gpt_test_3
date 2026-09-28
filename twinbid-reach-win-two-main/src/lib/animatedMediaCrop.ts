@@ -1,13 +1,12 @@
 import { FFmpeg } from "@ffmpeg/ffmpeg";
-import { fetchFile } from "@ffmpeg/util";
-import ffmpegCoreUrl from "@ffmpeg/core?url";
-import ffmpegWasmUrl from "@ffmpeg/core/wasm?url";
+import { fetchFile, toBlobURL } from "@ffmpeg/util";
 import { decompressFrames, parseGIF } from "gifuct-js";
 import { GIFEncoder, applyPalette, quantize } from "gifenc";
 import { buildDerivedCreativeFilename } from "@/lib/creativeApi";
 
 const MAX_GIF_BYTES = 1 * 1024 * 1024;
 const MAX_VIDEO_BYTES = 10 * 1024 * 1024;
+const FFMPEG_CORE_BASE_URL = "https://unpkg.com/@ffmpeg/core@0.12.10/dist/umd";
 
 export interface MediaCropRect {
   sx: number;
@@ -170,9 +169,13 @@ async function getFFmpeg(): Promise<FFmpeg> {
   if (!ffmpegPromise) {
     ffmpegPromise = (async () => {
       const ffmpeg = new FFmpeg();
+      // Sites limits individual static assets to 25 MiB, while the ffmpeg
+      // core WASM is about 32 MiB. Load the exact package version lazily from
+      // the public CDN so normal application startup stays small and MP4 crop
+      // support remains available when a legacy/banner creative needs it.
       await ffmpeg.load({
-        coreURL: ffmpegCoreUrl,
-        wasmURL: ffmpegWasmUrl,
+        coreURL: await toBlobURL(`${FFMPEG_CORE_BASE_URL}/ffmpeg-core.js`, "text/javascript"),
+        wasmURL: await toBlobURL(`${FFMPEG_CORE_BASE_URL}/ffmpeg-core.wasm`, "application/wasm"),
       });
       return ffmpeg;
     })().catch((error) => {

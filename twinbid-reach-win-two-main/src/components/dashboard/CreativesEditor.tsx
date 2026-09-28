@@ -13,6 +13,7 @@ import { toast } from "sonner";
 import { useLanguage } from "@/contexts/LanguageContext";
 import type { Creative, CreativeType } from "@/contexts/CampaignContext";
 import type { VideoFormat } from "@/api/types";
+import { readVideoMetadata, videoMetadataFromFile } from "@/lib/videoMetadata";
 import { ImageCropperDialog } from "@/components/dashboard/ImageCropperDialog";
 import { CreativePreviewDialog } from "@/components/dashboard/CreativePreviewDialog";
 import {
@@ -34,18 +35,10 @@ function loadImageDims(dataUrl: string): Promise<{ w: number; h: number }> {
   });
 }
 
-function loadVideoDims(dataUrl: string): Promise<{ w: number; h: number }> {
-  return new Promise((resolve, reject) => {
-    const video = document.createElement("video");
-    video.preload = "metadata";
-    video.onloadedmetadata = () => {
-      resolve({ w: video.videoWidth, h: video.videoHeight });
-      video.src = "";
-    };
-    video.onerror = () => reject(new Error("Failed to load video"));
-    video.src = dataUrl;
-  });
-}
+const loadVideoDims = async (url: string) => {
+  const { width, height } = await readVideoMetadata(url);
+  return { w: width, h: height };
+};
 
 const URL_MACROS = [
   "click_id", "site_id", "country_code", "creative_id",
@@ -318,7 +311,7 @@ export const CreativesEditor = forwardRef<CreativesEditorHandle, CreativesEditor
     let cancelled = false;
     creativesRef.current.forEach((creative) => {
       if (!creative.imageUrl || origSourcesRef.current[creative.id]) return;
-      const video = creative.mediaType === "video"
+      const video = isVideoFormat || creative.mediaType === "video"
         || creative.imageMimeType === "video/mp4"
         || /\.mp4$/i.test(creative.imageFileName || "");
       const gif = !video && (
@@ -447,9 +440,10 @@ export const CreativesEditor = forwardRef<CreativesEditorHandle, CreativesEditor
     const video = validation.mediaType === "video";
     setUploadingId(creativeId);
     try {
+      const metadata = video ? await readVideoMetadata(file) : null;
       const dataUrl = URL.createObjectURL(file);
       ownedPreviewUrlsRef.current.add(dataUrl);
-      const { w, h } = video ? await loadVideoDims(dataUrl) : await loadImageDims(dataUrl);
+      const { w, h } = metadata ? { w: metadata.width, h: metadata.height } : await loadImageDims(dataUrl);
       const isGif = file.type === "image/gif" || ext === ".gif";
       const currentCreative = creativesRef.current.find(c => c.id === creativeId);
       const mismatch = currentCreative ? checkMismatch(currentCreative, w, h) : false;
@@ -463,6 +457,7 @@ export const CreativesEditor = forwardRef<CreativesEditorHandle, CreativesEditor
         imageFileName: sanitizeCreativeFilename(file.name),
         imageMimeType: video ? "video/mp4" : file.type,
         mediaType: video ? "video" : "image",
+        videoMetadata: metadata ? videoMetadataFromFile(file, metadata) : undefined,
         imageWidth: w,
         imageHeight: h,
         sizeMismatch: mismatch,
@@ -471,8 +466,8 @@ export const CreativesEditor = forwardRef<CreativesEditorHandle, CreativesEditor
       onClearError?.(`creative_${creativeId}_image`);
       toast.success(t(video ? "create.videoUploaded" : "create.imageUploaded"));
     } catch (err) {
-      console.error("Image upload error:", err);
-      toast.error(t("create.imageFormatError"));
+      console.error("Media upload error:", err);
+      toast.error(t(video ? "create.videoMetadataError" : "create.imageFormatError"));
     } finally {
       setUploadingId(null);
       e.target.value = "";
@@ -512,7 +507,7 @@ export const CreativesEditor = forwardRef<CreativesEditorHandle, CreativesEditor
   const ensureSource = async (creative: Creative) => {
     if (origSources[creative.id]) return origSources[creative.id];
     if (!creative.imageUrl) return null;
-    const isVideo = creative.mediaType === "video"
+    const isVideo = isVideoFormat || creative.mediaType === "video"
       || creative.imageMimeType === "video/mp4"
       || /\.mp4$/i.test(creative.imageFileName || "");
     const isGif = !isVideo && (creative.imageUrl.startsWith("data:image/gif") || /\.gif$/i.test(creative.imageFileName || ""));
@@ -1270,27 +1265,29 @@ export const CreativesEditor = forwardRef<CreativesEditorHandle, CreativesEditor
       target={activeCropTarget}
       fileNameHint={activeSource?.fileName}
       onClose={() => setCropperCreativeId(null)}
-      onSave={(file, dataUrl, dimensions) => {
+      onSave={async (file, dataUrl, dimensions) => {
         if (!cropperCreativeId) return;
-        if (dataUrl.startsWith("blob:")) ownedPreviewUrlsRef.current.add(dataUrl);
         const isVideo = file.type === "video/mp4" || /\.mp4$/i.test(file.name);
         const isGif = !isVideo && (file.type === "image/gif" || /\.gif$/i.test(file.name));
+        const metadata = isVideo ? await readVideoMetadata(file) : null;
+        if (dataUrl.startsWith("blob:")) ownedPreviewUrlsRef.current.add(dataUrl);
         updateCreative(cropperCreativeId, {
           imageUrl: dataUrl,
           pendingFile: file,
           imageFileName: file.name,
           imageMimeType: file.type,
           mediaType: isVideo ? "video" : "image",
-          imageWidth: dimensions.w,
-          imageHeight: dimensions.h,
-          sizeMismatch: false,
+          videoMetadata: metadata ? videoMetadataFromFile(file, metadata) : undefined,
+          imageWidth: metadata?.width ?? dimensions.w,
+          imageHeight: metadata?.height ?? dimensions.h,
+          sizeMismatch: metadata ? metadata.width !== dimensions.w || metadata.height !== dimensions.h : false,
         });
         setOrigSources(previous => ({
           ...previous,
           [cropperCreativeId]: {
             dataUrl,
-            naturalWidth: dimensions.w,
-            naturalHeight: dimensions.h,
+            naturalWidth: metadata?.width ?? dimensions.w,
+            naturalHeight: metadata?.height ?? dimensions.h,
             fileName: file.name,
             isGif,
             isVideo,

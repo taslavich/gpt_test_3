@@ -307,6 +307,97 @@ describe("CampaignProvider mutation requests", () => {
     }));
   });
 
+  it("sends OS-qualified versions for both cabinet and RTB and restores them after reload", async () => {
+    const targeting = {
+      os: { mode: "white" as const, items: ["iOS", "Android"] },
+      osVersion: { mode: "white" as const, items: ["iOS 13.5", "Android 8.1"] },
+    };
+    apiMock.createCampaign.mockImplementationOnce(async body => ({ ...apiCampaign, ...body }));
+    const { result } = renderHook(() => useCampaigns(), { wrapper });
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    let id: string | undefined;
+    await act(async () => {
+      id = await result.current.addCampaign({ ...campaignDraft, targeting });
+    });
+    expect(apiMock.createCampaign).toHaveBeenCalledWith(expect.objectContaining({
+      rtb: false,
+      os_version: { isWhiteList: true, objects: ["iOS 13.5", "Android 8.1"] },
+    }));
+    expect(result.current.campaigns[0].targeting.osVersion.items).toEqual(["iOS 13.5", "Android 8.1"]);
+
+    await act(async () => {
+      await result.current.updateCampaign(id!, {
+        targeting: {
+          ...targeting,
+          osVersion: { mode: "black", items: ["Android 8.1"] },
+        },
+      });
+    });
+    expect(apiMock.patchCampaign).toHaveBeenCalledWith(id, expect.objectContaining({
+      os_version: { isWhiteList: false, objects: ["Android 8.1"] },
+    }));
+
+    apiMock.listCampaigns.mockResolvedValueOnce({
+      items: [{ ...apiCampaign, os: { isWhiteList: true, objects: ["iOS"] }, os_version: { isWhiteList: true, objects: ["iOS 17.7"] } }], total: 1,
+    });
+    await act(async () => { await result.current.refetch(); });
+    expect(result.current.campaigns[0].targeting.osVersion).toEqual({ mode: "white", items: ["iOS 17.7"] });
+  });
+
+  it("drops OS versions when no Android or iOS allowlist remains", async () => {
+    const { result } = renderHook(() => useCampaigns(), { wrapper });
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    await act(async () => {
+      await result.current.addCampaign({
+        ...campaignDraft,
+        launchType: "rtb", rtbEndpoint: "https://bidder.example.com",
+        targeting: {
+          os: { mode: "white", items: ["Windows"] },
+          osVersion: { mode: "white", items: ["iOS 13"] },
+        },
+      });
+    });
+    expect(apiMock.createCampaign).toHaveBeenCalledWith(expect.objectContaining({
+      rtb: true,
+      os: { isWhiteList: true, objects: ["Windows"] },
+    }));
+    expect(apiMock.createCampaign.mock.calls.at(-1)?.[0]).not.toHaveProperty("os_version");
+  });
+
+  it("clears a previously saved version filter when switching away from iOS", async () => {
+    apiMock.listCampaigns.mockResolvedValueOnce({
+      items: [{ ...apiCampaign, os: { isWhiteList: true, objects: ["iOS"] }, os_version: { isWhiteList: true, objects: ["iOS 13"] } }], total: 1,
+    });
+    const { result } = renderHook(() => useCampaigns(), { wrapper });
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    await act(async () => {
+      await result.current.updateCampaign("campaign-1", {
+        targeting: {
+          ...result.current.campaigns[0].targeting,
+          os: { mode: "white", items: ["Windows"] },
+        },
+      });
+    });
+    expect(apiMock.patchCampaign).toHaveBeenCalledWith("campaign-1", expect.objectContaining({
+      os_version: { isWhiteList: true, objects: [] },
+    }));
+  });
+
+  it("keeps a legacy major-only version when editing an existing campaign", async () => {
+    apiMock.listCampaigns.mockResolvedValueOnce({
+      items: [{ ...apiCampaign, os: { isWhiteList: true, objects: ["iOS"] }, os_version: { isWhiteList: true, objects: ["iOS 13"] } }], total: 1,
+    });
+    const { result } = renderHook(() => useCampaigns(), { wrapper });
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    await act(async () => {
+      await result.current.updateCampaign("campaign-1", { targeting: result.current.campaigns[0].targeting });
+    });
+    expect(apiMock.patchCampaign).toHaveBeenCalledWith("campaign-1", expect.objectContaining({
+      os_version: { isWhiteList: true, objects: ["iOS 13"] },
+    }));
+  });
+
   it("creates cabinet campaigns with rtb=false and dsp_link=null", async () => {
     const { result } = renderHook(() => useCampaigns(), { wrapper });
     await waitFor(() => expect(result.current.loading).toBe(false));
@@ -326,38 +417,39 @@ describe("CampaignProvider mutation requests", () => {
     }));
   });
 
-  it("rejects cabinet video before create reaches the API", async () => {
+  it("creates a cabinet video campaign with the normal campaign payload", async () => {
     const { result } = renderHook(() => useCampaigns(), { wrapper });
     await waitFor(() => expect(result.current.loading).toBe(false));
 
-    await expect(result.current.addCampaign({
-      ...campaignDraft,
-      launchType: "cabinet",
-      format: "video",
-      formatKey: "video",
-    })).rejects.toThrow("Video campaigns are no longer supported");
-
-    expect(apiMock.createCampaign).not.toHaveBeenCalled();
-    expect(apiMock.createCreative).not.toHaveBeenCalled();
+    await act(async () => {
+      await result.current.addCampaign({
+        ...campaignDraft, launchType: "cabinet", format: "video", formatKey: "video", creatives: [],
+      });
+    });
+    expect(apiMock.createCampaign).toHaveBeenCalledWith(expect.objectContaining({
+      rtb: false, dsp_link: null, format_type: "video",
+    }));
   });
 
-  it("rejects RTB video before create reaches the API", async () => {
+  it("creates RTB video with a DSP link, CPM + 0 and no creatives", async () => {
     const { result } = renderHook(() => useCampaigns(), { wrapper });
     await waitFor(() => expect(result.current.loading).toBe(false));
 
-    await expect(result.current.addCampaign({
-      ...campaignDraft,
-      launchType: "rtb",
-      rtbEndpoint: "https://bidder.example.com/video",
-      format: "video",
-      formatKey: "video",
-    })).rejects.toThrow("Video campaigns are no longer supported");
-
-    expect(apiMock.createCampaign).not.toHaveBeenCalled();
+    await act(async () => {
+      await result.current.addCampaign({
+        ...campaignDraft, launchType: "rtb", rtbEndpoint: "https://bidder.example.com/video",
+        format: "video", formatKey: "video",
+      });
+    });
+    expect(apiMock.createCampaign).toHaveBeenCalledWith(expect.objectContaining({
+      rtb: true, dsp_link: "https://bidder.example.com/video", format_type: "video",
+      pricing_model: "cpm", base_price: 0,
+    }));
     expect(apiMock.createCreative).not.toHaveBeenCalled();
+    expect(apiMock.uploadCreativeImage).not.toHaveBeenCalled();
   });
 
-  it("rejects changing a campaign to video before PATCH reaches the API", async () => {
+  it("allows updating an RTB campaign to Video without requesting creatives", async () => {
     apiMock.listCampaigns.mockResolvedValue({
       items: [{
         ...apiCampaign,
@@ -370,14 +462,16 @@ describe("CampaignProvider mutation requests", () => {
     const { result } = renderHook(() => useCampaigns(), { wrapper });
     await waitFor(() => expect(result.current.loading).toBe(false));
 
-    await expect(
-      result.current.updateCampaign("campaign-1", { formatKey: "video", format: "video" }),
-    ).rejects.toThrow("Video campaigns are no longer supported");
-    expect(apiMock.patchCampaign).not.toHaveBeenCalled();
+    await act(async () => {
+      await result.current.updateCampaign("campaign-1", { formatKey: "video", format: "video" });
+    });
+    expect(apiMock.patchCampaign).toHaveBeenCalledWith("campaign-1", expect.objectContaining({
+      format_type: "video", pricing_model: "cpm", base_price: 0,
+    }));
     expect(apiMock.readCreatives).not.toHaveBeenCalled();
   });
 
-  it("keeps legacy video campaigns readable without creative fan-out", async () => {
+  it("keeps existing video campaigns readable and loads creatives on demand", async () => {
     apiMock.listCampaigns.mockResolvedValue({
       items: [{ ...apiCampaign, format_type: "video", rtb: false, dsp_link: null }],
       total: 1,
@@ -391,6 +485,8 @@ describe("CampaignProvider mutation requests", () => {
       launchType: "cabinet",
     }));
     expect(apiMock.readCreatives).not.toHaveBeenCalled();
+    await act(async () => { await result.current.loadCampaignCreatives("campaign-1"); });
+    expect(apiMock.readCreatives).toHaveBeenCalledWith("campaign-1");
   });
 
   it.each(["banner", "popunder", "native", "push"] as const)(

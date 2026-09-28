@@ -1,5 +1,6 @@
 import type { RecommendBidRequest } from "@/api";
 import type { TargetingState, TrafficType } from "@/contexts/CampaignContext";
+import { normalizedOsVersionTargeting } from "@/lib/osVersions";
 
 export interface BidRecommendation {
   /** Average historical bid returned by the backend. */
@@ -37,6 +38,7 @@ export function buildRecommendBidRequest(
   const language = readList(lists, "language");
   const deviceType = readList(lists, "deviceType");
   const os = readList(lists, "os");
+  const osVersion = normalizedOsVersionTargeting(lists);
   const browser = readList(lists, "browser");
   const sites = readList(lists, "sites");
 
@@ -51,6 +53,8 @@ export function buildRecommendBidRequest(
     device_type_mode: deviceType.mode,
     os: os.items,
     os_mode: os.mode,
+    os_version: osVersion.items,
+    os_version_mode: osVersion.mode === "black" ? "exclude" : "include",
     browser: browser.items,
     browser_mode: browser.mode,
     site_id: sites.items,

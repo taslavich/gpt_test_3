@@ -17,6 +17,7 @@ import {
   BROWSER_FILTER_KEYS, OS_FILTER_KEYS, DEVICE_FILTER_KEYS, OTHER_KEY,
 } from "@/lib/statFilters";
 import { useIsMobileImmediate } from "@/hooks/use-mobile";
+import { availableOsVersions, normalizeSelectedOsVersions, normalizedOsVersionTargeting, selectableOsVersions } from "@/lib/osVersions";
 
 const withoutOther = (keys: string[]) => keys.filter(k => k !== OTHER_KEY);
 
@@ -32,7 +33,7 @@ const targetingOptions: Record<string, string[]> = {
 const DAYS = ["monday","tuesday","wednesday","thursday","friday","saturday","sunday"] as const;
 
 const targetingConfigKeys = [
-  "country", "language", "deviceType", "os", "browser", "schedule", "sites", "ip",
+  "country", "language", "deviceType", "os", "osVersion", "browser", "schedule", "sites", "ip",
 ];
 
 export const targetingConfigs = targetingConfigKeys.map(key => ({ key, labelKey: `targeting.${key}` }));
@@ -45,7 +46,7 @@ interface TargetingSectionProps {
 }
 
 const AutocompleteInput = memo(function AutocompleteInput({
-  options, value, onChange, onAdd, existingItems, placeholder, t, lang,
+  options, value, onChange, onAdd, existingItems, placeholder, t, lang, preserveOrder = false,
 }: {
   options: string[];
   value: string;
@@ -53,6 +54,7 @@ const AutocompleteInput = memo(function AutocompleteInput({
   onAdd: (v: string) => void;
   existingItems: string[];
   placeholder: string;
+  preserveOrder?: boolean;
   t: (key: string) => string;
   lang: import("@/contexts/LanguageContext").Lang;
 }) {
@@ -68,10 +70,9 @@ const AutocompleteInput = memo(function AutocompleteInput({
   const existingSet = useMemo(() => new Set(existingItems), [existingItems]);
   const filtered = useMemo(() => {
     const query = value.toLowerCase();
-    return options
-      .filter(option => getDisplayLabel(option).toLowerCase().includes(query) && !existingSet.has(option))
-      .sort((a, b) => getDisplayLabel(a).localeCompare(getDisplayLabel(b), lang));
-  }, [existingSet, getDisplayLabel, lang, options, value]);
+    const matched = options.filter(option => getDisplayLabel(option).toLowerCase().includes(query) && !existingSet.has(option));
+    return preserveOrder ? matched : matched.sort((a, b) => getDisplayLabel(a).localeCompare(getDisplayLabel(b), lang));
+  }, [existingSet, getDisplayLabel, lang, options, preserveOrder, value]);
 
   useEffect(() => {
     const handler = (e: MouseEvent) => {
@@ -367,24 +368,26 @@ function IpInput({ items, onAdd, t }: { items: string[]; onAdd: (newItems: strin
 
 const MOBILE_VISIBLE_ITEMS = 60;
 
-const ListItem = memo(function ListItem({ config, list: rawList, onUpdate }: {
+const ListItem = memo(function ListItem({ config, list: rawList, onUpdate, optionsOverride, disabled = false }: {
   config: typeof targetingConfigs[0];
   list: TargetingState;
   onUpdate: (key: string, updates: Partial<TargetingState>) => void;
+  optionsOverride?: string[];
+  disabled?: boolean;
 }) {
   const list = { mode: rawList?.mode ?? "none", items: rawList?.items ?? [] };
   const { t, lang } = useLanguage();
   const isMobile = useIsMobileImmediate();
   const [inputValue, setInputValue] = useState("");
   const [showAllItems, setShowAllItems] = useState(false);
-  const options = targetingOptions[config.key] || [];
+  const options = optionsOverride ?? targetingOptions[config.key] ?? [];
   const isSchedule = config.key === "schedule";
   const isSites = config.key === "sites";
   const isIp = config.key === "ip";
   const isPresetList = false;
   const commitUpdates = useCallback(
-    (updates: Partial<TargetingState>) => onUpdate(config.key, updates),
-    [config.key, onUpdate],
+    (updates: Partial<TargetingState>) => { if (!disabled) onUpdate(config.key, updates); },
+    [config.key, disabled, onUpdate],
   );
 
   const getDisplayLabel = (item: string) => {
@@ -394,7 +397,9 @@ const ListItem = memo(function ListItem({ config, list: rawList, onUpdate }: {
 
   const addItem = (item: string) => {
     if (item && !list.items.includes(item)) {
-      commitUpdates({ items: [...list.items, item] });
+      commitUpdates({ items: config.key === "osVersion"
+        ? normalizeSelectedOsVersions([...list.items, item])
+        : [...list.items, item] });
     }
   };
 
@@ -423,6 +428,7 @@ const ListItem = memo(function ListItem({ config, list: rawList, onUpdate }: {
         <div className="flex flex-wrap gap-1.5">
           {modeButtons.length > 0 && modeButtons.map((m) => (
               <Button key={m} type="button" size="sm" variant="outline"
+                disabled={disabled}
                 onClick={() => commitUpdates({ mode: m })}
                 className={
                   list.mode === m
@@ -439,7 +445,7 @@ const ListItem = memo(function ListItem({ config, list: rawList, onUpdate }: {
             size="sm"
             variant="outline"
             onClick={clearItems}
-            disabled={list.items.length === 0}
+            disabled={disabled || list.items.length === 0}
             className="gap-1.5 border-border"
           >
             <X className="h-3.5 w-3.5" />
@@ -447,6 +453,12 @@ const ListItem = memo(function ListItem({ config, list: rawList, onUpdate }: {
           </Button>
         </div>
       </div>
+      {disabled && config.key === "osVersion" && (
+        <p className="text-xs text-muted-foreground">{t("targeting.osVersionHint")}</p>
+      )}
+      {!disabled && config.key === "osVersion" && (
+        <p className="text-xs text-muted-foreground">{t("targeting.osVersionPrecisionHint")}</p>
+      )}
       {(isSchedule || list.mode !== "none") && (
         <div className="space-y-2">
           {isSchedule ? (
@@ -463,13 +475,14 @@ const ListItem = memo(function ListItem({ config, list: rawList, onUpdate }: {
               placeholder={t("targeting.selectPlaceholder")}
               lang={lang}
             />
-          ) : (
+          ) : !disabled ? (
             <AutocompleteInput
               options={options} value={inputValue} onChange={setInputValue}
               onAdd={addItem} existingItems={list.items}
+              preserveOrder={config.key === "osVersion"}
               placeholder={t("targeting.autocompletePlaceholder")} t={t} lang={lang}
             />
-          )}
+          ) : null}
           {list.items.length > 0 && !isSchedule && (
             <div className="flex flex-wrap gap-1.5">
               {visibleItems.map((item) => (
@@ -527,6 +540,7 @@ export function TargetingSection({
     }
     return effective;
   }, [lists]);
+  const versionOptions = useMemo(() => availableOsVersions(effectiveLists.os), [effectiveLists.os]);
 
   return (
     <div className="space-y-3">
@@ -552,8 +566,10 @@ export function TargetingSection({
         <ListItem
           key={config.key}
           config={config}
-          list={effectiveLists[config.key] || { mode: "none", items: [] }}
+          list={config.key === "osVersion" ? normalizedOsVersionTargeting(effectiveLists) : effectiveLists[config.key] || { mode: "none", items: [] }}
           onUpdate={onUpdate}
+          optionsOverride={config.key === "osVersion" ? selectableOsVersions(effectiveLists.os, effectiveLists.osVersion?.items ?? []) : undefined}
+          disabled={config.key === "osVersion" && versionOptions.length === 0}
         />
       ))}
     </div>

@@ -25,6 +25,7 @@ import {
   isValidCreativeUrl,
 } from "@/lib/creativeApi";
 import { getLocalizedErrorMessage } from "@/lib/apiStatus";
+import { isValidVideoMetadata } from "@/lib/videoMetadata";
 
 export default function EditCampaign() {
   const navigate = useNavigate();
@@ -35,7 +36,6 @@ export default function EditCampaign() {
   const { t } = useLanguage();
   const campaign = getCampaign(id || "");
   const isRtb = campaign?.launchType === "rtb";
-  const isLegacyVideo = campaign?.formatKey === "video";
   const [creativeLoadError, setCreativeLoadError] = useState("");
 
   const [name, setName] = useState("");
@@ -65,7 +65,7 @@ export default function EditCampaign() {
   const [bidRecommendation, setBidRecommendation] = useState<BidRecommendation | null>(null);
 
   useEffect(() => {
-    if (!id || !campaign || isRtb || isLegacyVideo || campaign.creativesLoaded) return;
+    if (!id || !campaign || isRtb || campaign.creativesLoaded) return;
     let cancelled = false;
     void loadCampaignCreatives(id).catch((error: unknown) => {
       if (cancelled) return;
@@ -74,10 +74,10 @@ export default function EditCampaign() {
       toast.error(message);
     });
     return () => { cancelled = true; };
-  }, [id, campaign, isRtb, isLegacyVideo, loadCampaignCreatives, t]);
+  }, [id, campaign, isRtb, loadCampaignCreatives, t]);
 
   useEffect(() => {
-    if (campaign && !isLegacyVideo && (isRtb || campaign.creativesLoaded)) {
+    if (campaign && (isRtb || campaign.creativesLoaded)) {
       setName(campaign.name);
       setBrandName(campaign.brandName || "");
       setRtbEndpoint(campaign.rtbEndpoint || "");
@@ -117,11 +117,19 @@ export default function EditCampaign() {
       setVerticals(campaign.verticals || []);
       
     }
-  }, [campaign, isRtb, isLegacyVideo]);
+  }, [campaign, isRtb]);
 
   const hasCreativeChanged = useMemo(() => {
+    if (campaign?.formatKey === "video") {
+      const editable = (list: Creative[]) => list.map(c => ({
+        id: c.id, name: c.name, url: c.url, videoFormat: c.videoFormat,
+        imageUrl: c.imageUrl, imageFileName: c.imageFileName,
+        pendingFile: c.pendingFile ? [c.pendingFile.name, c.pendingFile.size, c.pendingFile.lastModified] : null,
+      }));
+      return JSON.stringify(editable(creatives)) !== JSON.stringify(editable(initialCreatives));
+    }
     return JSON.stringify(creatives) !== JSON.stringify(initialCreatives);
-  }, [creatives, initialCreatives]);
+  }, [campaign?.formatKey, creatives, initialCreatives]);
 
   const isRestart = campaign?.status === "completed";
   const showBrandName = campaign?.formatKey === "native" || campaign?.formatKey === "push";
@@ -175,7 +183,7 @@ export default function EditCampaign() {
     setActiveTab(nextTab);
   };
 
-  if (loading || (campaign && !isRtb && !isLegacyVideo && !campaign.creativesLoaded && !creativeLoadError)) {
+  if (loading || (campaign && !isRtb && !campaign.creativesLoaded && !creativeLoadError)) {
     return (
       <div className="flex items-center justify-center py-12">
         <Loader2 className="h-6 w-6 animate-spin text-primary" />
@@ -192,57 +200,11 @@ export default function EditCampaign() {
     );
   }
 
-  if (isLegacyVideo) {
-    return (
-      <div className="max-w-3xl min-w-0 space-y-6">
-        <div className="flex items-center gap-4">
-          <Button variant="ghost" size="icon" onClick={() => navigate("/dashboard/campaigns")}>
-            <ArrowLeft className="h-5 w-5" />
-          </Button>
-          <div>
-            <h2 className="text-2xl font-bold">{t("edit.title")}</h2>
-            <p className="text-muted-foreground text-sm">ID: {id}</p>
-          </div>
-        </div>
-        <Card className="border-yellow-500/25 bg-card">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-lg">
-              <AlertCircle className="h-5 w-5 text-yellow-500" />
-              {t("edit.legacyVideoReadOnlyTitle")}
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-5">
-            <p className="text-sm leading-6 text-muted-foreground">
-              {t("edit.legacyVideoReadOnlyDescription")}
-            </p>
-            <div className="space-y-2">
-              <Label>{t("edit.name")}</Label>
-              <Input value={campaign.name} readOnly disabled className="bg-muted border-border text-muted-foreground" />
-            </div>
-            <div className="space-y-2">
-              <Label>{t("edit.formatLabel")}</Label>
-              <Input value={campaign.format} readOnly disabled className="bg-muted border-border text-muted-foreground" />
-            </div>
-            <Button variant="outline" onClick={() => navigate("/dashboard/campaigns")}>
-              {t("create.back")}
-            </Button>
-          </CardContent>
-        </Card>
-      </div>
-    );
-  }
-
   const parseNum = (v: string) => parseFloat(v.replace(",", ".")) || 0;
 
   const handleSave = async (skipMismatchCheck = false, overrideCreatives?: Creative[]) => {
     const crvs = overrideCreatives ?? creatives;
     const e: Record<string, string> = {};
-    if (campaign.formatKey === "video") {
-      const message = t("create.videoCampaignUnsupported");
-      setErrors(prev => ({ ...prev, adFormat: message }));
-      toast.error(message);
-      return;
-    }
     const tb = parseNum(totalBudget);
     if (!totalBudget || isNaN(tb) || tb < 1) e.totalBudget = t("edit.errorBudgetMin");
     if (campaign.status === "no_budget" && tb <= campaign.budget) {
@@ -317,6 +279,12 @@ export default function EditCampaign() {
         if (campaign.formatKey === "video" && c.pendingFile && c.mediaType !== "video") {
           e[`creative_${c.id}_image`] = t("create.videoFormatError");
         }
+        if (campaign.formatKey === "video" && c.pendingFile && !isValidVideoMetadata(c.videoMetadata)) {
+          e[`creative_${c.id}_image`] = t("create.videoMetadataError");
+        }
+        if (campaign.formatKey === "video" && c.url.trim() && !isValidCreativeUrl(c.url)) {
+          e[`creative_${c.id}_url`] = t("create.urlInvalid");
+        }
       }
       if ((campaign.formatKey === "native" || campaign.formatKey === "push") && !c.title?.trim()) e[`creative_${c.id}_title`] = t("create.required");
       if ((campaign.formatKey === "native" || campaign.formatKey === "push") && !c.description?.trim()) e[`creative_${c.id}_description`] = t("create.required");
@@ -374,7 +342,7 @@ export default function EditCampaign() {
         name: name.trim(),
         launchType: campaign.launchType || "cabinet",
         rtbEndpoint: isRtb ? rtbEndpoint.trim() : undefined,
-        ...(isRtb ? {} : { creatives: crvs }),
+        ...(isRtb || (campaign.formatKey === "video" && !hasCreativeChanged) ? {} : { creatives: crvs }),
         trafficType, verticals,
         targeting: Object.fromEntries(Object.entries(lists).map(([k, v]) => [k, { mode: v.mode, items: v.items }])),
         blockVpnTraffic,
@@ -387,7 +355,10 @@ export default function EditCampaign() {
         
       });
     } catch (err: unknown) {
-      toast.error(`${t("edit.saveFailed")}: ${getLocalizedErrorMessage(err, t)}`);
+      const message = err instanceof Error && err.message.includes("existing video metadata")
+        ? t("create.videoReupload")
+        : getLocalizedErrorMessage(err, t);
+      toast.error(`${t("edit.saveFailed")}: ${message}`);
       return;
     }
 
@@ -572,9 +543,6 @@ export default function EditCampaign() {
         const validateGeneral = () => {
           const e: Record<string, string> = {};
           if (!name.trim()) e.name = t("create.required");
-          if (campaign.formatKey === "video") {
-            e.adFormat = t("create.videoCampaignUnsupported");
-          }
           if (isRtb) {
             if (!rtbEndpoint.trim()) e.rtbEndpoint = t("create.required");
             else if (!isValidCreativeUrl(rtbEndpoint.trim())) e.rtbEndpoint = t("create.rtbEndpointInvalid");
@@ -621,6 +589,12 @@ export default function EditCampaign() {
               }
               if (campaign.formatKey === "video" && c.pendingFile && c.mediaType !== "video") {
                 e[`creative_${c.id}_image`] = t("create.videoFormatError");
+              }
+              if (campaign.formatKey === "video" && c.pendingFile && !isValidVideoMetadata(c.videoMetadata)) {
+                e[`creative_${c.id}_image`] = t("create.videoMetadataError");
+              }
+              if (campaign.formatKey === "video" && c.url.trim() && !isValidCreativeUrl(c.url)) {
+                e[`creative_${c.id}_url`] = t("create.urlInvalid");
               }
             }
             if ((campaign.formatKey === "native" || campaign.formatKey === "push") && !c.title?.trim()) e[`creative_${c.id}_title`] = t("create.required");

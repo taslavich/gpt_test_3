@@ -9,6 +9,20 @@ export type TrafficType = "mainstream" | "adult" | "mixed";
 export type FormatType = "banner" | "popunder" | "native" | "push" | "video";
 export type VideoFormat = "instream" | "outstream" | "video_popup";
 export type LegacyVideoFormat = "outstream_standard" | "outstream_slider";
+export interface VideoCreativeMetadata {
+  mimes: string[];
+  duration: number;
+  protocols: number[];
+  api: number[];
+  battr: number[];
+  bitrate: number;
+  linearity: number;
+  skippable?: boolean;
+  width: number;
+  height: number;
+  codec: string;
+  file_size: number;
+}
 export type TopupStatus = "draft" | "pending" | "approved" | "rejected" | "cancelled";
 export type PaymentChannel = "static_wallet" | "passimpay_invoice" | "cryptomus_invoice";
 export type PaymentProvider = "passimpay" | "cryptomus";
@@ -93,6 +107,8 @@ export interface ApiCampaign {
   language: TargetingMap;
   device_type: TargetingMap;
   os: TargetingMap;
+  /** OS-qualified major or minor releases, e.g. { "iOS 18.7": 1 }. Empty = no version limit. */
+  os_version?: TargetingMap;
   browser: TargetingMap;
   site_id: TargetingMap;
   ip: TargetingMap;
@@ -146,6 +162,7 @@ export interface ApiCreative {
   description?: string | null;
   /** Required for creatives of campaigns with format_type=video. */
   video_format?: VideoFormat | LegacyVideoFormat | null;
+  video_metadata?: VideoCreativeMetadata | null;
 }
 
 /** JSON body accepted by creative POST/PATCH. File bytes are never included. */
@@ -162,6 +179,7 @@ export interface ApiCreativeWrite {
   description?: string | null;
   /** Video placement requested by the advertiser. */
   video_format?: VideoFormat | null;
+  video_metadata?: VideoCreativeMetadata;
 }
 
 export interface ApiUserTransaction {
@@ -249,10 +267,10 @@ export interface ApiNotification {
 // ---- ClickHouse statistics ----
 /** Allowed values for `group_by` (single value, not array). */
 export type StatsGroupBy =
-  | "date" | "hour" | "country" | "os" | "browser" | "device_type" | "site_id" | "campaign";
+  | "date" | "hour" | "country" | "os" | "os_version" | "browser" | "device_type" | "site_id" | "campaign";
 
 /** Allowed keys inside `filters` — narrower than `group_by`. */
-export type StatsFilterBy = "country" | "os" | "browser" | "device_type";
+export type StatsFilterBy = "country" | "os" | "os_version" | "browser" | "device_type";
 
 export interface StatsQueryRequest {
   from: string; // YYYY-MM-DD (UTC). For a single day send from === to.
@@ -298,6 +316,9 @@ export interface TrafficSegmentRequest {
   device_type_mode?: "include" | "exclude";
   os?: string[];
   os_mode?: "include" | "exclude";
+  /** OS-qualified major/minor versions. Backend matches their respective patch releases. */
+  os_version?: string[];
+  os_version_mode?: "include" | "exclude";
   browser?: string[];
   browser_mode?: "include" | "exclude";
   site_id?: string[];

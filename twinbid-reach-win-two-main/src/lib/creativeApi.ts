@@ -1,4 +1,5 @@
-import type { ApiCreative, ApiCreativeImage, ApiCreativeWrite, FormatType, VideoFormat } from "@/api/types";
+import type { ApiCreative, ApiCreativeImage, ApiCreativeWrite, FormatType, VideoFormat, VideoCreativeMetadata } from "@/api/types";
+import { isValidVideoMetadata, readVideoMetadata, recoverVideoMetadata, videoMetadataFromFile } from "@/lib/videoMetadata";
 
 export type UiCreativeType = "image" | "html" | "iframe";
 
@@ -14,6 +15,7 @@ export interface CreativeDraft {
   imageMimeType?: string;
   mediaType?: "image" | "video";
   videoFormat?: VideoFormat;
+  videoMetadata?: VideoCreativeMetadata;
   /** Final media dimensions after any crop/resize performed by the editor. */
   imageWidth?: number;
   imageHeight?: number;
@@ -281,7 +283,9 @@ export function isCreativeReadyForCreate(format: string, creative: CreativeDraft
     return !!creative.videoFormat
       && !!creative.pendingFile
       && validateCreativeFile(creative.pendingFile, true, true).valid
-      && !!creative.url.trim();
+      && isValidCreativeUrl(creative.url)
+      && isValidVideoMetadata(creative.videoMetadata)
+      && creative.videoMetadata.width === 1920 && creative.videoMetadata.height === 1080;
   }
   return !!creative.pendingFile && !!creative.url.trim();
 }
@@ -358,9 +362,16 @@ export function buildCreativeWriteBody({
   base.trackers_macros = extractMacrosFromUrl(macroUrl);
   if (format === "video") {
     if (!creative.videoFormat) throw new Error("Video format is required");
-    base.w = 1920;
-    base.h = 1080;
+    if (!isValidCreativeUrl(creative.url)) throw new Error("A valid video landing URL is required");
+    if (!isValidVideoMetadata(creative.videoMetadata)) throw new Error("Valid video metadata is required. Upload the MP4 again.");
+    if (creative.videoMetadata.width !== 1920 || creative.videoMetadata.height !== 1080) {
+      throw new Error("Crop the MP4 to 1920×1080 before saving.");
+    }
+    if (!imageId && !creative.imageId && !creative.imageUrl) throw new Error("Video creative MP4 is required");
+    base.w = creative.videoMetadata.width;
+    base.h = creative.videoMetadata.height;
     base.video_format = creative.videoFormat;
+    base.video_metadata = creative.videoMetadata;
     return withImageId(base, imageId);
   }
   if (format === "native" || format === "push") {
@@ -374,6 +385,28 @@ export function buildCreativeWriteBody({
     return withImageId(base, imageId);
   }
   return base;
+}
+
+async function prepareVideoCreative(format: FormatType | string, creative: CreativeDraft): Promise<CreativeDraft> {
+  if (format !== "video") return creative;
+  if (!creative.videoFormat) throw new Error("Video format is required");
+  if (!isValidCreativeUrl(creative.url)) throw new Error("A valid video landing URL is required");
+  if (creative.pendingFile) {
+    if (!validateCreativeFile(creative.pendingFile, true, true).valid) throw new Error("Use an MP4 file no larger than 10 MiB");
+    const read = await readVideoMetadata(creative.pendingFile);
+    const videoMetadata = videoMetadataFromFile(creative.pendingFile, read);
+    if (!isValidVideoMetadata(videoMetadata)) throw new Error("Valid video metadata is required. Upload the MP4 again.");
+    if (read.width !== 1920 || read.height !== 1080) throw new Error("Crop the MP4 to 1920×1080 before saving.");
+    return { ...creative, videoMetadata, imageWidth: read.width, imageHeight: read.height };
+  }
+  if (isValidVideoMetadata(creative.videoMetadata)) return creative;
+  if (!creative.imageUrl) throw new Error("Upload an MP4 file to edit this creative.");
+  try {
+    const videoMetadata = await recoverVideoMetadata(creative.imageUrl);
+    return { ...creative, videoMetadata, imageWidth: videoMetadata.width, imageHeight: videoMetadata.height };
+  } catch {
+    throw new Error("Cannot read existing video metadata. Upload the MP4 again to edit this creative.");
+  }
 }
 
 function normalizeComparable(value: unknown): unknown {
@@ -432,13 +465,14 @@ export async function createCampaignCreatives({
   const created: ApiCreative[] = [];
   for (const creative of creatives) {
     if (skipIncomplete && !isCreativeReadyForCreate(format, creative)) continue;
+    const prepared = await prepareVideoCreative(format, creative);
     let uploaded: ApiCreativeImage | undefined;
-    if (creativeRequiresImage(format, creative)) {
-      uploaded = await uploadImage(client, campaignId, creative);
+    if (creativeRequiresImage(format, prepared)) {
+      uploaded = await uploadImage(client, campaignId, prepared);
     }
     const body = buildCreativeWriteBody({
       format,
-      creative,
+      creative: prepared,
       imageId: uploaded?.image_id,
       imageUrl: uploaded?.image_url,
       imageMimeType: uploaded?.mime_type || uploaded?.file_format,
@@ -480,9 +514,14 @@ export async function syncCampaignCreatives({
     }
     retainedIds.add(current.id);
 
+    const prepared = await prepareVideoCreative(format, {
+      ...creative,
+      videoMetadata: creative.pendingFile ? undefined : creative.videoMetadata ?? current.video_metadata ?? undefined,
+    });
+
     let uploaded: ApiCreativeImage | undefined;
-    if (creative.pendingFile && creativeRequiresImage(format, creative)) {
-      uploaded = await uploadImage(client, campaignId, creative);
+    if (prepared.pendingFile && creativeRequiresImage(format, prepared)) {
+      uploaded = await uploadImage(client, campaignId, prepared);
     }
 
     const type = format === "banner" ? (creative.creativeType || "image") : "image";
@@ -500,7 +539,7 @@ export async function syncCampaignCreatives({
 
     const patch = buildCreativeWriteBody({
       format,
-      creative,
+      creative: prepared,
       imageId,
       imageUrl: imageUrl || undefined,
       imageMimeType: imageMimeType || undefined,

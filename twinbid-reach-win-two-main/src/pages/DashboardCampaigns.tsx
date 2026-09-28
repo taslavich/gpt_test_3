@@ -24,6 +24,7 @@ import { useCampaignStats, statOf } from "@/hooks/use-campaign-stats";
 import { formatNumberWithDot, formatStatisticInteger, formatStatisticSpend } from "@/lib/numberFormat";
 import { CampaignIdPopover } from "@/components/dashboard/CampaignIdPopover";
 import { getLocalizedErrorMessage } from "@/lib/apiStatus";
+import { readVideoMetadata, videoMetadataFromFile } from "@/lib/videoMetadata";
 import { getCampaignPricingLabel } from "@/lib/campaignPricing";
 import { isValidCreativeUrl } from "@/lib/creativeApi";
 
@@ -167,11 +168,18 @@ export default function DashboardCampaigns() {
                 const resp = await fetch(cr.imageUrl);
                 if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
                 const blob = await resp.blob();
-                const filename = cr.imageFileName || "image.jpg";
-                const file = new File([blob], filename, { type: blob.type || "image/jpeg" });
-                return { ...cr, pendingFile: file, imageFileName: filename };
+                const filename = c.formatKey === "video"
+                  ? (/\.mp4$/i.test(cr.imageFileName || "") ? cr.imageFileName! : "video.mp4")
+                  : cr.imageFileName || "image.jpg";
+                const file = new File([blob], filename, { type: blob.type || (c.formatKey === "video" ? "video/mp4" : "image/jpeg") });
+                const metadata = c.formatKey === "video"
+                  ? videoMetadataFromFile(file, await readVideoMetadata(file))
+                  : undefined;
+                return { ...cr, pendingFile: file, imageFileName: filename,
+                  videoMetadata: metadata ?? cr.videoMetadata };
               } catch (err) {
                 console.error("Failed to download creative image for copy:", err);
+                if (c.formatKey === "video") throw err;
                 return cr;
               }
             })

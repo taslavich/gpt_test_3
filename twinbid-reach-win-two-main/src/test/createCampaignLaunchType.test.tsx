@@ -40,8 +40,6 @@ const labels: Record<string, string> = {
   "create.adFormat": "Ad format *",
   "create.selectFormat": "Select format",
   "create.formatVideo": "Video",
-  "create.videoCampaignUnsupported": "Video campaigns can no longer be created or edited.",
-  "create.videoUnavailable": "unavailable for campaigns",
 };
 
 vi.mock("@/contexts/LanguageContext", () => ({
@@ -95,7 +93,7 @@ describe("campaign launch type step", () => {
     expect(screen.getByRole("dialog")).toBeInTheDocument();
   });
 
-  it("disables video and blocks programmatic selection for cabinet campaigns", () => {
+  it("offers Video on mobile and shows the creative editor for cabinet campaigns", () => {
     mobileMock.value = true;
     render(<MemoryRouter><CreateCampaign /></MemoryRouter>);
 
@@ -104,14 +102,13 @@ describe("campaign launch type step", () => {
     const videoOption = Array.from(formatSelect.options).find(option => option.value === "video");
 
     expect(videoOption).toBeDefined();
-    expect(videoOption).toBeDisabled();
+    expect(videoOption).not.toBeDisabled();
     fireEvent.change(formatSelect, { target: { value: "video" } });
-    expect(formatSelect.value).toBe("");
-    expect(screen.getByText("Video campaigns can no longer be created or edited.")).toBeInTheDocument();
-    expect(screen.queryByText("Creative editor")).not.toBeInTheDocument();
+    expect(formatSelect.value).toBe("video");
+    expect(screen.getByText("Creative editor")).toBeInTheDocument();
   });
 
-  it("disables video and blocks programmatic format changes after selecting RTB", () => {
+  it("offers Video for RTB without a cabinet creative editor", () => {
     mobileMock.value = true;
     render(<MemoryRouter><CreateCampaign /></MemoryRouter>);
 
@@ -119,20 +116,30 @@ describe("campaign launch type step", () => {
     const formatSelect = screen.getByLabelText("Ad format *") as HTMLSelectElement;
     const videoOption = Array.from(formatSelect.options).find(option => option.value === "video");
 
-    expect(videoOption).toBeDisabled();
+    expect(videoOption).not.toBeDisabled();
     fireEvent.change(formatSelect, { target: { value: "video" } });
-    expect(formatSelect.value).toBe("");
-    expect(screen.getByText("Video campaigns can no longer be created or edited.")).toBeInTheDocument();
+    expect(formatSelect.value).toBe("video");
+    expect(screen.getByLabelText("RTB endpoint *")).toBeInTheDocument();
+    expect(screen.queryByText("Creative editor")).not.toBeInTheDocument();
+  });
+
+  it("offers Video on desktop in both launch methods", () => {
+    render(<MemoryRouter><CreateCampaign /></MemoryRouter>);
+    fireEvent.click(screen.getByRole("button", { name: /Launch in the cabinet/ }));
+    const formatSelect = screen.getAllByRole("combobox").find(element => element.textContent?.includes("Select format"));
+    expect(formatSelect).toBeDefined();
+    fireEvent.keyDown(formatSelect!, { key: "Enter" });
+    expect(screen.getByRole("option", { name: "Video" })).not.toHaveAttribute("aria-disabled", "true");
   });
 });
 
 describe("legacy campaign creation dialog", () => {
-  it("keeps its video option disabled", () => {
+  it("does not describe Video as unavailable", () => {
     render(<CreateCampaignDialog open onOpenChange={vi.fn()} />);
 
     fireEvent.keyDown(screen.getAllByRole("combobox")[0], { key: "Enter" });
-    const videoOption = screen.getByRole("option", { name: /Video — unavailable for campaigns/ });
+    const videoOption = screen.getByRole("option", { name: "Video" });
 
-    expect(videoOption).toHaveAttribute("aria-disabled", "true");
+    expect(videoOption).not.toHaveAttribute("aria-disabled", "true");
   });
 });

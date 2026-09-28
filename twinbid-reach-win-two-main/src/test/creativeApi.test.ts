@@ -1,6 +1,11 @@
 // @vitest-environment jsdom
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { ApiCreative, ApiCreativeImage, ApiCreativeWrite } from "@/api/types";
+const metadataMock = vi.hoisted(() => ({ read: vi.fn(), recover: vi.fn() }));
+vi.mock("@/lib/videoMetadata", async importOriginal => {
+  const actual = await importOriginal<typeof import("@/lib/videoMetadata")>();
+  return { ...actual, readVideoMetadata: metadataMock.read, recoverVideoMetadata: metadataMock.recover };
+});
 import {
   CreativeImageUploadError,
   buildDerivedCreativeFilename,
@@ -24,6 +29,12 @@ import {
   type CreativeDraft,
 } from "@/lib/creativeApi";
 import { mapApiCreativeToUi } from "@/contexts/CampaignContext";
+import { videoMetadataFromFile } from "@/lib/videoMetadata";
+
+beforeEach(() => {
+  metadataMock.read.mockReset().mockResolvedValue({ width: 1920, height: 1080, duration: 27 });
+  metadataMock.recover.mockReset();
+});
 
 function imageFile(name = "banner.jpg", type = "image/jpeg") {
   return new File(["bytes"], name, { type });
@@ -553,6 +564,16 @@ describe("creative API migration", () => {
     },
   );
 
+  it("recognizes a legacy video creative without a MIME or filename", () => {
+    const mapped = mapApiCreativeToUi(existingCreative({
+      banner_type: null, adm: "https://target.example", image_url: "https://cdn.example/old",
+      mime_type: null, image_name: null, video_format: "instream",
+    }));
+    expect(mapped.mediaType).toBe("video");
+    expect(mapped.imageUrl).toBe("https://cdn.example/old");
+    expect(mapped.url).toContain("https://target.example");
+  });
+
   it("sends MP4 with video/mp4 MIME and builds video ADM", async () => {
     const original = imageFile("banner.mp4", "application/octet-stream");
     expect(normalizeCreativeUploadFile(original).type).toBe("video/mp4");
@@ -598,11 +619,91 @@ describe("creative API migration", () => {
       video_format: "outstream",
       w: 1920,
       h: 1080,
+      video_metadata: {
+        mimes: ["video/mp4"], duration: 27, protocols: [2, 3, 7],
+        api: [], battr: [], bitrate: 0, linearity: 1,
+        width: 1920, height: 1080, codec: "", file_size: 5,
+      },
     });
     expect(client.creates[0].body.trackers_macros).toEqual({
       click_id: "click_id",
       site_id: "site_id",
     });
+  });
+
+  it("rejects a video with unreadable or invalid duration before uploading media", async () => {
+    const client = new FakeCreativeApi();
+    metadataMock.read.mockResolvedValueOnce({ width: 1920, height: 1080, duration: 0 });
+    await expect(createCampaignCreatives({
+      client, campaignId: "campaign-video", format: "video",
+      creatives: [baseCreative({ pendingFile: imageFile("new.mp4", "video/mp4"), videoFormat: "instream" })],
+    })).rejects.toThrow("Valid video metadata");
+    expect(client.uploads).toHaveLength(0);
+    expect(client.creates).toHaveLength(0);
+  });
+
+  it("uses metadata from the final cropped MP4, not its source", async () => {
+    const client = new FakeCreativeApi();
+    const finalFile = imageFile("cropped.mp4", "video/mp4");
+    const sourceMetadata = videoMetadataFromFile(imageFile("original.mp4", "video/mp4"), { width: 1280, height: 720, duration: 30 });
+    metadataMock.read.mockResolvedValueOnce({ width: 1920, height: 1080, duration: 14 });
+    await createCampaignCreatives({
+      client, campaignId: "campaign-video", format: "video",
+      creatives: [baseCreative({ pendingFile: finalFile, imageFileName: finalFile.name,
+        mediaType: "video", videoFormat: "video_popup", videoMetadata: sourceMetadata })],
+    });
+    expect(client.creates[0].body.video_metadata).toMatchObject({ duration: 14, width: 1920, height: 1080, file_size: finalFile.size });
+  });
+
+  it("preserves existing metadata when changing only the video placement", async () => {
+    const client = new FakeCreativeApi();
+    const metadata = videoMetadataFromFile(imageFile("existing.mp4", "video/mp4"), { width: 1920, height: 1080, duration: 42 });
+    const original = existingCreative({ adm: "https://target.example", image_url: "https://cdn.example/existing.mp4",
+      mime_type: "video/mp4", video_format: "instream", w: 1920, h: 1080, video_metadata: metadata });
+    const creative = mapApiCreativeToUi(original);
+    expect(creative.videoMetadata).toEqual(metadata);
+    await syncCampaignCreatives({ client, campaignId: "campaign-video", format: "video",
+      existing: [original], creatives: [{ ...creative, videoFormat: "outstream" }] });
+    expect(metadataMock.read).not.toHaveBeenCalled();
+    expect(client.uploads).toHaveLength(0);
+    expect(client.patches[0].body).toMatchObject({ video_format: "outstream", video_metadata: metadata });
+  });
+
+  it("replaces MP4 and sends the new file's metadata on PATCH", async () => {
+    const client = new FakeCreativeApi();
+    const original = existingCreative({ adm: "https://target.example", image_url: "https://cdn.example/old.mp4",
+      mime_type: "video/mp4", video_format: "instream", w: 1920, h: 1080,
+      video_metadata: videoMetadataFromFile(imageFile("old.mp4", "video/mp4"), { width: 1920, height: 1080, duration: 42 }) });
+    const replacement = imageFile("replacement.mp4", "video/mp4");
+    metadataMock.read.mockResolvedValueOnce({ width: 1920, height: 1080, duration: 9 });
+    await syncCampaignCreatives({ client, campaignId: "campaign-video", format: "video", existing: [original],
+      creatives: [{ ...mapApiCreativeToUi(original), pendingFile: replacement, imageFileName: replacement.name }] });
+    expect(client.uploads).toHaveLength(1);
+    expect(client.patches[0].body).toMatchObject({ image_id: "uploaded-image-1",
+      video_metadata: { duration: 9, file_size: replacement.size } });
+  });
+
+  it("recovers missing legacy metadata from a permanent MP4 when editing", async () => {
+    const client = new FakeCreativeApi();
+    const original = existingCreative({ adm: "https://target.example", image_url: "https://cdn.example/old.mp4",
+      mime_type: "video/mp4", video_format: "outstream_standard", w: 1920, h: 1080 });
+    const metadata = videoMetadataFromFile(imageFile("old.mp4", "video/mp4"), { width: 1920, height: 1080, duration: 18 });
+    metadataMock.recover.mockResolvedValueOnce(metadata);
+    await syncCampaignCreatives({ client, campaignId: "campaign-video", format: "video", existing: [original],
+      creatives: [mapApiCreativeToUi(original)] });
+    expect(metadataMock.recover).toHaveBeenCalledWith("https://cdn.example/old.mp4");
+    expect(client.patches[0].body.video_metadata).toEqual(metadata);
+    expect(client.patches[0].body.video_format).toBe("outstream");
+  });
+
+  it("never invents legacy duration when existing MP4 cannot be read", async () => {
+    const client = new FakeCreativeApi();
+    const original = existingCreative({ adm: "https://target.example", image_url: "https://cdn.example/old.mp4",
+      mime_type: "video/mp4", video_format: "video_popup", w: 1920, h: 1080 });
+    metadataMock.recover.mockRejectedValueOnce(new Error("unreadable"));
+    await expect(syncCampaignCreatives({ client, campaignId: "campaign-video", format: "video", existing: [original],
+      creatives: [mapApiCreativeToUi(original)] })).rejects.toThrow("Upload the MP4 again");
+    expect(client.patches).toHaveLength(0);
   });
 
   it("requires the video placement and accepts only MP4 for video creatives", () => {

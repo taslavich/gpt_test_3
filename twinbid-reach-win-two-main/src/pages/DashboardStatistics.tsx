@@ -48,8 +48,9 @@ import {
   type TrafficCleanerMode,
 } from "@/lib/trafficCleaner";
 import { getLocalizedErrorMessage } from "@/lib/apiStatus";
+import { formatOsVersionGroup } from "@/lib/osVersions";
 
-type GroupBy = "dates" | "hours" | "browsers" | "siteid" | "devices" | "os" | "country";
+type GroupBy = "dates" | "hours" | "browsers" | "siteid" | "devices" | "os" | "os_version" | "country";
 type SortKey = "label" | "impressions" | "clicks" | "spent" | "cpm" | "cpc" | "conversions" | "income";
 type SortDir = "asc" | "desc";
 
@@ -63,6 +64,7 @@ const GROUP_MAP: Record<GroupBy, { api: StatsGroupBy }> = {
   siteid:   { api: "site_id" },
   devices:  { api: "device_type" },
   os:       { api: "os" },
+  os_version: { api: "os_version" },
   country:  { api: "country" },
 };
 
@@ -192,6 +194,7 @@ export default function DashboardStatistics() {
   const groupLabels: Record<GroupBy, string> = {
     dates: t("stats.byDates"), hours: t("stats.byHours"), browsers: t("stats.byBrowsers"),
     siteid: t("stats.bySiteId"), devices: t("stats.byDevices"), os: t("stats.byOS"),
+    os_version: t("stats.byOsVersion"),
     country: t("stats.byCountry"),
   };
 
@@ -444,7 +447,22 @@ export default function DashboardStatistics() {
           apiGroup === "os"      ? appliedFilterOS :
           apiGroup === "device_type" ? appliedFilterDevice : null;
 
-        if (reverse) {
+        if (apiGroup === "os_version") {
+          const grouped = new Map<string, typeof empty>();
+          for (const [rawKey, m] of byKey.entries()) {
+            const label = formatOsVersionGroup(rawKey);
+            const acc = grouped.get(label) ?? { ...empty };
+            acc.impressions += m.impressions;
+            acc.clicks += m.clicks;
+            acc.spent += m.spent;
+            acc.conversions += m.conversions;
+            acc.income += m.income;
+            acc.confirmedConversions += m.confirmedConversions;
+            acc.confirmedIncome += m.confirmedIncome;
+            grouped.set(label, acc);
+          }
+          rows = Array.from(grouped, ([label, m]) => ({ label, ...m }));
+        } else if (reverse) {
           const grouped = new Map<string, typeof empty>();
           for (const [rawKey, m] of byKey.entries()) {
             const groupKey = mapRawToGroup(rawKey, reverse);
@@ -756,6 +774,7 @@ export default function DashboardStatistics() {
       : appliedGroupBy === "browsers" ? t("stats.browser")
         : appliedGroupBy === "siteid" ? "SiteID"
           : appliedGroupBy === "os" ? t("stats.os")
+            : appliedGroupBy === "os_version" ? t("stats.osVersion")
             : appliedGroupBy === "country" ? t("stats.country")
               : t("stats.device");
   const canSortByLabel = appliedGroupBy === "dates" || appliedGroupBy === "hours";

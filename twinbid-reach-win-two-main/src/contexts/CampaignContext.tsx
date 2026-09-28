@@ -3,7 +3,7 @@ import { api } from "@/api";
 import type {
   ApiCampaign, ApiCreateCampaignRequest, ApiPatchCampaignRequest, ApiCreative, TargetingMap,
   PricingModel as ApiPricing, TrafficType as ApiTraffic,
-  CampaignStatus as ApiStatus, FormatType, VideoFormat, CampaignTypeModel as ApiCampaignTypeModel,
+  CampaignStatus as ApiStatus, FormatType, VideoFormat, VideoCreativeMetadata, CampaignTypeModel as ApiCampaignTypeModel,
 } from "@/api/types";
 import { useAuth } from "@/contexts/AuthContext";
 import {
@@ -18,7 +18,7 @@ import {
   isVideoAsset,
   syncCampaignCreatives,
 } from "@/lib/creativeApi";
-import { assertCampaignFormatSupported } from "@/lib/campaignValidation";
+import { normalizedOsVersionTargeting } from "@/lib/osVersions";
 
 // Browser/OS/device_type items in the UI are group keys (e.g. "Chrome",
 // "iOS", "mobile") but the backend targeting expects raw values (e.g.
@@ -98,6 +98,7 @@ export interface Creative {
   mediaType?: "image" | "video";
   /** Required placement type for a video campaign creative. */
   videoFormat?: VideoFormat;
+  videoMetadata?: VideoCreativeMetadata;
   /** Final media dimensions after crop/resize. Sent as creative w/h for native and in-page push. */
   imageWidth?: number;
   imageHeight?: number;
@@ -200,7 +201,7 @@ function verticalsToApiArray(verticals: readonly string[] | undefined): Record<s
 
 const TARGET_KEY_MAP = [
   ["country", "country"], ["language", "language"], ["deviceType", "device_type"],
-  ["os", "os"], ["browser", "browser"],
+  ["os", "os"], ["osVersion", "os_version"], ["browser", "browser"],
   ["sites", "site_id"], ["ip", "ip"],
 ] as const;
 type TargetKey = typeof TARGET_KEY_MAP[number][1];
@@ -254,10 +255,15 @@ function activeIntervalsToSchedule(intervals: ApiCampaign["active_intervals"] | 
   return items.length ? { mode: "white", items } : { mode: "none", items: [] };
 }
 
-function buildApiTargeting(targeting: Record<string, TargetingState>): Pick<ApiCampaign, TargetKey> {
+function buildApiTargeting(targeting: Record<string, TargetingState>, clearOsVersion = false): Pick<ApiCampaign, TargetKey> {
   const out: Partial<Record<TargetKey, TargetingListPayload>> = {};
   for (const [uiKey, apiKey] of TARGET_KEY_MAP) {
-    const state = targeting[uiKey] || { mode: "none", items: [] };
+    const state = uiKey === "osVersion"
+      ? normalizedOsVersionTargeting(targeting)
+      : targeting[uiKey] || { mode: "none", items: [] };
+    // Keep old campaigns compatible with API installations that have not yet
+    // added os_version; send an empty list only to clear a previously saved one.
+    if (uiKey === "osVersion" && (state.mode === "none" || !state.items.length) && !clearOsVersion) continue;
     const expanded: TargetingState = { ...state, items: expandTargetingItems(uiKey, state.items) };
     out[apiKey] = targetingStateToPayload(expanded);
   }
@@ -332,7 +338,7 @@ export function mapApiCreativeToUi(cr: ApiCreative): Creative {
     : isBackendIframe
       ? (isStandaloneIframe ? "iframe" : "html")
       : undefined;
-  const cleanTargetUrl = isBannerImage ? extractBannerTargetUrl(adm) : adm;
+  const cleanTargetUrl = isBannerImage ? extractBannerTargetUrl(adm) || adm : adm;
   const mimeType = cr.mime_type || undefined;
   const imageName = cr.image_name || undefined;
 
@@ -344,7 +350,7 @@ export function mapApiCreativeToUi(cr: ApiCreative): Creative {
     imageUrl: cr.image_url || undefined,
     imageFileName: imageName,
     imageMimeType: mimeType,
-    mediaType: isVideoAsset(mimeType, imageName) ? "video" : "image",
+    mediaType: cr.video_format || isVideoAsset(mimeType, imageName) ? "video" : "image",
     imageWidth: cr.w || undefined,
     imageHeight: cr.h || undefined,
     bannerSize: cr.w && cr.h ? `${cr.w}x${cr.h}` : undefined,
@@ -353,6 +359,7 @@ export function mapApiCreativeToUi(cr: ApiCreative): Creative {
     videoFormat: cr.video_format === "outstream_standard" || cr.video_format === "outstream_slider"
       ? "outstream"
       : cr.video_format || undefined,
+    videoMetadata: cr.video_metadata || undefined,
     creativeType,
   };
 
@@ -390,7 +397,6 @@ function buildApiCampaignBody(c: Omit<Campaign, "id">): ApiCreateCampaignRequest
   const formatKey = c.formatKey || c.format;
   const isBanner = formatKey === "banner";
   const isRtb = c.launchType === "rtb";
-  assertCampaignFormatSupported(formatKey);
   const body: ApiCreateCampaignRequest = {
     campaign_name: c.name,
     rtb: isRtb,
@@ -469,7 +475,7 @@ function buildApiCampaignPatch(
   if (updates.startDate !== undefined) p.start_ts = startTimestamp(updates.startDate);
   if (updates.endDate !== undefined) p.end_ts = endTimestamp(updates.endDate);
   if (updates.targeting !== undefined) {
-    Object.assign(p, buildApiTargeting(updates.targeting));
+    Object.assign(p, buildApiTargeting(updates.targeting, !!current?.targeting.osVersion?.items.length));
     p.active_intervals = scheduleToActiveIntervals(updates.targeting.schedule);
   }
   if (updates.blockVpnTraffic !== undefined) p.block_vpn = updates.blockVpnTraffic;
@@ -602,7 +608,6 @@ export function CampaignProvider({ children }: { children: ReactNode }) {
     const effectiveUpdates: Partial<Campaign> = { ...updates };
     const launchType = effectiveUpdates.launchType ?? current?.launchType ?? "cabinet";
     const fmt = effectiveUpdates.formatKey ?? current?.formatKey ?? "";
-    assertCampaignFormatSupported(fmt);
     if (launchType === "rtb") {
       effectiveUpdates.pricingModel = getRtbPricingModel(fmt);
       effectiveUpdates.typeModel = 1;

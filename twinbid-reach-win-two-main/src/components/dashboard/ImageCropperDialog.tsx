@@ -37,7 +37,7 @@ interface Props {
   source: Source | null;
   target: CropperTarget | null;
   fileNameHint?: string;
-  onSave: (file: File, dataUrl: string, dimensions: { w: number; h: number }) => void;
+  onSave: (file: File, dataUrl: string, dimensions: { w: number; h: number }) => void | Promise<void>;
   onClose: () => void;
 }
 
@@ -175,7 +175,7 @@ export function ImageCropperDialog({ open, source, target, fileNameHint, onSave,
       if (outputMediaKind === "gif") {
         const { cropAnimatedGif } = await import("@/lib/animatedMediaCrop");
         const result = await cropAnimatedGif(source.dataUrl, crop, fileNameHint);
-        onSave(result.file, result.dataUrl, result.dimensions);
+        await onSave(result.file, result.dataUrl, result.dimensions);
         setSaving(false);
         return;
       }
@@ -183,7 +183,12 @@ export function ImageCropperDialog({ open, source, target, fileNameHint, onSave,
       if (outputMediaKind === "video") {
         const { cropMp4Video } = await import("@/lib/animatedMediaCrop");
         const result = await cropMp4Video(source.dataUrl, crop, fileNameHint);
-        onSave(result.file, result.dataUrl, result.dimensions);
+        try {
+          await onSave(result.file, result.dataUrl, result.dimensions);
+        } catch (error) {
+          URL.revokeObjectURL(result.dataUrl);
+          throw error;
+        }
         setSaving(false);
         return;
       }
@@ -220,7 +225,7 @@ export function ImageCropperDialog({ open, source, target, fileNameHint, onSave,
         buildDerivedCreativeFilename(fileNameHint, "cropped", ext),
         { type: mime },
       );
-      onSave(file, URL.createObjectURL(file), { w: outW, h: outH });
+      await onSave(file, URL.createObjectURL(file), { w: outW, h: outH });
       setSaving(false);
     } catch (err) {
       console.error(err);
@@ -229,6 +234,8 @@ export function ImageCropperDialog({ open, source, target, fileNameHint, onSave,
         toast.error(t("create.cropGifTooLarge"));
       } else if (reason === "video-too-large") {
         toast.error(t("create.cropVideoTooLarge"));
+      } else if (reason.includes("video metadata") || reason.includes("video duration")) {
+        toast.error(t("create.videoMetadataError"));
       } else {
         toast.error(t("create.cropFailed"));
       }
