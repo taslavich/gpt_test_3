@@ -10,7 +10,6 @@ import (
 	"os/signal"
 	"strings"
 	"sync"
-	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -122,9 +121,6 @@ func run() error {
 		HistoryTable: cfg.PercenterHistoryTable, TelemetryTable: cfg.PercenterTelemetryTable,
 	}
 	transitions := percenter.NewDependencyTransitions()
-	var simpleUpdates atomic.Uint64
-	var complexUpdates atomic.Uint64
-	var optimizerAnomalies atomic.Uint64
 	var botNotifier *utils.BotMessage
 	botURL := strings.TrimSpace(cfg.BotBaseURL)
 	botSecret := strings.TrimSpace(cfg.BotInternalSecret)
@@ -165,7 +161,9 @@ func run() error {
 			message += fmt.Sprintf(" error=%v", detail)
 		}
 		log.Print(message)
-		sendBotAsync("[PERCENTER][TELEGRAM_ERROR]", message)
+		if transition == "ERROR" {
+			sendBotAsync("[PERCENTER][TELEGRAM_ERROR]", message)
+		}
 	}
 	relayInterval := cfg.PercenterRelayInterval
 	if relayInterval <= 0 {
@@ -206,31 +204,6 @@ func run() error {
 			}
 		}
 	}()
-	digestInterval := cfg.PercenterDigestInterval
-	if digestInterval <= 0 {
-		digestInterval = 30 * time.Minute
-	}
-	backgroundWG.Add(1)
-	go func() {
-		defer backgroundWG.Done()
-		ticker := time.NewTicker(digestInterval)
-		defer ticker.Stop()
-		for {
-			select {
-			case <-ctx.Done():
-				return
-			case <-ticker.C:
-				localBacklog, _ := observabilityOutbox.Count()
-				redisBacklog := percenter.RedisObservabilityBacklog(ctx, redisClient)
-				message := fmt.Sprintf(
-					"[PERCENTER][30M_HEALTH] active_errors=%v local_outbox=%d redis_ready=%d simple_updates=%d complex_updates=%d anomalies=%d",
-					transitions.Active(), localBacklog, redisBacklog, simpleUpdates.Swap(0), complexUpdates.Swap(0), optimizerAnomalies.Swap(0),
-				)
-				sendBotAsync("[PERCENTER][TELEGRAM_DIGEST_ERROR]", message)
-			}
-		}
-	}()
-
 	degradedState := "none"
 	if len(degradedDependencies) > 0 {
 		degradedState = strings.Join(degradedDependencies, ",")
@@ -265,7 +238,6 @@ func run() error {
 			if state.PendingHistory != nil {
 				if err := percenter.PersistSimplePendingHistory(tickCtx, simpleStore, observabilityOutbox, state); err != nil {
 					notifyTransition("simple_pending_history", true, err)
-					optimizerAnomalies.Add(1)
 					continue
 				}
 				notifyTransition("simple_pending_history", false, nil)
@@ -281,7 +253,6 @@ func run() error {
 			}
 			event, ok := percenter.BuildSimpleHistoryEvent(state, next, metric)
 			if !ok {
-				optimizerAnomalies.Add(1)
 				log.Printf("[PERCENTER][SIMPLE][HISTORY_BUILD_ERROR] segment_hash=%s point_version=%d", state.SegmentHash, state.PointVersion)
 				continue
 			}
@@ -289,18 +260,14 @@ func run() error {
 			saved, saveErr := simpleStore.SaveCAS(tickCtx, next, state.PointVersion)
 			if saveErr != nil {
 				notifyTransition("redis_db7_simple_state", true, saveErr)
-				optimizerAnomalies.Add(1)
 				continue
 			}
 			notifyTransition("redis_db7_simple_state", false, nil)
 			if !saved {
-				optimizerAnomalies.Add(1)
 				log.Printf("[PERCENTER][SIMPLE][STATE_RACE_SKIP] segment_hash=%s expected_point_version=%d", state.SegmentHash, state.PointVersion)
 				continue
 			}
-			simpleUpdates.Add(1)
 			if err := percenter.PersistSimplePendingHistory(tickCtx, simpleStore, observabilityOutbox, next); err != nil {
-				optimizerAnomalies.Add(1)
 				log.Printf("[PERCENTER][SIMPLE][HISTORY_OUTBOX_ERROR] segment_hash=%s point_version=%d event_id=%s error=%v", next.SegmentHash, next.PointVersion, event.EventID, err)
 			}
 			reason := "state_updated"
@@ -338,7 +305,6 @@ func run() error {
 			if state.PendingHistory != nil {
 				if err := percenter.PersistComplexPendingHistory(tickCtx, complexStore, observabilityOutbox, state); err != nil {
 					notifyTransition("complex_pending_history", true, err)
-					optimizerAnomalies.Add(1)
 					continue
 				}
 				notifyTransition("complex_pending_history", false, nil)
@@ -354,7 +320,6 @@ func run() error {
 			}
 			event, ok := percenter.BuildComplexHistoryEvent(state, next, metric)
 			if !ok {
-				optimizerAnomalies.Add(1)
 				log.Printf("[PERCENTER][COMPLEX][HISTORY_BUILD_ERROR] segment_hash=%s point_version=%d", state.SegmentHash, state.PointVersion)
 				continue
 			}
@@ -362,18 +327,14 @@ func run() error {
 			saved, saveErr := complexStore.SaveCAS(tickCtx, next, state.PointVersion)
 			if saveErr != nil {
 				notifyTransition("redis_db7_complex_state", true, saveErr)
-				optimizerAnomalies.Add(1)
 				continue
 			}
 			notifyTransition("redis_db7_complex_state", false, nil)
 			if !saved {
-				optimizerAnomalies.Add(1)
 				log.Printf("[PERCENTER][COMPLEX][STATE_RACE_SKIP] segment_hash=%s expected_point_version=%d", state.SegmentHash, state.PointVersion)
 				continue
 			}
-			complexUpdates.Add(1)
 			if err := percenter.PersistComplexPendingHistory(tickCtx, complexStore, observabilityOutbox, next); err != nil {
-				optimizerAnomalies.Add(1)
 				log.Printf("[PERCENTER][COMPLEX][HISTORY_OUTBOX_ERROR] segment_hash=%s point_version=%d event_id=%s error=%v", next.SegmentHash, next.PointVersion, event.EventID, err)
 			}
 			reason := "state_updated"

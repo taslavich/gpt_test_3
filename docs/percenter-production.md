@@ -93,7 +93,6 @@ PERCENTER_HISTORY_TABLE=percenter_state_history
 PERCENTER_TELEMETRY_TABLE=percenter_telemetry
 KAFKA_BROKERS=<existing-kafka-brokers>
 KAFKA_TOPIC_PERCENTER=percenter_observability
-PERCENTER_DIGEST_INTERVAL=30m
 ```
 
 `KAFKA_BROKERS` and a non-empty `KAFKA_TOPIC_PERCENTER` are required. A configured but temporarily unreachable broker is a degraded dependency rather than a startup blocker because Redis/bbolt retain pending delivery.

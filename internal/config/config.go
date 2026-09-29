@@ -410,7 +410,6 @@ type PercenterConfig struct {
 	PercenterTelemetryTable string        `yaml:"PERCENTER_TELEMETRY_TABLE" env:"PERCENTER_TELEMETRY_TABLE" env-default:"percenter_telemetry"`
 	KafkaTopicPercenter     string        `yaml:"KAFKA_TOPIC_PERCENTER" env:"KAFKA_TOPIC_PERCENTER" env-default:"percenter_observability"`
 	KafkaBrokers            []string      `yaml:"KAFKA_BROKERS" env:"KAFKA_BROKERS"`
-	PercenterDigestInterval time.Duration `yaml:"PERCENTER_DIGEST_INTERVAL" env:"PERCENTER_DIGEST_INTERVAL" env-default:"30m"`
 	BotBaseURL              string        `yaml:"BOT_BASE_URL" env:"BOT_BASE_URL"`
 	BotInternalSecret       string        `yaml:"BOT_INTERNAL_SECRET" env:"BOT_INTERNAL_SECRET"`
 }
