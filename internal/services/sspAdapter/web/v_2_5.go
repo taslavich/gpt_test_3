@@ -181,7 +181,7 @@ func postBid_V2_5(
 	getCountryISO func(ipStr string) (string, uint32, error),
 	orchestratorClient orchestratorProto.OrchestratorServiceClient,
 	timeout time.Duration,
-	sspFeeds map[string]string,
+	sspFeeds *FeedStore,
 	counter *uint64,
 	typic string,
 	format string,
@@ -228,7 +228,7 @@ func postBid_V2_5(
 		return
 	}
 
-	ssp_domain, ok := sspFeeds[input.Feed]
+	ssp_domain, ok := sspFeeds.Lookup(input.Feed)
 	if !ok {
 		err := fmt.Errorf("Busy")
 		http.Error(w, err.Error(), http.StatusForbidden)

@@ -237,25 +237,17 @@ type SppAdapterConfig struct {
 	GetWinnerBidTimeout time.Duration `yaml:"GET_WINNER_BID_TIMEOUT" env:"GET_WINNER_BID_TIMEOUT"`
 	GeoIpDbPath         string        `yaml:"GEO_IP_DB_PATH" env:"GEO_IP_DB_PATH"`
 
-	// POP
-	SspPopAdlFeeds MapStringToString `yaml:"SSP_POP_ADL_FEEDS" env:"SSP_POP_ADL_FEEDS"`
-	SspPopMcFeeds  MapStringToString `yaml:"SSP_POP_MC_FEEDS" env:"SSP_POP_MC_FEEDS"`
-
-	// BAN
-	SspBanAdlFeeds MapStringToString `yaml:"SSP_BAN_ADL_FEEDS" env:"SSP_BAN_ADL_FEEDS"`
-	SspBanMcFeeds  MapStringToString `yaml:"SSP_BAN_MC_FEEDS" env:"SSP_BAN_MC_FEEDS"`
-
-	// NAT
-	SspNatAdlFeeds MapStringToString `yaml:"SSP_NAT_ADL_FEEDS" env:"SSP_NAT_ADL_FEEDS"`
-	SspNatMcFeeds  MapStringToString `yaml:"SSP_NAT_MC_FEEDS" env:"SSP_NAT_MC_FEEDS"`
-
-	// IPP
-	SspIppAdlFeeds MapStringToString `yaml:"SSP_IPP_ADL_FEEDS" env:"SSP_IPP_ADL_FEEDS"`
-	SspIppMcFeeds  MapStringToString `yaml:"SSP_IPP_MC_FEEDS" env:"SSP_IPP_MC_FEEDS"`
-
-	// VID
-	SspVidAdlFeeds MapStringToString `yaml:"SSP_VID_ADL_FEEDS" env:"SSP_VID_ADL_FEEDS"`
-	SspVidMcFeeds  MapStringToString `yaml:"SSP_VID_MC_FEEDS" env:"SSP_VID_MC_FEEDS"`
+	// SSP feed UUID -> domain maps. Each format/vertical has its own JSON file.
+	SspFeedsPopAdultFilePath      string `yaml:"SSP_FEEDS_POP_ADULT_FILE_PATH" env:"SSP_FEEDS_POP_ADULT_FILE_PATH"`
+	SspFeedsPopMainstreamFilePath string `yaml:"SSP_FEEDS_POP_MAINSTREAM_FILE_PATH" env:"SSP_FEEDS_POP_MAINSTREAM_FILE_PATH"`
+	SspFeedsBanAdultFilePath      string `yaml:"SSP_FEEDS_BAN_ADULT_FILE_PATH" env:"SSP_FEEDS_BAN_ADULT_FILE_PATH"`
+	SspFeedsBanMainstreamFilePath string `yaml:"SSP_FEEDS_BAN_MAINSTREAM_FILE_PATH" env:"SSP_FEEDS_BAN_MAINSTREAM_FILE_PATH"`
+	SspFeedsNatAdultFilePath      string `yaml:"SSP_FEEDS_NAT_ADULT_FILE_PATH" env:"SSP_FEEDS_NAT_ADULT_FILE_PATH"`
+	SspFeedsNatMainstreamFilePath string `yaml:"SSP_FEEDS_NAT_MAINSTREAM_FILE_PATH" env:"SSP_FEEDS_NAT_MAINSTREAM_FILE_PATH"`
+	SspFeedsIppAdultFilePath      string `yaml:"SSP_FEEDS_IPP_ADULT_FILE_PATH" env:"SSP_FEEDS_IPP_ADULT_FILE_PATH"`
+	SspFeedsIppMainstreamFilePath string `yaml:"SSP_FEEDS_IPP_MAINSTREAM_FILE_PATH" env:"SSP_FEEDS_IPP_MAINSTREAM_FILE_PATH"`
+	SspFeedsVidAdultFilePath      string `yaml:"SSP_FEEDS_VID_ADULT_FILE_PATH" env:"SSP_FEEDS_VID_ADULT_FILE_PATH"`
+	SspFeedsVidMainstreamFilePath string `yaml:"SSP_FEEDS_VID_MAINSTREAM_FILE_PATH" env:"SSP_FEEDS_VID_MAINSTREAM_FILE_PATH"`
 
 	SiteIdDomainPath              string `yaml:"SITE_ID_DOMAIN_PATH" env:"SITE_ID_DOMAIN_PATH"`
 	Domains1LevelPath             string `yaml:"DOMAINS_1_LEVEL_PATH" env:"DOMAINS_1_LEVEL_PATH"`

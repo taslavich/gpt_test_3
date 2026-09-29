@@ -99,6 +99,31 @@ func main() {
 		log.Fatalf("failed to NewGeoToLang: %v", err)
 	}
 
+	initFeedStore := func(path string) *sppAdapterWeb.FeedStore {
+		store, err := sppAdapterWeb.NewFeedStore(path)
+		if err != nil {
+			log.Fatalf("failed to initialize SSP feeds map from %s: %v", path, err)
+		}
+		return store
+	}
+	feedRoutes := &sppAdapterWeb.FormatFeedRoutesV25{
+		POP: sppAdapterWeb.FormatFeedRouteV25{
+			Adult: initFeedStore(cfg.SspFeedsPopAdultFilePath), Mainstream: initFeedStore(cfg.SspFeedsPopMainstreamFilePath),
+		},
+		BAN: sppAdapterWeb.FormatFeedRouteV25{
+			Adult: initFeedStore(cfg.SspFeedsBanAdultFilePath), Mainstream: initFeedStore(cfg.SspFeedsBanMainstreamFilePath),
+		},
+		NAT: sppAdapterWeb.FormatFeedRouteV25{
+			Adult: initFeedStore(cfg.SspFeedsNatAdultFilePath), Mainstream: initFeedStore(cfg.SspFeedsNatMainstreamFilePath),
+		},
+		IPP: sppAdapterWeb.FormatFeedRouteV25{
+			Adult: initFeedStore(cfg.SspFeedsIppAdultFilePath), Mainstream: initFeedStore(cfg.SspFeedsIppMainstreamFilePath),
+		},
+		VID: sppAdapterWeb.FormatFeedRouteV25{
+			Adult: initFeedStore(cfg.SspFeedsVidAdultFilePath), Mainstream: initFeedStore(cfg.SspFeedsVidMainstreamFilePath),
+		},
+	}
+
 	addr := net.JoinHostPort(cfg.ClickhouseConfig.Host, cfg.ClickhouseConfig.Port)
 	clickhouseConn, err := clickhouse.Open(&clickhouse.Options{
 		Addr:     []string{addr},
@@ -172,16 +197,7 @@ func main() {
 		geoIp.GetCountryAndCityIdISO,
 		client,
 		cfg.GetWinnerBidTimeout,
-		cfg.SspPopAdlFeeds,
-		cfg.SspPopMcFeeds,
-		cfg.SspIppAdlFeeds,
-		cfg.SspIppMcFeeds,
-		cfg.SspBanAdlFeeds,
-		cfg.SspBanMcFeeds,
-		cfg.SspNatAdlFeeds,
-		cfg.SspNatMcFeeds,
-		cfg.SspVidAdlFeeds,
-		cfg.SspVidMcFeeds,
+		feedRoutes,
 		workStatus,
 		siteIdsAndDomains,
 		geoToLang,
