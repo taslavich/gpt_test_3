@@ -231,6 +231,15 @@ func (m *BatchRatioManager) checkCriticalZero(source string) bool {
 	return isZero
 }
 
+func (m *BatchRatioManager) ResetPercentsToDefaults() {
+	m.mu.Lock()
+	m.impressionsPercent = m.defaultImpressionsPercent
+	m.clicksPercent = m.defaultClicksPercent
+	m.mu.Unlock()
+
+	m.checkCriticalZero("reset_to_defaults")
+}
+
 func (m *BatchRatioManager) State() BatchRatioState {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
@@ -307,15 +316,29 @@ func (m *BatchRatioManager) adjustFromTickerDiffs(impressionsDiffSec, clicksDiff
 		m.impressionsPercent *= factor
 	} else if impressionsDiffSec < int64(cfg.ImpressionsDiffLeftSec) {
 		m.impressionsPercent /= factor
+		if m.impressionsPercent < m.defaultImpressionsPercent {
+			m.impressionsPercent = m.defaultImpressionsPercent
+		}
 	}
 
 	if clicksDiffSec > int64(cfg.ClicksDiffRightSec) {
 		m.clicksPercent *= factor
 	} else if clicksDiffSec < int64(cfg.ClicksDiffLeftSec) {
 		m.clicksPercent /= factor
+		if m.clicksPercent < m.defaultClicksPercent {
+			m.clicksPercent = m.defaultClicksPercent
+		}
 	}
 
 	return m.impressionsPercent, m.clicksPercent, true
+}
+
+func (m *BatchRatioManager) adjustFromTickerDiffsIfRunning(loaderControl *LoaderControl, impressionsDiffSec, clicksDiffSec int64, cfg config.BatchRatioConfig) (float64, float64, bool) {
+	if loaderControl != nil && !loaderControl.Running() {
+		state := m.State()
+		return state.ImpressionsPercent, state.ClicksPercent, false
+	}
+	return m.adjustFromTickerDiffs(impressionsDiffSec, clicksDiffSec, cfg)
 }
 
 func (m *BatchRatioManager) TickerEnabled() bool {
@@ -324,7 +347,7 @@ func (m *BatchRatioManager) TickerEnabled() bool {
 	return m.tickerEnabled && !m.manualMode
 }
 
-func (m *BatchRatioManager) StartClickHouseTicker(ctx context.Context, ch clickhouse.Conn, cfg config.BatchRatioConfig) {
+func (m *BatchRatioManager) StartClickHouseTicker(ctx context.Context, ch clickhouse.Conn, cfg config.BatchRatioConfig, loaderControl *LoaderControl) {
 	interval := time.Duration(cfg.TickerIntervalSec) * time.Second
 	if interval <= 0 {
 		interval = time.Minute
@@ -339,6 +362,9 @@ func (m *BatchRatioManager) StartClickHouseTicker(ctx context.Context, ch clickh
 			case <-ctx.Done():
 				return
 			case <-ticker.C:
+				if loaderControl != nil && !loaderControl.Running() {
+					continue
+				}
 				if !m.TickerEnabled() {
 					continue
 				}
@@ -349,7 +375,7 @@ func (m *BatchRatioManager) StartClickHouseTicker(ctx context.Context, ch clickh
 					continue
 				}
 
-				appliedImpressionsPercent, appliedClicksPercent, adjusted := m.adjustFromTickerDiffs(impressionsDiffSec, clicksDiffSec, cfg)
+				appliedImpressionsPercent, appliedClicksPercent, adjusted := m.adjustFromTickerDiffsIfRunning(loaderControl, impressionsDiffSec, clicksDiffSec, cfg)
 				if !adjusted {
 					continue
 				}
@@ -523,8 +549,11 @@ func (m *BatchRatioManager) StartHTTPServer(ctx context.Context, cfg config.Batc
 			w.WriteHeader(http.StatusMethodNotAllowed)
 			return
 		}
+		if loaderControl != nil && !loaderControl.Running() {
+			m.ResetPercentsToDefaults()
+		}
 		if m.checkCriticalZero("loader_start") {
-			http.Error(w, "cannot start loader while impressions or clicks batch ratio is zero", http.StatusConflict)
+			http.Error(w, "cannot start loader while impressions or clicks default batch ratio is zero", http.StatusConflict)
 			return
 		}
 		if loaderControl != nil {

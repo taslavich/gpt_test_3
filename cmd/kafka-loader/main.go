@@ -177,7 +177,7 @@ func main() {
 		})
 	}
 	batchRatioManager.SetCriticalZeroHandler(handleStreamError)
-	batchRatioManager.StartClickHouseTicker(ctx, connProd, cfg.BatchRatioConfig)
+	batchRatioManager.StartClickHouseTicker(ctx, connProd, cfg.BatchRatioConfig, loaderControl)
 	batchRatioManager.StartHTTPServer(ctx, cfg.BatchRatioConfig, loaderControl)
 
 	sigChan := make(chan os.Signal, 1)

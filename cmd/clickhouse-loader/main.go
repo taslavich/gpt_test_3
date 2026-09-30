@@ -116,7 +116,7 @@ func main() {
 		loaderControl.Stop()
 	}
 	batchRatioManager.SetCriticalZeroHandler(handleStreamError)
-	batchRatioManager.StartClickHouseTicker(ctx, connProd, cfg.BatchRatioConfig)
+	batchRatioManager.StartClickHouseTicker(ctx, connProd, cfg.BatchRatioConfig, loaderControl)
 	batchRatioManager.StartHTTPServer(ctx, cfg.BatchRatioConfig, loaderControl)
 
 	kafkaReaders, err := kafka_service.InitKafkaReaders(cfg.Kafka)
