@@ -25,6 +25,8 @@ type BatchRatioManager struct {
 	defaultClicksPercent      float64
 	tickerEnabled             bool
 	manualMode                bool
+	criticalZeroHandler       func(error)
+	zeroRatioCriticalActive   bool
 }
 
 type LoaderControl struct {
@@ -199,6 +201,36 @@ func NewBatchRatioManager(impressionsPercent, clicksPercent float64, tickerEnabl
 	}
 }
 
+func (m *BatchRatioManager) SetCriticalZeroHandler(handler func(error)) {
+	m.mu.Lock()
+	m.criticalZeroHandler = handler
+	m.mu.Unlock()
+
+	m.checkCriticalZero("initial")
+}
+
+func (m *BatchRatioManager) checkCriticalZero(source string) bool {
+	m.mu.Lock()
+	impressionsPercent := m.impressionsPercent
+	clicksPercent := m.clicksPercent
+	isZero := impressionsPercent == 0 || clicksPercent == 0
+	shouldNotify := isZero && !m.zeroRatioCriticalActive
+	m.zeroRatioCriticalActive = isZero
+	handler := m.criticalZeroHandler
+	m.mu.Unlock()
+
+	if shouldNotify && handler != nil {
+		handler(fmt.Errorf(
+			"critical batch ratio is zero: source=%s impressions_percent=%.6f clicks_percent=%.6f",
+			source,
+			impressionsPercent,
+			clicksPercent,
+		))
+	}
+
+	return isZero
+}
+
 func (m *BatchRatioManager) State() BatchRatioState {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
@@ -233,19 +265,23 @@ func (m *BatchRatioManager) SetManual(impressionsPercent, clicksPercent float64)
 		return fmt.Errorf("batch ratio percents cannot be negative")
 	}
 	m.mu.Lock()
-	defer m.mu.Unlock()
 	m.impressionsPercent = impressionsPercent
 	m.clicksPercent = clicksPercent
 	m.manualMode = true
 	m.tickerEnabled = false
+	m.mu.Unlock()
+
+	m.checkCriticalZero("manual_update")
 	return nil
 }
 
 func (m *BatchRatioManager) EnableTicker() {
 	m.mu.Lock()
-	defer m.mu.Unlock()
 	m.manualMode = false
 	m.tickerEnabled = true
+	m.mu.Unlock()
+
+	m.checkCriticalZero("ticker_resume")
 }
 
 func (m *BatchRatioManager) PauseTicker() {
@@ -315,6 +351,16 @@ func (m *BatchRatioManager) StartClickHouseTicker(ctx context.Context, ch clickh
 
 				appliedImpressionsPercent, appliedClicksPercent, adjusted := m.adjustFromTickerDiffs(impressionsDiffSec, clicksDiffSec, cfg)
 				if !adjusted {
+					continue
+				}
+				if m.checkCriticalZero("clickhouse_ticker") {
+					log.Printf(
+						"❌ critical batch ratio zero detected after ClickHouse adjustment: impressions_diff_sec=%d clicks_diff_sec=%d applied_impressions=%.6f applied_clicks=%.6f",
+						impressionsDiffSec,
+						clicksDiffSec,
+						appliedImpressionsPercent,
+						appliedClicksPercent,
+					)
 					continue
 				}
 
@@ -475,6 +521,10 @@ func (m *BatchRatioManager) StartHTTPServer(ctx context.Context, cfg config.Batc
 	mux.HandleFunc("/loader/start", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
 			w.WriteHeader(http.StatusMethodNotAllowed)
+			return
+		}
+		if m.checkCriticalZero("loader_start") {
+			http.Error(w, "cannot start loader while impressions or clicks batch ratio is zero", http.StatusConflict)
 			return
 		}
 		if loaderControl != nil {

@@ -164,7 +164,19 @@ func main() {
 	loaderControl := services.NewLoaderControl(false)
 	stopSspOnce := services.NewResettableOnce()
 	loaderControl.AddOnStart(stopSspOnce.Reset)
-
+	botNotifier := utils.NewBotMessage(cfg.BotBaseURL, cfg.BotInternalSecret)
+	handleStreamError := func(err error) {
+		message := fmt.Sprintf("❌ service=Kafka Loader stream error, stopping batch processing and SSP adapter ORTB streams: %v", err)
+		log.Print(message)
+		if err := botNotifier.SendTextMessageToBot(ctx, message); err != nil {
+			log.Printf("❌ failed to send bot notification: %v", err)
+		}
+		loaderControl.Stop()
+		stopSspOnce.Do(func() {
+			services.StopAllSspAdapterOrtbStreams(ctx, cfg.SspAdapterWorkStatusURLs)
+		})
+	}
+	batchRatioManager.SetCriticalZeroHandler(handleStreamError)
 	batchRatioManager.StartClickHouseTicker(ctx, connProd, cfg.BatchRatioConfig)
 	batchRatioManager.StartHTTPServer(ctx, cfg.BatchRatioConfig, loaderControl)
 
@@ -182,18 +194,6 @@ func main() {
 	}
 
 	var loaderWG sync.WaitGroup
-	botNotifier := utils.NewBotMessage(cfg.BotBaseURL, cfg.BotInternalSecret)
-	handleStreamError := func(err error) {
-		message := fmt.Sprintf("❌ service=Kafka Loader stream error, stopping batch processing and SSP adapter ORTB streams: %v", err)
-		log.Print(message)
-		if err := botNotifier.SendTextMessageToBot(ctx, message); err != nil {
-			log.Printf("❌ failed to send bot notification: %v", err)
-		}
-		loaderControl.Stop()
-		stopSspOnce.Do(func() {
-			services.StopAllSspAdapterOrtbStreams(ctx, cfg.SspAdapterWorkStatusURLs)
-		})
-	}
 	emptyPause := time.Duration(cfg.EmptyLoopPauseMS) * time.Millisecond
 	if emptyPause <= 0 {
 		emptyPause = 200 * time.Millisecond

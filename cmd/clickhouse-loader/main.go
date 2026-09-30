@@ -106,7 +106,16 @@ func main() {
 	}
 	batchRatioManager := services.NewBatchRatioManager(impressionsPercent, clicksPercent, cfg.BatchRatioConfig.TickerEnabled)
 	loaderControl := services.NewLoaderControl(false)
-
+	botNotifier := utils.NewBotMessage(cfg.BotBaseURL, cfg.BotInternalSecret)
+	handleStreamError := func(err error) {
+		message := fmt.Sprintf("❌ service=ClickHouse Loader stream error, stopping batch processing: %v", err)
+		log.Print(message)
+		if err := botNotifier.SendTextMessageToBot(ctx, message); err != nil {
+			log.Printf("❌ failed to send bot notification: %v", err)
+		}
+		loaderControl.Stop()
+	}
+	batchRatioManager.SetCriticalZeroHandler(handleStreamError)
 	batchRatioManager.StartClickHouseTicker(ctx, connProd, cfg.BatchRatioConfig)
 	batchRatioManager.StartHTTPServer(ctx, cfg.BatchRatioConfig, loaderControl)
 
@@ -173,15 +182,6 @@ func main() {
 	}
 
 	var loaderWG sync.WaitGroup
-	botNotifier := utils.NewBotMessage(cfg.BotBaseURL, cfg.BotInternalSecret)
-	handleStreamError := func(err error) {
-		message := fmt.Sprintf("❌ service=ClickHouse Loader stream error, stopping batch processing: %v", err)
-		log.Print(message)
-		if err := botNotifier.SendTextMessageToBot(ctx, message); err != nil {
-			log.Printf("❌ failed to send bot notification: %v", err)
-		}
-		loaderControl.Stop()
-	}
 	retryAttempts := cfg.ClickhouseInsertRetryCount
 	if retryAttempts < 0 {
 		log.Printf("⚠️ CLICKHOUSE_INSERT_RETRY_COUNT=%d is invalid; using 0", retryAttempts)
