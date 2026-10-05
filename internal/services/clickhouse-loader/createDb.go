@@ -9,13 +9,7 @@ import (
 	"github.com/ClickHouse/clickhouse-go/v2"
 )
 
-func CreateDB(ctx context.Context, ch clickhouse.Conn, database string) error {
-	database = strings.TrimSpace(database)
-	if database == "" {
-		return fmt.Errorf("clickhouse database name is empty")
-	}
-
-	const ddlTemplate = `
+const ddlTemplate = `
 
 CREATE DATABASE IF NOT EXISTS {db};
 
@@ -26,7 +20,9 @@ CREATE DATABASE IF NOT EXISTS {db};
 DROP VIEW IF EXISTS {db}.mv_fact_conversions_to_agg_stats SYNC;
 DROP VIEW IF EXISTS {db}.mv_fact_clicks_to_agg_stats SYNC;
 DROP VIEW IF EXISTS {db}.mv_fact_clicks_wins_to_agg_stats SYNC;
-DROP VIEW IF EXISTS {db}.mv_fact_impressions_to_agg_stats SYNC;
+-- Keep mv_fact_impressions_to_agg_stats alive while POP recovery is replaced.
+-- mv_impressions_to_fact is stopped above, so the only startup writer that can
+-- still reach it is POP recovery; this preserves recovered ordinary spend.
 
 DROP VIEW IF EXISTS {db}.mv_conversions_to_fact SYNC;
 DROP VIEW IF EXISTS {db}.mv_clicks_to_fact SYNC;
@@ -40,7 +36,8 @@ DROP VIEW IF EXISTS {db}.mv_ip_limit_ipv4 SYNC;
 DROP VIEW IF EXISTS {db}.mv_user_dsp_price_sum SYNC;
 DROP VIEW IF EXISTS {db}.mv_ortb_traffic_hourly SYNC;
 DROP VIEW IF EXISTS {db}.mv_campaign_dsp_price_sum SYNC;
-DROP VIEW IF EXISTS {db}.mv_recover_pop_impressions SYNC;
+-- mv_recover_pop_impressions is intentionally not dropped here. The legacy
+-- hourly recovery stays active until the replacement view is installed below.
 DROP VIEW IF EXISTS {db}.mv_recover_clicks_from_clicks_wins SYNC;
 DROP VIEW IF EXISTS {db}.ortb_logical SYNC;
 
@@ -551,6 +548,11 @@ CREATE TABLE IF NOT EXISTS {db}.fact_impressions
     win_crid               String DEFAULT '',
     win_user_id            String DEFAULT '',
 
+    is_pop_recovered       UInt8 DEFAULT 0,
+    pop_recovered_at       Nullable(DateTime64(3, 'UTC')) DEFAULT NULL,
+    pop_recovery_key       String DEFAULT '',
+    pop_recovery_source_key String DEFAULT '',
+
     created_at             DateTime64(3, 'UTC') DEFAULT now64(3)
 )
 ENGINE = MergeTree
@@ -733,6 +735,18 @@ SETTINGS index_granularity = 8192;
 ALTER TABLE {db}.fact_impressions
     ADD COLUMN IF NOT EXISTS impressions_uuid UUID AFTER uuid;
 
+ALTER TABLE {db}.fact_impressions
+    ADD COLUMN IF NOT EXISTS is_pop_recovered UInt8 DEFAULT 0 AFTER win_user_id;
+
+ALTER TABLE {db}.fact_impressions
+    ADD COLUMN IF NOT EXISTS pop_recovered_at Nullable(DateTime64(3, 'UTC')) DEFAULT NULL AFTER is_pop_recovered;
+
+ALTER TABLE {db}.fact_impressions
+    ADD COLUMN IF NOT EXISTS pop_recovery_key String DEFAULT '' AFTER pop_recovered_at;
+
+ALTER TABLE {db}.fact_impressions
+    ADD COLUMN IF NOT EXISTS pop_recovery_source_key String DEFAULT '' AFTER pop_recovery_key;
+
 ALTER TABLE {db}.fact_clicks
     ADD COLUMN IF NOT EXISTS clicks_uuid UUID AFTER uuid;
 
@@ -816,7 +830,8 @@ CREATE TABLE IF NOT EXISTS {db}.agg_stats
     payout_approved Float64,
 
     spend_clicks_table  Float64,
-    spend_views_table   Float64
+    spend_views_table   Float64,
+    pop_recovered_spend Float64 DEFAULT 0
 )
 ENGINE = SummingMergeTree
 PARTITION BY toYYYYMMDD(event_date)
@@ -847,6 +862,7 @@ ALTER TABLE {db}.agg_stats
     ADD COLUMN IF NOT EXISTS payout Float64 DEFAULT 0,
     ADD COLUMN IF NOT EXISTS conversions_approved UInt64 DEFAULT 0,
     ADD COLUMN IF NOT EXISTS payout_approved Float64 DEFAULT 0,
+    ADD COLUMN IF NOT EXISTS pop_recovered_spend Float64 DEFAULT 0,
     ADD COLUMN IF NOT EXISTS os_version LowCardinality(String),
     MODIFY ORDER BY
     (
@@ -873,8 +889,10 @@ ALTER TABLE {db}.agg_stats
 -- fact_clicks_wins is the authoritative partner-confirmed source for IPP.
 -- Ordinary INSERT-triggered materialized views do not replay rows that were
 -- already present before the new view was created, so a deployment could lose
--- the not-yet-recovered tail. All agg_stats writer views are dropped above,
--- therefore this bounded rebuild is race-free with respect to agg_stats.
+-- the not-yet-recovered tail. All IPP-producing agg_stats writer paths are
+-- stopped above. mv_fact_impressions_to_agg_stats intentionally stays alive
+-- only so POP recovery cannot lose ordinary impression/spend aggregation; its
+-- normal impressions source mv_impressions_to_fact is stopped during repair.
 --
 -- Rebuild the current and previous two hours for IPP from authoritative fact
 -- tables. The operation is intentionally idempotent across restarts: delete
@@ -1341,6 +1359,108 @@ CREATE MATERIALIZED VIEW IF NOT EXISTS {db}.mv_impressions_to_fact
 REFRESH EVERY 1 MINUTE
 APPEND TO {db}.fact_impressions
 AS
+WITH
+    pending_impressions AS
+    (
+        /*
+         * Deduplicate physical retries by impressions_uuid exactly as before,
+         * then rank the still-pending callbacks per auction UUID. The rank is
+         * only used when explicit or legacy POP recovery evidence exists.
+         */
+        SELECT
+            event_time_impressions,
+            created_at,
+            ad_format,
+            uuid,
+            impressions_uuid
+        FROM {db}.impressions_in
+        PREWHERE created_at >= now() - INTERVAL 60 MINUTE
+        WHERE impressions_uuid NOT IN
+        (
+            SELECT impressions_uuid
+            FROM {db}.fact_impressions
+            PREWHERE created_at >= now() - INTERVAL 65 MINUTE
+        )
+        ORDER BY created_at ASC, impressions_uuid ASC
+        LIMIT 1 BY impressions_uuid
+    ),
+
+    ranked_pending AS
+    (
+        SELECT
+            *,
+            row_number() OVER
+            (
+                PARTITION BY uuid
+                ORDER BY event_time_impressions ASC, impressions_uuid ASC
+            ) AS pop_pending_rank
+        FROM pending_impressions
+    ),
+
+    pop_fact_state AS
+    (
+        SELECT
+            uuid,
+            count() AS impression_cnt,
+            uniqExact(impressions_uuid) AS unique_impression_uuid_cnt,
+            countIf(is_pop_recovered = 1) AS recovered_cnt
+        FROM {db}.fact_impressions
+        PREWHERE event_time >= now() - INTERVAL 2 HOUR
+        WHERE format = 'POP'
+          AND uuid IN (SELECT uuid FROM pending_impressions)
+        GROUP BY uuid
+    ),
+
+    pop_click_state AS
+    (
+        SELECT
+            uuid,
+            uniqExact(clicks_uuid) AS click_cnt
+        FROM {db}.fact_clicks
+        PREWHERE event_time >= now() - INTERVAL 2 HOUR
+        WHERE format = 'POP'
+          AND uuid IN (SELECT uuid FROM pending_impressions)
+        GROUP BY uuid
+    ),
+
+    legacy_recovery_state AS
+    (
+        /*
+         * The pre-patch recovery did not have is_pop_recovered. Its first
+         * branch reused clicks_uuid as impressions_uuid, so retain that
+         * durable relationship during the cutover to protect late callbacks.
+         * The second legacy branch duplicated an existing impressions_uuid;
+         * that case is detected by impression_cnt > unique_impression_uuid_cnt
+         * in pop_fact_state below.
+         */
+        SELECT
+            i.uuid AS uuid,
+            count() AS matched_source_cnt
+        FROM
+        (
+            SELECT
+                uuid,
+                impressions_uuid
+            FROM {db}.fact_impressions
+            PREWHERE event_time >= now() - INTERVAL 2 HOUR
+            WHERE format = 'POP'
+              AND uuid IN (SELECT uuid FROM pending_impressions)
+        ) AS i
+        ANY INNER JOIN
+        (
+            SELECT
+                uuid,
+                clicks_uuid
+            FROM {db}.fact_clicks
+            PREWHERE event_time >= now() - INTERVAL 2 HOUR
+            WHERE format = 'POP'
+              AND uuid IN (SELECT uuid FROM pending_impressions)
+        ) AS c
+            ON i.uuid = c.uuid
+           AND i.impressions_uuid = c.clicks_uuid
+        GROUP BY i.uuid
+    )
+
 SELECT
     a.event_time_impressions AS event_time_impressions,
     o.event_time AS event_time,
@@ -1384,16 +1504,45 @@ SELECT
 
     o.win_cid AS win_cid,
     o.win_crid AS win_crid,
-    o.win_user_id AS win_user_id
-FROM {db}.impressions_in AS a
+    o.win_user_id AS win_user_id,
+
+    toUInt8(0) AS is_pop_recovered,
+    CAST(NULL AS Nullable(DateTime64(3, 'UTC'))) AS pop_recovered_at,
+    if(
+        o.format = 'POP',
+        concat('pop-auction:', toString(o.uuid)),
+        ''
+    ) AS pop_recovery_key,
+    '' AS pop_recovery_source_key
+FROM ranked_pending AS a
 ANY INNER JOIN {db}.ortb AS o
     ON a.uuid = o.uuid
-WHERE a.impressions_uuid NOT IN (
-    SELECT impressions_uuid
-    FROM {db}.fact_impressions
-    WHERE created_at >= now() - INTERVAL 65 MINUTE
-)
-AND a.created_at >= now() - INTERVAL 60 MINUTE;
+ANY LEFT JOIN pop_fact_state AS fs
+    ON a.uuid = fs.uuid
+ANY LEFT JOIN pop_click_state AS cs
+    ON a.uuid = cs.uuid
+ANY LEFT JOIN legacy_recovery_state AS ls
+    ON a.uuid = ls.uuid
+WHERE
+    /*
+     * Normal impressions retain their old semantics. For POP, the extra guard
+     * activates only after explicit or legacy recovery evidence exists for the
+     * same auction. A late real callback is accepted only while there is still
+     * an uncovered click slot; once recovery has filled the deficit it cannot
+     * create a second billable fact row/spend for that source auction.
+     */
+    o.format != 'POP'
+    OR
+    (
+        ifNull(fs.recovered_cnt, 0) = 0
+        AND ifNull(ls.matched_source_cnt, 0) = 0
+        AND ifNull(fs.impression_cnt, 0) = ifNull(fs.unique_impression_uuid_cnt, 0)
+    )
+    OR
+    (
+        ifNull(fs.impression_cnt, 0) + toUInt64(a.pop_pending_rank)
+        <= ifNull(cs.click_cnt, 0)
+    );
 
 
 -- ============================================================
@@ -1703,8 +1852,78 @@ ALL INNER JOIN pending_conversions AS a
     ON o.clicks_uuid = a.clicks_uuid
 SETTINGS query_plan_join_swap_table = 'false';
 
-CREATE MATERIALIZED VIEW {db}.mv_recover_pop_impressions
-REFRESH EVERY 1 HOUR OFFSET 10 MINUTE
+-- ============================================================
+-- MV: RECOVERED POP IMPRESSIONS -> SEPARATE RECOVERY SPEND
+-- ============================================================
+--
+-- Keep the existing spend_views_table path untouched. This companion MV writes
+-- only the additional cumulative recovery component required by the backend.
+CREATE MATERIALIZED VIEW IF NOT EXISTS {db}.mv_fact_pop_recovered_to_agg_stats
+TO {db}.agg_stats
+AS
+SELECT
+    win_user_id,
+    win_cid,
+    win_crid,
+
+    event_date,
+
+    device_type,
+    os,
+    os_version,
+    event_hour,
+
+    browser,
+    geo,
+    site_id,
+
+    format,
+    typic,
+
+    toUInt64(0) AS impressions,
+    toUInt64(0) AS clicks,
+
+    toUInt64(0) AS conversions,
+    toFloat64(0) AS payout,
+    toUInt64(0) AS conversions_approved,
+    toFloat64(0) AS payout_approved,
+
+    toFloat64(0) AS spend_clicks_table,
+    toFloat64(0) AS spend_views_table,
+    sum(win_dsp_price / 1000) AS pop_recovered_spend
+FROM {db}.fact_impressions
+WHERE format = 'POP'
+  AND is_pop_recovered = 1
+GROUP BY
+    win_user_id,
+    win_cid,
+    win_crid,
+
+    event_date,
+
+    device_type,
+    os,
+    os_version,
+    event_hour,
+
+    browser,
+    geo,
+    site_id,
+
+    format,
+    typic;
+
+
+-- ============================================================
+-- REFRESHABLE MV: POP CLICK DEFICIT -> RECOVERED IMPRESSIONS
+-- ============================================================
+--
+-- The legacy recovery view remains alive until this replacement is created.
+-- Every recovered row is tied to a durable source click UUID and carries an
+-- explicit auction-level correlation key. This makes retries auditable and
+-- gives the late real-impression guard a stable POP correlation boundary.
+CREATE MATERIALIZED VIEW IF NOT EXISTS {db}.mv_recover_pop_impressions_v2
+REFRESH EVERY 1 HOUR OFFSET 20 MINUTE
 APPEND TO {db}.fact_impressions
 (
     event_time_impressions,
@@ -1738,28 +1957,71 @@ APPEND TO {db}.fact_impressions
     win_cid,
     win_crid,
     win_user_id,
+    is_pop_recovered,
+    pop_recovered_at,
+    pop_recovery_key,
+    pop_recovery_source_key,
     created_at
 )
 EMPTY
 AS
-
 WITH
-    toStartOfHour(now() - INTERVAL 1 HOUR) AS dt_from,
-    toStartOfHour(now()) AS dt_to,
+    toStartOfHour(now('UTC') - INTERVAL 1 HOUR) AS dt_from,
+    toStartOfHour(now('UTC')) AS dt_to,
 
-    clicks_count AS
+    pop_clicks AS
     (
         SELECT
+            event_time_clicks,
+            event_time,
+            event_date,
+            event_hour,
             uuid,
-            count() AS click_cnt
+            clicks_uuid,
+            code,
+            format,
+            typic,
+            spp_domain,
+            ip,
+            ipv6,
+            lang,
+            browser,
+            browser_version,
+            os,
+            os_version,
+            device_type,
+            site_id,
+            site_domain,
+            bid_floor,
+            geo,
+            city_id,
+            bid_responses_raw,
+            adv_rtb_responses_raw,
+            win_dsp_domain,
+            win_final_price,
+            win_dsp_price,
+            win_cid,
+            win_crid,
+            win_user_id,
+            created_at
         FROM {db}.fact_clicks
         WHERE event_time >= dt_from
           AND event_time < dt_to
           AND format = 'POP'
+        ORDER BY created_at ASC, clicks_uuid ASC
+        LIMIT 1 BY clicks_uuid
+    ),
+
+    click_counts AS
+    (
+        SELECT
+            uuid,
+            count() AS click_cnt
+        FROM pop_clicks
         GROUP BY uuid
     ),
 
-    impressions_count AS
+    impression_counts AS
     (
         SELECT
             uuid,
@@ -1777,28 +2039,39 @@ WITH
             c.uuid,
             c.click_cnt,
             ifNull(i.impression_cnt, 0) AS impression_cnt,
-            c.click_cnt - ifNull(i.impression_cnt, 0) AS missing_cnt
-        FROM clicks_count AS c
-        LEFT JOIN impressions_count AS i USING (uuid)
+            if(
+                c.click_cnt > ifNull(i.impression_cnt, 0),
+                c.click_cnt - ifNull(i.impression_cnt, 0),
+                toUInt64(0)
+            ) AS missing_cnt
+        FROM click_counts AS c
+        LEFT JOIN impression_counts AS i USING (uuid)
         WHERE c.click_cnt > ifNull(i.impression_cnt, 0)
     ),
 
-    base_impression AS
+    recovery_candidates AS
     (
-        SELECT *
-        FROM {db}.fact_impressions
-        WHERE event_time >= dt_from
-          AND event_time < dt_to
-          AND format = 'POP'
-        ORDER BY event_time DESC
-        LIMIT 1 BY uuid
+        SELECT
+            c.*,
+            concat('pop-click:', toString(c.clicks_uuid)) AS recovery_source_key,
+            row_number() OVER
+            (
+                PARTITION BY c.uuid
+                ORDER BY c.event_time_clicks ASC, c.clicks_uuid ASC
+            ) AS recovery_rank
+        FROM pop_clicks AS c
+        WHERE concat('pop-click:', toString(c.clicks_uuid)) NOT IN
+        (
+            SELECT pop_recovery_source_key
+            FROM {db}.fact_impressions
+            WHERE event_time >= dt_from
+              AND event_time < dt_to
+              AND format = 'POP'
+              AND is_pop_recovered = 1
+              AND pop_recovery_source_key != ''
+        )
     )
 
-/*
- * Случай №1:
- * UUID полностью отсутствует в {db}.fact_impressions.
- * Берём соответствующие строки из fact_clicks.
- */
 SELECT
     c.event_time_clicks AS event_time_impressions,
     c.event_time AS event_time,
@@ -1831,58 +2104,19 @@ SELECT
     c.win_cid AS win_cid,
     c.win_crid AS win_crid,
     c.win_user_id AS win_user_id,
-    c.created_at AS created_at
-FROM {db}.fact_clicks AS c
+    toUInt8(1) AS is_pop_recovered,
+    now64(3, 'UTC') AS pop_recovered_at,
+    concat('pop-auction:', toString(c.uuid)) AS pop_recovery_key,
+    c.recovery_source_key AS pop_recovery_source_key,
+    now64(3, 'UTC') AS created_at
+FROM recovery_candidates AS c
 INNER JOIN deficits AS d USING (uuid)
-WHERE d.impression_cnt = 0
-  AND c.event_time >= dt_from
-  AND c.event_time < dt_to
-  AND c.format = 'POP'
+WHERE c.recovery_rank <= d.missing_cnt;
 
-UNION ALL
+-- The replacement is now installed and scheduled, so the legacy hourly view
+-- can be removed without creating a recovery-off window.
+DROP VIEW IF EXISTS {db}.mv_recover_pop_impressions SYNC;
 
-/*
- * Случай №2:
- * UUID есть в обеих таблицах, но impressions меньше.
- * Размножаем одну существующую строку impression.
- */
-SELECT
-    b.event_time_impressions AS event_time_impressions,
-    b.event_time AS event_time,
-    b.event_date AS event_date,
-    b.event_hour AS event_hour,
-    b.uuid AS uuid,
-    b.impressions_uuid AS impressions_uuid,
-    b.code AS code,
-    b.format AS format,
-    b.typic AS typic,
-    b.spp_domain AS spp_domain,
-    b.ip AS ip,
-    b.ipv6 AS ipv6,
-    b.lang AS lang,
-    b.browser AS browser,
-    b.browser_version AS browser_version,
-    b.os AS os,
-    b.os_version AS os_version,
-    b.device_type AS device_type,
-    b.site_id AS site_id,
-    b.site_domain AS site_domain,
-    b.bid_floor AS bid_floor,
-    b.geo AS geo,
-    b.city_id AS city_id,
-    b.bid_responses_raw AS bid_responses_raw,
-    b.adv_rtb_responses_raw AS adv_rtb_responses_raw,
-    b.win_dsp_domain AS win_dsp_domain,
-    b.win_final_price AS win_final_price,
-    b.win_dsp_price AS win_dsp_price,
-    b.win_cid AS win_cid,
-    b.win_crid AS win_crid,
-    b.win_user_id AS win_user_id,
-    b.created_at AS created_at
-FROM deficits AS d
-INNER JOIN base_impression AS b USING (uuid)
-ARRAY JOIN range(toUInt64(d.missing_cnt)) AS copy_number
-WHERE d.impression_cnt > 0;
 
 -- ============================================================
 -- MV: FACT IMPRESSIONS -> AGG STATS
@@ -1941,6 +2175,203 @@ GROUP BY
 
     format,
     typic;
+
+
+
+-- ============================================================
+-- POP RECOVERY TRANSITION CATCH-UP
+-- ============================================================
+--
+-- Re-scan two fully closed hours once per startup. The query is idempotent:
+-- existing fact rows reduce the deficit, and already-used click source keys are
+-- excluded. It bridges the deployment boundary if the legacy hourly refresh
+-- would otherwise have fallen between DROP/CREATE timings.
+INSERT INTO {db}.fact_impressions
+(
+    event_time_impressions,
+    event_time,
+    event_date,
+    event_hour,
+    uuid,
+    impressions_uuid,
+    code,
+    format,
+    typic,
+    spp_domain,
+    ip,
+    ipv6,
+    lang,
+    browser,
+    browser_version,
+    os,
+    os_version,
+    device_type,
+    site_id,
+    site_domain,
+    bid_floor,
+    geo,
+    city_id,
+    bid_responses_raw,
+    adv_rtb_responses_raw,
+    win_dsp_domain,
+    win_final_price,
+    win_dsp_price,
+    win_cid,
+    win_crid,
+    win_user_id,
+    is_pop_recovered,
+    pop_recovered_at,
+    pop_recovery_key,
+    pop_recovery_source_key,
+    created_at
+)
+WITH
+    toStartOfHour(now('UTC') - INTERVAL 2 HOUR) AS dt_from,
+    toStartOfHour(now('UTC')) AS dt_to,
+
+    pop_clicks AS
+    (
+        SELECT
+            event_time_clicks,
+            event_time,
+            event_date,
+            event_hour,
+            uuid,
+            clicks_uuid,
+            code,
+            format,
+            typic,
+            spp_domain,
+            ip,
+            ipv6,
+            lang,
+            browser,
+            browser_version,
+            os,
+            os_version,
+            device_type,
+            site_id,
+            site_domain,
+            bid_floor,
+            geo,
+            city_id,
+            bid_responses_raw,
+            adv_rtb_responses_raw,
+            win_dsp_domain,
+            win_final_price,
+            win_dsp_price,
+            win_cid,
+            win_crid,
+            win_user_id,
+            created_at
+        FROM {db}.fact_clicks
+        WHERE event_time >= dt_from
+          AND event_time < dt_to
+          AND format = 'POP'
+        ORDER BY created_at ASC, clicks_uuid ASC
+        LIMIT 1 BY clicks_uuid
+    ),
+
+    click_counts AS
+    (
+        SELECT
+            uuid,
+            count() AS click_cnt
+        FROM pop_clicks
+        GROUP BY uuid
+    ),
+
+    impression_counts AS
+    (
+        SELECT
+            uuid,
+            count() AS impression_cnt
+        FROM {db}.fact_impressions
+        WHERE event_time >= dt_from
+          AND event_time < dt_to
+          AND format = 'POP'
+        GROUP BY uuid
+    ),
+
+    deficits AS
+    (
+        SELECT
+            c.uuid,
+            c.click_cnt,
+            ifNull(i.impression_cnt, 0) AS impression_cnt,
+            if(
+                c.click_cnt > ifNull(i.impression_cnt, 0),
+                c.click_cnt - ifNull(i.impression_cnt, 0),
+                toUInt64(0)
+            ) AS missing_cnt
+        FROM click_counts AS c
+        LEFT JOIN impression_counts AS i USING (uuid)
+        WHERE c.click_cnt > ifNull(i.impression_cnt, 0)
+    ),
+
+    recovery_candidates AS
+    (
+        SELECT
+            c.*,
+            concat('pop-click:', toString(c.clicks_uuid)) AS recovery_source_key,
+            row_number() OVER
+            (
+                PARTITION BY c.uuid
+                ORDER BY c.event_time_clicks ASC, c.clicks_uuid ASC
+            ) AS recovery_rank
+        FROM pop_clicks AS c
+        WHERE concat('pop-click:', toString(c.clicks_uuid)) NOT IN
+        (
+            SELECT pop_recovery_source_key
+            FROM {db}.fact_impressions
+            WHERE event_time >= dt_from
+              AND event_time < dt_to
+              AND format = 'POP'
+              AND is_pop_recovered = 1
+              AND pop_recovery_source_key != ''
+        )
+    )
+
+SELECT
+    c.event_time_clicks AS event_time_impressions,
+    c.event_time AS event_time,
+    c.event_date AS event_date,
+    c.event_hour AS event_hour,
+    c.uuid AS uuid,
+    c.clicks_uuid AS impressions_uuid,
+    c.code AS code,
+    c.format AS format,
+    c.typic AS typic,
+    c.spp_domain AS spp_domain,
+    c.ip AS ip,
+    c.ipv6 AS ipv6,
+    c.lang AS lang,
+    c.browser AS browser,
+    c.browser_version AS browser_version,
+    c.os AS os,
+    c.os_version AS os_version,
+    c.device_type AS device_type,
+    c.site_id AS site_id,
+    c.site_domain AS site_domain,
+    c.bid_floor AS bid_floor,
+    c.geo AS geo,
+    c.city_id AS city_id,
+    c.bid_responses_raw AS bid_responses_raw,
+    c.adv_rtb_responses_raw AS adv_rtb_responses_raw,
+    c.win_dsp_domain AS win_dsp_domain,
+    c.win_final_price AS win_final_price,
+    c.win_dsp_price AS win_dsp_price,
+    c.win_cid AS win_cid,
+    c.win_crid AS win_crid,
+    c.win_user_id AS win_user_id,
+    toUInt8(1) AS is_pop_recovered,
+    now64(3, 'UTC') AS pop_recovered_at,
+    concat('pop-auction:', toString(c.uuid)) AS pop_recovery_key,
+    c.recovery_source_key AS pop_recovery_source_key,
+    now64(3, 'UTC') AS created_at
+FROM recovery_candidates AS c
+INNER JOIN deficits AS d USING (uuid)
+WHERE c.recovery_rank <= d.missing_cnt;
 
 
 -- ============================================================
@@ -2244,6 +2675,12 @@ CROSS JOIN
       AND event_time < ratio_to
 ) AS o;
 `
+
+func CreateDB(ctx context.Context, ch clickhouse.Conn, database string) error {
+	database = strings.TrimSpace(database)
+	if database == "" {
+		return fmt.Errorf("clickhouse database name is empty")
+	}
 
 	// Keep the cutover repair range stable for the whole CreateDB call. Apart
 	// from making DELETE deterministic for ClickHouse mutations, this guarantees
