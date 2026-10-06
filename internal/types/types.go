@@ -38,6 +38,7 @@ type Clicks struct {
 	ORTB_UUID         string `json:"ORTB_UUID"`
 	EVENT_TIME_CLICKS string `json:"EVENT_TIME_CLICKS"`
 	FORMAT            string `json:"FORMAT"`
+	IS_IFRAME         string `json:"IS_IFRAME"`
 }
 
 type ClicksWins struct {

@@ -79,7 +79,8 @@ func insertBatchClicks(
 			clicks_uuid,
 			uuid,
 			event_time_clicks,
-			ad_format
+			ad_format,
+			is_iframe
 		)
 	`, table)
 
@@ -104,8 +105,9 @@ func insertBatchClicks(
 		}
 
 		ts := time.UnixMilli(r.EventTimeClicksMs).UTC()
+		isIframe := clickIframeNullable(r.IframeStatus)
 
-		if err := batch.Append(clicks_u, ortb_u, ts, r.Format); err != nil {
+		if err := batch.Append(clicks_u, ortb_u, ts, r.Format, isIframe); err != nil {
 			stats.AppendErrors++
 			return stats, fmt.Errorf("Record %d: batch.Append: %w", i, err)
 		}
@@ -116,4 +118,15 @@ func insertBatchClicks(
 	}
 
 	return stats, nil
+}
+
+func clickIframeNullable(status int32) interface{} {
+	switch status {
+	case 1:
+		return uint8(0)
+	case 2:
+		return uint8(1)
+	default:
+		return nil
+	}
 }

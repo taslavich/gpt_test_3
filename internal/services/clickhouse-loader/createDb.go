@@ -436,6 +436,7 @@ CREATE TABLE IF NOT EXISTS {db}.clicks_in
     created_at        DateTime64(3, 'UTC') DEFAULT now64(3),
 
     ad_format            LowCardinality(String) DEFAULT '',
+    is_iframe            Nullable(UInt8) DEFAULT NULL,
 
     uuid UUID,
     clicks_uuid UUID,
@@ -480,6 +481,9 @@ ALTER TABLE {db}.impressions_in
 
 ALTER TABLE {db}.clicks_in
     ADD COLUMN IF NOT EXISTS clicks_uuid UUID AFTER uuid;
+
+ALTER TABLE {db}.clicks_in
+    ADD COLUMN IF NOT EXISTS is_iframe Nullable(UInt8) DEFAULT NULL AFTER ad_format;
 
 ALTER TABLE {db}.clicks_wins_in
     ADD COLUMN IF NOT EXISTS clicks_wins_uuid UUID AFTER uuid;
@@ -584,6 +588,7 @@ CREATE TABLE IF NOT EXISTS {db}.fact_clicks
 
     uuid              UUID,
     clicks_uuid       UUID,
+    is_iframe         Nullable(UInt8) DEFAULT NULL,
     code              UInt16 DEFAULT 0,
 
     format            LowCardinality(String),
@@ -758,6 +763,9 @@ ALTER TABLE {db}.fact_impressions
 
 ALTER TABLE {db}.fact_clicks
     ADD COLUMN IF NOT EXISTS clicks_uuid UUID AFTER uuid;
+
+ALTER TABLE {db}.fact_clicks
+    ADD COLUMN IF NOT EXISTS is_iframe Nullable(UInt8) DEFAULT NULL AFTER clicks_uuid;
 
 ALTER TABLE {db}.fact_clicks_wins
     ADD COLUMN IF NOT EXISTS clicks_wins_uuid UUID AFTER uuid;
@@ -1648,6 +1656,7 @@ SELECT
 
     o.uuid AS uuid,
     a.clicks_uuid AS clicks_uuid,
+    a.is_iframe AS is_iframe,
     o.code AS code,
 
     o.format AS format,

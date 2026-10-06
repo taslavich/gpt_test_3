@@ -58,6 +58,7 @@ message ClickEvent {
   string ortb_uuid = 2;
   int64 event_time_clicks_ms = 3;
   string format = 4;
+  int32 iframe_status = 5; // 0=unknown, 1=no iframe, 2=iframe
 }
 
 message ConversionEvent {

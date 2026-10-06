@@ -6,6 +6,7 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/ggicci/httpin"
@@ -66,11 +67,20 @@ func TestADMRedirectContinuesWhenWinnerRedisIsUnavailable(t *testing.T) {
 		nil,
 	)
 
-	if response.Code != http.StatusFound {
+	if response.Code != http.StatusOK {
 		t.Fatalf("status=%d body=%q", response.Code, response.Body.String())
 	}
-	if location := response.Header().Get("Location"); location != target {
-		t.Fatalf("Location=%q want %q", location, target)
+	body := response.Body.String()
+	if !strings.Contains(body, target) {
+		t.Fatalf("redirect page does not contain target URL: %q", body)
+	}
+	for _, want := range []string{"window.self !== window.top", "navigator.sendBeacon", `window.open(advertiserUrl, "_blank")`, "window.top.location = advertiserUrl", "window.location.replace(advertiserUrl)"} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("redirect page missing %q: %q", want, body)
+		}
+	}
+	if strings.Contains(body, "setTimeout") {
+		t.Fatalf("redirect page must not add an artificial timeout: %q", body)
 	}
 	records, err := store.List()
 	if err != nil {
@@ -81,5 +91,38 @@ func TestADMRedirectContinuesWhenWinnerRedisIsUnavailable(t *testing.T) {
 	}
 	if records[0].Kind != outbox.KindADM || records[0].GlobalID != "winner-1" || records[0].WinnerType != outbox.WinnerUnknown {
 		t.Fatalf("unexpected outbox record: %#v", records[0])
+	}
+}
+func TestADMRedirectPageReportsIframeWithoutBlockingRedirect(t *testing.T) {
+	response := httptest.NewRecorder()
+	writeADMRedirectPage(response, "https://advertiser.example/landing?a=1&b=2", "11111111-1111-1111-1111-111111111111")
+
+	if response.Code != http.StatusOK {
+		t.Fatalf("status=%d body=%q", response.Code, response.Body.String())
+	}
+	body := response.Body.String()
+	for _, want := range []string{
+		GetAdmIframeReportURL + "?click_id=11111111-1111-1111-1111-111111111111",
+		"&is_iframe=",
+		"keepalive: true",
+		"window.location.replace(advertiserUrl)",
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("body missing %q: %q", want, body)
+		}
+	}
+}
+
+func TestADMIframeReportRejectsMalformedInputBeforeRedis(t *testing.T) {
+	for _, rawURL := range []string{
+		GetAdmIframeReportURL + "?click_id=bad&is_iframe=1",
+		GetAdmIframeReportURL + "?click_id=11111111-1111-1111-1111-111111111111&is_iframe=maybe",
+	} {
+		req := httptest.NewRequest(http.MethodPost, rawURL, nil)
+		response := httptest.NewRecorder()
+		postAdmIframeReport(response, req, nil)
+		if response.Code != http.StatusBadRequest {
+			t.Fatalf("url=%q status=%d body=%q", rawURL, response.Code, response.Body.String())
+		}
 	}
 }

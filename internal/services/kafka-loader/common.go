@@ -26,6 +26,7 @@ type redisKafkaBatchConfig struct {
 	WriteMessagesName    string
 	SuccessLogName       string
 	HMGetFields          []string
+	ShouldDefer          func(shardID int, uuid string, values []interface{}) bool
 	BuildMessage         func(shardID int, uuid string, values []interface{}) (kafka.Message, bool, error)
 }
 
@@ -140,7 +141,9 @@ func processRedisKafkaShard(
 
 	kafkaMessages := make([]kafka.Message, 0, len(uuids))
 	uuidsToDelete := make([]string, 0, len(uuids))
+	uuidsToRestore := make([]string, 0)
 	emptyCount := 0
+	deferredCount := 0
 
 	for i, cmd := range cmds {
 		values, err := cmd.Result()
@@ -155,6 +158,12 @@ func processRedisKafkaShard(
 		}
 
 		key := uuids[i]
+
+		if cfg.ShouldDefer != nil && cfg.ShouldDefer(shardID, key, values) {
+			deferredCount++
+			uuidsToRestore = append(uuidsToRestore, key)
+			continue
+		}
 
 		message, shouldSend, err := cfg.BuildMessage(shardID, key, values)
 		if err != nil {
@@ -177,21 +186,6 @@ func processRedisKafkaShard(
 		uuidsToDelete = append(uuidsToDelete, key)
 	}
 
-	if len(kafkaMessages) == 0 {
-		if err := cleanupProcessedRedisRecordsFromProcessing(ctx, redisClient, processingSetName, uuidsToDelete); err != nil {
-			return 0, err
-		}
-
-		log.Printf(
-			"✅ %s shard %d processed: uuids=%d kafka_messages=0 empty=%d",
-			cfg.SuccessLogName,
-			shardID,
-			len(uuids),
-			emptyCount,
-		)
-		return 0, nil
-	}
-
 	if len(kafkaMessages) > 0 {
 		if err := kafkaWriter.WriteMessages(ctx, kafkaMessages...); err != nil {
 			newCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -210,17 +204,24 @@ func processRedisKafkaShard(
 		}
 	}
 
+	if len(uuidsToRestore) > 0 {
+		if err := restoreUUIDsFromProcessingToReady(ctx, redisClient, setName, processingSetName, uuidsToRestore); err != nil {
+			return len(kafkaMessages), err
+		}
+	}
+
 	if err := cleanupProcessedRedisRecordsFromProcessing(ctx, redisClient, processingSetName, uuidsToDelete); err != nil {
-		return 0, err
+		return len(kafkaMessages), err
 	}
 
 	log.Printf(
-		"✅ %s shard %d processed: uuids=%d kafka_messages=%d empty=%d",
+		"✅ %s shard %d processed: uuids=%d kafka_messages=%d empty=%d deferred=%d",
 		cfg.SuccessLogName,
 		shardID,
 		len(uuids),
 		len(kafkaMessages),
 		emptyCount,
+		deferredCount,
 	)
 
 	return len(kafkaMessages), nil

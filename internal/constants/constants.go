@@ -45,6 +45,7 @@ const (
 
 const (
 	EVENT_TIME_CLICKS_COLUMN = "EVENT_TIME_CLICKS"
+	IS_IFRAME_COLUMN         = "IS_IFRAME"
 )
 
 const (

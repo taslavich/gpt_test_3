@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"html"
 	"io"
 	"log"
 	"net/http"
@@ -119,8 +120,93 @@ func getAdm(
 
 	// The SSP request has already been paid for. Infrastructure and billing
 	// failures are retried through the durable outbox and must never block the
-	// user's redirect.
-	http.Redirect(w, r, redirectURL, http.StatusFound)
+	// user's redirect. The browser page records whether this click started in an
+	// iframe, then immediately performs the configured redirect attempts without
+	// waiting for the stats report.
+	writeADMRedirectPage(w, redirectURL, clickUUID)
+}
+
+func writeADMRedirectPage(w http.ResponseWriter, redirectURL, clickUUID string) {
+	redirectJSON, _ := json.Marshal(redirectURL)
+	reportBase := GetAdmIframeReportURL + "?click_id=" + url.QueryEscape(clickUUID)
+	reportJSON, _ := json.Marshal(reportBase)
+
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.Header().Set("Cache-Control", "no-store, no-cache, must-revalidate")
+	w.Header().Set("Pragma", "no-cache")
+	w.WriteHeader(http.StatusOK)
+
+	_, _ = fmt.Fprintf(w, `<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title></title>
+<noscript><meta http-equiv="refresh" content="0;url=%s"></noscript>
+</head>
+<body>
+<script>
+(function () {
+  const advertiserUrl = %s;
+  const reportBase = %s;
+  const isIframe = window.self !== window.top;
+  const reportUrl = reportBase + "&is_iframe=" + (isIframe ? "1" : "0");
+
+  try {
+    let queued = false;
+    if (navigator.sendBeacon) {
+      queued = navigator.sendBeacon(reportUrl);
+    }
+    if (!queued && window.fetch) {
+      void fetch(reportUrl, {method: "POST", keepalive: true, credentials: "omit"}).catch(function () {});
+    }
+  } catch (_) {}
+
+  if (isIframe) {
+    try { window.open(advertiserUrl, "_blank"); } catch (_) {}
+    try { window.top.location = advertiserUrl; } catch (_) {}
+  }
+
+  window.location.replace(advertiserUrl);
+})();
+</script>
+</body>
+</html>`, html.EscapeString(redirectURL), redirectJSON, reportJSON)
+}
+
+func postAdmIframeReport(
+	w http.ResponseWriter,
+	r *http.Request,
+	redisClients []*redis.Client,
+) {
+	clickID := strings.TrimSpace(r.URL.Query().Get("click_id"))
+	if _, err := uuid.Parse(clickID); err != nil {
+		http.Error(w, "invalid click_id", http.StatusBadRequest)
+		return
+	}
+
+	rawIframe := strings.TrimSpace(r.URL.Query().Get("is_iframe"))
+	var isIframe bool
+	switch rawIframe {
+	case constants.FALSE:
+		isIframe = false
+	case constants.TRUE:
+		isIframe = true
+	default:
+		http.Error(w, "invalid is_iframe", http.StatusBadRequest)
+		return
+	}
+
+	updated, err := utils.WriteClickIframeStatus(r.Context(), redisClients, clickID, isIframe)
+	if err != nil {
+		log.Printf("ADM iframe report failed: click_id=%s is_iframe=%s error=%v", clickID, rawIframe, err)
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+	if !updated {
+		log.Printf("ADM iframe report ignored for missing click: click_id=%s is_iframe=%s", clickID, rawIframe)
+	}
+
+	w.WriteHeader(http.StatusNoContent)
 }
 
 var clickIDParameterNamePattern = regexp.MustCompile(`^[A-Za-z0-9_.~-]+$`)

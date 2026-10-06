@@ -14,6 +14,14 @@ import (
 
 const RedisKeyTTL = 1440 * time.Minute
 
+var writeClickIframeStatusScript = redis.NewScript(`
+if redis.call("EXISTS", KEYS[1]) == 0 then
+    return 0
+end
+redis.call("HSET", KEYS[1], ARGV[1], ARGV[2])
+return 1
+`)
+
 func WriteBytesToRedis(ctx context.Context, redisClients []*redis.Client, uuid, column string, data []byte, logged bool) error {
 	if !logged {
 		return nil
@@ -297,6 +305,38 @@ func WriteClickStats(
 	}
 
 	return nil
+}
+
+// WriteClickIframeStatus enriches an existing click record with the browser-observed iframe state.
+// It never creates a click hash: a late or forged report for an unknown click is ignored.
+func WriteClickIframeStatus(
+	ctx context.Context,
+	redisClients []*redis.Client,
+	clickUuid string,
+	isIframe bool,
+) (bool, error) {
+	client, idx, err := redis_service.SelectShard(redisClients, clickUuid)
+	if err != nil {
+		return false, fmt.Errorf("failed to select shard for click uuid %s: %w", clickUuid, err)
+	}
+
+	value := constants.FALSE
+	if isIframe {
+		value = constants.TRUE
+	}
+
+	result, err := writeClickIframeStatusScript.Run(
+		ctx,
+		client,
+		[]string{clickUuid},
+		constants.IS_IFRAME_COLUMN,
+		value,
+	).Int64()
+	if err != nil {
+		return false, fmt.Errorf("failed to write iframe status to Redis (uuid=%s, shard=%d): %w", clickUuid, idx, err)
+	}
+
+	return result == 1, nil
 }
 
 // WriteImpressionStats записывает статистику показа в Redis одним HSET.

@@ -50,6 +50,7 @@ const (
 	PostBid_VID_MC_V_2_5_URL  = "/bid_v_2_5_vid_mc"
 
 	GetAdmUrl             = "/adm"
+	GetAdmIframeReportURL = "/adm/iframe"
 	GetNurlUrl            = "/nurl"
 	GetBurlUrl            = "/burl"
 	GetCurlUrl            = "/curl"
@@ -345,6 +346,10 @@ func InitHttpsRoutes(
 		httpin.NewInput(admRequest{}),
 	).Get(GetAdmUrl, func(w http.ResponseWriter, r *http.Request) {
 		getAdm(ctx, w, r, redisClientsClicks, redisAdmClient, redisSetClicks, redisWriteErrorMonitor, sspAdapterWorkStatusURL, advBillingStore, advOutbox, advControlURLs)
+	})
+
+	httpRouter.Post(GetAdmIframeReportURL, func(w http.ResponseWriter, r *http.Request) {
+		postAdmIframeReport(w, r, redisClientsClicks)
 	})
 
 	httpRouter.With(
