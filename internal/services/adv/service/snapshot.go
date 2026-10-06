@@ -114,10 +114,50 @@ func (s *AuctionService) RefreshFromPostgres(ctx context.Context, db *sql.DB) er
 	snapshot, warnings, err := loadSnapshotFromPostgres(ctx, db)
 	s.reportSnapshotWarnings(ctx, warnings)
 	if err != nil {
+		s.updatePostgresAvailabilityAfterRefreshError(db)
 		s.excludeInvalidIPCampaignsFromCurrentSnapshot(warnings)
 		return err
 	}
+	// The database read itself succeeded. Snapshot validation/publication errors
+	// are not PostgreSQL outages and must not activate the temporary +20% guard.
+	s.setPostgresAvailability(true, "snapshot_refresh_succeeded")
 	return s.PublishSnapshot(snapshot)
+}
+
+func (s *AuctionService) setPostgresAvailability(available bool, reason string) {
+	if s == nil {
+		return
+	}
+	previous := s.postgresAvailable.Swap(available)
+	if previous == available {
+		return
+	}
+	if available {
+		log.Printf("[ADV][POSTGRES_RECOVERED] rtb_balance_guard_spend_multiplier=1.00 reason=%s", reason)
+		return
+	}
+	log.Printf("[ADV][POSTGRES_UNAVAILABLE] rtb_balance_guard_spend_multiplier=1.20 reason=%s", reason)
+}
+
+func (s *AuctionService) updatePostgresAvailabilityAfterRefreshError(db *sql.DB) {
+	if s == nil {
+		return
+	}
+	if db == nil {
+		s.setPostgresAvailability(false, "postgres_db_nil")
+		return
+	}
+	// Do not perform PostgreSQL I/O in the auction hot path. A failed snapshot
+	// refresh performs one bounded connectivity probe here; later successful
+	// refreshes restore normal raw-Redis spend semantics automatically.
+	pingCtx, cancel := context.WithTimeout(context.Background(), time.Second)
+	err := db.PingContext(pingCtx)
+	cancel()
+	if err != nil {
+		s.setPostgresAvailability(false, "snapshot_refresh_failed_and_ping_failed")
+		return
+	}
+	s.setPostgresAvailability(true, "postgres_ping_succeeded_after_snapshot_error")
 }
 
 func (s *AuctionService) reportSnapshotWarnings(ctx context.Context, warnings []snapshotLoadWarning) {

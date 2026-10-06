@@ -44,6 +44,52 @@ func (s *RuntimeStore) CampaignSpent(ctx context.Context, campaignID string) (fl
 	return s.floatValue(ctx, spentCampaignPrefix+strings.TrimSpace(campaignID))
 }
 
+// BalanceSpends reads the user and campaign runtime spend in one Redis round
+// trip. It is used by the RTB balance guard so adding the user-level guard does
+// not add a second network round trip to the auction response path.
+func (s *RuntimeStore) BalanceSpends(ctx context.Context, userID, campaignID string) (userSpent, campaignSpent float64, retErr error) {
+	if s == nil || s.client == nil {
+		return 0, 0, errors.New("ADV runtime Redis client is nil")
+	}
+	userID = strings.TrimSpace(userID)
+	campaignID = strings.TrimSpace(campaignID)
+	if userID == "" || campaignID == "" {
+		return 0, 0, errors.New("ADV runtime balance spend identity is empty")
+	}
+	userKey := spentUserPrefix + userID
+	campaignKey := spentCampaignPrefix + campaignID
+	values, err := s.client.MGet(ctx, userKey, campaignKey).Result()
+	if err != nil {
+		return 0, 0, fmt.Errorf("redis MGET RTB balance spends: %w", err)
+	}
+	if len(values) != 2 {
+		return 0, 0, fmt.Errorf("redis MGET RTB balance spends returned %d values for 2 keys", len(values))
+	}
+	parse := func(key string, raw any) (float64, error) {
+		if raw == nil {
+			return 0, nil
+		}
+		text, ok := raw.(string)
+		if !ok {
+			text = fmt.Sprint(raw)
+		}
+		value, err := strconv.ParseFloat(strings.TrimSpace(text), 64)
+		if err != nil || math.IsNaN(value) || math.IsInf(value, 0) || value < 0 {
+			return 0, fmt.Errorf("invalid Redis numeric value for %s: %q", key, text)
+		}
+		return value, nil
+	}
+	userSpent, err = parse(userKey, values[0])
+	if err != nil {
+		return 0, 0, err
+	}
+	campaignSpent, err = parse(campaignKey, values[1])
+	if err != nil {
+		return 0, 0, err
+	}
+	return userSpent, campaignSpent, nil
+}
+
 func (s *RuntimeStore) floatValue(ctx context.Context, key string) (float64, error) {
 	if s == nil || s.client == nil {
 		return 0, errors.New("ADV runtime Redis client is nil")

@@ -507,3 +507,29 @@ func TestBannerPartnerNormalizationOnlyForBAN(t *testing.T) {
 		t.Fatal("source request must not be mutated")
 	}
 }
+
+func TestRTBBalanceGuardUsesRawRedisSpendWhenPostgresAvailable(t *testing.T) {
+	if !rtbBalanceGuardAllows(100, 80, 15, true) {
+		t.Fatal("raw Redis spend leaves 20 and must allow a 15 charge")
+	}
+}
+
+func TestRTBBalanceGuardUsesTemporaryTwentyPercentSpendMultiplierWhenPostgresUnavailable(t *testing.T) {
+	if rtbBalanceGuardAllows(100, 80, 15, false) {
+		t.Fatal("Postgres outage must treat Redis spend 80 as effective spend 96 and reject a 15 charge")
+	}
+	if !rtbBalanceGuardAllows(100, 50, 15, false) {
+		t.Fatal("Postgres outage must multiply spend only: effective spend 60 leaves 40")
+	}
+}
+
+func TestRTBBalanceGuardDoesNotMultiplyBudgetOrPersistSyntheticSpend(t *testing.T) {
+	const (
+		goal       = 100.0
+		redisSpent = 80.0
+		charge     = 5.0
+	)
+	if rtbBalanceGuardAllows(goal, redisSpent, charge, false) {
+		t.Fatal("effective spend 96 leaves 4, so a 5 charge must be rejected")
+	}
+}

@@ -26,14 +26,15 @@ import (
 )
 
 const (
-	rtb54AdsUserID         = "94416e97-6a74-42e5-8902-65e6cf7ac13c"
-	rtbBidFlyUserID        = "beab6526-7c1a-40e0-9a17-5903149fa58f"
-	rtbBannerPartnerUserID = "c05e9083-91de-4b5c-b709-50ed41854844"
-	rtbCodeNetworkError    = "1"
-	rtbCodeInvalidJSON     = "3"
-	rtbCodeReadError       = "4"
-	rtbCodeRequestError    = "55"
-	rtbCodeInvalidADM      = "800"
+	rtb54AdsUserID                           = "94416e97-6a74-42e5-8902-65e6cf7ac13c"
+	rtbBidFlyUserID                          = "beab6526-7c1a-40e0-9a17-5903149fa58f"
+	rtbBannerPartnerUserID                   = "c05e9083-91de-4b5c-b709-50ed41854844"
+	rtbCodeNetworkError                      = "1"
+	rtbCodeInvalidJSON                       = "3"
+	rtbCodeReadError                         = "4"
+	rtbCodeRequestError                      = "55"
+	rtbCodeInvalidADM                        = "800"
+	popRecoveryPostgresOutageSpendMultiplier = 1.20
 )
 
 type rtbCampaignResult struct {
@@ -611,7 +612,20 @@ func validRTBADM(format, adm string) bool {
 	}
 }
 
-func (s *AuctionService) evaluateRTBCandidate(ctx context.Context, campaign *Campaign, bid *ortb.Bid, imp *ortb.Imp, now time.Time, requestedFormat, exactSegmentHash, segmentHash string) (candidate, bool, error) {
+func rtbBalanceGuardAllows(goal, redisSpent, chargePrice float64, postgresAvailable bool) bool {
+	if math.IsNaN(goal) || math.IsInf(goal, 0) || goal < 0 ||
+		math.IsNaN(redisSpent) || math.IsInf(redisSpent, 0) || redisSpent < 0 ||
+		math.IsNaN(chargePrice) || math.IsInf(chargePrice, 0) || chargePrice <= 0 {
+		return false
+	}
+	effectiveSpent := redisSpent
+	if !postgresAvailable {
+		effectiveSpent *= popRecoveryPostgresOutageSpendMultiplier
+	}
+	return goal-effectiveSpent >= chargePrice
+}
+
+func (s *AuctionService) evaluateRTBCandidate(ctx context.Context, campaign *Campaign, bid *ortb.Bid, imp *ortb.Imp, now time.Time, requestedFormat, exactSegmentHash, segmentHash string, userGoal float64) (candidate, bool, error) {
 	if campaign == nil || bid == nil || imp == nil {
 		return candidate{}, false, nil
 	}
@@ -623,16 +637,22 @@ func (s *AuctionService) evaluateRTBCandidate(ctx context.Context, campaign *Cam
 	if !finitePositive(chargePrice) {
 		return candidate{}, false, nil
 	}
-	campaignSpent, err := s.runtime.CampaignSpent(ctx, campaign.ID)
+	userSpent, campaignSpent, err := s.runtime.BalanceSpends(ctx, campaign.UserID, campaign.ID)
 	if err != nil {
 		return candidate{}, false, err
 	}
-	if campaign.GoalTotalDollars-campaignSpent < chargePrice {
+	postgresAvailable := s.postgresAvailable.Load()
+	if !rtbBalanceGuardAllows(campaign.GoalTotalDollars, campaignSpent, chargePrice, postgresAvailable) {
+		return candidate{}, false, nil
+	}
+	if !rtbBalanceGuardAllows(userGoal, userSpent, chargePrice, postgresAvailable) {
 		return candidate{}, false, nil
 	}
 	if campaign.EvennessBySlotMode {
 		clone := *campaign
 		clone.BasePrice = rawPrice
+		// Pacing intentionally receives the raw Redis campaign spend. The +20%
+		// multiplier is a temporary ORTB balance-guard input only.
 		eligible, _, err := s.runtime.PacingEligibility(ctx, &clone, now, campaignSpent)
 		if err != nil || !eligible {
 			return candidate{}, false, err

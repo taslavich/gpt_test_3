@@ -221,6 +221,7 @@ type AuctionService struct {
 	antiperekrutEnabled bool
 	diagnostics         *AuctionDiagnostics
 	testLogsEnabled     atomic.Bool
+	postgresAvailable   atomic.Bool
 
 	snapshotWarningMu       sync.Mutex
 	snapshotWarningSeen     map[string]struct{}
@@ -240,6 +241,11 @@ func NewAuctionService(runtime *RuntimeStore, winners *WinnerStore, percents *Pe
 		rtbHTTPClient:       newSafeRTBHTTPClient(),
 	}
 	s.snapshot.Store(&Snapshot{Campaigns: []*Campaign{}, UserGoals: map[string]float64{}, UserPromoSpendRemaining: map[string]float64{}, UserPromoRevision: map[string]int64{}, UserPromoGeneration: map[string]int64{}, UserAntiPerekrutBlocked: map[string]bool{}})
+	// Production startup always performs a successful initial PostgreSQL snapshot
+	// before auction traffic is served. Defaulting to available preserves the
+	// existing behavior for unit-constructed services; refresh failures flip this
+	// state only when PostgreSQL itself is actually unreachable.
+	s.postgresAvailable.Store(true)
 	return s
 }
 
@@ -1094,7 +1100,8 @@ func (s *AuctionService) auctionCore(
 				}
 				segmentHash := BuildPercenterSegmentHash(req, sspDomain, campaign.ID)
 				logf("[ADV][RTB_AUCTION_INPUT] request_id=%q imp_id=%q campaign_id=%q remote_bid_id=%q remote_price=%.12f", requestID, impID, campaign.ID, remoteBid.GetId(), float64(remoteBid.GetPrice()))
-				cand, eligible, infraErr = s.evaluateRTBCandidate(ctx, campaign, remoteBid, imp, now, requestedFormat, requestExactSegmentHash, segmentHash)
+				userGoal := snapshot.UserGoals[campaign.UserID]
+				cand, eligible, infraErr = s.evaluateRTBCandidate(ctx, campaign, remoteBid, imp, now, requestedFormat, requestExactSegmentHash, segmentHash, userGoal)
 				if !eligible {
 					reason = diagNoWinnerSelected
 					logf("[ADV][RTB_AUCTION_REJECT] request_id=%q imp_id=%q campaign_id=%q error=%v", requestID, impID, campaign.ID, infraErr)
