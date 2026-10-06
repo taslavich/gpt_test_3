@@ -1405,6 +1405,55 @@ WITH
         )
         ORDER BY created_at ASC, impressions_uuid ASC
         LIMIT 1 BY impressions_uuid
+    ),
+    ortb_for_pending AS
+    (
+        /*
+         * Do not build the ANY JOIN from the full wide ORTB window.  The two
+         * raw response columns are large, so reading them for every ORTB row
+         * can exhaust memory even when only a small set of impression UUIDs
+         * is actually pending.
+         *
+         * PREWHERE evaluates the UUID membership first.  The wide/raw columns
+         * below are therefore read only for auctions referenced by the current
+         * pending set.  There is deliberately no additional time predicate:
+         * matching semantics stay identical to the previous join against the
+         * whole {db}.ortb table.
+         */
+        SELECT
+            uuid,
+            event_time,
+            code,
+            format,
+            typic,
+            spp_domain,
+            ip,
+            ipv6,
+            lang,
+            browser,
+            browser_version,
+            os,
+            os_version,
+            device,
+            site_id,
+            site_domain,
+            bid_floor,
+            geo,
+            city_id,
+            bid_responses_raw,
+            adv_rtb_responses_raw,
+            win_dsp_domain,
+            win_final_price,
+            win_dsp_price,
+            win_cid,
+            win_crid,
+            win_user_id
+        FROM {db}.ortb
+        PREWHERE uuid IN
+        (
+            SELECT uuid
+            FROM pending_impressions
+        )
     )
 
 SELECT
@@ -1461,7 +1510,7 @@ SELECT
     ) AS pop_recovery_key,
     '' AS pop_recovery_source_key
 FROM pending_impressions AS a
-ANY INNER JOIN {db}.ortb AS o
+ANY INNER JOIN ortb_for_pending AS o
     ON a.uuid = o.uuid;
 
 
