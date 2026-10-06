@@ -27,13 +27,15 @@ func TestPopRecoveryDDLContract(t *testing.T) {
 		"pop_recovered_at       Nullable(DateTime64(3, 'UTC')) DEFAULT NULL",
 		"pop_recovery_key       String DEFAULT ''",
 		"pop_recovery_source_key String DEFAULT ''",
-		"pop_recovered_spend Float64 DEFAULT 0",
+		"CREATE TABLE IF NOT EXISTS {db}.pop_recovery_events",
+		"ORDER BY (recovery_at, recovery_source_key)",
+		"CREATE MATERIALIZED VIEW IF NOT EXISTS {db}.mv_fact_pop_recovered_to_events",
 		"CREATE MATERIALIZED VIEW IF NOT EXISTS {db}.mv_recover_pop_impressions_v2",
 		"REFRESH EVERY 1 HOUR OFFSET 10 MINUTE",
 		"concat('pop-click:', toString(c.clicks_uuid)) AS recovery_source_key",
 		"toUInt8(1) AS is_pop_recovered",
-		"CREATE MATERIALIZED VIEW IF NOT EXISTS {db}.mv_fact_pop_recovered_to_agg_stats",
-		"sum(win_dsp_price / 1000) AS pop_recovered_spend",
+		"DROP VIEW IF EXISTS {db}.mv_fact_pop_recovered_to_agg_stats SYNC",
+		"win_dsp_price / 1000 AS spend",
 		"POP RECOVERY TRANSITION CATCH-UP",
 		"toStartOfHour(now('UTC') - INTERVAL 2 HOUR) AS dt_from",
 		"WHERE c.recovery_rank <= c.missing_cnt",
@@ -59,15 +61,16 @@ func TestPopRecoveryMigrationStopsOldWritersBeforeSchemaWork(t *testing.T) {
 
 	dropLegacy := strings.Index(ddlTemplate, "DROP VIEW IF EXISTS {db}.mv_recover_pop_impressions SYNC")
 	dropPreviousV2 := strings.Index(ddlTemplate, "DROP VIEW IF EXISTS {db}.mv_recover_pop_impressions_v2 SYNC")
+	dropLegacyCumulative := strings.Index(ddlTemplate, "DROP VIEW IF EXISTS {db}.mv_fact_pop_recovered_to_agg_stats SYNC")
 	addRecoveryColumn := strings.Index(ddlTemplate, "ADD COLUMN IF NOT EXISTS is_pop_recovered UInt8 DEFAULT 0")
 	catchUp := strings.Index(ddlTemplate, "POP RECOVERY TRANSITION CATCH-UP")
 	createPeriodic := strings.Index(ddlTemplate, "CREATE MATERIALIZED VIEW IF NOT EXISTS {db}.mv_recover_pop_impressions_v2")
 
-	if dropLegacy < 0 || dropPreviousV2 < 0 || addRecoveryColumn < 0 || catchUp < 0 || createPeriodic < 0 {
-		t.Fatalf("cannot locate POP recovery migration statements: legacy=%d v2=%d column=%d catchup=%d create=%d", dropLegacy, dropPreviousV2, addRecoveryColumn, catchUp, createPeriodic)
+	if dropLegacy < 0 || dropPreviousV2 < 0 || dropLegacyCumulative < 0 || addRecoveryColumn < 0 || catchUp < 0 || createPeriodic < 0 {
+		t.Fatalf("cannot locate POP recovery migration statements: legacy=%d v2=%d cumulative=%d column=%d catchup=%d create=%d", dropLegacy, dropPreviousV2, dropLegacyCumulative, addRecoveryColumn, catchUp, createPeriodic)
 	}
-	if dropLegacy >= addRecoveryColumn || dropPreviousV2 >= addRecoveryColumn {
-		t.Fatalf("all old recovery writers must be stopped before schema migration: legacy=%d v2=%d column=%d", dropLegacy, dropPreviousV2, addRecoveryColumn)
+	if dropLegacy >= addRecoveryColumn || dropPreviousV2 >= addRecoveryColumn || dropLegacyCumulative >= addRecoveryColumn {
+		t.Fatalf("all old recovery writers must be stopped before schema migration: legacy=%d v2=%d cumulative=%d column=%d", dropLegacy, dropPreviousV2, dropLegacyCumulative, addRecoveryColumn)
 	}
 	if catchUp >= createPeriodic {
 		t.Fatalf("transition catch-up must complete before periodic recovery is enabled: catchup=%d create=%d", catchUp, createPeriodic)
@@ -80,9 +83,9 @@ func TestPopRecoveryMigrationStopsOldWritersBeforeSchemaWork(t *testing.T) {
 	}
 
 	ordinaryAgg := strings.Index(ddlTemplate, "CREATE MATERIALIZED VIEW IF NOT EXISTS {db}.mv_fact_impressions_to_agg_stats")
-	recoveryAgg := strings.Index(ddlTemplate, "CREATE MATERIALIZED VIEW IF NOT EXISTS {db}.mv_fact_pop_recovered_to_agg_stats")
-	if ordinaryAgg < 0 || recoveryAgg < 0 || ordinaryAgg >= catchUp || recoveryAgg >= catchUp {
-		t.Fatalf("both aggregate MVs must exist before catch-up: ordinary=%d recovery=%d catchup=%d", ordinaryAgg, recoveryAgg, catchUp)
+	recoveryEvents := strings.Index(ddlTemplate, "CREATE MATERIALIZED VIEW IF NOT EXISTS {db}.mv_fact_pop_recovered_to_events")
+	if ordinaryAgg < 0 || recoveryEvents < 0 || ordinaryAgg >= catchUp || recoveryEvents >= catchUp {
+		t.Fatalf("ordinary aggregate and recovery-event MVs must exist before catch-up: ordinary=%d events=%d catchup=%d", ordinaryAgg, recoveryEvents, catchUp)
 	}
 }
 
@@ -188,22 +191,40 @@ func TestPopRecoveryPreservesFullMissingAndPartialDeficitSemantics(t *testing.T)
 	}
 }
 
-func TestPopRecoveredSpendOnlyCountsRecoveredRows(t *testing.T) {
+func TestPopRecoveryEventsOnlyCaptureRecoveredRows(t *testing.T) {
 	t.Parallel()
 
-	recoveredAgg := ddlSection(
+	events := ddlSection(
 		t,
-		"CREATE MATERIALIZED VIEW IF NOT EXISTS {db}.mv_fact_pop_recovered_to_agg_stats",
+		"CREATE TABLE IF NOT EXISTS {db}.pop_recovery_events",
 		"MV: FACT IMPRESSIONS -> AGG STATS",
 	)
 	for _, want := range []string{
-		"sum(win_dsp_price / 1000) AS pop_recovered_spend",
+		"recovery_at             DateTime64(3, 'UTC')",
+		"recovery_source_key     String",
+		"ORDER BY (recovery_at, recovery_source_key)",
+		"TTL recovery_at + INTERVAL 6 MONTH DELETE",
+		"CREATE MATERIALIZED VIEW IF NOT EXISTS {db}.mv_fact_pop_recovered_to_events",
+		"assumeNotNull(pop_recovered_at) AS recovery_at",
+		"pop_recovery_source_key AS recovery_source_key",
+		"win_user_id AS user_id",
+		"win_cid AS campaign_id",
+		"win_dsp_price / 1000 AS spend",
 		"WHERE format = 'POP'",
 		"AND is_pop_recovered = 1",
+		"AND pop_recovered_at IS NOT NULL",
+		"AND pop_recovery_source_key != ''",
 	} {
-		if !strings.Contains(recoveredAgg, want) {
-			t.Fatalf("recovered-spend MV is missing %q", want)
+		if !strings.Contains(events, want) {
+			t.Fatalf("recovery event source is missing %q", want)
 		}
+	}
+
+	if strings.Contains(ddlTemplate, "CREATE MATERIALIZED VIEW IF NOT EXISTS {db}.mv_fact_pop_recovered_to_agg_stats") {
+		t.Fatal("legacy cumulative recovered-spend MV must not be recreated")
+	}
+	if strings.Contains(ddlTemplate, "sum(win_dsp_price / 1000) AS pop_recovered_spend") {
+		t.Fatal("new POP recovery must not append to an ever-growing cumulative recovery counter")
 	}
 
 	ordinaryAgg := ddlSection(
@@ -214,8 +235,41 @@ func TestPopRecoveredSpendOnlyCountsRecoveredRows(t *testing.T) {
 	if !strings.Contains(ordinaryAgg, "sum(win_dsp_price / 1000) AS spend_views_table") {
 		t.Fatal("ordinary impression spend semantics changed unexpectedly")
 	}
-	if strings.Contains(ordinaryAgg, "AS pop_recovered_spend") {
-		t.Fatal("ordinary impression aggregate MV must not emit recovered spend")
+}
+
+func TestPopRecoveryEventCursorIsOrderedAndNonCumulative(t *testing.T) {
+	t.Parallel()
+
+	events := ddlSection(
+		t,
+		"CREATE TABLE IF NOT EXISTS {db}.pop_recovery_events",
+		"MV: FACT IMPRESSIONS -> AGG STATS",
+	)
+	for _, want := range []string{
+		"recovery_at",
+		"recovery_source_key",
+		"ORDER BY (recovery_at, recovery_source_key)",
+	} {
+		if !strings.Contains(events, want) {
+			t.Fatalf("event cursor contract is missing %q", want)
+		}
+	}
+
+	// The backend cursor is a tuple, not a money total: read only events whose
+	// (recovery_at, source_key) marker is after the last processed marker, then
+	// sum that finite slice by user/campaign.
+	type marker struct {
+		at  time.Time
+		key string
+	}
+	a := marker{at: time.Date(2026, 10, 6, 1, 0, 0, 0, time.UTC), key: "pop-click:a"}
+	b := marker{at: a.at, key: "pop-click:b"}
+	c := marker{at: a.at.Add(time.Millisecond), key: "pop-click:a"}
+	if !(a.at.Before(b.at) || (a.at.Equal(b.at) && a.key < b.key)) {
+		t.Fatal("test setup must order equal-time events by source key")
+	}
+	if !b.at.Before(c.at) {
+		t.Fatal("newer recovery timestamp must advance the cursor")
 	}
 }
 
@@ -251,16 +305,23 @@ func TestPopRecoveryStatementsStillSplitCleanly(t *testing.T) {
 		t.Fatal("full ClickHouse DDL split produced no statements")
 	}
 
-	var legacyDropSeen, previousV2DropSeen, catchUpSeen, periodicSeen bool
+	var legacyDropSeen, previousV2DropSeen, cumulativeDropSeen, eventMVSeen, catchUpSeen, periodicSeen bool
 	for _, statement := range statements {
 		switch {
 		case strings.Contains(statement, "DROP VIEW IF EXISTS ads.mv_recover_pop_impressions SYNC"):
 			legacyDropSeen = true
 		case strings.Contains(statement, "DROP VIEW IF EXISTS ads.mv_recover_pop_impressions_v2 SYNC"):
 			previousV2DropSeen = true
+		case strings.Contains(statement, "DROP VIEW IF EXISTS ads.mv_fact_pop_recovered_to_agg_stats SYNC"):
+			cumulativeDropSeen = true
+		case strings.Contains(statement, "CREATE MATERIALIZED VIEW IF NOT EXISTS ads.mv_fact_pop_recovered_to_events"):
+			if !cumulativeDropSeen {
+				t.Fatal("event source was enabled before the legacy cumulative writer was stopped")
+			}
+			eventMVSeen = true
 		case strings.Contains(statement, "POP RECOVERY TRANSITION CATCH-UP"):
-			if !legacyDropSeen || !previousV2DropSeen {
-				t.Fatal("transition catch-up was split before old recovery writers were stopped")
+			if !legacyDropSeen || !previousV2DropSeen || !cumulativeDropSeen || !eventMVSeen {
+				t.Fatal("transition catch-up was split before old writers were stopped and the event source was ready")
 			}
 			catchUpSeen = true
 		case strings.Contains(statement, "CREATE MATERIALIZED VIEW IF NOT EXISTS ads.mv_recover_pop_impressions_v2"):
@@ -270,7 +331,7 @@ func TestPopRecoveryStatementsStillSplitCleanly(t *testing.T) {
 			periodicSeen = true
 		}
 	}
-	if !legacyDropSeen || !previousV2DropSeen || !catchUpSeen || !periodicSeen {
-		t.Fatalf("missing recovery statements after split: legacy_drop=%t v2_drop=%t catchup=%t periodic=%t", legacyDropSeen, previousV2DropSeen, catchUpSeen, periodicSeen)
+	if !legacyDropSeen || !previousV2DropSeen || !cumulativeDropSeen || !eventMVSeen || !catchUpSeen || !periodicSeen {
+		t.Fatalf("missing recovery statements after split: legacy_drop=%t v2_drop=%t cumulative_drop=%t event_mv=%t catchup=%t periodic=%t", legacyDropSeen, previousV2DropSeen, cumulativeDropSeen, eventMVSeen, catchUpSeen, periodicSeen)
 	}
 }

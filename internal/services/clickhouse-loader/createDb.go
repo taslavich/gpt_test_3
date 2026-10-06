@@ -19,6 +19,10 @@ CREATE DATABASE IF NOT EXISTS {db};
 -- catch-up below covers the short recovery-off interval.
 DROP VIEW IF EXISTS {db}.mv_recover_pop_impressions SYNC;
 DROP VIEW IF EXISTS {db}.mv_recover_pop_impressions_v2 SYNC;
+-- Stop the legacy cumulative recovery-spend writer as part of the same cut-over.
+-- Existing agg_stats.pop_recovered_spend data is left intact for rollback/audit,
+-- but no new recovery spend is appended there after this migration.
+DROP VIEW IF EXISTS {db}.mv_fact_pop_recovered_to_agg_stats SYNC;
 
 -- ============================================================
 -- DROP MATERIALIZED VIEWS BEFORE RECREATION
@@ -1934,65 +1938,58 @@ ALL INNER JOIN pending_conversions AS a
 SETTINGS query_plan_join_swap_table = 'false';
 
 -- ============================================================
--- MV: RECOVERED POP IMPRESSIONS -> SEPARATE RECOVERY SPEND
+-- POP RECOVERY EVENT LOG (DELTA SOURCE FOR BACKEND)
 -- ============================================================
 --
--- Keep the existing spend_views_table path untouched. This companion MV writes
--- only the additional cumulative recovery component required by the backend.
-CREATE MATERIALIZED VIEW IF NOT EXISTS {db}.mv_fact_pop_recovered_to_agg_stats
-TO {db}.agg_stats
+-- Do not maintain another ever-growing cumulative money counter.  Every newly
+-- recovered POP impression emits one immutable source event.  The backend can
+-- scan only rows after its last composite marker
+-- (recovery_at, recovery_source_key), group those rows by user/campaign, and
+-- turn only that new slice into Redis adjustments.
+--
+-- recovery_source_key is already the stable idempotency key used by the POP
+-- recovery writer (pop-click:<clicks_uuid>).  recovery_at orders newly emitted
+-- events; the source key breaks ties inside one recovery batch.
+CREATE TABLE IF NOT EXISTS {db}.pop_recovery_events
+(
+    recovery_at             DateTime64(3, 'UTC'),
+    recovery_source_key     String,
+    recovery_key            String DEFAULT '',
+    auction_uuid            UUID,
+
+    user_id                 String DEFAULT '',
+    campaign_id             String DEFAULT '',
+    spend                   Float64,
+
+    event_time              DateTime64(3, 'UTC'),
+    event_date              Date
+)
+ENGINE = MergeTree
+PARTITION BY toYYYYMM(recovery_at)
+ORDER BY (recovery_at, recovery_source_key)
+TTL recovery_at + INTERVAL 6 MONTH DELETE
+SETTINGS index_granularity = 8192;
+
+CREATE MATERIALIZED VIEW IF NOT EXISTS {db}.mv_fact_pop_recovered_to_events
+TO {db}.pop_recovery_events
 AS
 SELECT
-    win_user_id,
-    win_cid,
-    win_crid,
+    assumeNotNull(pop_recovered_at) AS recovery_at,
+    pop_recovery_source_key AS recovery_source_key,
+    pop_recovery_key AS recovery_key,
+    uuid AS auction_uuid,
 
-    event_date,
+    win_user_id AS user_id,
+    win_cid AS campaign_id,
+    win_dsp_price / 1000 AS spend,
 
-    device_type,
-    os,
-    os_version,
-    event_hour,
-
-    browser,
-    geo,
-    site_id,
-
-    format,
-    typic,
-
-    toUInt64(0) AS impressions,
-    toUInt64(0) AS clicks,
-
-    toUInt64(0) AS conversions,
-    toFloat64(0) AS payout,
-    toUInt64(0) AS conversions_approved,
-    toFloat64(0) AS payout_approved,
-
-    toFloat64(0) AS spend_clicks_table,
-    toFloat64(0) AS spend_views_table,
-    sum(win_dsp_price / 1000) AS pop_recovered_spend
+    event_time AS event_time,
+    event_date AS event_date
 FROM {db}.fact_impressions
 WHERE format = 'POP'
   AND is_pop_recovered = 1
-GROUP BY
-    win_user_id,
-    win_cid,
-    win_crid,
-
-    event_date,
-
-    device_type,
-    os,
-    os_version,
-    event_hour,
-
-    browser,
-    geo,
-    site_id,
-
-    format,
-    typic;
+  AND pop_recovered_at IS NOT NULL
+  AND pop_recovery_source_key != '';
 
 
 -- ============================================================
