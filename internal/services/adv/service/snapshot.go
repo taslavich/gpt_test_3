@@ -28,6 +28,11 @@ var weekdayIndex = map[string]int{
 	"sat": 6,
 }
 
+const (
+	postgresRecoveryProbeInterval = time.Second
+	postgresRecoveryProbeTimeout  = 750 * time.Millisecond
+)
+
 // ParseActiveIntervalSchedule expands weekly inclusive-hour intervals into
 // concrete UTC half-open ranges clipped to the campaign window.
 func ParseActiveIntervalSchedule(schedule [][]string, windowStart, windowEnd time.Time) ([]TimeRange, error) {
@@ -132,11 +137,20 @@ func (s *AuctionService) setPostgresAvailability(available bool, reason string) 
 	if previous == available {
 		return
 	}
-	if available {
-		log.Printf("[ADV][POSTGRES_RECOVERED] rtb_balance_guard_spend_multiplier=1.00 reason=%s", reason)
-		return
+	multiplier := "1.00"
+	if !available {
+		multiplier = "1.20"
 	}
-	log.Printf("[ADV][POSTGRES_UNAVAILABLE] rtb_balance_guard_spend_multiplier=1.20 reason=%s", reason)
+	log.Printf(
+		"[ADV][POSTGRES_AVAILABILITY] available=%t reason=%s rtb_balance_guard_spend_multiplier=%s",
+		available, reason, multiplier,
+	)
+	if !available && s.postgresRecoveryWake != nil {
+		select {
+		case s.postgresRecoveryWake <- struct{}{}:
+		default:
+		}
+	}
 }
 
 func (s *AuctionService) updatePostgresAvailabilityAfterRefreshError(db *sql.DB) {
@@ -148,9 +162,9 @@ func (s *AuctionService) updatePostgresAvailabilityAfterRefreshError(db *sql.DB)
 		return
 	}
 	// Do not perform PostgreSQL I/O in the auction hot path. A failed snapshot
-	// refresh performs one bounded connectivity probe here; later successful
-	// refreshes restore normal raw-Redis spend semantics automatically.
-	pingCtx, cancel := context.WithTimeout(context.Background(), time.Second)
+	// refresh performs one bounded connectivity probe here only to classify the
+	// error. Confirmed outages are then recovered by the background probe.
+	pingCtx, cancel := context.WithTimeout(context.Background(), postgresRecoveryProbeTimeout)
 	err := db.PingContext(pingCtx)
 	cancel()
 	if err != nil {
@@ -270,6 +284,54 @@ func (s *AuctionService) excludeInvalidIPCampaignsFromCurrentSnapshot(warnings [
 		return
 	}
 	log.Printf("ADV snapshot: fail-closed %d campaign(s) with invalid IP targeting while retaining the rest of the previous snapshot", removed)
+}
+
+func (s *AuctionService) StartPostgresRecoveryProbe(ctx context.Context, db *sql.DB, interval, timeout time.Duration) {
+	if s == nil || db == nil {
+		return
+	}
+	if interval <= 0 {
+		interval = postgresRecoveryProbeInterval
+	}
+	if timeout <= 0 {
+		timeout = postgresRecoveryProbeTimeout
+	}
+
+	s.postgresRecoveryOnce.Do(func() {
+		go func() {
+			for {
+				select {
+				case <-ctx.Done():
+					return
+				case <-s.postgresRecoveryWake:
+				}
+
+				for !s.postgresAvailable.Load() {
+					timer := time.NewTimer(interval)
+					select {
+					case <-ctx.Done():
+						timer.Stop()
+						return
+					case <-timer.C:
+					}
+
+					// A successful real snapshot refresh can restore availability while
+					// the probe is sleeping. Re-check before issuing any extra DB I/O.
+					if s.postgresAvailable.Load() {
+						break
+					}
+
+					pingCtx, cancel := context.WithTimeout(ctx, timeout)
+					err := db.PingContext(pingCtx)
+					cancel()
+					if err == nil {
+						s.setPostgresAvailability(true, "recovery_probe_succeeded")
+						break
+					}
+				}
+			}
+		}()
+	})
 }
 
 func (s *AuctionService) StartPostgresRefreshTicker(ctx context.Context, db *sql.DB, interval time.Duration, onError func(error)) {

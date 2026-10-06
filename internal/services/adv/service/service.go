@@ -217,11 +217,13 @@ type AuctionService struct {
 	rtbHTTPClient           *http.Client
 	statsRedisClients       []*redis.Client
 
-	antiperekrut        *AntiPerekrutManager
-	antiperekrutEnabled bool
-	diagnostics         *AuctionDiagnostics
-	testLogsEnabled     atomic.Bool
-	postgresAvailable   atomic.Bool
+	antiperekrut         *AntiPerekrutManager
+	antiperekrutEnabled  bool
+	diagnostics          *AuctionDiagnostics
+	testLogsEnabled      atomic.Bool
+	postgresAvailable    atomic.Bool
+	postgresRecoveryWake chan struct{}
+	postgresRecoveryOnce sync.Once
 
 	snapshotWarningMu       sync.Mutex
 	snapshotWarningSeen     map[string]struct{}
@@ -230,15 +232,16 @@ type AuctionService struct {
 
 func NewAuctionService(runtime *RuntimeStore, winners *WinnerStore, percents *PercentStore, quality *QualityStore, siteIDQuality *SiteIDQualityStore) *AuctionService {
 	s := &AuctionService{
-		runtime:             runtime,
-		winners:             winners,
-		percents:            percents,
-		quality:             quality,
-		siteIDQuality:       siteIDQuality,
-		antiperekrutEnabled: true,
-		diagnostics:         NewAuctionDiagnostics(time.Now().UTC()),
-		snapshotWarningSeen: make(map[string]struct{}),
-		rtbHTTPClient:       newSafeRTBHTTPClient(),
+		runtime:              runtime,
+		winners:              winners,
+		percents:             percents,
+		quality:              quality,
+		siteIDQuality:        siteIDQuality,
+		antiperekrutEnabled:  true,
+		diagnostics:          NewAuctionDiagnostics(time.Now().UTC()),
+		snapshotWarningSeen:  make(map[string]struct{}),
+		rtbHTTPClient:        newSafeRTBHTTPClient(),
+		postgresRecoveryWake: make(chan struct{}, 1),
 	}
 	s.snapshot.Store(&Snapshot{Campaigns: []*Campaign{}, UserGoals: map[string]float64{}, UserPromoSpendRemaining: map[string]float64{}, UserPromoRevision: map[string]int64{}, UserPromoGeneration: map[string]int64{}, UserAntiPerekrutBlocked: map[string]bool{}})
 	// Production startup always performs a successful initial PostgreSQL snapshot

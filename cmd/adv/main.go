@@ -377,6 +377,7 @@ func run() error {
 	}
 	log.Printf("AdvServiceControlURLs: %q", cfg.AdvServiceControlURLs)
 
+	auctionService.StartPostgresRecoveryProbe(ctx, db, 0, 0)
 	auctionService.StartPostgresRefreshTicker(ctx, db, cfg.CampaignRefreshInterval, func(err error) {
 		_ = botSend(ctx, fmt.Sprintf("[ADV][SNAPSHOT_REFRESH_ERROR] %v", err))
 		log.Printf("ADV snapshot refresh failed; previous snapshot retained: %v", err)
