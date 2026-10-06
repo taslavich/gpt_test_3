@@ -89,58 +89,45 @@ func TestPopRecoveryMigrationStopsOldWritersBeforeSchemaWork(t *testing.T) {
 	}
 }
 
-func TestPopLateArrivalGuardIsUnboundedAndPointScoped(t *testing.T) {
+func TestNormalImpressionIngestionDoesNotReadPopRecoveryState(t *testing.T) {
 	t.Parallel()
 
-	guard := ddlSection(
+	section := ddlSection(
 		t,
 		"CREATE MATERIALIZED VIEW IF NOT EXISTS {db}.mv_impressions_to_fact",
 		"REFRESHABLE MV: CLICKS INPUT -> FACT CLICKS",
 	)
 
-	if strings.Contains(guard, "INTERVAL 2 HOUR") {
-		t.Fatal("late-arrival duplicate protection must not depend on a two-hour rolling window")
-	}
-
-	for _, want := range []string{
+	for _, forbidden := range []string{
+		"ranked_pending AS",
 		"pending_pop_auctions AS",
-		"o.event_time AS event_time",
-		"toDate(o.event_time) AS event_date",
-		"PREWHERE event_date IN",
-		"AND event_time IN",
-		"AND (uuid, event_time) IN",
+		"pop_fact_state AS",
+		"pop_click_state AS",
+		"legacy_recovery_state AS",
 		"is_pop_recovered = 1",
-		"pop_recovery_key = concat('pop-auction:', toString(uuid))",
 		"i.impressions_uuid = c.clicks_uuid",
-		"ifNull(fs.impression_cnt, 0) + toUInt64(a.pop_pending_rank)",
-		"<= ifNull(cs.click_cnt, 0)",
+		"pop_pending_rank",
 	} {
-		if !strings.Contains(guard, want) {
-			t.Fatalf("late-arrival guard is missing %q", want)
+		if strings.Contains(section, forbidden) {
+			t.Fatalf("normal impression MV must not contain removed POP late-arrival guard fragment %q", forbidden)
 		}
 	}
 
-	// A recovered slot whose click deficit is already closed must reject a real
-	// callback regardless of elapsed wall-clock time. The SQL has no age term;
-	// this small model locks the count/rank predicate used by the view.
-	accept := func(recovered, legacy bool, impressionCnt, uniqueImpressionCnt, clickCnt, pendingRank uint64) bool {
-		noRecoveryEvidence := !recovered && !legacy && impressionCnt == uniqueImpressionCnt
-		stillUncovered := impressionCnt+pendingRank <= clickCnt
-		return noRecoveryEvidence || stillUncovered
-	}
-	recoveredAt := time.Date(2026, 10, 1, 0, 0, 0, 0, time.UTC)
-	lateRealAt := recoveredAt.Add(49 * time.Hour)
-	if lateRealAt.Sub(recoveredAt) <= 2*time.Hour {
-		t.Fatal("regression setup must exercise a callback arriving significantly later than two hours")
-	}
-	if accept(true, false, 1, 1, 1, 1) {
-		t.Fatalf("late real impression after %s and an already-covered recovery slot would double bill", lateRealAt.Sub(recoveredAt))
-	}
-	if !accept(true, false, 1, 1, 2, 1) {
-		t.Fatal("late-arrival guard must still allow a genuinely uncovered click slot")
-	}
-	if !accept(false, false, 1, 1, 1, 1) {
-		t.Fatal("ordinary POP impression without recovery evidence must keep normal ingestion semantics")
+	for _, required := range []string{
+		"pending_impressions AS",
+		"FROM {db}.impressions_in",
+		"PREWHERE created_at >= now() - INTERVAL 60 MINUTE",
+		"WHERE impressions_uuid NOT IN",
+		"FROM {db}.fact_impressions",
+		"PREWHERE created_at >= now() - INTERVAL 65 MINUTE",
+		"LIMIT 1 BY impressions_uuid",
+		"FROM pending_impressions AS a",
+		"ANY INNER JOIN {db}.ortb AS o",
+		"toUInt8(0) AS is_pop_recovered",
+	} {
+		if !strings.Contains(section, required) {
+			t.Fatalf("normal impression ingestion lost required fragment %q", required)
+		}
 	}
 }
 

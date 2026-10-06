@@ -1380,9 +1380,14 @@ WITH
     pending_impressions AS
     (
         /*
-         * Deduplicate physical retries by impressions_uuid exactly as before,
-         * then rank the still-pending callbacks per auction UUID. The rank is
-         * only used when explicit or legacy POP recovery evidence exists.
+         * Keep the original retry-deduplication semantics: only callbacks not
+         * already materialized in fact_impressions are eligible, and physical
+         * retries of the same impressions_uuid collapse to the earliest row.
+         *
+         * IMPORTANT: the POP late-arrival/double-billing guard is intentionally
+         * removed here. Recovery remains responsible for creating recovered
+         * fact rows, but a later real callback is no longer cross-checked
+         * against fact_clicks/fact_impressions recovery state in this minute MV.
          */
         SELECT
             event_time_impressions,
@@ -1400,158 +1405,6 @@ WITH
         )
         ORDER BY created_at ASC, impressions_uuid ASC
         LIMIT 1 BY impressions_uuid
-    ),
-
-    ranked_pending AS
-    (
-        SELECT
-            *,
-            row_number() OVER
-            (
-                PARTITION BY uuid
-                ORDER BY event_time_impressions ASC, impressions_uuid ASC
-            ) AS pop_pending_rank
-        FROM pending_impressions
-    ),
-
-    pending_pop_auctions AS
-    (
-        /*
-         * Resolve the immutable auction event_time once from ORTB.  Both fact
-         * tables are ordered by event_time, so this gives the late-arrival
-         * guard an unbounded lookup without scanning an arbitrary historical
-         * window.  uuid keeps the point lookup tied to the same source auction.
-         */
-        SELECT DISTINCT
-            a.uuid AS uuid,
-            o.event_time AS event_time,
-            toDate(o.event_time) AS event_date,
-            concat('pop-auction:', toString(a.uuid)) AS recovery_key
-        FROM pending_impressions AS a
-        ANY INNER JOIN {db}.ortb AS o
-            ON a.uuid = o.uuid
-        WHERE o.format = 'POP'
-    ),
-
-    pop_fact_state AS
-    (
-        SELECT
-            uuid,
-            count() AS impression_cnt,
-            uniqExact(impressions_uuid) AS unique_impression_uuid_cnt,
-            countIf(
-                is_pop_recovered = 1
-                AND pop_recovery_key = concat('pop-auction:', toString(uuid))
-            ) AS recovered_cnt
-        FROM {db}.fact_impressions
-        PREWHERE event_date IN
-        (
-            SELECT event_date
-            FROM pending_pop_auctions
-        )
-          AND event_time IN
-        (
-            SELECT event_time
-            FROM pending_pop_auctions
-        )
-        WHERE format = 'POP'
-          AND (uuid, event_time) IN
-          (
-              SELECT uuid, event_time
-              FROM pending_pop_auctions
-          )
-        GROUP BY uuid
-    ),
-
-    pop_click_state AS
-    (
-        SELECT
-            uuid,
-            uniqExact(clicks_uuid) AS click_cnt
-        FROM {db}.fact_clicks
-        PREWHERE event_date IN
-        (
-            SELECT event_date
-            FROM pending_pop_auctions
-        )
-          AND event_time IN
-        (
-            SELECT event_time
-            FROM pending_pop_auctions
-        )
-        WHERE format = 'POP'
-          AND (uuid, event_time) IN
-          (
-              SELECT uuid, event_time
-              FROM pending_pop_auctions
-          )
-        GROUP BY uuid
-    ),
-
-    legacy_recovery_state AS
-    (
-        /*
-         * Pre-Patch-1 full-missing recovery reused clicks_uuid as
-         * impressions_uuid.  Keep that transition signature indefinitely too,
-         * but constrain the read by the exact auction event_time rather than a
-         * rolling two-hour window.  Partial legacy recovery is still detected
-         * by duplicated impressions_uuid in pop_fact_state.
-         */
-        SELECT
-            i.uuid AS uuid,
-            count() AS matched_source_cnt
-        FROM
-        (
-            SELECT
-                uuid,
-                event_time,
-                impressions_uuid
-            FROM {db}.fact_impressions
-            PREWHERE event_date IN
-            (
-                SELECT event_date
-                FROM pending_pop_auctions
-            )
-              AND event_time IN
-            (
-                SELECT event_time
-                FROM pending_pop_auctions
-            )
-            WHERE format = 'POP'
-              AND (uuid, event_time) IN
-              (
-                  SELECT uuid, event_time
-                  FROM pending_pop_auctions
-              )
-        ) AS i
-        ANY INNER JOIN
-        (
-            SELECT
-                uuid,
-                event_time,
-                clicks_uuid
-            FROM {db}.fact_clicks
-            PREWHERE event_date IN
-            (
-                SELECT event_date
-                FROM pending_pop_auctions
-            )
-              AND event_time IN
-            (
-                SELECT event_time
-                FROM pending_pop_auctions
-            )
-            WHERE format = 'POP'
-              AND (uuid, event_time) IN
-              (
-                  SELECT uuid, event_time
-                  FROM pending_pop_auctions
-              )
-        ) AS c
-            ON i.uuid = c.uuid
-           AND i.event_time = c.event_time
-           AND i.impressions_uuid = c.clicks_uuid
-        GROUP BY i.uuid
     )
 
 SELECT
@@ -1607,35 +1460,9 @@ SELECT
         ''
     ) AS pop_recovery_key,
     '' AS pop_recovery_source_key
-FROM ranked_pending AS a
+FROM pending_impressions AS a
 ANY INNER JOIN {db}.ortb AS o
-    ON a.uuid = o.uuid
-ANY LEFT JOIN pop_fact_state AS fs
-    ON a.uuid = fs.uuid
-ANY LEFT JOIN pop_click_state AS cs
-    ON a.uuid = cs.uuid
-ANY LEFT JOIN legacy_recovery_state AS ls
-    ON a.uuid = ls.uuid
-WHERE
-    /*
-     * Normal impressions retain their old semantics. For POP, the extra guard
-     * activates only after explicit or legacy recovery evidence exists for the
-     * same auction. A late real callback is accepted only while there is still
-     * an uncovered click slot; once recovery has filled the deficit it cannot
-     * create a second billable fact row/spend for that source auction.
-     */
-    o.format != 'POP'
-    OR
-    (
-        ifNull(fs.recovered_cnt, 0) = 0
-        AND ifNull(ls.matched_source_cnt, 0) = 0
-        AND ifNull(fs.impression_cnt, 0) = ifNull(fs.unique_impression_uuid_cnt, 0)
-    )
-    OR
-    (
-        ifNull(fs.impression_cnt, 0) + toUInt64(a.pop_pending_rank)
-        <= ifNull(cs.click_cnt, 0)
-    );
+    ON a.uuid = o.uuid;
 
 
 -- ============================================================
