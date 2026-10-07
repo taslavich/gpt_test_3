@@ -428,7 +428,11 @@ func (s *Server) GetBids_V2_5(
 				}
 			}
 		}
-		jobs = append(jobs, demandJob{endpoint: endpoint, domain: domain, jsonData: jsonData, client: getDspHttpClients(domain, s.clients)})
+		client := demandEndpoint.client
+		if client == nil {
+			client = getDspHttpClients(domain, s.clients)
+		}
+		jobs = append(jobs, demandJob{endpoint: endpoint, domain: domain, jsonData: jsonData, client: client})
 	}
 
 	codesCh := make(chan *dspDomainCode, len(jobs))

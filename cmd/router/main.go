@@ -23,6 +23,7 @@ import (
 	antiControl "gitlab.com/twinbid-exchange/RTB-exchange/internal/services/antiperekrut"
 	dspRouterWeb "gitlab.com/twinbid-exchange/RTB-exchange/internal/services/dspRouter/web"
 	redis_service "gitlab.com/twinbid-exchange/RTB-exchange/internal/services/redis"
+	sppAdapterWeb "gitlab.com/twinbid-exchange/RTB-exchange/internal/services/sspAdapter/web"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/redis/go-redis/v9"
@@ -137,35 +138,45 @@ func main() {
 	vidAdultLinks := initOptionalLinkMap(cfg.SspGeoDspLinksVidAdultFilePath)
 	vidMainstreamLinks := initOptionalLinkMap(cfg.SspGeoDspLinksVidMainstreamFilePath)
 
+	dspClientRegistry := dspRouterWeb.NewDSPHTTPClientRegistry()
+	initEndpointStore := func(path, typic string) *dspRouterWeb.DSPEndpointStore {
+		store, err := dspRouterWeb.NewDSPEndpointStore(path, typic, processor, dspClientRegistry)
+		if err != nil {
+			log.Fatalf("Failed to initialize DSP endpoints from %s: %v", path, err)
+		}
+		return store
+	}
+
 	formatRoutes := &dspRouterWeb.FormatRoutesV25{
 		POP: dspRouterWeb.FormatRouteV25{
-			AdultEndpoints: cfg.DSPEndpointsAdult_v_2_5, MainstreamEndpoints: cfg.DSPEndpointsMainstream_v_2_5,
+			AdultStore: initEndpointStore(cfg.DspEndpointsPopAdultFilePath, sppAdapterWeb.ADULT), MainstreamStore: initEndpointStore(cfg.DspEndpointsPopMainstreamFilePath, sppAdapterWeb.MAINSTREAM),
 			AdultLinkFilename: cfg.SspGeoDspLinksAdultFilePath, MainstreamLinkFilename: cfg.SspGeoDspLinksMainstreamFilePath,
 			AdultLinkMap: &popAdultLinks, MainstreamLinkMap: &popMainstreamLinks,
 		},
 		BAN: dspRouterWeb.FormatRouteV25{
-			AdultEndpoints: cfg.DSPEndpointsBanAdultV25, MainstreamEndpoints: cfg.DSPEndpointsBanMainstreamV25,
+			AdultStore: initEndpointStore(cfg.DspEndpointsBanAdultFilePath, sppAdapterWeb.ADULT), MainstreamStore: initEndpointStore(cfg.DspEndpointsBanMainstreamFilePath, sppAdapterWeb.MAINSTREAM),
 			AdultLinkFilename: cfg.SspGeoDspLinksBanAdultFilePath, MainstreamLinkFilename: cfg.SspGeoDspLinksBanMainstreamFilePath,
 			AdultLinkMap: &banAdultLinks, MainstreamLinkMap: &banMainstreamLinks,
 		},
 		NAT: dspRouterWeb.FormatRouteV25{
-			AdultEndpoints: cfg.DSPEndpointsNatAdultV25, MainstreamEndpoints: cfg.DSPEndpointsNatMainstreamV25,
+			AdultStore: initEndpointStore(cfg.DspEndpointsNatAdultFilePath, sppAdapterWeb.ADULT), MainstreamStore: initEndpointStore(cfg.DspEndpointsNatMainstreamFilePath, sppAdapterWeb.MAINSTREAM),
 			AdultLinkFilename: cfg.SspGeoDspLinksNatAdultFilePath, MainstreamLinkFilename: cfg.SspGeoDspLinksNatMainstreamFilePath,
 			AdultLinkMap: &natAdultLinks, MainstreamLinkMap: &natMainstreamLinks,
 		},
 		IPP: dspRouterWeb.FormatRouteV25{
-			AdultEndpoints: cfg.DSPEndpointsIppAdultV25, MainstreamEndpoints: cfg.DSPEndpointsIppMainstreamV25,
+			AdultStore: initEndpointStore(cfg.DspEndpointsIppAdultFilePath, sppAdapterWeb.ADULT), MainstreamStore: initEndpointStore(cfg.DspEndpointsIppMainstreamFilePath, sppAdapterWeb.MAINSTREAM),
 			AdultLinkFilename: cfg.SspGeoDspLinksIppAdultFilePath, MainstreamLinkFilename: cfg.SspGeoDspLinksIppMainstreamFilePath,
 			AdultLinkMap: &ippAdultLinks, MainstreamLinkMap: &ippMainstreamLinks,
 		},
 		VID: dspRouterWeb.FormatRouteV25{
-			AdultEndpoints: cfg.DSPEndpointsVidAdultV25, MainstreamEndpoints: cfg.DSPEndpointsVidMainstreamV25,
+			AdultStore: initEndpointStore(cfg.DspEndpointsVidAdultFilePath, sppAdapterWeb.ADULT), MainstreamStore: initEndpointStore(cfg.DspEndpointsVidMainstreamFilePath, sppAdapterWeb.MAINSTREAM),
 			AdultLinkFilename: cfg.SspGeoDspLinksVidAdultFilePath, MainstreamLinkFilename: cfg.SspGeoDspLinksVidMainstreamFilePath,
 			AdultLinkMap: &vidAdultLinks, MainstreamLinkMap: &vidMainstreamLinks,
 		},
 	}
 
-	clients := dspRouterWeb.InitSspHttpClients(formatRoutes.EndpointSets()...)
+	// Endpoint stores own per-DSP clients. Keep only DEFAULT for legacy fallback paths/tests.
+	clients := dspRouterWeb.InitSspHttpClients()
 
 	filtersAdl, err := filter.NewFiltersBox(cfg.DspFiltersAdlFilePath)
 	if err != nil {

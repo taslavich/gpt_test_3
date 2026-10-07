@@ -162,7 +162,8 @@ type RouterConfig struct {
 	GrpcServer GrpcServer
 	HttpServer HttpServer
 
-	// Legacy endpoint names remain POP to avoid changing the current deployment.
+	// Legacy env endpoint fields are retained for config compatibility. Router
+	// runtime now reads the durable JSON endpoint stores below.
 	DSPEndpointsAdult_v_2_5      MapStringToString `yaml:"DSP_ENDPOINTS_ADULT_V_2_5" env:"DSP_ENDPOINTS_ADULT_V_2_5"`
 	DSPEndpointsMainstream_v_2_5 MapStringToString `yaml:"DSP_ENDPOINTS_MAINSTREAM_V_2_5" env:"DSP_ENDPOINTS_MAINSTREAM_V_2_5"`
 
@@ -174,6 +175,19 @@ type RouterConfig struct {
 	DSPEndpointsIppMainstreamV25 MapStringToString `yaml:"DSP_ENDPOINTS_IPP_MAINSTREAM_V_2_5" env:"DSP_ENDPOINTS_IPP_MAINSTREAM_V_2_5"`
 	DSPEndpointsVidAdultV25      MapStringToString `yaml:"DSP_ENDPOINTS_VID_ADULT_V_2_5" env:"DSP_ENDPOINTS_VID_ADULT_V_2_5"`
 	DSPEndpointsVidMainstreamV25 MapStringToString `yaml:"DSP_ENDPOINTS_VID_MAINSTREAM_V_2_5" env:"DSP_ENDPOINTS_VID_MAINSTREAM_V_2_5"`
+
+	// Runtime-editable DSP endpoint maps. JSON files are the durable source;
+	// PUT /filter/dsp_endpoints_map atomically swaps the in-memory snapshot.
+	DspEndpointsPopAdultFilePath      string `yaml:"DSP_ENDPOINTS_POP_ADULT_FILE_PATH" env:"DSP_ENDPOINTS_POP_ADULT_FILE_PATH" env-default:"./dspEndpoints_pop_adult.json"`
+	DspEndpointsPopMainstreamFilePath string `yaml:"DSP_ENDPOINTS_POP_MAINSTREAM_FILE_PATH" env:"DSP_ENDPOINTS_POP_MAINSTREAM_FILE_PATH" env-default:"./dspEndpoints_pop_mainstream.json"`
+	DspEndpointsBanAdultFilePath      string `yaml:"DSP_ENDPOINTS_BAN_ADULT_FILE_PATH" env:"DSP_ENDPOINTS_BAN_ADULT_FILE_PATH" env-default:"./dspEndpoints_ban_adult.json"`
+	DspEndpointsBanMainstreamFilePath string `yaml:"DSP_ENDPOINTS_BAN_MAINSTREAM_FILE_PATH" env:"DSP_ENDPOINTS_BAN_MAINSTREAM_FILE_PATH" env-default:"./dspEndpoints_ban_mainstream.json"`
+	DspEndpointsNatAdultFilePath      string `yaml:"DSP_ENDPOINTS_NAT_ADULT_FILE_PATH" env:"DSP_ENDPOINTS_NAT_ADULT_FILE_PATH" env-default:"./dspEndpoints_nat_adult.json"`
+	DspEndpointsNatMainstreamFilePath string `yaml:"DSP_ENDPOINTS_NAT_MAINSTREAM_FILE_PATH" env:"DSP_ENDPOINTS_NAT_MAINSTREAM_FILE_PATH" env-default:"./dspEndpoints_nat_mainstream.json"`
+	DspEndpointsIppAdultFilePath      string `yaml:"DSP_ENDPOINTS_IPP_ADULT_FILE_PATH" env:"DSP_ENDPOINTS_IPP_ADULT_FILE_PATH" env-default:"./dspEndpoints_ipp_adult.json"`
+	DspEndpointsIppMainstreamFilePath string `yaml:"DSP_ENDPOINTS_IPP_MAINSTREAM_FILE_PATH" env:"DSP_ENDPOINTS_IPP_MAINSTREAM_FILE_PATH" env-default:"./dspEndpoints_ipp_mainstream.json"`
+	DspEndpointsVidAdultFilePath      string `yaml:"DSP_ENDPOINTS_VID_ADULT_FILE_PATH" env:"DSP_ENDPOINTS_VID_ADULT_FILE_PATH" env-default:"./dspEndpoints_vid_adult.json"`
+	DspEndpointsVidMainstreamFilePath string `yaml:"DSP_ENDPOINTS_VID_MAINSTREAM_FILE_PATH" env:"DSP_ENDPOINTS_VID_MAINSTREAM_FILE_PATH" env-default:"./dspEndpoints_vid_mainstream.json"`
 
 	DspRulesConfigPathV25 string `yaml:"DSP_RULES_CONFIG_PATH" env:"DSP_RULES_CONFIG_PATH_V_25"`
 	SppRulesConfigPathV25 string `yaml:"SPP_RULES_CONFIG_PATH" env:"SPP_RULES_CONFIG_PATH_V_25"`

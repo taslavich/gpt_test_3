@@ -1,6 +1,7 @@
 package dspRouterWeb
 
 import (
+	"net/http"
 	"sort"
 	"strings"
 
@@ -15,21 +16,26 @@ type GeoDspLinkMap map[string]map[string]map[string]bool
 type DSPEndpointV25 struct {
 	Endpoint string
 	Domain   string
+	client   *http.Client
 }
 
 // FormatRouteV25 isolates DSP endpoints and SSP/GEO allow-maps for one ad
 // format. Adult and mainstream stay independent inside that format.
 type FormatRouteV25 struct {
+	// Legacy endpoint maps are retained for tests/backwards compatibility.
+	// Production uses the atomic stores below.
 	AdultEndpoints      config.MapStringToString
 	MainstreamEndpoints config.MapStringToString
+	AdultStore          *DSPEndpointStore
+	MainstreamStore     *DSPEndpointStore
 
 	AdultLinkFilename      string
 	MainstreamLinkFilename string
 	AdultLinkMap           *GeoDspLinkMap
 	MainstreamLinkMap      *GeoDspLinkMap
 
-	// Precompiled once at startup; avoids map iteration/sorting and rule-manager
-	// lookups on the 100k RPS path.
+	// Legacy precompiled runtime used when no atomic endpoint store is configured.
+	// Production endpoint stores keep the same data inside immutable snapshots.
 	AdultOrdered         []DSPEndpointV25
 	MainstreamOrdered    []DSPEndpointV25
 	AdultNativeMask      filter.NativeFieldMask
@@ -90,15 +96,25 @@ func (r *FormatRoutesV25) selectRuntime(format, trafficType string) ([]DSPEndpoi
 	}
 	switch trafficType {
 	case sppAdapterWeb.ADULT:
+		ordered, nativeMask := route.AdultOrdered, route.AdultNativeMask
+		if route.AdultStore != nil {
+			snapshot := route.AdultStore.runtimeSnapshot()
+			ordered, nativeMask = snapshot.ordered, snapshot.nativeMask
+		}
 		if route.AdultLinkMap == nil {
-			return route.AdultOrdered, nil, route.AdultNativeMask
+			return ordered, nil, nativeMask
 		}
-		return route.AdultOrdered, *route.AdultLinkMap, route.AdultNativeMask
+		return ordered, *route.AdultLinkMap, nativeMask
 	case sppAdapterWeb.MAINSTREAM:
-		if route.MainstreamLinkMap == nil {
-			return route.MainstreamOrdered, nil, route.MainstreamNativeMask
+		ordered, nativeMask := route.MainstreamOrdered, route.MainstreamNativeMask
+		if route.MainstreamStore != nil {
+			snapshot := route.MainstreamStore.runtimeSnapshot()
+			ordered, nativeMask = snapshot.ordered, snapshot.nativeMask
 		}
-		return route.MainstreamOrdered, *route.MainstreamLinkMap, route.MainstreamNativeMask
+		if route.MainstreamLinkMap == nil {
+			return ordered, nil, nativeMask
+		}
+		return ordered, *route.MainstreamLinkMap, nativeMask
 	default:
 		return nil, nil, 0
 	}
@@ -119,6 +135,21 @@ func (r *FormatRoutesV25) selectConfig(format, trafficType string) (string, *Geo
 	}
 }
 
+func (r *FormatRoutesV25) selectEndpointStore(format, trafficType string) *DSPEndpointStore {
+	route := r.route(format)
+	if route == nil {
+		return nil
+	}
+	switch trafficType {
+	case sppAdapterWeb.ADULT:
+		return route.AdultStore
+	case sppAdapterWeb.MAINSTREAM:
+		return route.MainstreamStore
+	default:
+		return nil
+	}
+}
+
 func orderedEndpoints(endpoints config.MapStringToString) []DSPEndpointV25 {
 	if len(endpoints) == 0 {
 		return nil
@@ -127,13 +158,17 @@ func orderedEndpoints(endpoints config.MapStringToString) []DSPEndpointV25 {
 	for endpoint, domain := range endpoints {
 		ordered = append(ordered, DSPEndpointV25{Endpoint: endpoint, Domain: domain})
 	}
+	sortDSPEndpoints(ordered)
+	return ordered
+}
+
+func sortDSPEndpoints(ordered []DSPEndpointV25) {
 	sort.Slice(ordered, func(i, j int) bool {
 		if ordered[i].Domain == ordered[j].Domain {
 			return ordered[i].Endpoint < ordered[j].Endpoint
 		}
 		return ordered[i].Domain < ordered[j].Domain
 	})
-	return ordered
 }
 
 func (r *FormatRoutesV25) prepare(processor *filter.OptimizedFilterProcessor) {
@@ -144,16 +179,23 @@ func (r *FormatRoutesV25) prepare(processor *filter.OptimizedFilterProcessor) {
 		if route == nil {
 			return
 		}
-		route.AdultOrdered = orderedEndpoints(route.AdultEndpoints)
-		route.MainstreamOrdered = orderedEndpoints(route.MainstreamEndpoints)
-		if processor == nil {
-			return
+		if route.AdultStore == nil {
+			route.AdultOrdered = orderedEndpoints(route.AdultEndpoints)
+			route.AdultNativeMask = 0
+			if processor != nil {
+				for _, dsp := range route.AdultOrdered {
+					route.AdultNativeMask |= processor.NativeMaskForDSPV25(DeletePrefix(dsp.Domain))
+				}
+			}
 		}
-		for _, dsp := range route.AdultOrdered {
-			route.AdultNativeMask |= processor.NativeMaskForDSPV25(DeletePrefix(dsp.Domain))
-		}
-		for _, dsp := range route.MainstreamOrdered {
-			route.MainstreamNativeMask |= processor.NativeMaskForDSPV25(DeletePrefix(dsp.Domain))
+		if route.MainstreamStore == nil {
+			route.MainstreamOrdered = orderedEndpoints(route.MainstreamEndpoints)
+			route.MainstreamNativeMask = 0
+			if processor != nil {
+				for _, dsp := range route.MainstreamOrdered {
+					route.MainstreamNativeMask |= processor.NativeMaskForDSPV25(DeletePrefix(dsp.Domain))
+				}
+			}
 		}
 	}
 	prepareRoute(&r.POP)

@@ -27,6 +27,9 @@ const (
 
 	GetDspFiltersCidMapUrl = "/filter/dsp_filters_cid_map"
 	PutDspFiltersCidMapUrl = "/filter/dsp_filters_cid_map"
+
+	GetDspEndpointsMapURL = "/filter/dsp_endpoints_map"
+	PutDspEndpointsMapURL = "/filter/dsp_endpoints_map"
 )
 
 const (
@@ -34,6 +37,7 @@ const (
 	GetDebugDspFiltersMapUrl     = "/filter/debug_dsp_filters_map"
 	GetDebugDspChangersMapUrl    = "/filter/debug_dsp_changers_map"
 	GetDebugDspFiltersCidMapUrl  = "/filter/debug_dsp_filters_cid_map"
+	GetDebugDspEndpointsMapURL   = "/filter/debug_dsp_endpoints_map"
 )
 
 type getSspGeoDspLinksRequest_V2_5 struct {
@@ -54,6 +58,17 @@ type putSspGeoDspLinksRequest_V2_5 struct {
 	Typic  string        `in:"query=typic" required:"true"`
 	Format string        `in:"query=format"`
 	Mapa   GeoDspLinkMap `in:"body=json"`
+}
+
+type getDspEndpointsMapRequest struct {
+	Typic  string `in:"query=typic" required:"true"`
+	Format string `in:"query=format"`
+}
+
+type putDspEndpointsMapRequest struct {
+	Typic  string         `in:"query=typic" required:"true"`
+	Format string         `in:"query=format"`
+	Mapa   DSPEndpointMap `in:"body=json"`
 }
 
 type getDspChangersMapRequest_V2_5 struct {
@@ -114,6 +129,22 @@ func InitHttpRoutes(
 		httpin.NewInput(putSspGeoDspLinksRequest_V2_5{}),
 	).Put(PutSspGeoDspLinksMapUrl, func(w http.ResponseWriter, r *http.Request) {
 		putSspGeoLinksMap(w, r, formatRoutes)
+	})
+
+	httpRouter.With(
+		httpin.NewInput(getDspEndpointsMapRequest{}),
+	).Get(GetDspEndpointsMapURL, func(w http.ResponseWriter, r *http.Request) {
+		getDspEndpointsMap(w, r, formatRoutes, false)
+	})
+	httpRouter.With(
+		httpin.NewInput(getDspEndpointsMapRequest{}),
+	).Get(GetDebugDspEndpointsMapURL, func(w http.ResponseWriter, r *http.Request) {
+		getDspEndpointsMap(w, r, formatRoutes, true)
+	})
+	httpRouter.With(
+		httpin.NewInput(putDspEndpointsMapRequest{}),
+	).Put(PutDspEndpointsMapURL, func(w http.ResponseWriter, r *http.Request) {
+		putDspEndpointsMap(w, r, formatRoutes)
 	})
 
 	httpRouter.With(
