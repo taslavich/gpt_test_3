@@ -55,20 +55,22 @@ type Result struct {
 type Server struct {
 	safetyUntil atomic.Int64
 
-	Config       Config
-	ORTB         []*redis.Client
-	Redis        redis.UniversalClient
-	HTTP         *http.Client
-	Telemetry    *Telemetry
-	slots        chan struct{}
-	proxies      []*net.IPNet
-	lastMu       sync.Mutex
-	last         map[string]int64
-	Requests     atomic.Uint64
-	Rejected     atomic.Uint64
-	RTBCalls     atomic.Uint64
-	breakerUntil atomic.Int64
-	failures     atomic.Int64
+	Config         Config
+	InfraSettings  infraSettings
+	Infrastructure *infrastructure
+	ORTB           []*redis.Client
+	Redis          redis.UniversalClient
+	HTTP           *http.Client
+	Telemetry      *Telemetry
+	slots          chan struct{}
+	proxies        []*net.IPNet
+	lastMu         sync.Mutex
+	last           map[string]int64
+	Requests       atomic.Uint64
+	Rejected       atomic.Uint64
+	RTBCalls       atomic.Uint64
+	breakerUntil   atomic.Int64
+	failures       atomic.Int64
 }
 
 func NewServer(cfg Config, r redis.UniversalClient, t *Telemetry) (*Server, error) {
@@ -76,6 +78,12 @@ func NewServer(cfg Config, r redis.UniversalClient, t *Telemetry) (*Server, erro
 		return nil, e
 	}
 	s := &Server{Config: cfg, Redis: r, Telemetry: t, slots: make(chan struct{}, cfg.MaxInflight), last: map[string]int64{}, HTTP: &http.Client{Timeout: cfg.RTBTimeout, Transport: &http.Transport{MaxIdleConns: 4096, MaxIdleConnsPerHost: 2048, MaxConnsPerHost: cfg.MaxInflight, IdleConnTimeout: 90 * time.Second}, CheckRedirect: func(req *http.Request, via []*http.Request) error { return http.ErrUseLastResponse }}}
+	s.InfraSettings, _ = infrastructureSettings(cfg)
+	if cfg.AntiBlockEnabled {
+		initCtx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		s.Infrastructure = newInfrastructure(initCtx, s.InfraSettings, r)
+		cancel()
+	}
 	for _, raw := range strings.Split(cfg.TrustedProxies, ",") {
 		if raw == "" {
 			continue
@@ -109,15 +117,20 @@ func (s *Server) Handler() http.Handler {
 	})
 	m.HandleFunc("GET /metrics", func(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprintf(w, "pub_requests_total %d\npub_rejected_total %d\npub_rtb_calls_total %d\n", s.Requests.Load(), s.Rejected.Load(), s.RTBCalls.Load())
+		s.infrastructureMetrics(w)
 	})
 	m.HandleFunc("GET /config", s.publicConfig)
 	m.HandleFunc("POST /request", s.request)
 	m.HandleFunc("GET /delivery/{token}", s.delivery)
 	m.HandleFunc("POST /confirm/{token}", s.confirm)
 	m.HandleFunc("GET /static/adManager.js", s.script)
+	s.registerInfrastructureRoutes(m)
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Access-Control-Allow-Origin", "*")
 		w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+		if s.Config.AntiBlockEnabled || s.Config.AntiBlockDomains != "" {
+			w.Header().Set("Access-Control-Allow-Headers", "Content-Type, X-TwinBid-Infrastructure")
+		}
 		w.Header().Set("Access-Control-Allow-Methods", "GET,POST,OPTIONS")
 		w.Header().Set("Cache-Control", "no-store")
 		if r.Method == "OPTIONS" {
@@ -299,6 +312,11 @@ func (s *Server) request(w http.ResponseWriter, r *http.Request) {
 		reject("rtb_circuit_open", 503)
 		return
 	}
+	deliveryPrefix, e := s.requestDeliveryPrefix(ctx, r)
+	if e != nil {
+		reject("infrastructure_unavailable", 503)
+		return
+	}
 	reservation, e := s.reserve(ctx, code, zone, in)
 	if e != nil {
 		reject("frequency_unavailable", 503)
@@ -353,7 +371,7 @@ func (s *Server) request(w http.ResponseWriter, r *http.Request) {
 		reject("delivery_unavailable", 503)
 		return
 	}
-	out := Result{Status: "fill", RequestID: in.ID, OpenURL: strings.TrimRight(s.Config.PublicURL, "/") + "/delivery/" + token}
+	out := Result{Status: "fill", RequestID: in.ID, OpenURL: deliveryPrefix + token}
 	outJSON, _ := json.Marshal(out)
 	// Keep the reservation until confirmation; cache the response idempotently.
 	_, _, key := keys(zone, in.VisitorID, in.SessionID, in.ID)
@@ -530,10 +548,22 @@ func (s *Server) delivery(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	dest, _ := json.Marshal(d.Destination)
-	confirm, _ := json.Marshal("/confirm/" + r.PathValue("token"))
+	confirmPrefix := "/confirm/"
+	if s.InfraSettings.Paths.Delivery != "/delivery/" && strings.HasPrefix(r.URL.Path, s.InfraSettings.Paths.Delivery) {
+		confirmPrefix = s.InfraSettings.Paths.Confirm
+	}
+	if s.Config.AntiBlockEnabled && s.InfraSettings.Paths.Delivery == "/delivery/" {
+		confirmPrefix = s.InfraSettings.Paths.Confirm
+	}
+	confirm, _ := json.Marshal(confirmPrefix + r.PathValue("token"))
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.Header().Set("Referrer-Policy", "no-referrer")
 	w.Header().Set("Content-Security-Policy", "default-src 'none'; script-src 'unsafe-inline'; connect-src 'self'")
+	if s.Config.AntiBlockEnabled {
+		eventURL, _ := json.Marshal(s.InfraSettings.Paths.Diagnostics)
+		fmt.Fprintf(w, `<!doctype html><meta charset="utf-8"><script>const report=(component,reason)=>{try{void fetch(%s,{method:'POST',credentials:'omit',redirect:'error',headers:{'Content-Type':'application/json'},body:JSON.stringify({component,reason}),signal:AbortSignal.timeout(2000)}).catch(()=>{})}catch{}};window.addEventListener('load',async()=>{report('delivery','loaded');let stage='confirm';try{let r=await fetch(%s,{method:'POST',credentials:'omit',redirect:'error',signal:AbortSignal.timeout(5000)});if(r.ok){stage='delivery';location.replace(%s)}else{report('confirm','business_refusal');window.close()}}catch{report(stage,'network');window.close()}},{once:true});</script>`, eventURL, confirm, dest)
+		return
+	}
 	fmt.Fprintf(w, `<!doctype html><meta charset="utf-8"><script>window.addEventListener('load',async()=>{try{let r=await fetch(%s,{method:'POST',credentials:'omit'});if(r.ok)location.replace(%s);else window.close()}catch(e){window.close()}},{once:true});</script>`, confirm, dest)
 }
 func (s *Server) confirm(w http.ResponseWriter, r *http.Request) {

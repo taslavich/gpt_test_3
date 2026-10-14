@@ -4,6 +4,8 @@
   const code = tag?.dataset.adCodeId;
   if (!code || !tag.src || !crypto.randomUUID) return;
   const base = new URL(tag.src).origin;
+  const routingContext = window.__twinbidSDKV1?.routesByTag.get(tag);
+  const route = routingContext && window.__twinbidCreateRouteV1(routingContext);
   const root = window.__twinbidPopV1 ||= { codes: new Map(), session: crypto.randomUUID() };
   if (root.codes.has(code)) return; // Same Code on one page shares one runtime/quota.
   const state = { clicks: 0, busy: false, config: null, session: root.session };
@@ -16,8 +18,10 @@
     }
   } catch { visitor = root.visitor ||= crypto.randomUUID(); }
   async function config() {
-    try { const session=state.session;const r = await fetch(`${base}/config?code=${encodeURIComponent(code)}&visitor_id=${visitor}&page_session_id=${session}`, { credentials: 'omit' });
-      const next=r.ok?await r.json():null;
+    try { const session=state.session;
+      let next;
+      if (route) next = await route.config(code, visitor, session);
+      else { const r = await fetch(`${base}/config?code=${encodeURIComponent(code)}&visitor_id=${visitor}&page_session_id=${session}`, { credentials: 'omit' }); next=r.ok?await r.json():null; }
       if(state.session!==session)return;
       if(next&&state.config?.session_token&&state.configSession===session) next.session_token=state.config.session_token;
       state.config=next;state.configSession=session;
@@ -49,7 +53,7 @@
     const pageURL = page();
     const session = state.session;
     const provisional = pageURL ? window.open('about:blank', '_blank') : null;
-    if (pageURL && !provisional) return; // Blocked open never consumes server confirmed quota.
+    if (pageURL && !provisional) { route?.report('popup', 'blocked'); return; } // Blocked open never consumes server confirmed quota.
     try { provisional.opener = null; } catch { /* browsers vary */ }
     state.busy = true;
     const payload = { request_id: crypto.randomUUID(), code, page_url: pageURL,
@@ -59,7 +63,7 @@
       for (let attempt = 0; attempt < 3; attempt++) {
         if (state.session !== session || (provisional && provisional.closed)) break;
         let response;
-        try { response = await fetch(`${base}/request`, { method: 'POST', credentials: 'omit',
+        try { response = route ? await route.request(payload) : await fetch(`${base}/request`, { method: 'POST', credentials: 'omit',
           headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload),
           signal: AbortSignal.timeout(6000) });
         } catch (e) {
@@ -68,8 +72,10 @@
         }
         const result = await response.json();
         if (!response.ok || result.status !== 'fill' || state.session !== session || !provisional || provisional.closed) break;
-        const open = new URL(result.open_url);
-        if (open.origin !== base || !open.pathname.startsWith('/delivery/')) break;
+        let open = route ? route.delivery(result.open_url) : new URL(result.open_url);
+        if (!open || (!route && (open.origin !== base || !open.pathname.startsWith('/delivery/')))) break;
+        if (route) open = await route.bridge(open);
+        if (!open || state.session !== session || provisional.closed) break;
         provisional.location.replace(open.href); return;
       }
       try { provisional.close(); } catch { /* no false event */ }

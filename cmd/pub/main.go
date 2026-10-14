@@ -37,6 +37,7 @@ func main() {
 	}
 	defer telemetry.Close()
 	s.Telemetry = telemetry
+	go s.RunInfrastructure(ctx)
 	telemetryDone := make(chan struct{})
 	go func() { defer close(telemetryDone); telemetry.Run(ctx) }()
 	go func() {

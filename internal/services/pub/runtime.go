@@ -5,7 +5,7 @@ import (
 	"net/http"
 )
 
-//go:embed adManager.js
+//go:embed adManager.js sdk.prod.js runtime.prod.js
 var runtimeFiles embed.FS
 
 func (s *Server) script(w http.ResponseWriter, r *http.Request) {
