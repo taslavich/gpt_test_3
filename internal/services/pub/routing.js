@@ -9,20 +9,38 @@
       context.report(manifest, component, reason);
       if (reason !== 'loaded' && reason !== 'business_refusal') context.notify(component, reason);
     };
-    const refresh = async () => {
-      try { const next = await context.refresh(false); if (next.fingerprint === manifest.fingerprint) { manifest = next; if (manifest.enabled) cursor %= manifest.api_origins.length; } }
+    // Bound the whole operation, including reading a response body. HEAD remains advisory.
+    const within = async (milliseconds, work) => {
+      const signal = AbortSignal.timeout(Math.max(1, milliseconds));
+      let abort;
+      const timeout = new Promise((_, reject) => {
+        abort = () => reject(signal.reason); signal.addEventListener('abort', abort, { once: true });
+      });
+      try { return await Promise.race([work(signal), timeout]); }
+      finally { signal.removeEventListener('abort', abort); }
+    };
+    const refresh = async (milliseconds, force = false) => {
+      try { const next = await within(milliseconds, () => context.refresh(force)); if (next.fingerprint === manifest.fingerprint) { manifest = next; if (manifest.enabled) cursor %= manifest.api_origins.length; } }
       catch { report('infrastructure', 'network'); } // Last validated route snapshot remains usable.
     };
     const config = async (code, visitor, session) => {
-      await refresh();
+      const deadline = Date.now() + 6000;
+      await refresh(1000);
       if (!manifest.enabled) { const base = new URL(manifest.legacy_runtime).origin; const res = await fetch(base + `/config?code=${encodeURIComponent(code)}&visitor_id=${visitor}&page_session_id=${session}`, { credentials: 'omit', redirect: 'error' }); return res.ok ? await res.json() : null; }
-      for (let n = 0; n < Math.min(3, manifest.api_origins.length); n++) {
-        const origin = manifest.api_origins[cursor];
+      const origins = [...manifest.api_origins], start = cursor;
+      for (let n = 0; n < origins.length; n++) {
+        const remaining = deadline - Date.now();
+        if (remaining <= 0) break;
+        const origin = origins[(start + n) % origins.length];
         try {
-          const response = await fetch(origin + manifest.paths.config + `?code=${encodeURIComponent(code)}&visitor_id=${visitor}&page_session_id=${session}`, { credentials: 'omit', redirect: 'error', signal: AbortSignal.timeout(6000) });
-          if (!response.ok) { report('config', 'business_refusal'); return null; }
-          return await response.json();
-        } catch { report('config', 'network'); cursor = (cursor + 1) % manifest.api_origins.length; }
+          return await within(Math.floor(remaining / (origins.length - n)), async signal => {
+            const response = await fetch(origin + manifest.paths.config + `?code=${encodeURIComponent(code)}&visitor_id=${visitor}&page_session_id=${session}`, { credentials: 'omit', redirect: 'error', signal });
+            if (!response.ok) { report('config', 'business_refusal'); return null; }
+            const settings = await response.json();
+            if (!signal.aborted) cursor = Math.max(0, manifest.api_origins.indexOf(origin));
+            return settings;
+          });
+        } catch { report('config', 'network'); cursor = (manifest.api_origins.indexOf(origin) + 1) % manifest.api_origins.length; }
       }
       return null;
     };
@@ -44,19 +62,29 @@
       return open;
     };
     const bridge = async open => {
+      open = delivery(open.href);
+      if (!open) return null;
       if (open.origin === new URL(manifest.legacy_runtime).origin && open.pathname.startsWith('/delivery/')) return open;
       // HEAD only verifies reachability. It NEVER runs /confirm or requests another auction.
+      const deadline = Date.now() + 2000;
+      await refresh(500, true);
       const candidates = [...manifest.delivery_origins];
+      if (!candidates.length) return null;
       if (candidates.includes(open.origin)) candidates.splice(candidates.indexOf(open.origin), 1), candidates.unshift(open.origin);
-      for (const origin of candidates.slice(0, 3)) {
+      for (let n = 0; n < candidates.length; n++) {
+        const remaining = deadline - Date.now();
+        if (remaining <= 0) break;
+        const origin = candidates[n];
         const target = new URL(open.pathname, origin);
         try {
-          const response = await fetch(target.href, { method: 'HEAD', credentials: 'omit', redirect: 'error', signal: AbortSignal.timeout(3000) });
+          const response = await within(Math.min(500, Math.floor(remaining / (candidates.length - n))), signal => fetch(target.href, { method: 'HEAD', credentials: 'omit', redirect: 'error', signal }));
           if (response.ok) return target;
           if (response.status === 410 || response.status === 409) { report('delivery', 'business_refusal'); return null; }
         } catch {}
       }
-      report('delivery', 'network'); return null;
+      // Fetch may be blocked while document navigation is allowed. Navigate ONE bridge;
+      // its server still verifies the same token and owns confirmation/ADM. No cross-origin retry.
+      report('delivery', 'network'); return new URL(open.pathname, candidates[0]);
     };
     return { config, request, delivery, bridge, report };
   };

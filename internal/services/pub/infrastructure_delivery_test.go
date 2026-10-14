@@ -106,6 +106,22 @@ func TestCrossDomainRetryOneAuctionOriginalADMAndReservation(t *testing.T) {
 		t.Fatal("HEAD/GET consumed quota")
 	}
 	token := strings.TrimPrefix(open.Path, settings.Paths.Delivery)
+	// Client HEAD checks are advisory; the bridge must still reject a changed HMAC
+	// on either HEAD or navigation without confirmation, quota or another auction.
+	parts := strings.Split(token, ".")
+	badSignature := strings.Repeat("0", 64)
+	if parts[1] == badSignature {
+		badSignature = strings.Repeat("1", 64)
+	}
+	for _, invalid := range []string{"invalid-token", parts[0] + "." + badSignature} {
+		for _, method := range []string{"HEAD", "GET"} {
+			w := httptest.NewRecorder()
+			second.Handler().ServeHTTP(w, httptest.NewRequest(method, "https://work-b.test"+settings.Paths.Delivery+invalid, nil))
+			if w.Code != 410 || second.Redis.Exists(context.Background(), sessionKey).Val() != 0 || s.RTBCalls.Load() != 1 || second.RTBCalls.Load() != 0 {
+				t.Fatal("invalid delivery token accepted or consumed quota/auction", method, w.Code)
+			}
+		}
+	}
 	for n := 0; n < 2; n++ {
 		w := httptest.NewRecorder()
 		second.Handler().ServeHTTP(w, httptest.NewRequest("POST", "https://work-a.test"+settings.Paths.Confirm+token, nil))
