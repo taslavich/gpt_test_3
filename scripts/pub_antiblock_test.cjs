@@ -10,7 +10,7 @@ const paths = { sdk:'/sdk.js',infrastructure:'/infra.json',runtime:'/assets/runt
 const a='https://work-a.test',b='https://work-b.test',stable='https://stable.test';
 const token = randomUUID()+'.'+'a'.repeat(64);
 const flush = async () => { for(let i=0;i<15;i++) await new Promise(setImmediate); };
-function rig({source=production, origins=[a,b], enabled=true, trigger=1, runtimeBlocked=[], apiBlocked=[], configStatus={}, lostResponse=false, result='fill', openURL=b+paths.delivery+token, headBlocked=[], headStatus={}, popupBlocked=false, invalidManifest=false, message='', lateRuntime=false}={}) {
+function rig({source=production, origins=[a,b], enabled=true, trigger=1, runtimeBlocked=[], apiBlocked=[], configStatus={}, configDelayMs={}, lostResponse=false, result='fill', openURL=b+paths.delivery+token, headBlocked=[], headStatus={}, headDelayMs={}, popupBlocked=false, invalidManifest=false, message='', lateRuntime=false}={}) {
  const pins={enabled,fingerprint:enabled?'fixture-generation':'',stable_origin:stable,origins,paths,legacy_runtime:'https://legacy.test/static/adManager.js'};
  let manifest={...pins,runtime_origins:origins,api_origins:origins,delivery_origins:origins};
  const clicks=[],calls=[],children=[],notices=[],requests=[],navigations=[],events={},timers=[],ids=new Set();let auctions=0,opens=0,closed=0;
@@ -25,8 +25,8 @@ function rig({source=production, origins=[a,b], enabled=true, trigger=1, runtime
    const u=new URL(raw);calls.push({url:u.href,opt});assert.equal(opt.credentials,'omit');
    if(u.pathname===paths.infrastructure){return {ok:true,json:async()=>invalidManifest?{...manifest,api_origins:['https://attacker.test']}:manifest}}
    if(u.pathname===paths.diagnostics)return {ok:true,status:204};
-   if(u.pathname===paths.config || u.pathname==='/config') {if(apiBlocked.includes(u.origin))throw Error('API blocked');return {ok:!configStatus[u.origin],status:configStatus[u.origin]||200,json:async()=>({active:true,trigger_click:trigger,session_token:'session:'+u.searchParams.get('code')})}}
-   if(opt.method==='HEAD'){if(headBlocked.includes(u.origin))throw Error('delivery blocked');const status=headStatus[u.origin]||200;return {ok:status===200,status}}
+   if(u.pathname===paths.config || u.pathname==='/config') {if(apiBlocked.includes(u.origin))throw Error('API blocked');if(configDelayMs[u.origin])await new Promise(resolve=>setTimeout(resolve,configDelayMs[u.origin]));return {ok:!configStatus[u.origin],status:configStatus[u.origin]||200,json:async()=>({active:true,trigger_click:trigger,session_token:'session:'+u.searchParams.get('code')})}}
+   if(opt.method==='HEAD'){if(headBlocked.includes(u.origin))throw Error('delivery blocked');if(headDelayMs[u.origin])await new Promise(resolve=>setTimeout(resolve,headDelayMs[u.origin]));const status=headStatus[u.origin]||200;return {ok:status===200,status}}
    if(opt.method==='POST') {
     const payload=JSON.parse(opt.body);requests.push({origin:u.origin,payload});
     if(!ids.has(payload.request_id)){ids.add(payload.request_id);auctions++}
@@ -56,6 +56,13 @@ async function routingSuite(source) {
   await r.click();assert.equal(r.requests[0].origin,origins[3]);assert.equal(r.auctions,1);assert.equal(r.opens,1);
   await r.window.__twinbidPopV1.codes.get('tb_test').reload();
   assert.equal(new URL(callsAt(r,paths.config).at(-1).url).origin,origins[3],'working config cursor was lost');
+  // Regression: 15 origins must not reduce the fourth working API to a
+  // 400ms timeout. The first three failures are immediate; fourth takes 800ms.
+  r=rig({source,origins,apiBlocked:origins.slice(0,3),configDelayMs:{[origins[3]]:800},openURL:origins[0]+paths.delivery+token});
+  r.boot();await new Promise(resolve=>setTimeout(resolve,900));await flush();
+  assert.equal(r.window.__twinbidPopV1.codes.get('tb_test').config?.active,true,'800ms working config was rejected');
+  assert.deepEqual(callsAt(r,paths.config).map(c=>new URL(c.url).origin),origins.slice(0,4),'config timed out before fourth working origin');
+  await r.click();assert.equal(r.requests[0].origin,origins[3]);assert.equal(r.auctions,1);
   for(const lostResponse of [true,'always']) {
    r=rig({source,origins,apiBlocked:origins.slice(0,3),lostResponse,openURL:origins[0]+paths.delivery+token});r.boot();await flush();await r.click();assert.equal(r.requests.length,lostResponse===true?2:3,'request retries changed with pool size');assert.ok(r.requests.every(q=>JSON.stringify(q.payload)===JSON.stringify(r.requests[0].payload)));assert.equal(r.auctions,1);assert.equal(r.opens,1);assert.equal(r.navigations.length,lostResponse===true?1:0);
   }
@@ -66,6 +73,13 @@ async function routingSuite(source) {
   r=rig({source,origins,openURL:origins[0]+paths.delivery+token,headBlocked:origins.slice(0,3)});r.boot();await flush();await r.click();
   assert.deepEqual(r.calls.filter(c=>c.opt.method==='HEAD').map(c=>new URL(c.url).origin),origins.slice(0,4));assert.equal(r.navigations[0],origins[3]+paths.delivery+token);
   assert.equal(r.auctions,1);assert.equal(r.opens,1);assert.equal(r.requests.length,1);assert.equal(r.navigations.length,1);assert.equal(r.calls.some(c=>c.url.includes(paths.confirm)),false,'HEAD confirmed a delivery');
+  // Regression: HEAD on fourth origin may take 300ms with a 15-origin
+  // manifest. A per-origin budget divided by pool size rejected this target.
+  r=rig({source,origins,openURL:origins[0]+paths.delivery+token,headBlocked:origins.slice(0,3),headDelayMs:{[origins[3]]:300}});
+  r.boot();await flush();await r.click();
+  assert.equal(r.navigations[0],origins[3]+paths.delivery+token,'300ms reachable delivery was skipped');
+  assert.deepEqual(r.calls.filter(c=>c.opt.method==='HEAD').map(c=>new URL(c.url).origin),origins.slice(0,4));
+  assert.equal(r.requests.length,1);assert.equal(r.auctions,1);
   r=rig({source,origins,openURL:origins[0]+paths.delivery+token,headBlocked:origins});r.boot();await flush();await r.click();
   assert.deepEqual(r.calls.filter(c=>c.opt.method==='HEAD').map(c=>new URL(c.url).origin),origins);assert.equal(r.navigations[0],origins[0]+paths.delivery+token,'blocked HEAD cancelled permitted navigation');assert.equal(r.opens,1);assert.equal(r.auctions,1);assert.equal(r.calls.some(c=>c.url.includes(paths.confirm)),false);
   for(const result of ['no_fill','refusal','frequency','session_cap']) {
