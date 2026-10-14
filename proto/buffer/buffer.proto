@@ -44,6 +44,13 @@ message OrtbEvent {
   string win_user_id = 25;
 
   uint32 code = 26;
+  string pub_user_id = 27;
+  string ad_code_id = 28;
+  string zone_id = 29;
+  string request_id = 30;
+  string site_page = 31;
+  bool request_error = 32;
+  string error_reason = 33;
 }
 
 message ImpressionEvent {

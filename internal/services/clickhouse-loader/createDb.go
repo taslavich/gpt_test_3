@@ -49,6 +49,9 @@ DROP VIEW IF EXISTS {db}.mv_ortb_traffic_hourly SYNC;
 DROP VIEW IF EXISTS {db}.mv_campaign_dsp_price_sum SYNC;
 DROP VIEW IF EXISTS {db}.mv_recover_clicks_from_clicks_wins SYNC;
 DROP VIEW IF EXISTS {db}.ortb_logical SYNC;
+DROP VIEW IF EXISTS {db}.mv_ortb_to_publisher_requests SYNC;
+DROP VIEW IF EXISTS {db}.publisher_requests_logical SYNC;
+DROP VIEW IF EXISTS {db}.mv_ortb_to_publisher_inventory SYNC;
 
 -- ============================================================
 -- ORTB TABLE
@@ -97,6 +100,13 @@ CREATE TABLE IF NOT EXISTS {db}.ortb
     win_cid           String DEFAULT '',
     win_crid          String DEFAULT '',
     win_user_id       String DEFAULT '',
+    pub_user_id String DEFAULT '',
+    ad_code_id String DEFAULT '',
+    zone_id String DEFAULT '',
+    request_id String DEFAULT '',
+    site_page String DEFAULT '',
+    request_error UInt8 DEFAULT 0,
+    error_reason String DEFAULT '',
 
     exact_segment_hash       String DEFAULT '',
     segment_hash             String DEFAULT '',
@@ -133,6 +143,15 @@ ALTER TABLE {db}.ortb
 -- can replay the same ORTB message. Keep the physical append-only table, but
 -- expose one row per stable logical event synchronously at read time; unlike a
 -- ReplacingMergeTree-only solution this does not wait for a background merge.
+ALTER TABLE {db}.ortb ADD COLUMN IF NOT EXISTS pub_user_id String DEFAULT '';
+ALTER TABLE {db}.ortb ADD COLUMN IF NOT EXISTS ad_code_id String DEFAULT '';
+ALTER TABLE {db}.ortb ADD COLUMN IF NOT EXISTS zone_id String DEFAULT '';
+ALTER TABLE {db}.ortb ADD COLUMN IF NOT EXISTS request_id String DEFAULT '';
+ALTER TABLE {db}.ortb ADD COLUMN IF NOT EXISTS site_page String DEFAULT '';
+ALTER TABLE {db}.ortb ADD COLUMN IF NOT EXISTS request_error UInt8 DEFAULT 0;
+ALTER TABLE {db}.ortb ADD COLUMN IF NOT EXISTS error_reason String DEFAULT '';
+
+
 CREATE VIEW {db}.ortb_logical AS
 SELECT *
 FROM {db}.ortb
@@ -147,6 +166,45 @@ LIMIT 1 BY logical_event_id;
 -- Durable percenter decision history. event_id is stable across retries.
 -- ReplacingMergeTree + FINAL logical view make physical replay logically
 -- idempotent without relying on background merge timing.
+
+-- Compact read projection from the SAME ORTB ingest. Do not extend the wide
+-- ORTB retention: existing auction enrichment JOINs must stay one-hour bounded.
+CREATE TABLE IF NOT EXISTS {db}.publisher_requests
+(
+ logical_event_id String,uuid UUID,event_time DateTime64(3,'UTC'),created_at DateTime64(3,'UTC'),
+ pub_user_id String,ad_code_id String,zone_id String,request_id String,site_id String,site_domain String,
+ site_page String,geo String,device String,os String,browser String,code UInt16,request_error UInt8,error_reason String
+)
+ENGINE=MergeTree
+PARTITION BY toYYYYMMDD(event_time)
+ORDER BY (pub_user_id,event_time,logical_event_id)
+TTL event_time + INTERVAL 6 MONTH DELETE;
+CREATE MATERIALIZED VIEW {db}.mv_ortb_to_publisher_requests TO {db}.publisher_requests AS
+SELECT logical_event_id,uuid,event_time,created_at,pub_user_id,ad_code_id,zone_id,request_id,
+ ifNull(site_id,'') AS site_id,ifNull(site_domain,'') AS site_domain,site_page,
+ ifNull(geo,'') AS geo,ifNull(device,'') AS device,ifNull(os,'') AS os,ifNull(browser,'') AS browser,
+ code,request_error,error_reason
+FROM {db}.ortb WHERE pub_user_id!='';
+CREATE VIEW {db}.publisher_requests_logical AS
+SELECT * FROM {db}.publisher_requests ORDER BY created_at ASC LIMIT 1 BY logical_event_id;
+
+
+-- Lifetime discovery only; min/max are idempotent under retries. This does not
+-- assign Site IDs and does not keep wide auction payloads or compute revenue.
+CREATE TABLE IF NOT EXISTS {db}.publisher_inventory
+(
+ pub_user_id String,site_id String,ad_code_id String,zone_id String,hostname String,
+ first_request_at SimpleAggregateFunction(min,DateTime64(3,'UTC')),
+ last_request_at SimpleAggregateFunction(max,DateTime64(3,'UTC'))
+)
+ENGINE=AggregatingMergeTree
+ORDER BY (pub_user_id,site_id,ad_code_id,zone_id,hostname);
+CREATE MATERIALIZED VIEW {db}.mv_ortb_to_publisher_inventory TO {db}.publisher_inventory AS
+SELECT pub_user_id,ifNull(site_id,'') AS site_id,ad_code_id,zone_id,
+ ifNull(site_domain,'') AS hostname,min(event_time) AS first_request_at,max(event_time) AS last_request_at
+FROM {db}.ortb WHERE pub_user_id!='' AND site_id!='' AND zone_id!=''
+GROUP BY pub_user_id,site_id,ad_code_id,zone_id,hostname;
+
 CREATE TABLE IF NOT EXISTS {db}.percenter_state_history
 (
     event_id String,
@@ -560,6 +618,9 @@ CREATE TABLE IF NOT EXISTS {db}.fact_impressions
     win_cid                String DEFAULT '',
     win_crid               String DEFAULT '',
     win_user_id            String DEFAULT '',
+    pub_user_id String DEFAULT '',
+    ad_code_id String DEFAULT '',
+    zone_id String DEFAULT '',
 
     is_pop_recovered       UInt8 DEFAULT 0,
     pop_recovered_at       Nullable(DateTime64(3, 'UTC')) DEFAULT NULL,
@@ -624,6 +685,9 @@ CREATE TABLE IF NOT EXISTS {db}.fact_clicks
     win_cid           String DEFAULT '',
     win_crid          String DEFAULT '',
     win_user_id       String DEFAULT '',
+    pub_user_id String DEFAULT '',
+    ad_code_id String DEFAULT '',
+    zone_id String DEFAULT '',
     created_at        DateTime64(3, 'UTC') DEFAULT now64(3)
 )
 ENGINE = MergeTree
@@ -681,6 +745,9 @@ CREATE TABLE IF NOT EXISTS {db}.fact_clicks_wins
     win_cid                String DEFAULT '',
     win_crid               String DEFAULT '',
     win_user_id            String DEFAULT '',
+    pub_user_id String DEFAULT '',
+    ad_code_id String DEFAULT '',
+    zone_id String DEFAULT '',
     created_at             DateTime64(3, 'UTC') DEFAULT now64(3)
 )
 ENGINE = MergeTree
@@ -734,6 +801,9 @@ CREATE TABLE IF NOT EXISTS {db}.fact_conversions
     win_cid           String DEFAULT '',
     win_crid          String DEFAULT '',
     win_user_id       String DEFAULT '',
+    pub_user_id String DEFAULT '',
+    ad_code_id String DEFAULT '',
+    zone_id String DEFAULT '',
 
     payout            Float64 DEFAULT 0,
     status            LowCardinality(String) DEFAULT '',
@@ -817,6 +887,21 @@ ALTER TABLE {db}.fact_conversions
 -- browser_version здесь специально НЕ используется
 -- ============================================================
 
+
+-- Publisher attribution: backwards-compatible defaults.
+ALTER TABLE {db}.fact_impressions ADD COLUMN IF NOT EXISTS pub_user_id String DEFAULT '';
+ALTER TABLE {db}.fact_impressions ADD COLUMN IF NOT EXISTS ad_code_id String DEFAULT '';
+ALTER TABLE {db}.fact_impressions ADD COLUMN IF NOT EXISTS zone_id String DEFAULT '';
+ALTER TABLE {db}.fact_clicks ADD COLUMN IF NOT EXISTS pub_user_id String DEFAULT '';
+ALTER TABLE {db}.fact_clicks ADD COLUMN IF NOT EXISTS ad_code_id String DEFAULT '';
+ALTER TABLE {db}.fact_clicks ADD COLUMN IF NOT EXISTS zone_id String DEFAULT '';
+ALTER TABLE {db}.fact_clicks_wins ADD COLUMN IF NOT EXISTS pub_user_id String DEFAULT '';
+ALTER TABLE {db}.fact_clicks_wins ADD COLUMN IF NOT EXISTS ad_code_id String DEFAULT '';
+ALTER TABLE {db}.fact_clicks_wins ADD COLUMN IF NOT EXISTS zone_id String DEFAULT '';
+ALTER TABLE {db}.fact_conversions ADD COLUMN IF NOT EXISTS pub_user_id String DEFAULT '';
+ALTER TABLE {db}.fact_conversions ADD COLUMN IF NOT EXISTS ad_code_id String DEFAULT '';
+ALTER TABLE {db}.fact_conversions ADD COLUMN IF NOT EXISTS zone_id String DEFAULT '';
+
 CREATE TABLE IF NOT EXISTS {db}.agg_stats
 (
     win_user_id         String DEFAULT '',
@@ -848,7 +933,11 @@ CREATE TABLE IF NOT EXISTS {db}.agg_stats
 
     spend_clicks_table  Float64,
     spend_views_table   Float64,
-    pop_recovered_spend Float64 DEFAULT 0
+    pop_recovered_spend Float64 DEFAULT 0,
+    pub_user_id String DEFAULT '',
+    ad_code_id String DEFAULT '',
+    zone_id String DEFAULT '',
+    ssp_revenue_views Float64 DEFAULT 0
 )
 ENGINE = SummingMergeTree
 PARTITION BY toYYYYMMDD(event_date)
@@ -866,7 +955,10 @@ ORDER BY
     site_id,
     format,
     typic,
-    os_version
+    os_version,
+    pub_user_id,
+    ad_code_id,
+    zone_id
 )
 SETTINGS index_granularity = 8192;
 
@@ -874,6 +966,9 @@ SETTINGS index_granularity = 8192;
 -- ALTER that adds the column. ClickHouse only permits extending an existing
 -- sorting key with a newly added column; keeping both operations atomic also
 -- avoids a partial migration where the column exists but is not in ORDER BY.
+-- Normal/recovery fact writers must be paused for deployment; no historical
+-- advertiser aggregate is replayed for this schema migration.
+DROP VIEW IF EXISTS {db}.mv_fact_impressions_to_agg_stats SYNC;
 ALTER TABLE {db}.agg_stats
     ADD COLUMN IF NOT EXISTS conversions UInt64 DEFAULT 0,
     ADD COLUMN IF NOT EXISTS payout Float64 DEFAULT 0,
@@ -881,6 +976,10 @@ ALTER TABLE {db}.agg_stats
     ADD COLUMN IF NOT EXISTS payout_approved Float64 DEFAULT 0,
     ADD COLUMN IF NOT EXISTS pop_recovered_spend Float64 DEFAULT 0,
     ADD COLUMN IF NOT EXISTS os_version LowCardinality(String),
+    ADD COLUMN IF NOT EXISTS pub_user_id String,
+    ADD COLUMN IF NOT EXISTS ad_code_id String,
+    ADD COLUMN IF NOT EXISTS zone_id String,
+    ADD COLUMN IF NOT EXISTS ssp_revenue_views Float64 DEFAULT 0,
     MODIFY ORDER BY
     (
         win_user_id,
@@ -895,8 +994,18 @@ ALTER TABLE {db}.agg_stats
         site_id,
         format,
         typic,
-        os_version
+        os_version,
+        pub_user_id,
+        ad_code_id,
+        zone_id
     );
+
+-- ADD+ORDER BY requires no DEFAULT on newly added key columns. Set their
+-- explicit empty defaults only AFTER the atomic key extension.
+ALTER TABLE {db}.agg_stats
+    MODIFY COLUMN pub_user_id String DEFAULT '',
+    MODIFY COLUMN ad_code_id String DEFAULT '',
+    MODIFY COLUMN zone_id String DEFAULT '';
 
 -- ============================================================
 -- IPP CUTOVER REPAIR
@@ -935,6 +1044,9 @@ INSERT INTO {db}.agg_stats
     site_id,
     format,
     typic,
+    pub_user_id,
+    ad_code_id,
+    zone_id,
     impressions,
     clicks,
     conversions,
@@ -942,7 +1054,8 @@ INSERT INTO {db}.agg_stats
     conversions_approved,
     payout_approved,
     spend_clicks_table,
-    spend_views_table
+    spend_views_table,
+    ssp_revenue_views
 )
 SELECT
     win_user_id,
@@ -958,6 +1071,9 @@ SELECT
     site_id,
     format,
     typic,
+    pub_user_id,
+    ad_code_id,
+    zone_id,
     count() AS impressions,
     toUInt64(0) AS clicks,
     toUInt64(0) AS conversions,
@@ -965,7 +1081,8 @@ SELECT
     toUInt64(0) AS conversions_approved,
     toFloat64(0) AS payout_approved,
     toFloat64(0) AS spend_clicks_table,
-    sum(win_dsp_price / 1000) AS spend_views_table
+    sum(win_dsp_price / 1000) AS spend_views_table,
+    toFloat64(0) AS ssp_revenue_views
 FROM {db}.fact_impressions
 WHERE
     format = 'IPP'
@@ -983,7 +1100,10 @@ GROUP BY
     geo,
     site_id,
     format,
-    typic
+    typic,
+    pub_user_id,
+    ad_code_id,
+    zone_id
 
 UNION ALL
 
@@ -1001,6 +1121,9 @@ SELECT
     site_id,
     format,
     typic,
+    pub_user_id,
+    ad_code_id,
+    zone_id,
     toUInt64(0) AS impressions,
     count() AS clicks,
     toUInt64(0) AS conversions,
@@ -1008,7 +1131,8 @@ SELECT
     toUInt64(0) AS conversions_approved,
     toFloat64(0) AS payout_approved,
     sum(win_dsp_price) AS spend_clicks_table,
-    toFloat64(0) AS spend_views_table
+    toFloat64(0) AS spend_views_table,
+    toFloat64(0) AS ssp_revenue_views
 FROM {db}.fact_clicks_wins
 WHERE
     format = 'IPP'
@@ -1026,7 +1150,10 @@ GROUP BY
     geo,
     site_id,
     format,
-    typic
+    typic,
+    pub_user_id,
+    ad_code_id,
+    zone_id
 
 UNION ALL
 
@@ -1044,6 +1171,9 @@ SELECT
     site_id,
     format,
     typic,
+    pub_user_id,
+    ad_code_id,
+    zone_id,
     toUInt64(0) AS impressions,
     toUInt64(0) AS clicks,
     toUInt64(countIf(approved != 1)) AS conversions,
@@ -1051,7 +1181,8 @@ SELECT
     toUInt64(countIf(approved = 1)) AS conversions_approved,
     toFloat64(sumIf(conversions_payout, approved = 1)) AS payout_approved,
     toFloat64(0) AS spend_clicks_table,
-    toFloat64(0) AS spend_views_table
+    toFloat64(0) AS spend_views_table,
+    toFloat64(0) AS ssp_revenue_views
 FROM
 (
     SELECT
@@ -1068,6 +1199,9 @@ FROM
         site_id,
         format,
         typic,
+        pub_user_id,
+        ad_code_id,
+        zone_id,
         approved,
         payout AS conversions_payout
     FROM {db}.fact_conversions
@@ -1088,7 +1222,10 @@ GROUP BY
     geo,
     site_id,
     format,
-    typic;
+    typic,
+    pub_user_id,
+    ad_code_id,
+    zone_id;
 
 
 CREATE TABLE IF NOT EXISTS {db}.user_dsp_price_sum
@@ -1447,7 +1584,10 @@ WITH
             win_dsp_price,
             win_cid,
             win_crid,
-            win_user_id
+            win_user_id,
+            pub_user_id,
+            ad_code_id,
+            zone_id
         FROM {db}.ortb
         PREWHERE uuid IN
         (
@@ -1500,6 +1640,9 @@ SELECT
     o.win_cid AS win_cid,
     o.win_crid AS win_crid,
     o.win_user_id AS win_user_id,
+    o.pub_user_id AS pub_user_id,
+    o.ad_code_id AS ad_code_id,
+    o.zone_id AS zone_id,
 
     toUInt8(0) AS is_pop_recovered,
     CAST(NULL AS Nullable(DateTime64(3, 'UTC'))) AS pop_recovered_at,
@@ -1568,7 +1711,10 @@ SELECT
 
     o.win_cid AS win_cid,
     o.win_crid AS win_crid,
-    o.win_user_id AS win_user_id
+    o.win_user_id AS win_user_id,
+    o.pub_user_id AS pub_user_id,
+    o.ad_code_id AS ad_code_id,
+    o.zone_id AS zone_id
 FROM {db}.clicks_in AS a
 ANY INNER JOIN {db}.ortb AS o
     ON a.uuid = o.uuid
@@ -1640,7 +1786,10 @@ SELECT
 
     o.win_cid AS win_cid,
     o.win_crid AS win_crid,
-    o.win_user_id AS win_user_id
+    o.win_user_id AS win_user_id,
+    o.pub_user_id AS pub_user_id,
+    o.ad_code_id AS ad_code_id,
+    o.zone_id AS zone_id
 FROM
 (
     /*
@@ -1675,7 +1824,10 @@ FROM
         win_dsp_price,
         win_cid,
         win_crid,
-        win_user_id
+        win_user_id,
+        pub_user_id,
+        ad_code_id,
+        zone_id
     FROM {db}.ortb
     PREWHERE created_at >= now() - INTERVAL 65 MINUTE
     WHERE uuid IN
@@ -1770,6 +1922,9 @@ SELECT
     o.win_cid AS win_cid,
     o.win_crid AS win_crid,
     o.win_user_id AS win_user_id,
+    o.pub_user_id AS pub_user_id,
+    o.ad_code_id AS ad_code_id,
+    o.zone_id AS zone_id,
 
     a.payout AS payout,
     a.status AS status,
@@ -1808,7 +1963,10 @@ FROM
         win_dsp_price,
         win_cid,
         win_crid,
-        win_user_id
+        win_user_id,
+        pub_user_id,
+        ad_code_id,
+        zone_id
     FROM {db}.fact_clicks
     WHERE clicks_uuid IN
     (
@@ -1882,7 +2040,7 @@ WHERE format = 'POP'
 -- browser_version здесь специально НЕ группируется
 -- ============================================================
 
-CREATE MATERIALIZED VIEW IF NOT EXISTS {db}.mv_fact_impressions_to_agg_stats
+CREATE MATERIALIZED VIEW {db}.mv_fact_impressions_to_agg_stats
 TO {db}.agg_stats
 AS
 SELECT
@@ -1903,6 +2061,9 @@ SELECT
 
     format,
     typic,
+    pub_user_id,
+    ad_code_id,
+    zone_id,
 
     count() AS impressions,
     toUInt64(0) AS clicks,
@@ -1914,7 +2075,8 @@ SELECT
 
     toFloat64(0) AS spend_clicks_table,
 
-    sum(win_dsp_price / 1000) AS spend_views_table
+    sum(win_dsp_price / 1000) AS spend_views_table,
+    sumIf(win_final_price / 1000, format = 'POP' AND pub_user_id != '') AS ssp_revenue_views
 FROM {db}.fact_impressions
 GROUP BY
     win_user_id,
@@ -1933,7 +2095,10 @@ GROUP BY
     site_id,
 
     format,
-    typic;
+    typic,
+    pub_user_id,
+    ad_code_id,
+    zone_id;
 
 
 
@@ -1978,6 +2143,9 @@ INSERT INTO {db}.fact_impressions
     win_cid,
     win_crid,
     win_user_id,
+    pub_user_id,
+    ad_code_id,
+    zone_id,
     is_pop_recovered,
     pop_recovered_at,
     pop_recovery_key,
@@ -2022,6 +2190,9 @@ WITH
             win_cid,
             win_crid,
             win_user_id,
+            pub_user_id,
+            ad_code_id,
+            zone_id,
             created_at
         FROM {db}.fact_clicks
         WHERE event_time >= dt_from
@@ -2065,6 +2236,9 @@ WITH
             win_cid,
             win_crid,
             win_user_id,
+            pub_user_id,
+            ad_code_id,
+            zone_id,
             created_at
         FROM {db}.fact_impressions
         WHERE event_time >= dt_from
@@ -2195,6 +2369,9 @@ SELECT
     c.win_cid AS win_cid,
     c.win_crid AS win_crid,
     c.win_user_id AS win_user_id,
+    c.pub_user_id AS pub_user_id,
+    c.ad_code_id AS ad_code_id,
+    c.zone_id AS zone_id,
     toUInt8(1) AS is_pop_recovered,
     now64(3, 'UTC') AS pop_recovered_at,
     concat('pop-auction:', toString(c.uuid)) AS pop_recovery_key,
@@ -2239,6 +2416,9 @@ SELECT
     i.win_cid AS win_cid,
     i.win_crid AS win_crid,
     i.win_user_id AS win_user_id,
+    i.pub_user_id AS pub_user_id,
+    i.ad_code_id AS ad_code_id,
+    i.zone_id AS zone_id,
     toUInt8(1) AS is_pop_recovered,
     now64(3, 'UTC') AS pop_recovered_at,
     concat('pop-auction:', toString(i.uuid)) AS pop_recovery_key,
@@ -2292,6 +2472,9 @@ APPEND TO {db}.fact_impressions
     win_cid,
     win_crid,
     win_user_id,
+    pub_user_id,
+    ad_code_id,
+    zone_id,
     is_pop_recovered,
     pop_recovered_at,
     pop_recovery_key,
@@ -2338,6 +2521,9 @@ WITH
             win_cid,
             win_crid,
             win_user_id,
+            pub_user_id,
+            ad_code_id,
+            zone_id,
             created_at
         FROM {db}.fact_clicks
         WHERE event_time >= dt_from
@@ -2381,6 +2567,9 @@ WITH
             win_cid,
             win_crid,
             win_user_id,
+            pub_user_id,
+            ad_code_id,
+            zone_id,
             created_at
         FROM {db}.fact_impressions
         WHERE event_time >= dt_from
@@ -2511,6 +2700,9 @@ SELECT
     c.win_cid AS win_cid,
     c.win_crid AS win_crid,
     c.win_user_id AS win_user_id,
+    c.pub_user_id AS pub_user_id,
+    c.ad_code_id AS ad_code_id,
+    c.zone_id AS zone_id,
     toUInt8(1) AS is_pop_recovered,
     now64(3, 'UTC') AS pop_recovered_at,
     concat('pop-auction:', toString(c.uuid)) AS pop_recovery_key,
@@ -2555,6 +2747,9 @@ SELECT
     i.win_cid AS win_cid,
     i.win_crid AS win_crid,
     i.win_user_id AS win_user_id,
+    i.pub_user_id AS pub_user_id,
+    i.ad_code_id AS ad_code_id,
+    i.zone_id AS zone_id,
     toUInt8(1) AS is_pop_recovered,
     now64(3, 'UTC') AS pop_recovered_at,
     concat('pop-auction:', toString(i.uuid)) AS pop_recovery_key,
@@ -2572,7 +2767,7 @@ WHERE s.recovery_rank <= s.missing_cnt;
 -- browser_version здесь специально НЕ группируется
 -- ============================================================
 
-CREATE MATERIALIZED VIEW IF NOT EXISTS {db}.mv_fact_clicks_to_agg_stats
+CREATE MATERIALIZED VIEW {db}.mv_fact_clicks_to_agg_stats
 TO {db}.agg_stats
 AS
 SELECT
@@ -2593,6 +2788,9 @@ SELECT
 
     format,
     typic,
+    pub_user_id,
+    ad_code_id,
+    zone_id,
 
     toUInt64(0) AS impressions,
     count() AS clicks,
@@ -2606,7 +2804,8 @@ SELECT
         WHEN format = 'POP' THEN sum(win_dsp_price) / 1000
         ELSE sum(win_dsp_price)
     END AS spend_clicks_table,
-    toFloat64(0) AS spend_views_table
+    toFloat64(0) AS spend_views_table,
+    toFloat64(0) AS ssp_revenue_views
 FROM {db}.fact_clicks
 WHERE format != 'IPP'
 GROUP BY
@@ -2626,14 +2825,17 @@ GROUP BY
     site_id,
 
     format,
-    typic;
+    typic,
+    pub_user_id,
+    ad_code_id,
+    zone_id;
 
 -- ============================================================
 -- MV: FACT CLICKS WINS -> AGG STATS (IPP ONLY)
 -- For IPP the partner-confirmed click-win is the billable/statistical click.
 -- ============================================================
 
-CREATE MATERIALIZED VIEW IF NOT EXISTS {db}.mv_fact_clicks_wins_to_agg_stats
+CREATE MATERIALIZED VIEW {db}.mv_fact_clicks_wins_to_agg_stats
 TO {db}.agg_stats
 AS
 SELECT
@@ -2654,6 +2856,9 @@ SELECT
 
     format,
     typic,
+    pub_user_id,
+    ad_code_id,
+    zone_id,
 
     toUInt64(0) AS impressions,
     count() AS clicks,
@@ -2664,7 +2869,8 @@ SELECT
     toFloat64(0) AS payout_approved,
 
     sum(win_dsp_price) AS spend_clicks_table,
-    toFloat64(0) AS spend_views_table
+    toFloat64(0) AS spend_views_table,
+    toFloat64(0) AS ssp_revenue_views
 FROM {db}.fact_clicks_wins
 WHERE format = 'IPP'
 GROUP BY
@@ -2684,9 +2890,12 @@ GROUP BY
     site_id,
 
     format,
-    typic;
+    typic,
+    pub_user_id,
+    ad_code_id,
+    zone_id;
 
-CREATE MATERIALIZED VIEW IF NOT EXISTS {db}.mv_fact_conversions_to_agg_stats
+CREATE MATERIALIZED VIEW {db}.mv_fact_conversions_to_agg_stats
 TO {db}.agg_stats
 AS
 SELECT
@@ -2703,6 +2912,9 @@ SELECT
     site_id,
     format,
     typic,
+    pub_user_id,
+    ad_code_id,
+    zone_id,
 
     toUInt64(0) AS impressions,
     toUInt64(0) AS clicks,
@@ -2714,7 +2926,8 @@ SELECT
     toFloat64(sumIf(conversions_payout, approved = 1)) AS payout_approved,
 
     toFloat64(0) AS spend_clicks_table,
-    toFloat64(0) AS spend_views_table
+    toFloat64(0) AS spend_views_table,
+    toFloat64(0) AS ssp_revenue_views
 FROM
 (
     SELECT
@@ -2731,6 +2944,9 @@ FROM
         site_id,
         format,
         typic,
+        pub_user_id,
+        ad_code_id,
+        zone_id,
         approved,
         payout AS conversions_payout
     FROM {db}.fact_conversions
@@ -2748,7 +2964,10 @@ GROUP BY
     geo,
     site_id,
     format,
-    typic;
+    typic,
+    pub_user_id,
+    ad_code_id,
+    zone_id;
 
 -- ============================================================
 -- REFRESHABLE MV: ORTB MINUTE METRICS

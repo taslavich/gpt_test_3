@@ -82,7 +82,7 @@ func TestPopRecoveryMigrationStopsOldWritersBeforeSchemaWork(t *testing.T) {
 		t.Fatal("previous v2 recovery stop/drop must be idempotent and occur exactly once")
 	}
 
-	ordinaryAgg := strings.Index(ddlTemplate, "CREATE MATERIALIZED VIEW IF NOT EXISTS {db}.mv_fact_impressions_to_agg_stats")
+	ordinaryAgg := strings.Index(ddlTemplate, "CREATE MATERIALIZED VIEW {db}.mv_fact_impressions_to_agg_stats")
 	recoveryEvents := strings.Index(ddlTemplate, "CREATE MATERIALIZED VIEW IF NOT EXISTS {db}.mv_fact_pop_recovered_to_events")
 	if ordinaryAgg < 0 || recoveryEvents < 0 || ordinaryAgg >= catchUp || recoveryEvents >= catchUp {
 		t.Fatalf("ordinary aggregate and recovery-event MVs must exist before catch-up: ordinary=%d events=%d catchup=%d", ordinaryAgg, recoveryEvents, catchUp)
@@ -122,7 +122,8 @@ func TestNormalImpressionIngestionDoesNotReadPopRecoveryState(t *testing.T) {
 		"PREWHERE created_at >= now() - INTERVAL 65 MINUTE",
 		"LIMIT 1 BY impressions_uuid",
 		"FROM pending_impressions AS a",
-		"ANY INNER JOIN {db}.ortb AS o",
+		"ANY INNER JOIN ortb_for_pending AS o",
+		"PREWHERE uuid IN",
 		"toUInt8(0) AS is_pop_recovered",
 	} {
 		if !strings.Contains(section, required) {
@@ -216,7 +217,7 @@ func TestPopRecoveryEventsOnlyCaptureRecoveredRows(t *testing.T) {
 
 	ordinaryAgg := ddlSection(
 		t,
-		"CREATE MATERIALIZED VIEW IF NOT EXISTS {db}.mv_fact_impressions_to_agg_stats",
+		"CREATE MATERIALIZED VIEW {db}.mv_fact_impressions_to_agg_stats",
 		"POP RECOVERY TRANSITION CATCH-UP",
 	)
 	if !strings.Contains(ordinaryAgg, "sum(win_dsp_price / 1000) AS spend_views_table") {
