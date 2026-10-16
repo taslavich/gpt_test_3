@@ -26,7 +26,9 @@ import (
 )
 
 const (
-	rtb54AdsUserID                           = "94416e97-6a74-42e5-8902-65e6cf7ac13c"
+	rtb54AdsChinaCampaignID                  = "8cf66405-6013-423c-a967-a76c08c69ac4"
+	rtb54AdsPhilippinesCampaignID            = "9e4173f7-7aee-44a6-8039-db364cb6f4f5"
+	rtb54AdsLatAmCampaignID                  = "1c9eeda4-3cb1-499d-aada-83c3b07e042f"
 	rtbBidFlyUserID                          = "beab6526-7c1a-40e0-9a17-5903149fa58f"
 	rtbBannerPartnerUserID                   = "c05e9083-91de-4b5c-b709-50ed41854844"
 	rtbCodeNetworkError                      = "1"
@@ -36,6 +38,13 @@ const (
 	rtbCodeInvalidADM                        = "800"
 	popRecoveryPostgresOutageSpendMultiplier = 1.20
 )
+
+// Read-only rules: country replacements belong to the campaign, not its owner.
+var rtb54AdsCountryReplacements = map[string]map[string]string{
+	rtb54AdsChinaCampaignID:       {"CN": "CHN"},
+	rtb54AdsPhilippinesCampaignID: {"PH": "PHL"},
+	rtb54AdsLatAmCampaignID:       {"MX": "MEX", "PE": "PER"},
+}
 
 type rtbCampaignResult struct {
 	campaignID string
@@ -438,7 +447,7 @@ func marshalRTBRequestForCampaign(req *ortb.BidRequest, campaign *Campaign, form
 	}
 
 	userID := strings.TrimSpace(campaign.UserID)
-	is54Ads := userID == rtb54AdsUserID
+	countryReplacements, is54Ads := rtb54AdsCountryReplacements[strings.TrimSpace(campaign.ID)]
 	isBannerPartnerBAN := userID == rtbBannerPartnerUserID && normalizeFormat(format) == constants.BAN
 	if !is54Ads && !isBannerPartnerBAN {
 		return body, nil
@@ -449,7 +458,7 @@ func marshalRTBRequestForCampaign(req *ortb.BidRequest, campaign *Campaign, form
 		return nil, err
 	}
 	if is54Ads {
-		normalize54AdsRTBRequest(payload, normalizeFormat(format) == constants.POP)
+		normalize54AdsRTBRequest(payload, normalizeFormat(format) == constants.POP, countryReplacements)
 	} else {
 		normalizeBannerPartnerBANRTBRequest(payload)
 	}
@@ -492,25 +501,42 @@ func normalizeBannerPartnerBANRTBRequest(payload map[string]any) {
 	}
 }
 
-func normalize54AdsRTBRequest(payload map[string]any, pop bool) {
+func normalize54AdsRTBRequest(payload map[string]any, pop bool, countryReplacements map[string]string) {
 	if payload == nil {
 		return
 	}
 	payload["tmax"] = 500
 
+	deviceCountry := ""
 	if rawDevice, ok := payload["device"]; ok {
 		if device, ok := rawDevice.(map[string]any); ok {
 			if deviceType, exists := device["deviceType"]; exists {
 				delete(device, "deviceType")
 				device["devicetype"] = deviceType
 			}
-			normalize54AdsGeoCountry(device["geo"])
+			deviceCountry = normalize54AdsGeoCountry(device["geo"], countryReplacements)
 		}
 	}
 
-	if rawUser, ok := payload["user"]; ok {
-		if user, ok := rawUser.(map[string]any); ok {
-			normalize54AdsGeoCountry(user["geo"])
+	user, _ := payload["user"].(map[string]any)
+	if user != nil {
+		normalize54AdsGeoCountry(user["geo"], countryReplacements)
+	}
+	// Only a country actually replaced for this campaign may fill a missing
+	// user country. Preserve existing user/geo fields and a nonempty country.
+	if deviceCountry != "" {
+		if user == nil {
+			user = make(map[string]any)
+			payload["user"] = user
+		}
+		geo, _ := user["geo"].(map[string]any)
+		if geo == nil {
+			geo = make(map[string]any)
+			user["geo"] = geo
+		}
+		country, _ := geo["country"].(string)
+		if strings.TrimSpace(country) == "" {
+			geo["country"] = deviceCountry
 		}
 	}
 
@@ -550,15 +576,20 @@ func normalize54AdsRTBRequest(payload map[string]any, pop bool) {
 	}
 }
 
-func normalize54AdsGeoCountry(rawGeo any) {
+// Return the replacement only when this campaign's rule matched. Already
+// normalized and unrelated countries must not trigger the user-country fallback.
+func normalize54AdsGeoCountry(rawGeo any, countryReplacements map[string]string) string {
 	geo, ok := rawGeo.(map[string]any)
 	if !ok {
-		return
+		return ""
 	}
 	country, _ := geo["country"].(string)
-	if strings.EqualFold(strings.TrimSpace(country), "CN") {
-		geo["country"] = "CHN"
+	replacement, ok := countryReplacements[strings.ToUpper(strings.TrimSpace(country))]
+	if !ok {
+		return ""
 	}
+	geo["country"] = replacement
+	return replacement
 }
 
 func rtbHostname(raw string) string {

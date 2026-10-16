@@ -337,7 +337,7 @@ func Test54AdsRTBRequestNormalizationForPop(t *testing.T) {
 	defer server.Close()
 
 	s := &AuctionService{rtbHTTPClient: server.Client()}
-	campaign := &Campaign{ID: "campaign-54ads", UserID: rtb54AdsUserID, RTB: true, DSPLink: server.URL}
+	campaign := &Campaign{ID: rtb54AdsChinaCampaignID, UserID: "another-owner", RTB: true, DSPLink: server.URL}
 	source := &ortb.BidRequest{
 		Id:   &requestID,
 		Tmax: &tmax,
@@ -361,7 +361,7 @@ func Test54AdsRTBRequestNormalizationForPop(t *testing.T) {
 func Test54AdsRTBRequestKeepsBannerOutsidePop(t *testing.T) {
 	impID := "imp-ban"
 	bannerW := int32(300)
-	campaign := &Campaign{ID: "campaign-54ads", UserID: rtb54AdsUserID, RTB: true}
+	campaign := &Campaign{ID: rtb54AdsChinaCampaignID, UserID: "another-owner", RTB: true}
 	req := &ortb.BidRequest{Imp: []*ortb.Imp{{Id: &impID, Banner: &ortb.Banner{W: &bannerW}}}}
 
 	body, err := marshalRTBRequestForCampaign(req, campaign, constants.BAN)
