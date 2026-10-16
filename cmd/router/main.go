@@ -198,6 +198,15 @@ func main() {
 		log.Fatalf("Failed to NewChangersBoxChanger: %v", err)
 	}
 
+	domainsAdl, err := filter.NewDomainChangersBoxChanger(cfg.DspDomainsAdlFilePath)
+	if err != nil {
+		log.Fatalf("Failed to NewDomainChangersBoxChanger ADULT: %v", err)
+	}
+	domainsMc, err := filter.NewDomainChangersBoxChanger(cfg.DspDomainsMcFilePath)
+	if err != nil {
+		log.Fatalf("Failed to NewDomainChangersBoxChanger MAINSTREAM: %v", err)
+	}
+
 	cidSspDspMapAdl, err := filter.InitCidSspDspMap(cfg.CidSspDspLinksAdultFilePath)
 	if err != nil {
 		log.Fatalf("Failed to InitCidSspDspMap: %v", err)
@@ -253,6 +262,8 @@ func main() {
 		advClient,
 	)
 
+	routerServer.SetDomainChangers(domainsAdl, domainsMc)
+
 	if err := routerServer.LoadNetset(cfg.AllowedIpDbPath); err != nil {
 		log.Fatalf("Failed to load netset: %v", err)
 	}
@@ -274,6 +285,10 @@ func main() {
 		cfg.DspChangersMcFilePath,
 		changersAdl,
 		changersMc,
+		cfg.DspDomainsAdlFilePath,
+		cfg.DspDomainsMcFilePath,
+		domainsAdl,
+		domainsMc,
 		cfg.CidSspDspLinksAdultFilePath,
 		cfg.CidSspDspLinksMainstreamFilePath,
 		&cidSspDspMapAdl,

@@ -64,6 +64,8 @@ type Server struct {
 
 	filterBoxChangerAdl *filter.ChangersBoxChanger
 	filterBoxChangerMc  *filter.ChangersBoxChanger
+	domainChangerAdl    *filter.DomainChangersBoxChanger
+	domainChangerMc     *filter.DomainChangersBoxChanger
 
 	configTimeouts config.MapStringToDuration
 
@@ -133,6 +135,13 @@ func NewServer(
 		}
 	}
 	return server
+}
+
+// SetDomainChangers connects the independent site.domain maps before the
+// router starts serving traffic. Existing site.id changer configuration is untouched.
+func (s *Server) SetDomainChangers(adult, mainstream *filter.DomainChangersBoxChanger) {
+	s.domainChangerAdl = adult
+	s.domainChangerMc = mainstream
 }
 
 type dspDomainResp struct {
@@ -321,11 +330,14 @@ func (s *Server) GetBids_V2_5(
 	var filters *filter.FiltersBox
 	var filtersCid *filter.FilterCidBoxType
 	var filterBoxChanger *filter.ChangersBoxChanger
+	var domainChanger *filter.DomainChangersBoxChanger
 	switch trafficType {
 	case sppAdapterWeb.ADULT:
 		filters, filtersCid, filterBoxChanger = s.filtersAdl, s.filtersCidAdl, s.filterBoxChangerAdl
+		domainChanger = s.domainChangerAdl
 	case sppAdapterWeb.MAINSTREAM:
 		filters, filtersCid, filterBoxChanger = s.filtersMc, s.filtersCidMc, s.filterBoxChangerMc
+		domainChanger = s.domainChangerMc
 	}
 	if filters != nil && !filters.Allowed(req.BidRequest, "", true) {
 		return &dspRouterGrpc.DspRouterResponse_V2_5{
@@ -420,12 +432,25 @@ func (s *Server) GetBids_V2_5(
 				return nil, status.Errorf(codes.Internal, "marshal BUYMEDIA request: %v", err)
 			}
 		}
+		// Use the ORIGINAL site.id for domain lookup, before the existing site.id
+		// changer runs. Both changes are private to this DSP's outbound payload.
+		changedForDSP := false
+		if domainChanger != nil {
+			if changedRequest, changed := domainChanger.Change(mainRequest, domain); changed {
+				mainRequest = changedRequest
+				changedForDSP = true
+			}
+		}
 		if filterBoxChanger != nil {
-			if changedRequest, isChanged := filterBoxChanger.Change(mainRequest, domain); isChanged {
-				jsonData, err = jsoniter.Marshal(changedRequest)
-				if err != nil {
-					return nil, status.Errorf(codes.Internal, "marshal changed DSP request: %v", err)
-				}
+			if changedRequest, changed := filterBoxChanger.Change(mainRequest, domain); changed {
+				mainRequest = changedRequest
+				changedForDSP = true
+			}
+		}
+		if changedForDSP {
+			jsonData, err = jsoniter.Marshal(mainRequest)
+			if err != nil {
+				return nil, status.Errorf(codes.Internal, "marshal changed DSP request: %v", err)
 			}
 		}
 		client := demandEndpoint.client

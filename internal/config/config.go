@@ -217,6 +217,8 @@ type RouterConfig struct {
 
 	DspChangersAdlFilePath string `yaml:"DSP_CHANGERS_ADULT_FILE_PATH" env:"DSP_CHANGERS_ADULT_FILE_PATH"`
 	DspChangersMcFilePath  string `yaml:"DSP_CHANGERS_MAINSTREAM_FILE_PATH" env:"DSP_CHANGERS_MAINSTREAM_FILE_PATH"`
+	DspDomainsAdlFilePath  string `yaml:"DSP_DOMAINS_ADULT_FILE_PATH" env:"DSP_DOMAINS_ADULT_FILE_PATH"`
+	DspDomainsMcFilePath   string `yaml:"DSP_DOMAINS_MAINSTREAM_FILE_PATH" env:"DSP_DOMAINS_MAINSTREAM_FILE_PATH"`
 
 	SspHttpClientTimeouts MapStringToDuration `yaml:"SSP_HTTP_CLIENT_TIMEOUT" env:"SSP_HTTP_CLIENT_TIMEOUT"`
 

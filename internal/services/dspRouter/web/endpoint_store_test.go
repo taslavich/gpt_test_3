@@ -168,7 +168,7 @@ func TestDSPEndpointsHTTPPutReplacesOnlyRequestedMap(t *testing.T) {
 	routes := &FormatRoutesV25{POP: FormatRouteV25{AdultStore: store}}
 
 	router := chi.NewRouter()
-	InitHttpRoutes(router, routes, "", "", nil, nil, "", "", nil, nil, "", "", nil, nil)
+	InitHttpRoutes(router, routes, "", "", nil, nil, "", "", nil, nil, "", "", nil, nil, "", "", nil, nil)
 
 	body := strings.NewReader(`{"https://new.example/bid":"adl_new.example"}`)
 	req := httptest.NewRequest(http.MethodPut, PutDspEndpointsMapURL+"?typic=ADULT&format=POP", body)

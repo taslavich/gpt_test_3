@@ -1,0 +1,11 @@
+{
+  "adl_dsp_example.com": {
+    "siteIdBoxes": {
+      "4987714,108878": {
+        "toChange": false,
+        "domain": "example.com"
+      }
+    },
+    "apply": false
+  }
+}

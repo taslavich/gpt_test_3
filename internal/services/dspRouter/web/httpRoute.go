@@ -24,6 +24,8 @@ const (
 
 	GetDspChangersMapUrl = "/filter/dsp_changers_map"
 	PutDspChangersMapUrl = "/filter/dsp_changers_map"
+	GetDspDomainsMapUrl  = "/filter/dsp_domains_map"
+	PutDspDomainsMapUrl  = "/filter/dsp_domains_map"
 
 	GetDspFiltersCidMapUrl = "/filter/dsp_filters_cid_map"
 	PutDspFiltersCidMapUrl = "/filter/dsp_filters_cid_map"
@@ -36,6 +38,7 @@ const (
 	GetDebugSspGeoDspLinksMapUrl = "/filter/debug_ssp_geo_dsp_links_map"
 	GetDebugDspFiltersMapUrl     = "/filter/debug_dsp_filters_map"
 	GetDebugDspChangersMapUrl    = "/filter/debug_dsp_changers_map"
+	GetDebugDspDomainsMapUrl     = "/filter/debug_dsp_domains_map"
 	GetDebugDspFiltersCidMapUrl  = "/filter/debug_dsp_filters_cid_map"
 	GetDebugDspEndpointsMapURL   = "/filter/debug_dsp_endpoints_map"
 )
@@ -80,6 +83,11 @@ type putDspChangersMapRequest struct {
 	filter.ChangerType `in:"body=json"`
 }
 
+type putDspDomainsMapRequest struct {
+	Typic                    string `in:"query=typic" required:"true"`
+	filter.DomainChangerType `in:"body=json"`
+}
+
 type getDspFiltersCidMapRequest_V2_5 struct {
 	Typic string `in:"query=typic" required:"true"`
 }
@@ -104,6 +112,11 @@ func InitHttpRoutes(
 
 	changersAdl *filter.ChangersBoxChanger,
 	changersMc *filter.ChangersBoxChanger,
+
+	domainsAdlFilename string,
+	domainsMcFilename string,
+	domainsAdl *filter.DomainChangersBoxChanger,
+	domainsMc *filter.DomainChangersBoxChanger,
 
 	filtersCidAdlFilename string,
 	filtersCidMcFilename string,
@@ -183,6 +196,23 @@ func InitHttpRoutes(
 		httpin.NewInput(putDspChangersMapRequest{}),
 	).Put(PutDspChangersMapUrl, func(w http.ResponseWriter, r *http.Request) {
 		putDspChangersMap(w, r, changersAdlFilename, changersMcFilename, changersAdl, changersMc)
+	})
+
+	// Domain maps use the same typic, GET/PUT/debug scheme as site.id changers.
+	httpRouter.With(
+		httpin.NewInput(getDspChangersMapRequest_V2_5{}),
+	).Get(GetDspDomainsMapUrl, func(w http.ResponseWriter, r *http.Request) {
+		getDspDomainsMap(w, r, domainsAdlFilename, domainsMcFilename)
+	})
+	httpRouter.With(
+		httpin.NewInput(getDspChangersMapRequest_V2_5{}),
+	).Get(GetDebugDspDomainsMapUrl, func(w http.ResponseWriter, r *http.Request) {
+		getDspDomainsMapDebug(w, r, domainsAdl, domainsMc)
+	})
+	httpRouter.With(
+		httpin.NewInput(putDspDomainsMapRequest{}),
+	).Put(PutDspDomainsMapUrl, func(w http.ResponseWriter, r *http.Request) {
+		putDspDomainsMap(w, r, domainsAdlFilename, domainsMcFilename, domainsAdl, domainsMc)
 	})
 
 	//-----------------------------------

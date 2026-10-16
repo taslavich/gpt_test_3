@@ -59,18 +59,22 @@ type ChangersChanger struct {
 	Apply       bool                         `json:"apply"`
 }
 
-func (f *ChangersChanger) ToMany() *ChangersChanger {
-	newMap := make(map[string]*SiteIdBoxChanger)
-	for key, val := range f.SiteIdBoxes {
-		domains := utils.SplitAndTrimKeys(key)
-
-		for _, singleDomain := range domains {
-			newMap[singleDomain] = val
+// expandGroupedKeys is shared by the site.id and site.domain changer maps.
+// Both accept comma-separated DSP names and site_id keys in their JSON.
+func expandGroupedKeys[T any](grouped map[string]T) map[string]T {
+	expanded := make(map[string]T)
+	for key, value := range grouped {
+		for _, name := range utils.SplitAndTrimKeys(key) {
+			expanded[name] = value
 		}
 	}
+	return expanded
+}
+
+func (f *ChangersChanger) ToMany() *ChangersChanger {
 	return &ChangersChanger{
 		Apply:       f.Apply,
-		SiteIdBoxes: newMap,
+		SiteIdBoxes: expandGroupedKeys(f.SiteIdBoxes),
 	}
 }
 
@@ -163,18 +167,12 @@ func RewriteChangersFile(
 }
 
 func ToManyChangersMap(changers map[string]*ChangersChanger) map[string]*ChangersChanger {
-	newMap := make(map[string]*ChangersChanger)
+	grouped := make(map[string]*ChangersChanger, len(changers))
 	for key, val := range changers {
-		domains := utils.SplitAndTrimKeys(key)
-
-		ch := val.ToMany()
-
-		for _, singleDomain := range domains {
-			newMap[singleDomain] = ch
-		}
+		grouped[key] = val.ToMany()
 	}
 	fmt.Println("Finished ToManyChangersMap")
-	return newMap
+	return expandGroupedKeys(grouped)
 }
 
 type ChangerType map[string]*ChangersChanger
