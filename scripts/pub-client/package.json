@@ -1,0 +1,19 @@
+{
+  "name": "twinbid-pub-client",
+  "private": true,
+  "version": "1.0.0",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "build": "node build.cjs",
+    "check": "node build.cjs --check",
+    "test": "node filter_test.cjs"
+  },
+  "dependencies": {
+    "@adguard/tsurlfilter": "6.0.3"
+  },
+  "devDependencies": {
+    "esbuild": "0.25.12"
+  }
+}

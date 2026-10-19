@@ -101,7 +101,8 @@ func insertBatchOrtb(
 			win_user_id,
 			exact_segment_hash,
 			segment_hash,
-			percenter_point_version
+			percenter_point_version,
+ pub_user_id,ad_code_id,zone_id,request_id,site_page,request_error,error_reason
 		)
 	`, table)
 
@@ -184,6 +185,7 @@ func insertBatchOrtb(
 			exactSegmentHash,
 			segmentHash,
 			pointVersion,
+			r.PubUserId, r.AdCodeId, r.ZoneId, r.RequestId, r.SitePage, uint8Bool(r.RequestError), r.ErrorReason,
 		); err != nil {
 			stats.AppendErrors++
 			return stats, fmt.Errorf("Record %d: batch.Append: %w", i, err)

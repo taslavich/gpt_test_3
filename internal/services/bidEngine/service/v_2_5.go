@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"encoding/xml"
+	"gitlab.com/twinbid-exchange/RTB-exchange/internal/callback"
 	"io"
 	"log"
 	"math"
@@ -203,6 +204,7 @@ func getWinnerBidInternalV25(
 						finalBid, ok = FinalizeADVCallbacks(advBid, admDomain, uuid, req.GetSspDomain(), req.GetFormat())
 					}
 					if ok && finalBid != nil {
+						callback.Collect(ctx, uuid, callbackRecord(advBid, req.GetFormat(), req.GetSspDomain(), !externalADV))
 						effectivePrice := finalBid.GetPrice()
 						basePrice := float32(basePriceValue)
 						cid, crid := finalBid.GetCid(), finalBid.GetCrid()
@@ -310,6 +312,8 @@ func getWinnerBidInternalV25(
 		if !ok {
 			continue
 		}
+
+		callback.Collect(ctx, ImpIdUuid[impID], callbackRecord(baseBid, req.GetFormat(), req.GetSspDomain(), false))
 
 		userId := ""
 		cid := winner.bid.Cid

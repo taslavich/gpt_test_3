@@ -46,17 +46,26 @@ func getAdm(
 		http.Error(w, "invalid ADM request", http.StatusBadRequest)
 		return
 	}
-	format, ok := constants.CodeToFormat[input.Format]
-	if !ok {
-		http.Error(w, "invalid format", http.StatusBadRequest)
+	r, resolved, valid := callbackInput(w, r, input.GlobalId, redisAdmClient, advBillingStore)
+	if !valid {
 		return
 	}
-	decodedURL, err := url.QueryUnescape(input.DspURL)
-	if err != nil || strings.TrimSpace(decodedURL) == "" {
-		http.Error(w, "invalid redirect URL", http.StatusBadRequest)
+	format := resolved.Record.Format
+	decodedURL := resolved.Record.Destination
+	if decodedURL == "" {
+		http.Error(w, "ADM destination unavailable", 410)
 		return
 	}
 	clickUUID := uuid.NewString()
+	if format == constants.POP && resolved.Record.PublisherID != "" {
+		// A UUID-derived hour is an immutable finance bucket, including old replays.
+		id, err := uuid.NewV7()
+		if err != nil {
+			http.Error(w, "click ID unavailable", 503)
+			return
+		}
+		clickUUID = id.String()
+	}
 	record := outbox.Record{
 		Kind:       outbox.KindADM,
 		EventID:    "adm:" + clickUUID,
@@ -72,28 +81,16 @@ func getAdm(
 	var processingErr error
 	stopADV := false
 
-	dspWinner, err := utils.UUIDKeyExistsInRedis(ctx, redisAdmClient, input.GlobalId)
-	if err != nil {
-		processingErr = fmt.Errorf("resolve DSP ADM winner: %w", err)
-	} else if dspWinner {
+	if resolved.Record.WinnerType == "dsp" {
 		record.WinnerType = outbox.WinnerDSP
-	} else if advBillingStore == nil {
-		processingErr = errors.New("ADV billing store is not initialized")
 	} else {
-		winner, winnerErr := advBillingStore.ReadWinner(ctx, input.GlobalId, format)
-		if winnerErr != nil {
-			processingErr = fmt.Errorf("resolve ADV ADM winner: %w", winnerErr)
-			if !errors.Is(winnerErr, redis.Nil) {
-				stopADV = true
-			}
-		} else {
-			record.WinnerType = outbox.WinnerADV
-			record.UserID = winner.UserID
-			record.CampaignID = winner.CampaignID
-			record.TypeModel = winner.TypeModel
-			record.Price = winner.Price
-			redirectURL = appendClickIDParameter(decodedURL, winner.ClickIDParam, clickUUID)
-		}
+		winner := resolved.Winner
+		record.WinnerType = outbox.WinnerADV
+		record.UserID = winner.UserID
+		record.CampaignID = winner.CampaignID
+		record.TypeModel = winner.TypeModel
+		record.Price = winner.Price
+		redirectURL = appendClickIDParameter(decodedURL, winner.ClickIDParam, clickUUID)
 	}
 
 	if processingErr == nil {
@@ -118,12 +115,17 @@ func getAdm(
 		)
 	}
 
-	// The SSP request has already been paid for. Infrastructure and billing
-	// failures are retried through the durable outbox and must never block the
-	// user's redirect. The browser page records whether this click started in an
-	// iframe, then immediately performs the configured redirect attempts without
-	// waiting for the stats report.
 	writeADMRedirectPage(w, redirectURL, clickUUID)
+	// Flush Publisher navigation before admitting independent BURL work. Ordinary
+	// ADM and its existing Redis-first click/outbox path are unchanged.
+	if format == constants.POP && resolved.Record.PublisherID != "" {
+		if f, ok := w.(http.Flusher); ok {
+			f.Flush()
+		}
+		if task, ok := r.Context().Value(publisherBurlKey{}).(publisherBurlFunc); ok {
+			task(context.Background(), resolved)
+		}
+	}
 }
 
 func writeADMRedirectPage(w http.ResponseWriter, redirectURL, clickUUID string) {
@@ -306,11 +308,12 @@ func getNurl(
 		http.Error(w, "invalid NURL request", http.StatusBadRequest)
 		return
 	}
-	format, ok := constants.CodeToFormat[input.Format]
-	if !ok {
-		w.WriteHeader(http.StatusBadRequest)
+	r, resolved, valid := callbackInput(w, r, input.GlobalId, redisNurlClient, advBillingStore)
+	if !valid {
 		return
 	}
+	format := resolved.Record.Format
+	targetURL := resolved.Record.NURL
 
 	// Detect a preselected ADV winner by UUID in DB 6. Local ADV winners have
 	// no downstream NURL, while external RTB winners may carry one in url=.
@@ -330,22 +333,12 @@ func getNurl(
 		w.WriteHeader(http.StatusServiceUnavailable)
 		return
 	}
-	if isADV && strings.TrimSpace(input.DspURL) == "" {
+	if isADV && strings.TrimSpace(targetURL) == "" {
 		w.WriteHeader(http.StatusNoContent)
 		return
 	}
 
-	if !isADV && input.Ssp_Domain == "adl_pb.com" {
-		exists, err := utils.UUIDKeyExistsInRedis(ctx, redisNurlClient, input.GlobalId)
-		if err != nil {
-			recordRedisError(redisWriteErrorMonitor, err, sspAdapterWorkStatusURL)
-			w.WriteHeader(http.StatusServiceUnavailable)
-			return
-		}
-		if !exists {
-			w.WriteHeader(http.StatusBadRequest)
-			return
-		}
+	if !isADV && resolved.Record.SSP == "adl_pb.com" {
 		impressionUUID := uuid.NewString()
 		if err := utils.WriteImpressionStats(ctx, redisClients, impressionUUID, input.GlobalId, format, true); err != nil {
 			recordRedisError(redisWriteErrorMonitor, err, sspAdapterWorkStatusURL)
@@ -358,16 +351,18 @@ func getNurl(
 			return
 		}
 	}
-	decodedURL, err := url.QueryUnescape(input.DspURL)
+	decodedURL := targetURL
+	if strings.TrimSpace(decodedURL) == "" {
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+
+	req, err := http.NewRequestWithContext(r.Context(), http.MethodGet, decodedURL, nil)
 	if err != nil {
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
-	if strings.TrimSpace(decodedURL) == "" {
-		w.WriteHeader(http.StatusBadRequest)
-		return
-	}
-	resp, err := nurlClient.Get(decodedURL)
+	resp, err := nurlClient.Do(req)
 	if err != nil {
 		w.WriteHeader(http.StatusNoContent)
 		return
@@ -390,70 +385,130 @@ func getBurl(
 	advBillingStore *billing.Store,
 	advOutbox *outbox.Store,
 	advControlURLs []string,
+	dspExecutor ...*publisherDSPExecutor,
 ) {
 	input, ok := r.Context().Value(httpin.Input).(*burlRequest)
 	if !ok || input == nil {
 		http.Error(w, "invalid BURL request", http.StatusBadRequest)
 		return
 	}
-	format, ok := constants.CodeToFormat[input.Format]
-	if !ok {
-		w.WriteHeader(http.StatusBadRequest)
+	r, resolved, valid := callbackInput(w, r, input.GlobalId, redisNurlClient, advBillingStore)
+	if !valid {
 		return
 	}
-	billable := format == constants.NAT || format == constants.BAN || format == constants.POP || format == constants.VID
-	isADV, err := handleADVCallback(
-		r.Context(),
-		input.GlobalId,
-		format,
-		"burl",
-		billable,
-		advBillingStore,
-		advOutbox,
-		advControlURLs,
-		sspAdapterWorkStatusURL,
-		redisWriteErrorMonitor,
-	)
-	if err != nil {
-		w.WriteHeader(http.StatusServiceUnavailable)
+	if err := processBurl(r.Context(), resolved, nurlClient, redisClients, redisSetImpressions, redisWriteErrorMonitor, sspAdapterWorkStatusURL, advBillingStore, advOutbox, advControlURLs, dspExecutor...); err != nil {
+		http.Error(w, "BURL deferred or unavailable", 503)
 		return
-	}
-	if !isADV {
-		exists, err := utils.UUIDKeyExistsInRedis(ctx, redisNurlClient, input.GlobalId)
-		if err != nil {
-			recordRedisError(redisWriteErrorMonitor, err, sspAdapterWorkStatusURL)
-			w.WriteHeader(http.StatusServiceUnavailable)
-			return
-		}
-		if !exists {
-			w.WriteHeader(http.StatusBadRequest)
-			return
-		}
-	}
-	impressionUUID := uuid.NewString()
-	if err := utils.WriteImpressionStats(ctx, redisClients, impressionUUID, input.GlobalId, format, true); err != nil {
-		recordRedisError(redisWriteErrorMonitor, err, sspAdapterWorkStatusURL)
-		w.WriteHeader(http.StatusServiceUnavailable)
-		return
-	}
-	if err := utils.AddUUIDToRedisSet(ctx, redisClients, redisSetImpressions, impressionUUID, true); err != nil {
-		recordRedisError(redisWriteErrorMonitor, err, sspAdapterWorkStatusURL)
-		w.WriteHeader(http.StatusServiceUnavailable)
-		return
-	}
-	if strings.TrimSpace(input.DspURL) != "" {
-		decodedURL, err := url.QueryUnescape(input.DspURL)
-		if err != nil || strings.TrimSpace(decodedURL) == "" {
-			w.WriteHeader(http.StatusBadRequest)
-			return
-		}
-		resp, err := nurlClient.Get(decodedURL)
-		if err == nil {
-			defer resp.Body.Close()
-			_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 4096))
-		}
 	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// Shared business function, with no HTTP writer and no self-request to /burl.
+func processBurl(ctx context.Context, resolved resolvedCallback, nurlClient *http.Client, redisClients []*redis.Client, redisSetImpressions string, monitor *services.RedisWriteErrorMonitor, statusURL string, store *billing.Store, box *outbox.Store, controls []string, dspExecutor ...*publisherDSPExecutor) (result error) {
+	ctx = context.WithValue(ctx, callbackKey{}, resolved)
+	format := resolved.Record.Format
+	publisherPOP := format == constants.POP && resolved.Record.PublisherID != ""
+	if publisherPOP {
+		// DSP ADM uses DB1 and external BURL uses DB0. The lease must always live
+		// in the ADM winner hash; two copies of the context are not two billing locks.
+		if resolved.Record.WinnerType == "dsp" {
+			if canonical, ok := ctx.Value(publisherDSPGuardKey{}).(*redis.Client); ok {
+				resolved.Redis = canonical
+			}
+		}
+		// Serialize internal and external BURL for this winner. Retry on actual
+		// failure is safe: billing event ID and impression UUID stay unchanged.
+		lease := uuid.NewString()
+		acquired, e := resolved.Redis.Eval(ctx, `local state=redis.call('HGET',KEYS[1],'pub_burl_done');if state=='1' then return 0 end
+   local untilms=tonumber(redis.call('HGET',KEYS[1],'pub_burl_until') or '0');if untilms>tonumber(ARGV[1]) then return 2 end
+   redis.call('HSET',KEYS[1],'pub_burl_lease',ARGV[3],'pub_burl_until',ARGV[2]);if redis.call('PTTL',KEYS[1])<0 then redis.call('PEXPIRE',KEYS[1],86400000) end;return 1`, []string{resolved.ID}, time.Now().UnixMilli(), time.Now().Add(2*time.Minute).UnixMilli(), lease).Int()
+		if e != nil {
+			return e
+		}
+		if acquired == 0 {
+			return nil
+		}
+		if acquired == 2 {
+			return errors.New("publisher BURL lease busy")
+		}
+		defer func() {
+			cleanup, cancel := context.WithTimeout(context.WithoutCancel(ctx), 2*time.Second)
+			defer cancel()
+			done := "0"
+			if result == nil {
+				done = "1"
+			}
+			committed, e := resolved.Redis.Eval(cleanup, `if redis.call('HGET',KEYS[1],'pub_burl_lease')==ARGV[1] then redis.call('HDEL',KEYS[1],'pub_burl_lease','pub_burl_until');if ARGV[2]=='1' then redis.call('HSET',KEYS[1],'pub_burl_done','1') end;return 1 end;return 0`, []string{resolved.ID}, lease, done).Int()
+			if e == nil && committed != 1 {
+				e = errors.New("publisher BURL lease no longer owned")
+			}
+			if e != nil {
+				log.Printf("publisher BURL completion uuid=%s: %v", resolved.ID, e)
+				if result == nil {
+					result = e
+				}
+			}
+			if result == nil {
+				// Only the guard owner submits, after successful Redis completion.
+				// Admission is bounded/nonblocking and never changes internal success.
+				var executor *publisherDSPExecutor
+				if len(dspExecutor) > 0 {
+					executor = dspExecutor[0]
+				}
+				executor.enqueue(resolved.ID, resolved.Record.BURL)
+			}
+		}()
+	}
+	billable := format == constants.NAT || format == constants.BAN || format == constants.POP || format == constants.VID
+	if _, e := handleADVCallback(ctx, resolved.ID, format, "burl", billable, store, box, controls, statusURL, monitor); e != nil {
+		return e
+	}
+	impressionUUID := uuid.NewString()
+	if publisherPOP {
+		impressionUUID = uuid.NewSHA1(uuid.NameSpaceURL, []byte("publisher-burl:"+resolved.ID)).String()
+	}
+	if e := utils.WriteImpressionStats(ctx, redisClients, impressionUUID, resolved.ID, format, true); e != nil {
+		recordRedisError(monitor, e, statusURL)
+		return e
+	}
+	if e := utils.AddUUIDToRedisSet(ctx, redisClients, redisSetImpressions, impressionUUID, true); e != nil {
+		recordRedisError(monitor, e, statusURL)
+		return e
+	}
+	if publisherPOP {
+		return nil // Guard completion and DSP admission run in the defer above.
+	}
+	return sendBURLCallback(ctx, resolved.ID, resolved.Record.BURL, nurlClient, false)
+}
+
+// Keep ordinary RTB callbacks synchronous with their existing HTTP semantics.
+func sendBURLCallback(ctx context.Context, id, target string, nurlClient *http.Client, publisherPOP bool) error {
+	if target != "" {
+		req, e := http.NewRequestWithContext(ctx, http.MethodGet, target, nil)
+		if e != nil {
+			log.Printf("downstream BURL request invalid uuid=%s", id)
+			if !publisherPOP {
+				return e
+			}
+			return nil // Internal effects completed; external URL failure is diagnostic.
+		}
+		resp, e := nurlClient.Do(req)
+		if e == nil {
+			defer resp.Body.Close()
+			if resp.StatusCode >= 400 {
+				log.Printf("downstream BURL uuid=%s status=%d", id, resp.StatusCode)
+			}
+			if _, readErr := io.Copy(io.Discard, io.LimitReader(resp.Body, 4096)); readErr != nil {
+				log.Printf("downstream BURL response unreadable uuid=%s", id)
+			}
+		} else {
+			if uerr, ok := e.(*url.Error); ok {
+				e = uerr.Err
+			}
+			log.Printf("downstream BURL uuid=%s: %v", id, e)
+		}
+	}
+	return nil
 }
 
 func getClicksWins(
@@ -531,16 +586,25 @@ func handleADVCallback(
 	sspAdapterWorkStatusURL string,
 	monitor *services.RedisWriteErrorMonitor,
 ) (bool, error) {
-	if store == nil {
-		return false, nil
-	}
-	winner, err := store.ReadWinner(ctx, winnerUUID, format)
-	if errors.Is(err, redis.Nil) {
-		return false, nil
-	}
-	if err != nil {
-		recordRedisError(monitor, err, sspAdapterWorkStatusURL)
-		return false, err
+	var winner billing.Winner
+	if resolved, ok := ctx.Value(callbackKey{}).(resolvedCallback); ok && resolved.ID == winnerUUID {
+		if resolved.Record.WinnerType != "adv" {
+			return false, nil
+		}
+		winner = resolved.Winner
+	} else {
+		if store == nil {
+			return false, nil
+		}
+		var err error
+		winner, err = store.ReadWinner(ctx, winnerUUID, format)
+		if errors.Is(err, redis.Nil) {
+			return false, nil
+		}
+		if err != nil {
+			recordRedisError(monitor, err, sspAdapterWorkStatusURL)
+			return false, err
+		}
 	}
 	if !billable {
 		return true, nil

@@ -282,6 +282,9 @@ type SppAdapterConfig struct {
 }
 
 type AdmAdapterConfig struct {
+	PublisherBURLWorkers   int           `yaml:"PUB_BURL_WORKERS" env:"PUB_BURL_WORKERS" env-default:"8"`
+	PublisherBURLTimeout   time.Duration `yaml:"PUB_BURL_TASK_TIMEOUT" env:"PUB_BURL_TASK_TIMEOUT" env-default:"20s"`
+	PublisherBURLHighWater int           `yaml:"PUB_BURL_BACKLOG_HIGH_WATER" env:"PUB_BURL_BACKLOG_HIGH_WATER" env-default:"100000"`
 	AntiperekrutControlConfig
 	HttpServer              HttpServer
 	AdmTimeout              time.Duration `yaml:"ADM_TIMEOUT" env:"ADM_TIMEOUT"`

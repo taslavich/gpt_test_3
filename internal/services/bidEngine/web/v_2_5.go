@@ -2,7 +2,10 @@ package bidEngineWeb
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"gitlab.com/twinbid-exchange/RTB-exchange/internal/callback"
+	shard "gitlab.com/twinbid-exchange/RTB-exchange/internal/services/redis"
 	"log"
 	"net/http"
 	"runtime/debug"
@@ -24,6 +27,7 @@ type Server struct {
 	ProfitPercent          float32
 	redisClients           []*redis.Client
 	redisAdmClient         *redis.Client
+	callbackADV            *redis.Client
 	redisBurlClient        *redis.Client
 	redisUUIDKeyTTL        time.Duration
 	redisSetOrtb           string
@@ -82,9 +86,11 @@ func NewServer(
 
 	admDomain string,
 	redisWriteErrorMonitor *services.RedisWriteErrorMonitor,
+	callbackADV *redis.Client,
 ) *Server {
 	return &Server{
 		ProfitPercent:                        ProfitPercent,
+		callbackADV:                          callbackADV,
 		redisClients:                         redisClients,
 		redisAdmClient:                       redisAdmClient,
 		redisBurlClient:                      redisBurlClient,
@@ -122,6 +128,8 @@ func (s *Server) GetWinnerBid_V2_5(
 		return nil, status.Error(codes.Internal, "bid engine auction function is nil")
 	}
 
+	ctx, callbackRecords := callback.Collecting(ctx)
+
 	// ADV and DSP winners are finalized by one per-impression path. Production
 	// selects FORMAT x traffic percent maps; the legacy branch keeps the old shared maps.
 	var bidResponse *ortb_V2_5.BidResponse
@@ -137,24 +145,59 @@ func (s *Server) GetWinnerBid_V2_5(
 		)
 	}
 
-	// These UUID sets belong to bids that use downstream-style callbacks. That
-	// includes ordinary DSP winners and external ADV winners produced by an RTB
-	// campaign; normal local ADV winners keep their existing callback path.
-	for _, uuid := range admUUIDs {
-		if err := utils.WriteUUIDKeyToRedis(ctx, s.redisAdmClient, uuid, s.redisUUIDKeyTTL); err != nil {
-			log.Printf("failed to write ADM UUID key in GetWinnerBidInternal: %v", err)
-			if s.redisWriteErrorMonitor != nil {
-				s.redisWriteErrorMonitor.RecordForURL(err, req.SspUrl)
+	// UUID authorization and private callback context are committed together below.
+	_ = burlUUIDs
+	_ = admUUIDs
+	callbackFailed := map[string]bool{}
+	if bidResponse != nil {
+		for _, seat := range bidResponse.GetSeatbid() {
+			if seat == nil {
+				continue
 			}
-		}
-	}
-
-	for _, uuid := range burlUUIDs {
-		if err := utils.WriteUUIDKeyToRedis(ctx, s.redisBurlClient, uuid, s.redisUUIDKeyTTL); err != nil {
-			log.Printf("failed to write BURL UUID key in GetWinnerBidInternal: %v", err)
-			if s.redisWriteErrorMonitor != nil {
-				s.redisWriteErrorMonitor.RecordForURL(err, req.SspUrl)
+			kept := seat.Bid[:0]
+			for _, bid := range seat.GetBid() {
+				if bid == nil {
+					continue
+				}
+				id := req.GetImpIdUuid()[bid.GetImpid()]
+				record, ok := callbackRecords[id]
+				var err error
+				if !ok {
+					err = errors.New("callback context was not collected")
+				} else {
+					// The existing ORTB hash is the trusted publisher attribution authority.
+					var c *redis.Client
+					c, _, err = shard.SelectShard(s.redisClients, id)
+					if err == nil {
+						var owner string
+						owner, err = c.HGet(ctx, id, "pub_user_id").Result()
+						if errors.Is(err, redis.Nil) {
+							err = nil
+						}
+						record.PublisherID = owner
+					}
+					target := s.redisAdmClient
+					stats := clickhouseBid[id]
+					adv := stats != nil && stats.WinDspDomain != nil && *stats.WinDspDomain == "adv"
+					if adv {
+						record.WinnerType = "adv"
+						target = s.callbackADV
+					}
+					if err == nil {
+						err = callback.Save(ctx, target, id, record, s.redisUUIDKeyTTL, adv)
+					}
+					if err == nil && !adv && s.redisBurlClient != s.redisAdmClient {
+						err = callback.Save(ctx, s.redisBurlClient, id, record, s.redisUUIDKeyTTL, false)
+					}
+				}
+				if err != nil {
+					callbackFailed[bid.GetImpid()] = true
+					log.Printf("callback context persistence failed uuid=%s: %v", id, err)
+					continue
+				}
+				kept = append(kept, bid)
 			}
+			seat.Bid = kept
 		}
 	}
 
@@ -198,6 +241,10 @@ func (s *Server) GetWinnerBid_V2_5(
 	}
 
 	for impID, uuid := range req.GetImpIdUuid() {
+		if callbackFailed[impID] {
+			appendFailed(impID)
+			continue
+		}
 		_, isADV := finalADVImpIDs[impID]
 		if allADV && !isADV {
 			continue

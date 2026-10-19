@@ -43,6 +43,7 @@ var ortbHMGetFields = []string{
 	constants.EXACT_SEGMENT_HASH_COLUMN,
 	constants.SEGMENT_HASH_COLUMN,
 	constants.PERCENTER_POINT_VERSION_COLUMN,
+	"pub_user_id", "ad_code_id", "zone_id", "request_id", "site_page", "request_error", "error_reason",
 }
 
 func ProcessBatchOrtb(
@@ -138,7 +139,20 @@ func buildOrtbKafkaMessage(
 		bidResponses[constants.PercenterPointVersionTransportKey] = rawRecord.PERCENTER_POINT_VERSION
 	}
 
+	publisherID := valueAsString(values, 29)
+	requestError := valueAsString(values, 34) == "1"
+	reason := valueAsString(values, 35)
+	// Prewrite knows validation status; the original RTB writer supplies final
+	// CODE. Classify RTB failures at serialization, before the same event ingest,
+	// without asking the adapter to handle publisher metadata or late HASH writes.
+	if publisherID != "" && parseUint32Safe(rawRecord.CODE) >= 400 {
+		requestError = true
+		if reason == "" {
+			reason = "rtb_status_" + rawRecord.CODE
+		}
+	}
 	event := &eventspb.OrtbEvent{
+		PubUserId: publisherID, AdCodeId: valueAsString(values, 30), ZoneId: valueAsString(values, 31), RequestId: valueAsString(values, 32), SitePage: valueAsString(values, 33), RequestError: requestError, ErrorReason: reason,
 		Uuid:           rawRecord.UUID,
 		EventTimeMs:    parseUnixMsSafe(rawRecord.EVENT_TIME),
 		Typic:          rawRecord.TYPIC,

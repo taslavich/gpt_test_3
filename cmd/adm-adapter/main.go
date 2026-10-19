@@ -6,6 +6,7 @@ import (
 	"log"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/redis/go-redis/v9"
@@ -103,6 +104,11 @@ func main() {
 	if err != nil {
 		log.Fatalf("Cannot init ADM Redis client: %v", err)
 	}
+	redisAdmClientOptions := *redisAdmClient.Options()
+	redisAdmClientOptions.ContextTimeoutEnabled = true
+	_ = redisAdmClient.Close()
+	redisAdmClient = redis.NewClient(&redisAdmClientOptions)
+
 	defer func() {
 		if err := redisAdmClient.Close(); err != nil {
 			log.Printf("⚠️ failed to close ADM Redis client: %v", err)
@@ -119,6 +125,11 @@ func main() {
 	if err != nil {
 		log.Fatalf("Cannot init BURL Redis client: %v", err)
 	}
+	redisBurlClientOptions := *redisBurlClient.Options()
+	redisBurlClientOptions.ContextTimeoutEnabled = true
+	_ = redisBurlClient.Close()
+	redisBurlClient = redis.NewClient(&redisBurlClientOptions)
+
 	defer func() {
 		if err := redisBurlClient.Close(); err != nil {
 			log.Printf("⚠️ failed to close BURL Redis client: %v", err)
@@ -143,9 +154,10 @@ func main() {
 	})
 	defer advRuntimeRedis.Close()
 	advWinnerRedis := redis.NewClient(&redis.Options{
-		Addr:     cfg.RedisADVAddr,
-		Password: cfg.RedisPassword,
-		DB:       cfg.RedisDBAdvWinner,
+		Addr:                  cfg.RedisADVAddr,
+		Password:              cfg.RedisPassword,
+		DB:                    cfg.RedisDBAdvWinner,
+		ContextTimeoutEnabled: true,
 	})
 	defer advWinnerRedis.Close()
 	if err := advRuntimeRedis.Ping(ctx).Err(); err != nil {
@@ -209,7 +221,7 @@ func main() {
 	).Start(ctx)
 
 	admRouter := httpServer.InitHttpRouter(chi.NewRouter())
-	sppAdapterWeb.InitHttpsRoutes(
+	stopPublisherBURL := sppAdapterWeb.InitHttpsRoutes(
 		ctx,
 		admRouter,
 		redisClients.Clicks,
@@ -229,7 +241,9 @@ func main() {
 		advBillingStore,
 		advOutbox,
 		[]string(cfg.AdvServiceControlURLs),
+		sppAdapterWeb.PublisherBURLOptions{Workers: cfg.PublisherBURLWorkers, Timeout: cfg.PublisherBURLTimeout, HighWater: cfg.PublisherBURLHighWater, MaxAge: min(24*time.Hour, cfg.AdvAppliedMarkerTTL/2)},
 	)
+	defer stopPublisherBURL()
 	log.Println("ADM HTTPS routes initialized")
 
 	/*nurlBurlRouter := httpServer.InitHttpRouter(chi.NewRouter())
@@ -286,6 +300,9 @@ func countPendingADVBillingRecords(records []outbox.Record) int {
 func validateConfig(cfg *config.AdmAdapterConfig) error {
 	if cfg == nil {
 		return fmt.Errorf("config is nil")
+	}
+	if cfg.PublisherBURLWorkers < 0 || cfg.PublisherBURLWorkers > 64 || cfg.PublisherBURLTimeout < 0 || cfg.PublisherBURLTimeout > time.Minute || cfg.PublisherBURLHighWater < 0 {
+		return fmt.Errorf("invalid Publisher BURL queue limits")
 	}
 	if cfg.RedisDBAdvRuntime != 5 || cfg.RedisDBAdvWinner != 6 {
 		return fmt.Errorf("ADV billing requires Redis DB 5 for runtime and DB 6 for winners")

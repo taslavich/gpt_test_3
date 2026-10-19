@@ -5,13 +5,10 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
-	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/ggicci/httpin"
-	"gitlab.com/twinbid-exchange/RTB-exchange/internal/constants"
-	"gitlab.com/twinbid-exchange/RTB-exchange/internal/services/sspAdapter/outbox"
 )
 
 func TestAppendClickIDParameterUsesConfiguredNameAndReplacesExistingValue(t *testing.T) {
@@ -37,60 +34,13 @@ func TestAppendClickIDParameterSkipsMissingOrInvalidName(t *testing.T) {
 	}
 }
 
-func TestADMRedirectContinuesWhenWinnerRedisIsUnavailable(t *testing.T) {
-	store, err := outbox.Open(filepath.Join(t.TempDir(), "outbox.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer store.Close()
-
-	target := "https://advertiser.example/landing?keep=1"
-	req := httptest.NewRequest(http.MethodGet, "/adm", nil)
-	req = req.WithContext(context.WithValue(req.Context(), httpin.Input, &admRequest{
-		GlobalId: "winner-1",
-		DspURL:   url.QueryEscape(target),
-		Format:   constants.FormatToCodes[constants.IPP],
-	}))
-	response := httptest.NewRecorder()
-
-	getAdm(
-		context.Background(),
-		response,
-		req,
-		nil,
-		nil,
-		"clicks",
-		nil,
-		"",
-		nil,
-		store,
-		nil,
-	)
-
-	if response.Code != http.StatusOK {
-		t.Fatalf("status=%d body=%q", response.Code, response.Body.String())
-	}
-	body := response.Body.String()
-	if !strings.Contains(body, target) {
-		t.Fatalf("redirect page does not contain target URL: %q", body)
-	}
-	for _, want := range []string{"window.self !== window.top", "navigator.sendBeacon", `window.open(advertiserUrl, "_blank")`, "window.top.location = advertiserUrl", "window.location.replace(advertiserUrl)"} {
-		if !strings.Contains(body, want) {
-			t.Fatalf("redirect page missing %q: %q", want, body)
-		}
-	}
-	if strings.Contains(body, "setTimeout") {
-		t.Fatalf("redirect page must not add an artificial timeout: %q", body)
-	}
-	records, err := store.List()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(records) != 1 {
-		t.Fatalf("outbox records=%#v", records)
-	}
-	if records[0].Kind != outbox.KindADM || records[0].GlobalID != "winner-1" || records[0].WinnerType != outbox.WinnerUnknown {
-		t.Fatalf("unexpected outbox record: %#v", records[0])
+func TestADMRejectsUntrustedURLWhenContextUnavailable(t *testing.T) {
+	req := httptest.NewRequest("GET", "/adm?id=10000000-0000-4000-8000-000000000001&url=https://attacker.test&f=4", nil)
+	req = req.WithContext(context.WithValue(req.Context(), httpin.Input, &admRequest{GlobalId: "10000000-0000-4000-8000-000000000001"}))
+	w := httptest.NewRecorder()
+	getAdm(context.Background(), w, req, nil, nil, "clicks", nil, "", nil, nil, nil)
+	if w.Code != 503 || strings.Contains(w.Body.String(), "attacker.test") {
+		t.Fatalf("unsafe Redis fallback: %d %s", w.Code, w.Body.String())
 	}
 }
 func TestADMRedirectPageReportsIframeWithoutBlockingRedirect(t *testing.T) {

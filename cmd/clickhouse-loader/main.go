@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"crypto/tls"
+	"flag"
 	"fmt"
 	"log"
 	"net"
@@ -23,6 +24,12 @@ import (
 const clicksWinsMaxBatchSize = 10000
 
 func main() {
+	schemaOnly := flag.Bool("schema-only", false, "apply schema/cutover without Kafka consumers (writers and revenue sync must be paused)")
+	repair := flag.Bool("publisher-pop-repair", false, "explicitly reimport retained POP facts/registry after ingestion errors; requires --schema-only")
+	flag.Parse()
+	if *repair && !*schemaOnly {
+		log.Fatal("--publisher-pop-repair requires --schema-only and paused writers/revenue sync")
+	}
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
@@ -62,6 +69,14 @@ func main() {
 		log.Fatalf("❌ Failed to create table: %v", err)
 	}
 	log.Printf("✅ Db %s ready", cfg.Clickhouse.Database)
+	if *repair {
+		if err := clickhouse_loader.RepairPublisherPOPRevenueRegistry(ctx, conn, cfg.Clickhouse.Database); err != nil {
+			log.Fatal(err)
+		}
+	}
+	if *schemaOnly {
+		return
+	}
 
 	connProd, err := clickhouse.Open(&clickhouse.Options{
 		Addr:     []string{addr},
