@@ -24,9 +24,13 @@ import (
 const clicksWinsMaxBatchSize = 10000
 
 func main() {
+	diagnosticsOnly := flag.Bool("publisher-zone-diagnostics-only", false, "apply only Publisher zone diagnostics; never run financial DDL")
 	schemaOnly := flag.Bool("schema-only", false, "apply schema/cutover without Kafka consumers (writers and revenue sync must be paused)")
 	repair := flag.Bool("publisher-pop-repair", false, "explicitly reimport retained POP facts/registry after ingestion errors; requires --schema-only")
 	flag.Parse()
+	if *diagnosticsOnly && (*schemaOnly || *repair) {
+		log.Fatal("diagnostics-only cannot be combined with financial schema flags")
+	}
 	if *repair && !*schemaOnly {
 		log.Fatal("--publisher-pop-repair requires --schema-only and paused writers/revenue sync")
 	}
@@ -65,7 +69,17 @@ func main() {
 	}
 	log.Println("✅ Connected to Default ClickHouse")
 
-	if err := clickhouse_loader.CreateDB(ctx, conn, cfg.Clickhouse.Database); err != nil {
+	if *diagnosticsOnly {
+		if err := clickhouse_loader.ApplyPublisherZoneDiagnostics(ctx, conn, cfg.Clickhouse.Database); err != nil {
+			log.Fatal(err)
+		}
+		return
+	}
+	prepare := clickhouse_loader.EnsureLoaderSchema
+	if *schemaOnly {
+		prepare = clickhouse_loader.CreateDB
+	}
+	if err := prepare(ctx, conn, cfg.Clickhouse.Database); err != nil {
 		log.Fatalf("❌ Failed to create table: %v", err)
 	}
 	log.Printf("✅ Db %s ready", cfg.Clickhouse.Database)

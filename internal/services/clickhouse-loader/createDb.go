@@ -57,8 +57,6 @@ DROP VIEW IF EXISTS {db}.mv_ortb_traffic_hourly SYNC;
 DROP VIEW IF EXISTS {db}.mv_campaign_dsp_price_sum SYNC;
 DROP VIEW IF EXISTS {db}.mv_recover_clicks_from_clicks_wins SYNC;
 DROP VIEW IF EXISTS {db}.ortb_logical SYNC;
-DROP VIEW IF EXISTS {db}.mv_ortb_to_publisher_requests SYNC;
-DROP VIEW IF EXISTS {db}.publisher_requests_logical SYNC;
 DROP VIEW IF EXISTS {db}.mv_ortb_to_publisher_inventory SYNC;
 
 -- ============================================================
@@ -174,29 +172,6 @@ LIMIT 1 BY logical_event_id;
 -- Durable percenter decision history. event_id is stable across retries.
 -- ReplacingMergeTree + FINAL logical view make physical replay logically
 -- idempotent without relying on background merge timing.
-
--- Compact read projection from the SAME ORTB ingest. Do not extend the wide
--- ORTB retention: existing auction enrichment JOINs must stay one-hour bounded.
-CREATE TABLE IF NOT EXISTS {db}.publisher_requests
-(
- logical_event_id String,uuid UUID,event_time DateTime64(3,'UTC'),created_at DateTime64(3,'UTC'),
- pub_user_id String,ad_code_id String,zone_id String,request_id String,site_id String,site_domain String,
- site_page String,geo String,device String,os String,browser String,code UInt16,request_error UInt8,error_reason String
-)
-ENGINE=MergeTree
-PARTITION BY toYYYYMMDD(event_time)
-ORDER BY (pub_user_id,event_time,logical_event_id)
-TTL event_time + INTERVAL 6 MONTH DELETE;
-ALTER TABLE {db}.publisher_requests ADD COLUMN IF NOT EXISTS format LowCardinality(String) DEFAULT 'POP';
-CREATE MATERIALIZED VIEW {db}.mv_ortb_to_publisher_requests TO {db}.publisher_requests AS
-SELECT logical_event_id,uuid,event_time,created_at,pub_user_id,ad_code_id,zone_id,request_id,format,
- ifNull(site_id,'') AS site_id,ifNull(site_domain,'') AS site_domain,site_page,
- ifNull(geo,'') AS geo,ifNull(device,'') AS device,ifNull(os,'') AS os,ifNull(browser,'') AS browser,
- code,request_error,error_reason
-FROM {db}.ortb WHERE pub_user_id!='';
-CREATE VIEW {db}.publisher_requests_logical AS
-SELECT * FROM {db}.publisher_requests ORDER BY created_at ASC LIMIT 1 BY logical_event_id;
-
 
 -- Lifetime discovery only; min/max are idempotent under retries. This does not
 -- assign Site IDs and does not keep wide auction payloads or compute revenue.
@@ -3227,7 +3202,7 @@ func CreateDB(ctx context.Context, ch clickhouse.Conn, database string) error {
 		}
 	}
 
-	return nil
+	return ApplyPublisherZoneDiagnostics(ctx, ch, database)
 }
 
 // Called with source consumers and revenue sync paused during schema deployment.

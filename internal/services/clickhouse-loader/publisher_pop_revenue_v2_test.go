@@ -118,7 +118,7 @@ func TestPublisherPOPRevenueDirtyCheckpointsCrashAndLateReplay(t *testing.T) {
 	if f.dirty() != 0 {
 		t.Fatal("merging parts changed generation")
 	}
-	if e := CreateDB(f.ctx, f.ch, f.db); e != nil {
+	if e := EnsureLoaderSchema(f.ctx, f.ch, f.db); e != nil {
 		t.Fatal("loader restart", e)
 	}
 	for _, v := range []string{"mv_publisher_pop_revenue_checkpoint", "mv_publisher_pop_revenue_to_agg_stats"} {
