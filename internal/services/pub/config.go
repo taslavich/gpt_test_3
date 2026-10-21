@@ -30,6 +30,7 @@ type Config struct {
 	Listen                  string        `env:"PUB_LISTEN" env-default:"127.0.0.1:8087"`
 	PublicURL               string        `env:"PUB_PUBLIC_URL" env-required:"true"`
 	RedisAddrs              string        `env:"PUBLISHER_REDIS_ADDRS" env-required:"true"`
+	RedisDB                 int           `env:"PUBLISHER_REDIS_DB" env-default:"8"`
 	RedisPassword           string        `env:"PUBLISHER_REDIS_PASSWORD"`
 	RedisTLS                bool          `env:"PUBLISHER_REDIS_TLS" env-default:"false"`
 	InternalSecret          string        `env:"PUB_INTERNAL_SECRET" env-required:"true"`
@@ -74,10 +75,16 @@ func (c Config) Validate() error {
 	if c.AdultFeed == "" || c.MainstreamFeed == "" || c.RedisAddrs == "" || c.CallbackOrigins == "" || c.ORTBAddrs == "" || c.ORTBReadySet == "" || c.ORTBDB < 0 || c.TelemetryMaxBytes < 1 {
 		return errors.New("missing feed, Redis, callback or ORTB configuration")
 	}
+	if c.RedisDB < 0 {
+		return errors.New("PUBLISHER_REDIS_DB must be >= 0")
+	}
+	if c.RedisCluster && c.RedisDB != 0 {
+		return errors.New("PUBLISHER_REDIS_DB must be 0 when PUBLISHER_REDIS_CLUSTER=true (Redis Cluster does not support SELECT)")
+	}
 	return nil
 }
 func (c Config) Redis() redis.UniversalClient {
-	o := &redis.UniversalOptions{Addrs: strings.Split(c.RedisAddrs, ","), Password: c.RedisPassword, Username: c.RedisUsername, DB: 0, PoolSize: 256, ReadTimeout: time.Second, WriteTimeout: time.Second}
+	o := &redis.UniversalOptions{Addrs: strings.Split(c.RedisAddrs, ","), Password: c.RedisPassword, Username: c.RedisUsername, DB: c.RedisDB, PoolSize: 256, ReadTimeout: time.Second, WriteTimeout: time.Second}
 	if c.RedisTLS {
 		o.TLSConfig = &tls.Config{MinVersion: tls.VersionTLS12}
 	}
