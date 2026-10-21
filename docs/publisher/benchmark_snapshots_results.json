@@ -1,0 +1,24 @@
+{
+  "source_rows": 36000000,
+  "first": {
+    "ok": 1350000,
+    "empty": 0,
+    "client": 1070000,
+    "server": 0
+  },
+  "second": {
+    "ok": 1350000,
+    "empty": 0,
+    "client": 1070000,
+    "server": 0
+  },
+  "after_final_merge": {
+    "ok": 1350000,
+    "empty": 0,
+    "client": 1070000,
+    "server": 0
+  },
+  "physical_rows_before_merge": 12100,
+  "logical_rows_before_merge": 6050,
+  "status": "PASS"
+}

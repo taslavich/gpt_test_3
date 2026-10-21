@@ -1,0 +1,129 @@
+{
+  "source": "actual proj234 ORTB DDL; no financial/discovery MV on benchmark table",
+  "publisher_share": 0.1,
+  "logical_id": "UUID-shaped; deterministic 1% total Kafka replay (10% of Publisher rows)",
+  "settings": {
+    "max_threads": 2,
+    "max_memory_usage": 536870912,
+    "spill_threshold": 134217728,
+    "max_execution_time": 120
+  },
+  "critical_probe": {
+    "query": "SELECT sum(v) FROM bench.probe WHERE g<20 SETTINGS max_threads=1 FORMAT Null",
+    "baseline_p50_ms": 8.689958999980263,
+    "baseline_p95_ms": 29.897438000034526
+  },
+  "runs": [
+    {
+      "source_rows": 12000000,
+      "repeat": 0,
+      "elapsed_seconds": 7.450880010999981,
+      "max_observed_temp_bytes": 59338105,
+      "probe_p50_ms": 11.228185000049962,
+      "probe_p95_ms": 31.12771300015993,
+      "error": null,
+      "events": {}
+    },
+    {
+      "source_rows": 12000000,
+      "repeat": 1,
+      "elapsed_seconds": 6.200679358000116,
+      "max_observed_temp_bytes": 55944077,
+      "probe_p50_ms": 11.045814500107554,
+      "probe_p95_ms": 21.977994000053513,
+      "error": null,
+      "type": "QueryFinish",
+      "query_duration_ms": 6207,
+      "read_rows": 12000000,
+      "read_bytes": 2493552872,
+      "memory_usage": 142781715,
+      "exception": "",
+      "events": {
+        "DiskWriteElapsedMicroseconds": 28859,
+        "ExternalProcessingCompressedBytesTotal": 55944077,
+        "ExternalProcessingUncompressedBytesTotal": 122899601,
+        "ExternalProcessingFilesTotal": 20,
+        "ExternalAggregationWritePart": 20,
+        "ExternalAggregationMerge": 1,
+        "ExternalAggregationCompressedBytes": 55944077,
+        "ExternalAggregationUncompressedBytes": 122899601,
+        "SelectedMarks": 1488,
+        "SelectedRows": 12000000,
+        "RowsReadByMainReader": 12000000,
+        "RowsReadByPrewhereReaders": 12000000,
+        "UserTimeMicroseconds": 9850053,
+        "SystemTimeMicroseconds": 321434,
+        "OSWriteBytes": 55992320
+      }
+    },
+    {
+      "source_rows": 36000000,
+      "repeat": 0,
+      "elapsed_seconds": 21.829832607999833,
+      "max_observed_temp_bytes": 182114197,
+      "probe_p50_ms": 11.858534999987569,
+      "probe_p95_ms": 22.536737000109497,
+      "error": "Code: 241. DB::Exception: Query memory limit exceeded: would use 512.67 MiB (attempt to allocate chunk of 4.00 MiB bytes), maximum: 512.00 MiB. (MEMORY_LIMIT_EXCEEDED) (version 25.8.18.1 (official build))\n",
+      "type": "ExceptionWhileProcessing",
+      "query_duration_ms": 21781,
+      "read_rows": 36000000,
+      "read_bytes": 7480537600,
+      "memory_usage": 536663652,
+      "exception": "Code: 241. DB::Exception: Query memory limit exceeded: would use 512.67 MiB (attempt to allocate chunk of 4.00 MiB bytes), maximum: 512.00 MiB. (MEMORY_LIMIT_EXCEEDED) (version 25.8.18.1 (official build))",
+      "events": {
+        "DiskWriteElapsedMicroseconds": 320555,
+        "ExternalProcessingCompressedBytesTotal": 182114197,
+        "ExternalProcessingUncompressedBytesTotal": 511947999,
+        "ExternalProcessingFilesTotal": 330,
+        "ExternalAggregationWritePart": 330,
+        "ExternalAggregationMerge": 1,
+        "ExternalAggregationCompressedBytes": 182114197,
+        "ExternalAggregationUncompressedBytes": 511947999,
+        "SelectedMarks": 4464,
+        "SelectedRows": 36000000,
+        "RowsReadByMainReader": 36000000,
+        "RowsReadByPrewhereReaders": 36000000,
+        "UserTimeMicroseconds": 32980598,
+        "SystemTimeMicroseconds": 2463548,
+        "OSWriteBytes": 185446400
+      }
+    },
+    {
+      "source_rows": 36000000,
+      "repeat": 1,
+      "elapsed_seconds": 20.930037112000036,
+      "max_observed_temp_bytes": 190285114,
+      "probe_p50_ms": 11.200293499996405,
+      "probe_p95_ms": 28.326075999984823,
+      "error": "Code: 241. DB::Exception: Query memory limit exceeded: would use 515.61 MiB (attempt to allocate chunk of 4.00 MiB bytes), maximum: 512.00 MiB: While executing SourceFromNativeStream. (MEMORY_LIMIT_EXCEEDED) (version 25.8.18.1 (official build))\n",
+      "type": "ExceptionWhileProcessing",
+      "query_duration_ms": 20877,
+      "read_rows": 36000000,
+      "read_bytes": 7480537600,
+      "memory_usage": 536464747,
+      "exception": "Code: 241. DB::Exception: Query memory limit exceeded: would use 515.61 MiB (attempt to allocate chunk of 4.00 MiB bytes), maximum: 512.00 MiB: While executing SourceFromNativeStream. (MEMORY_LIMIT_EXCEEDED) (version 25.8.18.1 (official build))",
+      "events": {
+        "DiskWriteElapsedMicroseconds": 465689,
+        "ExternalProcessingCompressedBytesTotal": 190285114,
+        "ExternalProcessingUncompressedBytesTotal": 577955705,
+        "ExternalProcessingFilesTotal": 350,
+        "ExternalAggregationWritePart": 350,
+        "ExternalAggregationMerge": 2,
+        "ExternalAggregationCompressedBytes": 190285114,
+        "ExternalAggregationUncompressedBytes": 577955705,
+        "SelectedMarks": 4464,
+        "SelectedRows": 36000000,
+        "RowsReadByMainReader": 36000000,
+        "RowsReadByPrewhereReaders": 36000000,
+        "UserTimeMicroseconds": 34649764,
+        "SystemTimeMicroseconds": 1956505,
+        "OSWriteBytes": 191266816
+      }
+    }
+  ],
+  "source_rows_actual": 36000000,
+  "parts": {
+    "disk_bytes": 2077346281,
+    "rows": 36000000
+  }
+}

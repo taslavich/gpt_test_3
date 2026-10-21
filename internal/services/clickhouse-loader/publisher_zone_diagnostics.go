@@ -2,10 +2,12 @@ package clickhouse_loader
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log"
 	"regexp"
 	"strings"
+	"time"
 
 	"github.com/ClickHouse/clickhouse-go/v2"
 )
@@ -61,7 +63,7 @@ func PublisherZoneSelect(database string, lookback int) string {
  toUInt64(0),toUInt64(0),toUInt64(0),toUInt64(0),toUInt64(0),toDateTime64(last_success_time,3,'UTC'),[],toUInt8(1),toDateTime64(last_success_time,3,'UTC'),
  toUInt64(toUnixTimestamp64Milli(stamp)),toDateTime(last_success_time,'UTC')+INTERVAL 7 DAY
  FROM system.view_refreshes WHERE database='{db}' AND view='mv_publisher_zone_hourly' AND last_success_time IS NOT NULL
- SETTINGS max_threads=2,max_memory_usage=536870912,max_bytes_before_external_group_by=134217728`
+ SETTINGS max_threads=2,max_memory_usage=1073741824,max_bytes_before_external_group_by=134217728`
 	return strings.NewReplacer("{db}", database, "{minutes}", fmt.Sprint(lookback)).Replace(q)
 }
 
@@ -70,6 +72,9 @@ func PublisherZoneSelect(database string, lookback int) string {
 func ApplyPublisherZoneDiagnostics(ctx context.Context, ch clickhouse.Conn, database string) error {
 	if !diagnosticDatabase.MatchString(database) {
 		return fmt.Errorf("invalid diagnostics database")
+	}
+	if err := preparePublisherZoneSource(ctx, ch, database); err != nil {
+		return err
 	}
 	if err := ch.Exec(ctx, strings.ReplaceAll(publisherZoneTableDDL, "{db}", database)); err != nil {
 		return err
@@ -88,8 +93,37 @@ func ApplyPublisherZoneDiagnostics(ctx context.Context, ch clickhouse.Conn, data
 			return err
 		}
 	}
+	var existed uint64
+	if err := ch.QueryRow(ctx, "SELECT count() FROM system.tables WHERE database=? AND name='mv_publisher_zone_hourly'", database).Scan(&existed); err != nil {
+		return err
+	}
 	if err := ch.Exec(ctx, "CREATE MATERIALIZED VIEW IF NOT EXISTS "+database+".mv_publisher_zone_hourly REFRESH EVERY 5 MINUTE APPEND TO "+database+".publisher_zone_hourly AS "+PublisherZoneSelect(database, 45)); err != nil {
 		return err
+	}
+	// CREATE IF NOT EXISTS does not upgrade an already deployed refresh query.
+	// Only this diagnostics view is modified; its target, schedule and data remain.
+	if existed > 0 {
+		if err := ch.Exec(ctx, "SYSTEM STOP VIEW "+database+".mv_publisher_zone_hourly"); err != nil {
+			return err
+		}
+		defer func() {
+			resume, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+			defer cancel()
+			if err := ch.Exec(resume, "SYSTEM START VIEW "+database+".mv_publisher_zone_hourly"); err != nil {
+				log.Printf("Publisher diagnostics resume after query upgrade: %v", err)
+			}
+		}()
+		if err := ch.Exec(ctx, "SYSTEM WAIT VIEW "+database+".mv_publisher_zone_hourly"); err != nil {
+			var previous *clickhouse.Exception
+			// A completed FAILED run is not an in-flight writer. Permit repairing
+			// its query; the NEW refresh below must still succeed before cutover.
+			if !errors.As(err, &previous) || previous.Code != 730 {
+				return err
+			}
+		}
+		if err := ch.Exec(ctx, "ALTER TABLE "+database+".mv_publisher_zone_hourly MODIFY QUERY "+PublisherZoneSelect(database, 45)); err != nil {
+			return fmt.Errorf("upgrade diagnostics refresh query: %w", err)
+		}
 	}
 	for _, action := range []string{"START", "REFRESH", "WAIT"} {
 		if err := ch.Exec(ctx, "SYSTEM "+action+" VIEW "+database+".mv_publisher_zone_hourly"); err != nil {
