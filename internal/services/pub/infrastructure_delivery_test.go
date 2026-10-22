@@ -40,7 +40,11 @@ func TestCrossDomainRetryOneAuctionOriginalADMAndReservation(t *testing.T) {
 	}
 	t.Cleanup(func() { second.CloseORTB() })
 	in := input(code)
+<<<<<<< HEAD
 	adm := "https://adm.example.test/adm?id=10000000-0000-4000-8000-000000000020"
+=======
+	adm := "https://adm.example.test/adm?id=original-id&format=POP&url=https%3A%2F%2Fexample.test"
+>>>>>>> pub
 	s.HTTP.Transport = transport(func(r *http.Request) (*http.Response, error) {
 		var request ortb.BidRequest
 		if e := json.NewDecoder(r.Body).Decode(&request); e != nil {
@@ -98,7 +102,11 @@ func TestCrossDomainRetryOneAuctionOriginalADMAndReservation(t *testing.T) {
 		if w.Code != 200 {
 			t.Fatal(w.Code, w.Body.String())
 		}
+<<<<<<< HEAD
 		if method == "GET" && (!strings.Contains(w.Body.String(), "/x/done/") || !strings.Contains(w.Body.String(), "10000000-0000-4000-8000-000000000020")) {
+=======
+		if method == "GET" && (!strings.Contains(w.Body.String(), "/x/done/") || !strings.Contains(w.Body.String(), "original-id")) {
+>>>>>>> pub
 			t.Fatal("ADM/confirm changed", w.Body.String())
 		}
 	}

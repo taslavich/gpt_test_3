@@ -53,7 +53,11 @@ IPP delete/rebuild сохраняет исходную двухчасовую г
 Обычная история не переагрегируется. Не запускать backfill фактов в agg повторно:
 это удвоит advertiser spend. Старый unattributed history не получает выдуманных publisher ID.
 
+<<<<<<< HEAD
 После CreateDB проверить ключ/4 MV + 3 POP writer/checkpoint MV, SUM advertiser before/after и новую revenue;
+=======
+После CreateDB проверить ключ/4 MV, SUM advertiser before/after и новую revenue;
+>>>>>>> pub
 затем возобновить CH consumers, pub и backend sync. Kafka gap догоняет штатный
 ingest. Не растягивать окно за TTL существующих input buffers. Пример SQL проверки:
 
@@ -61,9 +65,13 @@ ingest. Не растягивать окно за TTL существующих i
 SELECT sorting_key FROM system.tables WHERE database='ads' AND name='agg_stats';
 SELECT name,create_table_query FROM system.tables WHERE database='ads'
  AND name IN ('mv_fact_impressions_to_agg_stats','mv_fact_clicks_to_agg_stats',
+<<<<<<< HEAD
  'mv_fact_clicks_wins_to_agg_stats','mv_fact_conversions_to_agg_stats',
  'mv_fact_clicks_to_publisher_pop_revenue','mv_publisher_pop_revenue_to_agg_stats',
  'mv_publisher_pop_revenue_checkpoint');
+=======
+ 'mv_fact_clicks_wins_to_agg_stats','mv_fact_conversions_to_agg_stats');
+>>>>>>> pub
 SELECT win_user_id,win_cid,sum(spend_views_table),sum(spend_clicks_table)
 FROM ads.agg_stats GROUP BY win_user_id,win_cid ORDER BY win_user_id,win_cid;
 SELECT pub_user_id,ad_code_id,site_id,zone_id,sum(ssp_revenue_views)
@@ -82,6 +90,7 @@ Rollback: отключить pub/revenue producer, оставить таблиц
 это может слить разных владельцев. Откат кода не отменяет признанные деньги.
 Нужен dry-run интеграционного теста и backup перед production migration. Live DDL
 не объявляется доказанным без прогонов на настоящей версии сервера.
+<<<<<<< HEAD
 
 ## POP revenue от ADM (229 v2)
 
@@ -96,3 +105,5 @@ startup или минутном refresh. Сохраняются v1 registry и �
 Исключительное восстановление после ingestion ошибки: новый Loader
 `--schema-only --publisher-pop-repair`, при остановленных writers/sync.
 Нельзя запускать старый CreateDB или очищать registry/checkpoints при rollback.
+=======
+>>>>>>> pub

@@ -15,6 +15,10 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+<<<<<<< HEAD
+=======
+	"net/url"
+>>>>>>> pub
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -56,7 +60,11 @@ func TestPrewriteAdapterAndSingleCommit(t *testing.T) {
 				if e := utils.AddUUIDToRedisSet(context.Background(), s.ORTB, s.Config.ORTBReadySet, id, true); e != nil {
 					t.Fatal(e)
 				}
+<<<<<<< HEAD
 				body := `{"seatbid":[{"bid":[{"adm":"https://adm.example.test/adm?id=10000000-0000-4000-8000-000000000010"}]}]}`
+=======
+				body := `{"seatbid":[{"bid":[{"adm":"https://adm.example.test/adm?url=https%3A%2F%2Fexample.test"}]}]}`
+>>>>>>> pub
 				return &http.Response{StatusCode: status, Body: io.NopCloser(strings.NewReader(body))}, nil
 			})
 			w := send(s, in)
@@ -310,6 +318,7 @@ func TestPrewriteCollisionDoesNotReplaceAnotherHASH(t *testing.T) {
 	}
 }
 
+<<<<<<< HEAD
 func TestDeliveryKeepsUUIDOnlyADM(t *testing.T) {
 	s, _ := fixture(t)
 	original := "https://adm.example.test/adm?id=10000000-0000-4000-8000-000000000010"
@@ -320,6 +329,22 @@ func TestDeliveryKeepsUUIDOnlyADM(t *testing.T) {
 	for _, bad := range []string{original + "&url=https://attacker.test", original + "&f=4", original + "&id=10000000-0000-4000-8000-000000000011", "https://adm.example.test/adm?id=invalid", "https://evil.test/adm?id=10000000-0000-4000-8000-000000000010"} {
 		if _, e = s.deliveryADM(bad); e == nil {
 			t.Fatal("accepted", bad)
+=======
+func TestDeliveryKeepsOriginalADMForURLAndXML(t *testing.T) {
+	s, _ := fixture(t)
+	for _, target := range []string{"https://example.test/landing", `<ad><popunderAd><url><![CDATA[https://example.test/landing]]></url></popunderAd></ad>`} {
+		original := "https://adm.example.test/adm?id=original-auction&f=4&url=" + url.QueryEscape(target)
+		got, e := s.deliveryADM(original)
+		if e != nil {
+			t.Fatal(e)
+		}
+		parsed, e := url.Parse(got)
+		if e != nil {
+			t.Fatal(e)
+		}
+		if parsed.Host != "adm.example.test" || parsed.Path != "/adm" || parsed.Query().Get("id") != "original-auction" || parsed.Query().Get("f") != "4" || parsed.Query().Get("url") != "https://example.test/landing" {
+			t.Fatal("tracking wrapper bypassed/broken", got)
+>>>>>>> pub
 		}
 	}
 }

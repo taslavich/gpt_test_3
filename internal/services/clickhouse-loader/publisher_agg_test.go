@@ -33,7 +33,11 @@ func TestSharedAggStatsPublisherContract(t *testing.T) {
 			}
 		}
 		if name == "mv_fact_impressions_to_agg_stats" {
+<<<<<<< HEAD
 			if !strings.Contains(view, "sum(win_dsp_price / 1000) AS spend_views_table") || !strings.Contains(view, "toFloat64(0) AS ssp_revenue_views") {
+=======
+			if !strings.Contains(view, "sum(win_dsp_price / 1000) AS spend_views_table") || !strings.Contains(view, "sumIf(win_final_price / 1000, format = 'POP' AND pub_user_id != '') AS ssp_revenue_views") {
+>>>>>>> pub
 				t.Fatal("price basis changed")
 			}
 		} else if !strings.Contains(view, "toFloat64(0) AS ssp_revenue_views") {
@@ -82,7 +86,11 @@ func TestSharedAggStatsRealMigrationAndRecoveryFacts(t *testing.T) {
 	start := strings.Index(ddlTemplate, "CREATE TABLE IF NOT EXISTS {db}.agg_stats")
 	end := strings.Index(ddlTemplate[start:], ";") + start
 	legacy := ddlTemplate[start : end+1]
+<<<<<<< HEAD
 	for _, line := range []string{"    pub_user_id String DEFAULT '',\n", "    ad_code_id String DEFAULT '',\n", "    zone_id String DEFAULT '',\n", "    ssp_revenue_views Float64 DEFAULT 0,\n", "    pop_revenue_bucket UInt64 DEFAULT 0\n", "    pub_user_id,\n", "    ad_code_id,\n", "    zone_id,\n", "    pop_revenue_bucket\n"} {
+=======
+	for _, line := range []string{"    pub_user_id String DEFAULT '',\n", "    ad_code_id String DEFAULT '',\n", "    zone_id String DEFAULT '',\n", "    ssp_revenue_views Float64 DEFAULT 0\n", "    pub_user_id,\n", "    ad_code_id,\n", "    zone_id\n"} {
+>>>>>>> pub
 		legacy = strings.ReplaceAll(legacy, line, "")
 	}
 	legacy = strings.ReplaceAll(legacy, "pop_recovered_spend Float64 DEFAULT 0,", "pop_recovered_spend Float64 DEFAULT 0")
@@ -149,11 +157,19 @@ func TestSharedAggStatsRealMigrationAndRecoveryFacts(t *testing.T) {
 	if e = ch.QueryRow(ctx, `SELECT sum(spend_views_table),sum(spend_clicks_table),sum(ssp_revenue_views) FROM `+db+`.agg_stats`).Scan(&afterViews, &afterClicks, &revenue); e != nil {
 		t.Fatal(e)
 	}
+<<<<<<< HEAD
 	if math.Abs(afterViews-beforeViews-.042) > 1e-10 || math.Abs(afterClicks-beforeClicks) > 1e-10 || math.Abs(revenue) > 1e-10 {
 		t.Fatal(beforeViews, beforeClicks, afterViews, afterClicks, revenue)
 	}
 	var own float64
 	if e = ch.QueryRow(ctx, `SELECT sum(ssp_revenue_views) FROM `+db+`.agg_stats WHERE pub_user_id=?`, pubA).Scan(&own); e != nil || math.Abs(own) > 1e-10 {
+=======
+	if math.Abs(afterViews-beforeViews-.042) > 1e-10 || math.Abs(afterClicks-beforeClicks) > 1e-10 || math.Abs(revenue-.023) > 1e-10 {
+		t.Fatal(beforeViews, beforeClicks, afterViews, afterClicks, revenue)
+	}
+	var own float64
+	if e = ch.QueryRow(ctx, `SELECT sum(ssp_revenue_views) FROM `+db+`.agg_stats WHERE pub_user_id=?`, pubA).Scan(&own); e != nil || math.Abs(own-.020) > 1e-10 {
+>>>>>>> pub
 		t.Fatal(own, e)
 	}
 	if e = ch.Exec(ctx, "OPTIMIZE TABLE "+db+".agg_stats FINAL"); e != nil {

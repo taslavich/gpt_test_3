@@ -1,0 +1,24 @@
+[Unit]
+Description=TwinBid publisher delivery
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=twinbid-pub
+Group=twinbid-pub
+WorkingDirectory=/opt/twinbid/pub
+EnvironmentFile=/etc/twinbid/pub.env
+ExecStart=/opt/twinbid/bin/pub
+Restart=on-failure
+RestartSec=3
+TimeoutStopSec=15
+StateDirectory=twinbid-pub
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/twinbid-pub
+LimitNOFILE=65536
+
+[Install]
+WantedBy=multi-user.target

@@ -57,6 +57,11 @@ DROP VIEW IF EXISTS {db}.mv_ortb_traffic_hourly SYNC;
 DROP VIEW IF EXISTS {db}.mv_campaign_dsp_price_sum SYNC;
 DROP VIEW IF EXISTS {db}.mv_recover_clicks_from_clicks_wins SYNC;
 DROP VIEW IF EXISTS {db}.ortb_logical SYNC;
+<<<<<<< HEAD
+=======
+DROP VIEW IF EXISTS {db}.mv_ortb_to_publisher_requests SYNC;
+DROP VIEW IF EXISTS {db}.publisher_requests_logical SYNC;
+>>>>>>> pub
 DROP VIEW IF EXISTS {db}.mv_ortb_to_publisher_inventory SYNC;
 
 -- ============================================================
@@ -173,6 +178,31 @@ LIMIT 1 BY logical_event_id;
 -- ReplacingMergeTree + FINAL logical view make physical replay logically
 -- idempotent without relying on background merge timing.
 
+<<<<<<< HEAD
+=======
+-- Compact read projection from the SAME ORTB ingest. Do not extend the wide
+-- ORTB retention: existing auction enrichment JOINs must stay one-hour bounded.
+CREATE TABLE IF NOT EXISTS {db}.publisher_requests
+(
+ logical_event_id String,uuid UUID,event_time DateTime64(3,'UTC'),created_at DateTime64(3,'UTC'),
+ pub_user_id String,ad_code_id String,zone_id String,request_id String,site_id String,site_domain String,
+ site_page String,geo String,device String,os String,browser String,code UInt16,request_error UInt8,error_reason String
+)
+ENGINE=MergeTree
+PARTITION BY toYYYYMMDD(event_time)
+ORDER BY (pub_user_id,event_time,logical_event_id)
+TTL event_time + INTERVAL 6 MONTH DELETE;
+CREATE MATERIALIZED VIEW {db}.mv_ortb_to_publisher_requests TO {db}.publisher_requests AS
+SELECT logical_event_id,uuid,event_time,created_at,pub_user_id,ad_code_id,zone_id,request_id,
+ ifNull(site_id,'') AS site_id,ifNull(site_domain,'') AS site_domain,site_page,
+ ifNull(geo,'') AS geo,ifNull(device,'') AS device,ifNull(os,'') AS os,ifNull(browser,'') AS browser,
+ code,request_error,error_reason
+FROM {db}.ortb WHERE pub_user_id!='';
+CREATE VIEW {db}.publisher_requests_logical AS
+SELECT * FROM {db}.publisher_requests ORDER BY created_at ASC LIMIT 1 BY logical_event_id;
+
+
+>>>>>>> pub
 -- Lifetime discovery only; min/max are idempotent under retries. This does not
 -- assign Site IDs and does not keep wide auction payloads or compute revenue.
 CREATE TABLE IF NOT EXISTS {db}.publisher_inventory
@@ -921,8 +951,12 @@ CREATE TABLE IF NOT EXISTS {db}.agg_stats
     pub_user_id String DEFAULT '',
     ad_code_id String DEFAULT '',
     zone_id String DEFAULT '',
+<<<<<<< HEAD
     ssp_revenue_views Float64 DEFAULT 0,
     pop_revenue_bucket UInt64 DEFAULT 0
+=======
+    ssp_revenue_views Float64 DEFAULT 0
+>>>>>>> pub
 )
 ENGINE = SummingMergeTree
 PARTITION BY toYYYYMMDD(event_date)
@@ -943,8 +977,12 @@ ORDER BY
     os_version,
     pub_user_id,
     ad_code_id,
+<<<<<<< HEAD
     zone_id,
     pop_revenue_bucket
+=======
+    zone_id
+>>>>>>> pub
 )
 SETTINGS index_granularity = 8192;
 
@@ -966,7 +1004,10 @@ ALTER TABLE {db}.agg_stats
     ADD COLUMN IF NOT EXISTS ad_code_id String,
     ADD COLUMN IF NOT EXISTS zone_id String,
     ADD COLUMN IF NOT EXISTS ssp_revenue_views Float64 DEFAULT 0,
+<<<<<<< HEAD
     ADD COLUMN IF NOT EXISTS pop_revenue_bucket UInt64,
+=======
+>>>>>>> pub
     MODIFY ORDER BY
     (
         win_user_id,
@@ -984,8 +1025,12 @@ ALTER TABLE {db}.agg_stats
         os_version,
         pub_user_id,
         ad_code_id,
+<<<<<<< HEAD
         zone_id,
         pop_revenue_bucket
+=======
+        zone_id
+>>>>>>> pub
     );
 
 -- ADD+ORDER BY requires no DEFAULT on newly added key columns. Set their
@@ -993,8 +1038,12 @@ ALTER TABLE {db}.agg_stats
 ALTER TABLE {db}.agg_stats
     MODIFY COLUMN pub_user_id String DEFAULT '',
     MODIFY COLUMN ad_code_id String DEFAULT '',
+<<<<<<< HEAD
     MODIFY COLUMN zone_id String DEFAULT '',
     MODIFY COLUMN pop_revenue_bucket UInt64 DEFAULT 0;
+=======
+    MODIFY COLUMN zone_id String DEFAULT '';
+>>>>>>> pub
 
 -- ============================================================
 -- IPP CUTOVER REPAIR
@@ -1653,6 +1702,60 @@ ANY INNER JOIN ortb_for_pending AS o
 -- ============================================================
 
 
+<<<<<<< HEAD
+=======
+    o.uuid AS uuid,
+    a.clicks_uuid AS clicks_uuid,
+    a.is_iframe AS is_iframe,
+    o.code AS code,
+
+    o.format AS format,
+    o.typic AS typic,
+
+    o.spp_domain AS spp_domain,
+
+    o.ip AS ip,
+    o.ipv6 AS ipv6,
+
+    ifNull(o.lang, '') AS lang,
+    ifNull(o.browser, '') AS browser,
+    ifNull(o.browser_version, '') AS browser_version,
+    ifNull(o.os, '') AS os,
+    ifNull(o.os_version, '') AS os_version,
+    ifNull(o.device, '') AS device_type,
+
+    ifNull(o.site_id, '') AS site_id,
+    ifNull(o.site_domain, '') AS site_domain,
+
+    o.bid_floor AS bid_floor,
+
+    ifNull(o.geo, '') AS geo,
+    o.city_id AS city_id,
+
+    o.bid_responses_raw AS bid_responses_raw,
+    o.adv_rtb_responses_raw AS adv_rtb_responses_raw,
+
+    ifNull(o.win_dsp_domain, '') AS win_dsp_domain,
+
+    o.win_final_price AS win_final_price,
+    o.win_dsp_price AS win_dsp_price,
+
+    o.win_cid AS win_cid,
+    o.win_crid AS win_crid,
+    o.win_user_id AS win_user_id,
+    o.pub_user_id AS pub_user_id,
+    o.ad_code_id AS ad_code_id,
+    o.zone_id AS zone_id
+FROM {db}.clicks_in AS a
+ANY INNER JOIN {db}.ortb AS o
+    ON a.uuid = o.uuid
+WHERE a.clicks_uuid NOT IN (
+    SELECT clicks_uuid
+    FROM {db}.fact_clicks
+    WHERE created_at >= now() - INTERVAL 65 MINUTE
+)
+AND a.created_at >= now() - INTERVAL 60 MINUTE;
+>>>>>>> pub
 
 CREATE MATERIALIZED VIEW {db}.mv_clicks_wins_to_fact
 REFRESH EVERY 1 MINUTE OFFSET 20 SECOND
@@ -2005,7 +2108,11 @@ SELECT
     toFloat64(0) AS spend_clicks_table,
 
     sum(win_dsp_price / 1000) AS spend_views_table,
+<<<<<<< HEAD
     toFloat64(0) AS ssp_revenue_views
+=======
+    sumIf(win_final_price / 1000, format = 'POP' AND pub_user_id != '') AS ssp_revenue_views
+>>>>>>> pub
 FROM {db}.fact_impressions
 GROUP BY
     win_user_id,
