@@ -1,0 +1,31 @@
+
+[Unit]
+Description=RTB Publisher Service
+After=network.target rtb-spp-adapter.service
+Wants=network.target
+
+[Service]
+Type=simple
+User=root
+Group=root
+WorkingDirectory=/root/RTB/gpt_test_3/cmd/pub
+ExecStart=/root/RTB/gpt_test_3/cmd/pub/pub
+Restart=always
+RestartSec=1
+StartLimitIntervalSec=0
+
+# Environment
+EnvironmentFile=/root/RTB/gpt_test_3/cmd/pub/pub.env
+EnvironmentFile=/etc/rtb/common.env
+
+# Logging
+StandardOutput=append:/var/log/rtb/pub.log
+StandardError=append:/var/log/rtb/pub.error.log
+SyslogIdentifier=rtb-pub
+
+# Security
+NoNewPrivileges=yes
+PrivateTmp=yes
+
+[Install]
+WantedBy=multi-user.target
