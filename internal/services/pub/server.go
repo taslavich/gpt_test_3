@@ -4,18 +4,11 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-<<<<<<< HEAD
-=======
-	"encoding/xml"
->>>>>>> pub
 	"errors"
 	"fmt"
 	"github.com/google/uuid"
 	"github.com/redis/go-redis/v9"
-<<<<<<< HEAD
 	"gitlab.com/twinbid-exchange/RTB-exchange/internal/callback"
-=======
->>>>>>> pub
 	ortb "gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/proto/types/ortb_V2_5"
 	c "gitlab.com/twinbid-exchange/RTB-exchange/internal/pubcontract"
 	"gitlab.com/twinbid-exchange/RTB-exchange/internal/pubuuid"
@@ -480,7 +473,6 @@ func (s *Server) auction(ctx context.Context, r *http.Request, in *Request, code
 	return nil, nil
 }
 
-<<<<<<< HEAD
 // Publisher navigates to the trusted exchange callback, never to client URL data.
 // The adapter resolves the destination from its winner Redis before processing.
 func (s *Server) deliveryADM(adm string) (string, error) { return s.destination(adm) }
@@ -500,56 +492,6 @@ func (s *Server) destination(adm string) (string, error) {
 		return "", errors.New("untrusted or invalid UUID-only ADM")
 	}
 	return u.String(), nil
-=======
-// Keep the exchange ADM/id/format as the browser navigation target. A POP XML
-// envelope is SSP-side presentation: pass its extracted URL to the SAME ADM
-// handler rather than trying to navigate to literal XML or bypassing tracking.
-func (s *Server) deliveryADM(adm string) (string, error) {
-	target, e := s.destination(adm)
-	if e != nil {
-		return "", e
-	}
-	u, _ := url.Parse(adm)
-	q := u.Query()
-	if strings.HasPrefix(strings.TrimSpace(q.Get("url")), "<") {
-		q.Set("url", target)
-		u.RawQuery = q.Encode()
-		return u.String(), nil
-	}
-	return adm, nil
-}
-func (s *Server) destination(adm string) (string, error) {
-	u, e := url.Parse(adm)
-	if e != nil || u.User != nil || u.Fragment != "" || u.Path != "/adm" {
-		return "", errors.New("unsupported POP ADM")
-	}
-	ok := false
-	for _, o := range strings.Split(s.Config.CallbackOrigins, ",") {
-		if u.Scheme+"://"+u.Host == strings.TrimSpace(o) {
-			ok = true
-		}
-	}
-	if !ok {
-		return "", errors.New("untrusted ADM wrapper")
-	}
-	raw := u.Query().Get("url")
-	if strings.HasPrefix(strings.TrimSpace(raw), "<") {
-		var a struct {
-			Pop struct {
-				URL string `xml:"url"`
-			} `xml:"popunderAd"`
-		}
-		if e = xml.Unmarshal([]byte(raw), &a); e != nil {
-			return "", e
-		}
-		raw = a.Pop.URL
-	}
-	_, _, e = c.Page(raw)
-	if e != nil {
-		return "", errors.New("invalid POP destination")
-	}
-	return raw, nil
->>>>>>> pub
 }
 func (s *Server) loadDelivery(ctx context.Context, token string) (Delivery, error) {
 	parts := strings.Split(token, ".")
