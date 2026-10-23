@@ -15,7 +15,6 @@ import (
 )
 
 func TestGetWinnerBidInternalAllADVDoesNotRequireDSPResponses(t *testing.T) {
-	t.Setenv("CALLBACK_UUID_ONLY", "false") // Validate the staged producer contract as well.
 	requestID := "req-all-adv"
 	imp1, imp2 := "imp-1", "imp-2"
 	uuid1, uuid2 := "uuid-1", "uuid-2"
@@ -56,7 +55,6 @@ func TestGetWinnerBidInternalAllADVDoesNotRequireDSPResponses(t *testing.T) {
 }
 
 func TestGetWinnerBidInternalDSPAuctionSelectionIsUnchanged(t *testing.T) {
-	t.Setenv("CALLBACK_UUID_ONLY", "false") // Validate the staged producer contract as well.
 	requestID := "req-dsp"
 	impID := "imp-1"
 	uuid := "uuid-1"
@@ -98,7 +96,6 @@ func TestGetWinnerBidInternalDSPAuctionSelectionIsUnchanged(t *testing.T) {
 }
 
 func TestGetWinnerBidInternalMixedADVPriorityAndDSPFallback(t *testing.T) {
-	t.Setenv("CALLBACK_UUID_ONLY", "false") // Validate the staged producer contract as well.
 	requestID := "req-mixed"
 	impADV, impDSP := "imp-adv", "imp-dsp"
 	uuidADV, uuidDSP := "uuid-adv", "uuid-dsp"
@@ -153,7 +150,6 @@ func TestGetWinnerBidInternalMixedADVPriorityAndDSPFallback(t *testing.T) {
 }
 
 func TestGetWinnerBidInternalUsesFormatSpecificPercentMap(t *testing.T) {
-	t.Setenv("CALLBACK_UUID_ONLY", "false") // Validate the staged producer contract as well.
 	requestID, impID, uuid := "req-nat-percent", "imp-nat", "uuid-nat"
 	price := float32(1.0)
 	adm := `{"native":{"ver":"1.2","link":{"url":"https://landing.example"}}}`
@@ -194,7 +190,6 @@ func TestGetWinnerBidInternalUsesFormatSpecificPercentMap(t *testing.T) {
 }
 
 func TestGetWinnerBidInternalDSPTieBreakIsDeterministic(t *testing.T) {
-	t.Setenv("CALLBACK_UUID_ONLY", "false") // Validate the staged producer contract as well.
 	requestID, impID, uuid := "req-tie", "imp-tie", "uuid-tie"
 	price := float32(1.0)
 	adm := "https://dsp.example/adm"
@@ -225,7 +220,6 @@ func TestGetWinnerBidInternalDSPTieBreakIsDeterministic(t *testing.T) {
 }
 
 func TestGetWinnerBidInternalDoesNotEnforceBidfloor(t *testing.T) {
-	t.Setenv("CALLBACK_UUID_ONLY", "false") // Validate the staged producer contract as well.
 	requestID, impID, uuid := "req-no-floor", "imp-1", "uuid-1"
 	price := float32(0.50)
 	floor := float32(10.0)
@@ -248,7 +242,6 @@ func TestGetWinnerBidInternalDoesNotEnforceBidfloor(t *testing.T) {
 }
 
 func TestExternalADVWinnerUsesDSPStyleNURLWithoutRTBEntity(t *testing.T) {
-	t.Setenv("CALLBACK_UUID_ONLY", "false") // Validate the staged producer contract as well.
 	requestID, impID, uuid := "req-external-adv", "imp-1", "uuid-1"
 	price := float32(0.70)
 	basePrice := 1.0
@@ -302,7 +295,6 @@ func TestExternalADVWinnerUsesDSPStyleNURLWithoutRTBEntity(t *testing.T) {
 }
 
 func TestComplexWinnerBasePriceFlowsToWinDspPrice(t *testing.T) {
-	t.Setenv("CALLBACK_UUID_ONLY", "false") // Validate the staged producer contract as well.
 	requestID, impID, uuid := "req-complex-dynamic-price", "imp-1", "uuid-1"
 	sspBid := float32(0.50)
 	advertiserPrice := 0.50 / (1.0 - 0.30)
@@ -337,7 +329,6 @@ func TestComplexWinnerBasePriceFlowsToWinDspPrice(t *testing.T) {
 }
 
 func TestSiteIDDSPPercentOverridesLegacyDSPPercentOnly(t *testing.T) {
-	t.Setenv("CALLBACK_UUID_ONLY", "false") // Validate the staged producer contract as well.
 	requestID, impID, uuid := "req-site-percent", "imp-site", "uuid-site"
 	siteID := "site-123"
 	country := "US"
@@ -385,7 +376,6 @@ func TestSiteIDDSPPercentOverridesLegacyDSPPercentOnly(t *testing.T) {
 }
 
 func TestSiteIDDSPPercentFallsBackToLegacyMapWhenMissing(t *testing.T) {
-	t.Setenv("CALLBACK_UUID_ONLY", "false") // Validate the staged producer contract as well.
 	requestID, impID, uuid := "req-site-fallback", "imp-site", "uuid-site"
 	siteID := "site-unmapped"
 	country := "US"
@@ -433,7 +423,6 @@ func TestSiteIDDSPPercentFallsBackToLegacyMapWhenMissing(t *testing.T) {
 }
 
 func TestSiteIDDSPPercentDoesNotTouchADVResponse(t *testing.T) {
-	t.Setenv("CALLBACK_UUID_ONLY", "false") // Validate the staged producer contract as well.
 	requestID, impID, uuid := "req-site-adv", "imp-adv", "uuid-adv"
 	siteID := "site-123"
 	advPrice := float32(0.70)

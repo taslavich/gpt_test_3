@@ -17,7 +17,7 @@ const (
 type publisherDSPTask struct{ id, target string }
 
 // Best-effort notifications only. No billing, Redis lookup or durable retry is
-// allowed here. The same protected HTTP client is used by ordinary callbacks.
+// allowed here. The same legacy HTTP client is used by ordinary callbacks.
 type publisherDSPExecutor struct {
 	ctx     context.Context
 	cancel  context.CancelFunc

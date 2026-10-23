@@ -71,7 +71,7 @@ func TestPublisherRedisDBValidation(t *testing.T) {
 		RTBMainstreamURL:  "https://rtb.example.test/mainstream",
 		AdultFeed:         "adult",
 		MainstreamFeed:    "mainstream",
-		CallbackOrigins:   "https://adm.example.test",
+		CallbackOrigins:   "", // An ADM-origin allowlist is no longer required.
 		ORTBAddrs:         "127.0.0.1:6379",
 		ORTBDB:            2,
 		ORTBReadySet:      "ortb:ready",

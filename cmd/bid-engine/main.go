@@ -11,7 +11,6 @@ import (
 	"syscall"
 
 	"github.com/go-chi/chi/v5"
-	"github.com/redis/go-redis/v9"
 	"gitlab.com/twinbid-exchange/RTB-exchange/internal/config"
 	bidEngineGrpc "gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/proto/services/bidEngine"
 	"gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/proto/types/ortb_V2_5"
@@ -37,11 +36,6 @@ func main() {
 		log.Fatalf("Cannot load config: %v", err)
 	}
 	log.Println("Config initialized!")
-	switch os.Getenv("CALLBACK_UUID_ONLY") {
-	case "", "true", "false":
-	default:
-		log.Fatal("CALLBACK_UUID_ONLY must be true or false")
-	}
 
 	if strings.TrimSpace(cfg.AdmDomain) == "" {
 		log.Fatal("ADM_DOMAIN is required for BidEngine callback finalization")
@@ -108,15 +102,6 @@ func main() {
 			log.Printf("⚠️ failed to close BURL Redis client: %v", err)
 		}
 	}()
-
-	callbackOptions := *redisAdmClient.Options()
-	callbackOptions.DB = cfg.RedisDBAdvWinner
-	callbackOptions.Addr = strings.TrimSpace(cfg.RedisADVAddr)
-	if callbackOptions.Addr == "" {
-		log.Fatal("REDIS_ADV_ADDR is required for ADV winner callback context")
-	}
-	callbackADV := redis.NewClient(&callbackOptions)
-	defer callbackADV.Close()
 
 	if err := redisAdmClient.Ping(ctx).Err(); err != nil {
 		log.Fatalf("Failed to connect to ADM Redis: %v", err)
@@ -231,7 +216,6 @@ func main() {
 			percentRoutes,
 			cfg.AdmDomain,
 			redisWriteErrorMonitor,
-			callbackADV,
 		),
 	)
 

@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"github.com/google/uuid"
 	"github.com/redis/go-redis/v9"
-	"gitlab.com/twinbid-exchange/RTB-exchange/internal/callback"
 	ortb "gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/proto/types/ortb_V2_5"
 	c "gitlab.com/twinbid-exchange/RTB-exchange/internal/pubcontract"
 	"gitlab.com/twinbid-exchange/RTB-exchange/internal/pubuuid"
@@ -356,13 +355,7 @@ func (s *Server) request(w http.ResponseWriter, r *http.Request) {
 		respond(w, 200, out)
 		return
 	}
-	deliveryADM, e := s.deliveryADM(result.ADM)
-	if e != nil {
-		s.finish(work, delivery, `{"status":"error","error":true,"reason":"unsupported_adm"}`)
-		reject("unsupported_adm", 502)
-		return
-	}
-	delivery.Destination = deliveryADM
+	delivery.Destination = result.ADM
 	delivery.Token = uuid.NewString()
 	b, _ := json.Marshal(delivery)
 	token := delivery.Token + "." + c.Sign(s.Config.DeliverySecret, delivery.Token)
@@ -473,26 +466,6 @@ func (s *Server) auction(ctx context.Context, r *http.Request, in *Request, code
 	return nil, nil
 }
 
-// Publisher navigates to the trusted exchange callback, never to client URL data.
-// The adapter resolves the destination from its winner Redis before processing.
-func (s *Server) deliveryADM(adm string) (string, error) { return s.destination(adm) }
-func (s *Server) destination(adm string) (string, error) {
-	u, e := url.Parse(adm)
-	if e != nil || u.User != nil || u.Fragment != "" || u.Path != "/adm" || u.Scheme != "https" {
-		return "", errors.New("unsupported POP ADM")
-	}
-	trusted := false
-	for _, o := range strings.Split(s.Config.CallbackOrigins, ",") {
-		if u.Scheme+"://"+u.Host == strings.TrimSpace(o) {
-			trusted = true
-		}
-	}
-	q, e := url.ParseQuery(u.RawQuery)
-	if !trusted || e != nil || len(q) != 1 || len(q["id"]) != 1 || !callback.ValidID(q.Get("id")) {
-		return "", errors.New("untrusted or invalid UUID-only ADM")
-	}
-	return u.String(), nil
-}
 func (s *Server) loadDelivery(ctx context.Context, token string) (Delivery, error) {
 	parts := strings.Split(token, ".")
 	var d Delivery

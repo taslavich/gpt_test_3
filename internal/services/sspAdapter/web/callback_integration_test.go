@@ -3,9 +3,10 @@ package sppAdapterWeb
 import (
 	"context"
 	"errors"
-	"io"
+	"math"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -18,14 +19,13 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 	"github.com/redis/go-redis/v9"
-	"gitlab.com/twinbid-exchange/RTB-exchange/internal/callback"
 	"gitlab.com/twinbid-exchange/RTB-exchange/internal/constants"
 	events "gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/proto/buffer"
+	utils "gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/utils_grpc"
 	chloader "gitlab.com/twinbid-exchange/RTB-exchange/internal/services/clickhouse-loader"
 	"gitlab.com/twinbid-exchange/RTB-exchange/internal/services/sspAdapter/billing"
 	"gitlab.com/twinbid-exchange/RTB-exchange/internal/services/sspAdapter/outbox"
 	"google.golang.org/protobuf/proto"
-	"math"
 )
 
 type callbackTransport func(*http.Request) (*http.Response, error)
@@ -41,32 +41,138 @@ func callbackRedis(t *testing.T, db int) *redis.Client {
 	t.Cleanup(func() { c.Close() })
 	return c
 }
+func seedPublisherWinner(ctx context.Context, c *redis.Client, id string, r publisherBURLRecord, ttl time.Duration, adv bool) error {
+	if adv {
+		return nil
+	} // Existing financial winner fields are seeded by the test.
+	if e := utils.WriteUUIDKeyToRedis(ctx, c, id, ttl); e != nil {
+		return e
+	}
+	if r.BURL != "" {
+		return c.HSet(ctx, id, "pub_dsp_nurl", r.BURL).Err()
+	}
+	return nil
+}
+func testPublisherInput(ctx context.Context, id string, c *redis.Client, store *billing.Store) (publisherBURLInput, error) {
+	out := publisherBURLInput{ID: id, Record: publisherBURLRecord{Format: "POP", PublisherID: "1"}}
+	if store != nil {
+		var e error
+		out.Winner, e = store.ReadWinner(ctx, id, "POP")
+		out.Record.WinnerType = "adv"
+		out.Redis = store.WinnerRedis()
+		return out, e
+	}
+	fields, e := c.HGetAll(ctx, id).Result()
+	if e != nil {
+		return out, e
+	}
+	if fields["uuid"] != id {
+		return out, redis.Nil
+	}
+	out.Record.WinnerType = "dsp"
+	out.Record.BURL = fields["pub_dsp_nurl"]
+	out.Redis = c
+	return out, nil
+}
+func clearStats(ctx context.Context, c *redis.Client, sets ...string) {
+	for _, set := range sets {
+		for _, id := range c.SMembers(ctx, set).Val() {
+			c.Del(ctx, id)
+		}
+		c.Del(ctx, set)
+	}
+}
+
+func TestLegacyHTTPRoutesAllFormatsWithoutContext(t *testing.T) {
+	ctx := context.Background()
+	dsp, stats := callbackRedis(t, 10), callbackRedis(t, 12)
+	var notifications atomic.Int32
+	downstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { notifications.Add(1); w.WriteHeader(204) }))
+	defer downstream.Close()
+	router := chi.NewRouter()
+	set := "legacy:" + uuid.NewString()
+	imps := set + ":imps"
+	stop := InitHttpsRoutes(ctx, router, []*redis.Client{stats}, dsp, set, time.Second, time.Second, nil, "", dsp, imps, []*redis.Client{stats}, set+":conv", []*redis.Client{stats}, set+":wins", []*redis.Client{stats}, nil, nil, nil)
+	defer stop()
+	defer clearStats(ctx, stats, set, imps)
+	for _, format := range []string{"POP", "BAN", "NAT", "IPP", "VID"} {
+		t.Run(format, func(t *testing.T) {
+			id := uuid.NewString()
+			if e := utils.WriteUUIDKeyToRedis(ctx, dsp, id, time.Hour); e != nil {
+				t.Fatal(e)
+			}
+			defer dsp.Del(ctx, id)
+			for _, path := range []string{"adm", "nurl", "burl"} {
+				q := url.Values{"id": {id}, "f": {constants.FormatToCodes[format]}}
+				if path == "adm" {
+					q.Set("url", "http://127.0.0.1/landing?x=1&y=two")
+				} else {
+					q.Set("url", downstream.URL+"/"+path)
+					if path == "nurl" {
+						q.Set("s", "ordinary-ssp")
+					}
+				}
+				w := httptest.NewRecorder()
+				router.ServeHTTP(w, httptest.NewRequest("GET", "/"+path+"?"+q.Encode(), nil))
+				want := 204
+				if path == "adm" {
+					want = 200
+					if !strings.Contains(w.Body.String(), "127.0.0.1/landing") {
+						t.Fatal(w.Body.String())
+					}
+				}
+				if w.Code != want {
+					t.Fatal(path, w.Code, w.Body.String())
+				}
+			}
+			if dsp.HExists(ctx, id, "callback_context_v1").Val() {
+				t.Fatal("new callback context written")
+			}
+			// p selects the Publisher path only for POP, with the existing winner guard.
+			var calls atomic.Int32
+			req := httptest.NewRequest("GET", "/adm", nil)
+			req = req.WithContext(context.WithValue(req.Context(), httpin.Input, &admRequest{GlobalId: id, DspURL: "http://127.0.0.1/landing", Format: constants.FormatToCodes[format], Publisher: "1"}))
+			req = req.WithContext(context.WithValue(req.Context(), publisherBurlKey{}, publisherBurlFunc(func(context.Context, publisherBURLInput) { calls.Add(1) })))
+			getAdm(ctx, httptest.NewRecorder(), req, []*redis.Client{stats}, dsp, set, nil, "", nil, nil, nil)
+			wantCalls := int32(0)
+			if format == "POP" {
+				wantCalls = 1
+			}
+			if calls.Load() != wantCalls {
+				t.Fatal("Publisher flag/format dispatch", calls.Load())
+			}
+		})
+	}
+	if notifications.Load() != 10 {
+		t.Fatal("legacy local URLs filtered", notifications.Load())
+	}
+	if stats.SCard(ctx, imps).Val() != 5 {
+		t.Fatal("ordinary POP created automatic BURL", stats.SCard(ctx, imps).Val())
+	}
+	// Legacy required params remain required; id alone is no longer a callback.
+	for _, path := range []string{"adm", "nurl", "burl"} {
+		w := httptest.NewRecorder()
+		router.ServeHTTP(w, httptest.NewRequest("GET", "/"+path+"?id="+uuid.NewString(), nil))
+		if w.Code != 400 && w.Code != 422 {
+			t.Fatal(path, w.Code)
+		}
+	}
+}
+
 func TestPublisherADMDoesNotWaitForInternalBURL(t *testing.T) {
 	ctx := context.Background()
 	dsp, stats := callbackRedis(t, 10), callbackRedis(t, 12)
 	id := uuid.NewString()
-	set := "callbacks-test:" + id
-	impSet := set + ":imp"
-	t.Cleanup(func() {
-		dsp.Del(ctx, id)
-		for _, s := range []string{set, impSet} {
-			ids := stats.SMembers(ctx, s).Val()
-			for _, id := range ids {
-				stats.Del(ctx, id)
-			}
-			stats.Del(ctx, s)
-		}
-	})
-	record := callback.Record{Format: "POP", Destination: "https://advertiser.test/landing?click_id=original&x=%2F", NURL: "https://dsp.test/win?keep=%2F", BURL: "https://dsp.test/win?keep=%2F", SSP: "publisher", PublisherID: "publisher", WinnerType: "dsp"}
-	if e := callback.Save(ctx, dsp, id, record, time.Hour, false); e != nil {
+	clicks, imps := "pub-click:"+id, "pub-imp:"+id
+	defer dsp.Del(ctx, id)
+	defer clearStats(ctx, stats, clicks, imps)
+	record := publisherBURLRecord{Format: "POP", WinnerType: "dsp", PublisherID: "publisher", BURL: "http://127.0.0.1/downstream"}
+	if e := seedPublisherWinner(ctx, dsp, id, record, time.Hour, false); e != nil {
 		t.Fatal(e)
 	}
-	started, release, finished := make(chan struct{}), make(chan struct{}), make(chan struct{})
+	started, release := make(chan struct{}), make(chan struct{})
 	var calls atomic.Int32
 	client := &http.Client{Transport: callbackTransport(func(r *http.Request) (*http.Response, error) {
-		if r.URL.Host != "dsp.test" {
-			t.Errorf("self HTTP or wrong URL: %s", r.URL)
-		}
 		calls.Add(1)
 		close(started)
 		select {
@@ -75,181 +181,94 @@ func TestPublisherADMDoesNotWaitForInternalBURL(t *testing.T) {
 		}
 		return nil, errors.New("DSP offline")
 	})}
-	box, err := outbox.Open(filepath.Join(t.TempDir(), "publisher.db"))
-	if err != nil {
-		t.Fatal(err)
+	box, e := outbox.Open(filepath.Join(t.TempDir(), "publisher.db"))
+	if e != nil {
+		t.Fatal(e)
 	}
 	defer box.Close()
 	executor := newPublisherDSPExecutor(ctx, client, 2, 16)
 	defer executor.Close()
-	queue := newPublisherBURLQueue(ctx, box, dsp, nil, 2, 100000, 20*time.Second, 24*time.Hour, func(c context.Context, res resolvedCallback) error {
-		defer close(finished)
-		return processBurl(c, res, client, []*redis.Client{stats}, impSet, nil, "", nil, box, nil, executor)
+	queue := newPublisherBURLQueue(ctx, box, dsp, nil, 2, 100000, 20*time.Second, 24*time.Hour, func(c context.Context, res publisherBURLInput) error {
+		return processBurl(c, res, client, []*redis.Client{stats}, imps, nil, "", nil, box, nil, executor)
 	})
 	defer queue.Close()
-	task := publisherBurlFunc(queue.enqueue)
+	// Attribution survives the raw ORTB hash being consumed/deleted by Loader.
 	reqCtx, cancel := context.WithCancel(ctx)
-	req := httptest.NewRequest("GET", "/adm?id="+id+"&url=https://attacker.test&f=bogus", nil).WithContext(reqCtx)
-	req = req.WithContext(context.WithValue(req.Context(), httpin.Input, &admRequest{GlobalId: id}))
-	req = req.WithContext(context.WithValue(req.Context(), publisherBurlKey{}, task))
+	defer cancel()
+	req := httptest.NewRequest("GET", "/adm", nil).WithContext(reqCtx)
+	req = req.WithContext(context.WithValue(req.Context(), httpin.Input, &admRequest{GlobalId: id, Format: "0", Publisher: "1", DspURL: url.QueryEscape("https://advertiser.test/landing?click_id=original&x=%2F")}))
+	req = req.WithContext(context.WithValue(req.Context(), publisherBurlKey{}, publisherBurlFunc(queue.enqueue)))
 	w := httptest.NewRecorder()
-	returned := make(chan struct{})
-	go func() { getAdm(ctx, w, req, []*redis.Client{stats}, dsp, set, nil, "", nil, nil, nil); close(returned) }()
+	done := make(chan struct{})
+	go func() { getAdm(ctx, w, req, []*redis.Client{stats}, dsp, clicks, nil, "", nil, box, nil); close(done) }()
 	select {
-	case <-returned:
+	case <-done:
 	case <-time.After(time.Second):
-		t.Fatal("ADM waited for downstream BURL")
+		t.Fatal("ADM waited for DSP")
 	}
 	cancel()
+	if w.Code != 200 || !w.Flushed || !strings.Contains(w.Body.String(), "advertiser.test/landing") {
+		t.Fatal(w.Code, w.Body.String())
+	}
 	select {
 	case <-started:
 	case <-time.After(time.Second):
-		t.Fatal("no internal BURL")
-	}
-	if w.Code != 200 || !strings.Contains(w.Body.String(), "advertiser.test") || strings.Contains(w.Body.String(), "attacker.test") {
-		t.Fatal(w.Code, w.Body.String())
-	}
-	if stats.SCard(ctx, set).Val() != 1 {
-		t.Fatal("not one click")
+		t.Fatal("internal BURL not started")
 	}
 	close(release)
-	select {
-	case <-finished:
-	case <-time.After(time.Second):
-		t.Fatal("BURL did not finish")
-	}
-	resolved, e := resolveCallback(ctx, id, dsp, nil)
+	waitPublisher(t, func() bool { return dsp.HGet(ctx, id, "pub_burl_done").Val() == "1" })
+	resolved, e := testPublisherInput(ctx, id, dsp, nil)
 	if e != nil {
 		t.Fatal(e)
 	}
-	if e = processBurl(ctx, resolved, client, []*redis.Client{stats}, impSet, nil, "", nil, nil, nil, executor); e != nil {
+	if e = processBurl(ctx, resolved, client, []*redis.Client{stats}, imps, nil, "", nil, box, nil, executor); e != nil {
 		t.Fatal(e)
 	}
-	if calls.Load() != 1 || stats.SCard(ctx, impSet).Val() != 1 {
-		t.Fatal("duplicate internal/external BURL", calls.Load())
+	if calls.Load() != 1 || stats.SCard(ctx, imps).Val() != 1 || stats.SCard(ctx, clicks).Val() != 1 {
+		t.Fatal("duplicate effects", calls.Load())
 	}
-	if dsp.HExists(ctx, id, "confirm").Val() {
-		t.Fatal("unexpected confirm")
-	}
-	t.Run("realClickHouseRevenue", func(t *testing.T) { assertADMClickIncome(t, stats, set, impSet, id) })
+	t.Run("realClickHouseRevenue", func(t *testing.T) { assertADMClickIncome(t, stats, clicks, imps, id) })
 }
-func TestCallbackRestoresADVAndUsesExistingBillingIntent(t *testing.T) {
+
+func TestLegacyADVWinnerWithNoCallbackContextBillsOnce(t *testing.T) {
 	ctx := context.Background()
 	dsp, adv, runtime, stats := callbackRedis(t, 10), callbackRedis(t, 11), callbackRedis(t, 9), callbackRedis(t, 12)
 	id, user, campaign := uuid.NewString(), uuid.NewString(), uuid.NewString()
 	set := "adv-burl:" + id
 	adv.HSet(ctx, id, "price", ".25", "user_id", user, "campaign_id", campaign, "format", "POP", "type_model", 2, "click_id_param", "cid")
-	adv.Expire(ctx, id, 2*time.Hour)
-	record := callback.Record{Format: "POP", Destination: "https://advertiser.test/landing?keep=1", SSP: "ssp", WinnerType: "adv"}
-	if e := callback.Save(ctx, adv, id, record, time.Hour, true); e != nil {
-		t.Fatal(e)
-	}
+	adv.Expire(ctx, id, time.Hour)
+	// A corrupt retired field must be irrelevant to the restored winner reader.
+	adv.HSet(ctx, id, "callback_context_v1", "not-json")
+	defer adv.Del(ctx, id)
+	defer clearStats(ctx, stats, set)
+	defer runtime.Del(ctx, "spent:user:"+user, "spent:campaign:"+campaign, "outbox:applied:"+billing.CallbackEventID("burl", "POP", id))
 	box, e := outbox.Open(filepath.Join(t.TempDir(), "outbox.db"))
 	if e != nil {
 		t.Fatal(e)
 	}
 	defer box.Close()
 	store := billing.NewStore(runtime, adv, time.Hour)
-	resolved, e := resolveCallback(ctx, id, dsp, store)
-	if e != nil {
-		t.Fatal(e)
-	}
-	if resolved.Winner.TypeModel != 2 || resolved.Record.Destination != record.Destination {
-		t.Fatal(resolved)
-	}
-	client := &http.Client{Transport: callbackTransport(func(r *http.Request) (*http.Response, error) {
-		t.Error("local ADV has no downstream URL")
-		return &http.Response{StatusCode: 204, Body: io.NopCloser(strings.NewReader(""))}, nil
-	})}
+	broken := redis.NewClient(&redis.Options{Addr: "127.0.0.1:1", MaxRetries: -1, DialTimeout: 20 * time.Millisecond})
+	defer broken.Close()
 	for i := 0; i < 2; i++ {
-		if e = processBurl(ctx, resolved, client, []*redis.Client{stats}, set, nil, "", store, box, nil); e != nil {
-			t.Fatal(e)
-		}
-	}
-	if value := runtime.Get(ctx, "spent:user:"+user).Val(); value != "0.25" {
-		t.Fatal("billing not idempotent", value)
-	}
-	// A new Store represents another adapter / a restarted process; no local cache.
-	// A separate DSP outage does not erase a valid ADV winner.
-	dsp.Close()
-	if _, e = resolveCallback(ctx, id, dsp, store); e != nil {
-		t.Fatal("DSP outage broke ADV callback", e)
-	}
-	restarted := billing.NewStore(runtime, adv, time.Hour)
-	if _, e = resolveCallback(ctx, id, dsp, restarted); e != nil {
-		t.Fatal(e)
-	}
-	dsp = callbackRedis(t, 10)
-	adv.PExpire(ctx, id, time.Millisecond)
-	time.Sleep(5 * time.Millisecond)
-	if _, e = resolveCallback(ctx, id, dsp, restarted); !errors.Is(e, redis.Nil) {
-		t.Fatal("expired UUID accepted", e)
-	}
-	t.Cleanup(func() {
-		adv.Del(ctx, id)
-		for _, key := range []string{"spent:user:" + user, "spent:campaign:" + campaign, "outbox:applied:" + billing.CallbackEventID("burl", "POP", id)} {
-			runtime.Del(ctx, key)
-		}
-		for _, event := range stats.SMembers(ctx, set).Val() {
-			stats.Del(ctx, event)
-		}
-		stats.Del(ctx, set)
-	})
-}
-
-func TestUUIDOnlyHTTPRoutesAllFormatsAndStoredAttribution(t *testing.T) {
-	ctx := context.Background()
-	dsp, stats := callbackRedis(t, 10), callbackRedis(t, 12)
-	router := chi.NewRouter()
-	set := "routes:" + uuid.NewString()
-	imps := set + ":impressions"
-	stop := InitHttpsRoutes(ctx, router, []*redis.Client{stats}, dsp, set, time.Second, time.Second, nil, "", dsp, imps, []*redis.Client{stats}, set+":conversions", []*redis.Client{stats}, set+":wins", []*redis.Client{stats}, nil, nil, nil)
-	defer stop()
-	for _, format := range []string{"POP", "BAN", "NAT", "IPP", "VID"} {
-		t.Run(format, func(t *testing.T) {
-			id := uuid.NewString()
-			record := callback.Record{Format: format, Destination: "https://advertiser.test/landing?keep=%2F", WinnerType: "dsp", SSP: "ordinary-ssp"}
-			if e := callback.Save(ctx, dsp, id, record, time.Hour, false); e != nil {
-				t.Fatal(e)
-			}
-			defer dsp.Del(ctx, id)
-			for _, path := range []string{"adm", "nurl", "burl"} {
-				w := httptest.NewRecorder()
-				router.ServeHTTP(w, httptest.NewRequest("GET", "/"+path+"?id="+id+"&url=http://127.0.0.1/private&f=999&s=adl_pb.com", nil))
-				want := 204
-				if path == "adm" {
-					want = 200
-					if !strings.Contains(w.Body.String(), "advertiser.test") || strings.Contains(w.Body.String(), "127.0.0.1") {
-						t.Fatal(w.Body.String())
-					}
-				}
-				if w.Code != want {
-					t.Fatal(path, w.Code, w.Body.String())
-				}
-			}
-			// Exactly one BURL impression; forged s= must not make NURL an impression.
-			for _, key := range stats.SMembers(ctx, imps).Val() {
-				if stats.HGet(ctx, key, constants.ORTB_UUID).Val() == id && stats.HGet(ctx, key, constants.FORMAT_COLUMN).Val() != format {
-					t.Fatal("query format overrode Redis")
-				}
-			}
-		})
-	}
-	if stats.SCard(ctx, set).Val() != 5 || stats.SCard(ctx, imps).Val() != 5 {
-		t.Fatal("unexpected callback counts", stats.SCard(ctx, set).Val(), stats.SCard(ctx, imps).Val())
-	}
-	for _, path := range []string{"adm", "nurl", "burl"} {
+		req := httptest.NewRequest("GET", "/burl", nil)
+		req = req.WithContext(context.WithValue(req.Context(), httpin.Input, &burlRequest{GlobalId: id, Format: "0"}))
 		w := httptest.NewRecorder()
-		router.ServeHTTP(w, httptest.NewRequest("GET", "/"+path+"?id="+uuid.NewString(), nil))
-		if w.Code != 410 {
-			t.Fatal(path, w.Code)
+		winnerDB := dsp
+		if i == 1 {
+			winnerDB = broken
+		}
+		getBurl(ctx, w, req, &http.Client{}, []*redis.Client{stats}, winnerDB, set, nil, "", store, box, nil)
+		if w.Code != 204 {
+			t.Fatal(w.Code, w.Body.String())
 		}
 	}
-	for _, s := range []string{set, imps} {
-		for _, id := range stats.SMembers(ctx, s).Val() {
-			stats.Del(ctx, id)
-		}
-		stats.Del(ctx, s)
+	if runtime.Get(ctx, "spent:user:"+user).Val() != "0.25" {
+		t.Fatal("duplicate ADV spend")
+	}
+	winner, e := store.ReadWinner(ctx, id, "POP")
+	if e != nil || winner.TypeModel != 2 {
+		t.Fatal(winner, e)
 	}
 }
 
@@ -333,29 +352,42 @@ func assertADMClickIncome(t *testing.T, stats *redis.Client, clickSet, impSet, a
 	}
 }
 
-func TestCallbackUsesExistingDSPBackupOnlyOnFailure(t *testing.T) {
+func TestPublisherAutomaticBURLRequiresPOPAndExplicitFlag(t *testing.T) {
 	ctx := context.Background()
-	primary, backup := callbackRedis(t, 10), callbackRedis(t, 11)
+	dsp, stats := callbackRedis(t, 10), callbackRedis(t, 12)
 	id := uuid.NewString()
-	r := callback.Record{Format: "POP", WinnerType: "dsp", Destination: "https://advertiser.test/unchanged"}
-	if e := callback.Save(ctx, backup, id, r, time.Hour, false); e != nil {
+	set := "flag:" + id
+	if e := seedPublisherWinner(ctx, dsp, id, publisherBURLRecord{Format: "POP", WinnerType: "dsp", PublisherID: "owner"}, time.Hour, false); e != nil {
 		t.Fatal(e)
 	}
-	defer backup.Del(ctx, id)
-	// Evicted DB1 context can still be served from the trusted existing DB0 copy.
-	got, e := resolveCallback(ctx, id, primary, nil, backup)
-	if e != nil || got.Record != r {
-		t.Fatal(got, e)
+	defer dsp.Del(ctx, id)
+	defer clearStats(ctx, stats, set)
+	for _, pair := range []struct{ f, p string }{{"0", ""}, {"0", "0"}, {"1", "1"}, {"2", "1"}, {"3", "1"}, {"4", "1"}} {
+		var calls atomic.Int32
+		req := httptest.NewRequest("GET", "/adm", nil)
+		req = req.WithContext(context.WithValue(req.Context(), httpin.Input, &admRequest{GlobalId: id, Format: pair.f, Publisher: pair.p, DspURL: "https://advertiser.test/original"}))
+		req = req.WithContext(context.WithValue(req.Context(), publisherBurlKey{}, publisherBurlFunc(func(context.Context, publisherBURLInput) { calls.Add(1) })))
+		w := httptest.NewRecorder()
+		getAdm(ctx, w, req, []*redis.Client{stats}, dsp, set, nil, "", nil, nil, nil)
+		if w.Code != 200 || calls.Load() != 0 {
+			t.Fatal(pair, w.Code, calls.Load())
+		}
 	}
-	primary.Close()
-	// Connection outage is different from a known missing UUID, but the replica
-	// copy can still authorize the same UUID without trusting client parameters.
-	got, e = resolveCallback(ctx, id, primary, nil, backup)
-	if e != nil || got.Record != r {
-		t.Fatal(got, e)
-	}
-	backup.Del(ctx, id)
-	if _, e = resolveCallback(ctx, id, primary, nil, backup); e == nil || errors.Is(e, redis.Nil) {
-		t.Fatal("outage misclassified as a known miss", e)
+}
+
+func TestPublisherADMNeedsWinnerBeforeBURL(t *testing.T) {
+	ctx := context.Background()
+	dsp, stats := callbackRedis(t, 10), callbackRedis(t, 12)
+	id := uuid.NewString()
+	set := "missing-winner:" + id
+	defer clearStats(ctx, stats, set)
+	req := httptest.NewRequest("GET", "/adm", nil)
+	req = req.WithContext(context.WithValue(req.Context(), httpin.Input, &admRequest{GlobalId: id, Format: "0", Publisher: "1", DspURL: "https://advertiser.test/"}))
+	var calls atomic.Int32
+	req = req.WithContext(context.WithValue(req.Context(), publisherBurlKey{}, publisherBurlFunc(func(context.Context, publisherBURLInput) { calls.Add(1) })))
+	w := httptest.NewRecorder()
+	getAdm(ctx, w, req, []*redis.Client{stats}, dsp, set, nil, "", nil, nil, nil)
+	if w.Code != 200 || calls.Load() != 0 || stats.SCard(ctx, set).Val() != 0 {
+		t.Fatal("p bypassed missing winner", w.Code)
 	}
 }

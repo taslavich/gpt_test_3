@@ -17,7 +17,6 @@ import (
 	"github.com/ggicci/httpin"
 	"github.com/google/uuid"
 	"github.com/redis/go-redis/v9"
-	"gitlab.com/twinbid-exchange/RTB-exchange/internal/callback"
 	"gitlab.com/twinbid-exchange/RTB-exchange/internal/services/sspAdapter/outbox"
 )
 
@@ -66,13 +65,13 @@ func TestPublisherV4ThousandConcurrentADM(t *testing.T) {
 	guard, stats := callbackRedis(t, 10), callbackRedis(t, 12)
 	root := uuid.NewString()
 	clicks, imps := "v4-clicks:"+root, "v4-imps:"+root
-	records := make([]resolvedCallback, 1000)
+	records := make([]publisherBURLInput, 1000)
 	for i := range records {
 		r := publisherFastRecord()
 		r.Redis = guard
 		r.Record.BURL = "https://dsp.test/delegated-nurl?original=%2F"
-		r.Record.NURL = "https://dsp.test/different-nurl"
-		if err := callback.Save(ctx, guard, r.ID, r.Record, time.Hour, false); err != nil {
+
+		if err := seedPublisherWinner(ctx, guard, r.ID, r.Record, time.Hour, false); err != nil {
 			t.Fatal(err)
 		}
 		records[i] = r
@@ -101,7 +100,7 @@ func TestPublisherV4ThousandConcurrentADM(t *testing.T) {
 	})}
 	executor := newPublisherDSPExecutor(ctx, client, 2, 8)
 	defer executor.Close()
-	q := newPublisherBURLQueue(ctx, box, guard, nil, 8, 100000, 20*time.Second, 24*time.Hour, func(c context.Context, r resolvedCallback) error {
+	q := newPublisherBURLQueue(ctx, box, guard, nil, 8, 100000, 20*time.Second, 24*time.Hour, func(c context.Context, r publisherBURLInput) error {
 		return processBurl(c, r, client, []*redis.Client{stats}, imps, nil, "", nil, box, nil, executor)
 	})
 	defer q.Close()
@@ -113,7 +112,7 @@ func TestPublisherV4ThousandConcurrentADM(t *testing.T) {
 			defer wg.Done()
 			w := httptest.NewRecorder()
 			req := httptest.NewRequest("GET", "/adm?id="+id, nil)
-			req = req.WithContext(context.WithValue(req.Context(), httpin.Input, &admRequest{GlobalId: id}))
+			req = req.WithContext(context.WithValue(req.Context(), httpin.Input, &admRequest{GlobalId: id, DspURL: "https://advertiser.test/original", Format: "0", Publisher: "1"}))
 			req = req.WithContext(context.WithValue(req.Context(), publisherBurlKey{}, publisherBurlFunc(q.enqueue)))
 			getAdm(ctx, w, req, []*redis.Client{stats}, guard, clicks, nil, "", nil, box, nil)
 			if w.Code != 200 || !strings.Contains(w.Body.String(), "advertiser.test/original") {
@@ -151,14 +150,14 @@ func TestPublisherV4ThousandConcurrentADM(t *testing.T) {
 func TestPublisherV4SlowDSPReleasesMainWorkers(t *testing.T) {
 	ctx := context.Background()
 	guard, stats := callbackRedis(t, 10), callbackRedis(t, 12)
-	records := make([]resolvedCallback, 1000)
+	records := make([]publisherBURLInput, 1000)
 	set := "v4-internal:" + uuid.NewString()
 	for i := range records {
 		r := publisherFastRecord()
 		r.Redis = guard
 		r.Record.BURL = "https://dsp.test/delegated-nurl?keep=%2F"
 		records[i] = r
-		if err := callback.Save(ctx, guard, r.ID, r.Record, time.Hour, false); err != nil {
+		if err := seedPublisherWinner(ctx, guard, r.ID, r.Record, time.Hour, false); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -187,7 +186,7 @@ func TestPublisherV4SlowDSPReleasesMainWorkers(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer box.Close()
-	q := newPublisherBURLQueue(ctx, box, guard, nil, 8, 100000, 20*time.Second, 24*time.Hour, func(c context.Context, r resolvedCallback) error {
+	q := newPublisherBURLQueue(ctx, box, guard, nil, 8, 100000, 20*time.Second, 24*time.Hour, func(c context.Context, r publisherBURLInput) error {
 		return processBurl(c, r, client, []*redis.Client{stats}, set, nil, "", nil, box, nil, executor)
 	})
 	defer q.Close()
@@ -366,13 +365,13 @@ func TestPublisherV4NetworkFailureDoesNotRetry(t *testing.T) {
 }
 
 // Exercise the public handler too: only Publisher POP takes the executor path.
-func TestPublisherV4PublicBURLUsesExecutor(t *testing.T) {
+func TestPublisherV4InternalBURLUsesExecutor(t *testing.T) {
 	ctx := context.Background()
 	guard, stats := callbackRedis(t, 10), callbackRedis(t, 12)
 	r := publisherFastRecord()
 	r.Redis = guard
 	r.Record.BURL = "https://dsp.test/public"
-	if err := callback.Save(ctx, guard, r.ID, r.Record, time.Hour, false); err != nil {
+	if err := seedPublisherWinner(ctx, guard, r.ID, r.Record, time.Hour, false); err != nil {
 		t.Fatal(err)
 	}
 	defer guard.Del(ctx, r.ID)
@@ -389,13 +388,10 @@ func TestPublisherV4PublicBURLUsesExecutor(t *testing.T) {
 	})}
 	executor := newPublisherDSPExecutor(ctx, client, 1, 1)
 	defer executor.Close()
-	req := httptest.NewRequest("GET", "/burl?id="+r.ID, nil)
-	req = req.WithContext(context.WithValue(req.Context(), httpin.Input, &burlRequest{GlobalId: r.ID}))
-	w := httptest.NewRecorder()
 	begin := time.Now()
-	getBurl(ctx, w, req, client, []*redis.Client{stats}, guard, set, nil, "", nil, nil, nil, executor)
-	if w.Code != 204 || time.Since(begin) > time.Second {
-		t.Fatal("public Publisher BURL waited", w.Code, time.Since(begin))
+	err := processBurl(ctx, r, client, []*redis.Client{stats}, set, nil, "", nil, nil, nil, executor)
+	if err != nil || time.Since(begin) > time.Second {
+		t.Fatal("internal Publisher BURL waited", err, time.Since(begin))
 	}
 }
 
@@ -443,7 +439,7 @@ func TestPublisherV4GuardCompletionFailureUsesBoltWithoutDSP(t *testing.T) {
 	}
 	defer box.Close()
 	hook.fail.Store(true)
-	q := newPublisherBURLQueue(ctx, box, guard, nil, 1, 1000, time.Second, 24*time.Hour, func(c context.Context, r resolvedCallback) error {
+	q := newPublisherBURLQueue(ctx, box, guard, nil, 1, 1000, time.Second, 24*time.Hour, func(c context.Context, r publisherBURLInput) error {
 		return processBurl(c, r, client, []*redis.Client{stats}, set, nil, "", nil, box, nil, executor)
 	})
 	defer q.Close()

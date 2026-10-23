@@ -106,7 +106,7 @@ func assertReadyCallback(t *testing.T, raw, path, winnerID, original string) {
 	if parsed.Path != path || parsed.Query().Get("id") != winnerID {
 		t.Fatalf("unexpected callback %q", raw)
 	}
-	if len(parsed.Query()) != 1 {
+	if parsed.Query().Get("url") != original {
 		t.Fatalf("callback original URL=%q want %q", parsed.Query().Get("url"), original)
 	}
 }
@@ -198,11 +198,11 @@ func configureCallbackServer(t *testing.T, s *Server, req *bidEngineGrpc.BidEngi
 	}
 	dsp := redis.NewClient(&redis.Options{Addr: addr, DB: 10})
 	adv := redis.NewClient(&redis.Options{Addr: addr, DB: 11})
+	burl := redis.NewClient(&redis.Options{Addr: addr, DB: 13})
 	stats := redis.NewClient(&redis.Options{Addr: addr, DB: 12})
 	s.redisUUIDKeyTTL = time.Hour
 	s.redisAdmClient = dsp
-	s.redisBurlClient = dsp
-	s.callbackADV = adv
+	s.redisBurlClient = burl
 	s.redisClients = []*redis.Client{stats}
 	for imp, id := range req.ImpIdUuid {
 		if req.WinnerUserIds[imp] != "" {
@@ -217,10 +217,12 @@ func configureCallbackServer(t *testing.T, s *Server, req *bidEngineGrpc.BidEngi
 	t.Cleanup(func() {
 		for _, id := range req.ImpIdUuid {
 			dsp.Del(context.Background(), id)
+			burl.Del(context.Background(), id)
 			adv.Del(context.Background(), id)
 			stats.Del(context.Background(), id)
 		}
 		dsp.Close()
+		burl.Close()
 		adv.Close()
 		stats.Close()
 	})

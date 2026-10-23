@@ -1,3 +1,5 @@
+> Для точечного отката callback в proj240 используйте [LEGACY_CALLBACKS_240.md](LEGACY_CALLBACKS_240.md). Финансовые инструкции ниже относятся к исторической миграции 229 и не нужны для этого отката.
+
 # TwinBid 229 v4 — replacement, deployment and checks
 
 Базы: только `proj229(6).zip` и `FProj229(3).zip`. Патчи v4 полные: предыдущие патчи
@@ -197,23 +199,17 @@ PG ledger, revenue checkpoints, начисление delta раз в 30s и payo
 
 ## Redis lifecycle и ENV
 
-Наши /adm, /burl, /nurl содержат только `id`. Входящие url/f/s игнорируются полностью.
-Context сохранён **до** bid response в существующих winner hashes. Save failure
-исключает bid, а не выдаёт неработающую UUID-only ссылку. Контекст одного UUID
-неизменяем: конфликтующая destination не перезаписывает уже выданную ссылку.
-ADV Save дополнительно проверяет billing fields/format и положительный оставшийся
-TTL внутри прежней Lua-команды. HSET не продлевает ADV authorization TTL.
-
-DSP success fast path — один HGETALL; ADV использует уже загруженный ReadWinner.
-При miss/outage разрешено чтение существующей второй DSP copy (DB0 ↔ DB1), только
-после неудачи основного/ADV пути, с общим коротким бюджетом. Ни клиентский URL,
-ни локальный process cache не становятся fallback. Перезапуск BidEngine/Adapter
-не теряет Redis context. При отсутствии всех известных копий — 410; при ошибке
-доступа — 503. Сбой DSP Redis не скрывает валидный ADV на другом Redis.
+В proj240 после точечного отката callback снова передают id/url/f/s по контракту
+proj212. Полный callback-контекст для обычных ставок не собирается и не читается;
+ошибка его сохранения больше не исключает победителя. Publisher POP добавляет p=1
+только в ADM. Для DSP в существующем ADM UUID HASH сохраняется только pub_dsp_nurl, без
+изменения TTL. ADM читает uuid/NURL одним HGETALL; отсутствие NURL не отменяет
+внутренний BURL. Для ADV используется прежний ReadWinner. Очередь, финансовый
+Outbox и guards сохранены. См. актуальную
+инструкцию LEGACY_CALLBACKS_240.md.
 
 | ENV | Default | Назначение |
 |---|---|---|
-| CALLBACK_UUID_ONLY | true | producer. false — только временная staged-выкладка legacy URL + private context |
 | PUB_BURL_WORKERS | 8 | 1..64, adm-adapter, активные Publisher BURL |
 | PUB_BURL_TASK_TIMEOUT | 20s | положительный, не более 1m; DSP HTTP timeout остаётся 3s |
 | PUB_BURL_BACKLOG_HIGH_WATER | 100000 | сигнал существующей остановки streams; не drop лимит |
@@ -221,7 +217,7 @@ DSP success fast path — один HGETALL; ADV использует уже за
 Существующие настройки не подменяются: ADV_OUTBOX_PATH (default
 ./data/adv-billing-outbox.db), ADV_APPLIED_MARKER_TTL (720h), REDIS_UUID_KEY_TTL
 (45m DSP), ADV_WINNER_TTL (45m ADV), REDIS_DB_ADM=1, REDIS_DB_BURL=0,
-REDIS_DB_ADV_WINNER=6, ADV runtime DB5. BidEngine/Adapter REDIS_ADV_ADDR обязан
+REDIS_DB_ADV_WINNER=6, ADV runtime DB5. ADM Adapter REDIS_ADV_ADDR обязан
 указывать на настоящий ADV winner Redis (его собственный REDIS_UUID_ADDR),
 а не на DSP Redis другого инстанса/порта. PUB_ANTIBLOCK_ENABLED=false сохраняется.
 
@@ -266,12 +262,9 @@ Close сначала завершает внутреннюю BURL-очередь
    AOF/retention, persistent outbox volume и место на диске. Не тестировать разрушительно
    на production. Сохранить backup schema/data, aggregate advertiser totals, PG
    ledger/checkpoints/accounts и Kafka offsets. Финансовые checkpoints не обнулять.
-2. Для перехода от исходных parameter URLs предварительно выкатить v3 producer
-   с CALLBACK_UUID_ONLY=false: он сохраняет private context, оставляя legacy links.
-   Старые handlers ещё работают. Выждать **максимальный реальный** срок callback
-   старых bids, включая согласованные late events. Старые ссылки без context после
-   перехода не восстановить безопасно из url/f/s. Для уже UUID-only v1 этот этап
-   не нужен, если сохранённые hashes соответствуют схеме.
+2. Исторический этап перехода на UUID-only отменён точечным откатом proj240.
+   Порядок установки callback — только в LEGACY_CALLBACKS_240.md; финансовые
+   этапы ниже при этом откате не выполнять.
 3. На maintenance остановить Publisher выдачу и **backend revenue sync/переходы
    выплат**, все ClickHouse Loaders/ручные fact writers, дождаться async inserts.
    Kafka сохранить. Не затягивать окно за TTL input buffers/ORTB. Сверить balances
@@ -306,7 +299,7 @@ SELECT database,view,status,exception FROM system.view_refreshes WHERE database=
 6. Выкатить Adapter с bounded outbox worker и кабинет (полный v2 patch без изменений, имя v3). Убедиться в сохранности
    pending billing/Publisher tasks. Запустить Loader consumers, дождаться Kafka
    lag/refresh. Повторный CreateDB пропускает завершённый full import.
-7. Переключить producer CALLBACK_UUID_ONLY=true, проверить ADV/DSP ссылки всех
+7. Для исторической финансовой миграции проверить ADV/DSP ссылки всех
    форматов и Publisher signed delivery → тот же ADM. Возобновить sync, сверить
    account delta с ledger/checkpoint, затем включить Publisher/обычные streams.
    Проверить no-fill, popup blocking, /confirm, quotas и 30s sync на canary.
@@ -323,7 +316,7 @@ facts. Не запускать старый CreateDB: он вернёт стар
 v2 денежной схеме и исправление/roll-forward бинарника. Обычные RTB сервисы можно
 возвращать только с совместимым UUID resolver и без старого DDL initializer.
 Старый handler, требующий url/f/s, не обслужит уже выданные UUID-only callbacks.
-CALLBACK_UUID_ONLY=false — staged producer, не способ восстановить выданные UUID.
+Уже выданные ссылки без url/f/s не содержат данных старого механизма; см. порядок перехода в LEGACY_CALLBACKS_240.md.
 
 Полный rollback данных возможен только согласованным snapshot всех финансовых
 состояний на одну границу и audited replay с неизменными UUID/offsets; одним

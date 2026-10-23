@@ -174,16 +174,6 @@ func TestConfirmedStateExactlyOneCountAndMissingReservationDenied(t *testing.T) 
 		t.Fatal("lost pending state accepted", v, e)
 	}
 }
-func TestUnsupportedDestinationAndPrivateCallback(t *testing.T) {
-	s, _ := fixture(t)
-	if _, e := s.destination("https://attacker.test/adm?url=https://example.test"); e == nil {
-		t.Fatal("untrusted wrapper")
-	}
-	if _, e := s.destination("https://adm.example.test/adm?url=http%3A%2F%2F10.0.0.1"); e == nil {
-		t.Fatal("private destination")
-	}
-}
-
 func TestPartialShardLossAndRestartGuardFailsClosed(t *testing.T) {
 	s, code := fixture(t)
 	in := input(code)

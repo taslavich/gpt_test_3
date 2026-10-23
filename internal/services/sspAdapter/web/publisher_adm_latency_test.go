@@ -16,7 +16,6 @@ import (
 	"github.com/ggicci/httpin"
 	"github.com/google/uuid"
 	"github.com/redis/go-redis/v9"
-	"gitlab.com/twinbid-exchange/RTB-exchange/internal/callback"
 	"gitlab.com/twinbid-exchange/RTB-exchange/internal/services/sspAdapter/outbox"
 )
 
@@ -47,11 +46,11 @@ func TestPublisherADMLatencySample(t *testing.T) {
 			}()
 			for i := range ids {
 				ids[i] = uuid.NewString()
-				r := callback.Record{Format: "POP", WinnerType: "dsp", Destination: "https://advertiser.test/landing"}
+				r := publisherBURLRecord{Format: "POP", WinnerType: "dsp"}
 				if publisher {
 					r.PublisherID = "publisher"
 				}
-				if e := callback.Save(ctx, dsp, ids[i], r, time.Hour, false); e != nil {
+				if e := seedPublisherWinner(ctx, dsp, ids[i], r, time.Hour, false); e != nil {
 					t.Fatal(e)
 				}
 			}
@@ -60,12 +59,12 @@ func TestPublisherADMLatencySample(t *testing.T) {
 				t.Fatal(e)
 			}
 			defer box.Close()
-			q := newPublisherBURLQueue(ctx, box, dsp, nil, 8, 100000, 20*time.Second, 24*time.Hour, func(c context.Context, r resolvedCallback) error {
-				return processBurl(c, r, callback.HTTPClient(), []*redis.Client{stats}, imps, nil, "", nil, box, nil)
+			q := newPublisherBURLQueue(ctx, box, dsp, nil, 8, 100000, 20*time.Second, 24*time.Hour, func(c context.Context, r publisherBURLInput) error {
+				return processBurl(c, r, &http.Client{Timeout: 3 * time.Second}, []*redis.Client{stats}, imps, nil, "", nil, box, nil)
 			})
 			defer q.Close()
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				r = r.WithContext(context.WithValue(r.Context(), httpin.Input, &admRequest{GlobalId: r.URL.Query().Get("id")}))
+				r = r.WithContext(context.WithValue(r.Context(), httpin.Input, &admRequest{GlobalId: r.URL.Query().Get("id"), DspURL: "https://advertiser.test/landing", Format: "0", Publisher: r.URL.Query().Get("p")}))
 				r = r.WithContext(context.WithValue(r.Context(), publisherBurlKey{}, publisherBurlFunc(q.enqueue)))
 				getAdm(ctx, w, r, []*redis.Client{stats}, dsp, set, nil, "", nil, box, nil)
 			}))
@@ -82,7 +81,7 @@ func TestPublisherADMLatencySample(t *testing.T) {
 					defer wg.Done()
 					for index := range jobs {
 						start := time.Now()
-						response, e := client.Get(server.URL + "/adm?id=" + ids[index])
+						response, e := client.Get(server.URL + "/adm?id=" + ids[index] + map[bool]string{true: "&p=1", false: ""}[publisher])
 						if e != nil {
 							t.Error(e)
 							continue

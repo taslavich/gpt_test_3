@@ -3,7 +3,6 @@ package sppAdapterWeb
 import (
 	"context"
 	"encoding/json"
-	"gitlab.com/twinbid-exchange/RTB-exchange/internal/callback"
 	"log"
 	"net/http"
 	"sync"
@@ -99,13 +98,23 @@ type postBidResponse_V2_5 struct {
 }
 
 type admRequest struct {
-	GlobalId string `in:"query=id" required:"true"`
+	GlobalId  string `in:"query=id" required:"true"`
+	DspURL    string `in:"query=url" required:"true"`
+	Publisher string `in:"query=p"`
+	Format    string `in:"query=f" required:"true"`
 }
+
 type nurlRequest struct {
-	GlobalId string `in:"query=id" required:"true"`
+	GlobalId   string `in:"query=id" required:"true"`
+	DspURL     string `in:"query=url"`
+	Format     string `in:"query=f" required:"true"`
+	Ssp_Domain string `in:"query=s" required:"true"`
 }
+
 type burlRequest struct {
 	GlobalId string `in:"query=id" required:"true"`
+	DspURL   string `in:"query=url"`
+	Format   string `in:"query=f" required:"true"`
 }
 
 type clicksWinsRequest struct {
@@ -332,7 +341,7 @@ func InitHttpsRoutes(
 ) func() {
 	integration.UseGochiURLParam("path", chi.URLParam)
 
-	var nurlClient = callback.HTTPClient()
+	var nurlClient = &http.Client{Timeout: 3 * time.Second}
 	dspExecutor := newPublisherDSPExecutor(ctx, nurlClient, publisherDSPWorkers, publisherDSPCapacity)
 
 	options := PublisherBURLOptions{Workers: 8, Timeout: 20 * time.Second, HighWater: 100000, MaxAge: 24 * time.Hour}
@@ -353,7 +362,7 @@ func InitHttpsRoutes(
 	}
 	var admMu sync.RWMutex
 	stopped := false
-	queue := newPublisherBURLQueue(ctx, advOutbox, redisAdmClient, advBillingStore, options.Workers, options.HighWater, options.Timeout, options.MaxAge, func(taskCtx context.Context, resolved resolvedCallback) error {
+	queue := newPublisherBURLQueue(ctx, advOutbox, redisAdmClient, advBillingStore, options.Workers, options.HighWater, options.Timeout, options.MaxAge, func(taskCtx context.Context, resolved publisherBURLInput) error {
 		return processBurl(taskCtx, resolved, nurlClient, redisClientsImp, redisSetImpressions, redisWriteErrorMonitor, sspAdapterWorkStatusURL, advBillingStore, advOutbox, advControlURLs, dspExecutor)
 	}, func(err error) {
 		recordRedisError(redisWriteErrorMonitor, err, sspAdapterWorkStatusURL)
@@ -373,7 +382,6 @@ func InitHttpsRoutes(
 			http.Error(w, "adapter stopping", 503)
 			return
 		}
-		r = r.WithContext(context.WithValue(r.Context(), callbackDSPFallbackKey{}, redisNurlClient))
 		task := publisherBurlFunc(queue.enqueue)
 		r = r.WithContext(context.WithValue(r.Context(), publisherBurlKey{}, task))
 		getAdm(ctx, w, r, redisClientsClicks, redisAdmClient, redisSetClicks, redisWriteErrorMonitor, sspAdapterWorkStatusURL, advBillingStore, advOutbox, advControlURLs)
@@ -386,15 +394,12 @@ func InitHttpsRoutes(
 	httpRouter.With(
 		httpin.NewInput(burlRequest{}),
 	).Get(GetBurlUrl, func(w http.ResponseWriter, r *http.Request) {
-		r = r.WithContext(context.WithValue(r.Context(), publisherDSPGuardKey{}, redisAdmClient))
-		r = r.WithContext(context.WithValue(r.Context(), callbackDSPFallbackKey{}, redisAdmClient))
-		getBurl(ctx, w, r, nurlClient, redisClientsImp, redisNurlClient, redisSetImpressions, redisWriteErrorMonitor, sspAdapterWorkStatusURL, advBillingStore, advOutbox, advControlURLs, dspExecutor)
+		getBurl(ctx, w, r, nurlClient, redisClientsImp, redisNurlClient, redisSetImpressions, redisWriteErrorMonitor, sspAdapterWorkStatusURL, advBillingStore, advOutbox, advControlURLs)
 	})
 
 	httpRouter.With(
 		httpin.NewInput(nurlRequest{}),
 	).Get(GetNurlUrl, func(w http.ResponseWriter, r *http.Request) {
-		r = r.WithContext(context.WithValue(r.Context(), callbackDSPFallbackKey{}, redisAdmClient))
 		getNurl(
 			ctx,
 			w,

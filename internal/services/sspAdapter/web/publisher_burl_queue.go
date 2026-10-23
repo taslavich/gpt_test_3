@@ -10,14 +10,13 @@ import (
 	"time"
 
 	"github.com/redis/go-redis/v9"
-	"gitlab.com/twinbid-exchange/RTB-exchange/internal/callback"
 	"gitlab.com/twinbid-exchange/RTB-exchange/internal/services/sspAdapter/billing"
 	"gitlab.com/twinbid-exchange/RTB-exchange/internal/services/sspAdapter/outbox"
 )
 
 type publisherBURLPayload struct {
 	ID     string
-	Record callback.Record
+	Record publisherBURLRecord
 	Winner billing.Winner
 }
 
@@ -32,13 +31,13 @@ type publisherBURLQueue struct {
 	box              *outbox.Store
 	dsp              *redis.Client
 	adv              *billing.Store
-	process          func(context.Context, resolvedCallback) error
+	process          func(context.Context, publisherBURLInput) error
 	timeout          time.Duration
 	ctx              context.Context
 	cancel           context.CancelFunc
 	mu               sync.Mutex
 	stopped          bool
-	fallback         chan resolvedCallback
+	fallback         chan publisherBURLInput
 	fallbackAttempts atomic.Uint64
 	lost             atomic.Uint64
 	wg               sync.WaitGroup
@@ -48,9 +47,9 @@ type publisherBURLQueue struct {
 	failure          chan error
 }
 
-func newPublisherBURLQueue(parent context.Context, box *outbox.Store, dsp *redis.Client, adv *billing.Store, concurrency, highWater int, timeout, maxAge time.Duration, process func(context.Context, resolvedCallback) error, report ...func(error)) *publisherBURLQueue {
+func newPublisherBURLQueue(parent context.Context, box *outbox.Store, dsp *redis.Client, adv *billing.Store, concurrency, highWater int, timeout, maxAge time.Duration, process func(context.Context, publisherBURLInput) error, report ...func(error)) *publisherBURLQueue {
 	ctx, cancel := context.WithCancel(parent)
-	q := &publisherBURLQueue{box: box, dsp: dsp, adv: adv, process: process, timeout: timeout, ctx: ctx, cancel: cancel, fallback: make(chan resolvedCallback, concurrency*128), slots: make(chan struct{}, concurrency), wake: make(chan struct{}, 1), highWater: highWater, failure: make(chan error, 1)}
+	q := &publisherBURLQueue{box: box, dsp: dsp, adv: adv, process: process, timeout: timeout, ctx: ctx, cancel: cancel, fallback: make(chan publisherBURLInput, concurrency*128), slots: make(chan struct{}, concurrency), wake: make(chan struct{}, 1), highWater: highWater, failure: make(chan error, 1)}
 	// One fixed persister handles overflow; successful immediate jobs never enter
 	// Bolt. A finite staging buffer keeps filesystem stalls off the HTTP path.
 	q.wg.Add(1)
@@ -124,19 +123,21 @@ func newPublisherBURLQueue(parent context.Context, box *outbox.Store, dsp *redis
 						e = json.Unmarshal(t.Payload, &payload)
 					}
 					if e == nil {
-						if payload.ID != t.ID || !callback.ValidID(payload.ID) || payload.Record.Format != "POP" || payload.Record.PublisherID == "" {
+						if payload.ID != t.ID || !publisherTaskID(payload.ID) || payload.Record.Format != "POP" || payload.Record.PublisherID == "" {
 							e = fmt.Errorf("invalid persisted Publisher POP task")
 						} else {
-							e = payload.Record.Validate()
+							if payload.Record.WinnerType != "adv" && payload.Record.WinnerType != "dsp" {
+								e = fmt.Errorf("invalid Publisher winner type")
+							}
 						}
 					}
 					if e == nil {
-						resolved := resolvedCallback{ID: payload.ID, Record: payload.Record, Winner: payload.Winner, Redis: dsp}
+						resolved := publisherBURLInput{ID: payload.ID, Record: payload.Record, Winner: payload.Winner, Redis: dsp}
 						if payload.Record.WinnerType == "adv" {
 							if adv == nil {
 								e = fmt.Errorf("ADV store unavailable")
 							} else {
-								resolved.Redis = adv.CallbackRedis()
+								resolved.Redis = adv.WinnerRedis()
 							}
 						}
 						if e == nil {
@@ -169,7 +170,7 @@ func newPublisherBURLQueue(parent context.Context, box *outbox.Store, dsp *redis
 }
 
 // Admission is nonblocking and bounded. The route drains handlers before Close.
-func (q *publisherBURLQueue) enqueue(_ context.Context, r resolvedCallback) {
+func (q *publisherBURLQueue) enqueue(_ context.Context, r publisherBURLInput) {
 	q.mu.Lock()
 	defer q.mu.Unlock()
 	if q.stopped {
@@ -211,7 +212,7 @@ func (q *publisherBURLQueue) enqueue(_ context.Context, r resolvedCallback) {
 	}
 }
 
-func (q *publisherBURLQueue) persist(r resolvedCallback) {
+func (q *publisherBURLQueue) persist(r publisherBURLInput) {
 	q.fallbackAttempts.Add(1)
 	payload, e := json.Marshal(publisherBURLPayload{ID: r.ID, Record: r.Record, Winner: r.Winner})
 	if e == nil {

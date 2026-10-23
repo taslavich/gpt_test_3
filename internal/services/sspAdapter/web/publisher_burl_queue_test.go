@@ -17,7 +17,6 @@ import (
 	"github.com/ggicci/httpin"
 	"github.com/google/uuid"
 	"github.com/redis/go-redis/v9"
-	"gitlab.com/twinbid-exchange/RTB-exchange/internal/callback"
 	"gitlab.com/twinbid-exchange/RTB-exchange/internal/services/sspAdapter/billing"
 	"gitlab.com/twinbid-exchange/RTB-exchange/internal/services/sspAdapter/outbox"
 )
@@ -41,7 +40,7 @@ func TestPublisherBURLBoundedTasksRestartAndOverload(t *testing.T) {
 	}
 	var active, peak, calls atomic.Int32
 	before := runtime.NumGoroutine()
-	process := func(ctx context.Context, r resolvedCallback) error {
+	process := func(ctx context.Context, r publisherBURLInput) error {
 		n := active.Add(1)
 		defer active.Add(-1)
 		for old := peak.Load(); n > old; old = peak.Load() {
@@ -55,7 +54,7 @@ func TestPublisherBURLBoundedTasksRestartAndOverload(t *testing.T) {
 	}
 	q := newPublisherBURLQueue(context.Background(), box, nil, nil, 4, 100000, 100*time.Millisecond, 24*time.Hour, process)
 	for i := 0; i < 400; i++ {
-		q.enqueue(context.Background(), resolvedCallback{ID: uuid.NewString(), Record: callback.Record{Format: "POP", WinnerType: "dsp", PublisherID: "publisher"}})
+		q.enqueue(context.Background(), publisherBURLInput{ID: uuid.NewString(), Record: publisherBURLRecord{Format: "POP", WinnerType: "dsp", PublisherID: "publisher"}})
 	}
 	waitPublisher(t, func() bool { return calls.Load() >= 4 })
 	if peak.Load() > 4 || runtime.NumGoroutine()-before > 12 {
@@ -85,7 +84,7 @@ func TestPublisherBURLBoundedTasksRestartAndOverload(t *testing.T) {
 		}
 	}
 	var completed atomic.Int32
-	restarted := newPublisherBURLQueue(context.Background(), box, nil, nil, 4, 100000, time.Second, 24*time.Hour, func(context.Context, resolvedCallback) error { completed.Add(1); return nil })
+	restarted := newPublisherBURLQueue(context.Background(), box, nil, nil, 4, 100000, time.Second, 24*time.Hour, func(context.Context, publisherBURLInput) error { completed.Add(1); return nil })
 	defer restarted.Close()
 	waitPublisher(t, func() bool { n, _ := box.TaskCount(); return n == 0 })
 	if completed.Load() != 400 {
@@ -102,11 +101,11 @@ func TestPublisherManyADMAndSharedDSPGuardAcrossDBs(t *testing.T) {
 	}
 	defer box.Close()
 	id := uuid.NewString()
-	r := callback.Record{Format: "POP", WinnerType: "dsp", PublisherID: "publisher", Destination: "https://advertiser.test/original", BURL: "https://dsp.test/slow"}
-	if e = callback.Save(ctx, adm, id, r, time.Hour, false); e != nil {
+	r := publisherBURLRecord{Format: "POP", WinnerType: "dsp", PublisherID: "publisher", BURL: "https://dsp.test/slow"}
+	if e = seedPublisherWinner(ctx, adm, id, r, time.Hour, false); e != nil {
 		t.Fatal(e)
 	}
-	if e = callback.Save(ctx, burl, id, r, time.Hour, false); e != nil {
+	if e = seedPublisherWinner(ctx, burl, id, r, time.Hour, false); e != nil {
 		t.Fatal(e)
 	}
 	clicks, imps := "many-adm:"+id, "many-imp:"+id
@@ -135,7 +134,7 @@ func TestPublisherManyADMAndSharedDSPGuardAcrossDBs(t *testing.T) {
 	})}
 	executor := newPublisherDSPExecutor(ctx, client, 2, 16)
 	defer executor.Close()
-	q := newPublisherBURLQueue(ctx, box, adm, nil, 4, 100000, time.Second, 24*time.Hour, func(c context.Context, res resolvedCallback) error {
+	q := newPublisherBURLQueue(ctx, box, adm, nil, 4, 100000, time.Second, 24*time.Hour, func(c context.Context, res publisherBURLInput) error {
 		return processBurl(c, res, client, []*redis.Client{stats}, imps, nil, "", nil, box, nil, executor)
 	})
 	defer q.Close()
@@ -146,7 +145,7 @@ func TestPublisherManyADMAndSharedDSPGuardAcrossDBs(t *testing.T) {
 		go func() {
 			defer wg.Done()
 			req := httptest.NewRequest("GET", "/adm?id="+id, nil)
-			req = req.WithContext(context.WithValue(req.Context(), httpin.Input, &admRequest{GlobalId: id}))
+			req = req.WithContext(context.WithValue(req.Context(), httpin.Input, &admRequest{GlobalId: id, DspURL: "https://advertiser.test/original", Format: "0", Publisher: "1"}))
 			req = req.WithContext(context.WithValue(req.Context(), publisherBurlKey{}, publisherBurlFunc(q.enqueue)))
 			w := httptest.NewRecorder()
 			getAdm(ctx, w, req, []*redis.Client{stats}, adm, clicks, nil, "", nil, box, nil)
@@ -165,7 +164,7 @@ func TestPublisherManyADMAndSharedDSPGuardAcrossDBs(t *testing.T) {
 	if elapsed >= time.Second {
 		t.Fatal("ADM waited for downstream", elapsed)
 	}
-	res, e := resolveCallback(ctx, id, burl, nil)
+	res, e := testPublisherInput(ctx, id, adm, nil)
 	if e != nil {
 		t.Fatal(e)
 	}
@@ -203,12 +202,12 @@ func TestPublisherQueuedADVRestartReusesWriteAheadBilling(t *testing.T) {
 	set := "restart-adv:" + id
 	adv.HSet(ctx, id, "format", "POP", "price", "0.25", "user_id", user, "campaign_id", campaign)
 	adv.Expire(ctx, id, time.Hour)
-	r := callback.Record{Format: "POP", WinnerType: "adv", PublisherID: "publisher", Destination: "https://advertiser.test/"}
-	if e := callback.Save(ctx, adv, id, r, time.Hour, true); e != nil {
+	r := publisherBURLRecord{Format: "POP", WinnerType: "adv", PublisherID: "publisher"}
+	if e := seedPublisherWinner(ctx, adv, id, r, time.Hour, true); e != nil {
 		t.Fatal(e)
 	}
 	store := billing.NewStore(spend, adv, time.Hour)
-	res, e := resolveCallback(ctx, id, nil, store)
+	res, e := testPublisherInput(ctx, id, nil, store)
 	if e != nil {
 		t.Fatal(e)
 	}
@@ -218,11 +217,25 @@ func TestPublisherQueuedADVRestartReusesWriteAheadBilling(t *testing.T) {
 		t.Fatal(e)
 	}
 	payload, _ := json.Marshal(publisherBURLPayload{ID: id, Record: r, Winner: res.Winner})
+	// Old persisted Publisher jobs carried the retired global callback fields.
+	// They must remain replayable without destination validation/context decode.
+	var oldPayload map[string]any
+	if e = json.Unmarshal(payload, &oldPayload); e != nil {
+		t.Fatal(e)
+	}
+	oldPayload["Record"].(map[string]any)["destination"] = "http://127.0.0.1/legacy"
+	oldPayload["Record"].(map[string]any)["nurl"] = "legacy-notification"
+	oldPayload["Record"].(map[string]any)["ssp"] = "legacy-ssp"
+	oldPayload["Winner"].(map[string]any)["Callback"] = map[string]any{"format": "POP", "destination": "retired-context"}
+	payload, e = json.Marshal(oldPayload)
+	if e != nil {
+		t.Fatal(e)
+	}
 	if e = box.SaveTask(id, payload); e != nil {
 		t.Fatal(e)
 	}
 	// Side effects completed but ACK was lost on adapter failure.
-	if e = processBurl(ctx, res, callback.HTTPClient(), []*redis.Client{stats}, set, nil, "", store, box, nil); e != nil {
+	if e = processBurl(ctx, res, &http.Client{Timeout: 3 * time.Second}, []*redis.Client{stats}, set, nil, "", store, box, nil); e != nil {
 		t.Fatal(e)
 	}
 	box.Close()
@@ -231,8 +244,8 @@ func TestPublisherQueuedADVRestartReusesWriteAheadBilling(t *testing.T) {
 		t.Fatal(e)
 	}
 	defer box.Close()
-	q := newPublisherBURLQueue(ctx, box, nil, store, 2, 100000, time.Second, 24*time.Hour, func(c context.Context, res resolvedCallback) error {
-		return processBurl(c, res, callback.HTTPClient(), []*redis.Client{stats}, set, nil, "", store, box, nil)
+	q := newPublisherBURLQueue(ctx, box, nil, store, 2, 100000, time.Second, 24*time.Hour, func(c context.Context, res publisherBURLInput) error {
+		return processBurl(c, res, &http.Client{Timeout: 3 * time.Second}, []*redis.Client{stats}, set, nil, "", store, box, nil)
 	})
 	defer q.Close()
 	waitPublisher(t, func() bool { n, _ := box.TaskCount(); return n == 0 })
@@ -258,13 +271,13 @@ func TestPublisherBURLBacklogRaisesExistingFailureSignal(t *testing.T) {
 	defer box.Close()
 	for i := 0; i < 3; i++ {
 		id := uuid.NewString()
-		payload, _ := json.Marshal(publisherBURLPayload{ID: id, Record: callback.Record{Format: "POP", PublisherID: "publisher", WinnerType: "dsp"}})
+		payload, _ := json.Marshal(publisherBURLPayload{ID: id, Record: publisherBURLRecord{Format: "POP", PublisherID: "publisher", WinnerType: "dsp"}})
 		if e = box.SaveTask(id, payload); e != nil {
 			t.Fatal(e)
 		}
 	}
 	signaled := make(chan error, 1)
-	q := newPublisherBURLQueue(context.Background(), box, nil, nil, 1, 2, time.Second, 24*time.Hour, func(ctx context.Context, _ resolvedCallback) error { <-ctx.Done(); return ctx.Err() }, func(err error) {
+	q := newPublisherBURLQueue(context.Background(), box, nil, nil, 1, 2, time.Second, 24*time.Hour, func(ctx context.Context, _ publisherBURLInput) error { <-ctx.Done(); return ctx.Err() }, func(err error) {
 		select {
 		case signaled <- err:
 		default:
@@ -291,12 +304,12 @@ func TestPublisherBURLExpiredRetryHorizonHoldsIntent(t *testing.T) {
 	}
 	defer box.Close()
 	id := uuid.NewString()
-	payload, _ := json.Marshal(publisherBURLPayload{ID: id, Record: callback.Record{Format: "POP", PublisherID: "publisher", WinnerType: "adv"}})
+	payload, _ := json.Marshal(publisherBURLPayload{ID: id, Record: publisherBURLRecord{Format: "POP", PublisherID: "publisher", WinnerType: "adv"}})
 	if e = box.SaveTask(id, payload); e != nil {
 		t.Fatal(e)
 	}
 	signaled := make(chan error, 1)
-	q := newPublisherBURLQueue(context.Background(), box, nil, nil, 1, 100, time.Second, time.Nanosecond, func(context.Context, resolvedCallback) error {
+	q := newPublisherBURLQueue(context.Background(), box, nil, nil, 1, 100, time.Second, time.Nanosecond, func(context.Context, publisherBURLInput) error {
 		t.Error("old task retried outside billing dedup retention")
 		return nil
 	}, func(e error) {

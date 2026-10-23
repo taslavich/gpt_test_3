@@ -8,7 +8,6 @@ import (
 )
 
 func TestADVCallbackWrappersAlwaysIncludeFormat(t *testing.T) {
-	t.Setenv("CALLBACK_UUID_ONLY", "false") // Validate the staged producer contract as well.
 	const (
 		host      = "adm.example.test"
 		globalID  = "winner-uuid"
@@ -67,7 +66,6 @@ func TestADVCallbackWrappersAlwaysIncludeFormat(t *testing.T) {
 }
 
 func TestCallbackWrappersRejectMissingRequiredValues(t *testing.T) {
-	t.Setenv("CALLBACK_UUID_ONLY", "false") // Validate the staged producer contract as well.
 	if got := WrapURL("adm.example.test", "", "id", constants.BAN); got != "" {
 		t.Fatalf("ADM wrapper must reject empty redirect URL: %q", got)
 	}
@@ -89,7 +87,6 @@ func TestCallbackWrappersRejectMissingRequiredValues(t *testing.T) {
 }
 
 func TestCallbackWrappersNormalizeFormat(t *testing.T) {
-	t.Setenv("CALLBACK_UUID_ONLY", "false") // Validate the staged producer contract as well.
 	got := WrapBurlURL("adm.example.test", "id", " ban ")
 	parsed, err := url.Parse(got)
 	if err != nil {

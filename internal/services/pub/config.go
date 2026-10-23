@@ -39,10 +39,11 @@ type Config struct {
 	RTBMainstreamURL        string        `env:"PUB_RTB_MAINSTREAM_URL" env-required:"true"`
 	AdultFeed               string        `env:"PUB_ADULT_FEED" env-required:"true"`
 	MainstreamFeed          string        `env:"PUB_MAINSTREAM_FEED" env-required:"true"`
-	CallbackOrigins         string        `env:"PUB_CALLBACK_ORIGINS" env-required:"true"`
-	TrustedProxies          string        `env:"PUB_TRUSTED_PROXIES"`
-	RTBTimeout              time.Duration `env:"PUB_RTB_TIMEOUT" env-default:"1500ms"`
-	MaxInflight             int           `env:"PUB_MAX_INFLIGHT" env-default:"2048"`
+	// Retained for existing env files; delivery no longer validates ADM origins.
+	CallbackOrigins string        `env:"PUB_CALLBACK_ORIGINS"`
+	TrustedProxies  string        `env:"PUB_TRUSTED_PROXIES"`
+	RTBTimeout      time.Duration `env:"PUB_RTB_TIMEOUT" env-default:"1500ms"`
+	MaxInflight     int           `env:"PUB_MAX_INFLIGHT" env-default:"2048"`
 	// Same ordered standalone ORTB shards/DB as SSP Adapter and Kafka Loader.
 	ORTBAddrs         string `env:"REDIS_SHARD_ADDRS" env-required:"true"`
 	ORTBPassword      string `env:"REDIS_PASSWORD"`
@@ -72,8 +73,8 @@ func (c Config) Validate() error {
 			return errors.New("invalid public/RTB URL")
 		}
 	}
-	if c.AdultFeed == "" || c.MainstreamFeed == "" || c.RedisAddrs == "" || c.CallbackOrigins == "" || c.ORTBAddrs == "" || c.ORTBReadySet == "" || c.ORTBDB < 0 || c.TelemetryMaxBytes < 1 {
-		return errors.New("missing feed, Redis, callback or ORTB configuration")
+	if c.AdultFeed == "" || c.MainstreamFeed == "" || c.RedisAddrs == "" || c.ORTBAddrs == "" || c.ORTBReadySet == "" || c.ORTBDB < 0 || c.TelemetryMaxBytes < 1 {
+		return errors.New("missing feed, Redis or ORTB configuration")
 	}
 	if c.RedisDB < 0 {
 		return errors.New("PUBLISHER_REDIS_DB must be >= 0")

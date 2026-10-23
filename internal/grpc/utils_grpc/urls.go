@@ -2,7 +2,6 @@ package utils
 
 import (
 	"net/url"
-	"os"
 	"strings"
 
 	"gitlab.com/twinbid-exchange/RTB-exchange/internal/constants"
@@ -86,10 +85,6 @@ func buildCallbackURL(hostname, path string, values map[string]string, required 
 		if strings.TrimSpace(values[key]) == "" {
 			return ""
 		}
-	}
-	// Transitional producer mode still persists context; consumers never trust URL fields.
-	if (path == "adm" || path == "burl" || path == "nurl") && os.Getenv("CALLBACK_UUID_ONLY") != "false" {
-		values = map[string]string{"id": values["id"]}
 	}
 	query := make(url.Values, len(values))
 	for key, value := range values {

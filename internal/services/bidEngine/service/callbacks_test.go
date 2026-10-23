@@ -15,7 +15,6 @@ import (
 )
 
 func TestFinalizeADVPopCallbacksDoNotEmbedDSPCallbacks(t *testing.T) {
-	t.Setenv("CALLBACK_UUID_ONLY", "false") // Validate the staged producer contract as well.
 	adm := "https://creative.example/render?a=1"
 	unexpectedNURL := "https://dsp.example/win"
 	unexpectedBURL := "https://dsp.example/bill"
@@ -46,7 +45,6 @@ func TestFinalizeADVPopCallbacksDoNotEmbedDSPCallbacks(t *testing.T) {
 }
 
 func TestFinalizeADVBannerImageKeepsHTMLAndWrapsOnlyHref(t *testing.T) {
-	t.Setenv("CALLBACK_UUID_ONLY", "false") // Validate the staged producer contract as well.
 	adm := `<a href="https://landing.example/path?a=1&amp;b=2" target="_blank"><img src="https://cdn.example/banner.png" width="300" height="250"></a>`
 	unexpectedNURL := "https://dsp.example/win"
 	unexpectedBURL := "https://dsp.example/bill"
@@ -78,7 +76,6 @@ func TestFinalizeADVBannerImageKeepsHTMLAndWrapsOnlyHref(t *testing.T) {
 }
 
 func TestFinalizeADVBannerIframeKeepsADMUnchanged(t *testing.T) {
-	t.Setenv("CALLBACK_UUID_ONLY", "false") // Validate the staged producer contract as well.
 	adm := `<iframe src="https://iframe.example/render?a=1&amp;b=2" width="300" height="250"></iframe>`
 	bid := &ortb.Bid{Adm: &adm}
 
@@ -104,7 +101,6 @@ func TestFinalizeADVBannerIframeKeepsADMUnchanged(t *testing.T) {
 }
 
 func TestFinalizeDSPCallbacksAddsCwinAndPreservesBidExt(t *testing.T) {
-	t.Setenv("CALLBACK_UUID_ONLY", "false") // Validate the staged producer contract as well.
 	adm := "https://creative.example/render"
 	nurl := "https://dsp.example/win"
 	btype := int32(1)
@@ -161,7 +157,6 @@ func bannerHrefFromADM(t *testing.T, adm string) string {
 }
 
 func TestFinalizeADVNativeCallbacksWrapOnlyLinkAndAddBURL(t *testing.T) {
-	t.Setenv("CALLBACK_UUID_ONLY", "false") // Validate the staged producer contract as well.
 	adm := `{"native":{"ver":"1.2","link":{"url":"https://creative.example/render?a=1"},"assets":[{"id":100,"title":{"text":"Title"}}]}}`
 	unexpectedNURL := "https://dsp.example/win"
 	unexpectedBURL := "https://dsp.example/bill"
@@ -235,7 +230,6 @@ func assertQueryMissing(t *testing.T, raw, key string) {
 }
 
 func TestDSPBannerKeepsRawADMAndUsesExchangeBURL(t *testing.T) {
-	t.Setenv("CALLBACK_UUID_ONLY", "false") // Validate the staged producer contract as well.
 	requestID, impID, uuid := "req-ban", "imp-ban", "uuid-ban"
 	price := float32(1.0)
 	adm := `<a href="https://landing.example"><img src="https://cdn.example/a.png"></a>`
@@ -279,7 +273,6 @@ func TestDSPBannerKeepsRawADMAndUsesExchangeBURL(t *testing.T) {
 }
 
 func TestDSPNativeAndIPPKeepsValidRawJSONADM(t *testing.T) {
-	t.Setenv("CALLBACK_UUID_ONLY", "false") // Validate the staged producer contract as well.
 	for _, format := range []string{constants.NAT, constants.IPP} {
 		t.Run(format, func(t *testing.T) {
 			requestID, impID, uuid := "req-"+format, "imp-"+format, "uuid-"+format
@@ -310,7 +303,6 @@ func TestDSPNativeAndIPPKeepsValidRawJSONADM(t *testing.T) {
 }
 
 func TestDSPNativeRejectsMalformedADMJSON(t *testing.T) {
-	t.Setenv("CALLBACK_UUID_ONLY", "false") // Validate the staged producer contract as well.
 	requestID, impID, uuid := "req-nat-bad", "imp-nat-bad", "uuid-nat-bad"
 	price := float32(1.0)
 	adm := `{"native":`
@@ -336,7 +328,6 @@ func TestDSPNativeRejectsMalformedADMJSON(t *testing.T) {
 }
 
 func TestFinalizeADVVideoRewritesOnlyOwnVASTCallbacks(t *testing.T) {
-	t.Setenv("CALLBACK_UUID_ONLY", "false") // Validate the staged producer contract as well.
 	adm := `<?xml version="1.0"?><VAST version="3.0"><Ad id="x"><InLine><AdSystem>TwinBid</AdSystem><AdTitle>video</AdTitle><Impression>https://invalid.twinbid.local/video-impression</Impression><Creatives><Creative><Linear><Duration>00:00:20</Duration><VideoClicks><ClickThrough>https://advertiser.example/landing?a=1&amp;b=2</ClickThrough></VideoClicks><MediaFiles><MediaFile delivery="progressive" type="video/mp4" width="1920" height="1080">https://cdn.example/video.mp4</MediaFile></MediaFiles></Linear></Creative></Creatives></InLine></Ad></VAST>`
 	dspNURL := "https://should-be-discarded.example/win"
 	dspBURL := "https://should-be-discarded.example/bill"
@@ -388,7 +379,6 @@ func TestFinalizeADVVideoRewritesOnlyOwnVASTCallbacks(t *testing.T) {
 }
 
 func TestVideoDSPADMValidation(t *testing.T) {
-	t.Setenv("CALLBACK_UUID_ONLY", "false") // Validate the staged producer contract as well.
 	if !validRawDSPADM(constants.VID, `<VAST version="3.0"></VAST>`) {
 		t.Fatal("valid VAST rejected")
 	}
@@ -410,7 +400,6 @@ func TestVideoDSPADMValidation(t *testing.T) {
 }
 
 func TestFinalizeADVVideoVAST4PreservesNamespaceAndMediaCDATA(t *testing.T) {
-	t.Setenv("CALLBACK_UUID_ONLY", "false") // Validate the staged producer contract as well.
 	adm := `<?xml version="1.0" encoding="UTF-8"?><VAST xmlns="http://www.iab.com/VAST" version="4.0"><Ad id="v1"><InLine><AdSystem version="1.0">TwinBid</AdSystem><Impression>https://invalid.twinbid.local/video-impression</Impression><AdTitle>video</AdTitle><Creatives><Creative><UniversalAdId idRegistry="twinbidexchange.com" idValue="v1">v1</UniversalAdId><Linear><Duration>00:00:20</Duration><MediaFiles><MediaFile delivery="progressive" type="video/mp4" width="1920" height="1080"><![CDATA[https://cdn.example/video.mp4?a=1&b=2]]></MediaFile></MediaFiles><VideoClicks><ClickThrough><![CDATA[https://advertiser.example/landing?a=1&b=2]]></ClickThrough></VideoClicks></Linear></Creative></Creatives></InLine></Ad></VAST>`
 	bid := &ortb.Bid{Adm: &adm}
 

@@ -310,20 +310,6 @@ func TestPrewriteCollisionDoesNotReplaceAnotherHASH(t *testing.T) {
 	}
 }
 
-func TestDeliveryKeepsUUIDOnlyADM(t *testing.T) {
-	s, _ := fixture(t)
-	original := "https://adm.example.test/adm?id=10000000-0000-4000-8000-000000000010"
-	got, e := s.deliveryADM(original)
-	if e != nil || got != original {
-		t.Fatal(got, e)
-	}
-	for _, bad := range []string{original + "&url=https://attacker.test", original + "&f=4", original + "&id=10000000-0000-4000-8000-000000000011", "https://adm.example.test/adm?id=invalid", "https://evil.test/adm?id=10000000-0000-4000-8000-000000000010"} {
-		if _, e = s.deliveryADM(bad); e == nil {
-			t.Fatal("accepted", bad)
-		}
-	}
-}
-
 func TestOnlyExplicitPublisherFeedTypes(t *testing.T) {
 	s, _ := fixture(t)
 	for _, traffic := range []string{"adult", "mainstream"} {

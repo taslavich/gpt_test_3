@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"gitlab.com/twinbid-exchange/RTB-exchange/internal/callback"
 	"math"
 	"strconv"
 	"strings"
@@ -18,7 +17,6 @@ import (
 const maxTransactionRetries = 5
 
 type Winner struct {
-	Callback     callback.Record
 	Price        float64
 	UserID       string
 	CampaignID   string
@@ -60,7 +58,7 @@ func (s *Store) ReadWinner(ctx context.Context, winnerUUID, expectedFormat strin
 		return Winner{}, errors.New("ADV winner has invalid price")
 	}
 	format := normalizeFormat(values["format"])
-	if format == "" || (expectedFormat != "" && format != normalizeFormat(expectedFormat)) {
+	if format == "" || format != normalizeFormat(expectedFormat) {
 		return Winner{}, fmt.Errorf("ADV winner format mismatch: got %s expected %s", format, expectedFormat)
 	}
 	typeModel, err := strconv.Atoi(strings.TrimSpace(values["type_model"]))
@@ -79,16 +77,6 @@ func (s *Store) ReadWinner(ctx context.Context, winnerUUID, expectedFormat strin
 	}
 	if winner.UserID == "" || winner.CampaignID == "" {
 		return Winner{}, errors.New("ADV winner has empty user_id or campaign_id")
-	}
-	if values[callback.Field] != "" {
-		var e error
-		winner.Callback, e = callback.Decode(values)
-		if e != nil {
-			return Winner{}, e
-		}
-		if winner.Callback.Format != winner.Format || winner.Callback.WinnerType != "adv" {
-			return Winner{}, errors.New("ADV callback context mismatch")
-		}
 	}
 	return winner, nil
 }
@@ -156,7 +144,8 @@ func normalizeFormat(value string) string {
 	return ""
 }
 
-func (s *Store) CallbackRedis() *redis.Client {
+// WinnerRedis exposes the existing winner hash for the Publisher BURL lease.
+func (s *Store) WinnerRedis() *redis.Client {
 	if s == nil {
 		return nil
 	}
