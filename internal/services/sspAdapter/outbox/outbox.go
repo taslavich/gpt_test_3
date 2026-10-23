@@ -14,7 +14,11 @@ import (
 	bolt "go.etcd.io/bbolt"
 )
 
-var bucketName = []byte("adv_billing_events")
+var (
+	bucketName         = []byte("adv_billing_events")
+	recoveryBucketName = []byte("adv_recovery_state")
+	recoveryPendingKey = []byte("pending")
+)
 
 var ErrEventConflict = errors.New("outbox event ID already exists with different payload")
 
@@ -43,6 +47,7 @@ type Record struct {
 	CreatedAt           time.Time `json:"created_at"`
 	Attempts            int       `json:"attempts"`
 	LastError           string    `json:"last_error,omitempty"`
+	ErrorClass          string    `json:"error_class,omitempty"`
 	LastAttemptAt       time.Time `json:"last_attempt_at,omitempty"`
 }
 
@@ -103,7 +108,10 @@ func Open(path string) (*Store, error) {
 	}
 	store := &Store{db: db}
 	if err := db.Update(func(tx *bolt.Tx) error {
-		_, err := tx.CreateBucketIfNotExists(bucketName)
+		if _, err := tx.CreateBucketIfNotExists(bucketName); err != nil {
+			return err
+		}
+		_, err := tx.CreateBucketIfNotExists(recoveryBucketName)
 		return err
 	}); err != nil {
 		db.Close()
@@ -200,7 +208,67 @@ func (s *Store) SetADVRecoveryRequired(eventID string, required bool) error {
 	})
 }
 
-func (s *Store) UpdateFailure(eventID string, applyErr error) error {
+// ADVRecoveryPending is a durable handoff between draining the billing outbox
+// and re-enabling ADV. Successful events can be acknowledged independently,
+// without losing the recovery intent if the process crashes before re-enable.
+func (s *Store) ADVRecoveryPending() (bool, error) {
+	if s == nil || s.db == nil {
+		return false, errors.New("outbox is not initialized")
+	}
+	var pending bool
+	err := s.db.View(func(tx *bolt.Tx) error {
+		pending = len(tx.Bucket(recoveryBucketName).Get(recoveryPendingKey)) > 0
+		return nil
+	})
+	return pending, err
+}
+
+func (s *Store) SetADVRecoveryPending(pending bool) error {
+	if s == nil || s.db == nil {
+		return errors.New("outbox is not initialized")
+	}
+	return s.db.Update(func(tx *bolt.Tx) error {
+		b := tx.Bucket(recoveryBucketName)
+		if pending {
+			return b.Put(recoveryPendingKey, []byte("1"))
+		}
+		return b.Delete(recoveryPendingKey)
+	})
+}
+
+// CompleteADVRecoveryIfDrained atomically verifies the live outbox and
+// clears the recovery latch. A concurrently saved billing event cannot slip
+// between the last inspection and clearing the latch.
+func (s *Store) CompleteADVRecoveryIfDrained() (bool, error) {
+	if s == nil || s.db == nil {
+		return false, errors.New("outbox is not initialized")
+	}
+	drained := false
+	err := s.db.Update(func(tx *bolt.Tx) error {
+		drained = true
+		if err := tx.Bucket(bucketName).ForEach(func(_, raw []byte) error {
+			var record Record
+			if err := json.Unmarshal(raw, &record); err != nil {
+				return err
+			}
+			if NeedsADVRecovery(record) {
+				drained = false
+			}
+			return nil
+		}); err != nil {
+			return err
+		}
+		if drained {
+			return tx.Bucket(recoveryBucketName).Delete(recoveryPendingKey)
+		}
+		return nil
+	})
+	return drained, err
+}
+
+// Failure classes are diagnostic metadata, not part of the immutable event
+// identity. In particular, a missing winner must never delete a billing event.
+func (s *Store) UpdateFailureWithClass(eventID string, applyErr error, class string) error {
 	if s == nil || s.db == nil {
 		return errors.New("outbox is not initialized")
 	}
@@ -217,6 +285,7 @@ func (s *Store) UpdateFailure(eventID string, applyErr error) error {
 		record = normalizeRecord(record)
 		record.Attempts++
 		record.LastAttemptAt = time.Now().UTC()
+		record.ErrorClass = strings.TrimSpace(class)
 		if applyErr != nil {
 			record.LastError = applyErr.Error()
 		}
@@ -226,6 +295,10 @@ func (s *Store) UpdateFailure(eventID string, applyErr error) error {
 		}
 		return bucket.Put([]byte(eventID), encoded)
 	})
+}
+
+func (s *Store) UpdateFailure(eventID string, applyErr error) error {
+	return s.UpdateFailureWithClass(eventID, applyErr, "")
 }
 
 func (s *Store) UpdateResolution(eventID, winnerType, userID, campaignID string, price float64, typeModel int) error {

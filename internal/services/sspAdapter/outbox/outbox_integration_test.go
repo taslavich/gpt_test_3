@@ -71,3 +71,48 @@ func TestADMOutboxPersistsUnknownWinnerAndResolution(t *testing.T) {
 		t.Fatalf("resolved record=%#v", got)
 	}
 }
+
+func TestDurableRecoveryStateAndAtomicRecheck(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "latch.db")
+	store, err := Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.SetADVRecoveryPending(true); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.Close(); err != nil {
+		t.Fatal(err)
+	}
+	store, err = Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	pending, err := store.ADVRecoveryPending()
+	if err != nil || !pending {
+		t.Fatalf("durable flag lost: %t %v", pending, err)
+	}
+	billable := true
+	record := Record{Kind: KindBilling, RequiresADVRecovery: &billable,
+		EventID: "pending", UserID: "u", CampaignID: "c", Price: 1,
+		Format: "POP", Source: "burl"}
+	if err := store.Save(record); err != nil {
+		t.Fatal(err)
+	}
+	drained, err := store.CompleteADVRecoveryIfDrained()
+	if err != nil || drained {
+		t.Fatalf("cleared ADV gate despite pending billing: %t %v", drained, err)
+	}
+	if err := store.Delete(record.EventID); err != nil {
+		t.Fatal(err)
+	}
+	drained, err = store.CompleteADVRecoveryIfDrained()
+	if err != nil || !drained {
+		t.Fatalf("failed to clear drained recovery state: %t %v", drained, err)
+	}
+	pending, err = store.ADVRecoveryPending()
+	if err != nil || pending {
+		t.Fatalf("recovery flag not cleared: %t %v", pending, err)
+	}
+}

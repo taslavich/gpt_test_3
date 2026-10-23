@@ -185,8 +185,18 @@ func main() {
 	}
 	log.Printf("AdvServiceControlURLs: %q", cfg.AdvServiceControlURLs)
 	pendingADVRecords := countPendingADVBillingRecords(pendingRecords)
-	if pendingADVRecords > 0 {
-		pendingErr := fmt.Errorf("ADV billing outbox contains %d billing-relevant pending events after startup", pendingADVRecords)
+	recoveryPending, err := advOutbox.ADVRecoveryPending()
+	if err != nil {
+		log.Fatalf("Cannot inspect durable ADV recovery state: %v", err)
+	}
+	if pendingADVRecords > 0 && !recoveryPending {
+		if err := advOutbox.SetADVRecoveryPending(true); err != nil {
+			log.Fatalf("Cannot persist pending ADV recovery before disabling ADV: %v", err)
+		}
+		recoveryPending = true
+	}
+	if recoveryPending {
+		pendingErr := fmt.Errorf("ADV recovery pending after startup: %d billing-relevant events remain", pendingADVRecords)
 		statuses := services.SetADVWorkStatus(ctx, []string(cfg.AdvServiceControlURLs), false)
 		redisWriteErrorMonitor.RecordForURL(pendingErr, cfg.SspAdapterWorkStatusURL)
 		message := fmt.Sprintf("ADV remains disabled while durable billing outbox is pending: error=%v adv_statuses=%v", pendingErr, statuses)

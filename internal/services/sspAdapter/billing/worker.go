@@ -27,6 +27,10 @@ type Worker struct {
 	maxBackoff     time.Duration
 	advControlURLs []string
 	adm            ADMRetryConfig
+	lastSummary    time.Time
+	// Test seams are nil in production; they preserve the real worker path.
+	processOverride func(context.Context, outbox.Record) (bool, error)
+	statusOverride  func(context.Context, []string, bool) map[string]int
 }
 
 func NewWorker(
@@ -76,187 +80,190 @@ func (w *Worker) Start(ctx context.Context) {
 	}()
 }
 
-func (w *Worker) run(ctx context.Context) {
-	disableADV := func(reason string) {
-		disableCtx, disableCancel := context.WithTimeout(
-			context.Background(),
-			10*time.Second,
-		)
-		statuses := services.SetADVWorkStatus(
-			disableCtx,
-			w.advControlURLs,
-			false,
-		)
-		disableCancel()
+// ErrWinnerUnavailable means both winner lookups completed successfully but
+// neither has the original auction record. A Redis outage is a different,
+// retryable error. Missing winner metadata cannot be reconstructed from the
+// click UUID once its TTL has expired.
+var ErrWinnerUnavailable = errors.New("ADM winner metadata unavailable")
 
-		log.Printf(
-			"ADV disabled after billing recovery race: reason=%s statuses=%v",
-			reason,
-			statuses,
-		)
+const missingWinnerRetryInterval = 30 * time.Minute
+const outboxSummaryInterval = 30 * time.Second
+
+func (w *Worker) setADVStatus(ctx context.Context, enabled bool) map[string]int {
+	if w.statusOverride != nil {
+		return w.statusOverride(ctx, w.advControlURLs, enabled)
 	}
+	return services.SetADVWorkStatus(ctx, w.advControlURLs, enabled)
+}
 
+func (w *Worker) replay(ctx context.Context, record outbox.Record) (bool, error) {
+	if w.processOverride != nil {
+		return w.processOverride(ctx, record)
+	}
+	return w.process(ctx, record)
+}
+
+func (w *Worker) disableADV(reason string) {
+	disableCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	statuses := w.setADVStatus(disableCtx, false)
+	log.Printf("ADV disabled during billing recovery: reason=%s statuses=%v", reason, statuses)
+}
+
+func (w *Worker) run(ctx context.Context) {
 	records, err := w.outbox.List()
 	if err != nil {
 		log.Printf("ADV outbox list failed: %v", err)
 		return
 	}
 
+	// Persist the recovery latch BEFORE removing a single successful event.
+	// Otherwise a crash after draining the last item but before re-enabling
+	// ADV leaves the service disabled forever with an empty outbox.
+	for _, record := range records {
+		if isADVBillingRelevant(record) {
+			pending, err := w.outbox.ADVRecoveryPending()
+			if err != nil {
+				log.Printf("CRITICAL: cannot read ADV recovery state: %v", err)
+				return
+			}
+			if !pending {
+				if err := w.outbox.SetADVRecoveryPending(true); err != nil {
+					log.Printf("CRITICAL: cannot persist ADV outbox recovery state: %v", err)
+					return
+				}
+			}
+			break
+		}
+	}
+
 	now := time.Now().UTC()
-	processedBillingIDs := make([]string, 0)
-	billingStillPending := false
+	attempted, delivered, failed, deferred := 0, 0, 0, 0
+	errorCounts := make(map[string]int)
+	failureSamples := make([]string, 0, 3)
+	addFailureSample := func(eventID, reason string) {
+		if len(failureSamples) >= 3 {
+			return
+		}
+		if len(reason) > 180 {
+			reason = reason[:180] + "..."
+		}
+		failureSamples = append(failureSamples, fmt.Sprintf("%s: %s", eventID, reason))
+	}
 
 	for _, record := range records {
+		if ctx.Err() != nil {
+			return
+		}
 		billingRelevant := isADVBillingRelevant(record)
-
 		last := record.LastAttemptAt
 		if last.IsZero() {
 			last = record.CreatedAt
 		}
-
-		backoff := retryBackoff(
-			w.interval,
-			w.maxBackoff,
-			record.Attempts,
-		)
-
+		backoff := retryBackoff(w.interval, w.maxBackoff, record.Attempts)
+		if record.ErrorClass == "winner_missing" && backoff < missingWinnerRetryInterval {
+			backoff = missingWinnerRetryInterval
+		}
 		if now.Before(last.Add(backoff)) {
-			if billingRelevant {
-				billingStillPending = true
+			deferred++
+			if record.ErrorClass == "winner_missing" {
+				errorCounts["winner_missing (manual investigation required)"]++
+				addFailureSample(record.EventID, record.LastError)
 			}
 			continue
 		}
 
-		requiresRecoveryOnFailure, processErr := w.process(ctx, record)
+		attempted++
+		requiresRecovery, processErr := w.replay(ctx, record)
 		if processErr != nil {
-			if requiresRecoveryOnFailure && !billingRelevant {
-				if markErr := w.outbox.SetADVRecoveryRequired(record.EventID, true); markErr != nil {
-					log.Printf(
-						"CRITICAL: cannot mark outbox event for ADV recovery: event_id=%s error=%v",
-						record.EventID,
-						markErr,
-					)
+			failed++
+			class := "redis_or_processing_error"
+			if errors.Is(processErr, ErrWinnerUnavailable) {
+				class = "winner_missing"
+			}
+			errorCounts[class]++
+			addFailureSample(record.EventID, processErr.Error())
+
+			if requiresRecovery && !billingRelevant {
+				if err := w.outbox.SetADVRecoveryPending(true); err != nil {
+					log.Printf("CRITICAL: cannot persist ADV recovery for event_id=%s: %v", record.EventID, err)
+				}
+				if err := w.outbox.SetADVRecoveryRequired(record.EventID, true); err != nil {
+					log.Printf("CRITICAL: cannot mark outbox event for ADV recovery: event_id=%s error=%v", record.EventID, err)
 				}
 				billingRelevant = true
-				disableADV("billing failure while retrying outbox event " + record.EventID)
+				w.disableADV("billing failure while retrying outbox event " + record.EventID)
 			}
-
-			if billingRelevant {
-				billingStillPending = true
+			if err := w.outbox.UpdateFailureWithClass(record.EventID, processErr, class); err != nil {
+				log.Printf("ADV outbox failure update failed for %s: %v", record.EventID, err)
 			}
-
-			if updateErr := w.outbox.UpdateFailure(record.EventID, processErr); updateErr != nil {
-				log.Printf(
-					"ADV outbox failure update failed for %s: %v",
-					record.EventID,
-					updateErr,
-				)
-			}
-
 			continue
 		}
 
-		if billingRelevant {
-			// Событие применено в Redis, но пока не удаляем его
-			// из outbox. Сначала безопасно включаем ADV.
-			processedBillingIDs = append(
-				processedBillingIDs,
-				record.EventID,
-			)
-			continue
-		}
-
+		// Redis billing is idempotent by event_id. A successful event is
+		// acknowledged independently even if other records remain broken.
 		if err := w.outbox.Delete(record.EventID); err != nil {
-			log.Printf(
-				"ADV outbox delete failed for %s: %v",
-				record.EventID,
-				err,
-			)
+			failed++
+			errorCounts["ack_failed"]++
+			log.Printf("ADV outbox delete failed after successful replay: event_id=%s error=%v", record.EventID, err)
+			continue
 		}
+		delivered++
 	}
 
-	// Пока есть хотя бы одно необработанное billing-событие,
-	// ADV включать нельзя.
-	if billingStillPending || len(processedBillingIDs) == 0 {
-		return
-	}
-
-	enableCtx, enableCancel := context.WithTimeout(
-		ctx,
-		10*time.Second,
-	)
-	statuses := services.SetADVWorkStatus(
-		enableCtx,
-		w.advControlURLs,
-		true,
-	)
-	enableCancel()
-
-	if !allADVStatusesOK(statuses) {
-		log.Printf(
-			"ADV re-enable failed; billing records remain in outbox: statuses=%v",
-			statuses,
-		)
-		return
-	}
-
-	processedIDs := make(
-		map[string]struct{},
-		len(processedBillingIDs),
-	)
-
-	for _, eventID := range processedBillingIDs {
-		processedIDs[eventID] = struct{}{}
-	}
-
-	// После включения ADV повторно проверяем outbox.
-	// За время восстановления могло появиться новое billing-событие.
+	// This second snapshot is authoritative for the re-enable gate, including
+	// events written concurrently by HTTP handlers while the batch ran.
 	latestRecords, err := w.outbox.List()
 	if err != nil {
-		log.Printf(
-			"ADV outbox recheck failed after enabling ADV: %v",
-			err,
-		)
-		disableADV("outbox recheck failed")
+		log.Printf("ADV outbox post-replay inspection failed: %v", err)
 		return
 	}
-
+	remainingBilling := 0
 	for _, record := range latestRecords {
-		if !isADVBillingRelevant(record) {
-			continue
+		if isADVBillingRelevant(record) {
+			remainingBilling++
 		}
-
-		if _, alreadyProcessed := processedIDs[record.EventID]; alreadyProcessed {
-			continue
-		}
-
-		log.Printf(
-			"new ADV billing event appeared during recovery: event_id=%s",
-			record.EventID,
-		)
-
-		disableADV("new billing event appeared")
+	}
+	if delivered > 0 || (len(latestRecords) > 0 && now.Sub(w.lastSummary) >= outboxSummaryInterval) {
+		log.Printf("ADV outbox replay: attempted=%d delivered=%d failed=%d backoff=%d remaining_total=%d remaining_billing=%d error_classes=%v sample_failures=%v",
+			attempted, delivered, failed, deferred, len(latestRecords), remainingBilling, errorCounts, failureSamples)
+		w.lastSummary = now
+	}
+	if remainingBilling != 0 || ctx.Err() != nil {
 		return
 	}
 
-	// Новых billing-событий нет.
-	// Теперь удаляем успешно применённые записи.
-	for _, eventID := range processedBillingIDs {
-		if err := w.outbox.Delete(eventID); err != nil {
-			log.Printf(
-				"ADV outbox delete failed for %s: %v",
-				eventID,
-				err,
-			)
-			disableADV("cannot delete recovered billing event " + eventID)
-			return
-		}
+	recoveryPending, err := w.outbox.ADVRecoveryPending()
+	if err != nil {
+		log.Printf("CRITICAL: cannot read ADV recovery state: %v", err)
+		return
+	}
+	if !recoveryPending {
+		return
 	}
 
-	log.Printf(
-		"ADV billing outbox recovered; ADV enabled: statuses=%v",
-		statuses,
-	)
+	enableCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	statuses := w.setADVStatus(enableCtx, true)
+	cancel()
+	if !allADVStatusesOK(statuses) {
+		log.Printf("ADV re-enable failed; recovery state retained: statuses=%v", statuses)
+		return
+	}
+
+	// The final verification and clearing of the durable recovery latch must
+	// be one BoltDB transaction; ordinary callback writers use the same DB.
+	drained, err := w.outbox.CompleteADVRecoveryIfDrained()
+	if err != nil {
+		log.Printf("ADV outbox atomic recovery recheck failed: %v", err)
+		w.disableADV("outbox atomic recheck failed")
+		return
+	}
+	if !drained {
+		log.Printf("new ADV billing event appeared during recovery")
+		w.disableADV("new billing event appeared")
+		return
+	}
+	log.Printf("ADV billing outbox recovered; ADV enabled: statuses=%v", statuses)
 }
 
 func isADVBillingRelevant(record outbox.Record) bool {
@@ -304,7 +311,7 @@ func (w *Worker) processADM(ctx context.Context, record outbox.Record) (bool, er
 			advWinner, err = w.store.ReadWinner(ctx, record.GlobalID, record.Format)
 			if err != nil {
 				if errors.Is(err, redis.Nil) {
-					return false, errors.New("ADM winner is not available in DSP DB1 or ADV DB6")
+					return false, fmt.Errorf("%w: DSP DB1 and ADV DB6, uuid=%s", ErrWinnerUnavailable, record.GlobalID)
 				}
 				return true, fmt.Errorf("retry ADV winner lookup: %w", err)
 			}
@@ -335,7 +342,7 @@ func (w *Worker) processADM(ctx context.Context, record outbox.Record) (bool, er
 			advWinner, err = w.store.ReadWinner(ctx, record.GlobalID, record.Format)
 			if err != nil {
 				if errors.Is(err, redis.Nil) {
-					return false, fmt.Errorf("restore ADV winner details: %w", err)
+					return false, fmt.Errorf("%w: previously ADV, uuid=%s", ErrWinnerUnavailable, record.GlobalID)
 				}
 				return true, fmt.Errorf("restore ADV winner details: %w", err)
 			}
