@@ -145,7 +145,7 @@ func TestPublisherManyADMAndSharedDSPGuardAcrossDBs(t *testing.T) {
 		go func() {
 			defer wg.Done()
 			req := httptest.NewRequest("GET", "/adm?id="+id, nil)
-			req = req.WithContext(context.WithValue(req.Context(), httpin.Input, &admRequest{GlobalId: id, DspURL: "https://advertiser.test/original", Format: "0", Publisher: "1"}))
+			req = req.WithContext(context.WithValue(req.Context(), httpin.Input, &admRequest{GlobalId: id, DspURL: "https://advertiser.test/original", Format: "0", Publisher: "1", NURL: r.BURL}))
 			req = req.WithContext(context.WithValue(req.Context(), publisherBurlKey{}, publisherBurlFunc(q.enqueue)))
 			w := httptest.NewRecorder()
 			getAdm(ctx, w, req, []*redis.Client{stats}, adm, clicks, nil, "", nil, box, nil)
@@ -164,7 +164,7 @@ func TestPublisherManyADMAndSharedDSPGuardAcrossDBs(t *testing.T) {
 	if elapsed >= time.Second {
 		t.Fatal("ADM waited for downstream", elapsed)
 	}
-	res, e := testPublisherInput(ctx, id, adm, nil)
+	res, e := testPublisherInput(ctx, id, adm, nil, r.BURL)
 	if e != nil {
 		t.Fatal(e)
 	}

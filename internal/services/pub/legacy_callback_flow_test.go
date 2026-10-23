@@ -78,7 +78,7 @@ func TestLegacyPublisherPOPDeliveryToInternalBURL(t *testing.T) {
 				imp := input.GetImp()[0].GetId()
 				price := float32(1.5)
 				source := &ortb.Bid{Impid: &imp, Adm: &destination, Price: &price}
-				req := &pb.BidEngineRequest_V2_5{BidRequest: &input, ImpIdUuid: map[string]string{imp: auctionID}, Format: "POP", SspDomain: "mapped-ssp-domain.test", Logged: true, Typic: "MAINSTREAM"}
+				req := &pb.BidEngineRequest_V2_5{BidRequest: &input, ImpIdUuid: map[string]string{imp: auctionID}, Format: "POP", SspDomain: "mapped-ssp-domain.test", Logged: true, Typic: "MAINSTREAM", IsPublisher: true}
 				if kind == "adv" {
 					advRedis.HSet(ctx, auctionID, "format", "POP", "price", "0.25", "user_id", code.UserID, "campaign_id", root, "type_model", 1, "click_id_param", "cid")
 					advRedis.Expire(ctx, auctionID, time.Hour)
@@ -133,17 +133,17 @@ func TestLegacyPublisherPOPDeliveryToInternalBURL(t *testing.T) {
 			if e != nil || delivery.Destination != originalADM {
 				t.Fatal("delivery rewrote ADM", delivery, e)
 			}
-			// Only the DSP NURL may augment the existing ADM UUID hash.
+			// Publisher NURL is carried in ADM, never added to the UUID hash.
 			for _, r := range []*redis.Client{admRedis, burlRedis} {
 				fields := r.HGetAll(ctx, auctionID).Val()
-				for _, key := range []string{"pub_user_id", "ad_code_id", "pub_winner_type", "pub_burl_nurl"} {
+				for _, key := range []string{"pub_user_id", "ad_code_id", "pub_winner_type", "pub_burl_nurl", "pub_dsp_nurl"} {
 					if _, ok := fields[key]; ok {
 						t.Fatal("duplicated context", key)
 					}
 				}
 			}
-			if kind == "dsp" && admRedis.HGet(ctx, auctionID, "pub_dsp_nurl").Val() != nurl {
-				t.Fatal("DSP NURL in wrong/missing ADM hash")
+			if kind == "dsp" && u.Query().Get("n") != nurl {
+				t.Fatal("DSP NURL missing from ADM")
 			}
 			if kind == "adv" && admRedis.Exists(ctx, auctionID).Val() != 0 {
 				t.Fatal("extra ADV ADM context")

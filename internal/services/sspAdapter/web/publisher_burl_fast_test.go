@@ -193,8 +193,10 @@ func TestPublisherRedisFailureNotMaskedByDSPAndRecoversFromBolt(t *testing.T) {
 	if downstream.Load() != 0 || guard.HGet(ctx, r.ID, "pub_burl_done").Val() == "1" {
 		t.Fatal("Redis failure masked")
 	}
-	// Retry must use the existing durable task, not read missing Redis context.
-	guard.HDel(ctx, r.ID, "pub_dsp_nurl")
+	// Retry uses NURL from the durable task; the UUID hash never stores it.
+	if guard.HExists(ctx, r.ID, "pub_dsp_nurl").Val() {
+		t.Fatal("NURL persisted in UUID hash")
+	}
 	ready.Store(true)
 	waitPublisher(t, func() bool {
 		n, _ := box.TaskCount()

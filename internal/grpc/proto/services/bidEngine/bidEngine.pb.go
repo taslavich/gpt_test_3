@@ -36,6 +36,7 @@ type BidEngineRequest_V2_5 struct {
 	ReadyBidResponse *ortb_V2_5.BidResponse            `protobuf:"bytes,10,opt,name=readyBidResponse,proto3" json:"readyBidResponse,omitempty"`
 	WinnerUserIds    map[string]string                 `protobuf:"bytes,11,rep,name=winnerUserIds,proto3" json:"winnerUserIds,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
 	WinnerBasePrices map[string]float64                `protobuf:"bytes,12,rep,name=winnerBasePrices,proto3" json:"winnerBasePrices,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"fixed64,2,opt,name=value"`
+	IsPublisher      bool                              `protobuf:"varint,13,opt,name=is_publisher,json=isPublisher,proto3" json:"is_publisher,omitempty"`
 	unknownFields    protoimpl.UnknownFields
 	sizeCache        protoimpl.SizeCache
 }
@@ -154,6 +155,13 @@ func (x *BidEngineRequest_V2_5) GetWinnerBasePrices() map[string]float64 {
 	return nil
 }
 
+func (x *BidEngineRequest_V2_5) GetIsPublisher() bool {
+	if x != nil {
+		return x.IsPublisher
+	}
+	return false
+}
+
 type BidEngineResponse_V2_5 struct {
 	state          protoimpl.MessageState `protogen:"open.v1"`
 	BidResponse    *ortb_V2_5.BidResponse `protobuf:"bytes,1,opt,name=bidResponse,proto3" json:"bidResponse,omitempty"`
@@ -250,7 +258,7 @@ var File_services_bidEngine_proto protoreflect.FileDescriptor
 
 const file_services_bidEngine_proto_rawDesc = "" +
 	"\n" +
-	"\x18services/bidEngine.proto\x12\tbidEngine\x1a\x1atypes/ortb_V2_5/ortb.proto\"\xa7\a\n" +
+	"\x18services/bidEngine.proto\x12\tbidEngine\x1a\x1atypes/ortb_V2_5/ortb.proto\"\xca\a\n" +
 	"\x15BidEngineRequest_V2_5\x125\n" +
 	"\n" +
 	"bidRequest\x18\x01 \x01(\v2\x15.ortb_V2_5.BidRequestR\n" +
@@ -267,7 +275,8 @@ const file_services_bidEngine_proto_rawDesc = "" +
 	"\x10readyBidResponse\x18\n" +
 	" \x01(\v2\x16.ortb_V2_5.BidResponseR\x10readyBidResponse\x12Y\n" +
 	"\rwinnerUserIds\x18\v \x03(\v23.bidEngine.BidEngineRequest_V2_5.WinnerUserIdsEntryR\rwinnerUserIds\x12b\n" +
-	"\x10winnerBasePrices\x18\f \x03(\v26.bidEngine.BidEngineRequest_V2_5.WinnerBasePricesEntryR\x10winnerBasePrices\x1aW\n" +
+	"\x10winnerBasePrices\x18\f \x03(\v26.bidEngine.BidEngineRequest_V2_5.WinnerBasePricesEntryR\x10winnerBasePrices\x12!\n" +
+	"\fis_publisher\x18\r \x01(\bR\visPublisher\x1aW\n" +
 	"\x11BidResponsesEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12,\n" +
 	"\x05value\x18\x02 \x01(\v2\x16.ortb_V2_5.BidResponseR\x05value:\x028\x01\x1a<\n" +

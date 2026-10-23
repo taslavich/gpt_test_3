@@ -19,6 +19,7 @@ message OrchestratorRequest_V2_5 {
   string traffic_type = 8;
   reserved 9;
   reserved "feed";
+  bool is_publisher = 10;
 }
 
 message OrchestratorResponse_V2_5 {

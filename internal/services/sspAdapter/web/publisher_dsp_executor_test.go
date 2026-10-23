@@ -108,17 +108,17 @@ func TestPublisherV4ThousandConcurrentADM(t *testing.T) {
 	var wg sync.WaitGroup
 	for _, r := range records {
 		wg.Add(1)
-		go func(id string) {
+		go func(id, nurl string) {
 			defer wg.Done()
 			w := httptest.NewRecorder()
 			req := httptest.NewRequest("GET", "/adm?id="+id, nil)
-			req = req.WithContext(context.WithValue(req.Context(), httpin.Input, &admRequest{GlobalId: id, DspURL: "https://advertiser.test/original", Format: "0", Publisher: "1"}))
+			req = req.WithContext(context.WithValue(req.Context(), httpin.Input, &admRequest{GlobalId: id, DspURL: "https://advertiser.test/original", Format: "0", Publisher: "1", NURL: nurl}))
 			req = req.WithContext(context.WithValue(req.Context(), publisherBurlKey{}, publisherBurlFunc(q.enqueue)))
 			getAdm(ctx, w, req, []*redis.Client{stats}, guard, clicks, nil, "", nil, box, nil)
 			if w.Code != 200 || !strings.Contains(w.Body.String(), "advertiser.test/original") {
 				t.Errorf("ADM status=%d", w.Code)
 			}
-		}(r.ID)
+		}(r.ID, r.Record.BURL)
 	}
 	wg.Wait()
 	redirectDuration := time.Since(begin)

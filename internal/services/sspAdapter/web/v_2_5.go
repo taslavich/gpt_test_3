@@ -241,6 +241,7 @@ func postBid_V2_5(
 		http.Error(w, "invalid publisher UUID", http.StatusForbidden)
 		return
 	}
+	isPublisher := publisherID != ""
 	if publisherID != "" {
 		state := &publisherCommitState{}
 		ctx = context.WithValue(ctx, publisherCommitKey{}, state)
@@ -646,6 +647,7 @@ func postBid_V2_5(
 	res, err := orchestratorClient.GetWinnerBid_V2_5(
 		reqCtx,
 		&orchestratorProto.OrchestratorRequest_V2_5{
+			IsPublisher: isPublisher,
 			BidRequest:  input.Payload.BidRequest,
 			SspDomain:   ssp_domain,
 			Logged:      logged,

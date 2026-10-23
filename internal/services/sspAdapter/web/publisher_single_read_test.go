@@ -15,7 +15,6 @@ import (
 	"github.com/google/uuid"
 	"github.com/redis/go-redis/v9"
 	utils "gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/utils_grpc"
-	services "gitlab.com/twinbid-exchange/RTB-exchange/internal/services"
 	"gitlab.com/twinbid-exchange/RTB-exchange/internal/services/sspAdapter/billing"
 	"gitlab.com/twinbid-exchange/RTB-exchange/internal/services/sspAdapter/outbox"
 )
@@ -60,7 +59,7 @@ func (h *winnerReadHook) assert(t *testing.T, wantAll, wantExists int) {
 	}
 }
 
-func TestPublisherADMSingleReadAndOptionalDSPNURL(t *testing.T) {
+func TestPublisherADMUsesLegacyUUIDCheckAndQueryNURL(t *testing.T) {
 	for _, kind := range []string{"dsp", "dsp-no-nurl", "adv", "ordinary"} {
 		t.Run(kind, func(t *testing.T) {
 			ctx, cancel := context.WithCancel(context.Background())
@@ -82,9 +81,7 @@ func TestPublisherADMSingleReadAndOptionalDSPNURL(t *testing.T) {
 				if e := utils.WriteUUIDKeyToRedis(ctx, dsp, id, time.Hour); e != nil {
 					t.Fatal(e)
 				}
-				if kind == "dsp" {
-					dsp.HSet(ctx, id, "pub_dsp_nurl", downstream.URL+"/dsp-notification")
-				}
+
 			}
 			dspHook := &winnerReadHook{id: id, reads: map[string]int{}}
 			dsp.AddHook(dspHook)
@@ -103,34 +100,25 @@ func TestPublisherADMSingleReadAndOptionalDSPNURL(t *testing.T) {
 				return processBurl(c, r, httpClient, []*redis.Client{stats}, imps, nil, "", store, box, nil, executor)
 			})
 			defer queue.Close()
-			// Observe the existing monitor without sending notifications/control requests.
-			reported := make(chan struct{}, 1)
-			monitor := services.NewRedisWriteErrorMonitorWithSettings("optional-nurl-test", 1, 1, 20*time.Millisecond, func(uint64, string) {
-				select {
-				case reported <- struct{}{}:
-				default:
-				}
-			}, nil, ctx)
-			monitor.Start()
+			nurl := ""
+			if kind == "dsp" {
+				nurl = downstream.URL + "/dsp-notification"
+			}
 			for i := 0; i < 2; i++ {
 				flag := "1"
 				if kind == "ordinary" {
 					flag = ""
 				}
 				req := httptest.NewRequest("GET", "/adm", nil)
-				req = req.WithContext(context.WithValue(req.Context(), httpin.Input, &admRequest{GlobalId: id, Format: "0", Publisher: flag, DspURL: "https://advertiser.test/landing"}))
+				req = req.WithContext(context.WithValue(req.Context(), httpin.Input, &admRequest{GlobalId: id, Format: "0", Publisher: flag, NURL: nurl, DspURL: "https://advertiser.test/landing"}))
 				req = req.WithContext(context.WithValue(req.Context(), publisherBurlKey{}, publisherBurlFunc(queue.enqueue)))
 				w := httptest.NewRecorder()
-				getAdm(ctx, w, req, []*redis.Client{stats}, dsp, clicks, monitor, "test-status", store, box, nil)
+				getAdm(ctx, w, req, []*redis.Client{stats}, dsp, clicks, nil, "test-status", store, box, nil)
 				if w.Code != 200 || !strings.Contains(w.Body.String(), "advertiser.test/landing") {
 					t.Fatal("redirect lost", w.Code)
 				}
 			}
-			if kind == "ordinary" {
-				dspHook.assert(t, 0, 2)
-			} else {
-				dspHook.assert(t, 2, 0)
-			}
+			dspHook.assert(t, 0, 2)
 			wantADV := 0
 			if kind == "adv" {
 				wantADV = 2
@@ -158,13 +146,7 @@ func TestPublisherADMSingleReadAndOptionalDSPNURL(t *testing.T) {
 			if kind == "adv" && spend.Get(ctx, "spent:user:"+user).Val() != "0.25" {
 				t.Fatal("duplicate ADV charge")
 			}
-			if kind == "dsp-no-nurl" {
-				select {
-				case <-reported:
-				case <-time.After(time.Second):
-					t.Fatal("missing NURL was not monitored")
-				}
-			}
+
 		})
 	}
 }

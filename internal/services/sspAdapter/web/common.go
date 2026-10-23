@@ -85,34 +85,17 @@ func getAdm(
 	var processingErr error
 	stopADV := false
 
-	var dspWinner bool
-	if publisherPOP {
-		var fields map[string]string
-		if redisAdmClient == nil {
-			err = errors.New("redis client is nil")
-		} else {
-			fields, err = redisAdmClient.HGetAll(ctx, input.GlobalId).Result()
-		}
-		if err == nil && fields["uuid"] != "" && fields["uuid"] == input.GlobalId {
-			dspWinner = true
-			publisherInput.Record.WinnerType = "dsp"
-			publisherInput.Record.BURL = fields["pub_dsp_nurl"]
-			publisherInput.Redis = redisAdmClient
-			publisherReady = true
-			if publisherInput.Record.BURL == "" {
-				missing := fmt.Errorf("Publisher DSP NURL missing uuid=%s; internal BURL continues", input.GlobalId)
-				log.Print(missing)
-				recordRedisError(redisWriteErrorMonitor, missing, sspAdapterWorkStatusURL)
-			}
-		}
-	} else {
-		// Ordinary RTB keeps the exact proj212 UUID lookup.
-		dspWinner, err = utils.UUIDKeyExistsInRedis(ctx, redisAdmClient, input.GlobalId)
-	}
+	dspWinner, err := utils.UUIDKeyExistsInRedis(ctx, redisAdmClient, input.GlobalId)
 	if err != nil {
 		processingErr = fmt.Errorf("resolve DSP ADM winner: %w", err)
 	} else if dspWinner {
 		record.WinnerType = outbox.WinnerDSP
+		if publisherPOP {
+			publisherInput.Record.WinnerType = "dsp"
+			publisherInput.Record.BURL = input.NURL // HTTP query parser already decoded n once.
+			publisherInput.Redis = redisAdmClient
+			publisherReady = true
+		}
 	} else if advBillingStore == nil {
 		processingErr = errors.New("ADV billing store is not initialized")
 	} else {

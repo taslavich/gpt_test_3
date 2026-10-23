@@ -37,7 +37,7 @@ func TestLegacyCallbacksAllFormatsAndPublisherMarker(t *testing.T) {
 				}
 				nurl := "https://dsp.test/win?private=1"
 				source := &ortb.Bid{Impid: &imp, Adm: &adm, Nurl: &nurl, Price: &price}
-				req := &pb.BidEngineRequest_V2_5{BidRequest: &ortb.BidRequest{Imp: []*ortb.Imp{{Id: &imp}}}, ImpIdUuid: map[string]string{imp: id}, Format: format, SspDomain: "ssp.test", Logged: true}
+				req := &pb.BidEngineRequest_V2_5{BidRequest: &ortb.BidRequest{Imp: []*ortb.Imp{{Id: &imp}}}, ImpIdUuid: map[string]string{imp: id}, Format: format, SspDomain: "ssp.test", Logged: true, IsPublisher: true}
 				if adv {
 					req.ReadyBidResponse = &ortb.BidResponse{Seatbid: []*ortb.SeatBid{{Bid: []*ortb.Bid{source}}}}
 					req.WinnerUserIds = map[string]string{imp: "owner"}
@@ -86,7 +86,7 @@ func TestLegacyCallbacksAllFormatsAndPublisherMarker(t *testing.T) {
 				}
 				for _, raw := range []string{bid.GetNurl(), bid.GetBurl()} {
 					u, _ := url.Parse(raw)
-					if u.Query().Has("p") {
+					if u.Query().Has("p") || u.Query().Has("n") {
 						t.Fatal("p on non-ADM callback")
 					}
 				}
@@ -103,7 +103,10 @@ func TestLegacyCallbacksAllFormatsAndPublisherMarker(t *testing.T) {
 						}
 					}
 				}
-				nurlValue := server.redisAdmClient.HGet(context.Background(), id, "pub_dsp_nurl").Val()
+				nurlValue := ""
+				if admURL != nil {
+					nurlValue = admURL.Query().Get("n")
+				}
 				if !adv && format == "POP" {
 					if nurlValue != nurl {
 						t.Fatal("DSP notification lost", nurlValue)
@@ -111,7 +114,7 @@ func TestLegacyCallbacksAllFormatsAndPublisherMarker(t *testing.T) {
 				} else if nurlValue != "" {
 					t.Fatal("extra NURL for ADV/non-POP")
 				}
-				if server.redisBurlClient.HExists(context.Background(), id, "pub_dsp_nurl").Val() {
+				if server.redisBurlClient.HExists(context.Background(), id, "pub_dsp_nurl").Val() || server.redisAdmClient.HExists(context.Background(), id, "pub_dsp_nurl").Val() {
 					t.Fatal("NURL stored in wrong DB")
 				}
 
@@ -120,8 +123,8 @@ func TestLegacyCallbacksAllFormatsAndPublisherMarker(t *testing.T) {
 	}
 }
 
-func TestOrdinaryPOPAndPartialAttributionDoNotGetPublisherFlag(t *testing.T) {
-	for _, kind := range []string{"ordinary", "advertiser-user", "owner-only", "missing-source", "unclaimed", "publisher"} {
+func TestPublisherFlagComesOnlyFromGRPC(t *testing.T) {
+	for _, kind := range []string{"ordinary", "advertiser-user", "owner-only", "missing-source", "unclaimed", "publisher", "publisher-no-telemetry"} {
 		t.Run(kind, func(t *testing.T) {
 			ctx := context.Background()
 			id, imp := uuid.NewString(), "1"
@@ -132,6 +135,7 @@ func TestOrdinaryPOPAndPartialAttributionDoNotGetPublisherFlag(t *testing.T) {
 				return service.GetWinnerBidInternalWithRoutes_V_2_5(ctx, r, p, m, routes, logged, typic, host)
 			}}
 			configureCallbackServer(t, server, req)
+			req.IsPublisher = kind == "publisher" || kind == "publisher-no-telemetry"
 			source := server.redisClients[0]
 			fields := map[string]any{"FORMAT": "POP", "SPP_DOMAIN": "signed-feed-token"}
 			if kind == "advertiser-user" {
@@ -160,7 +164,7 @@ func TestOrdinaryPOPAndPartialAttributionDoNotGetPublisherFlag(t *testing.T) {
 			if e != nil {
 				t.Fatal(e)
 			}
-			if (u.Query().Get("p") == "1") != (kind == "publisher") {
+			if (u.Query().Get("p") == "1") != req.GetIsPublisher() {
 				t.Fatal(kind, u)
 			}
 			if u.Query().Get("url") != adm {
@@ -185,33 +189,5 @@ func TestLegacyWinnerIsNotDroppedWhenNoCallbackContextWasCollected(t *testing.T)
 	}
 	if server.redisAdmClient.HGet(ctx, id, "uuid").Val() != id {
 		t.Fatal("legacy UUID authorization missing")
-	}
-}
-
-func TestPublisherDSPNURLWriteFailureDoesNotDropWinningBid(t *testing.T) {
-	ctx := context.Background()
-	id, imp := uuid.NewString(), "1"
-	destination := "http://127.0.0.1/landing"
-	price := float32(2)
-	nurl := "https://dsp.test/win"
-	req := &pb.BidEngineRequest_V2_5{BidRequest: &ortb.BidRequest{Imp: []*ortb.Imp{{Id: &imp}}}, ImpIdUuid: map[string]string{imp: id}, Format: "POP", Logged: true, SspDomain: "mapped-domain", BidResponses: map[string]*ortb.BidResponse{"dsp": {Seatbid: []*ortb.SeatBid{{Bid: []*ortb.Bid{{Impid: &imp, Adm: &destination, Nurl: &nurl, Price: &price}}}}}}}
-	server := &Server{admDomain: "callbacks.test", GetWinnerBidInternalWithRoutes_V_2_5: func(ctx context.Context, r *pb.BidEngineRequest_V2_5, p float32, ids map[string]string, routes *types.FormatPercentRoutesV25, logged bool, typic, host string) (*ortb.BidResponse, clickhouse_types.UuidImpBidResponse, []string, []string) {
-		return service.GetWinnerBidInternalWithRoutes_V_2_5(ctx, r, p, ids, routes, logged, typic, host)
-	}}
-	configureCallbackServer(t, server, req)
-	server.redisClients[0].HSet(ctx, id, "pub_user_id", "owner", "ad_code_id", "code", "FORMAT", "POP", "SPP_DOMAIN", "signed-feed")
-	server.redisClients[0].HSet(ctx, id+":pub-uuid", "state", "adapter")
-	defer server.redisClients[0].Del(ctx, id+":pub-uuid")
-	server.redisAdmClient.AddHook(failDSPNURLWrite{})
-	got, e := server.GetWinnerBid_V2_5(ctx, req)
-	if e != nil || got.GetCode() != 200 || got.GetBidResponse() == nil {
-		t.Fatal("metadata failure filtered winner", got, e)
-	}
-	u, _ := url.Parse(got.GetBidResponse().GetSeatbid()[0].GetBid()[0].GetAdm())
-	if server.redisAdmClient.HGet(ctx, id, "uuid").Val() != id || server.redisAdmClient.HExists(ctx, id, "pub_dsp_nurl").Val() {
-		t.Fatal("UUID authorization lost on NURL write failure")
-	}
-	if u.Query().Get("p") != "1" {
-		t.Fatal(u)
 	}
 }

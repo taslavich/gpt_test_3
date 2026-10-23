@@ -94,7 +94,7 @@ type publisherOrchestrator struct {
 }
 
 func (o publisherOrchestrator) GetWinnerBid_V2_5(ctx context.Context, in *orchestratorProto.OrchestratorRequest_V2_5, opts ...grpc.CallOption) (*orchestratorProto.OrchestratorResponse_V2_5, error) {
-	if in.ImpIdUuid["1"] != o.id || in.GetTypic() != "MAINSTREAM" {
+	if in.ImpIdUuid["1"] != o.id || in.GetTypic() != "MAINSTREAM" || !in.GetIsPublisher() {
 		o.t.Fatal("UUID/traffic changed", in)
 	}
 	if o.status == 500 {

@@ -1,3 +1,6 @@
+> Исторический отчёт. В proj241 передача Publisher-флага и DSP NURL заменена;
+> актуальная схема и команды: [PUBLISHER_GRPC_ADM_241.md](PUBLISHER_GRPC_ADM_241.md).
+
 > Для точечного отката callback в proj240 используйте [LEGACY_CALLBACKS_240.md](LEGACY_CALLBACKS_240.md). Финансовые инструкции ниже относятся к исторической миграции 229 и не нужны для этого отката.
 
 # TwinBid 229 v4 — replacement, deployment and checks

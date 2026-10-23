@@ -101,6 +101,7 @@ type admRequest struct {
 	GlobalId  string `in:"query=id" required:"true"`
 	DspURL    string `in:"query=url" required:"true"`
 	Publisher string `in:"query=p"`
+	NURL      string `in:"query=n"`
 	Format    string `in:"query=f" required:"true"`
 }
 

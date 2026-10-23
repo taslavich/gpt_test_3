@@ -1,3 +1,6 @@
+> Исторический отчёт. В proj241 передача Publisher-флага и DSP NURL заменена;
+> актуальная схема и команды: [PUBLISHER_GRPC_ADM_241.md](PUBLISHER_GRPC_ADM_241.md).
+
 # proj240: legacy callbacks + Publisher POP
 
 Основа патча — только `proj240.zip`. Для обычных callback эталон —

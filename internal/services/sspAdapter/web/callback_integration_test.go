@@ -48,12 +48,9 @@ func seedPublisherWinner(ctx context.Context, c *redis.Client, id string, r publ
 	if e := utils.WriteUUIDKeyToRedis(ctx, c, id, ttl); e != nil {
 		return e
 	}
-	if r.BURL != "" {
-		return c.HSet(ctx, id, "pub_dsp_nurl", r.BURL).Err()
-	}
 	return nil
 }
-func testPublisherInput(ctx context.Context, id string, c *redis.Client, store *billing.Store) (publisherBURLInput, error) {
+func testPublisherInput(ctx context.Context, id string, c *redis.Client, store *billing.Store, nurl ...string) (publisherBURLInput, error) {
 	out := publisherBURLInput{ID: id, Record: publisherBURLRecord{Format: "POP", PublisherID: "1"}}
 	if store != nil {
 		var e error
@@ -62,15 +59,17 @@ func testPublisherInput(ctx context.Context, id string, c *redis.Client, store *
 		out.Redis = store.WinnerRedis()
 		return out, e
 	}
-	fields, e := c.HGetAll(ctx, id).Result()
+	found, e := utils.UUIDKeyExistsInRedis(ctx, c, id)
 	if e != nil {
 		return out, e
 	}
-	if fields["uuid"] != id {
+	if !found {
 		return out, redis.Nil
 	}
 	out.Record.WinnerType = "dsp"
-	out.Record.BURL = fields["pub_dsp_nurl"]
+	if len(nurl) != 0 {
+		out.Record.BURL = nurl[0]
+	}
 	out.Redis = c
 	return out, nil
 }
@@ -196,7 +195,7 @@ func TestPublisherADMDoesNotWaitForInternalBURL(t *testing.T) {
 	reqCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	req := httptest.NewRequest("GET", "/adm", nil).WithContext(reqCtx)
-	req = req.WithContext(context.WithValue(req.Context(), httpin.Input, &admRequest{GlobalId: id, Format: "0", Publisher: "1", DspURL: url.QueryEscape("https://advertiser.test/landing?click_id=original&x=%2F")}))
+	req = req.WithContext(context.WithValue(req.Context(), httpin.Input, &admRequest{GlobalId: id, Format: "0", Publisher: "1", NURL: record.BURL, DspURL: url.QueryEscape("https://advertiser.test/landing?click_id=original&x=%2F")}))
 	req = req.WithContext(context.WithValue(req.Context(), publisherBurlKey{}, publisherBurlFunc(queue.enqueue)))
 	w := httptest.NewRecorder()
 	done := make(chan struct{})
@@ -217,7 +216,7 @@ func TestPublisherADMDoesNotWaitForInternalBURL(t *testing.T) {
 	}
 	close(release)
 	waitPublisher(t, func() bool { return dsp.HGet(ctx, id, "pub_burl_done").Val() == "1" })
-	resolved, e := testPublisherInput(ctx, id, dsp, nil)
+	resolved, e := testPublisherInput(ctx, id, dsp, nil, record.BURL)
 	if e != nil {
 		t.Fatal(e)
 	}
