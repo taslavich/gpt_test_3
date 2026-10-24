@@ -210,7 +210,7 @@ func TestInfrastructureAliasesCORSAndLegacySDK(t *testing.T) {
 	h := s.Handler()
 	for _, path := range []string{"/static/adManager.js", "/sdk.js", "/assets/runtime.js", "/infra.json", "/infra/health"} {
 		w := httptest.NewRecorder()
-		h.ServeHTTP(w, httptest.NewRequest("GET", path, nil))
+		h.ServeHTTP(w, trustedRequest("GET", path, nil))
 		if w.Code != 200 {
 			t.Fatal(path, w.Code, w.Body.String())
 		}
@@ -219,7 +219,7 @@ func TestInfrastructureAliasesCORSAndLegacySDK(t *testing.T) {
 		}
 	}
 	w := httptest.NewRecorder()
-	h.ServeHTTP(w, httptest.NewRequest("OPTIONS", "/x/query", nil))
+	h.ServeHTTP(w, trustedRequest("OPTIONS", "/x/query", nil))
 	if w.Code != 204 || w.Header().Get("Access-Control-Allow-Origin") != "*" || !strings.Contains(w.Header().Get("Access-Control-Allow-Headers"), "X-TwinBid-Infrastructure") || w.Header().Get("Access-Control-Allow-Credentials") != "" {
 		t.Fatal(w.Code, w.Header())
 	}

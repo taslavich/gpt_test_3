@@ -35,8 +35,8 @@ type Config struct {
 	RedisTLS                bool          `env:"PUBLISHER_REDIS_TLS" env-default:"false"`
 	InternalSecret          string        `env:"PUB_INTERNAL_SECRET" env-required:"true"`
 	DeliverySecret          string        `env:"PUB_DELIVERY_SECRET" env-required:"true"`
-	RTBAdultURL             string        `env:"PUB_RTB_ADULT_URL" env-required:"true"`
-	RTBMainstreamURL        string        `env:"PUB_RTB_MAINSTREAM_URL" env-required:"true"`
+	RTBAdultURL             string        `env:"RTB_ADULT_URL" env-required:"true"`
+	RTBMainstreamURL        string        `env:"RTB_MAINSTREAM_URL" env-required:"true"`
 	AdultFeed               string        `env:"PUB_ADULT_FEED" env-required:"true"`
 	MainstreamFeed          string        `env:"PUB_MAINSTREAM_FEED" env-required:"true"`
 	// Retained for existing env files; delivery no longer validates ADM origins.
@@ -58,6 +58,9 @@ type Config struct {
 }
 
 func (c Config) Validate() error {
+	if strings.TrimSpace(c.TrustedProxies) == "" {
+		return errors.New("PUB_TRUSTED_PROXIES must list the trusted Nginx IP/CIDR")
+	}
 	if _, e := infrastructureSettings(c); e != nil {
 		return e
 	}

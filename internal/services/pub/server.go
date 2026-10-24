@@ -125,6 +125,12 @@ func (s *Server) Handler() http.Handler {
 	m.HandleFunc("GET /static/adManager.js", s.script)
 	s.registerInfrastructureRoutes(m)
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Admit only connections from the configured Nginx; never trust a forwarded
+		// client IP before the direct TCP peer has been checked.
+		if !s.isTrustedProxy(r) {
+			w.WriteHeader(http.StatusForbidden)
+			return
+		}
 		w.Header().Set("Access-Control-Allow-Origin", "*")
 		w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
 		if s.Config.AntiBlockEnabled || s.Config.AntiBlockDomains != "" {
@@ -179,29 +185,31 @@ func (s *Server) publicConfig(w http.ResponseWriter, r *http.Request) {
 	}
 	respond(w, 200, map[string]any{"session_token": session, "trigger_click": code.TriggerClick, "frequency_minutes": code.FrequencyMinutes, "max_per_session": code.MaxPerSession, "device": code.Device, "active": code.Active && !code.Archived})
 }
-func (s *Server) clientIP(r *http.Request) string {
-	host, _, e := net.SplitHostPort(r.RemoteAddr)
-	if e != nil {
-		host = r.RemoteAddr
+func (s *Server) isTrustedProxy(r *http.Request) bool {
+	host, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err != nil {
+		return false
 	}
 	peer := net.ParseIP(host)
-	trusted := false
-	for _, p := range s.proxies {
-		if p.Contains(peer) {
-			trusted = true
-			break
-		}
-	}
-	if trusted {
-		forwarded := r.Header.Get("X-Real-IP")
-		if ip := net.ParseIP(forwarded); ip != nil {
-			return ip.String()
-		}
-	}
 	if peer == nil {
+		return false
+	}
+	for _, proxy := range s.proxies {
+		if proxy.Contains(peer) {
+			return true
+		}
+	}
+	return false
+}
+
+// Only reached through Handler's trusted-proxy gate. Never use the Nginx
+// peer address as an advertising visitor IP when X-Real-IP is invalid.
+func (s *Server) clientIP(r *http.Request) string {
+	ip := net.ParseIP(strings.TrimSpace(r.Header.Get("X-Real-IP")))
+	if ip == nil {
 		return ""
 	}
-	return peer.String()
+	return ip.String()
 }
 func (s *Server) negative(w http.ResponseWriter, r *http.Request, in Request, code c.Code, host, site, zone, reason string, status int) {
 	s.Rejected.Add(1)

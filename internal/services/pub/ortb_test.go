@@ -214,7 +214,7 @@ func TestConfirmDoesNotCallFinancialCallbacks(t *testing.T) {
 	token := d.Token + "." + c.Sign(s.Config.DeliverySecret, d.Token)
 	for i := 0; i < 2; i++ {
 		w := httptest.NewRecorder()
-		r := httptest.NewRequest("POST", "/confirm/"+token, nil)
+		r := trustedRequest("POST", "/confirm/"+token, nil)
 		s.Handler().ServeHTTP(w, r)
 		if w.Code != 204 {
 			t.Fatal(w.Code, w.Body.String())

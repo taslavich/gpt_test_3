@@ -6,6 +6,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/redis/go-redis/v9"
 	c "gitlab.com/twinbid-exchange/RTB-exchange/internal/pubcontract"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -40,7 +41,7 @@ func fixture(t *testing.T) (*Server, c.Code) {
 	if _, e := pipe.Exec(context.Background()); e != nil {
 		t.Fatal(e)
 	}
-	cfg := Config{PublicURL: "https://pub.example.test", InternalSecret: strings.Repeat("x", 32), DeliverySecret: strings.Repeat("y", 32), RTBAdultURL: "https://rtb.example.test/bid_v_2_5", RTBMainstreamURL: "https://rtb.example.test/bid_v_2_5_mc", AdultFeed: "adult", MainstreamFeed: "mainstream", CallbackOrigins: "https://adm.example.test", RedisAddrs: addr, ORTBAddrs: addr, ORTBDB: 14, ORTBReadySet: "ortb:ready", TelemetryMaxBytes: 1 << 20, MaxInflight: 10, RTBTimeout: time.Second, ConfirmedOpenEnabled: true}
+	cfg := Config{PublicURL: "https://pub.example.test", InternalSecret: strings.Repeat("x", 32), DeliverySecret: strings.Repeat("y", 32), RTBAdultURL: "https://rtb.example.test/bid_v_2_5", RTBMainstreamURL: "https://rtb.example.test/bid_v_2_5_mc", AdultFeed: "adult", MainstreamFeed: "mainstream", CallbackOrigins: "https://adm.example.test", TrustedProxies: "192.0.2.0/24", RedisAddrs: addr, ORTBAddrs: addr, ORTBDB: 14, ORTBReadySet: "ortb:ready", TelemetryMaxBytes: 1 << 20, MaxInflight: 10, RTBTimeout: time.Second, ConfirmedOpenEnabled: true}
 	s, e := NewServer(cfg, r, nil)
 	if e != nil {
 		t.Fatal(e)
@@ -64,9 +65,17 @@ func send(s *Server, in Request) *httptest.ResponseRecorder {
 	b, _ := json.Marshal(in)
 	r := httptest.NewRequest("POST", "/request", strings.NewReader(string(b)))
 	r.Header.Set("User-Agent", "Mozilla/5.0 test browser desktop")
+	r.Header.Set("X-Real-IP", "203.0.113.42")
 	w := httptest.NewRecorder()
 	s.Handler().ServeHTTP(w, r)
 	return w
+}
+
+// trustedRequest simulates a browser request forwarded by the trusted Nginx.
+func trustedRequest(method, target string, body io.Reader) *http.Request {
+	r := httptest.NewRequest(method, target, body)
+	r.Header.Set("X-Real-IP", "203.0.113.42")
+	return r
 }
 
 type transport func(*http.Request) (*http.Response, error)

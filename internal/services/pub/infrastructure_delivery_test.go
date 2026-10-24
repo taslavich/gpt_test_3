@@ -66,7 +66,7 @@ func TestCrossDomainRetryOneAuctionOriginalADMAndReservation(t *testing.T) {
 	})
 	sendDomain := func(server *Server, origin string) *httptest.ResponseRecorder {
 		b, _ := json.Marshal(in)
-		r := httptest.NewRequest("POST", origin+settings.Paths.Request, strings.NewReader(string(b)))
+		r := trustedRequest("POST", origin+settings.Paths.Request, strings.NewReader(string(b)))
 		r.Header.Set("User-Agent", "Mozilla/5.0 test browser desktop")
 		r.Header.Set("X-TwinBid-Infrastructure", settings.Fingerprint)
 		w := httptest.NewRecorder()
@@ -94,7 +94,7 @@ func TestCrossDomainRetryOneAuctionOriginalADMAndReservation(t *testing.T) {
 	_, sessionKey, _ := keys(zone, in.VisitorID, in.SessionID, in.ID)
 	for _, method := range []string{"HEAD", "GET"} {
 		w := httptest.NewRecorder()
-		second.Handler().ServeHTTP(w, httptest.NewRequest(method, result.OpenURL, nil))
+		second.Handler().ServeHTTP(w, trustedRequest(method, result.OpenURL, nil))
 		if w.Code != 200 {
 			t.Fatal(w.Code, w.Body.String())
 		}
@@ -116,7 +116,7 @@ func TestCrossDomainRetryOneAuctionOriginalADMAndReservation(t *testing.T) {
 	for _, invalid := range []string{"invalid-token", parts[0] + "." + badSignature} {
 		for _, method := range []string{"HEAD", "GET"} {
 			w := httptest.NewRecorder()
-			second.Handler().ServeHTTP(w, httptest.NewRequest(method, "https://work-b.test"+settings.Paths.Delivery+invalid, nil))
+			second.Handler().ServeHTTP(w, trustedRequest(method, "https://work-b.test"+settings.Paths.Delivery+invalid, nil))
 			if w.Code != 410 || second.Redis.Exists(context.Background(), sessionKey).Val() != 0 || s.RTBCalls.Load() != 1 || second.RTBCalls.Load() != 0 {
 				t.Fatal("invalid delivery token accepted or consumed quota/auction", method, w.Code)
 			}
@@ -124,7 +124,7 @@ func TestCrossDomainRetryOneAuctionOriginalADMAndReservation(t *testing.T) {
 	}
 	for n := 0; n < 2; n++ {
 		w := httptest.NewRecorder()
-		second.Handler().ServeHTTP(w, httptest.NewRequest("POST", "https://work-a.test"+settings.Paths.Confirm+token, nil))
+		second.Handler().ServeHTTP(w, trustedRequest("POST", "https://work-a.test"+settings.Paths.Confirm+token, nil))
 		if w.Code != 204 {
 			t.Fatal(w.Code, w.Body.String())
 		}
@@ -133,7 +133,7 @@ func TestCrossDomainRetryOneAuctionOriginalADMAndReservation(t *testing.T) {
 		t.Fatal("confirm duplicated quota/stats")
 	}
 	// Legacy request still returns the old same-origin delivery URL even with anti-block enabled.
-	legacy, _ := second.requestDeliveryPrefix(context.Background(), httptest.NewRequest("POST", "/request", nil))
+	legacy, _ := second.requestDeliveryPrefix(context.Background(), trustedRequest("POST", "/request", nil))
 	if legacy != cfg.PublicURL+"/delivery/" {
 		t.Fatal(legacy)
 	}
@@ -155,7 +155,7 @@ func TestInfrastructureEnabledKeepsFrequencyCapAndNoFill(t *testing.T) {
 	})
 	in := input(code)
 	b, _ := json.Marshal(in)
-	r := httptest.NewRequest("POST", "https://work-a.test/request", strings.NewReader(string(b)))
+	r := trustedRequest("POST", "https://work-a.test/request", strings.NewReader(string(b)))
 	r.Header.Set("User-Agent", "Mozilla/5.0 test browser desktop")
 	r.Header.Set("X-TwinBid-Infrastructure", settings.Fingerprint)
 	w := httptest.NewRecorder()
