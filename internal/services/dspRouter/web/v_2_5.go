@@ -341,7 +341,8 @@ func (s *Server) GetBids_V2_5(
 	}
 	if filters != nil && !filters.Allowed(req.BidRequest, "", true) {
 		return &dspRouterGrpc.DspRouterResponse_V2_5{
-			BidRequest: req.BidRequest, BidResponses: map[string]*ortb_V2_5.BidResponse{},
+			IsPublisher: req.GetIsPublisher(),
+			BidRequest:  req.BidRequest, BidResponses: map[string]*ortb_V2_5.BidResponse{},
 			Code: 703, Rekl: false, ImpIdUuid: cloneStringMap(req.GetImpIdUuid()),
 		}, nil
 	}
@@ -541,7 +542,8 @@ func (s *Server) GetBids_V2_5(
 	}
 
 	return &dspRouterGrpc.DspRouterResponse_V2_5{
-		BidRequest: req.GetBidRequest(), BidResponses: responses, SspDomain: req.GetSspDomain(),
+		IsPublisher: req.GetIsPublisher(),
+		BidRequest:  req.GetBidRequest(), BidResponses: responses, SspDomain: req.GetSspDomain(),
 		Rekl: false, ReadyBidResponse: readyADV, WinnerUserIds: winnerUserIDs,
 		ImpIdUuid: cloneStringMap(req.GetImpIdUuid()), WinnerBasePrices: winnerBasePrices,
 	}, nil

@@ -158,6 +158,8 @@ func (s *Server) GetWinnerBid_V2_5(
 		}
 	}
 
+	s.markPublisherPOP(ctx, req, bidResponse, clickhouseBid)
+
 	advCandidateImpIDs := bidResponseImpIDSet(req.GetReadyBidResponse())
 	finalImpIDs := bidResponseImpIDSet(bidResponse)
 	finalADVImpIDs := make(map[string]struct{})

@@ -143,3 +143,11 @@ func normalizeFormat(value string) string {
 	}
 	return ""
 }
+
+// WinnerRedis exposes the existing winner hash for the Publisher BURL lease.
+func (s *Store) WinnerRedis() *redis.Client {
+	if s == nil {
+		return nil
+	}
+	return s.winners
+}

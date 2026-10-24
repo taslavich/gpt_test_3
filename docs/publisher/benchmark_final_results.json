@@ -1,0 +1,68 @@
+{
+  "asof_utc": "2026-10-21 06:56:34",
+  "source_rows_actual": 36000000,
+  "baseline_probe_p50_ms": 8.151516499992795,
+  "baseline_probe_p95_ms": 15.98788700039222,
+  "runs": [
+    {
+      "variant": "bounded-1g",
+      "elapsed_seconds": 46.56950916799997,
+      "max_observed_temp_bytes": 193510331,
+      "probe_p50_ms": 11.162388000002466,
+      "probe_p95_ms": 35.38552100008019,
+      "error": null,
+      "type": "QueryFinish",
+      "query_duration_ms": 46624,
+      "read_rows": 36000000,
+      "read_bytes": 7480537600,
+      "memory_usage": 736328066,
+      "exception": "",
+      "events": {
+        "ExternalProcessingCompressedBytesTotal": 193510331,
+        "ExternalProcessingUncompressedBytesTotal": 716613184,
+        "ExternalProcessingFilesTotal": 1034,
+        "ExternalAggregationWritePart": 1034,
+        "ExternalAggregationMerge": 3,
+        "ExternalAggregationCompressedBytes": 193510331,
+        "ExternalAggregationUncompressedBytes": 716613184,
+        "SelectedMarks": 4464,
+        "SelectedRows": 36000000,
+        "RowsReadByMainReader": 36000000,
+        "RowsReadByPrewhereReaders": 36000000,
+        "UserTimeMicroseconds": 82768771,
+        "SystemTimeMicroseconds": 2975305,
+        "OSWriteBytes": 196558848
+      }
+    },
+    {
+      "variant": "bounded-1g-repeat",
+      "elapsed_seconds": 41.05491024899993,
+      "max_observed_temp_bytes": 191203270,
+      "probe_p50_ms": 10.41730799988727,
+      "probe_p95_ms": 20.32306699993569,
+      "error": null,
+      "type": "QueryFinish",
+      "query_duration_ms": 41093,
+      "read_rows": 36000000,
+      "read_bytes": 7480537600,
+      "memory_usage": 580719861,
+      "exception": "",
+      "events": {
+        "ExternalProcessingCompressedBytesTotal": 191203270,
+        "ExternalProcessingUncompressedBytesTotal": 636153082,
+        "ExternalProcessingFilesTotal": 603,
+        "ExternalAggregationWritePart": 603,
+        "ExternalAggregationMerge": 3,
+        "ExternalAggregationCompressedBytes": 191203270,
+        "ExternalAggregationUncompressedBytes": 636153082,
+        "SelectedMarks": 4464,
+        "SelectedRows": 36000000,
+        "RowsReadByMainReader": 36000000,
+        "RowsReadByPrewhereReaders": 36000000,
+        "UserTimeMicroseconds": 73361825,
+        "SystemTimeMicroseconds": 2440243,
+        "OSWriteBytes": 193085440
+      }
+    }
+  ]
+}

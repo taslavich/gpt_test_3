@@ -21,6 +21,7 @@ message BidEngineRequest_V2_5 {
   ortb_V2_5.BidResponse readyBidResponse = 10;
   map<string, string> winnerUserIds = 11;
   map<string, double> winnerBasePrices = 12;
+  bool is_publisher = 13;
 }
 
 message BidEngineResponse_V2_5 {

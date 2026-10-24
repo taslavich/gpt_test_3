@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"log"
 	"net/http"
+	"sync"
 	"time"
 
 	"gitlab.com/twinbid-exchange/RTB-exchange/internal/constants"
@@ -97,9 +98,11 @@ type postBidResponse_V2_5 struct {
 }
 
 type admRequest struct {
-	GlobalId string `in:"query=id" required:"true"`
-	DspURL   string `in:"query=url" required:"true"`
-	Format   string `in:"query=f" required:"true"`
+	GlobalId  string `in:"query=id" required:"true"`
+	DspURL    string `in:"query=url" required:"true"`
+	Publisher string `in:"query=p"`
+	NURL      string `in:"query=n"`
+	Format    string `in:"query=f" required:"true"`
 }
 
 type nurlRequest struct {
@@ -335,16 +338,53 @@ func InitHttpsRoutes(
 	advBillingStore *billing.Store,
 	advOutbox *outbox.Store,
 	advControlURLs []string,
-) {
+	publisherOptions ...PublisherBURLOptions,
+) func() {
 	integration.UseGochiURLParam("path", chi.URLParam)
 
-	var nurlClient = &http.Client{
-		Timeout: 3 * time.Second,
+	var nurlClient = &http.Client{Timeout: 3 * time.Second}
+	dspExecutor := newPublisherDSPExecutor(ctx, nurlClient, publisherDSPWorkers, publisherDSPCapacity)
+
+	options := PublisherBURLOptions{Workers: 8, Timeout: 20 * time.Second, HighWater: 100000, MaxAge: 24 * time.Hour}
+	if len(publisherOptions) > 0 {
+		v := publisherOptions[0]
+		if v.Workers > 0 {
+			options.Workers = v.Workers
+		}
+		if v.Timeout > 0 {
+			options.Timeout = v.Timeout
+		}
+		if v.HighWater > 0 {
+			options.HighWater = v.HighWater
+		}
+		if v.MaxAge > 0 {
+			options.MaxAge = v.MaxAge
+		}
 	}
+	var admMu sync.RWMutex
+	stopped := false
+	queue := newPublisherBURLQueue(ctx, advOutbox, redisAdmClient, advBillingStore, options.Workers, options.HighWater, options.Timeout, options.MaxAge, func(taskCtx context.Context, resolved publisherBURLInput) error {
+		return processBurl(taskCtx, resolved, nurlClient, redisClientsImp, redisSetImpressions, redisWriteErrorMonitor, sspAdapterWorkStatusURL, advBillingStore, advOutbox, advControlURLs, dspExecutor)
+	}, func(err error) {
+		recordRedisError(redisWriteErrorMonitor, err, sspAdapterWorkStatusURL)
+		if sspAdapterWorkStatusURL != "" {
+			stopCtx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+			defer cancel()
+			services.StopSspAdapterOrtbStreams(stopCtx, sspAdapterWorkStatusURL)
+		}
+	})
 
 	httpRouter.With(
 		httpin.NewInput(admRequest{}),
 	).Get(GetAdmUrl, func(w http.ResponseWriter, r *http.Request) {
+		admMu.RLock()
+		defer admMu.RUnlock()
+		if stopped {
+			http.Error(w, "adapter stopping", 503)
+			return
+		}
+		task := publisherBurlFunc(queue.enqueue)
+		r = r.WithContext(context.WithValue(r.Context(), publisherBurlKey{}, task))
 		getAdm(ctx, w, r, redisClientsClicks, redisAdmClient, redisSetClicks, redisWriteErrorMonitor, sspAdapterWorkStatusURL, advBillingStore, advOutbox, advControlURLs)
 	})
 
@@ -405,6 +445,7 @@ func InitHttpsRoutes(
 	httpRouter.Get(GetVideoImpressionURL, func(w http.ResponseWriter, r *http.Request) {
 		videoImpressionNoop(w)
 	})
+	return func() { admMu.Lock(); stopped = true; admMu.Unlock(); queue.Close(); dspExecutor.Close() }
 }
 
 func postBidInputErrorHandler(

@@ -19,6 +19,7 @@ message DspRouterRequest_V2_5 {
   string traffic_type = 8;
   reserved 9;
   reserved "feed";
+  bool is_publisher = 10;
 }
 
 message DspRouterResponse_V2_5 {
@@ -31,4 +32,5 @@ message DspRouterResponse_V2_5 {
   map<string, string> winnerUserIds = 7;
   map<string, string> impIdUuid = 8;
   map<string, double> winnerBasePrices = 9;
+  bool is_publisher = 10;
 }

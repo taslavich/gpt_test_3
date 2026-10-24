@@ -2,11 +2,14 @@ package bidEngineWeb
 
 import (
 	"context"
+	"github.com/redis/go-redis/v9"
 	"html"
 	"net/url"
+	"os"
 	"regexp"
 	"strings"
 	"testing"
+	"time"
 
 	"gitlab.com/twinbid-exchange/RTB-exchange/internal/constants"
 	bidEngineGrpc "gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/proto/services/bidEngine"
@@ -43,7 +46,7 @@ func TestReadyADVResponseUsesUnifiedInternalPathAndPreservesBehavior(t *testing.
 			Imp: []*ortb.Imp{{Id: &impID}},
 		},
 		ReadyBidResponse: readyResponse,
-		ImpIdUuid:        map[string]string{impID: "winner-uuid"},
+		ImpIdUuid:        map[string]string{impID: "10000000-0000-4000-8000-000000000001"},
 		WinnerUserIds:    map[string]string{impID: "user-1"},
 		WinnerBasePrices: map[string]float64{impID: 2.5},
 		SspDomain:        "ssp.example",
@@ -56,6 +59,7 @@ func TestReadyADVResponseUsesUnifiedInternalPathAndPreservesBehavior(t *testing.
 		admDomain:                  "callbacks.example",
 		GetWinnerBidInternal_V_2_5: bidEngineService.GetWinnerBidInternal_V_2_5,
 	}
+	configureCallbackServer(t, server, request)
 	response, err := server.GetWinnerBid_V2_5(context.Background(), request)
 	if err != nil {
 		t.Fatalf("GetWinnerBid_V2_5 returned error: %v", err)
@@ -72,7 +76,7 @@ func TestReadyADVResponseUsesUnifiedInternalPathAndPreservesBehavior(t *testing.
 	if got := response.GetWinnerUserIds()[impID]; got != "user-1" {
 		t.Fatalf("winner user=%q want user-1", got)
 	}
-	if got := response.GetImpIdUuidClone()[impID]; got != "winner-uuid" {
+	if got := response.GetImpIdUuidClone()[impID]; got != "10000000-0000-4000-8000-000000000001" {
 		t.Fatalf("winner uuid=%q want winner-uuid", got)
 	}
 	bids := response.GetBidResponse().GetSeatbid()[0].GetBid()
@@ -83,9 +87,9 @@ func TestReadyADVResponseUsesUnifiedInternalPathAndPreservesBehavior(t *testing.
 	if !strings.Contains(finalBid.GetAdm(), `<img src="https://cdn.example/banner.png" width="300" height="250">`) {
 		t.Fatalf("banner image markup was changed: %q", finalBid.GetAdm())
 	}
-	assertReadyCallback(t, readyBannerHref(t, finalBid.GetAdm()), "/adm", "winner-uuid", "https://creative.example/render?a=1&b=2")
-	assertReadyCallback(t, finalBid.GetNurl(), "/nurl", "winner-uuid", "")
-	assertReadyCallback(t, finalBid.GetBurl(), "/burl", "winner-uuid", "")
+	assertReadyCallback(t, readyBannerHref(t, finalBid.GetAdm()), "/adm", "10000000-0000-4000-8000-000000000001", "https://creative.example/render?a=1&b=2")
+	assertReadyCallback(t, finalBid.GetNurl(), "/nurl", "10000000-0000-4000-8000-000000000001", "")
+	assertReadyCallback(t, finalBid.GetBurl(), "/burl", "10000000-0000-4000-8000-000000000001", "")
 	if parsed, err := url.Parse(finalBid.GetNurl()); err != nil {
 		t.Fatalf("parse ADV NURL: %v", err)
 	} else if _, exists := parsed.Query()["url"]; exists {
@@ -102,7 +106,7 @@ func assertReadyCallback(t *testing.T, raw, path, winnerID, original string) {
 	if parsed.Path != path || parsed.Query().Get("id") != winnerID {
 		t.Fatalf("unexpected callback %q", raw)
 	}
-	if original != "" && parsed.Query().Get("url") != original {
+	if parsed.Query().Get("url") != original {
 		t.Fatalf("callback original URL=%q want %q", parsed.Query().Get("url"), original)
 	}
 }
@@ -125,7 +129,7 @@ func readyBannerHref(t *testing.T, adm string) string {
 func TestMixedADVAndDSPResponseUsesOneBidEnginePath(t *testing.T) {
 	requestID := "request-mixed"
 	impADV, impDSP := "imp-adv", "imp-dsp"
-	uuidADV, uuidDSP := "uuid-adv", "uuid-dsp"
+	uuidADV, uuidDSP := "10000000-0000-4000-8000-000000000002", "10000000-0000-4000-8000-000000000003"
 	advPrice := float32(0.4)
 	dspPrice := float32(1.0)
 	advADM := "https://adv.example/adm"
@@ -158,6 +162,7 @@ func TestMixedADVAndDSPResponseUsesOneBidEnginePath(t *testing.T) {
 		admDomain:                  "callbacks.example",
 		GetWinnerBidInternal_V_2_5: bidEngineService.GetWinnerBidInternal_V_2_5,
 	}
+	configureCallbackServer(t, server, request)
 	response, err := server.GetWinnerBid_V2_5(context.Background(), request)
 	if err != nil {
 		t.Fatalf("GetWinnerBid_V2_5 returned error: %v", err)
@@ -183,4 +188,42 @@ func TestMixedADVAndDSPResponseUsesOneBidEnginePath(t *testing.T) {
 	if got := response.GetImpIdUuidClone()[impDSP]; got != uuidDSP {
 		t.Fatalf("DSP uuid clone=%q want %q", got, uuidDSP)
 	}
+}
+
+func configureCallbackServer(t *testing.T, s *Server, req *bidEngineGrpc.BidEngineRequest_V2_5) {
+	t.Helper()
+	addr := os.Getenv("PUB_TEST_REDIS_ADDR")
+	if addr == "" {
+		t.Skip("PUB_TEST_REDIS_ADDR unset")
+	}
+	dsp := redis.NewClient(&redis.Options{Addr: addr, DB: 10})
+	adv := redis.NewClient(&redis.Options{Addr: addr, DB: 11})
+	burl := redis.NewClient(&redis.Options{Addr: addr, DB: 13})
+	stats := redis.NewClient(&redis.Options{Addr: addr, DB: 12})
+	s.redisUUIDKeyTTL = time.Hour
+	s.redisAdmClient = dsp
+	s.redisBurlClient = burl
+	s.redisClients = []*redis.Client{stats}
+	for imp, id := range req.ImpIdUuid {
+		if req.WinnerUserIds[imp] != "" {
+			if e := adv.HSet(context.Background(), id, "price", "1.5", "user_id", req.WinnerUserIds[imp], "campaign_id", "campaign", "format", req.Format, "type_model", 1).Err(); e != nil {
+				t.Fatal(e)
+			}
+		}
+	}
+	for _, id := range req.ImpIdUuid {
+		adv.Expire(context.Background(), id, 2*time.Hour)
+	}
+	t.Cleanup(func() {
+		for _, id := range req.ImpIdUuid {
+			dsp.Del(context.Background(), id)
+			burl.Del(context.Background(), id)
+			adv.Del(context.Background(), id)
+			stats.Del(context.Background(), id)
+		}
+		dsp.Close()
+		burl.Close()
+		adv.Close()
+		stats.Close()
+	})
 }

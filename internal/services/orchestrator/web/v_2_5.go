@@ -108,6 +108,7 @@ func (s *Server) GetWinnerBid_V2_5(
 	bids, err := s.dspRouterGrpcClient.GetBids_V2_5(
 		getBidsReqCtx,
 		&dspRouterGrpc.DspRouterRequest_V2_5{
+			IsPublisher: req.GetIsPublisher(),
 			BidRequest:  req.BidRequest,
 			SspDomain:   req.SspDomain,
 			Logged:      req.Logged,
@@ -188,6 +189,7 @@ func (s *Server) GetWinnerBid_V2_5(
 	winner, err := s.bidEngineGrpcClient.GetWinnerBid_V2_5(
 		getWinnerBidReqCtx,
 		&bidEngineGrpc.BidEngineRequest_V2_5{
+			IsPublisher:      bids.GetIsPublisher(),
 			BidRequest:       bids.GetBidRequest(),
 			BidResponses:     bids.GetBidResponses(),
 			SspDomain:        bids.GetSspDomain(),

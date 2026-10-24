@@ -77,6 +77,7 @@ func writeStatsOrtbAndAddToSet(
 		return false
 	}
 
+	publisherCommitAttempt(ctx)
 	if err := utils.AddUUIDToRedisSet(ctx, redisClients, redisSetOrtb, globalId, logged); err != nil {
 		log.Printf("failed to add ORTB UUID to Redis set in postBid_V2_5: %v", err)
 		recordRedisError(redisWriteErrorMonitor, err, sspAdapterWorkStatusURL)
@@ -119,6 +120,7 @@ func writeStatsOrtbAndAddToSetWithPercenter(
 		recordRedisError(redisWriteErrorMonitor, err, sspAdapterWorkStatusURL)
 		return false
 	}
+	publisherCommitAttempt(ctx)
 	if err := utils.AddUUIDToRedisSet(ctx, redisClients, redisSetOrtb, globalId, logged); err != nil {
 		log.Printf("failed to add ORTB UUID to Redis set in postBid_V2_5: %v", err)
 		recordRedisError(redisWriteErrorMonitor, err, sspAdapterWorkStatusURL)
@@ -234,6 +236,33 @@ func postBid_V2_5(
 		http.Error(w, err.Error(), http.StatusForbidden)
 		return
 	}
+	publisherID, err := trustedPublisherUUID(ctx, r, input, format, redisClients)
+	if err != nil {
+		http.Error(w, "invalid publisher UUID", http.StatusForbidden)
+		return
+	}
+	isPublisher := publisherID != ""
+	if publisherID != "" {
+		state := &publisherCommitState{}
+		ctx = context.WithValue(ctx, publisherCommitKey{}, state)
+		response := &publisherResponse{ResponseWriter: w}
+		w = response
+		defer func() {
+			if state.attempted {
+				return
+			}
+			finish, cancel := context.WithTimeout(context.WithoutCancel(ctx), 3*time.Second)
+			defer cancel()
+			request := input.Payload.BidRequest
+			device := request.GetDevice()
+			site := request.GetSite()
+			code := response.status
+			if code < 400 && code != 204 {
+				code = 500
+			}
+			writeStatsOrtbAndAddToSet(finish, redisClients, redisSetOrtb, redisWriteErrorMonitor, sspAdapterWorkStatusURL, publisherID, true, format, typic, ssp_domain, device.GetIp(), device.GetIpv6(), device.GetLanguage(), "", 0, int32(code), ua.ParseUA(device.GetUa()), site.GetId(), site.GetDomain(), float64(request.GetImp()[0].GetBidfloor()))
+		}()
+	}
 	normalizePartnerVideoPlacement(input.Payload, ssp_domain, format)
 	traceRequest := utils.ShouldTraceSSPDomain(ssp_domain)
 	if traceRequest {
@@ -285,8 +314,14 @@ func postBid_V2_5(
 		log.Printf("error: %s, feed: %s", err.Error(), ssp_domain)
 
 		logged := shouldPass(counter)
+		if publisherID != "" {
+			logged = true
+		}
 
-		globalId := uuid.New().String()
+		globalId := publisherID
+		if globalId == "" {
+			globalId = uuid.New().String()
+		}
 		if !writeStatsOrtbAndAddToSet(
 			ctx,
 			redisClients,
@@ -322,8 +357,14 @@ func postBid_V2_5(
 		log.Printf("error: %s, feed: %s", err.Error(), ssp_domain)
 
 		logged := shouldPass(counter)
+		if publisherID != "" {
+			logged = true
+		}
 
-		globalId := uuid.New().String()
+		globalId := publisherID
+		if globalId == "" {
+			globalId = uuid.New().String()
+		}
 		if !writeStatsOrtbAndAddToSet(
 			ctx,
 			redisClients,
@@ -369,8 +410,14 @@ func postBid_V2_5(
 		log.Printf("error: %s, feed: %s", err.Error(), ssp_domain)
 
 		logged := shouldPass(counter)
+		if publisherID != "" {
+			logged = true
+		}
 
-		globalId := uuid.New().String()
+		globalId := publisherID
+		if globalId == "" {
+			globalId = uuid.New().String()
+		}
 		if !writeStatsOrtbAndAddToSet(
 			ctx,
 			redisClients,
@@ -537,6 +584,9 @@ func postBid_V2_5(
 	siteDomain := input.Payload.Site.GetDomain()
 
 	logged := shouldPass(counter)
+	if publisherID != "" {
+		logged = true
+	}
 
 	uaFileds := ua.ParseUA(input.Payload.Device.GetUa())
 
@@ -571,7 +621,10 @@ func postBid_V2_5(
 			}
 		}
 
-		globalId := uuid.New().String()
+		globalId := publisherID
+		if globalId == "" {
+			globalId = uuid.New().String()
+		}
 		impIdUuid[imp.GetId()] = globalId
 		uuidBidFloor[globalId] = imp.GetBidfloor()
 	}
@@ -594,6 +647,7 @@ func postBid_V2_5(
 	res, err := orchestratorClient.GetWinnerBid_V2_5(
 		reqCtx,
 		&orchestratorProto.OrchestratorRequest_V2_5{
+			IsPublisher: isPublisher,
 			BidRequest:  input.Payload.BidRequest,
 			SspDomain:   ssp_domain,
 			Logged:      logged,

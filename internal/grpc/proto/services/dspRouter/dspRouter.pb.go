@@ -32,6 +32,7 @@ type DspRouterRequest_V2_5 struct {
 	Format        string                 `protobuf:"bytes,6,opt,name=format,proto3" json:"format,omitempty"`
 	SspUrl        string                 `protobuf:"bytes,7,opt,name=sspUrl,proto3" json:"sspUrl,omitempty"`
 	TrafficType   string                 `protobuf:"bytes,8,opt,name=traffic_type,json=trafficType,proto3" json:"traffic_type,omitempty"`
+	IsPublisher   bool                   `protobuf:"varint,10,opt,name=is_publisher,json=isPublisher,proto3" json:"is_publisher,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -122,6 +123,13 @@ func (x *DspRouterRequest_V2_5) GetTrafficType() string {
 	return ""
 }
 
+func (x *DspRouterRequest_V2_5) GetIsPublisher() bool {
+	if x != nil {
+		return x.IsPublisher
+	}
+	return false
+}
+
 type DspRouterResponse_V2_5 struct {
 	state            protoimpl.MessageState            `protogen:"open.v1"`
 	BidRequest       *ortb_V2_5.BidRequest             `protobuf:"bytes,1,opt,name=bidRequest,proto3" json:"bidRequest,omitempty"`
@@ -133,6 +141,7 @@ type DspRouterResponse_V2_5 struct {
 	WinnerUserIds    map[string]string                 `protobuf:"bytes,7,rep,name=winnerUserIds,proto3" json:"winnerUserIds,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
 	ImpIdUuid        map[string]string                 `protobuf:"bytes,8,rep,name=impIdUuid,proto3" json:"impIdUuid,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
 	WinnerBasePrices map[string]float64                `protobuf:"bytes,9,rep,name=winnerBasePrices,proto3" json:"winnerBasePrices,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"fixed64,2,opt,name=value"`
+	IsPublisher      bool                              `protobuf:"varint,10,opt,name=is_publisher,json=isPublisher,proto3" json:"is_publisher,omitempty"`
 	unknownFields    protoimpl.UnknownFields
 	sizeCache        protoimpl.SizeCache
 }
@@ -230,11 +239,18 @@ func (x *DspRouterResponse_V2_5) GetWinnerBasePrices() map[string]float64 {
 	return nil
 }
 
+func (x *DspRouterResponse_V2_5) GetIsPublisher() bool {
+	if x != nil {
+		return x.IsPublisher
+	}
+	return false
+}
+
 var File_services_dspRouter_proto protoreflect.FileDescriptor
 
 const file_services_dspRouter_proto_rawDesc = "" +
 	"\n" +
-	"\x18services/dspRouter.proto\x12\tdspRouter\x1a\x1atypes/ortb_V2_5/ortb.proto\"\x87\x03\n" +
+	"\x18services/dspRouter.proto\x12\tdspRouter\x1a\x1atypes/ortb_V2_5/ortb.proto\"\xaa\x03\n" +
 	"\x15DspRouterRequest_V2_5\x125\n" +
 	"\n" +
 	"bidRequest\x18\x01 \x01(\v2\x15.ortb_V2_5.BidRequestR\n" +
@@ -246,11 +262,13 @@ const file_services_dspRouter_proto_rawDesc = "" +
 	"\x05typic\x18\x05 \x01(\tR\x05typic\x12\x16\n" +
 	"\x06format\x18\x06 \x01(\tR\x06format\x12\x16\n" +
 	"\x06sspUrl\x18\a \x01(\tR\x06sspUrl\x12!\n" +
-	"\ftraffic_type\x18\b \x01(\tR\vtrafficType\x1a<\n" +
+	"\ftraffic_type\x18\b \x01(\tR\vtrafficType\x12!\n" +
+	"\fis_publisher\x18\n" +
+	" \x01(\bR\visPublisher\x1a<\n" +
 	"\x0eImpIdUuidEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01J\x04\b\t\x10\n" +
-	"R\x04feed\"\xe2\x06\n" +
+	"R\x04feed\"\x85\a\n" +
 	"\x16DspRouterResponse_V2_5\x125\n" +
 	"\n" +
 	"bidRequest\x18\x01 \x01(\v2\x15.ortb_V2_5.BidRequestR\n" +
@@ -263,7 +281,9 @@ const file_services_dspRouter_proto_rawDesc = "" +
 	"\x10readyBidResponse\x18\x06 \x01(\v2\x16.ortb_V2_5.BidResponseR\x10readyBidResponse\x12Z\n" +
 	"\rwinnerUserIds\x18\a \x03(\v24.dspRouter.DspRouterResponse_V2_5.WinnerUserIdsEntryR\rwinnerUserIds\x12N\n" +
 	"\timpIdUuid\x18\b \x03(\v20.dspRouter.DspRouterResponse_V2_5.ImpIdUuidEntryR\timpIdUuid\x12c\n" +
-	"\x10winnerBasePrices\x18\t \x03(\v27.dspRouter.DspRouterResponse_V2_5.WinnerBasePricesEntryR\x10winnerBasePrices\x1aW\n" +
+	"\x10winnerBasePrices\x18\t \x03(\v27.dspRouter.DspRouterResponse_V2_5.WinnerBasePricesEntryR\x10winnerBasePrices\x12!\n" +
+	"\fis_publisher\x18\n" +
+	" \x01(\bR\visPublisher\x1aW\n" +
 	"\x11BidResponsesEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12,\n" +
 	"\x05value\x18\x02 \x01(\v2\x16.ortb_V2_5.BidResponseR\x05value:\x028\x01\x1a@\n" +

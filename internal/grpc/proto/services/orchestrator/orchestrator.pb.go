@@ -32,6 +32,7 @@ type OrchestratorRequest_V2_5 struct {
 	Format        string                 `protobuf:"bytes,6,opt,name=format,proto3" json:"format,omitempty"`
 	SspUrl        string                 `protobuf:"bytes,7,opt,name=sspUrl,proto3" json:"sspUrl,omitempty"`
 	TrafficType   string                 `protobuf:"bytes,8,opt,name=traffic_type,json=trafficType,proto3" json:"traffic_type,omitempty"`
+	IsPublisher   bool                   `protobuf:"varint,10,opt,name=is_publisher,json=isPublisher,proto3" json:"is_publisher,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -120,6 +121,13 @@ func (x *OrchestratorRequest_V2_5) GetTrafficType() string {
 		return x.TrafficType
 	}
 	return ""
+}
+
+func (x *OrchestratorRequest_V2_5) GetIsPublisher() bool {
+	if x != nil {
+		return x.IsPublisher
+	}
+	return false
 }
 
 type OrchestratorResponse_V2_5 struct {
@@ -218,7 +226,7 @@ var File_services_orchestrator_proto protoreflect.FileDescriptor
 
 const file_services_orchestrator_proto_rawDesc = "" +
 	"\n" +
-	"\x1bservices/orchestrator.proto\x12\forchestrator\x1a\x1atypes/ortb_V2_5/ortb.proto\"\x90\x03\n" +
+	"\x1bservices/orchestrator.proto\x12\forchestrator\x1a\x1atypes/ortb_V2_5/ortb.proto\"\xb3\x03\n" +
 	"\x18OrchestratorRequest_V2_5\x125\n" +
 	"\n" +
 	"bidRequest\x18\x01 \x01(\v2\x15.ortb_V2_5.BidRequestR\n" +
@@ -230,7 +238,9 @@ const file_services_orchestrator_proto_rawDesc = "" +
 	"\x05typic\x18\x05 \x01(\tR\x05typic\x12\x16\n" +
 	"\x06format\x18\x06 \x01(\tR\x06format\x12\x16\n" +
 	"\x06sspUrl\x18\a \x01(\tR\x06sspUrl\x12!\n" +
-	"\ftraffic_type\x18\b \x01(\tR\vtrafficType\x1a<\n" +
+	"\ftraffic_type\x18\b \x01(\tR\vtrafficType\x12!\n" +
+	"\fis_publisher\x18\n" +
+	" \x01(\bR\visPublisher\x1a<\n" +
 	"\x0eImpIdUuidEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01J\x04\b\t\x10\n" +
