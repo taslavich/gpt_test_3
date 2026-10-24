@@ -1,7 +1,6 @@
 
 [Unit]
 Description=RTB Publisher Service
-After=network.target rtb-spp-adapter.service
 Wants=network.target
 
 [Service]
