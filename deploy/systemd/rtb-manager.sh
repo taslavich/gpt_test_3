@@ -32,6 +32,11 @@ CORE_SERVICES=(
     "rtb-adm-adapter"
 )
 
+# Publisher — отдельная группа команд P, без изменения Core/Data Pipeline.
+PUB_SERVICES=(
+    "rtb-pub"
+)
+
 # HTTP listener ADV. Любой HTTP-ответ, включая 404 на /, означает, что порт уже слушается.
 ADV_HTTP_URL="${ADV_HTTP_URL:-http://127.0.0.1:8101/}"
 ADV_WAIT_TIMEOUT_SECONDS="${ADV_WAIT_TIMEOUT_SECONDS:-120}"
@@ -280,6 +285,48 @@ case "$1" in
         "$0" restartC
         ;;
 
+    # --- Publisher Service (P) ---
+    startP|start-publisher)
+        check_project_dir
+        echo "🚀 Starting Publisher service..."
+        start_services "${PUB_SERVICES[@]}"
+        echo "✅ Publisher service started"
+        ;;
+
+    stopP|stop-publisher)
+        echo "🛑 Stopping Publisher service..."
+        stop_services "${PUB_SERVICES[@]}"
+        echo "✅ Publisher service stopped"
+        ;;
+
+    restartP|restart-publisher)
+        check_project_dir
+        cd "$PROJECT_DIR"
+
+        echo "🔨 Rebuilding Publisher service..."
+        go build -o ./cmd/pub/pub ./cmd/pub
+        chmod +x ./cmd/pub/pub
+        echo "✅ Publisher rebuild completed"
+
+        echo "🔄 Restarting Publisher service..."
+        "$0" stopP
+        sleep 2
+        "$0" startP
+        ;;
+
+    statusP|status-publisher)
+        echo "=== PUBLISHER STATUS ==="
+        show_status "${PUB_SERVICES[@]}"
+        ;;
+
+    updateP|update-publisher)
+        check_project_dir
+        cd "$PROJECT_DIR"
+        echo "📥 Updating Publisher from git..."
+        git pull
+        "$0" restartP
+        ;;
+
     # --- Full System (всё вместе) ---
     start-all)
         "$0" startD
@@ -386,6 +433,13 @@ case "$1" in
         echo "  statusC             Show Core services status"
         echo "  updateC             Git pull + build only Core + restart Core"
         echo ""
+        echo "Publisher Service (P):"
+        echo "  startP              Start Publisher service (rtb-pub)"
+        echo "  stopP               Stop Publisher service"
+        echo "  restartP            Build Publisher binary + restart Publisher"
+        echo "  statusP             Show Publisher status"
+        echo "  updateP             Git pull + build only Publisher + restart Publisher"
+        echo ""
         echo "Full System:"
         echo "  start-all           Start everything"
         echo "  stop-all            Stop everything"
@@ -404,6 +458,9 @@ case "$1" in
         echo "  $0 restartC         # Перезапустить RTB"
         echo "  $0 updateD          # Обновить только загрузчики"
         echo "  $0 updateC          # Обновить только RTB ядро"
+        echo "  $0 startP           # Запустить только Publisher"
+        echo "  $0 restartP         # Пересобрать и перезапустить Publisher"
+        echo "  $0 updateP          # Обновить только Publisher"
         ;;
 
     *)
