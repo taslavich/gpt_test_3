@@ -2,8 +2,13 @@ package clickhouse_loader
 
 import (
 	"context"
+	"database/sql"
+	"errors"
 	"fmt"
+	"log"
+	"regexp"
 	"strings"
+	"time"
 
 	"github.com/ClickHouse/clickhouse-go/v2"
 )
@@ -2942,6 +2947,75 @@ AND a.created_at >= now() - INTERVAL 60 MINUTE;
 
 `
 
+// Only applied when the operator has already removed the four old non-key
+// Publisher columns and the dependent projection. This changes no data rows.
+const publisherAggKeyUpgradeDDL = `
+ALTER TABLE {db}.agg_stats
+    ADD COLUMN IF NOT EXISTS pub_user_id String,
+    ADD COLUMN IF NOT EXISTS ad_code_id String,
+    ADD COLUMN IF NOT EXISTS zone_id String,
+    ADD COLUMN IF NOT EXISTS pop_revenue_bucket UInt64,
+    MODIFY ORDER BY
+    (win_user_id,win_cid,win_crid,event_date,device_type,os,event_hour,browser,geo,site_id,format,typic,os_version,pub_user_id,ad_code_id,zone_id,pop_revenue_bucket);
+
+ALTER TABLE {db}.agg_stats
+    MODIFY COLUMN pub_user_id String DEFAULT '',
+    MODIFY COLUMN ad_code_id String DEFAULT '',
+    MODIFY COLUMN zone_id String DEFAULT '',
+    MODIFY COLUMN pop_revenue_bucket UInt64 DEFAULT 0;
+`
+
+// Diagnostic Publisher objects: SQL definitions live beside the main ClickHouse
+// DDL. They are installed after source validation, not executed as part of the
+// initial bulk bootstrap, so financial tables/MVs are never touched for a
+// diagnostics-only rollout.
+const publisherZoneDDL = `
+CREATE TABLE IF NOT EXISTS {db}.publisher_zone_hourly (
+ event_hour DateTime('UTC'), event_bucket DateTime('UTC'),
+ pub_user_id String, ad_code_id String, zone_id String, site_id String,
+ hostname String, format LowCardinality(String), geo LowCardinality(String),
+ device LowCardinality(String), os LowCardinality(String), browser LowCardinality(String),
+ requests_200 UInt64, requests_204 UInt64, requests_4xx UInt64, requests_5xx UInt64, requests_other UInt64,
+ last_request_at DateTime64(3,'UTC'),
+ seconds Array(Tuple(second DateTime('UTC'), n200 UInt64, n204 UInt64, n4xx UInt64, n5xx UInt64, other UInt64)),
+ is_meta UInt8, refreshed_at DateTime64(3,'UTC'), revision UInt64, expires_at DateTime('UTC')
+) ENGINE=ReplacingMergeTree(revision)
+PARTITION BY toDate(event_bucket)
+ORDER BY (is_meta,pub_user_id,ad_code_id,zone_id,site_id,event_hour,event_bucket,hostname,format,geo,device,os,browser)
+TTL expires_at DELETE;
+
+CREATE MATERIALIZED VIEW IF NOT EXISTS {db}.mv_publisher_zone_hourly
+REFRESH EVERY 5 MINUTE APPEND TO {db}.publisher_zone_hourly AS
+WITH now64(3,'UTC') AS stamp,
+ toStartOfFiveMinutes(stamp-INTERVAL {minutes} MINUTE) AS cutoff,
+ logical AS (
+ SELECT argMin(tuple(event_time,ad_code_id,zone_id,ifNull(site_id,''),ifNull(site_domain,''),format,
+ ifNull(geo,''),ifNull(device,''),ifNull(os,''),ifNull(browser,''),code),tuple(created_at,uuid)) AS e, pub_user_id
+ FROM {db}.ortb PREWHERE created_at>=stamp-INTERVAL 65 MINUTE
+ WHERE pub_user_id!='' AND ad_code_id!='' AND zone_id!='' AND ifNull(site_id,'')!=''
+ AND event_time>=cutoff AND event_time<stamp
+ GROUP BY pub_user_id,if(logical_event_id='',toString(uuid),logical_event_id)
+ ), per_second AS (
+ SELECT pub_user_id,e.2 AS ad_code_id,e.3 AS zone_id,e.4 AS site_id,e.5 AS hostname,e.6 AS format,
+ e.7 AS geo,e.8 AS device,e.9 AS os,e.10 AS browser,toDateTime(e.1,'UTC') AS second,
+ countIf(e.11=200) AS n200,countIf(e.11=204) AS n204,countIf(e.11>=400 AND e.11<500) AS n4xx,
+ countIf(e.11>=500 AND e.11<600) AS n5xx,countIf(e.11 NOT IN (200,204) AND (e.11<400 OR e.11>=600)) AS other,
+ max(e.1) AS last_seen FROM logical
+ GROUP BY pub_user_id,ad_code_id,zone_id,site_id,hostname,format,geo,device,os,browser,second
+ )
+ SELECT toStartOfHour(second) AS event_hour,toStartOfFiveMinutes(second) AS event_bucket,
+ pub_user_id,ad_code_id,zone_id,site_id,hostname,format,geo,device,os,browser,
+ sum(n200) AS requests_200,sum(n204) AS requests_204,sum(n4xx) AS requests_4xx,sum(n5xx) AS requests_5xx,sum(other) AS requests_other,max(last_seen) AS last_request_at,
+ groupArray(tuple(second,n200,n204,n4xx,n5xx,other)) AS seconds,toUInt8(0) AS is_meta,stamp AS refreshed_at,toUInt64(toUnixTimestamp64Milli(stamp)) AS revision,event_bucket+INTERVAL 7 DAY AS expires_at
+ FROM per_second GROUP BY event_hour,event_bucket,pub_user_id,ad_code_id,zone_id,site_id,hostname,format,geo,device,os,browser
+ UNION ALL
+ SELECT toStartOfHour(last_success_time),toStartOfFiveMinutes(last_success_time),'','','','','','','','','','',
+ toUInt64(0),toUInt64(0),toUInt64(0),toUInt64(0),toUInt64(0),toDateTime64(last_success_time,3,'UTC'),[],toUInt8(1),toDateTime64(last_success_time,3,'UTC'),
+ toUInt64(toUnixTimestamp64Milli(stamp)),toDateTime(last_success_time,'UTC')+INTERVAL 7 DAY
+ FROM system.view_refreshes WHERE database='{db}' AND view='mv_publisher_zone_hourly' AND last_success_time IS NOT NULL
+ SETTINGS max_threads=2,max_memory_usage=1073741824,max_bytes_before_external_group_by=134217728;
+`
+
 func CreateDB(ctx context.Context, ch clickhouse.Conn, database string) error {
 	database = strings.TrimSpace(database)
 	if !diagnosticDatabase.MatchString(database) {
@@ -3130,4 +3204,523 @@ func splitClickHouseStatements(sql string) []string {
 
 	flush()
 	return statements
+}
+
+// Existing-production Publisher cutover and diagnostics orchestration.
+const publisherSchemaVersion = 248
+
+var publisherAggPrefix = []string{
+	"win_user_id", "win_cid", "win_crid", "event_date", "device_type",
+	"os", "event_hour", "browser", "geo", "site_id", "format", "typic",
+	"os_version",
+}
+var publisherAggSuffix = []string{"pub_user_id", "ad_code_id", "zone_id", "pop_revenue_bucket"}
+
+func normalizedKey(s string) string {
+	return strings.TrimPrefix(strings.ToLower(strings.Map(func(r rune) rune {
+		if r == ' ' || r == '\n' || r == '\t' || r == '\r' || r == '(' || r == ')' || r == '`' {
+			return -1
+		}
+		return r
+	}, s)), "tuple")
+}
+
+// ddlStatement selects one current CREATE definition without the preceding
+// comments. No DROP, DELETE, TRUNCATE or INSERT from the historical cutover
+// template is ever executed on an existing installation.
+func ddlStatement(name string) (string, error) {
+	for _, raw := range splitClickHouseStatements(ddlTemplate + "\n" + publisherZoneDDL) {
+		pos := strings.Index(raw, name)
+		if pos < 0 {
+			continue
+		}
+		return strings.TrimSpace(raw[pos:]), nil
+	}
+	return "", fmt.Errorf("missing Publisher schema template for %s", name)
+}
+
+func execPublisherDDL(ctx context.Context, ch clickhouse.Conn, db, prefix string) error {
+	q, err := ddlStatement(prefix)
+	if err != nil {
+		return err
+	}
+	q = strings.ReplaceAll(q, "{db}", db)
+	if err = ch.Exec(ctx, q); err != nil {
+		return fmt.Errorf("Publisher DDL %s: %w", prefix, err)
+	}
+	return nil
+}
+
+func tableExists(ctx context.Context, ch clickhouse.Conn, db, table string) (bool, error) {
+	var n uint64
+	err := ch.QueryRow(ctx, "SELECT count() FROM system.tables WHERE database=? AND name=?", db, table).Scan(&n)
+	return n != 0, err
+}
+
+func publisherPreflight(ctx context.Context, ch clickhouse.Conn, db string) (diagnosticTableSchema, bool, error) {
+	agg, err := diagnosticSchema(ctx, ch, db, "agg_stats")
+	if err != nil {
+		return agg, false, err
+	}
+	if agg.engine != "SummingMergeTree" && agg.engine != "ReplicatedSummingMergeTree" {
+		return agg, false, fmt.Errorf("%s.agg_stats must be a SummingMergeTree; refusing to touch historical data (engine=%q)", db, agg.engine)
+	}
+	oldKey := normalizedKey(strings.Join(publisherAggPrefix, ","))
+	newKey := normalizedKey(strings.Join(append(append([]string{}, publisherAggPrefix...), publisherAggSuffix...), ","))
+	current := normalizedKey(agg.key)
+	if current != oldKey && current != newKey {
+		return agg, false, fmt.Errorf("%s.agg_stats unexpected ORDER BY %q; financial table untouched", db, agg.key)
+	}
+	// On the old key all four Publisher columns and the dependent projection
+	// must be removed MANUALLY before deployment. Never discard column data.
+	// Even an empty preexisting non-key column cannot be incorporated into the
+	// sorting key with ADD COLUMN: ClickHouse requires the key suffix to be new.
+	if current == oldKey {
+		for _, col := range publisherAggSuffix {
+			if _, exists := agg.columns[col]; exists {
+				return agg, false, fmt.Errorf("%s.agg_stats.%s still exists outside ORDER BY; remove it manually before Loader startup", db, col)
+			}
+		}
+	} else {
+		for _, col := range publisherAggSuffix {
+			want := "String"
+			if col == "pop_revenue_bucket" {
+				want = "UInt64"
+			}
+			if _, ok := agg.columns[col]; !ok || diagnosticSQL(agg.columns[col]) != diagnosticSQL(want) {
+				return agg, false, fmt.Errorf("%s.agg_stats.%s missing or incompatible in existing ORDER BY", db, col)
+			}
+		}
+	}
+	if current == oldKey {
+		ortb, e := diagnosticSchema(ctx, ch, db, "ortb")
+		if e != nil {
+			return agg, false, e
+		}
+		if _, found := ortb.columns["pub_user_id"]; found {
+			var inFlight uint64
+			if e = ch.QueryRow(ctx, "SELECT countIf(pub_user_id!='') FROM "+db+".ortb").Scan(&inFlight); e != nil {
+				return agg, false, e
+			}
+			if inFlight != 0 {
+				return agg, false, fmt.Errorf("%d Publisher ORTB events already in flight; cannot safely migrate agg_stats key", inFlight)
+			}
+		}
+	}
+	// Preflight rejects in-flight Publisher traffic as well; this migration
+	// intentionally does NOT backfill any facts or financial balances.
+	for _, source := range []string{"fact_impressions", "fact_clicks", "fact_clicks_wins", "fact_conversions"} {
+		sch, e := diagnosticSchema(ctx, ch, db, source)
+		if e != nil {
+			return agg, false, e
+		}
+		if sch.engine == "" {
+			return agg, false, fmt.Errorf("missing %s.%s; refusing partial financial migration", db, source)
+		}
+		if _, has := sch.columns["pub_user_id"]; has {
+			var count uint64
+			if e = ch.QueryRow(ctx, "SELECT countIf(pub_user_id!='') FROM "+db+"."+source).Scan(&count); e != nil {
+				return agg, false, e
+			}
+			if count > 0 && current != newKey {
+				return agg, false, fmt.Errorf("Publisher financial facts already exist in %s.%s; in-place first cutover is blocked", db, source)
+			}
+		}
+	}
+	return agg, current == newKey, nil
+}
+
+func ensurePublisherAggKey(ctx context.Context, ch clickhouse.Conn, db string, _ diagnosticTableSchema, current bool) error {
+	if current {
+		return nil
+	}
+	// Only additive SQL: manual removal of old columns/projection is required.
+	for _, statement := range splitClickHouseStatements(publisherAggKeyUpgradeDDL) {
+		statement = strings.TrimSpace(statement)
+		if statement == "" {
+			continue
+		}
+		if err := ch.Exec(ctx, strings.ReplaceAll(statement, "{db}", db)); err != nil {
+			return fmt.Errorf("Publisher agg_stats key upgrade failed (historical rows preserved): %w", err)
+		}
+	}
+	return nil
+}
+
+// The DROP VIEW syntax must never be allowed to target a real data table,
+// including in an unexpected partially deployed schema.
+func dropPublisherMV(ctx context.Context, ch clickhouse.Conn, db, name string) error {
+	var engine string
+	err := ch.QueryRow(ctx, "SELECT engine FROM system.tables WHERE database=? AND name=?", db, name).Scan(&engine)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil
+		}
+		return err
+	}
+	if engine != "MaterializedView" && engine != "RefreshableMaterializedView" {
+		return fmt.Errorf("refusing DROP VIEW %s.%s: engine %s is not an MV", db, name, engine)
+	}
+	if err = ch.Exec(ctx, "DROP VIEW IF EXISTS "+db+"."+name+" SYNC"); err != nil {
+		return fmt.Errorf("drop MV %s (target retained): %w", name, err)
+	}
+	return nil
+}
+
+// Always recreate financial MVs from the canonical CREATE DDL, rather than
+// silently retaining obsolete SELECTs with CREATE IF NOT EXISTS or MODIFY QUERY.
+// Dropping an MV does NOT drop its TO/APPEND TO destination table or its rows.
+func replacePublisherMV(ctx context.Context, ch clickhouse.Conn, db, name string) error {
+	prefix := "CREATE MATERIALIZED VIEW {db}." + name
+	stmt, err := ddlStatement(prefix)
+	if err != nil {
+		stmt, err = ddlStatement("CREATE MATERIALIZED VIEW IF NOT EXISTS {db}." + name)
+	}
+	if err != nil {
+		return err
+	}
+	stmt = strings.ReplaceAll(stmt, "{db}", db)
+	if err = dropPublisherMV(ctx, ch, db, name); err != nil {
+		return err
+	}
+	if err = ch.Exec(ctx, stmt); err != nil {
+		return fmt.Errorf("recreate MV %s: %w", name, err)
+	}
+	return nil
+}
+
+// Stop refreshable writers and wait for in-flight runs BEFORE changing the
+// source table or dropping downstream MVs. A completed failed run (730) is safe.
+func stopPublisherRefreshMV(ctx context.Context, ch clickhouse.Conn, db, name string) error {
+	exists, err := tableExists(ctx, ch, db, name)
+	if err != nil || !exists {
+		return err
+	}
+	if err = ch.Exec(ctx, "SYSTEM STOP VIEW "+db+"."+name); err != nil {
+		return fmt.Errorf("stop MV %s: %w", name, err)
+	}
+	if err = ch.Exec(ctx, "SYSTEM WAIT VIEW "+db+"."+name); err != nil {
+		var ex *clickhouse.Exception
+		if !errors.As(err, &ex) || ex.Code != 730 {
+			return fmt.Errorf("wait for MV %s: %w", name, err)
+		}
+	}
+	return nil
+}
+
+func pausePublisherRefreshes(ctx context.Context, ch clickhouse.Conn, db string) error {
+	for _, mv := range []string{
+		"mv_impressions_to_fact", "mv_clicks_wins_to_fact", "mv_conversions_to_fact", "mv_clicks_to_fact",
+		"mv_publisher_pop_revenue_checkpoint", "mv_publisher_pop_revenue_to_agg_stats",
+		"mv_recover_pop_impressions_v2", // independent hourly writer to fact_impressions
+	} {
+		if err := stopPublisherRefreshMV(ctx, ch, db, mv); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// Recreate consumers before producers, so no facts can be appended while their
+// billing/Publisher registry consumer is missing. Caller must pause ALL other
+// producers (and recurring writers outside this Loader) during schema cutover.
+func recreatePublisherFinancialMVs(ctx context.Context, ch clickhouse.Conn, db string) error {
+	producers := []string{
+		"mv_impressions_to_fact", "mv_clicks_wins_to_fact", "mv_conversions_to_fact", "mv_clicks_to_fact",
+	}
+	// Detach all fact-producing MVs first, before any fact consumer. Replacements
+	// for missing MVs are also created (DROP IF EXISTS is idempotent).
+	for _, mv := range producers {
+		if err := dropPublisherMV(ctx, ch, db, mv); err != nil {
+			return err
+		}
+	}
+	// Refreshable dependency: checkpoint depends on the money view. Both were
+	// stopped and waited before any schema changes; drop dependent first.
+	for _, mv := range []string{"mv_publisher_pop_revenue_checkpoint", "mv_publisher_pop_revenue_to_agg_stats"} {
+		if err := dropPublisherMV(ctx, ch, db, mv); err != nil {
+			return err
+		}
+	}
+	// Fact consumers have no active upstream producer at this point.
+	for _, mv := range []string{
+		"mv_fact_impressions_to_agg_stats", "mv_fact_clicks_to_agg_stats",
+		"mv_fact_clicks_wins_to_agg_stats", "mv_fact_conversions_to_agg_stats",
+		"mv_ortb_to_publisher_inventory", "mv_fact_clicks_to_publisher_pop_revenue",
+	} {
+		if err := replacePublisherMV(ctx, ch, db, mv); err != nil {
+			return err
+		}
+	}
+	// The two Publisher POP refreshes are now installed in dependency order.
+	for _, mv := range []string{"mv_publisher_pop_revenue_to_agg_stats", "mv_publisher_pop_revenue_checkpoint"} {
+		if err := createPublisherMV(ctx, ch, db, mv); err != nil {
+			return err
+		}
+	}
+	// Resume fact production last; all its consumers already exist.
+	for _, mv := range producers {
+		if err := createPublisherMV(ctx, ch, db, mv); err != nil {
+			return err
+		}
+	}
+	// Restore an independent POP recovery writer only after its fact consumers
+	// have been recreated. This recovery MV itself is NEVER dropped.
+	if exists, err := tableExists(ctx, ch, db, "mv_recover_pop_impressions_v2"); err != nil {
+		return err
+	} else if exists {
+		if err := ch.Exec(ctx, "SYSTEM START VIEW "+db+".mv_recover_pop_impressions_v2"); err != nil {
+			return fmt.Errorf("resume POP recovery writer: %w", err)
+		}
+	}
+	return nil
+}
+
+func createPublisherMV(ctx context.Context, ch clickhouse.Conn, db, name string) error {
+	stmt, err := ddlStatement("CREATE MATERIALIZED VIEW {db}." + name)
+	if err != nil {
+		stmt, err = ddlStatement("CREATE MATERIALIZED VIEW IF NOT EXISTS {db}." + name)
+	}
+	if err != nil {
+		return err
+	}
+	if err = ch.Exec(ctx, strings.ReplaceAll(stmt, "{db}", db)); err != nil {
+		return fmt.Errorf("create MV %s: %w", name, err)
+	}
+	return nil
+}
+
+// Mark the completed MV replacement. A restart after a partial cutover can
+// retry the schema and MV creation (with ingestion still paused).
+func ensurePublisherProductionSchema(ctx context.Context, ch clickhouse.Conn, db string) error {
+	// Durable marker avoids touching production MV definitions on later Loader
+	// restarts after Publisher traffic has begun.
+	if err := ch.Exec(ctx, "CREATE TABLE IF NOT EXISTS "+db+".publisher_schema_versions (version UInt64) ENGINE=ReplacingMergeTree ORDER BY version"); err != nil {
+		return err
+	}
+	var done uint64
+	if err := ch.QueryRow(ctx, "SELECT count() FROM "+db+".publisher_schema_versions WHERE version=?", publisherSchemaVersion).Scan(&done); err != nil {
+		return err
+	}
+	if done > 0 {
+		sch, err := diagnosticSchema(ctx, ch, db, "agg_stats")
+		if err != nil {
+			return err
+		}
+		expected := normalizedKey(strings.Join(append(append([]string{}, publisherAggPrefix...), publisherAggSuffix...), ","))
+		if normalizedKey(sch.key) != expected {
+			return fmt.Errorf("Publisher migration marker exists, but agg_stats ORDER BY differs; refusing unsafe reload")
+		}
+		for _, mv := range []string{"mv_fact_impressions_to_agg_stats", "mv_fact_clicks_to_agg_stats", "mv_fact_clicks_wins_to_agg_stats", "mv_fact_conversions_to_agg_stats", "mv_fact_clicks_to_publisher_pop_revenue", "mv_publisher_pop_revenue_to_agg_stats", "mv_publisher_pop_revenue_checkpoint"} {
+			present, e := tableExists(ctx, ch, db, mv)
+			if e != nil {
+				return e
+			}
+			if !present {
+				return fmt.Errorf("Publisher migration marker exists but %s is missing; financial views are not silently recreated", mv)
+			}
+		}
+		return nil
+	}
+	agg, keyed, err := publisherPreflight(ctx, ch, db)
+	if err != nil {
+		return err
+	}
+	// Quiesce refreshable writers before changing agg_stats sorting key or
+	// updating consumer schemas. Even a stopped Loader process does not stop
+	// ClickHouse-managed REFRESH EVERY tasks.
+	if err = pausePublisherRefreshes(ctx, ch, db); err != nil {
+		return err
+	}
+	// Make sure current ORTB/Fact sources have the publisher attribution fields
+	// BEFORE installing queries which select them.
+	for _, col := range publisherSourceColumns {
+		switch col.name {
+		case "pub_user_id", "ad_code_id", "zone_id", "request_id", "site_page", "request_error", "error_reason", "logical_event_id":
+			if err := ch.Exec(ctx, "ALTER TABLE "+db+".ortb ADD COLUMN IF NOT EXISTS "+col.name+" "+col.typ+" DEFAULT "+col.def); err != nil {
+				return err
+			}
+		}
+	}
+	for _, fact := range []string{"fact_impressions", "fact_clicks", "fact_clicks_wins", "fact_conversions"} {
+		for _, col := range []string{"pub_user_id", "ad_code_id", "zone_id"} {
+			if err = ch.Exec(ctx, "ALTER TABLE "+db+"."+fact+" ADD COLUMN IF NOT EXISTS "+col+" String DEFAULT ''"); err != nil {
+				return err
+			}
+		}
+	}
+	if err = ensurePublisherAggKey(ctx, ch, db, agg, keyed); err != nil {
+		return err
+	}
+	// No historical Publisher rows are imported, and no IPP balances are rewritten.
+	for _, tbl := range []string{"publisher_inventory", "publisher_pop_revenue_events_v2", "publisher_pop_revenue_checkpoints"} {
+		prefix := "CREATE TABLE IF NOT EXISTS {db}." + tbl
+		if err = execPublisherDDL(ctx, ch, db, prefix); err != nil {
+			return err
+		}
+	}
+	if err = ch.Exec(ctx, "ALTER TABLE "+db+".agg_stats MODIFY SETTING deduplicate_merge_projection_mode='rebuild'"); err != nil {
+		return err
+	}
+	if err = execPublisherDDL(ctx, ch, db, "ALTER TABLE {db}.agg_stats ADD PROJECTION IF NOT EXISTS publisher_pop_by_bucket"); err != nil {
+		return err
+	}
+	for _, name := range []string{"publisher_pop_revenue_dirty", "publisher_pop_revenue_delta"} {
+		exists, e := tableExists(ctx, ch, db, name)
+		if e != nil {
+			return e
+		}
+		if !exists {
+			if err = execPublisherDDL(ctx, ch, db, "CREATE VIEW {db}."+name+" AS"); err != nil {
+				return err
+			}
+		}
+	}
+	// Financial refreshes are recreated exactly once, never on routine restarts.
+	// Source ingestion must be paused externally for this first cutover.
+	if err = recreatePublisherFinancialMVs(ctx, ch, db); err != nil {
+		return err
+	}
+	// Record only the schema upgrade, so later Loader starts leave money MVs untouched.
+	return ch.Exec(ctx, "INSERT INTO "+db+".publisher_schema_versions VALUES(?)", publisherSchemaVersion)
+}
+
+var diagnosticDatabase = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
+
+// Install the canonical diagnostic view with its production 45-minute window.
+func execPublisherZoneMV(ctx context.Context, ch clickhouse.Conn, database string) error {
+	statement, err := ddlStatement("CREATE MATERIALIZED VIEW IF NOT EXISTS {db}.mv_publisher_zone_hourly")
+	if err != nil {
+		return err
+	}
+	statement = strings.NewReplacer("{db}", database, "{minutes}", "45").Replace(statement)
+	return ch.Exec(ctx, statement)
+}
+
+func PublisherZoneSelect(database string, lookback int) string {
+	view, err := ddlStatement("CREATE MATERIALIZED VIEW IF NOT EXISTS {db}.mv_publisher_zone_hourly")
+	if err != nil {
+		panic(err) // constant DDL is a build-time invariant
+	}
+	selectAt := strings.Index(view, " AS\n")
+	if selectAt < 0 {
+		panic("missing Publisher zone SELECT in createDb.go DDL")
+	}
+	return strings.NewReplacer("{db}", database, "{minutes}", fmt.Sprint(lookback)).Replace(view[selectAt+len(" AS\n"):])
+}
+
+// Explicit, diagnostics-only migration for an existing installation. It never
+// calls the full V4 DDL or touches financial writers, aggregates or facts.
+func ApplyPublisherZoneDiagnostics(ctx context.Context, ch clickhouse.Conn, database string) error {
+	if !diagnosticDatabase.MatchString(database) {
+		return fmt.Errorf("invalid diagnostics database")
+	}
+	if err := preparePublisherZoneSource(ctx, ch, database); err != nil {
+		return err
+	}
+	if err := execPublisherDDL(ctx, ch, database, "CREATE TABLE IF NOT EXISTS {db}.publisher_zone_hourly"); err != nil {
+		return err
+	}
+	var boot uint64
+	if err := ch.QueryRow(ctx, "SELECT count() FROM "+database+".publisher_zone_hourly FINAL WHERE is_meta>0 AND expires_at>now()").Scan(&boot); err != nil {
+		return err
+	}
+	if boot == 0 {
+		if err := ch.Exec(ctx, "INSERT INTO "+database+".publisher_zone_hourly "+PublisherZoneSelect(database, 60)); err != nil {
+			return err
+		}
+		// A bootstrap proves coverage of the available source hour only. A stale
+		// refresh chain subsequently makes the API fail closed, never fake zeros.
+		if err := ch.Exec(ctx, "INSERT INTO "+database+".publisher_zone_hourly(event_hour,event_bucket,is_meta,refreshed_at,revision,expires_at) SELECT toDateTime(0,'UTC'),toDateTime(0,'UTC'),2,now64(3,'UTC'),toUInt64(toUnixTimestamp64Milli(now64(3,'UTC'))),now()+INTERVAL 7 DAY"); err != nil {
+			return err
+		}
+	}
+	var existed uint64
+	if err := ch.QueryRow(ctx, "SELECT count() FROM system.tables WHERE database=? AND name='mv_publisher_zone_hourly'", database).Scan(&existed); err != nil {
+		return err
+	}
+	if err := execPublisherZoneMV(ctx, ch, database); err != nil {
+		return err
+	}
+	// CREATE IF NOT EXISTS does not upgrade an already deployed refresh query.
+	// Only this diagnostics view is modified; its target, schedule and data remain.
+	if existed > 0 {
+		if err := ch.Exec(ctx, "SYSTEM STOP VIEW "+database+".mv_publisher_zone_hourly"); err != nil {
+			return err
+		}
+		defer func() {
+			resume, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+			defer cancel()
+			if err := ch.Exec(resume, "SYSTEM START VIEW "+database+".mv_publisher_zone_hourly"); err != nil {
+				log.Printf("Publisher diagnostics resume after query upgrade: %v", err)
+			}
+		}()
+		if err := ch.Exec(ctx, "SYSTEM WAIT VIEW "+database+".mv_publisher_zone_hourly"); err != nil {
+			var previous *clickhouse.Exception
+			// A completed FAILED run is not an in-flight writer. Permit repairing
+			// its query; the NEW refresh below must still succeed before cutover.
+			if !errors.As(err, &previous) || previous.Code != 730 {
+				return err
+			}
+		}
+		if err := ch.Exec(ctx, "ALTER TABLE "+database+".mv_publisher_zone_hourly MODIFY QUERY "+PublisherZoneSelect(database, 45)); err != nil {
+			return fmt.Errorf("upgrade diagnostics refresh query: %w", err)
+		}
+	}
+	for _, action := range []string{"START", "REFRESH", "WAIT"} {
+		if err := ch.Exec(ctx, "SYSTEM "+action+" VIEW "+database+".mv_publisher_zone_hourly"); err != nil {
+			return err
+		}
+	}
+	// WAIT completion alone is insufficient after a failed asynchronous run.
+	// Do not cut over the legacy writer unless ClickHouse confirms recent success.
+	var exception string
+	var succeeded uint8
+	if err := ch.QueryRow(ctx, "SELECT exception,toUInt8(ifNull(last_success_time>=now()-INTERVAL 10 MINUTE,0)) FROM system.view_refreshes WHERE database=? AND view='mv_publisher_zone_hourly'", database).Scan(&exception, &succeeded); err != nil {
+		return err
+	}
+	if exception != "" || succeeded != 1 {
+		return fmt.Errorf("publisher diagnostics refresh not confirmed: %s", exception)
+	}
+	// Keep the legacy data and read view for rollback; only stop its writer after
+	// the replacement has been successfully refreshed.
+	return ch.Exec(ctx, "DROP VIEW IF EXISTS "+database+".mv_ortb_to_publisher_requests SYNC")
+}
+
+// Ordinary restarts of an existing Loader must not run the full financial
+// cutover DDL. A missing diagnostics migration cannot stop existing ingestion.
+func EnsureLoaderSchema(ctx context.Context, ch clickhouse.Conn, database string) error {
+	if !diagnosticDatabase.MatchString(database) {
+		return fmt.Errorf("invalid database")
+	}
+	var exists uint64
+	if err := ch.QueryRow(ctx, "SELECT count() FROM system.tables WHERE database=? AND name='ortb'", database).Scan(&exists); err != nil {
+		return err
+	}
+	if exists == 0 {
+		oldAgg, err := tableExists(ctx, ch, database, "agg_stats")
+		if err != nil {
+			return err
+		}
+		if oldAgg {
+			return fmt.Errorf("existing %s.agg_stats with missing ORTB; refusing new-database DDL on six-month statistics", database)
+		}
+		return CreateDB(ctx, ch, database)
+	}
+	if err := ensurePublisherProductionSchema(ctx, ch, database); err != nil {
+		return err
+	}
+	var ready uint64
+	if err := ch.QueryRow(ctx, "SELECT count() FROM system.tables WHERE database=? AND name IN ('publisher_zone_hourly','mv_publisher_zone_hourly')", database).Scan(&ready); err != nil {
+		return err
+	}
+	if ready != 2 {
+		// Diagnostics are independent of money. Attempt to install them on
+		// ordinary boot too, without invoking the financial CreateDB. On
+		// failure keep ingestion available and surface the actionable error.
+		if err := ApplyPublisherZoneDiagnostics(ctx, ch, database); err != nil {
+			log.Printf("Publisher diagnostics migration still pending (financial ingestion preserved): %v", err)
+		}
+	}
+	return nil
 }

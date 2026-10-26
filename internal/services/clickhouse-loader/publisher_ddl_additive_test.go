@@ -15,7 +15,7 @@ func TestPublisherDDLNeverDeletesHistoricalTablesOrColumns(t *testing.T) {
 			t.Fatalf("forbidden automatic data-destructive DDL: %s", forbidden)
 		}
 	}
-	body, err := os.ReadFile("publisher_safe_schema.go")
+	body, err := os.ReadFile("createDb.go")
 	if err != nil {
 		t.Fatal(err)
 	}
