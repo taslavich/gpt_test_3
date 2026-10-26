@@ -242,24 +242,17 @@ func TestPublisherPOPRevenueHistoryScaling(t *testing.T) {
 	t.Logf("3M registry FINAL merge=%s, checkpoint generations and income unchanged", time.Since(begin))
 }
 
-func TestPublisherPOPRevenueV1CutoverAndFailedMVRepair(t *testing.T) {
+// Publisher has no historical v1 revenue. A missing MV delivery is repaired
+// explicitly from retained fact_clicks, never by a startup/backfill migration.
+func TestPublisherPOPExplicitFailedMVRepair(t *testing.T) {
 	f := newPOPRevenueFixture(t)
-	id := uuid.NewString()
-	f.click(id, 2, "2025-01-01 00:00:00")
-	f.exec("INSERT INTO " + f.db + ".publisher_pop_revenue_events SELECT clicks_uuid,event FROM " + f.db + ".publisher_pop_revenue_events_v2")
-	f.exec("TRUNCATE TABLE " + f.db + ".publisher_pop_revenue_events_v2")
-	f.exec("ALTER TABLE " + f.db + ".fact_clicks DELETE WHERE 1 SETTINGS mutations_sync=2")
-	f.exec("TRUNCATE TABLE " + f.db + ".publisher_pop_revenue_migrations")
-	f.exec("INSERT INTO " + f.db + ".agg_stats(event_date,event_hour,format,pub_user_id,ssp_revenue_views,spend_views_table) VALUES(toDate('2025-01-01'),toDateTime('2025-01-01 00:00:00'),'POP','publisher',.002,7)")
-	if e := CreateDB(f.ctx, f.ch, f.db); e != nil {
-		t.Fatal(e)
-	}
+	id, _ := uuid.NewV7()
+	f.click(id.String(), 2, "2025-01-01 00:00:00")
 	f.settle()
-	if math.Abs(f.money()-.002) > 1e-10 || math.Abs(f.scalar("SELECT sum(spend_views_table) FROM "+f.db+".agg_stats")-7) > 1e-10 {
-		t.Fatal("v1 cutover lost money or changed advertiser spend", f.money())
+	if math.Abs(f.money()-.002) > 1e-10 {
+		t.Fatal("initial live Publisher POP income", f.money())
 	}
-	// Model a source row committed without its MV side effect after an ingestion
-	// failure. Explicit repair restores it; running repair again is harmless.
+	// Model a fact committed without its registry MV side effect.
 	f.exec("DETACH TABLE " + f.db + ".mv_fact_clicks_to_publisher_pop_revenue")
 	missing, _ := uuid.NewV7()
 	f.click(missing.String(), 3, "2025-01-01 00:00:00")

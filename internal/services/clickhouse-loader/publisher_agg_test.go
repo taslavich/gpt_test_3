@@ -79,15 +79,9 @@ func TestSharedAggStatsRealMigrationAndRecoveryFacts(t *testing.T) {
 	if e = ch.Exec(ctx, "CREATE DATABASE "+db); e != nil {
 		t.Fatal(e)
 	}
-	start := strings.Index(ddlTemplate, "CREATE TABLE IF NOT EXISTS {db}.agg_stats")
-	end := strings.Index(ddlTemplate[start:], ";") + start
-	legacy := ddlTemplate[start : end+1]
-	for _, line := range []string{"    pub_user_id String DEFAULT '',\n", "    ad_code_id String DEFAULT '',\n", "    zone_id String DEFAULT '',\n", "    ssp_revenue_views Float64 DEFAULT 0,\n", "    pop_revenue_bucket UInt64 DEFAULT 0\n", "    pub_user_id,\n", "    ad_code_id,\n", "    zone_id,\n", "    pop_revenue_bucket\n"} {
-		legacy = strings.ReplaceAll(legacy, line, "")
-	}
-	legacy = strings.ReplaceAll(legacy, "pop_recovered_spend Float64 DEFAULT 0,", "pop_recovered_spend Float64 DEFAULT 0")
-	legacy = strings.ReplaceAll(legacy, "    os_version,\n)", "    os_version\n)")
-	if e = ch.Exec(ctx, strings.ReplaceAll(legacy, "{db}", db)); e != nil {
+	// Initialize the CURRENT schema once. Full CreateDB must never be run
+	// over an existing historical agg_stats just to upgrade Publisher fields.
+	if e = CreateDB(ctx, ch, db); e != nil {
 		t.Fatal(e)
 	}
 	// Historical rows outside IPP repair retain their exact old advertiser totals.
@@ -99,7 +93,7 @@ func TestSharedAggStatsRealMigrationAndRecoveryFacts(t *testing.T) {
 	if e = ch.QueryRow(ctx, `SELECT sum(spend_views_table),sum(spend_clicks_table) FROM `+db+`.agg_stats`).Scan(&beforeViews, &beforeClicks); e != nil {
 		t.Fatal(e)
 	}
-	if e = CreateDB(ctx, ch, db); e != nil {
+	if e = EnsureLoaderSchema(ctx, ch, db); e != nil {
 		t.Fatal(e)
 	}
 	pubA, pubB := uuid.NewString(), uuid.NewString()

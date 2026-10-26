@@ -156,14 +156,29 @@ func EnsureLoaderSchema(ctx context.Context, ch clickhouse.Conn, database string
 		return err
 	}
 	if exists == 0 {
+		oldAgg, err := tableExists(ctx, ch, database, "agg_stats")
+		if err != nil {
+			return err
+		}
+		if oldAgg {
+			return fmt.Errorf("existing %s.agg_stats with missing ORTB; refusing new-database DDL on six-month statistics", database)
+		}
 		return CreateDB(ctx, ch, database)
+	}
+	if err := ensurePublisherProductionSchema(ctx, ch, database); err != nil {
+		return err
 	}
 	var ready uint64
 	if err := ch.QueryRow(ctx, "SELECT count() FROM system.tables WHERE database=? AND name IN ('publisher_zone_hourly','mv_publisher_zone_hourly')", database).Scan(&ready); err != nil {
 		return err
 	}
 	if ready != 2 {
-		log.Print("Publisher diagnostics migration pending; run --publisher-zone-diagnostics-only separately")
+		// Diagnostics are independent of money. Attempt to install them on
+		// ordinary boot too, without invoking the financial CreateDB. On
+		// failure keep ingestion available and surface the actionable error.
+		if err := ApplyPublisherZoneDiagnostics(ctx, ch, database); err != nil {
+			log.Printf("Publisher diagnostics migration still pending (financial ingestion preserved): %v", err)
+		}
 	}
 	return nil
 }

@@ -3014,13 +3014,9 @@ CROSS JOIN
       AND event_time < ratio_to
 ) AS o;
 -- UUID-derived buckets are immutable even if a replay has conflicting event_time.
--- New Publisher POP clicks use UUIDv7 (one-hour buckets); legacy UUIDv4 IDs map
--- to 256 fixed buckets. No registry/checkpoint TTL: old replays remain duplicates.
--- Keep the v1 registry for one-time import; never scan it on the refresh path.
-CREATE TABLE IF NOT EXISTS {db}.publisher_pop_revenue_events
-(clicks_uuid UUID,event AggregateFunction(argMin,Tuple(String,String,String,Date,String,String,String,DateTime('UTC'),String,String,String,String,String,String,String,String,Float64),DateTime64(3,'UTC')))
-ENGINE=AggregatingMergeTree ORDER BY clicks_uuid;
-
+-- New Publisher POP clicks use UUIDv7 (one-hour buckets); UUIDv4 IDs map
+-- to 256 fixed buckets. No registry/checkpoint TTL: replays remain duplicates.
+-- Publisher starts with no past revenue; no legacy registry or import is needed.
 CREATE TABLE IF NOT EXISTS {db}.publisher_pop_revenue_events_v2
 (
  clicks_uuid UUID,
@@ -3035,9 +3031,6 @@ SETTINGS deduplicate_merge_projection_mode='rebuild';
 CREATE TABLE IF NOT EXISTS {db}.publisher_pop_revenue_checkpoints
 (bucket UInt64,generation UInt64)
 ENGINE=ReplacingMergeTree(generation) ORDER BY bucket;
-CREATE TABLE IF NOT EXISTS {db}.publisher_pop_revenue_migrations
-(version UInt8) ENGINE=ReplacingMergeTree ORDER BY version;
-
 -- The projection is maintained atomically in the same parts as the money rows.
 -- Filtering on bucket prunes historical money groups independently of event_date.
 ALTER TABLE {db}.agg_stats MODIFY SETTING deduplicate_merge_projection_mode='rebuild';
@@ -3088,8 +3081,8 @@ SELECT pop_revenue_bucket,win_user_id,win_cid,win_crid,event_date,device_type,os
 FROM changes GROUP BY pop_revenue_bucket,win_user_id,win_cid,win_crid,event_date,device_type,os,os_version,event_hour,browser,geo,site_id,format,typic,pub_user_id,ad_code_id,zone_id
 SETTINGS enable_scalar_subquery_optimization=1;
 
--- POP_REVENUE_V2_CUTOVER: CreateDB performs the guarded one-time import here,
--- before either refresh task can run. Repeated startup does not replay history.
+-- New Publisher POP revenue is calculated from newly ingested fact_clicks only.
+-- There is no historical Publisher POP import on normal startup.
 CREATE MATERIALIZED VIEW {db}.mv_publisher_pop_revenue_to_agg_stats
 REFRESH EVERY 1 MINUTE APPEND TO {db}.agg_stats AS
 SELECT pop_revenue_bucket,win_user_id,win_cid,win_crid,event_date,device_type,os,os_version,event_hour,browser,geo,site_id,format,typic,pub_user_id,ad_code_id,zone_id,ssp_revenue_views
@@ -3172,8 +3165,18 @@ AND a.created_at >= now() - INTERVAL 60 MINUTE;
 
 func CreateDB(ctx context.Context, ch clickhouse.Conn, database string) error {
 	database = strings.TrimSpace(database)
-	if database == "" {
-		return fmt.Errorf("clickhouse database name is empty")
+	if !diagnosticDatabase.MatchString(database) {
+		return fmt.Errorf("invalid ClickHouse database name")
+	}
+	// This DDL contains legacy DROP VIEW and bounded IPP DELETE/INSERT.
+	// Absolutely never run it over a populated agg_stats. This also protects
+	// historical advertiser money when called outside normal Loader boot.
+	exists, err := tableExists(ctx, ch, database, "agg_stats")
+	if err != nil {
+		return err
+	}
+	if exists {
+		return EnsureLoaderSchema(ctx, ch, database)
 	}
 
 	// Keep the cutover repair range stable for the whole CreateDB call. Apart
@@ -3192,42 +3195,20 @@ func CreateDB(ctx context.Context, ch clickhouse.Conn, database string) error {
 			continue
 		}
 
-		if strings.Contains(statement, "-- POP_REVENUE_V2_CUTOVER") {
-			if err := migratePublisherRevenueV2(ctx, ch, database); err != nil {
-				return err
-			}
-		}
 		if err := ch.Exec(ctx, statement); err != nil {
 			return fmt.Errorf("failed to execute DDL statement #%d: %w\nSQL:\n%s", i+1, err, statement)
 		}
 	}
 
-	return ApplyPublisherZoneDiagnostics(ctx, ch, database)
-}
-
-// Called with source consumers and revenue sync paused during schema deployment.
-// The native money writer is stopped/dropped above. A failed migration has no
-// marker and is safe to repeat: source states are mergeable and no money is added.
-func migratePublisherRevenueV2(ctx context.Context, ch clickhouse.Conn, db string) error {
-	var done uint64
-	if err := ch.QueryRow(ctx, "SELECT count() FROM "+db+".publisher_pop_revenue_migrations WHERE version=2").Scan(&done); err != nil {
+	// Mark a successfully created *new* Publisher schema. No old financial
+	// data existed and no existing financial MV was ever dropped.
+	if err := ch.Exec(ctx, "CREATE TABLE IF NOT EXISTS "+database+".publisher_schema_versions (version UInt64) ENGINE=ReplacingMergeTree ORDER BY version"); err != nil {
 		return err
 	}
-	if done != 0 {
-		return nil
+	if err := ch.Exec(ctx, "INSERT INTO "+database+".publisher_schema_versions VALUES(?)", publisherSchemaVersion); err != nil {
+		return err
 	}
-	statements := []string{
-		"ALTER TABLE " + db + ".agg_stats UPDATE ssp_revenue_views=0 WHERE format='POP' AND pub_user_id!='' AND pop_revenue_bucket=0 SETTINGS mutations_sync=2",
-		"ALTER TABLE " + db + ".agg_stats MATERIALIZE PROJECTION IF EXISTS publisher_pop_by_bucket SETTINGS mutations_sync=2",
-	}
-	statements = append(statements, publisherPOPRegistryImportSQL(db)...)
-	statements = append(statements, "INSERT INTO "+db+".publisher_pop_revenue_migrations VALUES(2)")
-	for _, query := range statements {
-		if err := ch.Exec(ctx, query); err != nil {
-			return fmt.Errorf("publisher revenue v2 cutover: %w", err)
-		}
-	}
-	return nil
+	return ApplyPublisherZoneDiagnostics(ctx, ch, database)
 }
 
 // Exceptional repair after a failed ClickHouse source->MV write. This is an
@@ -3243,7 +3224,6 @@ func RepairPublisherPOPRevenueRegistry(ctx context.Context, ch clickhouse.Conn, 
 }
 func publisherPOPRegistryImportSQL(db string) []string {
 	return []string{
-		"INSERT INTO " + db + ".publisher_pop_revenue_events_v2(clicks_uuid,event,seen) SELECT clicks_uuid,event,toUInt64(1) FROM " + db + ".publisher_pop_revenue_events",
 		"INSERT INTO " + db + ".publisher_pop_revenue_events_v2(clicks_uuid,event,seen) SELECT clicks_uuid,initializeAggregation('argMinState',tuple(win_user_id,win_cid,win_crid,event_date,device_type,os,os_version,event_hour,browser,geo,site_id,format,typic,pub_user_id,ad_code_id,zone_id,win_final_price),created_at),toUInt64(1) FROM " + db + ".fact_clicks WHERE format='POP' AND pub_user_id!='' AND clicks_uuid!=toUUID('00000000-0000-0000-0000-000000000000') ",
 	}
 }

@@ -75,11 +75,9 @@ func main() {
 		}
 		return
 	}
-	prepare := clickhouse_loader.EnsureLoaderSchema
-	if *schemaOnly {
-		prepare = clickhouse_loader.CreateDB
-	}
-	if err := prepare(ctx, conn, cfg.Clickhouse.Database); err != nil {
+	// Existing installations must NOT run the destructive full CreateDB path.
+	// Both normal boot and --schema-only use the same additive upgrade.
+	if err := clickhouse_loader.EnsureLoaderSchema(ctx, conn, cfg.Clickhouse.Database); err != nil {
 		log.Fatalf("❌ Failed to create table: %v", err)
 	}
 	log.Printf("✅ Db %s ready", cfg.Clickhouse.Database)
