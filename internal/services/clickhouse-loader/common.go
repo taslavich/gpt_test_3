@@ -130,7 +130,16 @@ func processKafkaMessagesBatch[T any](
 	readCtx, cancel := context.WithTimeout(ctx, batchTimeout(timeoutSec, timeoutMs))
 	defer cancel()
 
-	records := make([]T, 0, batchSize)
+	// Keep batch-ratio throughput decisions unchanged, but avoid allocating an
+	// enormous slice before a single Kafka message has been read.
+	initialCapacity := batchSize
+	const maxInitialCapacity = 150000
+	if initialCapacity > maxInitialCapacity {
+		initialCapacity = maxInitialCapacity
+		log.Printf("⚠️ %s requested_batch_size=%d initial_capacity=%d (preallocation capped only)",
+			cfg.LogName, batchSize, initialCapacity)
+	}
+	records := make([]T, 0, initialCapacity)
 	commitMap := make(map[int]kafka.Message, 64)
 
 	readCount := 0
