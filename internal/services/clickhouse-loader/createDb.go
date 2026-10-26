@@ -3578,6 +3578,43 @@ func pausePublisherRefreshes(ctx context.Context, ch clickhouse.Conn, db string)
 	return nil
 }
 
+// Rebuild only the two derived Publisher POP VIEW definitions from the same
+// canonical DDL as a fresh installation. They contain no stored money: their
+// underlying registry, checkpoint and agg_stats tables are never touched.
+// Caller must first stop/drop the two dependent POP refreshable MVs.
+func recreatePublisherRevenueViews(ctx context.Context, ch clickhouse.Conn, db string) error {
+	names := []string{"publisher_pop_revenue_dirty", "publisher_pop_revenue_delta"}
+	definitions := make(map[string]string, len(names))
+	// Validate all definitions and object types before removing either VIEW.
+	for _, name := range names {
+		statement, err := ddlStatement("CREATE VIEW {db}." + name + " AS")
+		if err != nil {
+			return err
+		}
+		definitions[name] = strings.ReplaceAll(statement, "{db}", db)
+		var engine string
+		err = ch.QueryRow(ctx, "SELECT engine FROM system.tables WHERE database=? AND name=?", db, name).Scan(&engine)
+		if err != nil && !errors.Is(err, sql.ErrNoRows) {
+			return err
+		}
+		if err == nil && engine != "View" {
+			return fmt.Errorf("refusing to replace %s.%s: engine %q is not an ordinary VIEW", db, name, engine)
+		}
+	}
+	// The delta VIEW reads the dirty VIEW; remove and create in dependency order.
+	for _, name := range []string{"publisher_pop_revenue_delta", "publisher_pop_revenue_dirty"} {
+		if err := ch.Exec(ctx, "DROP VIEW IF EXISTS "+db+"."+name+" SYNC"); err != nil {
+			return fmt.Errorf("drop Publisher POP VIEW %s: %w", name, err)
+		}
+	}
+	for _, name := range names {
+		if err := ch.Exec(ctx, definitions[name]); err != nil {
+			return fmt.Errorf("create Publisher POP VIEW %s: %w", name, err)
+		}
+	}
+	return nil
+}
+
 // Recreate consumers before producers, so no facts can be appended while their
 // billing/Publisher registry consumer is missing. Caller must pause ALL other
 // producers (and recurring writers outside this Loader) during schema cutover.
@@ -3598,6 +3635,11 @@ func recreatePublisherFinancialMVs(ctx context.Context, ch clickhouse.Conn, db s
 		if err := dropPublisherMV(ctx, ch, db, mv); err != nil {
 			return err
 		}
+	}
+	// All dependent POP refreshable MVs are gone. Refresh the two ordinary
+	// VIEW definitions before recreating their consumers and producers.
+	if err := recreatePublisherRevenueViews(ctx, ch, db); err != nil {
+		return err
 	}
 	// Old POP recovery views are superseded by the current recovery DDL.
 	// Drop only MV objects, never their destination or historical money.
@@ -3711,17 +3753,6 @@ func ensurePublisherProductionSchema(ctx context.Context, ch clickhouse.Conn, db
 	}
 	if err := execPublisherDDL(ctx, ch, db, "ALTER TABLE {db}.agg_stats ADD PROJECTION IF NOT EXISTS publisher_pop_by_bucket"); err != nil {
 		return err
-	}
-	for _, name := range []string{"publisher_pop_revenue_dirty", "publisher_pop_revenue_delta"} {
-		exists, err := tableExists(ctx, ch, db, name)
-		if err != nil {
-			return err
-		}
-		if !exists {
-			if err := execPublisherDDL(ctx, ch, db, "CREATE VIEW {db}."+name+" AS"); err != nil {
-				return err
-			}
-		}
 	}
 	// DROP/CREATE relevant old and new financial/recovery MV definitions from
 	// the one canonical SQL DDL. All underlying tables and rows are retained.
@@ -3838,16 +3869,9 @@ func EnsureLoaderSchema(ctx context.Context, ch clickhouse.Conn, database string
 	if err := ensurePublisherProductionSchema(ctx, ch, database); err != nil {
 		return err
 	}
-	var ready uint64
-	if err := ch.QueryRow(ctx, "SELECT count() FROM system.tables WHERE database=? AND name IN ('publisher_zone_hourly','mv_publisher_zone_hourly')", database).Scan(&ready); err != nil {
-		return err
-	}
-	if ready != 2 {
-		// The new Publisher deployment is incomplete if diagnostics cannot
-		// be installed. Propagate DDL failure; main.go aborts Loader startup.
-		if err := ApplyPublisherZoneDiagnostics(ctx, ch, database); err != nil {
-			return err
-		}
-	}
-	return nil
+	// Always refresh the diagnostic MV definition from canonical SQL, even
+	// when the destination table and the previous MV already exist. The
+	// diagnostic target and its historical rows are never dropped.
+	// Propagate failure: main.go aborts Loader startup.
+	return ApplyPublisherZoneDiagnostics(ctx, ch, database)
 }
