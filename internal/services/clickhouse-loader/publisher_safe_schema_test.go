@@ -98,11 +98,14 @@ func TestPublisherLegacyAggKeyPreservesHistoricalAdvertiserMoney(t *testing.T) {
 	if err = ch.Exec(ctx, "INSERT INTO "+db+".agg_stats(win_user_id,win_cid,event_date,event_hour,format,spend_views_table,spend_clicks_table) VALUES ('adv','camp',toDate('2026-04-01'),toDateTime('2026-04-01 00:00:00','UTC'),'POP',123.25,0),('adv','camp',toDate('2026-05-01'),toDateTime('2026-05-01 00:00:00','UTC'),'IPP',0,91.5)"); err != nil {
 		t.Fatal(err)
 	}
-	s, err := diagnosticSchema(ctx, ch, db, "agg_stats")
+	keyed, err := publisherAggKeyState(ctx, ch, db)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err = ensurePublisherAggKey(ctx, ch, db, s, false); err != nil {
+	if keyed {
+		t.Fatal("legacy agg_stats unexpectedly has Publisher ORDER BY")
+	}
+	if err = ensurePublisherAggKey(ctx, ch, db, keyed); err != nil {
 		t.Fatal(err)
 	}
 	var rows uint64
