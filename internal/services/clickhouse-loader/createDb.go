@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"strings"
-	"time"
 
 	"github.com/ClickHouse/clickhouse-go/v2"
 )
@@ -33,8 +32,6 @@ DROP VIEW IF EXISTS {db}.mv_fact_pop_recovered_to_agg_stats SYNC;
 DROP VIEW IF EXISTS {db}.mv_clicks_to_fact SYNC;
 DROP VIEW IF EXISTS {db}.mv_publisher_pop_revenue_checkpoint SYNC;
 DROP VIEW IF EXISTS {db}.mv_publisher_pop_revenue_to_agg_stats SYNC;
-DROP VIEW IF EXISTS {db}.publisher_pop_revenue_delta SYNC;
-DROP VIEW IF EXISTS {db}.publisher_pop_revenue_dirty SYNC;
 DROP VIEW IF EXISTS {db}.mv_fact_clicks_to_publisher_pop_revenue SYNC;
 DROP VIEW IF EXISTS {db}.mv_fact_conversions_to_agg_stats SYNC;
 DROP VIEW IF EXISTS {db}.mv_fact_clicks_to_agg_stats SYNC;
@@ -56,7 +53,6 @@ DROP VIEW IF EXISTS {db}.mv_user_dsp_price_sum SYNC;
 DROP VIEW IF EXISTS {db}.mv_ortb_traffic_hourly SYNC;
 DROP VIEW IF EXISTS {db}.mv_campaign_dsp_price_sum SYNC;
 DROP VIEW IF EXISTS {db}.mv_recover_clicks_from_clicks_wins SYNC;
-DROP VIEW IF EXISTS {db}.ortb_logical SYNC;
 DROP VIEW IF EXISTS {db}.mv_ortb_to_publisher_inventory SYNC;
 
 -- ============================================================
@@ -997,225 +993,8 @@ ALTER TABLE {db}.agg_stats
     MODIFY COLUMN pop_revenue_bucket UInt64 DEFAULT 0;
 
 -- ============================================================
--- IPP CUTOVER REPAIR
--- ============================================================
---
--- Before this version IPP clicks/spend in agg_stats were fed from fact_clicks.
--- fact_clicks_wins is the authoritative partner-confirmed source for IPP.
--- Ordinary INSERT-triggered materialized views do not replay rows that were
--- already present before the new view was created, so a deployment could lose
--- the not-yet-recovered tail. All IPP-producing agg_stats writer paths are
--- stopped above. mv_fact_impressions_to_agg_stats intentionally stays alive
--- only so POP recovery cannot lose ordinary impression/spend aggregation; its
--- normal impressions source mv_impressions_to_fact is stopped during repair.
---
--- Rebuild the current and previous two hours for IPP from authoritative fact
--- tables. The operation is intentionally idempotent across restarts: delete
--- the bounded IPP aggregate slice first, then reconstruct all its components.
-ALTER TABLE {db}.agg_stats
-    DELETE WHERE
-        format = 'IPP'
-        AND event_hour >= toDateTime('{ipp_cutover_from}', 'UTC')
-    SETTINGS mutations_sync = 1;
-
-INSERT INTO {db}.agg_stats
-(
-    win_user_id,
-    win_cid,
-    win_crid,
-    event_date,
-    device_type,
-    os,
-    os_version,
-    event_hour,
-    browser,
-    geo,
-    site_id,
-    format,
-    typic,
-    pub_user_id,
-    ad_code_id,
-    zone_id,
-    impressions,
-    clicks,
-    conversions,
-    payout,
-    conversions_approved,
-    payout_approved,
-    spend_clicks_table,
-    spend_views_table,
-    ssp_revenue_views
-)
-SELECT
-    win_user_id,
-    win_cid,
-    win_crid,
-    event_date,
-    device_type,
-    os,
-    os_version,
-    event_hour,
-    browser,
-    geo,
-    site_id,
-    format,
-    typic,
-    pub_user_id,
-    ad_code_id,
-    zone_id,
-    count() AS impressions,
-    toUInt64(0) AS clicks,
-    toUInt64(0) AS conversions,
-    toFloat64(0) AS payout,
-    toUInt64(0) AS conversions_approved,
-    toFloat64(0) AS payout_approved,
-    toFloat64(0) AS spend_clicks_table,
-    sum(win_dsp_price / 1000) AS spend_views_table,
-    toFloat64(0) AS ssp_revenue_views
-FROM {db}.fact_impressions
-WHERE
-    format = 'IPP'
-    AND event_hour >= toDateTime('{ipp_cutover_from}', 'UTC')
-GROUP BY
-    win_user_id,
-    win_cid,
-    win_crid,
-    event_date,
-    device_type,
-    os,
-    os_version,
-    event_hour,
-    browser,
-    geo,
-    site_id,
-    format,
-    typic,
-    pub_user_id,
-    ad_code_id,
-    zone_id
-
-UNION ALL
-
-SELECT
-    win_user_id,
-    win_cid,
-    win_crid,
-    event_date,
-    device_type,
-    os,
-    os_version,
-    event_hour,
-    browser,
-    geo,
-    site_id,
-    format,
-    typic,
-    pub_user_id,
-    ad_code_id,
-    zone_id,
-    toUInt64(0) AS impressions,
-    count() AS clicks,
-    toUInt64(0) AS conversions,
-    toFloat64(0) AS payout,
-    toUInt64(0) AS conversions_approved,
-    toFloat64(0) AS payout_approved,
-    sum(win_dsp_price) AS spend_clicks_table,
-    toFloat64(0) AS spend_views_table,
-    toFloat64(0) AS ssp_revenue_views
-FROM {db}.fact_clicks_wins
-WHERE
-    format = 'IPP'
-    AND event_hour >= toDateTime('{ipp_cutover_from}', 'UTC')
-GROUP BY
-    win_user_id,
-    win_cid,
-    win_crid,
-    event_date,
-    device_type,
-    os,
-    os_version,
-    event_hour,
-    browser,
-    geo,
-    site_id,
-    format,
-    typic,
-    pub_user_id,
-    ad_code_id,
-    zone_id
-
-UNION ALL
-
-SELECT
-    win_user_id,
-    win_cid,
-    win_crid,
-    event_date,
-    device_type,
-    os,
-    os_version,
-    event_hour,
-    browser,
-    geo,
-    site_id,
-    format,
-    typic,
-    pub_user_id,
-    ad_code_id,
-    zone_id,
-    toUInt64(0) AS impressions,
-    toUInt64(0) AS clicks,
-    toUInt64(countIf(approved != 1)) AS conversions,
-    toFloat64(sumIf(conversions_payout, approved != 1)) AS payout,
-    toUInt64(countIf(approved = 1)) AS conversions_approved,
-    toFloat64(sumIf(conversions_payout, approved = 1)) AS payout_approved,
-    toFloat64(0) AS spend_clicks_table,
-    toFloat64(0) AS spend_views_table,
-    toFloat64(0) AS ssp_revenue_views
-FROM
-(
-    SELECT
-        win_user_id,
-        win_cid,
-        win_crid,
-        event_date,
-        device_type,
-        os,
-        os_version,
-        event_hour,
-        browser,
-        geo,
-        site_id,
-        format,
-        typic,
-        pub_user_id,
-        ad_code_id,
-        zone_id,
-        approved,
-        payout AS conversions_payout
-    FROM {db}.fact_conversions
-) AS source
-WHERE
-    format = 'IPP'
-    AND event_hour >= toDateTime('{ipp_cutover_from}', 'UTC')
-GROUP BY
-    win_user_id,
-    win_cid,
-    win_crid,
-    event_date,
-    device_type,
-    os,
-    os_version,
-    event_hour,
-    browser,
-    geo,
-    site_id,
-    format,
-    typic,
-    pub_user_id,
-    ad_code_id,
-    zone_id;
-
+-- No historical IPP DELETE/INSERT cutover runs from ClickHouse schema DDL.
+-- Existing billing is authoritative and unchanged by this Publisher upgrade.
 
 CREATE TABLE IF NOT EXISTS {db}.user_dsp_price_sum
 (
@@ -3168,9 +2947,8 @@ func CreateDB(ctx context.Context, ch clickhouse.Conn, database string) error {
 	if !diagnosticDatabase.MatchString(database) {
 		return fmt.Errorf("invalid ClickHouse database name")
 	}
-	// This DDL contains legacy DROP VIEW and bounded IPP DELETE/INSERT.
-	// Absolutely never run it over a populated agg_stats. This also protects
-	// historical advertiser money when called outside normal Loader boot.
+	// Full bootstrap DDL is only valid on a fresh database. Existing tables,
+	// advertiser balances, and historical data are never replaced or deleted.
 	exists, err := tableExists(ctx, ch, database, "agg_stats")
 	if err != nil {
 		return err
@@ -3179,14 +2957,7 @@ func CreateDB(ctx context.Context, ch clickhouse.Conn, database string) error {
 		return EnsureLoaderSchema(ctx, ch, database)
 	}
 
-	// Keep the cutover repair range stable for the whole CreateDB call. Apart
-	// from making DELETE deterministic for ClickHouse mutations, this guarantees
-	// the DELETE and the subsequent rebuild use exactly the same lower bound even
-	// if startup crosses an hour boundary.
-	ippCutoverFrom := time.Now().UTC().Add(-2 * time.Hour).Truncate(time.Hour)
-
 	ddl := strings.ReplaceAll(ddlTemplate, "{db}", database)
-	ddl = strings.ReplaceAll(ddl, "{ipp_cutover_from}", ippCutoverFrom.Format("2006-01-02 15:04:05"))
 	statements := splitClickHouseStatements(ddl)
 
 	for i, statement := range statements {

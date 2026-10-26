@@ -89,8 +89,7 @@ func TestPublisherLegacyAggKeyPreservesHistoricalAdvertiserMoney(t *testing.T) {
 	create := "CREATE TABLE " + db + ".agg_stats(" +
 		"win_user_id String,win_cid String,win_crid String,event_date Date,device_type String,os String," +
 		"event_hour DateTime('UTC'),browser String,geo String,site_id String,format String,typic String," +
-		"os_version String,pub_user_id String DEFAULT '',ad_code_id String DEFAULT '',zone_id String DEFAULT ''," +
-		"pop_revenue_bucket UInt64 DEFAULT 0,spend_views_table Float64,spend_clicks_table Float64," +
+		"os_version String,spend_views_table Float64,spend_clicks_table Float64," +
 		"ssp_revenue_views Float64 DEFAULT 0) ENGINE=SummingMergeTree PARTITION BY toYYYYMMDD(event_date) ORDER BY (" +
 		strings.Join(publisherAggPrefix, ",") + ")"
 	if err = ch.Exec(ctx, create); err != nil {

@@ -47,7 +47,7 @@ func TestSharedAggStatsPublisherContract(t *testing.T) {
 		t.Fatal("old impressions writer not replaced")
 	}
 	start := strings.Index(ddlTemplate, "DROP VIEW IF EXISTS {db}.mv_fact_impressions_to_agg_stats SYNC;")
-	end := strings.Index(ddlTemplate[start:], "-- IPP CUTOVER") + start
+	end := strings.Index(ddlTemplate[start:], "CREATE TABLE IF NOT EXISTS {db}.user_dsp_price_sum") + start
 	migration := ddlTemplate[start:end]
 	for _, field := range []string{"pub_user_id", "ad_code_id", "zone_id"} {
 		if !strings.Contains(migration, "ADD COLUMN IF NOT EXISTS "+field+" String,") {

@@ -1,20 +1,20 @@
 package clickhouse_loader
 
-// This file upgrades a populated ClickHouse installation without running the
-// destructive, first-install DDL. In particular, it never drops, renames or
-// recreates agg_stats, never replays advertiser facts, and never drops a money
-// materialized view. No historical Publisher POP revenue is migrated.
+// Upgrade a populated ClickHouse installation without deleting tables, columns,
+// projections, or financial rows. Financial MVs are recreated from current DDL
+// once, with upstream refreshes paused and no historical Publisher POP import.
 
 import (
 	"context"
+	"database/sql"
+	"errors"
 	"fmt"
-	"regexp"
 	"strings"
 
 	"github.com/ClickHouse/clickhouse-go/v2"
 )
 
-const publisherSchemaVersion = 246
+const publisherSchemaVersion = 248
 
 var publisherAggPrefix = []string{
 	"win_user_id", "win_cid", "win_crid", "event_date", "device_type",
@@ -78,33 +78,25 @@ func publisherPreflight(ctx context.Context, ch clickhouse.Conn, db string) (dia
 	if current != oldKey && current != newKey {
 		return agg, false, fmt.Errorf("%s.agg_stats unexpected ORDER BY %q; financial table untouched", db, agg.key)
 	}
-	// The existing advertiser rows can never be re-attributed after the fact.
-	// Refuse to remove any existing Publisher value, including nonzero buckets.
-	checks := make([]string, 0, 4)
-	for _, col := range publisherAggSuffix {
-		if _, ok := agg.columns[col]; !ok {
-			continue
+	// On the old key all four Publisher columns and the dependent projection
+	// must be removed MANUALLY before deployment. Never discard column data.
+	// Even an empty preexisting non-key column cannot be incorporated into the
+	// sorting key with ADD COLUMN: ClickHouse requires the key suffix to be new.
+	if current == oldKey {
+		for _, col := range publisherAggSuffix {
+			if _, exists := agg.columns[col]; exists {
+				return agg, false, fmt.Errorf("%s.agg_stats.%s still exists outside ORDER BY; remove it manually before Loader startup", db, col)
+			}
 		}
-		want := "String"
-		if col == "pop_revenue_bucket" {
-			want = "UInt64"
-		}
-		if diagnosticSQL(agg.columns[col]) != diagnosticSQL(want) || (agg.kinds[col] != "" && agg.kinds[col] != "DEFAULT") {
-			return agg, false, fmt.Errorf("%s.agg_stats.%s incompatible type/kind; no changes made", db, col)
-		}
-		if col == "pop_revenue_bucket" {
-			checks = append(checks, col+" != 0")
-		} else {
-			checks = append(checks, col+" != ''")
-		}
-	}
-	if current == oldKey && len(checks) != 0 {
-		var populated uint64
-		if err = ch.QueryRow(ctx, "SELECT countIf("+strings.Join(checks, " OR ")+") FROM "+db+".agg_stats").Scan(&populated); err != nil {
-			return agg, false, err
-		}
-		if populated != 0 {
-			return agg, false, fmt.Errorf("%s.agg_stats has %d Publisher-attributed rows; refusing to DROP ANY column or change ORDER BY", db, populated)
+	} else {
+		for _, col := range publisherAggSuffix {
+			want := "String"
+			if col == "pop_revenue_bucket" {
+				want = "UInt64"
+			}
+			if _, ok := agg.columns[col]; !ok || diagnosticSQL(agg.columns[col]) != diagnosticSQL(want) {
+				return agg, false, fmt.Errorf("%s.agg_stats.%s missing or incompatible in existing ORDER BY", db, col)
+			}
 		}
 	}
 	if current == oldKey {
@@ -149,28 +141,15 @@ func ensurePublisherAggKey(ctx context.Context, ch clickhouse.Conn, db string, a
 	if current {
 		return nil
 	}
-	// The optional Publisher-only derived projection may refer to the four
-	// empty columns. Remove that projection's metadata (NOT agg_stats or any
-	// data part) before readding key columns; it is recreated below.
-	if err := ch.Exec(ctx, "ALTER TABLE "+db+".agg_stats DROP PROJECTION IF EXISTS publisher_pop_by_bucket"); err != nil {
-		return fmt.Errorf("cannot detach Publisher-only projection safely: %w", err)
-	}
-	// Only the four empty Publisher columns are ever dropped; no historic
-	// advertiser, time, price, statistics or settlement column is modified.
-	for _, col := range publisherAggSuffix {
-		if _, ok := agg.columns[col]; ok {
-			if err := ch.Exec(ctx, "ALTER TABLE "+db+".agg_stats DROP COLUMN "+col); err != nil {
-				return fmt.Errorf("cannot remove empty, not-in-ORDER-BY Publisher column %s (agg_stats itself was NOT dropped): %w", col, err)
-			}
-		}
-	}
+	// Manual precondition: publisher_pop_by_bucket and all four old non-key
+	// columns have already been dropped by the operator. No DROP here.
 	target := "(" + strings.Join(append(append([]string{}, publisherAggPrefix...), publisherAggSuffix...), ",") + ")"
 	// All new ORDER BY columns have NO DEFAULT in this atomic ADD+MODIFY.
 	alter := "ALTER TABLE " + db + ".agg_stats " +
-		"ADD COLUMN pub_user_id String, " +
-		"ADD COLUMN ad_code_id String, " +
-		"ADD COLUMN zone_id String, " +
-		"ADD COLUMN pop_revenue_bucket UInt64, " +
+		"ADD COLUMN IF NOT EXISTS pub_user_id String, " +
+		"ADD COLUMN IF NOT EXISTS ad_code_id String, " +
+		"ADD COLUMN IF NOT EXISTS zone_id String, " +
+		"ADD COLUMN IF NOT EXISTS pop_revenue_bucket UInt64, " +
 		"MODIFY ORDER BY " + target
 	if err := ch.Exec(ctx, alter); err != nil {
 		return fmt.Errorf("agg_stats key extension failed; original table and advertiser history retained: %w", err)
@@ -185,48 +164,151 @@ func ensurePublisherAggKey(ctx context.Context, ch clickhouse.Conn, db string, a
 	return nil
 }
 
-// Change the SELECT of an existing TO-target MV, preserving the MV object and
-// target table. ClickHouse explicitly supports MODIFY QUERY without stopping
-// ingestion; it changes only NEW inserts, not historical advertiser totals.
-func upsertPublisherMV(ctx context.Context, ch clickhouse.Conn, db, name string) error {
+// The DROP VIEW syntax must never be allowed to target a real data table,
+// including in an unexpected partially deployed schema.
+func dropPublisherMV(ctx context.Context, ch clickhouse.Conn, db, name string) error {
+	var engine string
+	err := ch.QueryRow(ctx, "SELECT engine FROM system.tables WHERE database=? AND name=?", db, name).Scan(&engine)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil
+		}
+		return err
+	}
+	if engine != "MaterializedView" && engine != "RefreshableMaterializedView" {
+		return fmt.Errorf("refusing DROP VIEW %s.%s: engine %s is not an MV", db, name, engine)
+	}
+	if err = ch.Exec(ctx, "DROP VIEW IF EXISTS "+db+"."+name+" SYNC"); err != nil {
+		return fmt.Errorf("drop MV %s (target retained): %w", name, err)
+	}
+	return nil
+}
+
+// Always recreate financial MVs from the canonical CREATE DDL, rather than
+// silently retaining obsolete SELECTs with CREATE IF NOT EXISTS or MODIFY QUERY.
+// Dropping an MV does NOT drop its TO/APPEND TO destination table or its rows.
+func replacePublisherMV(ctx context.Context, ch clickhouse.Conn, db, name string) error {
 	prefix := "CREATE MATERIALIZED VIEW {db}." + name
 	stmt, err := ddlStatement(prefix)
 	if err != nil {
-		prefix = "CREATE MATERIALIZED VIEW IF NOT EXISTS {db}." + name
-		stmt, err = ddlStatement(prefix)
+		stmt, err = ddlStatement("CREATE MATERIALIZED VIEW IF NOT EXISTS {db}." + name)
 	}
 	if err != nil {
 		return err
 	}
 	stmt = strings.ReplaceAll(stmt, "{db}", db)
-	exists, err := tableExists(ctx, ch, db, name)
-	if err != nil {
+	if err = dropPublisherMV(ctx, ch, db, name); err != nil {
 		return err
 	}
-	if !exists {
-		// No replay/backfill. Preserve the original schedule and target.
-		if err = ch.Exec(ctx, stmt); err != nil {
-			return fmt.Errorf("create %s: %w", name, err)
-		}
-		return nil
-	}
-	// The CREATE header can use either "AS SELECT", " AS\nSELECT"
-	// or "\nAS\nSELECT". Match only the SQL keyword, not aliases.
-	as := regexp.MustCompile(`(?i)\bAS\s+`)
-	loc := as.FindStringIndex(stmt)
-	if loc == nil {
-		return fmt.Errorf("cannot find AS SELECT in MV %s", name)
-	}
-	query := strings.TrimSpace(stmt[loc[1]:])
-	// All target MVs are either TO or refreshable APPEND TO; only SELECT changes.
-	if err = ch.Exec(ctx, "ALTER TABLE "+db+"."+name+" MODIFY QUERY "+query); err != nil {
-		return fmt.Errorf("modify Publisher query %s in place: %w", name, err)
+	if err = ch.Exec(ctx, stmt); err != nil {
+		return fmt.Errorf("recreate MV %s: %w", name, err)
 	}
 	return nil
 }
 
-// The last step writes the migration marker. A restart after a crash retries
-// metadata-only CREATE IF NOT EXISTS and MODIFY QUERY; no financial replay.
+// Stop refreshable writers and wait for in-flight runs BEFORE changing the
+// source table or dropping downstream MVs. A completed failed run (730) is safe.
+func stopPublisherRefreshMV(ctx context.Context, ch clickhouse.Conn, db, name string) error {
+	exists, err := tableExists(ctx, ch, db, name)
+	if err != nil || !exists {
+		return err
+	}
+	if err = ch.Exec(ctx, "SYSTEM STOP VIEW "+db+"."+name); err != nil {
+		return fmt.Errorf("stop MV %s: %w", name, err)
+	}
+	if err = ch.Exec(ctx, "SYSTEM WAIT VIEW "+db+"."+name); err != nil {
+		var ex *clickhouse.Exception
+		if !errors.As(err, &ex) || ex.Code != 730 {
+			return fmt.Errorf("wait for MV %s: %w", name, err)
+		}
+	}
+	return nil
+}
+
+func pausePublisherRefreshes(ctx context.Context, ch clickhouse.Conn, db string) error {
+	for _, mv := range []string{
+		"mv_impressions_to_fact", "mv_clicks_wins_to_fact", "mv_conversions_to_fact", "mv_clicks_to_fact",
+		"mv_publisher_pop_revenue_checkpoint", "mv_publisher_pop_revenue_to_agg_stats",
+		"mv_recover_pop_impressions_v2", // independent hourly writer to fact_impressions
+	} {
+		if err := stopPublisherRefreshMV(ctx, ch, db, mv); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// Recreate consumers before producers, so no facts can be appended while their
+// billing/Publisher registry consumer is missing. Caller must pause ALL other
+// producers (and recurring writers outside this Loader) during schema cutover.
+func recreatePublisherFinancialMVs(ctx context.Context, ch clickhouse.Conn, db string) error {
+	producers := []string{
+		"mv_impressions_to_fact", "mv_clicks_wins_to_fact", "mv_conversions_to_fact", "mv_clicks_to_fact",
+	}
+	// Detach all fact-producing MVs first, before any fact consumer. Replacements
+	// for missing MVs are also created (DROP IF EXISTS is idempotent).
+	for _, mv := range producers {
+		if err := dropPublisherMV(ctx, ch, db, mv); err != nil {
+			return err
+		}
+	}
+	// Refreshable dependency: checkpoint depends on the money view. Both were
+	// stopped and waited before any schema changes; drop dependent first.
+	for _, mv := range []string{"mv_publisher_pop_revenue_checkpoint", "mv_publisher_pop_revenue_to_agg_stats"} {
+		if err := dropPublisherMV(ctx, ch, db, mv); err != nil {
+			return err
+		}
+	}
+	// Fact consumers have no active upstream producer at this point.
+	for _, mv := range []string{
+		"mv_fact_impressions_to_agg_stats", "mv_fact_clicks_to_agg_stats",
+		"mv_fact_clicks_wins_to_agg_stats", "mv_fact_conversions_to_agg_stats",
+		"mv_ortb_to_publisher_inventory", "mv_fact_clicks_to_publisher_pop_revenue",
+	} {
+		if err := replacePublisherMV(ctx, ch, db, mv); err != nil {
+			return err
+		}
+	}
+	// The two Publisher POP refreshes are now installed in dependency order.
+	for _, mv := range []string{"mv_publisher_pop_revenue_to_agg_stats", "mv_publisher_pop_revenue_checkpoint"} {
+		if err := createPublisherMV(ctx, ch, db, mv); err != nil {
+			return err
+		}
+	}
+	// Resume fact production last; all its consumers already exist.
+	for _, mv := range producers {
+		if err := createPublisherMV(ctx, ch, db, mv); err != nil {
+			return err
+		}
+	}
+	// Restore an independent POP recovery writer only after its fact consumers
+	// have been recreated. This recovery MV itself is NEVER dropped.
+	if exists, err := tableExists(ctx, ch, db, "mv_recover_pop_impressions_v2"); err != nil {
+		return err
+	} else if exists {
+		if err := ch.Exec(ctx, "SYSTEM START VIEW "+db+".mv_recover_pop_impressions_v2"); err != nil {
+			return fmt.Errorf("resume POP recovery writer: %w", err)
+		}
+	}
+	return nil
+}
+
+func createPublisherMV(ctx context.Context, ch clickhouse.Conn, db, name string) error {
+	stmt, err := ddlStatement("CREATE MATERIALIZED VIEW {db}." + name)
+	if err != nil {
+		stmt, err = ddlStatement("CREATE MATERIALIZED VIEW IF NOT EXISTS {db}." + name)
+	}
+	if err != nil {
+		return err
+	}
+	if err = ch.Exec(ctx, strings.ReplaceAll(stmt, "{db}", db)); err != nil {
+		return fmt.Errorf("create MV %s: %w", name, err)
+	}
+	return nil
+}
+
+// Mark the completed MV replacement. A restart after a partial cutover can
+// retry the schema and MV creation (with ingestion still paused).
 func ensurePublisherProductionSchema(ctx context.Context, ch clickhouse.Conn, db string) error {
 	// Durable marker avoids touching production MV definitions on later Loader
 	// restarts after Publisher traffic has begun.
@@ -261,6 +343,12 @@ func ensurePublisherProductionSchema(ctx context.Context, ch clickhouse.Conn, db
 	if err != nil {
 		return err
 	}
+	// Quiesce refreshable writers before changing agg_stats sorting key or
+	// updating consumer schemas. Even a stopped Loader process does not stop
+	// ClickHouse-managed REFRESH EVERY tasks.
+	if err = pausePublisherRefreshes(ctx, ch, db); err != nil {
+		return err
+	}
 	// Make sure current ORTB/Fact sources have the publisher attribution fields
 	// BEFORE installing queries which select them.
 	for _, col := range publisherSourceColumns {
@@ -281,8 +369,7 @@ func ensurePublisherProductionSchema(ctx context.Context, ch clickhouse.Conn, db
 	if err = ensurePublisherAggKey(ctx, ch, db, agg, keyed); err != nil {
 		return err
 	}
-	// No historical Publisher rows exist: there is nothing to import, reset or
-	// repair. In particular: NEVER execute the IPP DELETE/INSERT cutover here.
+	// No historical Publisher rows are imported, and no IPP balances are rewritten.
 	for _, tbl := range []string{"publisher_inventory", "publisher_pop_revenue_events_v2", "publisher_pop_revenue_checkpoints"} {
 		prefix := "CREATE TABLE IF NOT EXISTS {db}." + tbl
 		if err = execPublisherDDL(ctx, ch, db, prefix); err != nil {
@@ -295,17 +382,6 @@ func ensurePublisherProductionSchema(ctx context.Context, ch clickhouse.Conn, db
 	if err = execPublisherDDL(ctx, ch, db, "ALTER TABLE {db}.agg_stats ADD PROJECTION IF NOT EXISTS publisher_pop_by_bucket"); err != nil {
 		return err
 	}
-	// Upgrade existing financial MVs IN PLACE. Their FROM/TARGET and existing
-	// advertiser stats remain unchanged; new Publisher dimensions appear only
-	// on subsequently ingested facts.
-	for _, mv := range []string{
-		"mv_impressions_to_fact", "mv_clicks_wins_to_fact", "mv_conversions_to_fact", "mv_clicks_to_fact",
-		"mv_fact_impressions_to_agg_stats", "mv_fact_clicks_to_agg_stats", "mv_fact_clicks_wins_to_agg_stats", "mv_fact_conversions_to_agg_stats",
-	} {
-		if err = upsertPublisherMV(ctx, ch, db, mv); err != nil {
-			return err
-		}
-	}
 	for _, name := range []string{"publisher_pop_revenue_dirty", "publisher_pop_revenue_delta"} {
 		exists, e := tableExists(ctx, ch, db, name)
 		if e != nil {
@@ -317,10 +393,10 @@ func ensurePublisherProductionSchema(ctx context.Context, ch clickhouse.Conn, db
 			}
 		}
 	}
-	for _, mv := range []string{"mv_ortb_to_publisher_inventory", "mv_fact_clicks_to_publisher_pop_revenue", "mv_publisher_pop_revenue_to_agg_stats", "mv_publisher_pop_revenue_checkpoint"} {
-		if err = upsertPublisherMV(ctx, ch, db, mv); err != nil {
-			return err
-		}
+	// Financial refreshes are recreated exactly once, never on routine restarts.
+	// Source ingestion must be paused externally for this first cutover.
+	if err = recreatePublisherFinancialMVs(ctx, ch, db); err != nil {
+		return err
 	}
 	// Record only the schema upgrade, so later Loader starts leave money MVs untouched.
 	return ch.Exec(ctx, "INSERT INTO "+db+".publisher_schema_versions VALUES(?)", publisherSchemaVersion)
