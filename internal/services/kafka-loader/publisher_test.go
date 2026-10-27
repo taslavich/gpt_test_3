@@ -68,10 +68,10 @@ func TestRealRedisPublisherErrorFeedsExistingMessage(t *testing.T) {
 	}
 	defer s.CloseORTB()
 	code := c.Code{ID: uuid.NewString(), UserID: uuid.NewString(), ShortCode: "tb_" + uuid.NewString(), Name: "test", Format: "popunder", TrafficType: "mainstream", Device: "all", Active: true, TriggerClick: 1, FrequencyMinutes: 1, Epoch: "test"}
-	store.Set(context.Background(), c.ReadyKey, "test", time.Minute)
+	store.Set(context.Background(), c.EpochKey, "test", 0)
 	b, _ := json.Marshal(code)
 	store.HSet(context.Background(), c.CodeKey(code.ShortCode), "data", b)
-	defer store.Del(context.Background(), c.ReadyKey, c.CodeKey(code.ShortCode))
+	defer store.Del(context.Background(), c.EpochKey, c.CodeKey(code.ShortCode))
 	s.ORTB[0].Del(context.Background(), cfg.ORTBReadySet)
 	in := pub.Request{ID: uuid.NewString(), Code: code.ShortCode, PageURL: ""}
 	raw, _ := json.Marshal(in)

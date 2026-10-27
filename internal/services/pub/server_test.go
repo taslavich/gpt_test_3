@@ -30,17 +30,10 @@ func fixture(t *testing.T) (*Server, c.Code) {
 	}
 	r.FlushDB(context.Background())
 	code := c.Code{ID: uuid.NewString(), UserID: uuid.NewString(), ShortCode: "tb_test", Name: "test", Format: "popunder", TrafficType: "mainstream", Device: "all", Active: true, TriggerClick: 1, FrequencyMinutes: .1, Epoch: "test"}
-	r.Set(context.Background(), c.ReadyKey, "test", time.Minute)
+	r.Set(context.Background(), c.EpochKey, "test", 0)
 	b, _ := json.Marshal(code)
 	r.HSet(context.Background(), c.CodeKey(code.ShortCode), "data", b)
 	r.HSet(context.Background(), c.Prefix+"{control}:blocks", "epoch", "test")
-	pipe := r.Pipeline()
-	for slot := 0; slot < 16384; slot++ {
-		pipe.Eval(context.Background(), c.InitGuardLua, []string{c.GuardKeyForSlot(slot)}, "test")
-	}
-	if _, e := pipe.Exec(context.Background()); e != nil {
-		t.Fatal(e)
-	}
 	cfg := Config{PublicURL: "https://pub.example.test", InternalSecret: strings.Repeat("x", 32), DeliverySecret: strings.Repeat("y", 32), RTBAdultURL: "https://rtb.example.test/bid_v_2_5", RTBMainstreamURL: "https://rtb.example.test/bid_v_2_5_mc", AdultFeed: "adult", MainstreamFeed: "mainstream", CallbackOrigins: "https://adm.example.test", TrustedProxies: "192.0.2.0/24", RedisAddrs: addr, ORTBAddrs: addr, ORTBDB: 14, ORTBReadySet: "ortb:ready", TelemetryMaxBytes: 1 << 20, MaxInflight: 10, RTBTimeout: time.Second, ConfirmedOpenEnabled: true}
 	s, e := NewServer(cfg, r, nil)
 	if e != nil {
@@ -95,12 +88,32 @@ func TestInvalidURLIsRecordedWithoutRTB(t *testing.T) {
 		t.Fatal(w.Code)
 	}
 	in.PageURL = "https://example.test/"
+	// A stale or missing cabinet heartbeat must not stop delivery.
 	s.Redis.Del(context.Background(), c.ReadyKey)
+	if _, e := s.ready(context.Background()); e != nil {
+		t.Fatal("cabinet heartbeat blocked publisher", e)
+	}
+	// Losing the actual configuration epoch must still fail closed.
+	s.Redis.Del(context.Background(), c.EpochKey)
 	w = send(s, in)
 	if w.Code != 503 || s.RTBCalls.Load() != 0 {
-		t.Fatal("Redis loss bypassed", w.Code)
+		t.Fatal("missing Redis configuration bypassed", w.Code)
 	}
 }
+
+// Existing codes continue working even when the cabinet stops its heartbeat
+// or the old global blocked state remains from a previous version.
+func TestPublicConfigWithoutCabinetHeartbeat(t *testing.T) {
+	s, code := fixture(t)
+	s.Redis.Del(context.Background(), c.ReadyKey)
+	s.Redis.Set(context.Background(), c.StateKey, "blocked", 0)
+	w := httptest.NewRecorder()
+	s.Handler().ServeHTTP(w, trustedRequest("GET", "/config?code="+code.ShortCode, nil))
+	if w.Code != 200 || !strings.Contains(w.Body.String(), `"active":true`) {
+		t.Fatal("healthy Redis rejected an existing code", w.Code, w.Body.String())
+	}
+}
+
 func TestNoFillReleasesReservation(t *testing.T) {
 	s, code := fixture(t)
 	s.HTTP.Transport = transport(func(r *http.Request) (*http.Response, error) {
@@ -183,16 +196,23 @@ func TestConfirmedStateExactlyOneCountAndMissingReservationDenied(t *testing.T) 
 		t.Fatal("lost pending state accepted", v, e)
 	}
 }
-func TestPartialShardLossAndRestartGuardFailsClosed(t *testing.T) {
+func TestRestartGuardDoesNotBlockRestoredVisitorState(t *testing.T) {
 	s, code := fixture(t)
 	in := input(code)
 	zone := c.ZoneID(c.SiteID("example.test"), code.ID)
-	s.Redis.Del(context.Background(), stateGuard(zone, in.VisitorID))
-	if result, e := s.reserve(context.Background(), code, zone, in); e != nil || result != "state_generation_lost" {
+	if result, e := s.reserve(context.Background(), code, zone, in); e != nil || result != "reserved" {
 		t.Fatal(result, e)
 	}
-	s.Redis.Set(context.Background(), stateGuard(zone, in.VisitorID), "test:old-server-run-id", 0)
-	if result, e := s.reserve(context.Background(), code, zone, in); e != nil || result != "state_generation_lost" {
+	// Redis process run_id and the legacy slot guard do not participate in admission.
+	s.Redis.Set(context.Background(), c.GuardKey(zone), "test:old-server-run-id", 0)
+	in.ID = uuid.NewString()
+	if result, e := s.reserve(context.Background(), code, zone, in); e != nil || result != "busy" {
+		t.Fatal("lost pending reservation", result, e)
+	}
+	// Missing legacy guard on a fresh visitor must not reject delivery either.
+	in = input(code)
+	s.Redis.Del(context.Background(), c.GuardKey(zone))
+	if result, e := s.reserve(context.Background(), code, zone, in); e != nil || result != "reserved" {
 		t.Fatal(result, e)
 	}
 }
