@@ -13,6 +13,7 @@ import (
 	"gitlab.com/twinbid-exchange/RTB-exchange/internal/pubuuid"
 	shard "gitlab.com/twinbid-exchange/RTB-exchange/internal/services/redis"
 	"io"
+	"log"
 	"net"
 	"net/http"
 	"net/url"
@@ -383,6 +384,9 @@ func (s *Server) request(w http.ResponseWriter, r *http.Request) {
 	respond(w, 200, out)
 }
 
+// Maximum bytes logged from an upstream response, never the full creative body.
+const rtbResponseLogLimit = 1024
+
 type bid struct {
 	ADM  string `json:"adm"`
 	BURL string `json:"burl"`
@@ -429,8 +433,10 @@ func (s *Server) auction(ctx context.Context, r *http.Request, in *Request, code
 	req.Header.Set(pubuuid.TimeHeader, stamp)
 	req.Header.Set(pubuuid.SignatureHeader, signature)
 	s.RTBCalls.Add(1)
+	started := time.Now()
 	res, e := s.HTTP.Do(req)
 	if e != nil {
+		log.Printf("publisher RTB transport_error request_id=%s ortb_id=%s upstream=%s elapsed_ms=%d error=%q", in.ID, id, u.Host+u.Path, time.Since(started).Milliseconds(), e.Error())
 		// If no adapter claimed the UUID, atomically refuse future admission and
 		// commit an error. If claimed (or Redis unavailable), do not guess its outcome.
 		settle, cancel := context.WithTimeout(context.WithoutCancel(ctx), 2*time.Second)
@@ -444,10 +450,17 @@ func (s *Server) auction(ctx context.Context, r *http.Request, in *Request, code
 	}
 	defer res.Body.Close()
 	if res.StatusCode == 204 {
+		if s.Config.RTBLogResponses {
+			log.Printf("publisher RTB response request_id=%s ortb_id=%s upstream=%s status=204 elapsed_ms=%d outcome=no_fill", in.ID, id, u.Host+u.Path, time.Since(started).Milliseconds())
+		}
 		s.failures.Store(0)
 		return nil, nil
 	}
 	if res.StatusCode != 200 {
+		// A bounded excerpt is logged on all RTB HTTP failures; the browser only
+		// gets the existing generic rtb_failed response, never the RTB body.
+		excerpt, readErr := io.ReadAll(io.LimitReader(res.Body, rtbResponseLogLimit))
+		log.Printf("publisher RTB upstream_error request_id=%s ortb_id=%s upstream=%s status=%d elapsed_ms=%d body_prefix=%q body_read_error=%v", in.ID, id, u.Host+u.Path, res.StatusCode, time.Since(started).Milliseconds(), excerpt, readErr)
 		fields := s.publisherFields(r, *in, code, host, site, zone, "rtb_refused_before_admission", res.StatusCode)
 		_, _ = writeError(ctx, s.ORTB, s.Config.ORTBReadySet, id, fields)
 		if s.failures.Add(1) >= 5 {
@@ -456,12 +469,24 @@ func (s *Server) auction(ctx context.Context, r *http.Request, in *Request, code
 		return nil, fmt.Errorf("RTB status %d", res.StatusCode)
 	}
 	s.failures.Store(0)
+	responseReader := io.Reader(res.Body)
+	if s.Config.RTBLogResponses {
+		// Reading the prefix must not change the JSON decoder's input. Restore
+		// precisely those bytes via MultiReader, keeping the original body closable.
+		excerpt, readErr := io.ReadAll(io.LimitReader(res.Body, rtbResponseLogLimit))
+		log.Printf("publisher RTB response request_id=%s ortb_id=%s upstream=%s status=200 elapsed_ms=%d body_prefix=%q body_read_error=%v", in.ID, id, u.Host+u.Path, time.Since(started).Milliseconds(), excerpt, readErr)
+		if readErr != nil {
+			return nil, readErr
+		}
+		responseReader = io.MultiReader(bytes.NewReader(excerpt), res.Body)
+	}
 	var response struct {
 		Seatbid []struct {
 			Bid []bid `json:"bid"`
 		} `json:"seatbid"`
 	}
-	if e = json.NewDecoder(io.LimitReader(res.Body, 1<<20)).Decode(&response); e != nil {
+	if e = json.NewDecoder(io.LimitReader(responseReader, 1<<20)).Decode(&response); e != nil {
+		log.Printf("publisher RTB decode_error request_id=%s ortb_id=%s upstream=%s status=200 elapsed_ms=%d error=%q", in.ID, id, u.Host+u.Path, time.Since(started).Milliseconds(), e.Error())
 		return nil, e
 	}
 	for _, seat := range response.Seatbid {

@@ -1,6 +1,7 @@
 package pub
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -13,6 +14,7 @@ import (
 	"gitlab.com/twinbid-exchange/RTB-exchange/internal/pubuuid"
 	"gitlab.com/twinbid-exchange/RTB-exchange/internal/ua"
 	"io"
+	"log"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -328,5 +330,55 @@ func TestOnlyExplicitPublisherFeedTypes(t *testing.T) {
 		if _, _, e := s.feed(traffic); e == nil {
 			t.Fatal("unsupported type routed", traffic)
 		}
+	}
+}
+
+func TestPublisherLogsActualRTBResponses(t *testing.T) {
+	// An RTB failure must be diagnosed at the Publisher without exposing the
+	// upstream response body to the website or changing its existing status.
+	for _, tc := range []struct {
+		name         string
+		upstream     int
+		body         string
+		debug        bool
+		wantResponse int
+		wantLog      []string
+		absentLog    string
+	}{
+		{name: "RTB 403 error", upstream: 403, body: `{"error":"invalid publisher feed"}`, wantResponse: 502, wantLog: []string{"RTB upstream_error", "status=403", "invalid publisher feed"}},
+		{name: "RTB 204 no fill", upstream: 204, body: "", debug: true, wantResponse: 200, wantLog: []string{"RTB response", "status=204", "outcome=no_fill"}},
+		{name: "RTB 200 trace", upstream: 200, body: `{"seatbid":[]}`, debug: true, wantResponse: 200, wantLog: []string{"RTB response", "status=200", `seatbid`}},
+		{name: "RTB 200 production", upstream: 200, body: `{"seatbid":[]}`, wantResponse: 200, absentLog: "RTB response"},
+		{name: "RTB 200 invalid JSON", upstream: 200, body: `invalid-json`, wantResponse: 502, wantLog: []string{"RTB decode_error", "status=200"}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			s, code := fixture(t)
+			s.Config.RTBLogResponses = tc.debug
+			s.HTTP.Transport = transport(func(*http.Request) (*http.Response, error) {
+				return &http.Response{StatusCode: tc.upstream, Body: io.NopCloser(strings.NewReader(tc.body))}, nil
+			})
+			var captured bytes.Buffer
+			oldOutput, oldFlags := log.Writer(), log.Flags()
+			log.SetOutput(&captured)
+			log.SetFlags(0)
+			defer func() { log.SetOutput(oldOutput); log.SetFlags(oldFlags) }()
+			in := input(code)
+			w := send(s, in)
+			if w.Code != tc.wantResponse {
+				t.Fatalf("HTTP %d, want %d: %s", w.Code, tc.wantResponse, w.Body.String())
+			}
+			if strings.Contains(w.Body.String(), "invalid publisher feed") {
+				t.Fatal("upstream error body leaked into browser response")
+			}
+			got := captured.String()
+			for _, want := range append(tc.wantLog, "request_id="+in.ID) {
+				if !strings.Contains(got, want) && tc.absentLog == "" {
+					t.Fatalf("missing %q in log: %s", want, got)
+				}
+			}
+			if tc.absentLog != "" && strings.Contains(got, tc.absentLog) {
+				t.Fatalf("debug output on production default: %s", got)
+			}
+		})
 	}
 }

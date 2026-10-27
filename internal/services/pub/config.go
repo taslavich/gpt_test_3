@@ -43,7 +43,9 @@ type Config struct {
 	CallbackOrigins string        `env:"PUB_CALLBACK_ORIGINS"`
 	TrustedProxies  string        `env:"PUB_TRUSTED_PROXIES"`
 	RTBTimeout      time.Duration `env:"PUB_RTB_TIMEOUT" env-default:"1500ms"`
-	MaxInflight     int           `env:"PUB_MAX_INFLIGHT" env-default:"2048"`
+	// Enable bounded RTB response-body diagnostics temporarily; off on production traffic by default.
+	RTBLogResponses bool `env:"PUB_RTB_LOG_RESPONSES" env-default:"false"`
+	MaxInflight     int  `env:"PUB_MAX_INFLIGHT" env-default:"2048"`
 	// Same ordered standalone ORTB shards/DB as SSP Adapter and Kafka Loader.
 	ORTBAddrs         string `env:"REDIS_SHARD_ADDRS" env-required:"true"`
 	ORTBPassword      string `env:"REDIS_PASSWORD"`
