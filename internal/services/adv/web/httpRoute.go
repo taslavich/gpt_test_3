@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/go-chi/chi/v5"
+	"gitlab.com/twinbid-exchange/RTB-exchange/internal/services/adv/rtbrules"
 	auction "gitlab.com/twinbid-exchange/RTB-exchange/internal/services/adv/service"
 )
 
@@ -31,6 +32,10 @@ const (
 	PutSiteIDQualityMapURL      = "/filter/site_id_quality_map"
 	GetDebugSiteIDQualityMapURL = "/filter/debug_site_id_quality_map"
 
+	GetRTBRulesMapURL      = "/filter/rtb_rules_map"
+	PutRTBRulesMapURL      = "/filter/rtb_rules_map"
+	GetDebugRTBRulesMapURL = "/filter/debug_rtb_rules_map"
+
 	WorkStatusURL                    = "/work_status"
 	AntiPerekrutRestartURL           = "/internal/antiperekrut/restart"
 	GetAntiPerekrutTrafficPercentURL = "/internal/antiperekrut/traffic-percent"
@@ -48,6 +53,7 @@ const (
 type AntiPerekrutHTTPConfig struct {
 	Manager        *auction.AntiPerekrutManager
 	AuctionService *auction.AuctionService
+	RTBRules       *rtbrules.Store
 }
 
 type antiPerekrutRestartRequest struct {
@@ -234,6 +240,54 @@ func InitHttpRoutes(httpRouter *chi.Mux, percentStore *auction.PercentStore, qua
 		}
 		if err := siteIDQualityStore.UpdateJSON(data); err != nil {
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
+	})
+
+	// RTB-only request transformation rules; separate from all existing filters.
+	var rules *rtbrules.Store
+	if len(antiConfig) > 0 {
+		rules = antiConfig[0].RTBRules
+	}
+	httpRouter.Get(GetRTBRulesMapURL, func(w http.ResponseWriter, _ *http.Request) {
+		if rules == nil {
+			http.Error(w, "RTB rules unavailable", http.StatusServiceUnavailable)
+			return
+		}
+		v, e := rules.SavedJSON()
+		if e != nil {
+			http.Error(w, e.Error(), http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write(v)
+	})
+	httpRouter.Get(GetDebugRTBRulesMapURL, func(w http.ResponseWriter, _ *http.Request) {
+		if rules == nil {
+			http.Error(w, "RTB rules unavailable", http.StatusServiceUnavailable)
+			return
+		}
+		writeJSON(w, http.StatusOK, rules.Memory())
+	})
+	httpRouter.Put(PutRTBRulesMapURL, func(w http.ResponseWriter, r *http.Request) {
+		if rules == nil {
+			http.Error(w, "RTB rules unavailable", http.StatusServiceUnavailable)
+			return
+		}
+		defer r.Body.Close()
+		b, e := io.ReadAll(http.MaxBytesReader(w, r.Body, 16<<20))
+		if e != nil {
+			http.Error(w, e.Error(), http.StatusBadRequest)
+			return
+		}
+		if e = rtbrules.Validate(b); e != nil {
+			http.Error(w, e.Error(), http.StatusBadRequest)
+			return
+		}
+		if e = rules.UpdateJSON(b); e != nil {
+			http.Error(w, e.Error(), http.StatusInternalServerError)
 			return
 		}
 		w.WriteHeader(http.StatusNoContent)

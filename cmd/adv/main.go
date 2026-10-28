@@ -22,6 +22,7 @@ import (
 	advGrpc "gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/proto/services/adv"
 	utils "gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/utils_grpc"
 	httpServer "gitlab.com/twinbid-exchange/RTB-exchange/internal/http"
+	"gitlab.com/twinbid-exchange/RTB-exchange/internal/services/adv/rtbrules"
 	auction "gitlab.com/twinbid-exchange/RTB-exchange/internal/services/adv/service"
 	advWeb "gitlab.com/twinbid-exchange/RTB-exchange/internal/services/adv/web"
 	antiControl "gitlab.com/twinbid-exchange/RTB-exchange/internal/services/antiperekrut"
@@ -124,6 +125,10 @@ func run() error {
 	if err != nil {
 		return fmt.Errorf("[ADV][SITE_ID_QUALITY_MAP][startup] initialization failed: %w", err)
 	}
+	rtbRulesStore, err := rtbrules.NewStore(cfg.AdvRTBRulesMapFilePath)
+	if err != nil {
+		return fmt.Errorf("[ADV][RTB_RULES_MAP][startup] initialization failed: %w", err)
+	}
 	vpnStore, err := auction.NewVPNStore(cfg.AdvVPNDBPath)
 	if err != nil {
 		return fmt.Errorf("[ADV][VPN_DB][startup] initialization failed: %w", err)
@@ -144,6 +149,7 @@ func run() error {
 	runtimeStore := auction.NewRuntimeStore(runtimeRedis, cfg.AdvPacingCurrentTTL, cfg.AdvPacingSlotTTL)
 	winnerStore := auction.NewWinnerStore(winnerRedis, cfg.AdvWinnerTTL)
 	auctionService := auction.NewAuctionService(runtimeStore, winnerStore, percentStore, qualityStore, siteIDQualityStore)
+	auctionService.SetRTBRules(rtbRulesStore)
 	auctionService.SetTestLogsEnabled(cfg.AdvTestLogsEnabled)
 	log.Printf("[ADV][TEST_LOGS] enabled=%t test_domain_suffix_always_enabled=true", cfg.AdvTestLogsEnabled)
 	botNotifier := utils.NewBotMessageWithTimeout(cfg.BotBaseURL, cfg.BotInternalSecret, cfg.AntiperekrutControlTimeout)
@@ -394,6 +400,7 @@ func run() error {
 	advWeb.InitHttpRoutes(router, percentStore, qualityStore, siteIDQualityStore, workController, advWeb.AntiPerekrutHTTPConfig{
 		Manager:        antiManager,
 		AuctionService: auctionService,
+		RTBRules:       rtbRulesStore,
 	})
 
 	listener, err := net.Listen("tcp", fmt.Sprintf("%s:%d", cfg.GrpcServer.Host, cfg.GrpcServer.Port))
@@ -471,6 +478,9 @@ func validateConfig(cfg *config.AdvConfig) error {
 	}
 	if strings.TrimSpace(cfg.AdvQualityMapFilePath) == "" {
 		return fmt.Errorf("ADV_QUALITY_MAP_FILE_PATH is required")
+	}
+	if strings.TrimSpace(cfg.AdvRTBRulesMapFilePath) == "" {
+		return fmt.Errorf("ADV_RTB_RULES_MAP_FILE_PATH is required")
 	}
 	if strings.TrimSpace(cfg.AdvSiteIDQualityMapFilePath) == "" {
 		return fmt.Errorf("ADV_SITE_ID_QUALITY_MAP_FILE_PATH is required")

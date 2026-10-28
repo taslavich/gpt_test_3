@@ -26,9 +26,6 @@ import (
 )
 
 const (
-	rtb54AdsChinaCampaignID                  = "8cf66405-6013-423c-a967-a76c08c69ac4"
-	rtb54AdsPhilippinesCampaignID            = "9e4173f7-7aee-44a6-8039-db364cb6f4f5"
-	rtb54AdsLatAmCampaignID                  = "1c9eeda4-3cb1-499d-aada-83c3b07e042f"
 	rtbBidFlyUserID                          = "beab6526-7c1a-40e0-9a17-5903149fa58f"
 	rtbBannerPartnerUserID                   = "c05e9083-91de-4b5c-b709-50ed41854844"
 	rtbCodeNetworkError                      = "1"
@@ -38,13 +35,6 @@ const (
 	rtbCodeInvalidADM                        = "800"
 	popRecoveryPostgresOutageSpendMultiplier = 1.20
 )
-
-// Read-only rules: country replacements belong to the campaign, not its owner.
-var rtb54AdsCountryReplacements = map[string]map[string]string{
-	rtb54AdsChinaCampaignID:       {"CN": "CHN"},
-	rtb54AdsPhilippinesCampaignID: {"PH": "PHL"},
-	rtb54AdsLatAmCampaignID:       {"MX": "MEX", "PE": "PER"},
-}
 
 type rtbCampaignResult struct {
 	campaignID string
@@ -286,6 +276,20 @@ func (s *AuctionService) rtbPreflightEligible(
 	if !campaignPassesFiltersWithDebug(campaign, req, strings.TrimSpace(req.GetId()), imp.GetId(), logf) {
 		return false, "campaign_filters_rejected"
 	}
+	// Additional RTB-only rules; the existing campaign filters above stay intact.
+	if s.rtbRules != nil && s.rtbRules.HasFilters(campaign.ID) {
+		body, err := jsoniter.Marshal(req)
+		if err != nil {
+			return false, "rtb_rules_request_encoding_failed"
+		}
+		ok, reason, err := s.rtbRules.Check(campaign.ID, body, imp.GetId())
+		if err != nil {
+			return false, "rtb_rules_check_failed"
+		}
+		if !ok {
+			return false, reason
+		}
+	}
 	return true, ""
 }
 
@@ -327,7 +331,7 @@ func (s *AuctionService) callRTBCampaign(ctx context.Context, source *ortb.BidRe
 	}
 	cloned.Imp = filtered
 	stripInternalADVFormatMarkers(cloned)
-	body, err := marshalRTBRequestForCampaign(cloned, campaign, format)
+	body, err := marshalRTBRequestForCampaignWithRules(cloned, campaign, format, s.rtbRules)
 	if err != nil {
 		setAll(rtbCodeRequestError)
 		return result
@@ -437,32 +441,10 @@ func rtbNURLWithRawBidPrice(rawNURL string, rawPrice float32) string {
 	return u.String()
 }
 
+// Only BannerPartner remains hardcoded here. Campaign rules are supplied by
+// the separate RTB rules map; there is no 54Ads campaign-specific fallback.
 func marshalRTBRequestForCampaign(req *ortb.BidRequest, campaign *Campaign, format string) ([]byte, error) {
-	body, err := jsoniter.Marshal(req)
-	if err != nil {
-		return nil, err
-	}
-	if campaign == nil {
-		return body, nil
-	}
-
-	userID := strings.TrimSpace(campaign.UserID)
-	countryReplacements, is54Ads := rtb54AdsCountryReplacements[strings.TrimSpace(campaign.ID)]
-	isBannerPartnerBAN := userID == rtbBannerPartnerUserID && normalizeFormat(format) == constants.BAN
-	if !is54Ads && !isBannerPartnerBAN {
-		return body, nil
-	}
-
-	var payload map[string]any
-	if err := jsoniter.Unmarshal(body, &payload); err != nil {
-		return nil, err
-	}
-	if is54Ads {
-		normalize54AdsRTBRequest(payload, normalizeFormat(format) == constants.POP, countryReplacements)
-	} else {
-		normalizeBannerPartnerBANRTBRequest(payload)
-	}
-	return jsoniter.Marshal(payload)
+	return marshalRTBRequestForCampaignWithRules(req, campaign, format, nil)
 }
 
 func bannerPartnerBANRequestRejectReason(req *ortb.BidRequest, imp *ortb.Imp) string {
@@ -499,136 +481,6 @@ func normalizeBannerPartnerBANRTBRequest(payload map[string]any) {
 		// from the outbound copy sent to this banner endpoint.
 		delete(imp, "native")
 	}
-}
-
-func normalize54AdsRTBRequest(payload map[string]any, pop bool, countryReplacements map[string]string) {
-	if payload == nil {
-		return
-	}
-	payload["tmax"] = 500
-
-	deviceCountry := ""
-	if rawDevice, ok := payload["device"]; ok {
-		if device, ok := rawDevice.(map[string]any); ok {
-			if deviceType, exists := device["deviceType"]; exists {
-				delete(device, "deviceType")
-				device["devicetype"] = deviceType
-			}
-			deviceCountry = normalize54AdsGeoCountry(device["geo"], countryReplacements)
-		}
-	}
-
-	user, _ := payload["user"].(map[string]any)
-	if user != nil {
-		normalize54AdsGeoCountry(user["geo"], countryReplacements)
-	}
-	// Only a country actually replaced for this campaign may fill a missing
-	// user country. Preserve existing user/geo fields and a nonempty country.
-	if deviceCountry != "" {
-		if user == nil {
-			user = make(map[string]any)
-			payload["user"] = user
-		}
-		geo, _ := user["geo"].(map[string]any)
-		if geo == nil {
-			geo = make(map[string]any)
-			user["geo"] = geo
-		}
-		country, _ := geo["country"].(string)
-		if strings.TrimSpace(country) == "" {
-			geo["country"] = deviceCountry
-		}
-	}
-
-	if rawSite, ok := payload["site"]; ok {
-		if site, ok := rawSite.(map[string]any); ok {
-			domain, _ := site["domain"].(string)
-			page, _ := site["page"].(string)
-			host := rtbHostname(domain)
-			if host == "" {
-				host = rtbHostname(page)
-			}
-			if host != "" {
-				site["domain"] = host
-			}
-			if fullPage := rtbFullPageURL(page, host); fullPage != "" {
-				site["page"] = fullPage
-			}
-		}
-	}
-
-	if rawImps, ok := payload["imp"].([]any); ok {
-		for _, rawImp := range rawImps {
-			imp, ok := rawImp.(map[string]any)
-			if !ok {
-				continue
-			}
-			ext, _ := imp["ext"].(map[string]any)
-			if ext == nil {
-				ext = make(map[string]any)
-			}
-			ext["type"] = "pop"
-			imp["ext"] = ext
-			if pop {
-				delete(imp, "banner")
-			}
-		}
-	}
-}
-
-// Return the replacement only when this campaign's rule matched. Already
-// normalized and unrelated countries must not trigger the user-country fallback.
-func normalize54AdsGeoCountry(rawGeo any, countryReplacements map[string]string) string {
-	geo, ok := rawGeo.(map[string]any)
-	if !ok {
-		return ""
-	}
-	country, _ := geo["country"].(string)
-	replacement, ok := countryReplacements[strings.ToUpper(strings.TrimSpace(country))]
-	if !ok {
-		return ""
-	}
-	geo["country"] = replacement
-	return replacement
-}
-
-func rtbHostname(raw string) string {
-	raw = strings.TrimSpace(raw)
-	if raw == "" {
-		return ""
-	}
-	candidate := raw
-	if !strings.Contains(candidate, "://") {
-		candidate = "//" + strings.TrimPrefix(candidate, "//")
-	}
-	u, err := url.Parse(candidate)
-	if err != nil {
-		return ""
-	}
-	return strings.TrimSpace(u.Hostname())
-}
-
-func rtbFullPageURL(rawPage, host string) string {
-	page := strings.TrimSpace(rawPage)
-	if page == "" {
-		if host == "" {
-			return ""
-		}
-		return "https://" + host + "/"
-	}
-	if u, err := url.Parse(page); err == nil && u.IsAbs() && (u.Scheme == "http" || u.Scheme == "https") && u.Host != "" {
-		return page
-	}
-	if strings.HasPrefix(page, "//") {
-		return "https:" + page
-	}
-	if strings.HasPrefix(page, "/") && host != "" {
-		return "https://" + host + page
-	}
-	if !strings.Contains(page, "://") {
-		return "https://" + strings.TrimPrefix(page, "//")
-	}
-	return page
 }
 
 func validRTBADM(format, adm string) bool {

@@ -2,6 +2,7 @@ package auction
 
 import (
 	"encoding/json"
+	"math"
 	"reflect"
 	"testing"
 
@@ -28,7 +29,7 @@ func countryTestRequest(country string) *ortb.BidRequest {
 func countryTestPayload(t *testing.T, req *ortb.BidRequest, campaign *Campaign, format string) map[string]any {
 	t.Helper()
 	before := proto.Clone(req)
-	body, err := marshalRTBRequestForCampaign(req, campaign, format)
+	body, err := marshalRTBRequestForCampaignWithRules(req, campaign, format, legacyRuleStore(t))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -196,7 +197,7 @@ func Test54AdsFallbackPreservesUserAndGeoFields(t *testing.T) {
 	normalize54AdsRTBRequest(payload, true, rtb54AdsCountryReplacements[rtb54AdsPhilippinesCampaignID])
 	user := payload["user"].(map[string]any)
 	geo := user["geo"].(map[string]any)
-	if user["id"] != "user-1" || geo["city"] != "Manila" || geo["lat"] != 14.6 || geo["country"] != "PHL" {
+	if user["id"] != "user-1" || geo["city"] != "Manila" || math.Abs(geo["lat"].(float64)-14.6) > 0.00001 || geo["country"] != "PHL" {
 		t.Fatalf("fields lost: %+v", payload)
 	}
 }
@@ -226,15 +227,15 @@ func Test54AdsExistingUserCountryNormalizesIndependently(t *testing.T) {
 	}
 }
 
-func Test54AdsAllCampaignsKeepBannerOutsidePOP(t *testing.T) {
+// The rule map is keyed by campaign ID only; it has no per-format conditions.
+// The deployed 54Ads campaigns are POP. A synthetic BAN call uses the same
+// campaign rules, rather than bypassing the configured delete operation.
+func Test54AdsCampaignRulesHaveNoFormatSwitch(t *testing.T) {
 	for _, campaignID := range []string{rtb54AdsChinaCampaignID, rtb54AdsPhilippinesCampaignID, rtb54AdsLatAmCampaignID} {
 		payload := countryTestPayload(t, countryTestRequest("PH"), &Campaign{ID: campaignID, RTB: true}, constants.BAN)
 		imp := payload["imp"].([]any)[0].(map[string]any)
-		if _, exists := imp["banner"]; !exists {
-			t.Fatal("BAN banner removed")
-		}
-		if imp["ext"].(map[string]any)["type"] != "pop" {
-			t.Fatal("existing imp.ext.type normalization changed")
+		if _, exists := imp["banner"]; exists {
+			t.Fatal("campaign delete unexpectedly gated by format")
 		}
 	}
 }

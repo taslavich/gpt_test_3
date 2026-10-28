@@ -23,6 +23,7 @@ func validADVConfigForStartupTest() *config.AdvConfig {
 		AdvPercentMapFilePath:       "percent.json",
 		AdvQualityMapFilePath:       "quality.json",
 		AdvSiteIDQualityMapFilePath: "site-quality.json",
+		AdvRTBRulesMapFilePath:      "rules.json",
 		AdvVPNDBPath:                "vpn.mmdb",
 		PostgresDSN:                 "postgres://example",
 		CampaignRefreshInterval:     time.Second,

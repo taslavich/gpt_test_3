@@ -1,0 +1,94 @@
+{
+  "8cf66405-6013-423c-a967-a76c08c69ac4,9e4173f7-7aee-44a6-8039-db364cb6f4f5,1c9eeda4-3cb1-499d-aada-83c3b07e042f": {
+    "add": [
+      {
+        "field": "tmax",
+        "value": 500
+      },
+      {
+        "field": "imp.ext",
+        "postfix_field": "type",
+        "value": "pop"
+      }
+    ],
+    "replace": [
+      {
+        "field": "tmax",
+        "mode": "set",
+        "value": 500
+      },
+      {
+        "field": "site.domain",
+        "mode": "hostname"
+      },
+      {
+        "field": "site.page",
+        "mode": "full_page"
+      }
+    ],
+    "delete": [
+      {
+        "field": "imp.banner"
+      }
+    ],
+    "rename": [
+      {
+        "field": "device.deviceType",
+        "to_field": "devicetype"
+      }
+    ]
+  },
+  "8cf66405-6013-423c-a967-a76c08c69ac4": {
+    "replace": [
+      {
+        "field": "device.geo.country",
+        "countries": {
+          "CN": "CHN"
+        },
+        "copy_to": "user.geo.country"
+      },
+      {
+        "field": "user.geo.country",
+        "countries": {
+          "CN": "CHN"
+        }
+      }
+    ]
+  },
+  "9e4173f7-7aee-44a6-8039-db364cb6f4f5": {
+    "replace": [
+      {
+        "field": "device.geo.country",
+        "countries": {
+          "PH": "PHL"
+        },
+        "copy_to": "user.geo.country"
+      },
+      {
+        "field": "user.geo.country",
+        "countries": {
+          "PH": "PHL"
+        }
+      }
+    ]
+  },
+  "1c9eeda4-3cb1-499d-aada-83c3b07e042f": {
+    "replace": [
+      {
+        "field": "device.geo.country",
+        "countries": {
+          "MX": "MEX",
+          "PE": "PER"
+        },
+        "copy_to": "user.geo.country"
+      },
+      {
+        "field": "user.geo.country",
+        "countries": {
+          "MX": "MEX",
+          "PE": "PER"
+        }
+      }
+    ]
+  }
+}

@@ -24,6 +24,7 @@ import (
 	"gitlab.com/twinbid-exchange/RTB-exchange/internal/constants"
 	filterV2 "gitlab.com/twinbid-exchange/RTB-exchange/internal/filterV2"
 	ortb "gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/proto/types/ortb_V2_5"
+	"gitlab.com/twinbid-exchange/RTB-exchange/internal/services/adv/rtbrules"
 	"gitlab.com/twinbid-exchange/RTB-exchange/internal/services/percenter"
 	"gitlab.com/twinbid-exchange/RTB-exchange/internal/ua"
 )
@@ -204,6 +205,7 @@ type AuctionService struct {
 	percents                *PercentStore
 	quality                 *QualityStore
 	siteIDQuality           *SiteIDQualityStore
+	rtbRules                *rtbrules.Store
 	simplePercenter         *percenter.SimpleStateStore
 	simplePercenterPolicy   percenter.SimplePolicy
 	complexPercenter        *percenter.ComplexStateStore
@@ -3460,3 +3462,10 @@ func trackerMacroValue(key, campaignID, creativeID string, req *ortb.BidRequest)
 }
 
 var ErrInvalidAuctionRequest = errors.New("invalid ADV auction request")
+
+// SetRTBRules attaches the separate RTB-only rules store at ADV startup.
+func (s *AuctionService) SetRTBRules(store *rtbrules.Store) {
+	if s != nil {
+		s.rtbRules = store
+	}
+}

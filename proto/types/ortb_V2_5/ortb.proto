@@ -70,6 +70,9 @@ message Device {
     optional int32 deviceType = 11;
     optional int32 w = 12;
     optional int32 h = 13;
+    optional string make = 14;
+    optional string model = 15;
+    optional string osv = 16;
 }
 
 message Geo {
@@ -96,12 +99,14 @@ message Site {
 message Publisher {
     optional string id = 1;
     optional string name = 2;
+    optional string domain = 3;
 }
 
 message User {
     optional string id = 1;
     optional string keywords = 2;
     optional string buyeruid = 3;
+    optional Geo geo = 4;
 }
 
 message SeatBid {
@@ -168,4 +173,5 @@ message Video {
     optional int32 skip = 18;
     optional int32 skipmin = 19;
     optional int32 skipafter = 20;
+    optional int32 sequence = 21;
 }

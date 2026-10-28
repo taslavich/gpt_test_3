@@ -1,0 +1,162 @@
+{
+  "ALL": {
+    "replace": [
+      {
+        "field": "site.domain",
+        "mode": "hostname"
+      },
+      {
+        "field": "site.page",
+        "mode": "full_page"
+      }
+    ]
+  },
+  "11111111-1111-4111-8111-111111111111,22222222-2222-4222-8222-222222222222": {
+    "filters": [
+      {
+        "field": "imp.video.protocols",
+        "isWhiteList": true,
+        "values": [
+          3
+        ]
+      },
+      {
+        "field": "imp.video.mimes",
+        "isWhiteList": true,
+        "values": [
+          "video/mp4"
+        ]
+      },
+      {
+        "field": "imp.video.w",
+        "isWhiteList": true,
+        "values": [
+          340
+        ]
+      },
+      {
+        "field": "imp.video.h",
+        "isWhiteList": true,
+        "values": [
+          192
+        ]
+      },
+      {
+        "field": "imp.video.linearity",
+        "isWhiteList": true,
+        "values": [
+          1
+        ]
+      },
+      {
+        "field": "imp.video.boxingallowed",
+        "isWhiteList": true,
+        "values": [
+          1
+        ]
+      },
+      {
+        "field": "imp.video.sequence",
+        "isWhiteList": true,
+        "values": [
+          1
+        ]
+      },
+      {
+        "field": "imp.video.skipmin",
+        "isWhiteList": true,
+        "values": [
+          0
+        ]
+      },
+      {
+        "field": "imp.video.skipafter",
+        "isWhiteList": true,
+        "values": [
+          0
+        ]
+      }
+    ],
+    "replace": [
+      {
+        "field": "tmax",
+        "mode": "set",
+        "value": 550
+      }
+    ],
+    "add": [
+      {
+        "field": "tmax",
+        "value": 550
+      }
+    ]
+  },
+  "33333333-3333-4333-8333-333333333333": {
+    "filters": [
+      {
+        "field": "imp.native.ver",
+        "isWhiteList": true,
+        "values": [
+          "1.2"
+        ]
+      },
+      {
+        "field": "imp.native.request",
+        "exists": true
+      }
+    ],
+    "replace": [
+      {
+        "field": "tmax",
+        "mode": "set",
+        "value": 300
+      }
+    ],
+    "add": [
+      {
+        "field": "tmax",
+        "value": 300
+      }
+    ]
+  },
+  "44444444-4444-4444-8444-444444444444": {
+    "filters": [
+      {
+        "field": "device.geo.country",
+        "exists": true
+      }
+    ],
+    "add": [
+      {
+        "field": "imp.ext",
+        "value": "pop",
+        "postfix_field": "type"
+      }
+    ],
+    "replace": [
+      {
+        "field": "device.geo.country",
+        "mode": "iso"
+      }
+    ],
+    "delete": [
+      {
+        "field": "imp.banner"
+      }
+    ],
+    "rename": [
+      {
+        "field": "device.deviceType",
+        "to_field": "devicetype"
+      }
+    ]
+  },
+  "22222222-2222-4222-8222-222222222222": {
+    "add": [
+      {
+        "field": "site.id,site.name",
+        "value": "demo"
+      }
+    ]
+  }
+}

@@ -315,6 +315,7 @@ type AdvConfig struct {
 
 	AdvPercentMapFilePath           string        `yaml:"ADV_PERCENT_MAP_FILE_PATH" env:"ADV_PERCENT_MAP_FILE_PATH"`
 	AdvQualityMapFilePath           string        `yaml:"ADV_QUALITY_MAP_FILE_PATH" env:"ADV_QUALITY_MAP_FILE_PATH"`
+	AdvRTBRulesMapFilePath          string        `yaml:"ADV_RTB_RULES_MAP_FILE_PATH" env:"ADV_RTB_RULES_MAP_FILE_PATH"`
 	AdvSiteIDQualityMapFilePath     string        `yaml:"ADV_SITE_ID_QUALITY_MAP_FILE_PATH" env:"ADV_SITE_ID_QUALITY_MAP_FILE_PATH"`
 	AdvVPNDBPath                    string        `yaml:"ADV_VPN_DB_PATH" env:"ADV_VPN_DB_PATH"`
 	PostgresDSN                     string        `yaml:"POSTGRES_DSN" env:"POSTGRES_DSN"`
