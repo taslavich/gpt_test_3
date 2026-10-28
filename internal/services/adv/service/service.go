@@ -293,6 +293,36 @@ func (s *AuctionService) SetTestLogsEnabled(enabled bool) {
 	}
 }
 
+// logHilltopCampaignTestLine reuses the existing ADV test log statements with
+// no change to their text or arguments. For regular Hilltop SSP domains only,
+// keep lines belonging to either of the two selected RTB campaigns.
+// Request-wide and other-campaign lines are not emitted for these domains.
+func logHilltopCampaignTestLine(format string, args ...any) {
+	const marker = " campaign_id=%q"
+	markerPos := strings.Index(format, marker)
+	if markerPos < 0 {
+		return
+	}
+	// Every existing campaign-specific ADV test line has a %q campaign_id.
+	// Determine which printf argument contains it without formatting the line.
+	argumentIndex := strings.Count(format[:markerPos], "%")
+	if argumentIndex >= len(args) {
+		return
+	}
+	campaignID, ok := args[argumentIndex].(string)
+	if !ok {
+		return
+	}
+	switch strings.ToLower(strings.TrimSpace(campaignID)) {
+	case "1c9eeda4-3cb1-499d-aada-83c3b07e042f", "9e4173f7-7aee-44a6-8039-db364cb6f4f5":
+		log.Printf(format, args...)
+	}
+}
+
+func isHilltopCampaignTestDomain(domain string) bool {
+	return domain == "mc_hilltopads.com" || domain == "adl_hilltopads.com"
+}
+
 func (s *AuctionService) nextAuctionMode() (auctionMode, uint64) {
 	position := atomic.AddUint64(&s.requestCounter, 1) % 100
 
@@ -858,6 +888,8 @@ func (s *AuctionService) auctionCore(
 	logf := debugLogFunc(func(string, ...any) {})
 	if s.testLogsEnabled.Load() || strings.HasSuffix(sspDomain, "_test") {
 		logf = log.Printf
+	} else if isHilltopCampaignTestDomain(sspDomain) {
+		logf = logHilltopCampaignTestLine
 	}
 
 	impressions := 0
