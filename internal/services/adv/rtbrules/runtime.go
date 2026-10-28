@@ -111,14 +111,29 @@ func (s *Store) ApplyToRequest(campaignID string, req *ortb.BidRequest) ([]byte,
 		return jsoniter.Marshal(req)
 	}
 	// Known protobuf fields are added to a campaign-local copy *before* JSON
-	// serialization. Pointer deletes also operate exclusively on this copy.
+	// serialization. set_or_add uses the same protobuf add logic for missing
+	// fields; its replacement step runs later on the serialized JSON.
+	hasSetOrAdd := false
+	for _, r := range rule.Replace {
+		if r.Mode == "set_or_add" {
+			hasSetOrAdd = true
+			break
+		}
+	}
 	source := req
-	if len(rule.Delete) > 0 || len(rule.Add) > 0 {
+	if len(rule.Delete) > 0 || len(rule.Add) > 0 || hasSetOrAdd {
 		source = proto.Clone(req).(*ortb.BidRequest)
 	}
 	for _, a := range rule.Add {
 		if a.PostfixField == "" {
 			if err := addProtobufField(source, a.Field, a.Value); err != nil {
+				return nil, err
+			}
+		}
+	}
+	for _, r := range rule.Replace {
+		if r.Mode == "set_or_add" {
+			if err := addProtobufField(source, r.Field, r.Value); err != nil {
 				return nil, err
 			}
 		}
@@ -388,7 +403,7 @@ func replaceField(payload map[string]any, r Replace) error {
 		mode = "countries"
 	}
 	switch mode {
-	case "set":
+	case "set", "set_or_add":
 		var value any
 		d := json.NewDecoder(bytes.NewReader(r.Value))
 		d.UseNumber()

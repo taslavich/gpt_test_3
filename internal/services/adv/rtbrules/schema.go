@@ -94,7 +94,7 @@ func (a *Add) UnmarshalJSON(data []byte) error {
 
 type Replace struct {
 	Field     string            `json:"field"`
-	Mode      string            `json:"mode,omitempty"` // set,iso,hostname,full_page; countries uses countries key
+	Mode      string            `json:"mode,omitempty"` // set,set_or_add,iso,hostname,full_page; countries uses countries key
 	Value     json.RawMessage   `json:"value,omitempty"`
 	Countries map[string]string `json:"countries,omitempty"`
 	CopyTo    string            `json:"copy_to,omitempty"`
@@ -324,7 +324,7 @@ func validateSet(rs RuleSet) error {
 			mode = "countries"
 		}
 		switch mode {
-		case "set":
+		case "set", "set_or_add":
 			if !validType(r.Value, typ) || (typ == "object" && !validNestedObject(r.Field, r.Value)) {
 				return fmt.Errorf("invalid replacement value for %s", r.Field)
 			}
@@ -353,7 +353,7 @@ func validateSet(rs RuleSet) error {
 		default:
 			return fmt.Errorf("unknown replace mode %q", r.Mode)
 		}
-		if mode != "set" && len(r.Value) != 0 {
+		if mode != "set" && mode != "set_or_add" && len(r.Value) != 0 {
 			return fmt.Errorf("unexpected replacement value for %s", r.Field)
 		}
 		if mode != "countries" && r.Countries != nil {

@@ -434,8 +434,103 @@ func TestReplaceSetAndAdd(t *testing.T) {
 			t.Fatalf("set created missing site: %s", raw)
 		}
 	}
-	if err := Validate([]byte(`{"` + idA + `":{"replace":[{"field":"tmax","mode":"set_or_add","value":500}]}}`)); err == nil {
-		t.Fatal("set_or_add unexpectedly accepted")
+}
+
+// set_or_add restores the existing add-when-missing/replace-when-present
+// behavior without changing the strict behavior of set or ordinary add.
+func TestReplaceSetOrAddUsesProtobufAddSemantics(t *testing.T) {
+	p := filepath.Join(t.TempDir(), "map.json")
+	cfg := []byte(`{"` + idA + `":{"replace":[{"field":"tmax","mode":"set_or_add","value":300},{"field":"imp.bidfloor","mode":"set_or_add","value":0},{"field":"imp.secure","mode":"set_or_add","value":1},{"field":"site.domain","mode":"set_or_add","value":"example.com"}]}}`)
+	if err := os.WriteFile(p, cfg, 0600); err != nil {
+		t.Fatal(err)
+	}
+	s, err := NewStore(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range []struct {
+		name, input string
+	}{
+		{"missing", `{"imp":[{"id":"a"},{"id":"b","secure":0}],"site":{"page":"/x"}}`},
+		{"existing", `{"tmax":500,"imp":[{"id":"a","bidfloor":0.5,"secure":0},{"id":"b","bidfloor":3,"secure":1}],"site":{"domain":"old.example"}}`},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var req ortb.BidRequest
+			if err := jsoniter.Unmarshal([]byte(tc.input), &req); err != nil {
+				t.Fatal(err)
+			}
+			before, err := jsoniter.Marshal(&req)
+			if err != nil {
+				t.Fatal(err)
+			}
+			raw, err := s.ApplyToRequest(idA, &req)
+			if err != nil {
+				t.Fatal(err)
+			}
+			after, err := jsoniter.Marshal(&req)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !bytes.Equal(before, after) {
+				t.Fatalf("original BidRequest mutated: before=%s after=%s", before, after)
+			}
+			var m map[string]any
+			if err := json.Unmarshal(raw, &m); err != nil {
+				t.Fatal(err)
+			}
+			if m["tmax"] != float64(300) || m["site"].(map[string]any)["domain"] != "example.com" {
+				t.Fatalf("set_or_add failed root field: %s", raw)
+			}
+			imps := m["imp"].([]any)
+			for _, rawImp := range imps {
+				imp := rawImp.(map[string]any)
+				if imp["bidfloor"] != float64(0) || imp["secure"] != float64(1) {
+					t.Fatalf("set_or_add failed impression: %s", raw)
+				}
+			}
+		})
+	}
+}
+
+// Grouped fields and ALL use the same validated per-field protobuf behavior.
+func TestReplaceSetOrAddALLAndGroupedFields(t *testing.T) {
+	p := filepath.Join(t.TempDir(), "map.json")
+	cfg := []byte(`{"ALL":{"replace":[{"field":"imp.secure,imp.instl","mode":"set_or_add","value":1}]}}`)
+	if err := os.WriteFile(p, cfg, 0600); err != nil {
+		t.Fatal(err)
+	}
+	s, err := NewStore(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw := runRules(t, s, idA, []byte(`{"imp":[{"id":"a","secure":0},{"id":"b","instl":0}]}`))
+	var m map[string]any
+	if err := json.Unmarshal(raw, &m); err != nil {
+		t.Fatal(err)
+	}
+	for _, item := range m["imp"].([]any) {
+		imp := item.(map[string]any)
+		if imp["secure"] != float64(1) || imp["instl"] != float64(1) {
+			t.Fatalf("ALL/grouped set_or_add did not apply: %s", raw)
+		}
+	}
+}
+
+func TestReplaceSetOrAddValidation(t *testing.T) {
+	for _, replacement := range []string{
+		`{"field":"tmax","mode":"set_or_add"}`,
+		`{"field":"tmax","mode":"set_or_add","value":"300"}`,
+		`{"field":"imp.ext.type","mode":"set_or_add","value":"pop"}`,
+		`{"field":"tmax","mode":"set_or_add","value":300,"postfix_field":"x"}`,
+		`{"field":"device.geo.country","mode":"set_or_add","countries":{"PH":"PHL"},"value":"PHL"}`,
+	} {
+		cfg := []byte(`{"` + idA + `":{"replace":[` + replacement + `]}}`)
+		if err := Validate(cfg); err == nil {
+			t.Fatalf("unexpectedly accepted invalid set_or_add: %s", replacement)
+		}
+	}
+	if err := Validate([]byte(`{"` + idA + `":{"replace":[{"field":"tmax","mode":"set_or_add","value":300}]}}`)); err != nil {
+		t.Fatalf("valid set_or_add rejected: %v", err)
 	}
 }
 

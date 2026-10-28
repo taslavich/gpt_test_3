@@ -81,9 +81,12 @@ may be shared across rules. A scalar parent or protobuf field collision is
 invalid. Neither form creates extra impressions. `add` has no mode.
 
 **Replace:** `{ "field":"tmax", "mode":"set", "value":500 }` changes an
-existing field only. To force a known protobuf field's value whether or not
-it was supplied, combine `add` for the missing case and `replace: set` for the
-existing case.
+existing field only. `set_or_add` restores the combined behavior for a known
+protobuf field: it fills the missing field using ordinary protobuf `add`
+semantics, then replaces its value (including an existing zero). For example,
+`{ "field":"tmax", "mode":"set_or_add", "value":300 }` ensures `tmax=300`
+without a separate `add` rule. `set` and ordinary `add` are unchanged;
+`set_or_add` does not support JSON-only `postfix_field` paths.
 `countries` maps specified two-letter countries to three-letter countries,
 e.g. `{"field":"device.geo.country","countries":
 {"PH":"PHL"},"copy_to":"user.geo.country"}`. Do not specify `mode` with `countries`; these are mutually exclusive.
