@@ -103,6 +103,50 @@
       {
         "field": "imp.native.request",
         "exists": true
+      },
+      {
+        "field": "imp.native.request",
+        "json_path": "assets[id=100].title.len",
+        "values": [
+          80
+        ],
+        "isWhiteList": true
+      },
+      {
+        "field": "imp.native.request",
+        "json_path": "assets[id=101].data.type",
+        "values": [
+          1
+        ],
+        "isWhiteList": true
+      },
+      {
+        "field": "imp.native.request",
+        "json_path": "assets[id=101].data.len",
+        "values": [
+          80
+        ],
+        "isWhiteList": true
+      },
+      {
+        "field": "imp.native.request",
+        "json_path": "assets[id=102].img.type",
+        "values": [
+          3
+        ],
+        "isWhiteList": true
+      },
+      {
+        "field": "imp.native.request",
+        "json_path": "assets[id=102].img.wmin",
+        "compare": ">=",
+        "value": 200
+      },
+      {
+        "field": "imp.native.request",
+        "json_path": "assets[id=102].img.hmin",
+        "compare": ">=",
+        "value": 200
       }
     ],
     "replace": [

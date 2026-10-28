@@ -42,8 +42,34 @@ fields, whitelist membership means **contains any specified value**. For
 scalar fields, it means equality to any specified value. Blacklist passes only
 when no configured value matches. A missing field cannot satisfy whitelist.
 Alternative existence filter: `{ "field":"device.make",
-"exists":true }`, or `false` to require absence. Exactly one of `values` and
-`exists` must be specified; use separate filters to check both.
+"exists":true }`, or `false` to require absence. Exactly one of `values`, `exists`, and `compare` must be specified.
+Use separate filter objects for independent conditions.
+
+**Native JSON-string filters (RTB second layer only):** `imp.native.request`
+is a protobuf **string** whose contents can be JSON. Add `json_path` to a
+filter to read fields *inside* that string, for example:
+
+```json
+{"field":"imp.native.request", "json_path":"assets[id=102].img.wmin", "compare":">=", "value":200}
+{"field":"imp.native.request", "json_path":"assets[0].title.len", "values":[80], "isWhiteList":true}
+```
+
+`json_path` uses dot-separated JSON object keys, numeric array indices
+(`[0]`), or an asset-ID selector (`[id=102]`) that does not depend on array
+position. These paths are **not** additional protobuf fields. The embedded
+string is decoded once per impression for the whole incoming BidRequest and
+reused across filters and RTB campaigns; no native JSON is parsed when no
+`json_path` is configured. The original string is never modified. The
+optional numeric `compare` supports `>`, `>=`, `<`, `<=` and requires a numeric
+`value`. Values and operators are checked at map load/HTTP PUT time.
+Malformed native JSON or a JSON-path type mismatch rejects only that
+RTB campaign's impression (no HTTP request sent for that impression) and
+records **-6** under its campaign UUID in `ADV_RTB_RESPONSES`. Missing
+paths and valid but nonmatching values are normal filter rejects and **do
+not** create a new error code. Earlier ADV filtering stages remain unchanged.
+Missing or null `native.request` is treated as an absent field, not invalid
+JSON. The cache is per BidRequest and is discarded after its preflight. Timestamps,
+HTTP status codes, and other existing RTB statistics are not changed.
 
 **Add:** `{ "field":"device.geo.country", "value":"PHL" }` fills a
 known protobuf field only if missing/null, before serialization; present

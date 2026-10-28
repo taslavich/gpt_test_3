@@ -19,12 +19,15 @@ type RuleSet struct {
 }
 type Filter struct {
 	Field       string            `json:"field"`
+	JSONPath    string            `json:"json_path,omitempty"`
 	IsWhiteList *bool             `json:"isWhiteList,omitempty"`
 	Values      []json.RawMessage `json:"values,omitempty"`
 	Exists      *bool             `json:"exists,omitempty"`
+	Compare     string            `json:"compare,omitempty"`
+	Value       json.RawMessage   `json:"value,omitempty"`
 }
 
-// Filter mode is inferred from the presence of exactly one of values or exists.
+// Filter mode is inferred from exactly one of values, exists or compare.
 // Validate source keys at map load/PUT time, not on the request hot path.
 func (f *Filter) UnmarshalJSON(data []byte) error {
 	type filterAlias Filter
@@ -38,15 +41,25 @@ func (f *Filter) UnmarshalJSON(data []byte) error {
 	if err := json.Unmarshal(data, &keys); err != nil {
 		return err
 	}
-	for _, key := range []string{"values", "exists"} {
+	for _, key := range []string{"values", "exists", "compare", "value", "json_path"} {
 		if value, present := keys[key]; present && bytes.Equal(bytes.TrimSpace(value), []byte("null")) {
 			return fmt.Errorf("filter %s cannot be null", key)
 		}
 	}
-	if _, values := keys["values"]; values {
-		if _, exists := keys["exists"]; exists {
-			return fmt.Errorf("filter cannot combine values and exists")
+	modes := 0
+	for _, key := range []string{"values", "exists", "compare"} {
+		if _, ok := keys[key]; ok {
+			modes++
 		}
+	}
+	if modes != 1 {
+		return fmt.Errorf("filter must specify exactly one of values, exists or compare")
+	}
+	if _, hasValue := keys["value"]; hasValue != (wire.Compare != "") {
+		return fmt.Errorf("filter value is required exactly when compare is used")
+	}
+	if _, hasPath := keys["json_path"]; hasPath && wire.JSONPath == "" {
+		return fmt.Errorf("json_path must not be empty")
 	}
 	*f = Filter(wire)
 	return nil
@@ -220,20 +233,34 @@ func validateSet(rs RuleSet) error {
 		if e != nil {
 			return e
 		}
-		switch {
-		case f.Exists != nil && f.Values == nil:
-			if f.IsWhiteList != nil {
-				return fmt.Errorf("exists filter %s must not specify isWhiteList", f.Field)
+		if f.JSONPath != "" {
+			// The embedded JSON is a string in the protobuf model. Other
+			// string fields are deliberately not interpreted as JSON.
+			if f.Field != "imp.native.request" {
+				return fmt.Errorf("json_path is only supported for imp.native.request")
 			}
-		case f.Values != nil && f.Exists == nil:
-			if f.IsWhiteList == nil || len(f.Values) == 0 || typ == "object" {
-				return fmt.Errorf("value filter %s requires isWhiteList and nonempty values (scalar/array field)", f.Field)
+			if _, err := parseNativeJSONPath(f.JSONPath); err != nil {
+				return fmt.Errorf("invalid json_path %q: %w", f.JSONPath, err)
+			}
+		}
+		switch {
+		case f.Exists != nil && f.Values == nil && f.Compare == "":
+			if f.IsWhiteList != nil || len(f.Value) > 0 {
+				return fmt.Errorf("exists filter %s must not specify isWhiteList or value", f.Field)
+			}
+		case f.Values != nil && f.Exists == nil && f.Compare == "":
+			if f.IsWhiteList == nil || len(f.Values) == 0 || (typ == "object" && f.JSONPath == "") || len(f.Value) != 0 {
+				return fmt.Errorf("value filter %s requires isWhiteList and nonempty values", f.Field)
 			}
 			valTyp := typ
-			if typ == "strings" {
+			if f.JSONPath != "" {
+				valTyp = jsonScalarType(f.Values[0])
+				if valTyp == "" {
+					return fmt.Errorf("json_path filter %s must compare scalar values", f.JSONPath)
+				}
+			} else if typ == "strings" {
 				valTyp = "string"
-			}
-			if typ == "numbers" {
+			} else if typ == "numbers" {
 				valTyp = "number"
 			}
 			for _, v := range f.Values {
@@ -241,8 +268,15 @@ func validateSet(rs RuleSet) error {
 					return fmt.Errorf("invalid filter value for %s (expected %s)", f.Field, valTyp)
 				}
 			}
+		case f.Compare != "" && f.Exists == nil && f.Values == nil:
+			if f.Compare != ">" && f.Compare != ">=" && f.Compare != "<" && f.Compare != "<=" {
+				return fmt.Errorf("unsupported numeric comparison %q", f.Compare)
+			}
+			if f.IsWhiteList != nil || (f.JSONPath == "" && typ != "number") || !validType(f.Value, "number") {
+				return fmt.Errorf("comparison filter %s requires a numeric field and value", f.Field)
+			}
 		default:
-			return fmt.Errorf("filter %s must specify exactly one of values or exists", f.Field)
+			return fmt.Errorf("filter %s must specify exactly one of values, exists or compare", f.Field)
 		}
 	}
 	for _, a := range rs.Add {

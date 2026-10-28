@@ -22,6 +22,7 @@ import (
 	eventspb "gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/proto/buffer"
 	ortb "gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/proto/types/ortb_V2_5"
 	utils "gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/utils_grpc"
+	"gitlab.com/twinbid-exchange/RTB-exchange/internal/services/adv/rtbrules"
 	"google.golang.org/protobuf/proto"
 )
 
@@ -33,6 +34,7 @@ const (
 	rtbCodeReadError                         = "4"
 	rtbCodeRequestError                      = "55"
 	rtbCodeInvalidADM                        = "800"
+	rtbCodeNativeFilterError                 = "-6"
 	popRecoveryPostgresOutageSpendMultiplier = 1.20
 )
 
@@ -142,6 +144,10 @@ func (s *AuctionService) fetchRTBCampaignBids(
 	}
 	jobs := make([]job, 0)
 	rtbCampaignsSeen := 0
+	// Shared across all campaign checks for this one inbound BidRequest.
+	// No native JSON is parsed until a native json_path filter is evaluated.
+	filterCache := rtbrules.NewFilterCache(req)
+	statsByImp := make(map[string]map[string]string)
 	for _, campaign := range snapshot.Campaigns {
 		if campaign == nil || !campaign.RTB {
 			continue
@@ -159,11 +165,20 @@ func (s *AuctionService) fetchRTBCampaignBids(
 			}
 			durableUserBlocked := snapshot.UserAntiPerekrutBlocked[campaign.UserID]
 			preflightOK, rejectReason := s.rtbPreflightEligible(campaign, req, imp, now, requestedFormat, trafficType, sspDomain, siteIDQualityValue,
-				options.ImpIDUUID[imp.GetId()], antiState, durableUserBlocked, requestIsVPN, vpnClassificationErr, logf)
+				options.ImpIDUUID[imp.GetId()], antiState, durableUserBlocked, requestIsVPN, vpnClassificationErr, filterCache, logf)
 			if preflightOK {
 				eligible = append(eligible, imp)
 				logf("[ADV][RTB_PREFLIGHT_PASS] request_id=%q campaign_id=%q imp_id=%q", strings.TrimSpace(req.GetId()), campaign.ID, imp.GetId())
 			} else {
+				// Record only errors from the RTB rules' embedded native JSON
+				// filter layer. Earlier ADV rejections and ordinary rule
+				// mismatches are not ADV_RTB_RESPONSES error codes.
+				if rejectReason == "rtb_rules_native_filter_error" {
+					if statsByImp[imp.GetId()] == nil {
+						statsByImp[imp.GetId()] = make(map[string]string)
+					}
+					statsByImp[imp.GetId()][campaign.ID] = rtbCodeNativeFilterError
+				}
 				logf("[ADV][RTB_PREFLIGHT_REJECT] request_id=%q campaign_id=%q imp_id=%q reason=%q", strings.TrimSpace(req.GetId()), campaign.ID, imp.GetId(), rejectReason)
 			}
 		}
@@ -174,7 +189,7 @@ func (s *AuctionService) fetchRTBCampaignBids(
 	}
 	logf("[ADV][RTB_DISCOVERY] request_id=%q rtb_campaigns=%d jobs=%d", strings.TrimSpace(req.GetId()), rtbCampaignsSeen, len(jobs))
 	if len(jobs) == 0 {
-		s.writeRTBResponseStats(ctx, options.ImpIDUUID, nil, logf)
+		s.writeRTBResponseStats(ctx, options.ImpIDUUID, statsByImp, logf)
 		return out
 	}
 
@@ -191,7 +206,6 @@ func (s *AuctionService) fetchRTBCampaignBids(
 	wg.Wait()
 	close(results)
 
-	statsByImp := make(map[string]map[string]string)
 	for result := range results {
 		for impID, code := range result.codes {
 			if statsByImp[impID] == nil {
@@ -220,6 +234,7 @@ func (s *AuctionService) rtbPreflightEligible(
 	durableUserBlocked bool,
 	requestIsVPN bool,
 	vpnClassificationErr error,
+	filterCache *rtbrules.FilterCache,
 	logf debugLogFunc,
 ) (bool, string) {
 	if campaign == nil {
@@ -278,12 +293,12 @@ func (s *AuctionService) rtbPreflightEligible(
 	}
 	// Additional RTB-only rules; the existing campaign filters above stay intact.
 	if s.rtbRules != nil && s.rtbRules.HasFilters(campaign.ID) {
-		body, err := jsoniter.Marshal(req)
+		ok, reason, err := s.rtbRules.CheckWithCache(campaign.ID, filterCache, imp.GetId())
 		if err != nil {
-			return false, "rtb_rules_request_encoding_failed"
-		}
-		ok, reason, err := s.rtbRules.Check(campaign.ID, body, imp.GetId())
-		if err != nil {
+			if errors.Is(err, rtbrules.ErrNativeFilter) {
+				logf("[ADV][RTB_NATIVE_FILTER_ERROR] request_id=%q campaign_id=%q imp_id=%q error=%v", req.GetId(), campaign.ID, imp.GetId(), err)
+				return false, "rtb_rules_native_filter_error"
+			}
 			return false, "rtb_rules_check_failed"
 		}
 		if !ok {

@@ -3,6 +3,7 @@ package rtbrules
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	jsoniter "github.com/json-iterator/go"
 	ortb "gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/proto/types/ortb_V2_5"
 	"os"
@@ -733,5 +734,184 @@ func TestPostfixDeleteSiblingAndRenameConflict(t *testing.T) {
 	conflict := []byte(`{"` + idA + `":{"add":[{"field":"device","postfix_field":"devicetype","value":9}],"rename":[{"field":"device.deviceType","to_field":"devicetype"}]}}`)
 	if err := Validate(conflict); err == nil {
 		t.Fatal("postfix collides with rename destination")
+	}
+}
+
+func TestNativeRequestJSONPathAndCachedChecks(t *testing.T) {
+	config := []byte(`{"` + idA + `,` + idB + `":{"filters":[` +
+		`{"field":"imp.native.request","json_path":"assets[id=100].title.len","values":[80],"isWhiteList":true},` +
+		`{"field":"imp.native.request","json_path":"assets[id=101].data.type","values":[1],"isWhiteList":true},` +
+		`{"field":"imp.native.request","json_path":"assets[id=102].img.type","values":[3],"isWhiteList":true},` +
+		`{"field":"imp.native.request","json_path":"assets[id=102].img.wmin","compare":">=","value":200},` +
+		`{"field":"imp.native.request","json_path":"assets[id=102].img.hmin","compare":">=","value":200}]}}`)
+	path := filepath.Join(t.TempDir(), "map.json")
+	if err := os.WriteFile(path, config, 0600); err != nil {
+		t.Fatal(err)
+	}
+	s, err := NewStore(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	native1 := `{"assets":[{"id":102,"img":{"type":3,"wmin":240,"hmin":210}},{"id":100,"title":{"len":80}},{"id":101,"data":{"type":1,"len":80}}]}`
+	native2 := `{"assets":[{"id":102,"img":{"type":3,"wmin":190,"hmin":210}},{"id":100,"title":{"len":80}},{"id":101,"data":{"type":1,"len":80}}]}`
+	request := map[string]any{"imp": []any{
+		map[string]any{"id": "imp-good", "native": map[string]any{"request": native1}},
+		map[string]any{"id": "imp-small", "native": map[string]any{"request": native2}},
+	}}
+	raw, err := json.Marshal(request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cache := newFilterCacheFromJSON(raw)
+	for _, campaign := range []string{idA, idB} {
+		ok, why, err := s.CheckWithCache(campaign, cache, "imp-good")
+		if err != nil || !ok {
+			t.Fatalf("campaign %s expected good: %s %v", campaign, why, err)
+		}
+	}
+	if len(cache.native) != 1 {
+		t.Fatalf("native parse cache should contain one impression; got %d", len(cache.native))
+	}
+	ok, why, err := s.CheckWithCache(idA, cache, "imp-small")
+	if err != nil || ok || !strings.Contains(why, "wmin") {
+		t.Fatalf("size filter %v %s %v", ok, why, err)
+	}
+	if len(cache.native) != 2 {
+		t.Fatalf("native cache isolation by impression: %d", len(cache.native))
+	}
+}
+
+func TestNativeRequestParsingAndTypeErrorsAreSeparateFromMismatch(t *testing.T) {
+	cfg := []byte(`{"` + idA + `":{"filters":[{"field":"imp.native.request","json_path":"assets[id=102].img.wmin","compare":">=","value":200}]}}`)
+	path := filepath.Join(t.TempDir(), "map.json")
+	if err := os.WriteFile(path, cfg, 0600); err != nil {
+		t.Fatal(err)
+	}
+	s, err := NewStore(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cases := []struct {
+		name, native        string
+		wantError, wantPass bool
+	}{
+		{"bad JSON", `{bad`, true, false},
+		{"trailing JSON", `{"assets":[]} null`, true, false},
+		{"wrong type", `{"assets":[{"id":102,"img":{"wmin":"240"}}]}`, true, false},
+		{"wrong assets type", `{"assets":"oops"}`, true, false},
+		{"wrong asset id type", `{"assets":[{"id":"102","img":{"wmin":240}}]}`, true, false},
+		{"missing asset", `{"assets":[{"id":99}]}`, false, false},
+		{"valid but below limit", `{"assets":[{"id":102,"img":{"wmin":199}}]}`, false, false},
+		{"valid and matches", `{"assets":[{"id":102,"img":{"wmin":200}}]}`, false, true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			raw, _ := json.Marshal(map[string]any{"imp": []any{map[string]any{"id": "i", "native": map[string]any{"request": tc.native}}}})
+			ok, _, err := s.Check(idA, raw, "i")
+			if ok != tc.wantPass || errors.Is(err, ErrNativeFilter) != tc.wantError {
+				t.Fatalf("passed=%t error=%v expected pass=%t error=%t", ok, err, tc.wantPass, tc.wantError)
+			}
+		})
+	}
+	raw := []byte(`{"imp":[{"id":"i"}]}`)
+	ok, _, err := s.Check(idA, raw, "i")
+	if err != nil || ok {
+		t.Fatalf("missing native request must just fail filter: ok=%t err=%v", ok, err)
+	}
+}
+
+func TestNativeRequestArrayIndexAndExists(t *testing.T) {
+	cfg := []byte(`{"` + idA + `":{"filters":[{"field":"imp.native.request","json_path":"assets[0].title.len","exists":true}]}}`)
+	p := filepath.Join(t.TempDir(), "map.json")
+	_ = os.WriteFile(p, cfg, 0600)
+	s, err := NewStore(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw := []byte(`{"imp":[{"id":"a","native":{"request":"{\"assets\":[{\"title\":{\"len\":80}}]}"}}]}`)
+	ok, _, err := s.Check(idA, raw, "a")
+	if err != nil || !ok {
+		t.Fatalf("expected indexed field: %v %v", ok, err)
+	}
+	raw = []byte(`{"imp":[{"id":"a","native":{"request":"{\"assets\":[]}"}}]}`)
+	ok, _, err = s.Check(idA, raw, "a")
+	if err != nil || ok {
+		t.Fatalf("missing index is mismatch, not error: %v %v", ok, err)
+	}
+}
+
+func TestNativeRequestConfigValidationAndPUTRollback(t *testing.T) {
+	good := []byte(`{"` + idA + `":{"filters":[{"field":"imp.native.request","json_path":"assets[id=102].img.wmin","compare":">=","value":200}]}}`)
+	p := filepath.Join(t.TempDir(), "map.json")
+	if err := os.WriteFile(p, good, 0600); err != nil {
+		t.Fatal(err)
+	}
+	s, err := NewStore(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, bad := range []string{
+		`{"field":"imp.native.request","json_path":"assets[].img.wmin","compare":">=","value":200}`,
+		`{"field":"imp.native.ver","json_path":"assets[0]","exists":true}`,
+		`{"field":"imp.native.request","json_path":"assets[id=abc]","exists":true}`,
+		`{"field":"imp.native.request","json_path":"assets[id=102].img.wmin","compare":"between","value":200}`,
+		`{"field":"imp.native.request","json_path":"assets[id=102].img.wmin","compare":">=","value":"200"}`,
+		`{"field":"imp.native.request","json_path":"assets[id=102].img.wmin","values":[200],"compare":">=","value":200,"isWhiteList":true}`,
+		`{"field":"imp.native.request","json_path":"assets[id=102].img.wmin","values":[200,"200"],"isWhiteList":true}`,
+		`{"field":"imp.native.request","json_path":"assets[id=102].img.wmin","compare":">=","value":200,"isWhiteList":true}`,
+	} {
+		invalid := []byte(`{"` + idA + `":{"filters":[` + bad + `]}}`)
+		if err := s.UpdateJSON(invalid); err == nil {
+			t.Fatalf("accepted invalid rule: %s", bad)
+		}
+		persisted, _ := os.ReadFile(p)
+		if !bytes.Equal(persisted, good) {
+			t.Fatalf("invalid PUT modified file")
+		}
+	}
+	if len(s.Memory()[idA].Filters) != 1 {
+		t.Fatal("invalid PUT changed active rules")
+	}
+}
+
+func TestNativeJSONPathALLAndCampaignSpecificMerge(t *testing.T) {
+	cfg := []byte(`{"ALL":{"filters":[` +
+		`{"field":"imp.native.request","json_path":"assets[id=100].title.len","values":[80],"isWhiteList":true}]},` +
+		`"` + idA + `":{"filters":[` +
+		`{"field":"imp.native.request","json_path":"assets[id=102].img.wmin","compare":">=","value":200}]}}`)
+	p := filepath.Join(t.TempDir(), "map.json")
+	_ = os.WriteFile(p, cfg, 0600)
+	s, err := NewStore(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	merged, exists := s.lookup(idA)
+	if !exists || len(merged.Filters) != 2 {
+		t.Fatalf("global+campaign JSON paths must be independent: %+v", merged.Filters)
+	}
+	global, exists := s.lookup(idB)
+	if !exists || len(global.Filters) != 1 {
+		t.Fatalf("ALL missing: %+v", global.Filters)
+	}
+}
+
+func TestNativeFilterMalformedImpressionDoesNotPoisonOtherImpressions(t *testing.T) {
+	cfg := []byte(`{"` + idA + `":{"filters":[{"field":"imp.native.request","json_path":"assets[0].title.len","values":[80],"isWhiteList":true}]}}`)
+	p := filepath.Join(t.TempDir(), "map.json")
+	_ = os.WriteFile(p, cfg, 0600)
+	s, err := NewStore(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	payload, _ := json.Marshal(map[string]any{"imp": []any{
+		map[string]any{"id": "bad", "native": map[string]any{"request": "{bad"}},
+		map[string]any{"id": "good", "native": map[string]any{"request": `{"assets":[{"title":{"len":80}}]}`}},
+	}})
+	cache := newFilterCacheFromJSON(payload)
+	if ok, _, err := s.CheckWithCache(idA, cache, "bad"); ok || !errors.Is(err, ErrNativeFilter) {
+		t.Fatalf("bad impression must fail with native error: ok=%v err=%v", ok, err)
+	}
+	if ok, _, err := s.CheckWithCache(idA, cache, "good"); !ok || err != nil {
+		t.Fatalf("good impression must pass despite sibling error: ok=%v err=%v", ok, err)
 	}
 }

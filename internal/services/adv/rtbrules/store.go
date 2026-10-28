@@ -283,7 +283,11 @@ func expandFields(in RuleSet) (RuleSet, error) {
 // without any secondary group pointers or rule-block lookup indirection.
 func mergeRuleSet(prev, next RuleSet) RuleSet {
 	out := RuleSet{}
-	out.Filters = mergeByPath(prev.Filters, next.Filters, func(f Filter) string { return f.Field })
+	out.Filters = mergeByPath(prev.Filters, next.Filters, func(f Filter) string {
+		// Separate native.request JSON paths must remain independent when
+		// ALL and campaign-specific blocks are combined.
+		return f.Field + "\x00" + f.JSONPath
+	})
 	out.Add = mergeByPath(prev.Add, next.Add, func(a Add) string {
 		if a.PostfixField != "" {
 			return a.Field + "." + a.PostfixField

@@ -24,26 +24,55 @@ func decodeJSON(b []byte) (map[string]any, error) {
 	return obj, nil
 }
 
-// Check tests only the supplied impression. It is invoked after existing ADV
-// preflight filters, without altering the request or changing their semantics.
+// Check is retained for callers already supplying encoded BidRequest JSON.
+// ADV uses CheckWithCache so all RTB campaigns evaluating the same request
+// share the decoded request and the parsed embedded native JSON.
 func (s *Store) Check(campaignID string, payload []byte, impID string) (bool, string, error) {
+	return s.CheckWithCache(campaignID, newFilterCacheFromJSON(payload), impID)
+}
+
+// CheckWithCache returns an error only for malformed input / invalid types,
+// not when a well-formed request merely fails a campaign-specific condition.
+func (s *Store) CheckWithCache(campaignID string, cache *FilterCache, impID string) (bool, string, error) {
 	rule, ok := s.lookup(campaignID)
 	if !ok || len(rule.Filters) == 0 {
 		return true, "", nil
 	}
-	request, e := decodeJSON(payload)
+	request, e := cache.rootObject()
 	if e != nil {
 		return false, "", e
 	}
 	for _, f := range rule.Filters {
-		vals, exists := readField(request, f.Field, impID)
-		accepted := false
-		if f.Exists != nil {
-			accepted = exists == *f.Exists
+		var vals []any
+		var exists bool
+		if f.JSONPath != "" {
+			vals, exists, e = cache.nativeValues(impID, f.JSONPath)
+			if e != nil {
+				return false, "", e
+			}
 		} else {
-			// Missing input never satisfies a whitelist; it cannot be blacklisted.
+			vals, exists = readField(request, f.Field, impID)
+		}
+		accepted := false
+		switch {
+		case f.Exists != nil:
+			accepted = exists == *f.Exists
+		case f.Compare != "":
+			for _, val := range vals {
+				matched, err := checkNumericComparison(val, f.Compare, f.Value)
+				if err != nil {
+					return false, "", err
+				}
+				if matched {
+					accepted = true
+				}
+			}
+		default:
 			listed := false
 			for _, v := range vals {
+				if f.JSONPath != "" && nativeJSONType(v) != jsonScalarType(f.Values[0]) {
+					return false, "", nativeFilterError("json_path %s expects %s, got %s", f.JSONPath, jsonScalarType(f.Values[0]), nativeJSONType(v))
+				}
 				for _, target := range f.Values {
 					var want any
 					d := json.NewDecoder(bytes.NewReader(target))
@@ -54,10 +83,15 @@ func (s *Store) Check(campaignID string, payload []byte, impID string) (bool, st
 					}
 				}
 			}
+			// Missing input never satisfies a whitelist; it cannot be blacklisted.
 			accepted = listed == *f.IsWhiteList
 		}
 		if !accepted {
-			return false, fmt.Sprintf("rtb_rule_filter_%s", f.Field), nil
+			reason := f.Field
+			if f.JSONPath != "" {
+				reason += "." + f.JSONPath
+			}
+			return false, fmt.Sprintf("rtb_rule_filter_%s", reason), nil
 		}
 	}
 	return true, "", nil
