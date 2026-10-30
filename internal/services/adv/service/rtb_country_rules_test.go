@@ -66,12 +66,10 @@ func Test54AdsCountryRulesAreCampaignSpecific(t *testing.T) {
 				if got := device["geo"].(map[string]any)["country"]; got != want {
 					t.Fatalf("device country=%v want=%s", got, want)
 				}
-				if want != country {
-					if got := user["geo"].(map[string]any)["country"]; got != want {
-						t.Fatalf("user fallback country=%v want=%s", got, want)
-					}
-				} else if _, exists := user["geo"]; exists {
-					t.Fatal("unmatched device country populated user geo")
+				// The configured copy_to copies the final device value even
+				// when the countries substitution did not match.
+				if got := user["geo"].(map[string]any)["country"]; got != want {
+					t.Fatalf("copied user country=%v want=%s", got, want)
 				}
 				if user["id"] != "source-user" {
 					t.Fatal("existing user id lost")
@@ -99,7 +97,7 @@ func Test54AdsCountryRulesAreCampaignSpecific(t *testing.T) {
 	}
 }
 
-func Test54AdsCountryFallbackOnlyAfterCampaignSpecificDeviceReplacement(t *testing.T) {
+func Test54AdsCountryCopyUsesFinalDeviceValue(t *testing.T) {
 	rules := []struct{ id, from, to string }{
 		{rtb54AdsChinaCampaignID, "CN", "CHN"},
 		{rtb54AdsPhilippinesCampaignID, "PH", "PHL"},
@@ -126,21 +124,18 @@ func Test54AdsCountryFallbackOnlyAfterCampaignSpecificDeviceReplacement(t *testi
 				normalize54AdsRTBRequest(payload, true, rtb54AdsCountryReplacements[rule.id])
 				user := payload["user"].(map[string]any)
 				want := rule.to
-				if userState == "existing country" {
-					want = "US"
-				}
 				if got := user["geo"].(map[string]any)["country"]; got != want {
 					t.Fatalf("user country=%v want=%s", got, want)
 				}
 			})
 		}
 		for _, country := range []string{"US", rule.to} {
-			t.Run(rule.id+"/no-fallback/"+country, func(t *testing.T) {
+			t.Run(rule.id+"/unmatched-copy/"+country, func(t *testing.T) {
 				req := countryTestRequest(country)
 				req.User = nil
 				payload := countryTestPayload(t, req, &Campaign{ID: rule.id, RTB: true}, constants.POP)
-				if _, exists := payload["user"]; exists {
-					t.Fatal("no matching device replacement, but user was created")
+				if got := payload["user"].(map[string]any)["geo"].(map[string]any)["country"]; got != country {
+					t.Fatal("copy_to changed an unmatched device country", got)
 				}
 			})
 		}
@@ -157,8 +152,8 @@ func Test54AdsCountryFallbackDoesNotLeakOtherCampaignCountries(t *testing.T) {
 			req := countryTestRequest(pair.country)
 			req.User = nil
 			payload := countryTestPayload(t, req, &Campaign{ID: pair.id, RTB: true}, constants.POP)
-			if _, exists := payload["user"]; exists {
-				t.Fatal("country rule leaked from a different campaign")
+			if got := payload["user"].(map[string]any)["geo"].(map[string]any)["country"]; got != pair.country {
+				t.Fatal("copy_to used another campaign's country substitution", got)
 			}
 			if got := payload["device"].(map[string]any)["geo"].(map[string]any)["country"]; got != pair.country {
 				t.Fatalf("unrelated country changed: %v", got)
@@ -202,11 +197,11 @@ func Test54AdsFallbackPreservesUserAndGeoFields(t *testing.T) {
 	}
 }
 
-func Test54AdsExistingUserCountryNormalizesIndependently(t *testing.T) {
+func Test54AdsExistingUserCountryFollowsConfiguredCopyTo(t *testing.T) {
 	for _, tt := range []struct{ device, user, wantDevice, wantUser string }{
-		{"MX", "PE", "MEX", "PER"},
-		{"PE", "MX", "PER", "MEX"},
-		{"CN", "PE", "CN", "PER"},
+		{"MX", "PE", "MEX", "MEX"},
+		{"PE", "MX", "PER", "PER"},
+		{"CN", "PE", "CN", "CN"},
 	} {
 		payload := map[string]any{
 			"device": map[string]any{"geo": map[string]any{"country": tt.device}},

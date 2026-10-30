@@ -358,7 +358,7 @@ func Test54AdsRTBRequestNormalizationForPop(t *testing.T) {
 	}
 }
 
-func Test54AdsRTBRequestKeepsBannerOutsidePop(t *testing.T) {
+func Test54AdsRTBRequestUsesSameRulesOutsidePop(t *testing.T) {
 	impID := "imp-ban"
 	bannerW := int32(300)
 	campaign := &Campaign{ID: rtb54AdsChinaCampaignID, UserID: "another-owner", RTB: true}
@@ -374,8 +374,8 @@ func Test54AdsRTBRequestKeepsBannerOutsidePop(t *testing.T) {
 	}
 	imps := got["imp"].([]any)
 	imp := imps[0].(map[string]any)
-	if _, exists := imp["banner"]; !exists {
-		t.Fatal("banner must be preserved outside POP")
+	if _, exists := imp["banner"]; exists {
+		t.Fatal("campaign-scoped delete must not acquire a format condition")
 	}
 	ext := imp["ext"].(map[string]any)
 	if ext["type"] != "pop" {

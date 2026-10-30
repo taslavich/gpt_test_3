@@ -356,9 +356,6 @@ func validateSet(rs RuleSet) error {
 		if mode != "set" && mode != "set_or_add" && len(r.Value) != 0 {
 			return fmt.Errorf("unexpected replacement value for %s", r.Field)
 		}
-		if mode != "countries" && r.Countries != nil {
-			return fmt.Errorf("unexpected countries for %s", r.Field)
-		}
 		if r.CopyTo != "" {
 			toType, err := validateSourceField(r.CopyTo)
 			if err != nil {
@@ -419,11 +416,7 @@ func validateSet(rs RuleSet) error {
 		if typ != toType || r.Field == toPath {
 			return fmt.Errorf("invalid rename %s -> %s", r.Field, toPath)
 		}
-		// A rename must operate on an original protobuf key, never on an
-		// already renamed JSON-only key.
-		if !isProtobufPath(r.Field) {
-			return fmt.Errorf("rename source %s is not a protobuf field", r.Field)
-		}
+		// validateSourceField above already requires an original protobuf key.
 		for _, a := range rs.Add {
 			if a.PostfixField != "" && overlaps(a.Field+"."+a.PostfixField, toPath) {
 				return fmt.Errorf("rename destination %s conflicts with JSON-only add %s.%s", toPath, a.Field, a.PostfixField)

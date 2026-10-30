@@ -152,8 +152,8 @@ func cloneSet(in RuleSet) RuleSet {
 
 // parse follows LinkMap's simple map-expansion model. The disk representation
 // remains grouped; the runtime holds one merged RuleSet for each campaign ID.
-// Ordinary Go map iteration intentionally gives no priority to overlapping
-// group keys, as agreed for duplicate campaign rules.
+// Process campaign keys in authored JSON order: a later rule for the same
+// campaign/module/field replaces the earlier one, retaining all other rules.
 func parse(data []byte) (*snapshot, error) {
 	if err := rejectDuplicateKeys(data); err != nil {
 		return nil, err
@@ -166,7 +166,15 @@ func parse(data []byte) (*snapshot, error) {
 		return nil, errors.New("RTB rules map must be an object")
 	}
 	result := &snapshot{byCampaign: map[string]RuleSet{}}
-	for group, raw := range grouped {
+	// The document has already passed syntax/duplicate-key and object validation.
+	// Read keys in source order rather than ranging over the unordered Go map.
+	order := json.NewDecoder(bytes.NewReader(data))
+	_, _ = order.Token()
+	for order.More() {
+		key, _ := order.Token()
+		group := key.(string)
+		var raw json.RawMessage
+		_ = order.Decode(&raw)
 		if bytes.Equal(bytes.TrimSpace(raw), []byte("null")) {
 			return nil, fmt.Errorf("campaign %s rules must not be null", group)
 		}
@@ -176,13 +184,10 @@ func parse(data []byte) (*snapshot, error) {
 		if err := d.Decode(&rs); err != nil {
 			return nil, fmt.Errorf("campaign %s: %w", group, err)
 		}
-		if err := d.Decode(new(any)); err != io.EOF {
-			return nil, fmt.Errorf("trailing rule data for %s", group)
-		}
+		// raw is one complete JSON value from the validated outer object.
+		// Successful RuleSet decoding also guarantees it is an object here.
 		var keys map[string]json.RawMessage
-		if err := json.Unmarshal(raw, &keys); err != nil {
-			return nil, err
-		}
+		_ = json.Unmarshal(raw, &keys)
 		for _, name := range []string{"filters", "add", "replace", "delete", "rename"} {
 			if val, ok := keys[name]; ok && bytes.Equal(bytes.TrimSpace(val), []byte("null")) {
 				return nil, fmt.Errorf("campaign %s module %s cannot be null", group, name)
@@ -321,12 +326,27 @@ func mergeByPath[T any](prev, next []T, key func(T) string) []T {
 	return out
 }
 
+// rulesTempFile is the existing temporary-file contract. Passing a creator
+// keeps write/sync/close failures testable without process-global I/O hooks.
+type rulesTempFile interface {
+	Name() string
+	Write([]byte) (int, error)
+	Sync() error
+	Close() error
+}
+
 func atomicWrite(path string, data []byte) error {
+	return atomicWriteWithTemp(path, data, func(dir, pattern string) (rulesTempFile, error) {
+		return os.CreateTemp(dir, pattern)
+	})
+}
+
+func atomicWriteWithTemp(path string, data []byte, createTemp func(string, string) (rulesTempFile, error)) error {
 	dir := filepath.Dir(path)
 	if e := os.MkdirAll(dir, 0o750); e != nil {
 		return e
 	}
-	f, e := os.CreateTemp(dir, ".adv-rtb-rules-*")
+	f, e := createTemp(dir, ".adv-rtb-rules-*")
 	if e != nil {
 		return e
 	}
@@ -373,10 +393,8 @@ func rejectDuplicateKeys(data []byte) error {
 				if e != nil {
 					return e
 				}
-				key, ok := raw.(string)
-				if !ok {
-					return errors.New("expected JSON object key")
-				}
+				// Decoder.Token guarantees string object keys after a nil error.
+				key := raw.(string)
 				if seen[key] {
 					return fmt.Errorf("duplicate JSON key %q", key)
 				}

@@ -148,6 +148,12 @@ func (s *Store) ApplyToRequest(campaignID string, req *ortb.BidRequest) ([]byte,
 	if len(rule.Add) == 0 && len(rule.Replace) == 0 && len(rule.Rename) == 0 {
 		return raw, nil
 	}
+	return applyEncodedRules(raw, rule)
+}
+
+// The JSON phase is independent of protobuf preparation; malformed encoded
+// input is rejected before any transformation.
+func applyEncodedRules(raw []byte, rule RuleSet) ([]byte, error) {
 	payload, e := decodeJSON(raw)
 	if e != nil {
 		return nil, e
