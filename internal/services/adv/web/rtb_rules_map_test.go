@@ -79,6 +79,48 @@ func TestRTBRulesMapHTTP(t *testing.T) {
 	}
 }
 
+func TestRTBRulesMapHTTPFilterCopy(t *testing.T) {
+	p := filepath.Join(t.TempDir(), "rules.json")
+	if err := os.WriteFile(p, []byte(`{}`), 0600); err != nil {
+		t.Fatal(err)
+	}
+	store, err := rtbrules.NewStore(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	router := chi.NewRouter()
+	InitHttpRoutes(router, nil, nil, nil, NewWorkController(), AntiPerekrutHTTPConfig{RTBRules: store})
+	const id = "8cf66405-6013-423c-a967-a76c08c69ac4"
+	config := `{"` + id + `":{"filters":[{"field":"site.id","exists":true,"copy_to":"imp.tagid"}]}}`
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, httptest.NewRequest(http.MethodPut, PutRTBRulesMapURL, strings.NewReader(config)))
+	if w.Code != http.StatusNoContent {
+		t.Fatal(w.Code, w.Body.String())
+	}
+	for _, route := range []string{GetRTBRulesMapURL, GetDebugRTBRulesMapURL} {
+		w = httptest.NewRecorder()
+		router.ServeHTTP(w, httptest.NewRequest(http.MethodGet, route, nil))
+		if w.Code != http.StatusOK || !bytes.Contains(w.Body.Bytes(), []byte(`"copy_to":"imp.tagid"`)) {
+			t.Fatal(route, w.Code, w.Body.String())
+		}
+	}
+	bad := `{"` + id + `":{"filters":[{"field":"site.id","exists":true,"copy_to":"imp.secure"}]}}`
+	w = httptest.NewRecorder()
+	router.ServeHTTP(w, httptest.NewRequest(http.MethodPut, PutRTBRulesMapURL, strings.NewReader(bad)))
+	if w.Code != http.StatusBadRequest {
+		t.Fatal(w.Code, w.Body.String())
+	}
+	if saved, err := store.SavedJSON(); err != nil || string(saved) != config {
+		t.Fatal("invalid PUT replaced configuration", err)
+	}
+	if err := store.Reload(); err != nil {
+		t.Fatal(err)
+	}
+	if store.Memory()[id].Filters[0].CopyTo != "imp.tagid" {
+		t.Fatal("rule lost on restart")
+	}
+}
+
 func TestRTBRulesMapHTTPErrorContracts(t *testing.T) {
 	const id = "8cf66405-6013-423c-a967-a76c08c69ac4"
 	mux := func(store *rtbrules.Store) *chi.Mux {

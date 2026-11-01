@@ -45,6 +45,37 @@ Alternative existence filter: `{ "field":"device.make",
 "exists":true }`, or `false` to require absence. Exactly one of `values`, `exists`, and `compare` must be specified.
 Use separate filter objects for independent conditions.
 
+**Copy after filtering:** a regular filter can also specify `copy_to`:
+
+```json
+{"field":"site.id", "exists":true, "copy_to":"imp.tagid"}
+```
+
+This checks the original `site.id`, then copies it into every impression's
+`tagid` in the accepted campaign's outgoing request. Missing destinations are
+created; existing values are overwritten. The source field, shared inbound
+protobuf and filter cache remain unchanged. No additional replace operation
+is required. All filters still inspect original input: replace an old
+`imp.tagid` existence filter with this `site.id` filter, rather than retaining
+both when incoming `tagid` may be absent. `exists:true` checks presence, not
+whether the string is nonempty or a valid placement identifier.
+
+`copy_to` also works with ordinary whitelist, blacklist and numeric filters.
+It copies the original field, not a constant. An absent/null source is a
+no-op. Root fields can be copied to compatible root or impression fields;
+impression sources can only be copied within the same impression. Multiple
+copy actions read their original source values, without feeding one another.
+Paths/types use the same protobuf compatibility checks as replace-copy.
+Embedded `json_path` values are not supported as copy sources. Add or
+`set_or_add` rules overlapping a copy source and delete rules overlapping its
+source/destination are rejected, including after ALL/campaign merging.
+Filter copies run before JSON postfix additions, replace and rename. Later
+replace rules may intentionally change an already copied destination.
+
+For selected partners, put the filter in their existing campaign block; using
+`ALL` applies it to every RTB campaign handled by this rules layer. The
+production map is not automatically changed by this feature.
+
 **Native JSON-string filters (RTB second layer only):** `imp.native.request`
 is a protobuf **string** whose contents can be JSON. Add `json_path` to a
 filter to read fields *inside* that string, for example:

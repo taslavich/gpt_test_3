@@ -8,14 +8,267 @@ import (
 	jsoniter "github.com/json-iterator/go"
 	ortb "gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/proto/types/ortb_V2_5"
 	"google.golang.org/protobuf/proto"
+	"io"
 	"math"
+	"net/http"
+	"net/http/httptest"
+	"net/url"
 	"os"
 	"path/filepath"
 	"reflect"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
 )
+
+// Filter-copy checks use the existing unified test file.
+func filterCopyStore(t *testing.T, config string) *Store {
+	t.Helper()
+	p := filepath.Join(t.TempDir(), "rules.json")
+	if err := os.WriteFile(p, []byte(config), 0600); err != nil {
+		t.Fatal(err)
+	}
+	s, err := NewStore(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return s
+}
+
+func TestFilterCopySiteIDToEveryTagID(t *testing.T) {
+	s := filterCopyStore(t, `{"`+idA+`":{"filters":[{"field":"site.id","exists":true,"copy_to":"imp.tagid"}]}}`)
+	for _, site := range []string{"actual-site-123", "", "   "} {
+		t.Run("site="+site, func(t *testing.T) {
+			var req ortb.BidRequest
+			input := `{"site":{"id":` + fmt.Sprintf("%q", site) + `,"domain":"example.com"},"imp":[{"id":"a"},{"id":"b","tagid":"old-tag"},{"id":"c","tagid":null},{"id":"d","tagid":""}]}`
+			if err := jsoniter.Unmarshal([]byte(input), &req); err != nil {
+				t.Fatal(err)
+			}
+			before := proto.Clone(&req)
+			cache := NewFilterCache(&req)
+			for _, imp := range req.Imp {
+				ok, why, err := s.CheckWithCache(idA, cache, imp.GetId())
+				if !ok || why != "" || err != nil {
+					t.Fatal(ok, why, err)
+				}
+			}
+			// Check never writes copy results into the source or shared cache.
+			root, err := cache.rootObject()
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, found := getFieldValue(root["imp"].([]any)[0].(map[string]any), "tagid"); found {
+				t.Fatal("filter check mutated cache")
+			}
+			out, err := s.ApplyToRequest(idA, &req)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var got ortb.BidRequest
+			if err = jsoniter.Unmarshal(out, &got); err != nil {
+				t.Fatal(err)
+			}
+			if got.Site.GetId() != site || got.Site.GetDomain() != "example.com" || len(got.Imp) != 4 {
+				t.Fatal(string(out))
+			}
+			for _, imp := range got.Imp {
+				if imp.Tagid == nil || imp.GetTagid() != site {
+					t.Fatal("copy failed", string(out))
+				}
+			}
+			if !proto.Equal(before, &req) {
+				t.Fatal("source request mutated")
+			}
+			other := runRules(t, s, idB, []byte(input))
+			var untouched ortb.BidRequest
+			if err = jsoniter.Unmarshal(other, &untouched); err != nil || !proto.Equal(before, &untouched) {
+				t.Fatal("copy leaked into other campaign", err)
+			}
+			if _, found := getFieldValue(root["imp"].([]any)[0].(map[string]any), "tagid"); found {
+				t.Fatal("output mutated cache")
+			}
+		})
+	}
+}
+
+func TestFilterCopyMissingSiteAndOriginalFilterOrder(t *testing.T) {
+	base := `{"field":"site.id","exists":true,"copy_to":"imp.tagid"}`
+	s := filterCopyStore(t, `{"`+idA+`":{"filters":[`+base+`]}}`)
+	for _, raw := range []string{`{"imp":[{"id":"a"}]}`, `{"site":null,"imp":[{"id":"a"}]}`, `{"site":{},"imp":[{"id":"a"}]}`, `{"site":{"id":null},"imp":[{"id":"a"}]}`} {
+		ok, why, err := s.Check(idA, []byte(raw), "a")
+		if ok || why != "rtb_rule_filter_site.id" || err != nil {
+			t.Fatal(raw, ok, why, err)
+		}
+	}
+	for _, filters := range []string{base + `,{"field":"imp.tagid","exists":true}`, `{"field":"imp.tagid","exists":true},` + base} {
+		s := filterCopyStore(t, `{"`+idA+`":{"filters":[`+filters+`]}}`)
+		raw := []byte(`{"site":{"id":"real"},"imp":[{"id":"a"}]}`)
+		ok, why, err := s.Check(idA, raw, "a")
+		if ok || why != "rtb_rule_filter_imp.tagid" || err != nil {
+			t.Fatal("copy must not satisfy another inbound filter", ok, why, err)
+		}
+	}
+}
+
+func TestFilterCopyModesAndOriginalSource(t *testing.T) {
+	for _, condition := range []string{`"exists":true`, `"isWhiteList":true,"values":["original"]`, `"isWhiteList":false,"values":["blocked"]`} {
+		s := filterCopyStore(t, `{"`+idA+`":{"filters":[{"field":"site.id",`+condition+`,"copy_to":"imp.tagid"}],"replace":[{"field":"site.id","mode":"set","value":"changed"}]}}`)
+		raw := []byte(`{"site":{"id":"original"},"imp":[{"id":"a"}]}`)
+		ok, why, err := s.Check(idA, raw, "a")
+		if !ok || why != "" || err != nil {
+			t.Fatal(ok, why, err)
+		}
+		var got ortb.BidRequest
+		if err = jsoniter.Unmarshal(runRules(t, s, idA, raw), &got); err != nil {
+			t.Fatal(err)
+		}
+		if got.Site.GetId() != "changed" || got.Imp[0].GetTagid() != "original" {
+			t.Fatal("copy must precede replace", &got)
+		}
+	}
+	s := filterCopyStore(t, `{"`+idA+`":{"filters":[{"field":"imp.secure","compare":">=","value":1,"copy_to":"imp.instl"}]}}`)
+	raw := []byte(`{"imp":[{"id":"a","secure":1,"instl":0},{"id":"b","secure":2}]}`)
+	if ok, _, err := s.Check(idA, raw, "a"); !ok || err != nil {
+		t.Fatal(ok, err)
+	}
+	var got ortb.BidRequest
+	if err := jsoniter.Unmarshal(runRules(t, s, idA, raw), &got); err != nil {
+		t.Fatal(err)
+	}
+	if got.Imp[0].GetInstl() != 1 || got.Imp[1].GetInstl() != 2 {
+		t.Fatal("impression copy mixed values")
+	}
+	absent := filterCopyStore(t, `{"`+idA+`":{"filters":[{"field":"site.id","exists":false,"copy_to":"imp.tagid"}]}}`)
+	missing := []byte(`{"site":{},"imp":[{"id":"a","tagid":"keep"}]}`)
+	if ok, _, err := absent.Check(idA, missing, "a"); !ok || err != nil {
+		t.Fatal(ok, err)
+	}
+	if out := runRules(t, absent, idA, missing); !bytes.Contains(out, []byte(`"tagid":"keep"`)) {
+		t.Fatal(string(out))
+	}
+}
+
+func TestFilterCopyImpressionIsolationAndNoCascade(t *testing.T) {
+	s := filterCopyStore(t, `{"`+idA+`":{"filters":[{"field":"site.id","exists":true,"copy_to":"imp.tagid"},{"field":"imp.tagid","exists":true,"copy_to":"imp.ext.subid"}]}}`)
+	raw := []byte(`{"site":{"id":"site"},"imp":[{"id":"a","tagid":"tag-a"},{"id":"b","tagid":"tag-b"}]}`)
+	for _, id := range []string{"a", "b"} {
+		if ok, _, err := s.Check(idA, raw, id); !ok || err != nil {
+			t.Fatal(ok, err)
+		}
+	}
+	var got ortb.BidRequest
+	if err := jsoniter.Unmarshal(runRules(t, s, idA, raw), &got); err != nil {
+		t.Fatal(err)
+	}
+	for i, tag := range []string{"tag-a", "tag-b"} {
+		if got.Imp[i].GetTagid() != "site" || got.Imp[i].GetExt().GetSubid() != tag {
+			t.Fatal("copy fed another copy or mixed impressions", &got)
+		}
+	}
+	// Missing source never creates an impression, a site, or a fake tagid.
+	for _, raw := range []string{`{}`, `{"imp":[]}`, `{"imp":[null,{},{}]}`} {
+		out := runRules(t, s, idA, []byte(raw))
+		if bytes.Contains(out, []byte(`"tagid"`)) || bytes.Contains(out, []byte(`"site"`)) {
+			t.Fatal(string(out))
+		}
+	}
+	// JSON-only application also tolerates a malformed impression sibling.
+	m := map[string]any{"imp": []any{nil, "bad", map[string]any{"id": "a"}}}
+	applyFilterCopies(m, []Filter{{Field: "imp.id", CopyTo: "imp.tagid"}})
+	if m["imp"].([]any)[2].(map[string]any)["tagid"] != "a" {
+		t.Fatal(m)
+	}
+}
+
+func TestFilterCopyCompoundValuesAreIndependent(t *testing.T) {
+	root := map[string]any{"site": map[string]any{"cat": []any{"IAB1"}}, "device": map[string]any{"geo": map[string]any{"country": "PH"}}, "imp": []any{map[string]any{"id": "a"}}}
+	applyFilterCopies(root, []Filter{{Field: "site.cat", CopyTo: "bcat"}, {Field: "device.geo", CopyTo: "user.geo"}})
+	root["site"].(map[string]any)["cat"].([]any)[0] = "changed"
+	root["device"].(map[string]any)["geo"].(map[string]any)["country"] = "US"
+	if root["bcat"].([]any)[0] != "IAB1" || root["user"].(map[string]any)["geo"].(map[string]any)["country"] != "PH" {
+		t.Fatal("copy shared mutable source data")
+	}
+}
+
+func TestFilterCopyConfigurationValidation(t *testing.T) {
+	for _, rule := range []string{
+		`{"field":"site.id","exists":true,"copy_to":null}`,
+		`{"field":"site.id","exists":true,"copy_to":""}`,
+		`{"field":"site.id","exists":true,"copy_to":1}`,
+		`{"field":"site.id","exists":true,"copy_to":"imp.no_such_field"}`,
+		`{"field":"site.id","exists":true,"copy_to":"imp.secure"}`,
+		`{"field":"site.id","exists":true,"copy_to":"imp.ext.type"}`,
+		`{"field":"site.id","exists":true,"copy_to":"device.devicetype"}`,
+		`{"field":"site.id","exists":true,"copy_to":" imp.tagid"}`,
+		`{"field":"imp.id","exists":true,"copy_to":"site.id"}`,
+		`{"field":"site.id,site.domain","exists":true,"copy_to":"imp.tagid"}`,
+		`{"field":"device.geo","exists":true,"copy_to":"site.publisher"}`,
+		`{"field":"imp.native.request","json_path":"native.ver","exists":true,"copy_to":"imp.tagid"}`,
+	} {
+		if err := Validate([]byte(`{"ALL":{"filters":[` + rule + `]}}`)); err == nil {
+			t.Fatal("invalid filter accepted", rule)
+		}
+	}
+	filter := `"filters":[{"field":"site.id","exists":true,"copy_to":"imp.tagid"}]`
+	for _, rest := range []string{`"add":[{"field":"site.id","value":"invented"}]`, `"add":[{"field":"site","value":{"id":"invented"}}]`, `"replace":[{"field":"site.id","mode":"set_or_add","value":"invented"}]`, `"delete":[{"field":"site"}]`, `"delete":[{"field":"site.id"}]`, `"delete":[{"field":"imp.tagid"}]`} {
+		if err := Validate([]byte(`{"ALL":{` + filter + `,` + rest + `}}`)); err == nil {
+			t.Fatal("unsafe overlapping source/target accepted", rest)
+		}
+	}
+	if err := Validate([]byte(`{"ALL":{"filters":[{"field":"imp.ext","exists":true,"copy_to":"imp.ext"}],"add":[{"field":"imp.ext","postfix_field":"type","value":"pop"}]}}`)); err == nil {
+		t.Fatal("postfix modifying copy source accepted")
+	}
+	// Conflicts must also be rejected after ALL + campaign merging.
+	if err := Validate([]byte(`{"ALL":{` + filter + `},"` + idA + `":{"delete":[{"field":"imp.tagid"}]}}`)); err == nil {
+		t.Fatal("merged conflict accepted")
+	}
+	for _, rule := range []string{`{"field":"site.cat","exists":true,"copy_to":"bcat"}`, `{"field":"device.geo","exists":true,"copy_to":"user.geo"}`} {
+		if err := Validate([]byte(`{"ALL":{"filters":[` + rule + `]}}`)); err != nil {
+			t.Fatal("compatible copy rejected", err)
+		}
+	}
+}
+
+func TestFilterCopyALLOverridePersistenceAndReload(t *testing.T) {
+	config := "{\n  \"ALL\": {\"filters\":[{\"field\":\"site.id\",\"exists\":true,\"copy_to\":\"imp.tagid\"}]},\n  \"" + idB + "\": {\"filters\":[{\"field\":\"site.id\",\"exists\":true}]}\n}\n"
+	s := filterCopyStore(t, `{}`)
+	if err := s.UpdateJSON([]byte(config)); err != nil {
+		t.Fatal(err)
+	}
+	if saved, err := s.SavedJSON(); err != nil || string(saved) != config {
+		t.Fatal("authored JSON changed", err)
+	}
+	if err := s.Reload(); err != nil {
+		t.Fatal(err)
+	}
+	if saved, err := s.Saved(); err != nil || saved["ALL"].Filters[0].CopyTo != "imp.tagid" {
+		t.Fatal("copy_to not persisted", err)
+	}
+	if s.Memory()["ALL"].Filters[0].CopyTo != "imp.tagid" {
+		t.Fatal("copy_to missing from debug memory")
+	}
+	for _, id := range []string{idA, idB, idC} {
+		out := runRules(t, s, id, []byte(`{"site":{"id":"site"},"imp":[{"id":"a","tagid":"old"}]}`))
+		var got ortb.BidRequest
+		if err := jsoniter.Unmarshal(out, &got); err != nil {
+			t.Fatal(err)
+		}
+		want := "site"
+		if id == idB {
+			want = "old"
+		}
+		if got.Imp[0].GetTagid() != want {
+			t.Fatal(id, string(out))
+		}
+	}
+	if err := s.UpdateJSON([]byte(`{"ALL":{"filters":[{"field":"site.id","exists":true,"copy_to":"bad"}]}}`)); err == nil {
+		t.Fatal("bad update accepted")
+	}
+	if saved, err := s.SavedJSON(); err != nil || string(saved) != config {
+		t.Fatal("bad update changed persisted file", err)
+	}
+}
 
 // Tests retained from store_test.go.
 const idA = "8cf66405-6013-423c-a967-a76c08c69ac4"
@@ -3018,4 +3271,1662 @@ func TestALLPriorityIndependentOfAuthoredPosition(t *testing.T) {
 			}
 		}
 	}
+}
+
+// 54Ads requirements supplied by the user after the original coverage patch.
+// The literals below are independent of production/helper-generated profiles.
+// Video/IPP IDs are test-only placeholders, never active campaign IDs.
+const chinaPartnerProfilesJSON = `{
+  "8cf66405-6013-423c-a967-a76c08c69ac4,9e4173f7-7aee-44a6-8039-db364cb6f4f5,1c9eeda4-3cb1-499d-aada-83c3b07e042f": {
+    "add": [{"field":"imp.bidfloor","value":0},{"field":"imp.ext","postfix_field":"type","value":"pop"}],
+    "replace": [{"field":"tmax","mode":"set_or_add","value":500},{"field":"site.domain","mode":"hostname"},{"field":"site.page","mode":"full_page"}],
+    "delete": [{"field":"imp.banner"}],
+    "rename": [{"field":"device.deviceType","to_field":"devicetype"}],
+    "filters": [{"field":"imp.tagid","exists":true},{"field":"imp.secure","isWhiteList":true,"values":[1]}]
+  },
+  "8cf66405-6013-423c-a967-a76c08c69ac4": {"replace":[{"field":"device.geo.country","countries":{"CN":"CHN"},"copy_to":"user.geo.country"},{"field":"user.geo.country","countries":{"CN":"CHN"}}]},
+  "9e4173f7-7aee-44a6-8039-db364cb6f4f5": {"replace":[{"field":"device.geo.country","countries":{"PH":"PHL"},"copy_to":"user.geo.country"},{"field":"user.geo.country","countries":{"PH":"PHL"}}]},
+  "1c9eeda4-3cb1-499d-aada-83c3b07e042f": {"replace":[{"field":"device.geo.country","countries":{"MX":"MEX","PE":"PER"},"copy_to":"user.geo.country"},{"field":"user.geo.country","countries":{"MX":"MEX","PE":"PER"}}]},
+  "11111111-1111-4111-8111-111111111111": {
+    "filters": [
+      {"field":"at","isWhiteList":true,"values":[1]},
+      {"field":"cur","isWhiteList":true,"values":["USD"]},
+      {"field":"imp.tagid","exists":true},
+      {"field":"imp.instl","isWhiteList":true,"values":[0]},
+      {"field":"imp.secure","isWhiteList":true,"values":[1]},
+      {"field":"imp.bidfloorcur","isWhiteList":true,"values":["USD"]},
+      {"field":"imp.video.mimes","isWhiteList":true,"values":["video/mp4"]},
+      {"field":"imp.video.protocols","isWhiteList":true,"values":[3]},
+      {"field":"imp.video.w","isWhiteList":true,"values":[340]},
+      {"field":"imp.video.h","isWhiteList":true,"values":[192]},
+      {"field":"imp.video.linearity","isWhiteList":true,"values":[1]},
+      {"field":"imp.video.sequence","isWhiteList":true,"values":[1]},
+      {"field":"imp.video.boxingallowed","isWhiteList":true,"values":[1]},
+      {"field":"imp.video.skipmin","isWhiteList":true,"values":[0]},
+      {"field":"imp.video.skipafter","isWhiteList":true,"values":[0]}
+    ],
+    "replace":[{"field":"tmax","mode":"set_or_add","value":550}]
+  },
+  "33333333-3333-4333-8333-333333333333": {
+    "filters":[
+      {"field":"at","isWhiteList":true,"values":[1]},
+      {"field":"cur","isWhiteList":true,"values":["USD"]},
+      {"field":"imp.tagid","exists":true},
+      {"field":"imp.instl","isWhiteList":true,"values":[0]},
+      {"field":"imp.secure","isWhiteList":true,"values":[1]},
+      {"field":"imp.bidfloorcur","isWhiteList":true,"values":["USD"]},
+      {"field":"imp.native.ver","isWhiteList":true,"values":["1.2"]},
+      {"field":"imp.native.request","exists":true},
+      {"field":"imp.native.request","json_path":"native.ver","isWhiteList":true,"values":["1.2"]},
+      {"field":"imp.native.request","json_path":"native.assets[id=100].required","isWhiteList":true,"values":[1]},
+      {"field":"imp.native.request","json_path":"native.assets[id=100].title.len","isWhiteList":true,"values":[80]},
+      {"field":"imp.native.request","json_path":"native.assets[id=101].required","isWhiteList":true,"values":[1]},
+      {"field":"imp.native.request","json_path":"native.assets[id=101].data.type","isWhiteList":true,"values":[1]},
+      {"field":"imp.native.request","json_path":"native.assets[id=101].data.len","isWhiteList":true,"values":[80]},
+      {"field":"imp.native.request","json_path":"native.assets[id=102].required","isWhiteList":true,"values":[1]},
+      {"field":"imp.native.request","json_path":"native.assets[id=102].img.type","isWhiteList":true,"values":[3]},
+      {"field":"imp.native.request","json_path":"native.assets[id=102].img.w","isWhiteList":true,"values":[200]},
+      {"field":"imp.native.request","json_path":"native.assets[id=102].img.h","isWhiteList":true,"values":[200]},
+      {"field":"imp.native.request","json_path":"native.assets[id=102].img.wmin","isWhiteList":true,"values":[200]},
+      {"field":"imp.native.request","json_path":"native.assets[id=102].img.hmin","isWhiteList":true,"values":[200]}
+    ],
+    "replace":[{"field":"tmax","mode":"set_or_add","value":300}]
+  }
+}
+`
+
+const chinaVideoSampleJSON = `{
+ "id":"video-test-request-001","test":1,"at":1,"tmax":550,"cur":["USD"],
+ "imp":[{"id":"video-test-imp-001","instl":0,"tagid":"example-site-video","bidfloor":0.00001,"bidfloorcur":"USD","secure":1,
+ "video":{"mimes":["video/mp4"],"protocols":[3],"w":340,"h":192,"linearity":1,"sequence":1,"boxingallowed":1,"skipmin":0,"skipafter":0}}],
+ "site":{"id":"test-site-001","name":"Example Site","domain":"example.com","page":"https://example.com/video","publisher":{"id":"test-publisher-001","domain":"example.com"}},
+ "device":{"ip":"192.0.2.1","ua":"Mozilla/5.0 (iPhone; CPU iPhone OS 18_7 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1","devicetype":4,"make":"Apple","model":"iPhone","os":"iOS","osv":"18.7","js":1,"language":"en"},
+ "user":{"id":"test-user-001"}
+}
+`
+
+const chinaIPPSampleJSON = `{
+ "id":"push-test-request-001","test":1,"at":1,"tmax":300,"cur":["USD"],
+ "imp":[{"id":"push-test-imp-001","instl":0,"tagid":"example-site-push","bidfloor":0.01,"bidfloorcur":"USD","secure":1,
+ "native":{"ver":"1.2","request":"{\"native\":{\"ver\":\"1.2\",\"assets\":[{\"id\":100,\"required\":1,\"title\":{\"len\":80}},{\"id\":101,\"required\":1,\"data\":{\"type\":1,\"len\":80}},{\"id\":102,\"required\":1,\"img\":{\"type\":3,\"w\":200,\"h\":200,\"wmin\":200,\"hmin\":200}}]}}"}}],
+ "site":{"id":"test-site-001","name":"Example Site","domain":"example.com","page":"https://example.com/test-page","publisher":{"id":"test-publisher-001"}},
+ "device":{"ip":"192.0.2.1","ua":"Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Mobile Safari/537.36","devicetype":4,"os":"Android","osv":"10","js":1,"language":"en"},
+ "user":{"id":"test-user-001"}
+}
+`
+
+// Requirement ledger for the supplied 54Ads messages (not inferred from coverage):
+// POP: preserve real tagid; absent minimum -> 0; retain a supplied minimum;
+// secure=1 for this HTTPS-only profile; PHL and tmax=500; no fabricated metadata.
+// BAN: ISO alpha-3 for every supported country, both existing geo country paths.
+// VID: the literal VAST 3.0 request, all 15 configured checks and tmax=550.
+// IPP: the literal Native 1.2 JSON string, wrapper, assets 100/101/102, tmax=300.
+// The existing posted profile specifies exact dimensions/lengths, not >=/<=.
+// Old behavior is checked against a frozen pre-rtbrules oracle below; approved
+// copy_to/default-floor differences have separate explicit assertions.
+// The literal posted profile remains a historical regression fixture. The
+// later agreed site.id copy and ALL rename are checked by CurrentContract tests.
+const chinaBannerTestID = "55555555-5555-4555-8555-555555555555"
+
+func chinaObject(t *testing.T, raw string) map[string]any {
+	t.Helper()
+	var out map[string]any
+	if err := json.Unmarshal([]byte(raw), &out); err != nil {
+		t.Fatal(err)
+	}
+	return out
+}
+func chinaCopy(t *testing.T, in map[string]any) map[string]any {
+	t.Helper()
+	b, err := json.Marshal(in)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return chinaObject(t, string(b))
+}
+func chinaProfiles(t *testing.T) map[string]any {
+	t.Helper()
+	return chinaObject(t, chinaPartnerProfilesJSON)
+}
+func chinaStore(t *testing.T, config map[string]any) *Store {
+	t.Helper()
+	b, err := json.Marshal(config)
+	if err != nil {
+		t.Fatal(err)
+	}
+	p := filepath.Join(t.TempDir(), "54ads.json")
+	if err = os.WriteFile(p, b, 0600); err != nil {
+		t.Fatal(err)
+	}
+	s, err := NewStore(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return s
+}
+func chinaSample(t *testing.T, format string) map[string]any {
+	t.Helper()
+	if format == "IPP" {
+		return chinaObject(t, chinaIPPSampleJSON)
+	}
+	r := chinaObject(t, chinaVideoSampleJSON)
+	if format == "POP" {
+		r["id"] = "pop-captured-request"
+		r["tmax"] = 500
+		imp := r["imp"].([]any)[0].(map[string]any)
+		imp["id"] = "pop-imp-one"
+		imp["tagid"] = "placement-from-input-77"
+		imp["bidfloor"] = 2.5
+		delete(imp, "video")
+		imp["banner"] = map[string]any{"w": 300, "h": 250}
+		imp["ext"] = map[string]any{"subid": "publisher-subid"}
+		r["device"].(map[string]any)["geo"] = map[string]any{"country": "PH"}
+		r["user"].(map[string]any)["geo"] = map[string]any{"country": "US", "city": "Paris"}
+	}
+	return r
+}
+
+// Paths here are fixture locations (imp.0...), not a second rule implementation.
+func chinaChange(t *testing.T, root any, path string, value any, remove bool) {
+	t.Helper()
+	parts := strings.Split(path, ".")
+	current := root
+	for _, part := range parts[:len(parts)-1] {
+		switch node := current.(type) {
+		case map[string]any:
+			current = node[part]
+		case []any:
+			index, err := strconv.Atoi(part)
+			if err != nil || index < 0 || index >= len(node) {
+				t.Fatal("bad fixture index", path)
+			}
+			current = node[index]
+		default:
+			t.Fatal("bad fixture parent", path)
+		}
+	}
+	last := parts[len(parts)-1]
+	switch node := current.(type) {
+	case map[string]any:
+		if remove {
+			delete(node, last)
+		} else {
+			node[last] = value
+		}
+	case []any:
+		index, err := strconv.Atoi(last)
+		if err != nil || index < 0 || index >= len(node) {
+			t.Fatal("bad fixture index", path)
+		}
+		if remove {
+			t.Fatal("use parent-array mutation instead")
+		}
+		node[index] = value
+	default:
+		t.Fatal("bad fixture leaf", path)
+	}
+}
+func chinaEvaluate(t *testing.T, s *Store, id string, input map[string]any) (bool, string, error, map[string]any) {
+	t.Helper()
+	raw, err := json.Marshal(input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var req ortb.BidRequest
+	if err = jsoniter.Unmarshal(raw, &req); err != nil {
+		return false, "protobuf_decode", err, nil
+	}
+	before := proto.Clone(&req)
+	impID := ""
+	if len(req.GetImp()) > 0 {
+		impID = req.GetImp()[0].GetId()
+	}
+	accepted, reason, err := s.CheckWithCache(id, NewFilterCache(&req), impID)
+	if !proto.Equal(before, &req) {
+		t.Fatal("filter mutated source request")
+	}
+	if err != nil || !accepted {
+		return accepted, reason, err, nil
+	}
+	out, err := s.ApplyToRequest(id, &req)
+	if err != nil {
+		return false, "apply", err, nil
+	}
+	if !proto.Equal(before, &req) {
+		t.Fatal("transform mutated source request")
+	}
+	return accepted, reason, nil, chinaObject(t, string(out))
+}
+func chinaAccepted(t *testing.T, s *Store, id string, in map[string]any) map[string]any {
+	t.Helper()
+	ok, reason, err, out := chinaEvaluate(t, s, id, in)
+	if err != nil || !ok {
+		t.Fatalf("required request rejected: accepted=%t reason=%s err=%v", ok, reason, err)
+	}
+	return out
+}
+func chinaRejected(t *testing.T, s *Store, id string, in map[string]any) {
+	t.Helper()
+	ok, reason, err, out := chinaEvaluate(t, s, id, in)
+	if ok || out != nil {
+		t.Fatal("invalid request reached output", reason, err)
+	}
+	if err == nil && reason == "" {
+		t.Fatal("rejection has no reason")
+	}
+}
+
+func TestChinaSuppliedProfileIsTheTestedContract(t *testing.T) {
+	s := chinaStore(t, chinaProfiles(t))
+	// Independently enumerate the posted filter counts, rather than constructing
+	// the contract with the same helpers whose behavior these tests exercise.
+	for _, tc := range []struct {
+		id      string
+		filters int
+		timeout int
+	}{{qaCN, 2, 500}, {qaPH, 2, 500}, {qaMX, 2, 500}, {qaVID, 15, 550}, {qaIPP, 20, 300}} {
+		rules := s.Memory()[tc.id]
+		if len(rules.Filters) != tc.filters {
+			t.Fatal(tc.id, "missing/extra supplied filters", len(rules.Filters))
+		}
+		format := "POP"
+		if tc.id == qaVID {
+			format = "VID"
+		}
+		if tc.id == qaIPP {
+			format = "IPP"
+		}
+		out := chinaAccepted(t, s, tc.id, chinaSample(t, format))
+		if out["tmax"] != float64(tc.timeout) {
+			t.Fatal(tc.id, "incorrect timeout", out["tmax"])
+		}
+	}
+}
+
+func TestChinaVideoEveryFieldBoundary(t *testing.T) {
+	s := chinaStore(t, chinaProfiles(t))
+	sample := chinaSample(t, "VID")
+	numeric := []struct {
+		path  string
+		value float64
+	}{
+		{"at", 1}, {"imp.0.instl", 0}, {"imp.0.secure", 1}, {"imp.0.video.w", 340}, {"imp.0.video.h", 192}, {"imp.0.video.linearity", 1}, {"imp.0.video.sequence", 1}, {"imp.0.video.boxingallowed", 1}, {"imp.0.video.skipmin", 0}, {"imp.0.video.skipafter", 0},
+	}
+	for _, field := range numeric {
+		t.Run(field.path, func(t *testing.T) {
+			for _, tc := range []struct {
+				name   string
+				value  any
+				remove bool
+			}{{"missing", nil, true}, {"null", nil, false}, {"below", field.value - 1, false}, {"above", field.value + 1, false}, {"string", "1", false}, {"bool", true, false}, {"object", map[string]any{}, false}, {"array", []any{}, false}} {
+				t.Run(tc.name, func(t *testing.T) {
+					in := chinaCopy(t, sample)
+					chinaChange(t, in, field.path, tc.value, tc.remove)
+					chinaRejected(t, s, qaVID, in)
+				})
+			}
+			in := chinaCopy(t, sample)
+			chinaChange(t, in, field.path, field.value, false)
+			chinaAccepted(t, s, qaVID, in)
+		})
+	}
+	for _, field := range []struct {
+		path           string
+		allowed, wrong any
+	}{{"cur", "USD", "EUR"}, {"imp.0.video.mimes", "video/mp4", "video/webm"}, {"imp.0.video.protocols", float64(3), float64(2)}} {
+		t.Run(field.path, func(t *testing.T) {
+			for _, tc := range []struct {
+				name   string
+				value  any
+				remove bool
+			}{{"missing", nil, true}, {"null", nil, false}, {"empty", []any{}, false}, {"unsupported", []any{field.wrong}, false}, {"wrong_shape", field.allowed, false}, {"wrong_item", []any{true}, false}} {
+				t.Run(tc.name, func(t *testing.T) {
+					in := chinaCopy(t, sample)
+					chinaChange(t, in, field.path, tc.value, tc.remove)
+					chinaRejected(t, s, qaVID, in)
+				})
+			}
+			in := chinaCopy(t, sample)
+			mixed := []any{field.wrong, field.allowed}
+			chinaChange(t, in, field.path, mixed, false)
+			out := chinaAccepted(t, s, qaVID, in)
+			// isWhiteList on an array means membership, not destructive replacement.
+			if !reflect.DeepEqual(chinaFixtureValue(t, out, field.path), mixed) {
+				t.Fatal("advertised capabilities were rewritten")
+			}
+		})
+	}
+	for _, tc := range []struct {
+		name   string
+		path   string
+		value  any
+		remove bool
+	}{{"tag_missing", "imp.0.tagid", nil, true}, {"tag_null", "imp.0.tagid", nil, false}, {"tag_number", "imp.0.tagid", 123, false}, {"currency_missing", "imp.0.bidfloorcur", nil, true}, {"currency_null", "imp.0.bidfloorcur", nil, false}, {"currency_empty", "imp.0.bidfloorcur", "", false}, {"currency_wrong", "imp.0.bidfloorcur", "EUR", false}} {
+		t.Run(tc.name, func(t *testing.T) {
+			in := chinaCopy(t, sample)
+			chinaChange(t, in, tc.path, tc.value, tc.remove)
+			chinaRejected(t, s, qaVID, in)
+		})
+	}
+}
+
+func chinaFixtureValue(t *testing.T, root any, path string) any {
+	t.Helper()
+	current := root
+	for _, part := range strings.Split(path, ".") {
+		switch node := current.(type) {
+		case map[string]any:
+			current = node[part]
+		case []any:
+			i, e := strconv.Atoi(part)
+			if e != nil || i < 0 || i >= len(node) {
+				t.Fatal(path)
+			}
+			current = node[i]
+		default:
+			t.Fatal("bad fixture path", path)
+		}
+	}
+	return current
+}
+func chinaNativeMutation(t *testing.T, in map[string]any, change func(map[string]any)) {
+	t.Helper()
+	native := chinaFixtureValue(t, in, "imp.0.native").(map[string]any)
+	document := chinaObject(t, native["request"].(string))
+	change(document)
+	encoded, err := json.Marshal(document)
+	if err != nil {
+		t.Fatal(err)
+	}
+	native["request"] = string(encoded)
+}
+
+func TestChinaIPPEveryOuterFieldBoundary(t *testing.T) {
+	s := chinaStore(t, chinaProfiles(t))
+	sample := chinaSample(t, "IPP")
+	for _, field := range []struct {
+		path     string
+		expected any
+	}{{"at", float64(1)}, {"imp.0.instl", float64(0)}, {"imp.0.secure", float64(1)}, {"imp.0.bidfloorcur", "USD"}, {"imp.0.native.ver", "1.2"}} {
+		t.Run(field.path, func(t *testing.T) {
+			wrong := any("wrong")
+			if n, ok := field.expected.(float64); ok {
+				wrong = n + 1
+			}
+			for _, tc := range []struct {
+				name   string
+				value  any
+				remove bool
+			}{{"missing", nil, true}, {"null", nil, false}, {"wrong", wrong, false}, {"empty", "", false}, {"bool", false, false}, {"array", []any{}, false}, {"object", map[string]any{}, false}} {
+				t.Run(tc.name, func(t *testing.T) {
+					in := chinaCopy(t, sample)
+					chinaChange(t, in, field.path, tc.value, tc.remove)
+					chinaRejected(t, s, qaIPP, in)
+				})
+			}
+		})
+	}
+	for _, value := range []any{nil, []any{}, []any{"EUR"}, "USD", []any{1}} {
+		in := chinaCopy(t, sample)
+		in["cur"] = value
+		chinaRejected(t, s, qaIPP, in)
+	}
+	in := chinaCopy(t, sample)
+	delete(in, "cur")
+	chinaRejected(t, s, qaIPP, in)
+	for _, path := range []string{"imp.0.tagid", "imp.0.native.request"} {
+		for _, tc := range []struct {
+			name   string
+			value  any
+			remove bool
+		}{{"missing", nil, true}, {"null", nil, false}, {"number", 1, false}, {"object", map[string]any{}, false}, {"array", []any{}, false}} {
+			t.Run(path+"/"+tc.name, func(t *testing.T) {
+				in := chinaCopy(t, sample)
+				chinaChange(t, in, path, tc.value, tc.remove)
+				chinaRejected(t, s, qaIPP, in)
+			})
+		}
+	}
+}
+
+func TestChinaIPPEveryAssetFieldBoundary(t *testing.T) {
+	s := chinaStore(t, chinaProfiles(t))
+	sample := chinaSample(t, "IPP")
+	for _, field := range []struct {
+		path  string
+		value float64
+	}{
+		{"native.assets.0.id", 100}, {"native.assets.0.required", 1}, {"native.assets.0.title.len", 80},
+		{"native.assets.1.id", 101}, {"native.assets.1.required", 1}, {"native.assets.1.data.type", 1}, {"native.assets.1.data.len", 80},
+		{"native.assets.2.id", 102}, {"native.assets.2.required", 1}, {"native.assets.2.img.type", 3}, {"native.assets.2.img.w", 200}, {"native.assets.2.img.h", 200}, {"native.assets.2.img.wmin", 200}, {"native.assets.2.img.hmin", 200},
+	} {
+		t.Run(field.path, func(t *testing.T) {
+			for _, tc := range []struct {
+				name   string
+				value  any
+				remove bool
+			}{{"missing", nil, true}, {"null", nil, false}, {"below", field.value - 1, false}, {"above", field.value + 1, false}, {"zero", float64(0), false}, {"string", "200", false}, {"bool", true, false}, {"array", []any{}, false}, {"object", map[string]any{}, false}} {
+				t.Run(tc.name, func(t *testing.T) {
+					in := chinaCopy(t, sample)
+					chinaNativeMutation(t, in, func(doc map[string]any) { chinaChange(t, doc, field.path, tc.value, tc.remove) })
+					chinaRejected(t, s, qaIPP, in)
+				})
+			}
+		})
+	}
+	for _, tc := range []struct {
+		name   string
+		path   string
+		value  any
+		remove bool
+	}{
+		{"version_missing", "native.ver", nil, true}, {"version_null", "native.ver", nil, false}, {"version_1_1", "native.ver", "1.1", false}, {"version_number", "native.ver", 1.2, false}, {"assets_missing", "native.assets", nil, true}, {"assets_null", "native.assets", nil, false}, {"assets_empty", "native.assets", []any{}, false}, {"assets_object", "native.assets", map[string]any{}, false},
+		{"title_object_missing", "native.assets.0.title", nil, true}, {"title_wrong_type", "native.assets.0.title", "bad", false}, {"data_missing", "native.assets.1.data", nil, true}, {"image_missing", "native.assets.2.img", nil, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			in := chinaCopy(t, sample)
+			chinaNativeMutation(t, in, func(doc map[string]any) { chinaChange(t, doc, tc.path, tc.value, tc.remove) })
+			chinaRejected(t, s, qaIPP, in)
+		})
+	}
+}
+
+func TestChinaIPPEncodingWrapperAndStableAssetIDs(t *testing.T) {
+	s := chinaStore(t, chinaProfiles(t))
+	sample := chinaSample(t, "IPP")
+	for i, raw := range []string{"", `{`, `null`, `[]`, `"double encoded"`, `{"native":{}}`, `{"native":{"ver":"1.2"}}`, chinaObject(t, chinaIPPSampleJSON)["imp"].([]any)[0].(map[string]any)["native"].(map[string]any)["request"].(string) + ` {}`} {
+		t.Run(fmt.Sprintf("invalid_document_%d", i), func(t *testing.T) {
+			in := chinaCopy(t, sample)
+			chinaChange(t, in, "imp.0.native.request", raw, false)
+			chinaRejected(t, s, qaIPP, in)
+		})
+	}
+	in := chinaCopy(t, sample)
+	chinaNativeMutation(t, in, func(doc map[string]any) {
+		inner := doc["native"].(map[string]any)
+		for key, value := range inner {
+			doc[key] = value
+		}
+		delete(doc, "native")
+	})
+	chinaRejected(t, s, qaIPP, in)
+	for _, permutation := range [][]int{{0, 1, 2}, {0, 2, 1}, {1, 0, 2}, {1, 2, 0}, {2, 0, 1}, {2, 1, 0}} {
+		t.Run(fmt.Sprint(permutation), func(t *testing.T) {
+			in := chinaCopy(t, sample)
+			chinaNativeMutation(t, in, func(doc map[string]any) {
+				obj := doc["native"].(map[string]any)
+				assets := obj["assets"].([]any)
+				obj["assets"] = []any{assets[permutation[0]], assets[permutation[1]], assets[permutation[2]], map[string]any{"id": 777, "title": map[string]any{"len": 10}}}
+			})
+			native := chinaFixtureValue(t, in, "imp.0.native").(map[string]any)
+			native["request"] = " \n" + native["request"].(string) + "\n "
+			out := chinaAccepted(t, s, qaIPP, in)
+			if chinaFixtureValue(t, out, "imp.0.native.request") != native["request"] {
+				t.Fatal("embedded JSON string was rewritten")
+			}
+		})
+	}
+}
+
+func TestChinaRequiredParentObjectsAndTimeouts(t *testing.T) {
+	s := chinaStore(t, chinaProfiles(t))
+	for _, tc := range []struct {
+		format, id, parent string
+		timeout            float64
+	}{{"POP", qaPH, "imp", 500}, {"VID", qaVID, "imp.0.video", 550}, {"IPP", qaIPP, "imp.0.native", 300}} {
+		t.Run(tc.format, func(t *testing.T) {
+			base := chinaSample(t, tc.format)
+			for _, v := range []any{nil, []any{}, "wrong", float64(1), map[string]any{}} {
+				in := chinaCopy(t, base)
+				chinaChange(t, in, tc.parent, v, false)
+				chinaRejected(t, s, tc.id, in)
+			}
+			in := chinaCopy(t, base)
+			chinaChange(t, in, tc.parent, nil, true)
+			chinaRejected(t, s, tc.id, in)
+			for _, v := range []any{nil, float64(0), float64(1), float64(100), tc.timeout, float64(1000)} {
+				in := chinaCopy(t, base)
+				in["tmax"] = v
+				out := chinaAccepted(t, s, tc.id, in)
+				if out["tmax"] != tc.timeout {
+					t.Fatal("incorrect timeout", v, out["tmax"])
+				}
+			}
+			in = chinaCopy(t, base)
+			delete(in, "tmax")
+			if out := chinaAccepted(t, s, tc.id, in); out["tmax"] != tc.timeout {
+				t.Fatal(out)
+			}
+		})
+	}
+}
+
+func TestChinaPOPFloorHTTPSAndPlacementRequirements(t *testing.T) {
+	s := chinaStore(t, chinaProfiles(t))
+	for _, campaign := range []string{qaCN, qaPH, qaMX} {
+		t.Run(campaign, func(t *testing.T) {
+			sample := chinaSample(t, "POP")
+			for _, floor := range []any{nil, float64(0), float64(0.01), float64(2.5)} {
+				in := chinaCopy(t, sample)
+				chinaChange(t, in, "imp.0.bidfloor", floor, false)
+				want := floor
+				if floor == nil {
+					want = float64(0)
+				}
+				out := chinaAccepted(t, s, campaign, in)
+				if chinaFixtureValue(t, out, "imp.0.bidfloor") != want {
+					t.Fatal("supplied minimum was overwritten or default absent", floor, out)
+				}
+				if chinaFixtureValue(t, out, "imp.0.tagid") != "placement-from-input-77" || chinaFixtureValue(t, out, "imp.0.secure") != float64(1) {
+					t.Fatal("placement/HTTPS metadata changed")
+				}
+			}
+			in := chinaCopy(t, sample)
+			chinaChange(t, in, "imp.0.bidfloor", nil, true)
+			out := chinaAccepted(t, s, campaign, in)
+			if chinaFixtureValue(t, out, "imp.0.bidfloor") != float64(0) {
+				t.Fatal("unset minimum was not explicit zero")
+			}
+			for _, tc := range []struct {
+				name, path string
+				value      any
+				remove     bool
+			}{{"missing_tag", "imp.0.tagid", nil, true}, {"null_tag", "imp.0.tagid", nil, false}, {"missing_secure", "imp.0.secure", nil, true}, {"null_secure", "imp.0.secure", nil, false}, {"not_https", "imp.0.secure", float64(0), false}, {"invalid_secure", "imp.0.secure", float64(2), false}} {
+				t.Run(tc.name, func(t *testing.T) {
+					in := chinaCopy(t, sample)
+					chinaChange(t, in, tc.path, tc.value, tc.remove)
+					chinaRejected(t, s, campaign, in)
+				})
+			}
+		})
+	}
+	// A zero HTTPS flag is not upgraded or invented by the transformation stage.
+	// Filters reject it first; a profile for some other campaign is unaffected.
+	in := chinaSample(t, "POP")
+	chinaChange(t, in, "imp.0.secure", float64(0), false)
+	raw, _ := json.Marshal(in)
+	var req ortb.BidRequest
+	if err := jsoniter.Unmarshal(raw, &req); err != nil {
+		t.Fatal(err)
+	}
+	out, err := s.ApplyToRequest(qaPH, &req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if chinaFixtureValue(t, chinaObject(t, string(out)), "imp.0.secure") != float64(0) {
+		t.Fatal("HTTPS support fabricated")
+	}
+	delete(in["imp"].([]any)[0].(map[string]any), "tagid")
+	raw, _ = json.Marshal(in)
+	req.Reset()
+	if err = jsoniter.Unmarshal(raw, &req); err != nil {
+		t.Fatal(err)
+	}
+	out, err = s.ApplyToRequest(qaPH, &req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, exists := chinaFixtureValue(t, chinaObject(t, string(out)), "imp.0").(map[string]any)["tagid"]; exists {
+		t.Fatal("missing placement id was invented")
+	}
+}
+
+func TestChinaVideoIPPBidfloorMetadataAndTestFlagAreNotFabricated(t *testing.T) {
+	s := chinaStore(t, chinaProfiles(t))
+	for _, tc := range []struct{ format, id string }{{"VID", qaVID}, {"IPP", qaIPP}} {
+		t.Run(tc.format, func(t *testing.T) {
+			base := chinaSample(t, tc.format)
+			for _, floor := range []any{nil, float64(0), float64(0.01), float64(2.5)} {
+				in := chinaCopy(t, base)
+				chinaChange(t, in, "imp.0.bidfloor", floor, false)
+				out := chinaAccepted(t, s, tc.id, in)
+				got, exists := chinaFixtureValue(t, out, "imp.0").(map[string]any)["bidfloor"]
+				if floor == nil {
+					if exists {
+						t.Fatal("example floor invented", got)
+					}
+				} else if got != floor {
+					t.Fatal("actual minimum changed", got, floor)
+				}
+			}
+			in := chinaCopy(t, base)
+			delete(in, "test")
+			chinaChange(t, in, "imp.0.bidfloor", nil, true)
+			out := chinaAccepted(t, s, tc.id, in)
+			if _, present := out["test"]; present {
+				t.Fatal("production request was forced into test mode")
+			}
+			if _, present := chinaFixtureValue(t, out, "imp.0").(map[string]any)["bidfloor"]; present {
+				t.Fatal("example floor forced")
+			}
+			if out["id"] != in["id"] || chinaFixtureValue(t, out, "device.ip") != "192.0.2.1" || chinaFixtureValue(t, out, "user.id") != "test-user-001" || chinaFixtureValue(t, out, "site.id") != "test-site-001" {
+				t.Fatal("request identity changed")
+			}
+			for _, key := range []string{"timestamp", "event_time", "created_at"} {
+				if _, present := out[key]; present {
+					t.Fatal("request timestamp fabricated", key)
+				}
+			}
+		})
+	}
+}
+
+// Only this future-format fixture carries forward the already existing legacy
+// deviceType -> devicetype rule. The supplied JSON literal stays unchanged;
+// strict tests below separately check that literal for missing requirements.
+func chinaWireProfile(t *testing.T) map[string]any {
+	t.Helper()
+	cfg := chinaProfiles(t)
+	for _, id := range []string{qaVID, qaIPP} {
+		cfg[id].(map[string]any)["rename"] = []any{map[string]any{"field": "device.deviceType", "to_field": "devicetype"}}
+	}
+	return cfg
+}
+func chinaSerializedRequest(t *testing.T, s *Store, id string, input map[string]any) []byte {
+	t.Helper()
+	raw, err := json.Marshal(input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var req ortb.BidRequest
+	if err = jsoniter.Unmarshal(raw, &req); err != nil {
+		t.Fatal(err)
+	}
+	before := proto.Clone(&req)
+	ok, reason, err := s.CheckWithCache(id, NewFilterCache(&req), req.GetImp()[0].GetId())
+	if err != nil || !ok {
+		t.Fatal(ok, reason, err)
+	}
+	wire, err := s.ApplyToRequest(id, &req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !proto.Equal(before, &req) {
+		t.Fatal("source request changed")
+	}
+	return wire
+}
+func TestChinaFullVideoIPPSamplesOnSerializedWire(t *testing.T) {
+	s := chinaStore(t, chinaWireProfile(t))
+	for _, tc := range []struct{ format, id string }{{"VID", qaVID}, {"IPP", qaIPP}} {
+		t.Run(tc.format, func(t *testing.T) {
+			in := chinaSample(t, tc.format)
+			wire := chinaSerializedRequest(t, s, tc.id, in)
+			out := chinaObject(t, string(wire))
+			if !reflect.DeepEqual(in, out) {
+				t.Fatalf("partner sample changed on wire:\nexpected=%s\nactual=%s", mustChinaJSON(t, in), wire)
+			}
+			if tc.format == "IPP" {
+				if _, ok := chinaFixtureValue(t, out, "imp.0.native.request").(string); !ok {
+					t.Fatal("native.request is not a JSON-encoded string")
+				}
+			}
+			received := make(chan []byte, 1)
+			endpoint := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				body, err := io.ReadAll(r.Body)
+				if err != nil {
+					t.Error(err)
+					w.WriteHeader(400)
+					return
+				}
+				received <- body
+				w.WriteHeader(204)
+			}))
+			defer endpoint.Close()
+			response, err := endpoint.Client().Post(endpoint.URL, "application/json", bytes.NewReader(wire))
+			if err != nil {
+				t.Fatal(err)
+			}
+			response.Body.Close()
+			if response.StatusCode != 204 {
+				t.Fatal(response.StatusCode)
+			}
+			got := <-received
+			if !bytes.Equal(got, wire) {
+				t.Fatal("wire body altered in HTTP transport")
+			}
+		})
+	}
+}
+func mustChinaJSON(t *testing.T, v any) []byte {
+	t.Helper()
+	b, err := json.Marshal(v)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return b
+}
+
+func TestChinaCampaignAndImpressionIsolation(t *testing.T) {
+	s := chinaStore(t, chinaProfiles(t))
+	unknown := "99999999-9999-4999-8999-999999999999"
+	input := chinaSample(t, "POP")
+	raw := mustChinaJSON(t, input)
+	var req ortb.BidRequest
+	if err := jsoniter.Unmarshal(raw, &req); err != nil {
+		t.Fatal(err)
+	}
+	expected, err := jsoniter.Marshal(&req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	out := chinaAccepted(t, s, unknown, input)
+	if !reflect.DeepEqual(out, chinaObject(t, string(expected))) {
+		t.Fatal("54Ads rules leaked into an unrelated campaign")
+	}
+	// Combined request retains distinct per-impression video/native capabilities.
+	video, ipp := chinaSample(t, "VID"), chinaSample(t, "IPP")
+	mixed := chinaCopy(t, video)
+	mixed["imp"] = append(mixed["imp"].([]any), ipp["imp"].([]any)[0])
+	raw = mustChinaJSON(t, mixed)
+	req.Reset()
+	if err = jsoniter.Unmarshal(raw, &req); err != nil {
+		t.Fatal(err)
+	}
+	before := proto.Clone(&req)
+	cache := NewFilterCache(&req)
+	for _, tc := range []struct {
+		id, imp string
+		want    bool
+	}{{qaVID, "video-test-imp-001", true}, {qaVID, "push-test-imp-001", false}, {qaIPP, "push-test-imp-001", true}, {qaIPP, "video-test-imp-001", false}} {
+		ok, _, err := s.CheckWithCache(tc.id, cache, tc.imp)
+		if err != nil || ok != tc.want {
+			t.Fatal(tc, ok, err)
+		}
+	}
+	if !proto.Equal(before, &req) {
+		t.Fatal("shared request mutated")
+	}
+	// A failed first impression cannot poison the valid sibling, or vice versa.
+	for _, firstBad := range []bool{false, true} {
+		in := chinaSample(t, "IPP")
+		bad := chinaCopy(t, in)["imp"].([]any)[0].(map[string]any)
+		bad["id"] = "bad"
+		bad["native"].(map[string]any)["request"] = "{bad"
+		good := in["imp"].([]any)[0]
+		if firstBad {
+			in["imp"] = []any{bad, good}
+		} else {
+			in["imp"] = []any{good, bad}
+		}
+		raw = mustChinaJSON(t, in)
+		var r ortb.BidRequest
+		if err = jsoniter.Unmarshal(raw, &r); err != nil {
+			t.Fatal(err)
+		}
+		cache := NewFilterCache(&r)
+		for _, impID := range []string{"bad", "push-test-imp-001", "bad", "push-test-imp-001"} {
+			ok, _, err := s.CheckWithCache(qaIPP, cache, impID)
+			if impID == "bad" {
+				if ok || !errors.Is(err, ErrNativeFilter) {
+					t.Fatal(ok, err)
+				}
+			} else if !ok || err != nil {
+				t.Fatal(ok, err)
+			}
+		}
+	}
+}
+
+// Frozen test-only pre-rtbrules oracle from the removed proj251 implementation.
+// Function names alone are prefixed; its behavior is not adapted to the new rules.
+func chinaLegacyNormalize(payload map[string]any, pop bool, countryReplacements map[string]string) {
+	if payload == nil {
+		return
+	}
+	payload["tmax"] = 500
+
+	deviceCountry := ""
+	if rawDevice, ok := payload["device"]; ok {
+		if device, ok := rawDevice.(map[string]any); ok {
+			if deviceType, exists := device["deviceType"]; exists {
+				delete(device, "deviceType")
+				device["devicetype"] = deviceType
+			}
+			deviceCountry = chinaLegacyGeo(device["geo"], countryReplacements)
+		}
+	}
+
+	user, _ := payload["user"].(map[string]any)
+	if user != nil {
+		chinaLegacyGeo(user["geo"], countryReplacements)
+	}
+	// Only a country actually replaced for this campaign may fill a missing
+	// user country. Preserve existing user/geo fields and a nonempty country.
+	if deviceCountry != "" {
+		if user == nil {
+			user = make(map[string]any)
+			payload["user"] = user
+		}
+		geo, _ := user["geo"].(map[string]any)
+		if geo == nil {
+			geo = make(map[string]any)
+			user["geo"] = geo
+		}
+		country, _ := geo["country"].(string)
+		if strings.TrimSpace(country) == "" {
+			geo["country"] = deviceCountry
+		}
+	}
+
+	if rawSite, ok := payload["site"]; ok {
+		if site, ok := rawSite.(map[string]any); ok {
+			domain, _ := site["domain"].(string)
+			page, _ := site["page"].(string)
+			host := chinaLegacyHostname(domain)
+			if host == "" {
+				host = chinaLegacyHostname(page)
+			}
+			if host != "" {
+				site["domain"] = host
+			}
+			if fullPage := chinaLegacyFullPage(page, host); fullPage != "" {
+				site["page"] = fullPage
+			}
+		}
+	}
+
+	if rawImps, ok := payload["imp"].([]any); ok {
+		for _, rawImp := range rawImps {
+			imp, ok := rawImp.(map[string]any)
+			if !ok {
+				continue
+			}
+			ext, _ := imp["ext"].(map[string]any)
+			if ext == nil {
+				ext = make(map[string]any)
+			}
+			ext["type"] = "pop"
+			imp["ext"] = ext
+			if pop {
+				delete(imp, "banner")
+			}
+		}
+	}
+}
+
+// Return the replacement only when this campaign's rule matched. Already
+// normalized and unrelated countries must not trigger the user-country fallback.
+func chinaLegacyGeo(rawGeo any, countryReplacements map[string]string) string {
+	geo, ok := rawGeo.(map[string]any)
+	if !ok {
+		return ""
+	}
+	country, _ := geo["country"].(string)
+	replacement, ok := countryReplacements[strings.ToUpper(strings.TrimSpace(country))]
+	if !ok {
+		return ""
+	}
+	geo["country"] = replacement
+	return replacement
+}
+
+func chinaLegacyHostname(raw string) string {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return ""
+	}
+	candidate := raw
+	if !strings.Contains(candidate, "://") {
+		candidate = "//" + strings.TrimPrefix(candidate, "//")
+	}
+	u, err := url.Parse(candidate)
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(u.Hostname())
+}
+
+func chinaLegacyFullPage(rawPage, host string) string {
+	page := strings.TrimSpace(rawPage)
+	if page == "" {
+		if host == "" {
+			return ""
+		}
+		return "https://" + host + "/"
+	}
+	if u, err := url.Parse(page); err == nil && u.IsAbs() && (u.Scheme == "http" || u.Scheme == "https") && u.Host != "" {
+		return page
+	}
+	if strings.HasPrefix(page, "//") {
+		return "https:" + page
+	}
+	if strings.HasPrefix(page, "/") && host != "" {
+		return "https://" + host + page
+	}
+	if !strings.Contains(page, "://") {
+		return "https://" + strings.TrimPrefix(page, "//")
+	}
+	return page
+}
+
+// Independent ISO-3166-1 corpus from pycountry databases/iso3166-1.json,
+// SHA256 f01b812b57fba9f31ff621bf33e7c7570a01964dbeb5be2167e94decf538c89f.
+// Frozen test data; not generated from isoAlpha3 and requires no network at test time.
+const chinaISOReference = `
+AD AND
+AE ARE
+AF AFG
+AG ATG
+AI AIA
+AL ALB
+AM ARM
+AO AGO
+AQ ATA
+AR ARG
+AS ASM
+AT AUT
+AU AUS
+AW ABW
+AX ALA
+AZ AZE
+BA BIH
+BB BRB
+BD BGD
+BE BEL
+BF BFA
+BG BGR
+BH BHR
+BI BDI
+BJ BEN
+BL BLM
+BM BMU
+BN BRN
+BO BOL
+BQ BES
+BR BRA
+BS BHS
+BT BTN
+BV BVT
+BW BWA
+BY BLR
+BZ BLZ
+CA CAN
+CC CCK
+CD COD
+CF CAF
+CG COG
+CH CHE
+CI CIV
+CK COK
+CL CHL
+CM CMR
+CN CHN
+CO COL
+CR CRI
+CU CUB
+CV CPV
+CW CUW
+CX CXR
+CY CYP
+CZ CZE
+DE DEU
+DJ DJI
+DK DNK
+DM DMA
+DO DOM
+DZ DZA
+EC ECU
+EE EST
+EG EGY
+EH ESH
+ER ERI
+ES ESP
+ET ETH
+FI FIN
+FJ FJI
+FK FLK
+FM FSM
+FO FRO
+FR FRA
+GA GAB
+GB GBR
+GD GRD
+GE GEO
+GF GUF
+GG GGY
+GH GHA
+GI GIB
+GL GRL
+GM GMB
+GN GIN
+GP GLP
+GQ GNQ
+GR GRC
+GS SGS
+GT GTM
+GU GUM
+GW GNB
+GY GUY
+HK HKG
+HM HMD
+HN HND
+HR HRV
+HT HTI
+HU HUN
+ID IDN
+IE IRL
+IL ISR
+IM IMN
+IN IND
+IO IOT
+IQ IRQ
+IR IRN
+IS ISL
+IT ITA
+JE JEY
+JM JAM
+JO JOR
+JP JPN
+KE KEN
+KG KGZ
+KH KHM
+KI KIR
+KM COM
+KN KNA
+KP PRK
+KR KOR
+KW KWT
+KY CYM
+KZ KAZ
+LA LAO
+LB LBN
+LC LCA
+LI LIE
+LK LKA
+LR LBR
+LS LSO
+LT LTU
+LU LUX
+LV LVA
+LY LBY
+MA MAR
+MC MCO
+MD MDA
+ME MNE
+MF MAF
+MG MDG
+MH MHL
+MK MKD
+ML MLI
+MM MMR
+MN MNG
+MO MAC
+MP MNP
+MQ MTQ
+MR MRT
+MS MSR
+MT MLT
+MU MUS
+MV MDV
+MW MWI
+MX MEX
+MY MYS
+MZ MOZ
+NA NAM
+NC NCL
+NE NER
+NF NFK
+NG NGA
+NI NIC
+NL NLD
+NO NOR
+NP NPL
+NR NRU
+NU NIU
+NZ NZL
+OM OMN
+PA PAN
+PE PER
+PF PYF
+PG PNG
+PH PHL
+PK PAK
+PL POL
+PM SPM
+PN PCN
+PR PRI
+PS PSE
+PT PRT
+PW PLW
+PY PRY
+QA QAT
+RE REU
+RO ROU
+RS SRB
+RU RUS
+RW RWA
+SA SAU
+SB SLB
+SC SYC
+SD SDN
+SE SWE
+SG SGP
+SH SHN
+SI SVN
+SJ SJM
+SK SVK
+SL SLE
+SM SMR
+SN SEN
+SO SOM
+SR SUR
+SS SSD
+ST STP
+SV SLV
+SX SXM
+SY SYR
+SZ SWZ
+TC TCA
+TD TCD
+TF ATF
+TG TGO
+TH THA
+TJ TJK
+TK TKL
+TL TLS
+TM TKM
+TN TUN
+TO TON
+TR TUR
+TT TTO
+TV TUV
+TW TWN
+TZ TZA
+UA UKR
+UG UGA
+UM UMI
+US USA
+UY URY
+UZ UZB
+VA VAT
+VC VCT
+VE VEN
+VG VGB
+VI VIR
+VN VNM
+VU VUT
+WF WLF
+WS WSM
+YE YEM
+YT MYT
+ZA ZAF
+ZM ZMB
+ZW ZWE
+`
+
+func TestChinaBannerAllISOCountriesAndOwnerIsolation(t *testing.T) {
+	cfg := chinaProfiles(t)
+	// Test-only campaign: user did not supply the real Banner campaign UUID.
+	// ISO mode is explicit and does not leak into POP/campaign country maps.
+	cfg[chinaBannerTestID] = map[string]any{"replace": []any{map[string]any{"field": "device.geo.country", "mode": "iso"}, map[string]any{"field": "user.geo.country", "mode": "iso"}}}
+	s := chinaStore(t, cfg)
+	entries := strings.Fields(chinaISOReference)
+	if len(entries) != 249*2 {
+		t.Fatal("independent ISO corpus incomplete", len(entries))
+	}
+	if len(isoAlpha3) != 249 {
+		t.Fatal("runtime ISO table incomplete or has unexpected entries", len(isoAlpha3))
+	}
+	for i := 0; i < len(entries); i += 2 {
+		from, to := entries[i], entries[i+1]
+		t.Run(from, func(t *testing.T) {
+			for _, raw := range []string{from, strings.ToLower(from), "  " + strings.ToLower(from) + "  "} {
+				input := chinaSample(t, "POP")
+				chinaChange(t, input, "device.geo.country", raw, false)
+				chinaChange(t, input, "user.geo.country", raw, false)
+				out := chinaAccepted(t, s, chinaBannerTestID, input)
+				if chinaFixtureValue(t, out, "device.geo.country") != to || chinaFixtureValue(t, out, "user.geo.country") != to {
+					t.Fatal("ISO mapping incorrect", from, to, out)
+				}
+				if chinaFixtureValue(t, out, "user.geo.city") != "Paris" || chinaFixtureValue(t, out, "user.id") != "test-user-001" || chinaFixtureValue(t, out, "imp.0.tagid") != "placement-from-input-77" {
+					t.Fatal("unrelated fields changed")
+				}
+			}
+		})
+	}
+	// Explicit customer examples plus different independent device/user countries.
+	in := chinaSample(t, "POP")
+	chinaChange(t, in, "device.geo.country", "JM", false)
+	chinaChange(t, in, "user.geo.country", "JO", false)
+	out := chinaAccepted(t, s, chinaBannerTestID, in)
+	if chinaFixtureValue(t, out, "device.geo.country") != "JAM" || chinaFixtureValue(t, out, "user.geo.country") != "JOR" {
+		t.Fatal("JM/JO customer examples failed")
+	}
+	for _, country := range []string{"JAM", "JOR", "ZZ", "", "  "} {
+		in := chinaSample(t, "POP")
+		chinaChange(t, in, "device.geo.country", country, false)
+		chinaChange(t, in, "user.geo.country", country, false)
+		out := chinaAccepted(t, s, chinaBannerTestID, in)
+		if chinaFixtureValue(t, out, "device.geo.country") != country || chinaFixtureValue(t, out, "user.geo.country") != country {
+			t.Fatal("unmapped value invented/modified", country)
+		}
+	}
+	for _, path := range []string{"device.geo.country", "user.geo.country", "device.geo", "user.geo", "device", "user"} {
+		for _, remove := range []bool{true, false} {
+			in := chinaSample(t, "POP")
+			chinaChange(t, in, path, nil, remove)
+			out := chinaAccepted(t, s, chinaBannerTestID, in)
+			// ISO replacement is existing-field-only, never a source of fake countries.
+			if parent, ok := out[strings.Split(path, ".")[0]].(map[string]any); ok {
+				if geo, ok := parent["geo"].(map[string]any); ok {
+					if value, present := geo["country"]; present && value != nil && strings.HasPrefix(path, strings.Split(path, ".")[0]) {
+						t.Fatal("absent ISO country created", path, value)
+					}
+				}
+			}
+		}
+	}
+	// The POP country map does not acquire all-country ISO conversion globally.
+	out = chinaAccepted(t, s, qaCN, func() map[string]any {
+		r := chinaSample(t, "POP")
+		chinaChange(t, r, "device.geo.country", "JM", false)
+		return r
+	}())
+	if chinaFixtureValue(t, out, "device.geo.country") != "JM" {
+		t.Fatal("banner ISO mode leaked into POP")
+	}
+}
+
+func chinaLegacyExpected(t *testing.T, input map[string]any, countries map[string]string, pop bool) map[string]any {
+	t.Helper()
+	var req ortb.BidRequest
+	if err := jsoniter.Unmarshal(mustChinaJSON(t, input), &req); err != nil {
+		t.Fatal(err)
+	}
+	raw, err := jsoniter.Marshal(&req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	expected := chinaObject(t, string(raw))
+	chinaLegacyNormalize(expected, pop, countries)
+	return expected
+}
+func TestChinaLegacyExactGoldenCorpus(t *testing.T) {
+	s := chinaStore(t, chinaProfiles(t))
+	campaigns := []struct {
+		id, from, to string
+		countries    map[string]string
+	}{
+		{qaCN, "CN", "CHN", map[string]string{"CN": "CHN"}},
+		{qaPH, "PH", "PHL", map[string]string{"PH": "PHL"}},
+		{qaMX, "MX", "MEX", map[string]string{"MX": "MEX", "PE": "PER"}},
+		{qaMX, "PE", "PER", map[string]string{"MX": "MEX", "PE": "PER"}},
+	}
+	sites := []struct{ domain, page string }{{"https://example.com/path", "/landing"}, {"example.com", "https://example.com/video"}, {"", "https://example.com/path?q=1#part"}, {"example.com", ""}, {"example.com:8443", "/landing"}, {"//example.com/path", "//example.com/landing"}, {"", ""}, {"http://[bad", "https://fallback.example/x"}, {"example.com", "ftp://example.com/x"}}
+	for _, campaign := range campaigns {
+		for _, country := range []string{campaign.from, strings.ToLower(campaign.from), "  " + strings.ToLower(campaign.from) + "  "} {
+			for _, userState := range []string{"missing", "missing_geo", "missing_country", "empty_country", "whitespace_country", "already_normalized"} {
+				for i, site := range sites {
+					t.Run(campaign.id+"/"+country+"/"+userState+"/site"+strconv.Itoa(i), func(t *testing.T) {
+						in := chinaSample(t, "POP")
+						chinaChange(t, in, "device.geo.country", country, false)
+						in["tmax"] = 100
+						chinaChange(t, in, "site.domain", site.domain, false)
+						chinaChange(t, in, "site.page", site.page, false)
+						switch userState {
+						case "missing":
+							delete(in, "user")
+						case "missing_geo":
+							delete(in["user"].(map[string]any), "geo")
+						case "missing_country":
+							delete(in["user"].(map[string]any)["geo"].(map[string]any), "country")
+						case "empty_country":
+							chinaChange(t, in, "user.geo.country", "", false)
+						case "whitespace_country":
+							chinaChange(t, in, "user.geo.country", "  ", false)
+						case "already_normalized":
+							chinaChange(t, in, "user.geo.country", campaign.to, false)
+						}
+						expected := chinaLegacyExpected(t, in, campaign.countries, true)
+						out := chinaAccepted(t, s, campaign.id, in)
+						if !bytes.Equal(mustChinaJSON(t, expected), mustChinaJSON(t, out)) {
+							t.Fatalf("legacy behavior changed:\nlegacy=%s\nrules=%s", mustChinaJSON(t, expected), mustChinaJSON(t, out))
+						}
+					})
+				}
+			}
+		}
+	}
+	// Missing/empty device parents do not prevent independent user GEO conversion.
+	for _, tc := range campaigns {
+		for _, path := range []string{"device", "device.geo", "device.geo.country"} {
+			in := chinaSample(t, "POP")
+			chinaChange(t, in, path, nil, true)
+			chinaChange(t, in, "user.geo.country", tc.from, false)
+			expected := chinaLegacyExpected(t, in, tc.countries, true)
+			out := chinaAccepted(t, s, tc.id, in)
+			if !bytes.Equal(mustChinaJSON(t, expected), mustChinaJSON(t, out)) {
+				t.Fatal("missing-device legacy behavior changed", tc, path)
+			}
+		}
+	}
+}
+
+func TestChinaLegacyIntentionalCopyAndFloorDifferencesAreExplicit(t *testing.T) {
+	s := chinaStore(t, chinaProfiles(t))
+	for _, tc := range []struct {
+		name, device, user, oldUser, newUser string
+		userPresent                          bool
+	}{
+		{"populated_target", "PH", "US", "US", "PHL", true},
+		{"unmatched_source", "US", "US", "US", "US", false},
+		{"already_alpha3", "PHL", "US", "US", "PHL", true},
+		{"empty_source", "", "US", "US", "", true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			in := chinaSample(t, "POP")
+			chinaChange(t, in, "device.geo.country", tc.device, false)
+			if tc.userPresent {
+				chinaChange(t, in, "user.geo.country", tc.user, false)
+			} else {
+				delete(in["user"].(map[string]any), "geo")
+			}
+			legacy := chinaLegacyExpected(t, in, map[string]string{"PH": "PHL"}, true)
+			out := chinaAccepted(t, s, qaPH, in)
+			if tc.userPresent {
+				if chinaFixtureValue(t, legacy, "user.geo.country") != tc.oldUser {
+					t.Fatal("frozen legacy oracle changed")
+				}
+			} else if _, present := legacy["user"].(map[string]any)["geo"]; present {
+				t.Fatal("legacy did not preserve absent GEO")
+			}
+			if chinaFixtureValue(t, out, "user.geo.country") != tc.newUser {
+				t.Fatal("current copy_to contract changed", out)
+			}
+		})
+	}
+	in := chinaSample(t, "POP")
+	chinaChange(t, in, "imp.0.bidfloor", nil, true)
+	legacy := chinaLegacyExpected(t, in, map[string]string{"PH": "PHL"}, true)
+	if _, present := chinaFixtureValue(t, legacy, "imp.0").(map[string]any)["bidfloor"]; present {
+		t.Fatal("legacy oracle fabricated default floor")
+	}
+	out := chinaAccepted(t, s, qaPH, in)
+	if chinaFixtureValue(t, out, "imp.0.bidfloor") != float64(0) {
+		t.Fatal("new explicit unset floor missing")
+	}
+	// An old missing-tag request could be normalized, but the new contract rejects it.
+	chinaChange(t, in, "imp.0.tagid", nil, true)
+	chinaRejected(t, s, qaPH, in)
+}
+
+func TestChinaVideoIPPRealSourceMetadataIsPreserved(t *testing.T) {
+	s := chinaStore(t, chinaWireProfile(t))
+	for _, tc := range []struct{ format, id string }{{"VID", qaVID}, {"IPP", qaIPP}} {
+		t.Run(tc.format, func(t *testing.T) {
+			base := chinaSample(t, tc.format)
+			for _, field := range []struct {
+				path  string
+				value any
+			}{
+				{"id", "actual-source-request-987"}, {"test", float64(0)}, {"imp.0.id", "source-impression-432"}, {"imp.0.tagid", "actual-source-placement-55"},
+				{"site.id", "actual-source-site"}, {"site.name", "Actual Site"}, {"site.domain", "source.example"}, {"site.page", "https://source.example/page?q=keep#part"}, {"site.publisher.id", "source-publisher"},
+				{"device.ip", "198.51.100.27"}, {"device.ua", "actual original user agent"}, {"device.devicetype", float64(1)}, {"device.os", "original-OS"}, {"device.osv", "original-version"}, {"device.js", float64(0)}, {"device.language", "zh"}, {"user.id", "actual-source-user"},
+			} {
+				t.Run(field.path, func(t *testing.T) {
+					in := chinaCopy(t, base)
+					chinaChange(t, in, field.path, field.value, false)
+					out := chinaAccepted(t, s, tc.id, in)
+					if !bytes.Equal(mustChinaJSON(t, in), mustChinaJSON(t, out)) {
+						t.Fatal("a placeholder or some other field replaced actual source data", field.path, string(mustChinaJSON(t, out)))
+					}
+				})
+			}
+		})
+	}
+}
+
+// The literal historical profile above remains unchanged for its regression
+// corpus. These tests use the later agreed configuration: copy the existing
+// site.id in the filter, and put the device-key rename in ALL. No production
+// configuration is edited by this test fixture.
+func chinaCurrentProfiles(t *testing.T) map[string]any {
+	t.Helper()
+	config := chinaProfiles(t)
+	config["ALL"] = map[string]any{"rename": []any{map[string]any{"field": "device.deviceType", "to_field": "devicetype"}}}
+	for _, block := range config {
+		rules := block.(map[string]any)
+		filters, _ := rules["filters"].([]any)
+		for i, entry := range filters {
+			filter := entry.(map[string]any)
+			if filter["field"] == "imp.tagid" {
+				filters[i] = map[string]any{"field": "site.id", "exists": true, "copy_to": "imp.tagid"}
+			}
+		}
+	}
+	// The rename is shared through ALL, rather than duplicated by campaign.
+	delete(config[qaCN+","+qaPH+","+qaMX].(map[string]any), "rename")
+	return config
+}
+
+func TestChinaCurrentContractRetainsOtherPartnerConditions(t *testing.T) {
+	historical := chinaStore(t, chinaProfiles(t)).Memory()
+	current := chinaStore(t, chinaCurrentProfiles(t)).Memory()
+	for _, tc := range []struct {
+		id      string
+		filters int
+	}{{qaCN, 2}, {qaPH, 2}, {qaMX, 2}, {qaVID, 15}, {qaIPP, 20}} {
+		old, got := historical[tc.id], current[tc.id]
+		if len(got.Filters) != tc.filters || len(old.Filters) != tc.filters {
+			t.Fatal("missing or added partner conditions", tc.id)
+		}
+		copied := 0
+		for i, expected := range old.Filters {
+			if expected.Field == "imp.tagid" {
+				expected.Field = "site.id"
+				expected.CopyTo = "imp.tagid"
+				copied++
+			}
+			if !reflect.DeepEqual(got.Filters[i], expected) {
+				t.Fatal("another partner filter changed", tc.id, i, got.Filters[i], expected)
+			}
+		}
+		if copied != 1 || !reflect.DeepEqual(got.Add, old.Add) || !reflect.DeepEqual(got.Replace, old.Replace) || !reflect.DeepEqual(got.Delete, old.Delete) {
+			t.Fatal("partner transforms changed", tc.id)
+		}
+		if !reflect.DeepEqual(got.Rename, []Rename{{Field: "device.deviceType", ToField: "devicetype"}}) {
+			t.Fatal("global rename missing or duplicated", tc.id, got.Rename)
+		}
+	}
+}
+
+func TestChinaCurrentContractCopiesSiteIDToPlacement(t *testing.T) {
+	s := chinaStore(t, chinaCurrentProfiles(t))
+	for _, tc := range []struct{ format, id string }{{"POP", qaCN}, {"POP", qaPH}, {"POP", qaMX}, {"VID", qaVID}, {"IPP", qaIPP}} {
+		for _, tag := range []struct {
+			name   string
+			value  any
+			remove bool
+		}{{"empty", "", false}, {"whitespace", "   ", false}, {"null", nil, false}, {"missing", nil, true}, {"existing", "old-placement", false}} {
+			t.Run(tc.id+"/"+tag.name, func(t *testing.T) {
+				in := chinaSample(t, tc.format)
+				chinaChange(t, in, "site.id", "actual-site-id-from-input", false)
+				chinaChange(t, in, "imp.0.tagid", tag.value, tag.remove)
+				second := chinaCopy(t, in["imp"].([]any)[0].(map[string]any))
+				second["id"] = "second-impression"
+				second["tagid"] = "another-existing-placement"
+				in["imp"] = append(in["imp"].([]any), second)
+				out := chinaAccepted(t, s, tc.id, in)
+				if chinaFixtureValue(t, out, "site.id") != "actual-site-id-from-input" {
+					t.Fatal("copy changed source site.id")
+				}
+				imps := out["imp"].([]any)
+				if len(imps) != 2 {
+					t.Fatal("copy changed impression count")
+				}
+				for _, entry := range imps {
+					if entry.(map[string]any)["tagid"] != "actual-site-id-from-input" {
+						t.Fatal("tagid was not copied from the existing site.id", entry)
+					}
+				}
+			})
+		}
+		for _, missing := range []struct {
+			name, path string
+			remove     bool
+		}{{"missing_id", "site.id", true}, {"null_id", "site.id", false}, {"missing_site", "site", true}, {"null_site", "site", false}} {
+			t.Run(tc.id+"/"+missing.name, func(t *testing.T) {
+				in := chinaSample(t, tc.format)
+				chinaChange(t, in, missing.path, nil, missing.remove)
+				accepted, reason, err, out := chinaEvaluate(t, s, tc.id, in)
+				if accepted || out != nil || err != nil || reason != "rtb_rule_filter_site.id" {
+					t.Fatal("missing source must fail the site.id filter", accepted, reason, err, out)
+				}
+			})
+		}
+	}
+}
+
+func TestChinaCurrentContractUsesGlobalPartnerDeviceKey(t *testing.T) {
+	s := chinaStore(t, chinaCurrentProfiles(t))
+	for _, tc := range []struct{ format, id string }{{"POP", qaCN}, {"POP", qaPH}, {"POP", qaMX}, {"VID", qaVID}, {"IPP", qaIPP}} {
+		t.Run(tc.id, func(t *testing.T) {
+			out := chinaAccepted(t, s, tc.id, chinaSample(t, tc.format))
+			device := out["device"].(map[string]any)
+			if device["devicetype"] != float64(4) {
+				t.Errorf("ALL rename did not preserve device type for %s: %v", tc.format, device)
+			}
+			if _, present := device["deviceType"]; present {
+				t.Error("camelCase deviceType still present on partner wire")
+			}
+		})
+	}
+}
+
+func TestChinaCurrentContractPreservesExistsSemantics(t *testing.T) {
+	s := chinaStore(t, chinaCurrentProfiles(t))
+	for _, tc := range []struct{ format, id string }{{"POP", qaCN}, {"POP", qaPH}, {"POP", qaMX}, {"VID", qaVID}, {"IPP", qaIPP}} {
+		for _, siteID := range []string{"", "   "} {
+			in := chinaSample(t, tc.format)
+			chinaChange(t, in, "site.id", siteID, false)
+			out := chinaAccepted(t, s, tc.id, in)
+			if chinaFixtureValue(t, out, "imp.0.tagid") != siteID {
+				t.Fatal("exists/copy_to must not trim, invent or validate the source ID", tc.id, siteID, out)
+			}
+		}
+	}
+}
+
+func TestChinaNativeWrapperAndCrossCampaignErrorIsolation(t *testing.T) {
+	s := chinaStore(t, chinaProfiles(t))
+	base := chinaSample(t, "IPP")
+	for _, version := range []any{"", "1.2 ", false, []any{}, map[string]any{}} {
+		in := chinaCopy(t, base)
+		chinaNativeMutation(t, in, func(doc map[string]any) { chinaChange(t, doc, "native.ver", version, false) })
+		chinaRejected(t, s, qaIPP, in)
+	}
+	for _, wrapper := range []any{nil, []any{}, "1.2", 1} {
+		in := chinaCopy(t, base)
+		chinaNativeMutation(t, in, func(doc map[string]any) { doc["native"] = wrapper })
+		chinaRejected(t, s, qaIPP, in)
+	}
+	in := chinaCopy(t, base)
+	original := chinaFixtureValue(t, in, "imp.0.native.request").(string)
+	double, err := json.Marshal(original)
+	if err != nil {
+		t.Fatal(err)
+	}
+	chinaChange(t, in, "imp.0.native.request", string(double), false)
+	chinaRejected(t, s, qaIPP, in)
+	// One source impression advertises both formats; bad native JSON must not
+	// invalidate the same impression's otherwise valid VIDEO campaign check.
+	in = chinaSample(t, "VID")
+	chinaChange(t, in, "imp.0.native", map[string]any{"ver": "1.2", "request": "{bad"}, false)
+	var req ortb.BidRequest
+	if err = jsoniter.Unmarshal(mustChinaJSON(t, in), &req); err != nil {
+		t.Fatal(err)
+	}
+	cache := NewFilterCache(&req)
+	impID := req.GetImp()[0].GetId()
+	for _, id := range []string{qaIPP, qaVID, qaIPP, qaVID} {
+		ok, _, err := s.CheckWithCache(id, cache, impID)
+		if id == qaIPP {
+			if ok || !errors.Is(err, ErrNativeFilter) {
+				t.Fatal("malformed Native not distinguished", ok, err)
+			}
+		} else if !ok || err != nil {
+			t.Fatal("Native error poisoned VIDEO", ok, err)
+		}
+	}
+}
+
+func TestChinaSiblingValuesCannotSatisfyAnotherImpression(t *testing.T) {
+	s := chinaStore(t, chinaProfiles(t))
+	for _, tc := range []struct {
+		format, id, path string
+		wrong            any
+	}{{"VID", qaVID, "imp.0.video.w", float64(339)}, {"VID", qaVID, "imp.0.video.skipmin", float64(1)}, {"IPP", qaIPP, "imp.0.native.ver", "1.1"}} {
+		in := chinaSample(t, tc.format)
+		sibling := chinaCopy(t, in)["imp"].([]any)[0].(map[string]any)
+		sibling["id"] = "valid-sibling"
+		chinaChange(t, in, tc.path, tc.wrong, false)
+		in["imp"] = append(in["imp"].([]any), sibling)
+		var req ortb.BidRequest
+		if err := jsoniter.Unmarshal(mustChinaJSON(t, in), &req); err != nil {
+			t.Fatal(err)
+		}
+		cache := NewFilterCache(&req)
+		if ok, _, err := s.CheckWithCache(tc.id, cache, req.GetImp()[0].GetId()); ok || err != nil {
+			t.Fatal("sibling value satisfied a failing impression", tc, ok, err)
+		}
+		if ok, _, err := s.CheckWithCache(tc.id, cache, "valid-sibling"); !ok || err != nil {
+			t.Fatal("invalid sibling rejected valid impression", tc, ok, err)
+		}
+	}
+}
+
+func FuzzChinaNativeLiteralContractAndCache(f *testing.F) {
+	cfgPath := filepath.Join(f.TempDir(), "54ads.json")
+	if err := os.WriteFile(cfgPath, []byte(chinaPartnerProfilesJSON), 0600); err != nil {
+		f.Fatal(err)
+	}
+	store, err := NewStore(cfgPath)
+	if err != nil {
+		f.Fatal(err)
+	}
+	var sample map[string]any
+	if err = json.Unmarshal([]byte(chinaIPPSampleJSON), &sample); err != nil {
+		f.Fatal(err)
+	}
+	valid := sample["imp"].([]any)[0].(map[string]any)["native"].(map[string]any)["request"].(string)
+	for _, seed := range []string{valid, `{`, `null`, `[]`, `{"native":{"ver":"1.2","assets":[]}}`, `{"native":{"ver":"1.2","assets":[{"id":"100"}]}}`} {
+		f.Add(seed)
+	}
+	f.Fuzz(func(t *testing.T, embedded string) {
+		in := chinaSample(t, "IPP")
+		chinaChange(t, in, "imp.0.native.request", embedded, false)
+		var req ortb.BidRequest
+		if err := jsoniter.Unmarshal(mustChinaJSON(t, in), &req); err != nil {
+			t.Fatal(err)
+		}
+		before := proto.Clone(&req)
+		cache := NewFilterCache(&req)
+		imp := req.GetImp()[0].GetId()
+		ok, reason, err := store.CheckWithCache(qaIPP, cache, imp)
+		for _, again := range []*FilterCache{cache, NewFilterCache(&req)} {
+			same, sameReason, sameErr := store.CheckWithCache(qaIPP, again, imp)
+			if same != ok || sameReason != reason || (sameErr == nil) != (err == nil) || errors.Is(sameErr, ErrNativeFilter) != errors.Is(err, ErrNativeFilter) {
+				t.Fatal("cache and fresh native parsing disagree", same, sameReason, sameErr, ok, reason, err)
+			}
+		}
+		if err != nil && !errors.Is(err, ErrNativeFilter) {
+			t.Fatal("embedded Native error not classified", err)
+		}
+		if !ok && err == nil && reason == "" {
+			t.Fatal("mismatch has no reason")
+		}
+		if ok {
+			out, err := store.ApplyToRequest(qaIPP, &req)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if chinaFixtureValue(t, chinaObject(t, string(out)), "imp.0.native.request") != embedded {
+				t.Fatal("valid embedded request altered")
+			}
+		}
+		if !proto.Equal(before, &req) {
+			t.Fatal("filter/application mutated the source")
+		}
+	})
 }

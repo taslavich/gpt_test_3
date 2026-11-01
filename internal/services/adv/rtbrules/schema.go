@@ -25,6 +25,7 @@ type Filter struct {
 	Exists      *bool             `json:"exists,omitempty"`
 	Compare     string            `json:"compare,omitempty"`
 	Value       json.RawMessage   `json:"value,omitempty"`
+	CopyTo      string            `json:"copy_to,omitempty"`
 }
 
 // Filter mode is inferred from exactly one of values, exists or compare.
@@ -60,6 +61,9 @@ func (f *Filter) UnmarshalJSON(data []byte) error {
 	}
 	if _, hasPath := keys["json_path"]; hasPath && wire.JSONPath == "" {
 		return fmt.Errorf("json_path must not be empty")
+	}
+	if raw, present := keys["copy_to"]; present && (bytes.Equal(bytes.TrimSpace(raw), []byte("null")) || wire.CopyTo == "") {
+		return fmt.Errorf("filter copy_to requires a supported destination field")
 	}
 	*f = Filter(wire)
 	return nil
@@ -233,6 +237,37 @@ func validateSet(rs RuleSet) error {
 		if e != nil {
 			return e
 		}
+		if f.CopyTo != "" {
+			toType, err := validateSourceField(f.CopyTo)
+			if err != nil {
+				return fmt.Errorf("invalid filter copy_to target for %s: %w", f.Field, err)
+			}
+			if typ != toType || !compatibleCopyPaths(f.Field, f.CopyTo) {
+				return fmt.Errorf("filter copy_to fields %s -> %s have incompatible types", f.Field, f.CopyTo)
+			}
+			if f.JSONPath != "" {
+				return fmt.Errorf("filter copy_to copies original protobuf fields, not json_path values")
+			}
+			if strings.HasPrefix(f.Field, "imp.") && !strings.HasPrefix(f.CopyTo, "imp.") {
+				return fmt.Errorf("filter copy_to from impression to root is ambiguous: %s -> %s", f.Field, f.CopyTo)
+			}
+			// Protobuf additions happen before encoding. They must not change a
+			// filter-copy source before its original value is copied in JSON.
+			for _, a := range rs.Add {
+				path := a.Field
+				if a.PostfixField != "" {
+					path += "." + a.PostfixField
+				}
+				if overlaps(f.Field, path) {
+					return fmt.Errorf("filter copy_to source %s conflicts with add %s", f.Field, path)
+				}
+			}
+			for _, r := range rs.Replace {
+				if r.Mode == "set_or_add" && overlaps(f.Field, r.Field) {
+					return fmt.Errorf("filter copy_to source %s conflicts with set_or_add %s", f.Field, r.Field)
+				}
+			}
+		}
 		if f.JSONPath != "" {
 			// The embedded JSON is a string in the protobuf model. Other
 			// string fields are deliberately not interpreted as JSON.
@@ -380,6 +415,11 @@ func validateSet(rs RuleSet) error {
 		}
 		// Deletion is performed on the protobuf copy before JSON encoding.
 		// Prevent another module from re-adding or mutating the same path.
+		for _, f := range rs.Filters {
+			if f.CopyTo != "" && (overlaps(d.Field, f.Field) || overlaps(d.Field, f.CopyTo)) {
+				return fmt.Errorf("delete %s conflicts with filter copy_to %s -> %s", d.Field, f.Field, f.CopyTo)
+			}
+		}
 		for _, a := range rs.Add {
 			addPath := a.Field
 			if a.PostfixField != "" {

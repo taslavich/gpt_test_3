@@ -145,7 +145,14 @@ func (s *Store) ApplyToRequest(campaignID string, req *ortb.BidRequest) ([]byte,
 	if e != nil {
 		return nil, e
 	}
-	if len(rule.Add) == 0 && len(rule.Replace) == 0 && len(rule.Rename) == 0 {
+	hasFilterCopy := false
+	for _, f := range rule.Filters {
+		if f.CopyTo != "" {
+			hasFilterCopy = true
+			break
+		}
+	}
+	if len(rule.Add) == 0 && len(rule.Replace) == 0 && len(rule.Rename) == 0 && !hasFilterCopy {
 		return raw, nil
 	}
 	return applyEncodedRules(raw, rule)
@@ -158,6 +165,7 @@ func applyEncodedRules(raw []byte, rule RuleSet) ([]byte, error) {
 	if e != nil {
 		return nil, e
 	}
+	applyFilterCopies(payload, rule.Filters)
 	for _, a := range rule.Add {
 		if a.PostfixField == "" {
 			continue
@@ -182,6 +190,41 @@ func applyEncodedRules(raw []byte, rule RuleSet) ([]byte, error) {
 		renameField(payload, r.Field, r.ToField)
 	}
 	return jsoniter.Marshal(payload)
+}
+
+// ADV checks every filter on the immutable inbound request before calling
+// ApplyToRequest with only the accepted impressions. Copy actions therefore
+// belong to this outgoing JSON phase, never to the shared FilterCache.
+// Capture all sources first so one copy cannot feed another filter's copy.
+func applyFilterCopies(payload map[string]any, filters []Filter) {
+	type assignment struct {
+		root  map[string]any
+		path  string
+		value any
+	}
+	var pending []assignment
+	for _, f := range filters {
+		if f.CopyTo == "" {
+			continue
+		}
+		if strings.HasPrefix(f.Field, "imp.") {
+			imps, _ := payload["imp"].([]any)
+			for _, item := range imps {
+				imp, ok := item.(map[string]any)
+				if !ok {
+					continue
+				}
+				if value, present := getFieldValue(imp, strings.TrimPrefix(f.Field, "imp.")); present {
+					pending = append(pending, assignment{imp, strings.TrimPrefix(f.CopyTo, "imp."), copyValue(value)})
+				}
+			}
+		} else if value, present := getFieldValue(payload, f.Field); present {
+			pending = append(pending, assignment{payload, f.CopyTo, copyValue(value)})
+		}
+	}
+	for _, a := range pending {
+		setField(a.root, a.path, a.value)
+	}
 }
 
 func equalJSONValue(a, b any) bool {

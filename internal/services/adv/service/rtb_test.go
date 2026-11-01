@@ -7,13 +7,98 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
 	"gitlab.com/twinbid-exchange/RTB-exchange/internal/constants"
 	"gitlab.com/twinbid-exchange/RTB-exchange/internal/filter"
 	ortb "gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/proto/types/ortb_V2_5"
+	"gitlab.com/twinbid-exchange/RTB-exchange/internal/services/adv/rtbrules"
+	"google.golang.org/protobuf/proto"
 )
+
+func TestRTBFilterCopySiteIDReachesDSPForEveryFormat(t *testing.T) {
+	const campaignID = "8cf66405-6013-423c-a967-a76c08c69ac4"
+	p := filepath.Join(t.TempDir(), "rules.json")
+	config := `{"` + campaignID + `":{"filters":[{"field":"site.id","exists":true,"copy_to":"imp.tagid"},{"field":"imp.secure","isWhiteList":true,"values":[1]}]}}`
+	if err := os.WriteFile(p, []byte(config), 0600); err != nil {
+		t.Fatal(err)
+	}
+	store, err := rtbrules.NewStore(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, format := range []string{constants.POP, constants.BAN, constants.NAT, constants.IPP, constants.VID} {
+		t.Run(format, func(t *testing.T) {
+			received := make(chan *ortb.BidRequest, 1)
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				var req ortb.BidRequest
+				if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+					t.Error(err)
+					w.WriteHeader(http.StatusBadRequest)
+					return
+				}
+				received <- &req
+				w.WriteHeader(http.StatusNoContent)
+			}))
+			defer server.Close()
+			var source ortb.BidRequest
+			if err := json.Unmarshal([]byte(`{"id":"real-request","site":{"id":"real-site","domain":"example.com"},"imp":[{"id":"accepted","secure":1},{"id":"excluded","secure":0,"tagid":"original-tag"}]}`), &source); err != nil {
+				t.Fatal(err)
+			}
+			before := proto.Clone(&source)
+			if ok, why, err := store.CheckWithCache(campaignID, rtbrules.NewFilterCache(&source), "accepted"); !ok || why != "" || err != nil {
+				t.Fatal(ok, why, err)
+			}
+			quality := &QualityStore{}
+			quality.value.Store(&qualitySnapshot{bySegment: QualityMaps{"usual": {"ssp.example": true}}})
+			s := &AuctionService{rtbHTTPClient: server.Client(), rtbRules: store, quality: quality}
+			now := time.Now().UTC()
+			campaign := &Campaign{ID: campaignID, RTB: true, DSPLink: server.URL, Format: format, TrafficType: TrafficMainstream, Status: CampaignStatusActive, StartTS: now.Add(-time.Hour), EndTS: now.Add(time.Hour), QualitySegment: "usual"}
+			snapshot := &Snapshot{Campaigns: []*Campaign{campaign}}
+			result := s.fetchRTBCampaignBids(context.Background(), &source, snapshot, now, AuctionRequestOptions{}, format, TrafficMainstream, "ssp.example", "", nil, false, nil, func(string, ...any) {})
+			if len(result) != 0 {
+				t.Fatal("204 response created bids", result)
+			}
+			select {
+			case got := <-received:
+				if got.GetId() != "real-request" || got.Site.GetId() != "real-site" || len(got.Imp) != 1 || got.Imp[0].GetId() != "accepted" || got.Imp[0].GetTagid() != "real-site" {
+					t.Fatal("wrong DSP body", got)
+				}
+			default:
+				t.Fatal("DSP did not receive request")
+			}
+			if !proto.Equal(before, &source) {
+				t.Fatal("outbound copy mutated source")
+			}
+			// A missing source fails the actual ADV preflight; no DSP call.
+			missing := proto.Clone(&source).(*ortb.BidRequest)
+			missing.Site = nil
+			s.fetchRTBCampaignBids(context.Background(), missing, snapshot, now, AuctionRequestOptions{}, format, TrafficMainstream, "ssp.example", "", nil, false, nil, func(string, ...any) {})
+			select {
+			case <-received:
+				t.Fatal("request without site.id reached DSP")
+			default:
+			}
+			// Ordinary campaigns and unrelated RTB campaigns retain old tags.
+			for _, other := range []*Campaign{{ID: campaignID, RTB: false}, {ID: "9e4173f7-7aee-44a6-8039-db364cb6f4f5", RTB: true}} {
+				body, err := marshalRTBRequestForCampaignWithRules(&source, other, format, store)
+				if err != nil {
+					t.Fatal(err)
+				}
+				var got ortb.BidRequest
+				if err := json.Unmarshal(body, &got); err != nil {
+					t.Fatal(err)
+				}
+				if got.Imp[0].Tagid != nil || got.Imp[1].GetTagid() != "original-tag" {
+					t.Fatal("copy leaked into other campaign")
+				}
+			}
+		})
+	}
+}
 
 func TestCallRTBCampaignChoosesMaxBidAndKeepsPerImpStatus(t *testing.T) {
 	requestID := "req-1"
