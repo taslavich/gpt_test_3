@@ -2964,8 +2964,8 @@ func extractRequestFilterValues(req *ortb.BidRequest) requestFilterValues {
 			if _, _, ok := parseRequestOSVersion(parsed.OSVersion); ok {
 				values.osVersion = nonEmptyStringPtr(strings.TrimSpace(parsed.OSVersion))
 			}
-		} else if device.DeviceType != nil {
-			values.deviceType = nonEmptyStringPtr(normalizeDeviceType(strconv.Itoa(int(device.GetDeviceType()))))
+		} else if device.Devicetype != nil {
+			values.deviceType = nonEmptyStringPtr(normalizeDeviceType(strconv.Itoa(int(device.GetDevicetype()))))
 		}
 	}
 	if site := req.GetSite(); site != nil {

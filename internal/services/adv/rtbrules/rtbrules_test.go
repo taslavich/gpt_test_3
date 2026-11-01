@@ -5,9 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	jsoniter "github.com/json-iterator/go"
-	ortb "gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/proto/types/ortb_V2_5"
-	"google.golang.org/protobuf/proto"
 	"io"
 	"math"
 	"net/http"
@@ -20,6 +17,10 @@ import (
 	"strings"
 	"sync"
 	"testing"
+
+	jsoniter "github.com/json-iterator/go"
+	ortb "gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/proto/types/ortb_V2_5"
+	"google.golang.org/protobuf/proto"
 )
 
 // Filter-copy checks use the existing unified test file.
@@ -555,7 +556,7 @@ func TestPointerOnlyDeletionAndRenameLast(t *testing.T) {
 	if req.Imp[0].Banner == nil {
 		t.Fatal("source pointer mutated")
 	}
-	if req.Device.GetDeviceType() != 4 {
+	if req.Device.GetDevicetype() != 4 {
 		t.Fatal("source scalar mutated")
 	}
 }

@@ -430,7 +430,7 @@ func Test54AdsRTBRequestNormalizationForPop(t *testing.T) {
 			{Id: &imp1ID, Ext: &ortb.Imp_Ext{Subid: &subID}, Banner: &ortb.Banner{W: &bannerW}},
 			{Id: &imp2ID, Banner: &ortb.Banner{W: &bannerW}},
 		},
-		Device: &ortb.Device{DeviceType: &deviceType, Geo: &ortb.Geo{Country: &country}},
+		Device: &ortb.Device{Devicetype: &deviceType, Geo: &ortb.Geo{Country: &country}},
 		Site:   &ortb.Site{Domain: &domain, Page: &page},
 	}
 

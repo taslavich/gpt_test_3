@@ -166,7 +166,7 @@ func BuildPercenterSegment(req *ortb.BidRequest, sspDomain, campaignID string) P
 			rawUA := strings.TrimSpace(*device.Ua)
 			if rawUA == "" {
 				segment.Browser = ""
-				if device.DeviceType == nil {
+				if device.Devicetype == nil {
 					segment.Device = ""
 				}
 			} else {
@@ -178,8 +178,8 @@ func BuildPercenterSegment(req *ortb.BidRequest, sspDomain, campaignID string) P
 				}
 			}
 		}
-		if device.DeviceType != nil && (device.Ua == nil || strings.TrimSpace(device.GetUa()) == "") {
-			segment.Device = normalizeDeviceType(strconv.Itoa(int(device.GetDeviceType())))
+		if device.Devicetype != nil && (device.Ua == nil || strings.TrimSpace(device.GetUa()) == "") {
+			segment.Device = normalizeDeviceType(strconv.Itoa(int(device.GetDevicetype())))
 		}
 	}
 

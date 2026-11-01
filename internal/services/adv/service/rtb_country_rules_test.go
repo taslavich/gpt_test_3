@@ -19,7 +19,7 @@ func countryTestRequest(country string) *ortb.BidRequest {
 	domain, page := "https://example.com/path", "/landing"
 	return &ortb.BidRequest{
 		Tmax:   &tmax,
-		Device: &ortb.Device{DeviceType: &deviceType, Geo: &ortb.Geo{Country: &country}},
+		Device: &ortb.Device{Devicetype: &deviceType, Geo: &ortb.Geo{Country: &country}},
 		User:   &ortb.User{Id: &userID},
 		Site:   &ortb.Site{Domain: &domain, Page: &page},
 		Imp:    []*ortb.Imp{{Id: &impID, Banner: &ortb.Banner{W: &width}, Ext: &ortb.Imp_Ext{Subid: &subID}}},
