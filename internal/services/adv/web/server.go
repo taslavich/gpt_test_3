@@ -120,10 +120,11 @@ func (s *Server) DoAuction(ctx context.Context, req *advGrpc.DoAuctionRequest) (
 	}
 
 	outcome, err := s.auctionService.Auction(ctx, req.GetBidRequest(), time.Now().UTC(), auction.AuctionRequestOptions{
-		Format:      req.GetFormat(),
-		TrafficType: req.GetTrafficType(),
-		SSPDomain:   req.GetSspDomain(),
-		ImpIDUUID:   req.GetImpIdUuid(),
+		Format:          req.GetFormat(),
+		TrafficType:     req.GetTrafficType(),
+		SSPDomain:       req.GetSspDomain(),
+		ImpIDUUID:       req.GetImpIdUuid(),
+		PublisherUserID: req.GetPublisherUserId(),
 	})
 
 	if errors.Is(err, auction.ErrInvalidAuctionRequest) {

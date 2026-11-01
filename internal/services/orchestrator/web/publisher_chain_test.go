@@ -19,6 +19,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/redis/go-redis/v9"
 	"gitlab.com/twinbid-exchange/RTB-exchange/internal/config"
+	advpb "gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/proto/services/adv"
 	pb "gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/proto/services/bidEngine"
 	routerpb "gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/proto/services/dspRouter"
 	orchpb "gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/proto/services/orchestrator"
@@ -118,6 +119,13 @@ func TestSignedPublisherFlagThroughEntireGRPCChain(t *testing.T) {
 		switch r := in.(type) {
 		case *orchpb.OrchestratorRequest_V2_5:
 			flag = r.GetIsPublisher()
+			wantOwner := ""
+			if flag {
+				wantOwner = "owner"
+			}
+			if r.GetPublisherUserId() != wantOwner {
+				t.Error("SSP owner lost/spoofed", r)
+			}
 			mu.Lock()
 			for _, id := range r.GetImpIdUuid() {
 				ids = append(ids, id)
@@ -125,6 +133,13 @@ func TestSignedPublisherFlagThroughEntireGRPCChain(t *testing.T) {
 			mu.Unlock()
 		case *routerpb.DspRouterRequest_V2_5:
 			flag = r.GetIsPublisher()
+			wantOwner := ""
+			if flag {
+				wantOwner = "owner"
+			}
+			if r.GetPublisherUserId() != wantOwner {
+				t.Error("Orchestrator owner lost/spoofed", r)
+			}
 		case *pb.BidEngineRequest_V2_5:
 			flag = r.GetIsPublisher()
 		}
@@ -263,6 +278,26 @@ func TestOrchestratorUsesReturnedRouterPublisherFlag(t *testing.T) {
 		}
 		if router.request.GetIsPublisher() != !enabled || engine.request.GetIsPublisher() != enabled {
 			t.Fatal("Orchestrator bypassed returned Router flag")
+		}
+	}
+}
+
+func TestPublisherOwnerProtobufWireCompatibility(t *testing.T) {
+	for _, message := range []proto.Message{&orchpb.OrchestratorRequest_V2_5{PublisherUserId: "owner"}, &routerpb.DspRouterRequest_V2_5{PublisherUserId: "owner"}, &advpb.DoAuctionRequest{PublisherUserId: "owner"}} {
+		wire, err := proto.Marshal(message)
+		if err != nil {
+			t.Fatal(err)
+		}
+		clone := message.ProtoReflect().New().Interface()
+		if err = proto.Unmarshal(wire, clone); err != nil {
+			t.Fatal(err)
+		}
+		field := clone.ProtoReflect().Descriptor().Fields().ByName("publisher_user_id")
+		if clone.ProtoReflect().Get(field).String() != "owner" {
+			t.Fatal("owner lost in wire transport")
+		}
+		if err = proto.Unmarshal(nil, clone); err != nil || clone.ProtoReflect().Get(field).String() != "" {
+			t.Fatal("legacy empty owner changed")
 		}
 	}
 }

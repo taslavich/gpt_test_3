@@ -3,8 +3,10 @@ package sppAdapterWeb
 import (
 	"context"
 	"errors"
+	"fmt"
 	"github.com/redis/go-redis/v9"
 	"gitlab.com/twinbid-exchange/RTB-exchange/internal/pubuuid"
+	shard "gitlab.com/twinbid-exchange/RTB-exchange/internal/services/redis"
 	"net/http"
 	"os"
 	"time"
@@ -29,6 +31,27 @@ func trustedPublisherUUID(ctx context.Context, r *http.Request, in *postBidReque
 		return "", e
 	}
 	return id, nil
+}
+
+// Called only for an already authenticated/claimed Publisher UUID. The owner
+// comes from Publisher's existing ORTB HASH, not site.publisher.id or headers.
+// Ordinary SSP traffic performs no Redis lookup here.
+func publisherOwnerForAuction(ctx context.Context, clients []*redis.Client, id string) (string, error) {
+	if id == "" {
+		return "", nil
+	}
+	r, _, err := shard.SelectShard(clients, id)
+	if err != nil {
+		return "", err
+	}
+	owner, err := r.HGet(ctx, id, "pub_user_id").Result()
+	if err != nil {
+		return "", fmt.Errorf("read authenticated Publisher owner: %w", err)
+	}
+	if owner == "" {
+		return "", fmt.Errorf("authenticated Publisher UUID has no owner")
+	}
+	return owner, nil
 }
 
 // UUID lifecycle only: original error exits (e.g. a failed Orchestrator RPC)

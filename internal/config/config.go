@@ -313,6 +313,7 @@ type AdvConfig struct {
 	ClickhouseConfig
 	PercenterPolicyConfig
 
+	AdvPublisherPercentMapFilePath  string        `yaml:"ADV_PUBLISHER_PERCENT_MAP_FILE_PATH" env:"ADV_PUBLISHER_PERCENT_MAP_FILE_PATH"`
 	AdvPercentMapFilePath           string        `yaml:"ADV_PERCENT_MAP_FILE_PATH" env:"ADV_PERCENT_MAP_FILE_PATH"`
 	AdvQualityMapFilePath           string        `yaml:"ADV_QUALITY_MAP_FILE_PATH" env:"ADV_QUALITY_MAP_FILE_PATH"`
 	AdvRTBRulesMapFilePath          string        `yaml:"ADV_RTB_RULES_MAP_FILE_PATH" env:"ADV_RTB_RULES_MAP_FILE_PATH"`

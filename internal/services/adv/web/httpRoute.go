@@ -51,9 +51,10 @@ const (
 )
 
 type AntiPerekrutHTTPConfig struct {
-	Manager        *auction.AntiPerekrutManager
-	AuctionService *auction.AuctionService
-	RTBRules       *rtbrules.Store
+	PublisherPercents *auction.PublisherPercentStore
+	Manager           *auction.AntiPerekrutManager
+	AuctionService    *auction.AuctionService
+	RTBRules          *rtbrules.Store
 }
 
 type antiPerekrutRestartRequest struct {
@@ -244,6 +245,12 @@ func InitHttpRoutes(httpRouter *chi.Mux, percentStore *auction.PercentStore, qua
 		}
 		w.WriteHeader(http.StatusNoContent)
 	})
+
+	var publisherStore *auction.PublisherPercentStore
+	if len(antiConfig) > 0 {
+		publisherStore = antiConfig[0].PublisherPercents
+	}
+	initPublisherPercentRoutes(httpRouter, publisherStore)
 
 	// RTB-only request transformation rules; separate from all existing filters.
 	var rules *rtbrules.Store

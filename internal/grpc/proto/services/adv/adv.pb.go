@@ -23,14 +23,15 @@ const (
 )
 
 type DoAuctionRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	BidRequest    *ortb_V2_5.BidRequest  `protobuf:"bytes,1,opt,name=bidRequest,proto3" json:"bidRequest,omitempty"`
-	Format        string                 `protobuf:"bytes,2,opt,name=format,proto3" json:"format,omitempty"`
-	TrafficType   string                 `protobuf:"bytes,3,opt,name=traffic_type,json=trafficType,proto3" json:"traffic_type,omitempty"`
-	SspDomain     string                 `protobuf:"bytes,4,opt,name=ssp_domain,json=sspDomain,proto3" json:"ssp_domain,omitempty"`
-	ImpIdUuid     map[string]string      `protobuf:"bytes,5,rep,name=impIdUuid,proto3" json:"impIdUuid,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	state           protoimpl.MessageState `protogen:"open.v1"`
+	BidRequest      *ortb_V2_5.BidRequest  `protobuf:"bytes,1,opt,name=bidRequest,proto3" json:"bidRequest,omitempty"`
+	Format          string                 `protobuf:"bytes,2,opt,name=format,proto3" json:"format,omitempty"`
+	TrafficType     string                 `protobuf:"bytes,3,opt,name=traffic_type,json=trafficType,proto3" json:"traffic_type,omitempty"`
+	SspDomain       string                 `protobuf:"bytes,4,opt,name=ssp_domain,json=sspDomain,proto3" json:"ssp_domain,omitempty"`
+	ImpIdUuid       map[string]string      `protobuf:"bytes,5,rep,name=impIdUuid,proto3" json:"impIdUuid,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
+	PublisherUserId string                 `protobuf:"bytes,7,opt,name=publisher_user_id,json=publisherUserId,proto3" json:"publisher_user_id,omitempty"`
+	unknownFields   protoimpl.UnknownFields
+	sizeCache       protoimpl.SizeCache
 }
 
 func (x *DoAuctionRequest) Reset() {
@@ -96,6 +97,13 @@ func (x *DoAuctionRequest) GetImpIdUuid() map[string]string {
 		return x.ImpIdUuid
 	}
 	return nil
+}
+
+func (x *DoAuctionRequest) GetPublisherUserId() string {
+	if x != nil {
+		return x.PublisherUserId
+	}
+	return ""
 }
 
 type DoAuctionResponse struct {
@@ -194,7 +202,7 @@ var File_services_adv_proto protoreflect.FileDescriptor
 
 const file_services_adv_proto_rawDesc = "" +
 	"\n" +
-	"\x12services/adv.proto\x12\x03adv\x1a\x1atypes/ortb_V2_5/ortb.proto\"\xb1\x02\n" +
+	"\x12services/adv.proto\x12\x03adv\x1a\x1atypes/ortb_V2_5/ortb.proto\"\xdd\x02\n" +
 	"\x10DoAuctionRequest\x125\n" +
 	"\n" +
 	"bidRequest\x18\x01 \x01(\v2\x15.ortb_V2_5.BidRequestR\n" +
@@ -203,7 +211,8 @@ const file_services_adv_proto_rawDesc = "" +
 	"\ftraffic_type\x18\x03 \x01(\tR\vtrafficType\x12\x1d\n" +
 	"\n" +
 	"ssp_domain\x18\x04 \x01(\tR\tsspDomain\x12B\n" +
-	"\timpIdUuid\x18\x05 \x03(\v2$.adv.DoAuctionRequest.ImpIdUuidEntryR\timpIdUuid\x1a<\n" +
+	"\timpIdUuid\x18\x05 \x03(\v2$.adv.DoAuctionRequest.ImpIdUuidEntryR\timpIdUuid\x12*\n" +
+	"\x11publisher_user_id\x18\a \x01(\tR\x0fpublisherUserId\x1a<\n" +
 	"\x0eImpIdUuidEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01J\x04\b\x06\x10\aR\x04feed\"\x95\x04\n" +

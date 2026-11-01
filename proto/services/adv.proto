@@ -16,6 +16,7 @@ message DoAuctionRequest {
   map<string, string> impIdUuid = 5;
   reserved 6;
   reserved "feed";
+  string publisher_user_id = 7;
 }
 
 message DoAuctionResponse {

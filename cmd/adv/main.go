@@ -9,6 +9,7 @@ import (
 	"net"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
@@ -117,6 +118,14 @@ func run() error {
 	if err != nil {
 		return fmt.Errorf("cannot initialize ADV percent map: %w", err)
 	}
+	publisherMapPath := strings.TrimSpace(cfg.AdvPublisherPercentMapFilePath)
+	if publisherMapPath == "" {
+		publisherMapPath = filepath.Join(filepath.Dir(cfg.AdvPercentMapFilePath), "publisher_percent_map.json")
+	}
+	publisherPercentStore, err := auction.NewPublisherPercentStore(publisherMapPath)
+	if err != nil {
+		return fmt.Errorf("cannot initialize Publisher percent map: %w", err)
+	}
 	qualityStore, err := auction.NewQualityStore(cfg.AdvQualityMapFilePath)
 	if err != nil {
 		return fmt.Errorf("cannot initialize ADV quality map: %w", err)
@@ -149,6 +158,7 @@ func run() error {
 	runtimeStore := auction.NewRuntimeStore(runtimeRedis, cfg.AdvPacingCurrentTTL, cfg.AdvPacingSlotTTL)
 	winnerStore := auction.NewWinnerStore(winnerRedis, cfg.AdvWinnerTTL)
 	auctionService := auction.NewAuctionService(runtimeStore, winnerStore, percentStore, qualityStore, siteIDQualityStore)
+	auctionService.ConfigurePublisherPercents(publisherPercentStore)
 	auctionService.SetRTBRules(rtbRulesStore)
 	auctionService.SetTestLogsEnabled(cfg.AdvTestLogsEnabled)
 	log.Printf("[ADV][TEST_LOGS] enabled=%t test_domain_suffix_always_enabled=true", cfg.AdvTestLogsEnabled)
@@ -398,9 +408,10 @@ func run() error {
 
 	router := httpServer.InitHttpRouter(chi.NewRouter())
 	advWeb.InitHttpRoutes(router, percentStore, qualityStore, siteIDQualityStore, workController, advWeb.AntiPerekrutHTTPConfig{
-		Manager:        antiManager,
-		AuctionService: auctionService,
-		RTBRules:       rtbRulesStore,
+		PublisherPercents: publisherPercentStore,
+		Manager:           antiManager,
+		AuctionService:    auctionService,
+		RTBRules:          rtbRulesStore,
 	})
 
 	listener, err := net.Listen("tcp", fmt.Sprintf("%s:%d", cfg.GrpcServer.Host, cfg.GrpcServer.Port))

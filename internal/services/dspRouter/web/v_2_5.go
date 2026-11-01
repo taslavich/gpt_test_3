@@ -192,11 +192,12 @@ func (s *Server) doAdvAuction(
 		return nil, err
 	}
 	return s.advClient.DoAuction(advCtx, &advGrpc.DoAuctionRequest{
-		BidRequest:  advBidRequest,
-		Format:      req.GetFormat(),
-		TrafficType: trafficTypeFromDspRouterRequest(req),
-		SspDomain:   req.GetSspDomain(),
-		ImpIdUuid:   cloneStringMap(req.GetImpIdUuid()),
+		BidRequest:      advBidRequest,
+		PublisherUserId: trustedPublisherOwner(req),
+		Format:          req.GetFormat(),
+		TrafficType:     trafficTypeFromDspRouterRequest(req),
+		SspDomain:       req.GetSspDomain(),
+		ImpIdUuid:       cloneStringMap(req.GetImpIdUuid()),
 	})
 }
 

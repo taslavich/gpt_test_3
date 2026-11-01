@@ -643,19 +643,26 @@ func postBid_V2_5(
 			len(input.Payload.BidRequest.GetImp()),
 		)
 	}
+	publisherOwnerID, err := publisherOwnerForAuction(reqCtx, redisClients, publisherID)
+	if err != nil {
+		recordRedisError(redisWriteErrorMonitor, err, sspAdapterWorkStatusURL)
+		http.Error(w, "Publisher owner unavailable", http.StatusServiceUnavailable)
+		return
+	}
 	orchestratorStartedAt := time.Now()
 	res, err := orchestratorClient.GetWinnerBid_V2_5(
 		reqCtx,
 		&orchestratorProto.OrchestratorRequest_V2_5{
-			IsPublisher: isPublisher,
-			BidRequest:  input.Payload.BidRequest,
-			SspDomain:   ssp_domain,
-			Logged:      logged,
-			Typic:       typic,
-			Format:      format,
-			TrafficType: typic,
-			ImpIdUuid:   impIdUuid,
-			SspUrl:      sspAdapterWorkStatusURL,
+			IsPublisher:     isPublisher,
+			PublisherUserId: publisherOwnerID,
+			BidRequest:      input.Payload.BidRequest,
+			SspDomain:       ssp_domain,
+			Logged:          logged,
+			Typic:           typic,
+			Format:          format,
+			TrafficType:     typic,
+			ImpIdUuid:       impIdUuid,
+			SspUrl:          sspAdapterWorkStatusURL,
 		},
 	)
 	if err != nil {

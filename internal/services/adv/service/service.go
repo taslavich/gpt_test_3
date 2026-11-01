@@ -145,10 +145,11 @@ type Snapshot struct {
 }
 
 type AuctionRequestOptions struct {
-	Format      string
-	TrafficType string
-	SSPDomain   string
-	ImpIDUUID   map[string]string
+	PublisherUserID string
+	Format          string
+	TrafficType     string
+	SSPDomain       string
+	ImpIDUUID       map[string]string
 }
 
 type AuctionOutcome struct {
@@ -203,6 +204,7 @@ type AuctionService struct {
 	runtime                 *RuntimeStore
 	winners                 *WinnerStore
 	percents                *PercentStore
+	publisherPercents       *PublisherPercentStore
 	quality                 *QualityStore
 	siteIDQuality           *SiteIDQualityStore
 	rtbRules                *rtbrules.Store
@@ -879,6 +881,7 @@ func (s *AuctionService) auctionCore(
 	options AuctionRequestOptions,
 	recorder *auctionDiagnosticRecorder,
 ) (*AuctionOutcome, error) {
+	ctx = s.publisherPricingContext(ctx, options.PublisherUserID)
 	requestedFormat := normalizeFormat(options.Format)
 	trafficType := normalizeTraffic(options.TrafficType)
 	sspDomain := normalizeDomain(options.SSPDomain)
@@ -2040,9 +2043,17 @@ func (s *AuctionService) evaluateCampaign(
 	segmentHash := BuildPercenterSegmentHash(req, sspDomain, campaign.ID)
 	pointVersion := uint64(0)
 	deduction := pricing.Percent
+	publisherPercent, publisherOverride := s.publisherMargin(ctx, campaign)
+	if publisherOverride {
+		deduction = publisherPercent
+	}
 	effective := CalculateEffectiveAuctionPrice(campaign.BasePrice, deduction)
+	// A 100% override keeps the existing zero-bid rejection, including Complex.
+	if publisherOverride && deduction == 1 {
+		return candidate{}, false, diagEffectivePriceNonPositive, nil
+	}
 	advertiserPrice := campaign.BasePrice
-	if normalizeTypeModel(campaign.TypeModel) == TypeModelSimple {
+	if normalizeTypeModel(campaign.TypeModel) == TypeModelSimple && !publisherOverride {
 		simplePricing := s.resolveSimplePricing(ctx, campaign, requestExactSegmentHash, segmentHash, campaign.BasePrice, pricing.MinMargin, pricing.MapSource, false, now)
 		deduction = simplePricing.Margin
 		effective = simplePricing.SSPBid
@@ -2053,6 +2064,13 @@ func (s *AuctionService) evaluateCampaign(
 		effective = complexPricing.SSPBid
 		advertiserPrice = complexPricing.AdvertiserPrice
 		pointVersion = complexPricing.PointVersion
+		if publisherOverride {
+			// Preserve the existing SSP price search, replacing only its margin.
+			deduction = publisherPercent
+			advertiserPrice = effective / (1 - deduction)
+			// These prices do not describe the optimizer's persisted probe.
+			pointVersion = 0
+		}
 		chargePrice = CalculateChargePrice(advertiserPrice, campaign.PricingModel, requestedFormat)
 		balanceReason := resolvedComplexBalanceReason(campaignRemaining, userRemaining, chargePrice, s.antiperekrutEnabled)
 		if balanceReason != diagNone {

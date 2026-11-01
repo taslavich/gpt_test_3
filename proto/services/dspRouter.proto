@@ -20,6 +20,7 @@ message DspRouterRequest_V2_5 {
   reserved 9;
   reserved "feed";
   bool is_publisher = 10;
+  string publisher_user_id = 11;
 }
 
 message DspRouterResponse_V2_5 {

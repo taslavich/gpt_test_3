@@ -561,9 +561,13 @@ func (s *AuctionService) evaluateRTBCandidate(ctx context.Context, campaign *Cam
 		return candidate{}, false, err
 	}
 	deduction := pricing.Percent
+	publisherPercent, publisherOverride := s.publisherMargin(ctx, campaign)
+	if publisherOverride {
+		deduction = publisherPercent
+	}
 	effective := CalculateEffectiveAuctionPrice(rawPrice, deduction)
 	pointVersion := uint64(0)
-	if normalizeTypeModel(campaign.TypeModel) == TypeModelSimple {
+	if normalizeTypeModel(campaign.TypeModel) == TypeModelSimple && !publisherOverride {
 		simplePricing := s.resolveSimplePricing(ctx, campaign, exactSegmentHash, segmentHash, rawPrice, pricing.MinMargin, pricing.MapSource, true, now)
 		deduction = simplePricing.Margin
 		effective = simplePricing.SSPBid
