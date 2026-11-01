@@ -1751,66 +1751,13 @@ func TestQAChinaIPPAllAssetsAndExactSizes(t *testing.T) {
 	}
 }
 
-func qaPOPConfig() map[string]any {
-	all := qaCN + "," + qaPH + "," + qaMX
-	cfg := map[string]any{
-		all: map[string]any{
-			"filters": []any{
-				map[string]any{
-					"field": "imp.tagid", "exists": true,
-				},
-				qaWhite("imp.secure", 1),
-			},
-			"add": []any{
-				map[string]any{
-					"field": "imp.bidfloor", "value": 0,
-				},
-				map[string]any{
-					"field":         "imp.ext",
-					"postfix_field": "type", "value": "pop",
-				},
-			},
-			"replace": []any{
-				map[string]any{
-					"field": "tmax",
-					"mode":  "set_or_add", "value": 500,
-				},
-				map[string]any{
-					"field": "site.domain", "mode": "hostname",
-				},
-				map[string]any{
-					"field": "site.page", "mode": "full_page",
-				},
-			},
-			"delete": []any{
-				map[string]any{"field": "imp.banner"},
-			},
-		},
-	}
-	for id, countries := range map[string]map[string]string{
-		qaCN: {"CN": "CHN"},
-		qaPH: {"PH": "PHL"},
-		qaMX: {"MX": "MEX", "PE": "PER"},
-	} {
-		cfg[id] = map[string]any{
-			"replace": []any{
-				map[string]any{
-					"field":     "device.geo.country",
-					"countries": countries,
-					"copy_to":   "user.geo.country",
-				},
-				map[string]any{
-					"field":     "user.geo.country",
-					"countries": countries,
-				},
-			},
-		}
-	}
-	return cfg
+func qaPOPConfig(t *testing.T) map[string]any {
+	t.Helper()
+	return chinaObject(t, chinaAnalystProfilesJSON)
 }
 
 func TestQAChinaPOPEndToEndRules(t *testing.T) {
-	s := qaStore(t, qaPOPConfig())
+	s := qaStore(t, qaPOPConfig(t))
 	for _, tc := range []struct {
 		campaign, input, expected string
 	}{
@@ -1829,6 +1776,7 @@ func TestQAChinaPOPEndToEndRules(t *testing.T) {
 					},
 				},
 				"site": map[string]any{
+					"id":     "actual-site",
 					"domain": "https://example.com/page",
 					"page":   "https://example.com/page",
 				},
@@ -1860,6 +1808,9 @@ func TestQAChinaPOPEndToEndRules(t *testing.T) {
 			if _, present := imp["banner"]; present {
 				t.Fatal("banner was not removed")
 			}
+			if imp["tagid"] != "actual-site" || imp["secure"] != float64(1) {
+				t.Fatal("site copy or existing secure changed", imp)
+			}
 			if imp["bidfloor"] != float64(2.5) {
 				t.Fatalf("bidfloor overwritten: %v", imp)
 			}
@@ -1871,22 +1822,23 @@ func TestQAChinaPOPEndToEndRules(t *testing.T) {
 
 	for _, tc := range []struct {
 		name   string
-		tag    bool
+		site   bool
 		secure int
 		want   bool
 	}{
 		{"valid", true, 1, true},
-		{"missing tag", false, 1, false},
-		{"secure zero", true, 0, false},
-		{"both invalid", false, 0, false},
+		{"missing site", false, 1, false},
+		{"secure zero", true, 0, true},
+		{"missing site secure zero", false, 0, false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			imp := map[string]any{"id": "p1", "secure": tc.secure}
-			if tc.tag {
-				imp["tagid"] = "slot"
+			req := map[string]any{"imp": []any{imp}}
+			if tc.site {
+				req["site"] = map[string]any{"id": "actual-site"}
 			}
 			qaCheck(t, s, qaCN,
-				map[string]any{"imp": []any{imp}},
+				req,
 				"p1", tc.want,
 			)
 		})
@@ -3360,7 +3312,8 @@ const chinaIPPSampleJSON = `{
 // copy_to/default-floor differences have separate explicit assertions.
 // Historical partner filter/value conditions remain regression fixtures; the
 // obsolete device-key rename is removed for the canonical lowercase protobuf.
-// The later agreed site.id copy is checked by CurrentContract tests.
+// The current analyst POP/ISO contract is checked by CurrentContract and
+// Analyst tests. Old HTTPS/tagid/country-map fixtures are historical only.
 const chinaBannerTestID = "55555555-5555-4555-8555-555555555555"
 
 func chinaObject(t *testing.T, raw string) map[string]any {
@@ -3796,73 +3749,41 @@ func TestChinaRequiredParentObjectsAndTimeouts(t *testing.T) {
 	}
 }
 
-func TestChinaPOPFloorHTTPSAndPlacementRequirements(t *testing.T) {
-	s := chinaStore(t, chinaProfiles(t))
+func TestChinaPOPAnalystDefaultsAndPlacementRequirements(t *testing.T) {
+	s := chinaStore(t, chinaCurrentProfiles(t))
 	for _, campaign := range []string{qaCN, qaPH, qaMX} {
 		t.Run(campaign, func(t *testing.T) {
-			sample := chinaSample(t, "POP")
-			for _, floor := range []any{nil, float64(0), float64(0.01), float64(2.5)} {
-				in := chinaCopy(t, sample)
-				chinaChange(t, in, "imp.0.bidfloor", floor, false)
-				want := floor
-				if floor == nil {
-					want = float64(0)
-				}
-				out := chinaAccepted(t, s, campaign, in)
-				if chinaFixtureValue(t, out, "imp.0.bidfloor") != want {
-					t.Fatal("supplied minimum was overwritten or default absent", floor, out)
-				}
-				if chinaFixtureValue(t, out, "imp.0.tagid") != "placement-from-input-77" || chinaFixtureValue(t, out, "imp.0.secure") != float64(1) {
-					t.Fatal("placement/HTTPS metadata changed")
+			for _, field := range []string{"bidfloor", "secure"} {
+				for _, tc := range []struct {
+					name   string
+					value  any
+					remove bool
+					want   float64
+				}{
+					{"missing", nil, true, 0}, {"null", nil, false, 0},
+					{"zero", float64(0), false, 0}, {"one", float64(1), false, 1},
+					{"two", float64(2), false, 2},
+				} {
+					t.Run(field+"/"+tc.name, func(t *testing.T) {
+						in := chinaSample(t, "POP")
+						chinaChange(t, in, "imp.0."+field, tc.value, tc.remove)
+						out := chinaAccepted(t, s, campaign, in)
+						if chinaFixtureValue(t, out, "imp.0."+field) != tc.want {
+							t.Fatal("add must default only missing/null values", field, tc, out)
+						}
+						if chinaFixtureValue(t, out, "imp.0.tagid") != "test-site-001" {
+							t.Fatal("placement must come from site.id", out)
+						}
+					})
 				}
 			}
-			in := chinaCopy(t, sample)
-			chinaChange(t, in, "imp.0.bidfloor", nil, true)
+			in := chinaSample(t, "POP")
+			chinaChange(t, in, "imp.0.bidfloor", float64(0.01), false)
 			out := chinaAccepted(t, s, campaign, in)
-			if chinaFixtureValue(t, out, "imp.0.bidfloor") != float64(0) {
-				t.Fatal("unset minimum was not explicit zero")
-			}
-			for _, tc := range []struct {
-				name, path string
-				value      any
-				remove     bool
-			}{{"missing_tag", "imp.0.tagid", nil, true}, {"null_tag", "imp.0.tagid", nil, false}, {"missing_secure", "imp.0.secure", nil, true}, {"null_secure", "imp.0.secure", nil, false}, {"not_https", "imp.0.secure", float64(0), false}, {"invalid_secure", "imp.0.secure", float64(2), false}} {
-				t.Run(tc.name, func(t *testing.T) {
-					in := chinaCopy(t, sample)
-					chinaChange(t, in, tc.path, tc.value, tc.remove)
-					chinaRejected(t, s, campaign, in)
-				})
+			if chinaFixtureValue(t, out, "imp.0.bidfloor") != float64(0.01) {
+				t.Fatal("fractional supplied minimum overwritten")
 			}
 		})
-	}
-	// A zero HTTPS flag is not upgraded or invented by the transformation stage.
-	// Filters reject it first; a profile for some other campaign is unaffected.
-	in := chinaSample(t, "POP")
-	chinaChange(t, in, "imp.0.secure", float64(0), false)
-	raw, _ := json.Marshal(in)
-	var req ortb.BidRequest
-	if err := jsoniter.Unmarshal(raw, &req); err != nil {
-		t.Fatal(err)
-	}
-	out, err := s.ApplyToRequest(qaPH, &req)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if chinaFixtureValue(t, chinaObject(t, string(out)), "imp.0.secure") != float64(0) {
-		t.Fatal("HTTPS support fabricated")
-	}
-	delete(in["imp"].([]any)[0].(map[string]any), "tagid")
-	raw, _ = json.Marshal(in)
-	req.Reset()
-	if err = jsoniter.Unmarshal(raw, &req); err != nil {
-		t.Fatal(err)
-	}
-	out, err = s.ApplyToRequest(qaPH, &req)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, exists := chinaFixtureValue(t, chinaObject(t, string(out)), "imp.0").(map[string]any)["tagid"]; exists {
-		t.Fatal("missing placement id was invented")
 	}
 }
 
@@ -4439,76 +4360,56 @@ ZM ZMB
 ZW ZWE
 `
 
-func TestChinaBannerAllISOCountriesAndOwnerIsolation(t *testing.T) {
-	cfg := chinaProfiles(t)
-	// Test-only campaign: user did not supply the real Banner campaign UUID.
-	// ISO mode is explicit and does not leak into POP/campaign country maps.
-	cfg[chinaBannerTestID] = map[string]any{"replace": []any{map[string]any{"field": "device.geo.country", "mode": "iso"}, map[string]any{"field": "user.geo.country", "mode": "iso"}}}
-	s := chinaStore(t, cfg)
+func TestChinaAnalystAllISOCountriesAndCampaignIsolation(t *testing.T) {
+	// The analyst supplied the real GEO-only UUID. This does not change the
+	// independent hardcoded BannerPartner branch or add POP rules to this UUID.
+	s := chinaStore(t, chinaCurrentProfiles(t))
 	entries := strings.Fields(chinaISOReference)
-	if len(entries) != 249*2 {
-		t.Fatal("independent ISO corpus incomplete", len(entries))
+	if len(entries) != 249*2 || len(isoAlpha3) != 249 {
+		t.Fatal("independent ISO corpus or runtime table incomplete")
 	}
-	if len(isoAlpha3) != 249 {
-		t.Fatal("runtime ISO table incomplete or has unexpected entries", len(isoAlpha3))
-	}
-	for i := 0; i < len(entries); i += 2 {
-		from, to := entries[i], entries[i+1]
-		t.Run(from, func(t *testing.T) {
-			for _, raw := range []string{from, strings.ToLower(from), "  " + strings.ToLower(from) + "  "} {
-				input := chinaSample(t, "POP")
-				chinaChange(t, input, "device.geo.country", raw, false)
-				chinaChange(t, input, "user.geo.country", raw, false)
-				out := chinaAccepted(t, s, chinaBannerTestID, input)
-				if chinaFixtureValue(t, out, "device.geo.country") != to || chinaFixtureValue(t, out, "user.geo.country") != to {
-					t.Fatal("ISO mapping incorrect", from, to, out)
+	for _, id := range []string{qaCN, qaPH, qaMX, chinaAnalystGeoID} {
+		for i := 0; i < len(entries); i += 2 {
+			from, to := entries[i], entries[i+1]
+			t.Run(id+"/"+from, func(t *testing.T) {
+				for _, raw := range []string{from, strings.ToLower(from), "  " + strings.ToLower(from) + "  "} {
+					in := chinaSample(t, "POP")
+					chinaChange(t, in, "device.geo.country", raw, false)
+					chinaChange(t, in, "user.geo.country", "JO", false)
+					out := chinaAccepted(t, s, id, in)
+					if chinaFixtureValue(t, out, "device.geo.country") != to || chinaFixtureValue(t, out, "user.geo.country") != to {
+						t.Fatal("ISO/copy_to mismatch", from, to, out)
+					}
+					if chinaFixtureValue(t, out, "user.geo.city") != "Paris" || chinaFixtureValue(t, out, "user.id") != "test-user-001" {
+						t.Fatal("unrelated GEO/user metadata changed")
+					}
 				}
-				if chinaFixtureValue(t, out, "user.geo.city") != "Paris" || chinaFixtureValue(t, out, "user.id") != "test-user-001" || chinaFixtureValue(t, out, "imp.0.tagid") != "placement-from-input-77" {
-					t.Fatal("unrelated fields changed")
-				}
-			}
-		})
-	}
-	// Explicit customer examples plus different independent device/user countries.
-	in := chinaSample(t, "POP")
-	chinaChange(t, in, "device.geo.country", "JM", false)
-	chinaChange(t, in, "user.geo.country", "JO", false)
-	out := chinaAccepted(t, s, chinaBannerTestID, in)
-	if chinaFixtureValue(t, out, "device.geo.country") != "JAM" || chinaFixtureValue(t, out, "user.geo.country") != "JOR" {
-		t.Fatal("JM/JO customer examples failed")
-	}
-	for _, country := range []string{"JAM", "JOR", "ZZ", "", "  "} {
-		in := chinaSample(t, "POP")
-		chinaChange(t, in, "device.geo.country", country, false)
-		chinaChange(t, in, "user.geo.country", country, false)
-		out := chinaAccepted(t, s, chinaBannerTestID, in)
-		if chinaFixtureValue(t, out, "device.geo.country") != country || chinaFixtureValue(t, out, "user.geo.country") != country {
-			t.Fatal("unmapped value invented/modified", country)
+			})
 		}
-	}
-	for _, path := range []string{"device.geo.country", "user.geo.country", "device.geo", "user.geo", "device", "user"} {
-		for _, remove := range []bool{true, false} {
+		for _, country := range []string{"JAM", "JOR", "ZZ", "", "  "} {
 			in := chinaSample(t, "POP")
-			chinaChange(t, in, path, nil, remove)
-			out := chinaAccepted(t, s, chinaBannerTestID, in)
-			// ISO replacement is existing-field-only, never a source of fake countries.
-			if parent, ok := out[strings.Split(path, ".")[0]].(map[string]any); ok {
-				if geo, ok := parent["geo"].(map[string]any); ok {
-					if value, present := geo["country"]; present && value != nil && strings.HasPrefix(path, strings.Split(path, ".")[0]) {
-						t.Fatal("absent ISO country created", path, value)
+			chinaChange(t, in, "device.geo.country", country, false)
+			out := chinaAccepted(t, s, id, in)
+			if chinaFixtureValue(t, out, "device.geo.country") != country || chinaFixtureValue(t, out, "user.geo.country") != country {
+				t.Fatal("unmapped value changed or not copied", country, out)
+			}
+		}
+		for _, path := range []string{"device.geo.country", "device.geo", "device"} {
+			for _, remove := range []bool{true, false} {
+				in := chinaSample(t, "POP")
+				chinaChange(t, in, path, nil, remove)
+				chinaChange(t, in, "user.geo.country", "JO", false)
+				out := chinaAccepted(t, s, id, in)
+				if chinaFixtureValue(t, out, "user.geo.country") != "JOR" {
+					t.Fatal("missing device GEO prevents independent user ISO", id, path, out)
+				}
+				if device, ok := out["device"].(map[string]any); ok {
+					if geo, ok := device["geo"].(map[string]any); ok && geo["country"] != nil {
+						t.Fatal("missing device country fabricated", id, path, out)
 					}
 				}
 			}
 		}
-	}
-	// The POP country map does not acquire all-country ISO conversion globally.
-	out = chinaAccepted(t, s, qaCN, func() map[string]any {
-		r := chinaSample(t, "POP")
-		chinaChange(t, r, "device.geo.country", "JM", false)
-		return r
-	}())
-	if chinaFixtureValue(t, out, "device.geo.country") != "JM" {
-		t.Fatal("banner ISO mode leaked into POP")
 	}
 }
 
@@ -4679,18 +4580,25 @@ func chinaCurrentProfiles(t *testing.T) map[string]any {
 			}
 		}
 	}
-	// Canonical devicetype is emitted directly, without a redundant rename.
-	delete(config[qaCN+","+qaPH+","+qaMX].(map[string]any), "rename")
+	// The analyst changed only POP and supplied a separate GEO-only campaign.
+	// Remove old country-specific POP overrides before merging the new blocks.
+	for _, id := range []string{qaCN, qaPH, qaMX} {
+		delete(config, id)
+	}
+	for key, block := range chinaObject(t, chinaAnalystProfilesJSON) {
+		config[key] = block
+	}
 	return config
 }
 
 func TestChinaCurrentContractRetainsOtherPartnerConditions(t *testing.T) {
+	// POP has a new analyst contract; Video and IPP retain their exact conditions.
 	historical := chinaStore(t, chinaProfiles(t)).Memory()
 	current := chinaStore(t, chinaCurrentProfiles(t)).Memory()
 	for _, tc := range []struct {
 		id      string
 		filters int
-	}{{qaCN, 2}, {qaPH, 2}, {qaMX, 2}, {qaVID, 15}, {qaIPP, 20}} {
+	}{{qaVID, 15}, {qaIPP, 20}} {
 		old, got := historical[tc.id], current[tc.id]
 		if len(got.Filters) != tc.filters || len(old.Filters) != tc.filters {
 			t.Fatal("missing or added partner conditions", tc.id)
@@ -4989,5 +4897,319 @@ func TestDeviceTypeSchemaDriftRemainsRejected(t *testing.T) {
 	conflict := `{"` + idA + `":{"add":[{"field":"device","postfix_field":"deviceType","value":9}],"rename":[{"field":"device.devicetype","to_field":"deviceType"}]}}`
 	if err := Validate([]byte(conflict)); err == nil || !strings.Contains(err.Error(), "conflicts with JSON-only add") {
 		t.Fatal("postfix/rename destination conflict bypassed validation", err)
+	}
+}
+
+// Exact analyst-supplied POP and GEO-only configuration, 2026-11-01.
+// Historical fixtures above intentionally retain earlier contracts.
+const chinaAnalystProfilesJSON = `{
+  "8cf66405-6013-423c-a967-a76c08c69ac4,9e4173f7-7aee-44a6-8039-db364cb6f4f5,1c9eeda4-3cb1-499d-aada-83c3b07e042f": {
+    "add": [
+      {
+        "field": "imp.bidfloor",
+        "value": 0
+      },
+      {
+        "field": "imp.ext",
+        "postfix_field": "type",
+        "value": "pop"
+      },
+      {
+        "field": "imp.secure",
+        "value": 0
+      }
+    ],
+    "replace": [
+      {
+        "field": "device.geo.country",
+        "mode": "iso",
+        "copy_to": "user.geo.country"
+      },
+      {
+        "field": "user.geo.country",
+        "mode": "iso"
+      },
+      {
+        "field": "tmax",
+        "mode": "set_or_add",
+        "value": 500
+      },
+      {
+        "field": "site.domain",
+        "mode": "hostname"
+      },
+      {
+        "field": "site.page",
+        "mode": "full_page"
+      }
+    ],
+    "delete": [
+      {
+        "field": "imp.banner"
+      }
+    ],
+    "filters": [
+      {
+        "field": "site.id",
+        "exists": true,
+        "copy_to": "imp.tagid"
+      }
+    ]
+  },
+  "44c91af8-d83f-4d1c-a6d6-75f5745e3092":{
+    "replace": [
+      {
+        "field": "device.geo.country",
+        "mode": "iso",
+        "copy_to": "user.geo.country"
+      },
+      {
+        "field": "user.geo.country",
+        "mode": "iso"
+      }
+    ]
+  }
+}
+`
+const chinaAnalystGeoID = "44c91af8-d83f-4d1c-a6d6-75f5745e3092"
+
+func TestChinaAnalystLiteralPersistenceAndCompiledContract(t *testing.T) {
+	// Load the exact document, including grouped UUIDs and whitespace. No fixture
+	// builder supplies defaults or merges in production campaign configuration.
+	s := filterCopyStore(t, chinaAnalystProfilesJSON)
+	for _, update := range []bool{false, true} {
+		if update {
+			if err := s.UpdateJSON([]byte(chinaAnalystProfilesJSON)); err != nil {
+				t.Fatal(err)
+			}
+			if err := s.Reload(); err != nil {
+				t.Fatal(err)
+			}
+		}
+		saved, err := s.SavedJSON()
+		if err != nil || string(saved) != chinaAnalystProfilesJSON {
+			t.Fatal("authored JSON changed on load/update/reload", err)
+		}
+		memory := s.Memory()
+		if len(memory) != 4 {
+			t.Fatal("expected exactly four expanded campaign UUIDs", memory)
+		}
+		for _, id := range []string{qaCN, qaPH, qaMX, chinaAnalystGeoID} {
+			rules := memory[id]
+			if len(rules.Rename) != 0 {
+				t.Fatal("analyst did not request a device rename", id)
+			}
+			pop := id != chinaAnalystGeoID
+			if !pop {
+				if len(rules.Add) != 0 || len(rules.Delete) != 0 || len(rules.Filters) != 0 || len(rules.Replace) != 2 {
+					t.Fatal("GEO-only campaign inherited POP rules", rules)
+				}
+			} else {
+				if len(rules.Add) != 3 || len(rules.Delete) != 1 || len(rules.Filters) != 1 || len(rules.Replace) != 5 {
+					t.Fatal("POP analyst condition counts changed", id, rules)
+				}
+				f := rules.Filters[0]
+				if f.Field != "site.id" || f.Exists == nil || !*f.Exists || f.CopyTo != "imp.tagid" || f.JSONPath != "" || f.IsWhiteList != nil || len(f.Values) != 0 || f.Compare != "" {
+					t.Fatal("POP must check only source site.id, not tagid/secure", id, f)
+				}
+				for i, expected := range []struct{ field, postfix, value string }{
+					{"imp.bidfloor", "", "0"}, {"imp.ext", "type", `"pop"`}, {"imp.secure", "", "0"},
+				} {
+					got := rules.Add[i]
+					if got.Field != expected.field || got.PostfixField != expected.postfix || string(got.Value) != expected.value {
+						t.Fatal("analyst add changed", id, got, expected)
+					}
+				}
+				if rules.Delete[0].Field != "imp.banner" {
+					t.Fatal("wrong POP deletion", id)
+				}
+			}
+			expected := []struct{ field, mode, copyTo, value string }{
+				{"device.geo.country", "iso", "user.geo.country", ""},
+				{"user.geo.country", "iso", "", ""},
+			}
+			if pop {
+				expected = append(expected,
+					struct{ field, mode, copyTo, value string }{"tmax", "set_or_add", "", "500"},
+					struct{ field, mode, copyTo, value string }{"site.domain", "hostname", "", ""},
+					struct{ field, mode, copyTo, value string }{"site.page", "full_page", "", ""})
+			}
+			for i, want := range expected {
+				got := rules.Replace[i]
+				if got.Field != want.field || got.Mode != want.mode || got.CopyTo != want.copyTo || string(got.Value) != want.value || got.Countries != nil {
+					t.Fatal("analyst replacement changed", id, got, want)
+				}
+			}
+		}
+	}
+}
+
+func TestChinaAnalystPOPMultipleImpressionsAndExactWire(t *testing.T) {
+	s := filterCopyStore(t, chinaAnalystProfilesJSON)
+	for _, id := range []string{qaCN, qaPH, qaMX} {
+		t.Run(id, func(t *testing.T) {
+			in := chinaSample(t, "POP")
+			in["tmax"] = float64(123)
+			chinaChange(t, in, "site.domain", "https://ultraautomationlab.creativedailylabs.ads:8443/path", false)
+			chinaChange(t, in, "site.page", "/landing?q=keep#part", false)
+			chinaChange(t, in, "device.geo.country", " jm ", false)
+			imps := []any{}
+			for i, state := range []string{"missing", "null", "zero", "https"} {
+				imp := chinaCopy(t, in["imp"].([]any)[0].(map[string]any))
+				imp["id"] = "imp-" + state
+				switch i {
+				case 0:
+					delete(imp, "secure")
+					delete(imp, "bidfloor")
+					delete(imp, "tagid")
+					delete(imp, "ext")
+				case 1:
+					imp["secure"], imp["bidfloor"], imp["tagid"], imp["ext"] = nil, nil, nil, nil
+				case 2:
+					imp["secure"], imp["bidfloor"], imp["tagid"] = float64(0), float64(0), ""
+				case 3:
+					imp["secure"], imp["bidfloor"], imp["tagid"] = float64(1), float64(2.5), "old-tag"
+				}
+				imps = append(imps, imp)
+			}
+			in["imp"] = imps
+			var req ortb.BidRequest
+			if err := jsoniter.Unmarshal(mustChinaJSON(t, in), &req); err != nil {
+				t.Fatal(err)
+			}
+			before := proto.Clone(&req)
+			cache := NewFilterCache(&req)
+			for _, imp := range req.Imp {
+				ok, why, err := s.CheckWithCache(id, cache, imp.GetId())
+				if !ok || why != "" || err != nil {
+					t.Fatal("valid site.id request rejected", imp.GetId(), ok, why, err)
+				}
+			}
+			// Independent expected wire: start with protobuf serialization, then
+			// explicitly enumerate all permitted changes instead of calling rules.
+			original, err := jsoniter.Marshal(&req)
+			if err != nil {
+				t.Fatal(err)
+			}
+			want := chinaObject(t, string(original))
+			want["tmax"] = float64(500)
+			chinaChange(t, want, "site.domain", "ultraautomationlab.creativedailylabs.ads", false)
+			chinaChange(t, want, "site.page", "https://ultraautomationlab.creativedailylabs.ads/landing?q=keep#part", false)
+			chinaChange(t, want, "device.geo.country", "JAM", false)
+			chinaChange(t, want, "user.geo.country", "JAM", false)
+			for i, entry := range want["imp"].([]any) {
+				imp := entry.(map[string]any)
+				delete(imp, "banner")
+				imp["tagid"] = "test-site-001"
+				if i < 3 {
+					imp["secure"], imp["bidfloor"] = float64(0), float64(0)
+				}
+				if i < 2 {
+					imp["ext"] = map[string]any{}
+				}
+				imp["ext"].(map[string]any)["type"] = "pop"
+			}
+			raw, err := s.ApplyToRequest(id, &req)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !reflect.DeepEqual(chinaObject(t, string(raw)), want) {
+				t.Fatalf("unexpected outgoing fields:\nwant=%s\ngot=%s", mustChinaJSON(t, want), raw)
+			}
+			if !proto.Equal(before, &req) {
+				t.Fatal("campaign output mutated the source request")
+			}
+		})
+	}
+}
+
+func TestChinaAnalystPOPSiteRecoveryAndTimeout(t *testing.T) {
+	s := filterCopyStore(t, chinaAnalystProfilesJSON)
+	for _, id := range []string{qaCN, qaPH, qaMX} {
+		for _, tc := range []struct{ domain, page, host, full string }{
+			{"https://example.com/path", "/landing", "example.com", "https://example.com/landing"},
+			{"", "https://fallback.example/path?q=1#p", "fallback.example", "https://fallback.example/path?q=1#p"},
+			{"ultraautomationlab.creativedailylabs.ads", "", "ultraautomationlab.creativedailylabs.ads", "https://ultraautomationlab.creativedailylabs.ads/"},
+			{"example.com", "http://other.example/keep", "example.com", "http://other.example/keep"},
+			{"", "", "", ""},
+		} {
+			in := chinaSample(t, "POP")
+			chinaChange(t, in, "site.domain", tc.domain, false)
+			chinaChange(t, in, "site.page", tc.page, false)
+			out := chinaAccepted(t, s, id, in)
+			if chinaFixtureValue(t, out, "site.domain") != tc.host || chinaFixtureValue(t, out, "site.page") != tc.full {
+				t.Fatal("hostname/full_page differs from actual site metadata", id, tc, out)
+			}
+		}
+		for _, value := range []any{nil, float64(0), float64(100), float64(500), float64(900)} {
+			in := chinaSample(t, "POP")
+			in["tmax"] = value
+			if chinaAccepted(t, s, id, in)["tmax"] != float64(500) {
+				t.Fatal("set_or_add must replace the timeout", id, value)
+			}
+		}
+		in := chinaSample(t, "POP")
+		delete(in, "tmax")
+		if chinaAccepted(t, s, id, in)["tmax"] != float64(500) {
+			t.Fatal("set_or_add must create an absent timeout", id)
+		}
+	}
+}
+
+func TestChinaAnalystGeoOnlyNoPlacementOrPOPTransforms(t *testing.T) {
+	s := filterCopyStore(t, chinaAnalystProfilesJSON)
+	in := chinaSample(t, "POP")
+	delete(in, "site")
+	in["tmax"] = float64(123)
+	chinaChange(t, in, "device.geo.country", "JO", false)
+	chinaChange(t, in, "user.geo.country", "JM", false)
+	chinaChange(t, in, "imp.0.secure", nil, true)
+	chinaChange(t, in, "imp.0.bidfloor", nil, true)
+	want := chinaCopy(t, in)
+	chinaChange(t, want, "device.geo.country", "JOR", false)
+	chinaChange(t, want, "user.geo.country", "JOR", false)
+	out := chinaAccepted(t, s, chinaAnalystGeoID, in)
+	if !reflect.DeepEqual(out, want) {
+		t.Fatal("GEO-only UUID must change only its two country fields", out, want)
+	}
+	for _, path := range []string{"user", "user.geo", "user.geo.country"} {
+		for _, remove := range []bool{false, true} {
+			in := chinaSample(t, "POP")
+			chinaChange(t, in, "device.geo.country", "JO", false)
+			chinaChange(t, in, path, nil, remove)
+			for _, id := range []string{qaCN, qaPH, qaMX, chinaAnalystGeoID} {
+				out := chinaAccepted(t, s, id, in)
+				if chinaFixtureValue(t, out, "user.geo.country") != "JOR" {
+					t.Fatal("ISO result not copied into absent/null user GEO", id, path, out)
+				}
+			}
+		}
+	}
+	for _, id := range []string{qaVID, qaIPP, chinaBannerTestID, "99999999-9999-4999-8999-999999999999"} {
+		out := chinaAccepted(t, s, id, in)
+		if !reflect.DeepEqual(out, chinaCopy(t, in)) {
+			t.Fatal("analyst GEO/POP rules leaked into another campaign", id, out)
+		}
+	}
+}
+
+func TestChinaAnalystMissingCountriesAreNotInvented(t *testing.T) {
+	s := filterCopyStore(t, chinaAnalystProfilesJSON)
+	for _, id := range []string{qaCN, qaPH, qaMX, chinaAnalystGeoID} {
+		for _, suffix := range []string{"", ".geo", ".geo.country"} {
+			for _, remove := range []bool{true, false} {
+				in := chinaSample(t, "POP")
+				chinaChange(t, in, "device"+suffix, nil, remove)
+				chinaChange(t, in, "user"+suffix, nil, remove)
+				out := chinaAccepted(t, s, id, in)
+				for _, root := range []string{"device", "user"} {
+					if parent, ok := out[root].(map[string]any); ok {
+						if geo, ok := parent["geo"].(map[string]any); ok && geo["country"] != nil {
+							t.Fatal("absent country invented", id, root, suffix, out)
+						}
+					}
+				}
+			}
+		}
 	}
 }
