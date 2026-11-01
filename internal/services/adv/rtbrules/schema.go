@@ -150,7 +150,7 @@ var fields = map[string]string{
 	"id": "string", "test": "number", "at": "number", "tmax": "number", "cur": "strings", "bcat": "strings",
 	"device": "object", "device.ip": "string", "device.ipv6": "string", "device.ua": "string", "device.geo": "object",
 	"device.geo.country": "string", "device.geo.region": "string", "device.geo.city": "string", "device.geo.zip": "string", "device.geo.lat": "number", "device.geo.lon": "number", "device.geo.type": "number",
-	"device.deviceType": "number", "device.devicetype": "number", "device.js": "number", "device.language": "string", "device.os": "string", "device.make": "string", "device.model": "string", "device.osv": "string", "device.w": "number", "device.h": "number", "device.connectiontype": "number", "device.carrier": "string",
+	"device.devicetype": "number", "device.js": "number", "device.language": "string", "device.os": "string", "device.make": "string", "device.model": "string", "device.osv": "string", "device.w": "number", "device.h": "number", "device.connectiontype": "number", "device.carrier": "string",
 	"site": "object", "site.id": "string", "site.name": "string", "site.domain": "string", "site.page": "string", "site.ref": "string", "site.cat": "strings", "site.keywords": "string",
 	"site.publisher": "object", "site.publisher.id": "string", "site.publisher.name": "string", "site.publisher.domain": "string",
 	"user": "object", "user.id": "string", "user.keywords": "string", "user.buyeruid": "string", "user.geo": "object", "user.geo.country": "string", "user.geo.city": "string", "user.geo.region": "string", "user.geo.zip": "string", "user.geo.lat": "number", "user.geo.lon": "number", "user.geo.type": "number",

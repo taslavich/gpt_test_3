@@ -30,12 +30,6 @@
       {
         "field": "imp.banner"
       }
-    ],
-    "rename": [
-      {
-        "field": "device.deviceType",
-        "to_field": "devicetype"
-      }
     ]
   },
   "8cf66405-6013-423c-a967-a76c08c69ac4": {

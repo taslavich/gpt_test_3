@@ -145,14 +145,14 @@ in memory. Every field must support the operation: `countries` cannot mix
 support combined source fields.
 
 All supported protobuf paths are explicitly defined in `internal/services/adv/rtbrules/schema.go`. Unknown paths, types, and operations are rejected. `formats` is **not supported**: a campaign has one format.
-**Rename:** `{ "field":"device.deviceType", "to_field":"devicetype" }`. `to_field` names only the terminal key; the parent path is inherited from `field`. Executes last, preserving the value and removing the old JSON key. All other modules use original protobuf field names; additional JSON-only keys are introduced only by `add.postfix_field`.
+**Rename:** `{ "field":"device.connectiontype", "to_field":"devicetype" }` (generic numeric-field example, not a required partner rule). `to_field` names only the terminal key; the parent path is inherited from `field`. Executes last, preserving the value and removing the old JSON key. All other modules use original protobuf field names; additional JSON-only keys are introduced only by `add.postfix_field`.
 Logical order: existing ADV checks → RTB filters → **add → replace → delete → rename** → HTTP request to the RTB advertiser. Known-field additions and pointer-only deletion operate on the request copy before protobuf-to-JSON serialization; JSON-only postfix fields, replace and rename operate on the outgoing JSON. Overlapping delete/add/replace paths are rejected.
 
 ### Preserving behavior of 54Ads
 
 The three UUIDs in `adv_rtb_rules_map.json` reproduce the previous:
 `CN→CHN`, `PH→PHL`, `MX→MEX`, `PE→PER`; user country receives the final device country via `copy_to` (overwrites an
-existing user country); `tmax=500`; `deviceType→devicetype`; site hostname
+existing user country); `tmax=500`; canonical protobuf `device.devicetype` on the wire; site hostname
 and full-page URL; `imp.ext.type=pop`; `imp.banner` deleted for the existing POP campaigns. Campaigns have a fixed format, so there is no per-rule `formats` condition. This behavior can now be changed via the map rather than code.
 
 Protobuf additions are *additive only*: `device.make/model/osv`, `user.geo`,
@@ -163,3 +163,27 @@ SSP actually supplies them.
 **Important:** The video and IPP example rules demonstrate filtering on actual
 source capabilities. They are not 54Ads production settings. Do not put them
 in the active map until the campaign and placement requirements are agreed.
+
+### Canonical device type after the proj264 protobuf rename
+
+The original field is now `device.devicetype` (lowercase `t`), field number 11
+is unchanged. No proto regeneration or rollback is performed by this patch.
+`device.deviceType` is no longer a supported rule source. Remove the old
+`device.deviceType -> devicetype` rename from every campaign/ALL block in custom
+maps, including earlier PDF/JSON templates: the protobuf already emits the
+correct key. Other rules remain unchanged. A self-rename from `devicetype` to
+`devicetype` is invalid; remove it instead of changing only its source spelling.
+
+`device.devicetype` now supports the normal protobuf operations: filters, add,
+replace/set_or_add, compatible copy_to and pointer deletion. Tests no longer
+classify it as a JSON-only target. Generic rename coverage is retained using
+`device.connectiontype -> devicetype`; shipped partner maps do not include that
+generic example. All partner GEO, Native, Video and placement tests remain.
+
+Verification on proj264: the full rtbrules suite and fuzz seeds pass without
+skips, including -race and 100.0% statement coverage. Targeted ADV service/web
+RTB tests, go vet, and builds of adv/router/orchestrator/bid-engine/adm-adapter/
+spp-adapter/pub pass. No protobuf/generated code or financial handlers change.
+If ADV_RTB_RULES_MAP_FILE_PATH points outside this checkout, remove the obsolete
+rename entry in that external JSON too; this patch does not rewrite external
+configuration files automatically.

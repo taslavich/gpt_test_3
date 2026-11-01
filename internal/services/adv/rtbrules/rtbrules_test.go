@@ -300,7 +300,7 @@ func load54(t *testing.T) *Store {
 func Test54AdsMapParity(t *testing.T) {
 	s := load54(t)
 	for _, tc := range []struct{ id, from, to string }{{idA, "CN", "CHN"}, {idB, "PH", "PHL"}, {idC, "MX", "MEX"}, {idC, "PE", "PER"}} {
-		input := `{"tmax":100,"device":{"deviceType":4,"geo":{"country":"` + tc.from + `"}},"site":{"domain":"https://example.com/p","page":"/landing"},"imp":[{"id":"a","banner":{"w":300},"ext":{"subid":"sub"}}]}`
+		input := `{"tmax":100,"device":{"devicetype":4,"geo":{"country":"` + tc.from + `"}},"site":{"domain":"https://example.com/p","page":"/landing"},"imp":[{"id":"a","banner":{"w":300},"ext":{"subid":"sub"}}]}`
 		out := runRules(t, s, tc.id, []byte(input))
 		var m map[string]any
 		if err := json.Unmarshal(out, &m); err != nil {
@@ -359,7 +359,7 @@ func Test54AdsExistingUserAndMismatch(t *testing.T) {
 	}
 }
 func TestManualGroupedAndDynamicRules(t *testing.T) {
-	cfg := `{"` + idA + `,` + idB + `":{"filters":[{"field":"imp.video.protocols","isWhiteList":true,"values":[3]},{"field":"device.os","exists":true}],"add":[{"field":"imp.ext","postfix_field":"type","value":"pop"}],"replace":[{"field":"device.geo.country","mode":"iso"}],"delete":[{"field":"imp.banner"}],"rename":[{"field":"device.deviceType","to_field":"devicetype"}]}}`
+	cfg := `{"` + idA + `,` + idB + `":{"filters":[{"field":"imp.video.protocols","isWhiteList":true,"values":[3]},{"field":"device.os","exists":true}],"add":[{"field":"imp.ext","postfix_field":"type","value":"pop"}],"replace":[{"field":"device.geo.country","mode":"iso"}],"delete":[{"field":"imp.banner"}],"rename":[{"field":"device.connectiontype","to_field":"devicetype"}]}}`
 	path := filepath.Join(t.TempDir(), "rtb.json")
 	if e := os.WriteFile(path, []byte(cfg), 0600); e != nil {
 		t.Fatal(e)
@@ -440,9 +440,9 @@ func TestRejectInvalidAndKeepLastValid(t *testing.T) {
 		`{"` + idA + `":{"replace":[{"field":"device.geo.country","mode":"countries","countries":{"PH":"PHL"}}]}}`,
 		`{"` + idA + `":{"replace":[{"field":"device.geo.country","countries":{}}]}}`,
 		`{"` + idA + `":{"replace":[{"field":"device.geo.country","countries":null}]}}`,
-		`{"` + idA + `":{"rename":[{"field":"device.deviceType","to_field":"device.devicetype"}]}}`,
-		`{"` + idA + `":{"rename":[{"field":"device.deviceType","to_field":"deviceType"}]}}`,
-		`{"` + idA + `":{"rename":[{"field":"device.deviceType","to_field":"ip"}]}}`,
+		`{"` + idA + `":{"rename":[{"field":"device.connectiontype","to_field":"device.devicetype"}]}}`,
+		`{"` + idA + `":{"rename":[{"field":"device.connectiontype","to_field":"deviceType"}]}}`,
+		`{"` + idA + `":{"rename":[{"field":"device.connectiontype","to_field":"ip"}]}}`,
 		`{"` + idA + `":{"wat":1}}`,
 		`{"` + idA + `":{"add":[]},"` + idA + `":{"delete":[]}}`,
 		`{"` + idA + `,` + idA + `":{}}`,
@@ -450,14 +450,14 @@ func TestRejectInvalidAndKeepLastValid(t *testing.T) {
 		`{"` + idA + `":{"add":[{"field":"imp.video.protocols","value":["3"]}]}}`,
 		`{"` + idA + `":{"replace":[{"field":"device.os","mode":"iso"}]}}`,
 		`{"` + idA + `":{"delete":[{"field":"imp.video.protocols"}]}}`,
-		`{"` + idA + `":{"delete":[{"field":"device.devicetype"}]}}`,
-		`{"` + idA + `":{"filters":[{"field":"device.devicetype","exists":true}]}}`,
-		`{"` + idA + `":{"replace":[{"field":"device.devicetype","mode":"set","value":4}]}}`,
+		`{"` + idA + `":{"delete":[{"field":"device.deviceType"}]}}`,
+		`{"` + idA + `":{"filters":[{"field":"device.deviceType","exists":true}]}}`,
+		`{"` + idA + `":{"replace":[{"field":"device.deviceType","mode":"set","value":4}]}}`,
 		`{"` + idA + `":{"delete":[{"field":"not.a.proto"}]}}`,
 		`{"` + idA + `":{"delete":[{"field":"imp.banner"}],"add":[{"field":"imp.banner.w","value":300}]}}`,
-		`{"` + idA + `":{"replace":[{"field":"device.deviceType","mode":"rename","to_field":"devicetype"}]}}`,
+		`{"` + idA + `":{"replace":[{"field":"device.connectiontype","mode":"rename","to_field":"devicetype"}]}}`,
 		`{"` + idA + `":{"add":[{"field":"imp.ext","postfix_field":"type","value":"pop","formats":["POP"]}]}}`,
-		`{"` + idA + `":{"rename":[{"field":"device.deviceType","to_field":"device.ip"}]}}`,
+		`{"` + idA + `":{"rename":[{"field":"device.connectiontype","to_field":"device.ip"}]}}`,
 	}
 	for i, bad := range invalid {
 		if e := s.UpdateJSON([]byte(bad)); e == nil {
@@ -517,7 +517,7 @@ func TestReadOnlyAndConcurrentUpdate(t *testing.T) {
 }
 
 func TestPointerOnlyDeletionAndRenameLast(t *testing.T) {
-	cfg := `{"` + idA + `":{"add":[{"field":"imp.ext","postfix_field":"type","value":"pop"}],"replace":[{"field":"device.deviceType","mode":"set","value":6}],"delete":[{"field":"imp.banner"}],"rename":[{"field":"device.deviceType","to_field":"devicetype"}]}}`
+	cfg := `{"` + idA + `":{"add":[{"field":"imp.ext","postfix_field":"type","value":"pop"}],"replace":[{"field":"device.connectiontype","mode":"set","value":6}],"delete":[{"field":"imp.banner"}],"rename":[{"field":"device.connectiontype","to_field":"devicetype"}]}}`
 	path := filepath.Join(t.TempDir(), "map.json")
 	if err := os.WriteFile(path, []byte(cfg), 0600); err != nil {
 		t.Fatal(err)
@@ -526,7 +526,7 @@ func TestPointerOnlyDeletionAndRenameLast(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	input := []byte(`{"device":{"deviceType":4},"imp":[{"id":"a","banner":{"w":300}},{"id":"b"}]}`)
+	input := []byte(`{"device":{"connectiontype":4},"imp":[{"id":"a","banner":{"w":300}},{"id":"b"}]}`)
 	var req ortb.BidRequest
 	if err := jsoniter.Unmarshal(input, &req); err != nil {
 		t.Fatal(err)
@@ -556,17 +556,17 @@ func TestPointerOnlyDeletionAndRenameLast(t *testing.T) {
 	if req.Imp[0].Banner == nil {
 		t.Fatal("source pointer mutated")
 	}
-	if req.Device.GetDevicetype() != 4 {
+	if req.Device.GetConnectiontype() != 4 {
 		t.Fatal("source scalar mutated")
 	}
 }
 func TestDeletePointerStructureValidation(t *testing.T) {
-	for _, field := range []string{"imp.banner", "imp.video", "device.geo", "user.geo", "site.publisher", "tmax"} {
+	for _, field := range []string{"imp.banner", "imp.video", "device.geo", "user.geo", "site.publisher", "tmax", "device.devicetype"} {
 		if err := validatePointerPath(field); err != nil {
 			t.Errorf("pointer %s: %v", field, err)
 		}
 	}
-	for _, field := range []string{"imp.video.protocols", "device.devicetype", "cur", "imp.banner.btype"} {
+	for _, field := range []string{"imp.video.protocols", "device.deviceType", "cur", "imp.banner.btype"} {
 		if err := validatePointerPath(field); err == nil {
 			t.Errorf("accepted non-pointer %s", field)
 		}
@@ -612,7 +612,7 @@ func TestFilterInferredModesAndIndependentConditions(t *testing.T) {
 }
 
 func TestCountriesWithoutModeAndRenameLeaf(t *testing.T) {
-	input := []byte(`{"` + idA + `":{"replace":[{"field":"device.geo.country","countries":{"PH":"PHL"},"copy_to":"user.geo.country"}],"rename":[{"field":"device.deviceType","to_field":"devicetype"}]}}`)
+	input := []byte(`{"` + idA + `":{"replace":[{"field":"device.geo.country","countries":{"PH":"PHL"},"copy_to":"user.geo.country"}],"rename":[{"field":"device.connectiontype","to_field":"devicetype"}]}}`)
 	p := filepath.Join(t.TempDir(), "map.json")
 	if err := os.WriteFile(p, input, 0600); err != nil {
 		t.Fatal(err)
@@ -621,13 +621,13 @@ func TestCountriesWithoutModeAndRenameLeaf(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	output := runRules(t, s, idA, []byte(`{"device":{"deviceType":4,"geo":{"country":"PH"}}}`))
+	output := runRules(t, s, idA, []byte(`{"device":{"connectiontype":4,"geo":{"country":"PH"}}}`))
 	var obj map[string]any
 	if err := json.Unmarshal(output, &obj); err != nil {
 		t.Fatal(err)
 	}
 	device := obj["device"].(map[string]any)
-	if device["devicetype"] != float64(4) || device["deviceType"] != nil {
+	if device["devicetype"] != float64(4) || device["connectiontype"] != nil {
 		t.Fatalf("wrong rename: %v", device)
 	}
 	if device["geo"].(map[string]any)["country"] != "PHL" {
@@ -1007,7 +1007,7 @@ func TestGroupedFieldsAndPostfixValidation(t *testing.T) {
 		`{"replace":[{"field":"site.domain,site.page","mode":"hostname"}]}`,
 		`{"replace":[{"field":"device.geo.country,user.geo.country","mode":"iso","copy_to":"user.geo.country"}]}`,
 		`{"filters":[{"field":"device.geo.country,user.geo.country","exists":true}]}`,
-		`{"rename":[{"field":"device.deviceType,device.js","to_field":"devicetype"}]}`,
+		`{"rename":[{"field":"device.connectiontype,device.js","to_field":"devicetype"}]}`,
 		`{"delete":[{"field":"imp.banner,imp.video.protocols"}]}`,
 		`{"add":[{"field":"device.os,tmax","value":"wrong-type"}]}`,
 	}
@@ -1084,7 +1084,7 @@ func TestPostfixDeleteSiblingAndRenameConflict(t *testing.T) {
 	if err := Validate(allowed); err != nil {
 		t.Fatalf("separate JSON extension and protobuf sibling deletion should coexist: %v", err)
 	}
-	conflict := []byte(`{"` + idA + `":{"add":[{"field":"device","postfix_field":"devicetype","value":9}],"rename":[{"field":"device.deviceType","to_field":"devicetype"}]}}`)
+	conflict := []byte(`{"` + idA + `":{"add":[{"field":"device","postfix_field":"devicetype","value":9}],"rename":[{"field":"device.connectiontype","to_field":"devicetype"}]}}`)
 	if err := Validate(conflict); err == nil {
 		t.Fatal("postfix collides with rename destination")
 	}
@@ -1784,12 +1784,6 @@ func qaPOPConfig() map[string]any {
 			},
 			"delete": []any{
 				map[string]any{"field": "imp.banner"},
-			},
-			"rename": []any{
-				map[string]any{
-					"field":    "device.deviceType",
-					"to_field": "devicetype",
-				},
 			},
 		},
 	}
@@ -2912,7 +2906,7 @@ func TestSchemaScalarNestedAndConflictBoundaries(t *testing.T) {
 		{Replace: []Replace{{Field: "device.geo.country", Countries: map[string]string{"ph": "PHL"}}}},
 		{Delete: []Delete{{Field: "device"}}, Replace: []Replace{{Field: "device.os", Mode: "set", Value: coverageRaw(`"x"`)}}},
 		{Delete: []Delete{{Field: "user.geo"}}, Replace: []Replace{{Field: "device.geo", Mode: "set", Value: coverageRaw(`{}`), CopyTo: "user.geo"}}},
-		{Delete: []Delete{{Field: "device"}}, Rename: []Rename{{Field: "device.deviceType", ToField: "devicetype"}}},
+		{Delete: []Delete{{Field: "device"}}, Rename: []Rename{{Field: "device.connectiontype", ToField: "devicetype"}}},
 		{Rename: []Rename{{Field: "device.os", ToField: "notknown"}}},
 	}
 	for i, rs := range invalid {
@@ -2962,8 +2956,8 @@ func TestConfigurationSyntaxAndMergedConflicts(t *testing.T) {
 		}
 	}
 	// Merge only matching module/path keys; nonconflicting entries survive.
-	prev := RuleSet{Add: []Add{{Field: "device.os", Value: coverageRaw(`"old"`)}}, Delete: []Delete{{Field: "imp.banner"}}, Rename: []Rename{{Field: "device.deviceType", ToField: "devicetype"}}}
-	next := RuleSet{Add: []Add{{Field: "device.os", Value: coverageRaw(`"new"`)}}, Delete: []Delete{{Field: "imp.video"}}, Rename: []Rename{{Field: "device.deviceType", ToField: "devicetype"}}}
+	prev := RuleSet{Add: []Add{{Field: "device.os", Value: coverageRaw(`"old"`)}}, Delete: []Delete{{Field: "imp.banner"}}, Rename: []Rename{{Field: "device.connectiontype", ToField: "devicetype"}}}
+	next := RuleSet{Add: []Add{{Field: "device.os", Value: coverageRaw(`"new"`)}}, Delete: []Delete{{Field: "imp.video"}}, Rename: []Rename{{Field: "device.connectiontype", ToField: "devicetype"}}}
 	merged := mergeRuleSet(prev, next)
 	if len(merged.Add) != 1 || string(merged.Add[0].Value) != `"new"` || len(merged.Delete) != 2 || len(merged.Rename) != 1 {
 		t.Fatal(merged)
@@ -3282,7 +3276,6 @@ const chinaPartnerProfilesJSON = `{
     "add": [{"field":"imp.bidfloor","value":0},{"field":"imp.ext","postfix_field":"type","value":"pop"}],
     "replace": [{"field":"tmax","mode":"set_or_add","value":500},{"field":"site.domain","mode":"hostname"},{"field":"site.page","mode":"full_page"}],
     "delete": [{"field":"imp.banner"}],
-    "rename": [{"field":"device.deviceType","to_field":"devicetype"}],
     "filters": [{"field":"imp.tagid","exists":true},{"field":"imp.secure","isWhiteList":true,"values":[1]}]
   },
   "8cf66405-6013-423c-a967-a76c08c69ac4": {"replace":[{"field":"device.geo.country","countries":{"CN":"CHN"},"copy_to":"user.geo.country"},{"field":"user.geo.country","countries":{"CN":"CHN"}}]},
@@ -3365,8 +3358,9 @@ const chinaIPPSampleJSON = `{
 // The existing posted profile specifies exact dimensions/lengths, not >=/<=.
 // Old behavior is checked against a frozen pre-rtbrules oracle below; approved
 // copy_to/default-floor differences have separate explicit assertions.
-// The literal posted profile remains a historical regression fixture. The
-// later agreed site.id copy and ALL rename are checked by CurrentContract tests.
+// Historical partner filter/value conditions remain regression fixtures; the
+// obsolete device-key rename is removed for the canonical lowercase protobuf.
+// The later agreed site.id copy is checked by CurrentContract tests.
 const chinaBannerTestID = "55555555-5555-4555-8555-555555555555"
 
 func chinaObject(t *testing.T, raw string) map[string]any {
@@ -3912,17 +3906,6 @@ func TestChinaVideoIPPBidfloorMetadataAndTestFlagAreNotFabricated(t *testing.T) 
 	}
 }
 
-// Only this future-format fixture carries forward the already existing legacy
-// deviceType -> devicetype rule. The supplied JSON literal stays unchanged;
-// strict tests below separately check that literal for missing requirements.
-func chinaWireProfile(t *testing.T) map[string]any {
-	t.Helper()
-	cfg := chinaProfiles(t)
-	for _, id := range []string{qaVID, qaIPP} {
-		cfg[id].(map[string]any)["rename"] = []any{map[string]any{"field": "device.deviceType", "to_field": "devicetype"}}
-	}
-	return cfg
-}
 func chinaSerializedRequest(t *testing.T, s *Store, id string, input map[string]any) []byte {
 	t.Helper()
 	raw, err := json.Marshal(input)
@@ -3948,7 +3931,7 @@ func chinaSerializedRequest(t *testing.T, s *Store, id string, input map[string]
 	return wire
 }
 func TestChinaFullVideoIPPSamplesOnSerializedWire(t *testing.T) {
-	s := chinaStore(t, chinaWireProfile(t))
+	s := chinaStore(t, chinaProfiles(t))
 	for _, tc := range []struct{ format, id string }{{"VID", qaVID}, {"IPP", qaIPP}} {
 		t.Run(tc.format, func(t *testing.T) {
 			in := chinaSample(t, tc.format)
@@ -4653,7 +4636,7 @@ func TestChinaLegacyIntentionalCopyAndFloorDifferencesAreExplicit(t *testing.T) 
 }
 
 func TestChinaVideoIPPRealSourceMetadataIsPreserved(t *testing.T) {
-	s := chinaStore(t, chinaWireProfile(t))
+	s := chinaStore(t, chinaProfiles(t))
 	for _, tc := range []struct{ format, id string }{{"VID", qaVID}, {"IPP", qaIPP}} {
 		t.Run(tc.format, func(t *testing.T) {
 			base := chinaSample(t, tc.format)
@@ -4678,14 +4661,14 @@ func TestChinaVideoIPPRealSourceMetadataIsPreserved(t *testing.T) {
 	}
 }
 
-// The literal historical profile above remains unchanged for its regression
-// corpus. These tests use the later agreed configuration: copy the existing
-// site.id in the filter, and put the device-key rename in ALL. No production
+// Historical partner conditions above retain their regression corpus, with
+// the obsolete device-key rename removed. These tests copy the existing
+// site.id in the filter. Canonical devicetype needs no rename. No production
 // configuration is edited by this test fixture.
 func chinaCurrentProfiles(t *testing.T) map[string]any {
 	t.Helper()
 	config := chinaProfiles(t)
-	config["ALL"] = map[string]any{"rename": []any{map[string]any{"field": "device.deviceType", "to_field": "devicetype"}}}
+	config["ALL"] = map[string]any{}
 	for _, block := range config {
 		rules := block.(map[string]any)
 		filters, _ := rules["filters"].([]any)
@@ -4696,7 +4679,7 @@ func chinaCurrentProfiles(t *testing.T) map[string]any {
 			}
 		}
 	}
-	// The rename is shared through ALL, rather than duplicated by campaign.
+	// Canonical devicetype is emitted directly, without a redundant rename.
 	delete(config[qaCN+","+qaPH+","+qaMX].(map[string]any), "rename")
 	return config
 }
@@ -4726,8 +4709,8 @@ func TestChinaCurrentContractRetainsOtherPartnerConditions(t *testing.T) {
 		if copied != 1 || !reflect.DeepEqual(got.Add, old.Add) || !reflect.DeepEqual(got.Replace, old.Replace) || !reflect.DeepEqual(got.Delete, old.Delete) {
 			t.Fatal("partner transforms changed", tc.id)
 		}
-		if !reflect.DeepEqual(got.Rename, []Rename{{Field: "device.deviceType", ToField: "devicetype"}}) {
-			t.Fatal("global rename missing or duplicated", tc.id, got.Rename)
+		if len(got.Rename) != 0 {
+			t.Fatal("canonical device key must not need a rename", tc.id, got.Rename)
 		}
 	}
 }
@@ -4779,7 +4762,7 @@ func TestChinaCurrentContractCopiesSiteIDToPlacement(t *testing.T) {
 	}
 }
 
-func TestChinaCurrentContractUsesGlobalPartnerDeviceKey(t *testing.T) {
+func TestChinaCurrentContractUsesCanonicalPartnerDeviceKey(t *testing.T) {
 	s := chinaStore(t, chinaCurrentProfiles(t))
 	for _, tc := range []struct{ format, id string }{{"POP", qaCN}, {"POP", qaPH}, {"POP", qaMX}, {"VID", qaVID}, {"IPP", qaIPP}} {
 		t.Run(tc.id, func(t *testing.T) {
@@ -4930,4 +4913,81 @@ func FuzzChinaNativeLiteralContractAndCache(f *testing.F) {
 			t.Fatal("filter/application mutated the source")
 		}
 	})
+}
+
+func TestCanonicalDeviceTypeProtobufOperations(t *testing.T) {
+	for _, tc := range []struct {
+		name, rules, input string
+		want               any
+	}{
+		{"add missing", `{"add":[{"field":"device.devicetype","value":4}]}`, `{"device":{}}`, float64(4)},
+		{"add preserves existing", `{"add":[{"field":"device.devicetype","value":4}]}`, `{"device":{"devicetype":1}}`, float64(1)},
+		{"replace existing", `{"replace":[{"field":"device.devicetype","mode":"set","value":6}]}`, `{"device":{"devicetype":4}}`, float64(6)},
+		{"replace absent", `{"replace":[{"field":"device.devicetype","mode":"set","value":6}]}`, `{"device":{}}`, nil},
+		{"set_or_add zero", `{"replace":[{"field":"device.devicetype","mode":"set_or_add","value":0}]}`, `{"device":{}}`, float64(0)},
+		{"delete pointer", `{"delete":[{"field":"device.devicetype"}]}`, `{"device":{"devicetype":4}}`, nil},
+		{"delete absent pointer", `{"delete":[{"field":"device.devicetype"}]}`, `{"device":{}}`, nil},
+		{"copy numeric source", `{"filters":[{"field":"device.js","exists":true,"copy_to":"device.devicetype"}]}`, `{"device":{"js":1,"devicetype":4}}`, float64(1)},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			config := chinaObject(t, `{"`+idA+`":`+tc.rules+`}`)
+			store := qaStore(t, config)
+			input := chinaObject(t, tc.input)
+			out := qaApply(t, store, idA, input) // also asserts the source proto is unchanged.
+			device := out["device"].(map[string]any)
+			if device["devicetype"] != tc.want {
+				t.Fatal("wrong canonical value", device, tc.want)
+			}
+			if _, exists := device["deviceType"]; exists {
+				t.Fatal("obsolete key emitted", device)
+			}
+		})
+	}
+	store := qaStore(t, chinaObject(t, `{"`+idA+`":{"filters":[{"field":"device.devicetype","isWhiteList":true,"values":[4]}]}}`))
+	for _, tc := range []struct {
+		input string
+		want  bool
+	}{{`{"device":{"devicetype":4}}`, true}, {`{"device":{"devicetype":1}}`, false}, {`{"device":{}}`, false}} {
+		var req ortb.BidRequest
+		if err := jsoniter.Unmarshal([]byte(tc.input), &req); err != nil {
+			t.Fatal(err)
+		}
+		ok, _, err := store.CheckWithCache(idA, NewFilterCache(&req), "")
+		if err != nil || ok != tc.want {
+			t.Fatal("canonical preflight mismatch", tc.input, ok, err)
+		}
+	}
+	for _, rules := range []string{
+		`{"filters":[{"field":"device.deviceType","exists":true}]}`,
+		`{"add":[{"field":"device.deviceType","value":4}]}`,
+		`{"replace":[{"field":"device.deviceType","mode":"set","value":4}]}`,
+		`{"delete":[{"field":"device.deviceType"}]}`,
+		`{"rename":[{"field":"device.deviceType","to_field":"devicetype"}]}`,
+		`{"rename":[{"field":"device.devicetype","to_field":"devicetype"}]}`,
+	} {
+		if err := Validate([]byte(`{"` + idA + `":` + rules + `}`)); err == nil {
+			t.Fatal("obsolete path/self-rename accepted", rules)
+		}
+	}
+	// Renaming the protobuf field did not change its wire number or stored value.
+	var device ortb.Device
+	if err := proto.Unmarshal([]byte{0x58, 0x04}, &device); err != nil || device.GetDevicetype() != 4 {
+		t.Fatal("field 11 compatibility lost", &device, err)
+	}
+}
+
+func TestDeviceTypeSchemaDriftRemainsRejected(t *testing.T) {
+	// Reproduce the stale registry entry that caused this regression. The suite
+	// does not run parallel tests; restore it before the next test/fuzz seeds.
+	fields["device.deviceType"] = "number"
+	defer delete(fields, "device.deviceType")
+	if err := Validate([]byte(`{"` + idA + `":{"filters":[{"field":"device.deviceType","exists":true}]}}`)); err == nil || !strings.Contains(err.Error(), "not an original protobuf field") {
+		t.Fatal("stale registry entry bypassed the actual protobuf schema", err)
+	}
+	// A JSON-only destination cannot be populated by both postfix and rename.
+	// The removed camelCase key serves only as this temporary test destination.
+	conflict := `{"` + idA + `":{"add":[{"field":"device","postfix_field":"deviceType","value":9}],"rename":[{"field":"device.devicetype","to_field":"deviceType"}]}}`
+	if err := Validate([]byte(conflict)); err == nil || !strings.Contains(err.Error(), "conflicts with JSON-only add") {
+		t.Fatal("postfix/rename destination conflict bypassed validation", err)
+	}
 }
