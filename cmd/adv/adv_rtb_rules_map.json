@@ -2,19 +2,32 @@
   "8cf66405-6013-423c-a967-a76c08c69ac4,9e4173f7-7aee-44a6-8039-db364cb6f4f5,1c9eeda4-3cb1-499d-aada-83c3b07e042f": {
     "add": [
       {
-        "field": "tmax",
-        "value": 500
+        "field": "imp.bidfloor",
+        "value": 0
       },
       {
         "field": "imp.ext",
         "postfix_field": "type",
         "value": "pop"
+      },
+      {
+        "field": "imp.secure",
+        "value": 0
       }
     ],
     "replace": [
       {
+        "field": "device.geo.country",
+        "mode": "iso",
+        "copy_to": "user.geo.country"
+      },
+      {
+        "field": "user.geo.country",
+        "mode": "iso"
+      },
+      {
         "field": "tmax",
-        "mode": "set",
+        "mode": "set_or_add",
         "value": 500
       },
       {
@@ -30,58 +43,25 @@
       {
         "field": "imp.banner"
       }
-    ]
-  },
-  "8cf66405-6013-423c-a967-a76c08c69ac4": {
-    "replace": [
+    ],
+    "filters": [
       {
-        "field": "device.geo.country",
-        "countries": {
-          "CN": "CHN"
-        },
-        "copy_to": "user.geo.country"
-      },
-      {
-        "field": "user.geo.country",
-        "countries": {
-          "CN": "CHN"
-        }
+        "field": "site.id",
+        "exists": true,
+        "copy_to": "imp.tagid"
       }
     ]
   },
-  "9e4173f7-7aee-44a6-8039-db364cb6f4f5": {
+  "44c91af8-d83f-4d1c-a6d6-75f5745e3092":{
     "replace": [
       {
         "field": "device.geo.country",
-        "countries": {
-          "PH": "PHL"
-        },
+        "mode": "iso",
         "copy_to": "user.geo.country"
       },
       {
         "field": "user.geo.country",
-        "countries": {
-          "PH": "PHL"
-        }
-      }
-    ]
-  },
-  "1c9eeda4-3cb1-499d-aada-83c3b07e042f": {
-    "replace": [
-      {
-        "field": "device.geo.country",
-        "countries": {
-          "MX": "MEX",
-          "PE": "PER"
-        },
-        "copy_to": "user.geo.country"
-      },
-      {
-        "field": "user.geo.country",
-        "countries": {
-          "MX": "MEX",
-          "PE": "PER"
-        }
+        "mode": "iso"
       }
     ]
   }
