@@ -33,7 +33,7 @@ func fixture(t *testing.T) (*Server, c.Code) {
 	r.Set(context.Background(), c.EpochKey, "test", 0)
 	b, _ := json.Marshal(code)
 	r.HSet(context.Background(), c.CodeKey(code.ShortCode), "data", b)
-	r.HSet(context.Background(), c.Prefix+"{control}:blocks", "epoch", "test")
+	r.HSet(context.Background(), c.SiteBlocksKey, "epoch", "test")
 	cfg := Config{PublicURL: "https://pub.example.test", InternalSecret: strings.Repeat("x", 32), DeliverySecret: strings.Repeat("y", 32), RTBAdultURL: "https://rtb.example.test/bid_v_2_5", RTBMainstreamURL: "https://rtb.example.test/bid_v_2_5_mc", AdultFeed: "adult", MainstreamFeed: "mainstream", CallbackOrigins: "https://adm.example.test", TrustedProxies: "192.0.2.0/24", RedisAddrs: addr, ORTBAddrs: addr, ORTBDB: 14, ORTBReadySet: "ortb:ready", TelemetryMaxBytes: 1 << 20, MaxInflight: 10, RTBTimeout: time.Second, ConfirmedOpenEnabled: true}
 	s, e := NewServer(cfg, r, nil)
 	if e != nil {

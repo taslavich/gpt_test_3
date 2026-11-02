@@ -303,13 +303,13 @@ func (s *Server) request(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// A generation-tagged global policy hash ensures a missing policy store fails closed.
-	policy, e := s.Redis.HMGet(ctx, c.Prefix+"{control}:blocks", "epoch", host).Result()
+	policy, e := s.Redis.HMGet(ctx, c.SiteBlocksKey, "epoch", site).Result()
 	if e != nil || len(policy) != 2 || policy[0] != epoch {
 		reject("policy_unready", 503)
 		return
 	}
 	if policy[1] == "1" {
-		reject("domain_blocked", 403)
+		reject("site_blocked", 403)
 		return
 	}
 	if !s.Config.ConfirmedOpenEnabled {
