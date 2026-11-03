@@ -6,14 +6,14 @@
 
 Проверено: Node.js 24.19.0, npm 11.9.0. Используйте Node.js LTS 22/24.
 
-Скопируйте `.env.example` в `.env.local` и замените адрес существующим backend кабинета:
+В архиве уже настроен единственный файл `.env`. Он используется и при `npm run dev`, и при `npm run build`; создавать или переименовывать ENV-файлы не нужно.
 
 ```dotenv
-VITE_API_BASE_URL=https://YOUR_BACKEND_DOMAIN
+VITE_API_BASE_URL=https://twinbid.io
 VITE_USE_MOCK=false
 ```
 
-Адрес указывается без `/api` и завершающего `/`. Без ENV прежний API-клиент использует `http://localhost:8080`. `.env.production` включает существующий общий HTTP-provider через `VITE_USE_MOCK=false`; Publisher API всегда использует HTTP. После изменения ENV нужна новая сборка.
+Все остальные значения в `.env` также сохранены из рабочего архива. После изменения ENV перезапустите сервер разработки; для production выполните новую сборку.
 
 ```sh
 npm ci
