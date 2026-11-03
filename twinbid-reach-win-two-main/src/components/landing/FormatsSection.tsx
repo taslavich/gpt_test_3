@@ -13,6 +13,10 @@ const formats = [
 ] as const;
 
 const formatCopy = {
+  "zh-CN": {
+    section: "04 / 广告形式", subtitle: "根据广告活动目标和受众阅读习惯选择形式。", title: "广告形式", preview: "广告形式预览", browser: "网站 / 文章", ad: "广告形式", sponsored: "广告", nativeHeadline: "融入内容", nativeCopy: "与页面结构相符，自然融入文章内容。",
+    tags: { popunder: "广泛覆盖", native: "融入内容", banner: "展示广告", inpage: "页面通知", "video-instream": "播放器内", "video-outstream": "内容中的视频", "video-popup": "悬浮视频" },
+  },
   ru: {
     section: "04 / ФОРМАТЫ",
     subtitle: "Выберите формат под задачу кампании и привычки аудитории.",

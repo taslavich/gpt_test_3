@@ -16,24 +16,28 @@ const languageNames = Object.fromEntries(
   LANGUAGES.map((item) => [item.code, { ru: item.ru, en: item.en, es: item.es }]),
 ) as Record<string, Partial<Record<Lang, string>>>;
 
-const createFrenchDisplayNames = (type: "region" | "language") => {
+const createDisplayNames = (locale: string, type: "region" | "language") => {
   try {
     return typeof Intl.DisplayNames === "function"
-      ? new Intl.DisplayNames(["fr"], { type })
+      ? new Intl.DisplayNames([locale], { type })
       : null;
   } catch {
     return null;
   }
 };
 
-const frenchRegions = createFrenchDisplayNames("region");
-const frenchLanguages = createFrenchDisplayNames("language");
+const frenchRegions = createDisplayNames("fr", "region");
+const frenchLanguages = createDisplayNames("fr", "language");
+const chineseRegions = createDisplayNames("zh-CN", "region");
+const chineseLanguages = createDisplayNames("zh-CN", "language");
 
 export function formatTargetingDimensionLabel(value: string, lang: Lang): string {
   const isCountry = countryNames[value] !== undefined;
   const fallback = countryNames[value]?.en ?? languageNames[value]?.en;
   const name = lang === "fr"
     ? (isCountry ? frenchRegions?.of(value) : frenchLanguages?.of(value)) ?? fallback
+    : lang === "zh-CN"
+      ? (isCountry ? chineseRegions?.of(value) : chineseLanguages?.of(value)) ?? fallback
     : countryNames[value]?.[lang] ?? languageNames[value]?.[lang] ?? fallback;
   return name ? `${name} (${value})` : value;
 }

@@ -2,7 +2,7 @@ import { ArrowRight, Gift } from "lucide-react";
 import { AuthDialog } from "./AuthDialog";
 import { useLanguage } from "@/contexts/LanguageContext";
 
-const sectionLabels = { ru: "05 / КАК НАЧАТЬ", en: "05 / GET STARTED", es: "05 / CÓMO EMPEZAR", fr: "05 / BIEN DÉMARRER" };
+const sectionLabels = { ru: "05 / КАК НАЧАТЬ", en: "05 / GET STARTED", es: "05 / CÓMO EMPEZAR", fr: "05 / BIEN DÉMARRER", "zh-CN": "05 / 如何开始" };
 
 export function StartConditions() {
   const { t, lang } = useLanguage();

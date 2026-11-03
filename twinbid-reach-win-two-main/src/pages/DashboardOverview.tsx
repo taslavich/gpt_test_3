@@ -97,7 +97,7 @@ export default function DashboardOverview() {
           </div>
 
           <div className="hidden max-w-full overflow-x-auto overscroll-x-contain md:block">
-            <table className="w-full min-w-[720px]">
+            <table className="w-full min-w-[800px] table-auto">
               <thead>
                 <tr className="border-b border-border">
                   <th className="w-14 px-2 py-3 text-center text-sm font-medium text-muted-foreground">{t("overview.id")}</th>
@@ -116,7 +116,7 @@ export default function DashboardOverview() {
                   return (
                     <tr key={c.id} className="border-b border-border/50">
                       <td className="w-14 px-2 py-3 text-center"><CampaignIdPopover campaignId={c.id} /></td>
-                      <td className="py-3 px-4 font-medium">{c.name}</td>
+                      <td className="min-w-[180px] break-words py-3 px-4 font-medium">{c.name}</td>
                       <td className="py-3 px-4">
                         <Badge variant="outline" className={cn("font-normal", statusConfig[c.status]?.className)}>
                           {statusConfig[c.status]?.label}

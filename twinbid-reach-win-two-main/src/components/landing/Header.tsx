@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, type MouseEvent } from "react";
 import { Menu, X } from "lucide-react";
 import { AuthDialog } from "./AuthDialog";
 import { LanguageSelector } from "@/components/LanguageSelector";
@@ -6,7 +6,7 @@ import { useLanguage } from "@/contexts/LanguageContext";
 import { useLocation } from "react-router-dom";
 import twinbidLogo from "@/assets/twinbid-logo.svg";
 
-export function Header() {
+export function Header({ onPublisher, transitioning }: { onPublisher: (event: MouseEvent<HTMLElement>) => void; transitioning: boolean }) {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
   const { t } = useLanguage();
@@ -44,7 +44,7 @@ export function Header() {
             <img src={twinbidLogo} alt="TwinBid" className="h-9 md:h-10" />
           </a>
 
-          <nav className="absolute left-1/2 top-1/2 hidden -translate-x-1/2 -translate-y-1/2 items-center gap-1 lg:flex">
+          <nav className="absolute left-1/2 top-1/2 hidden -translate-x-1/2 -translate-y-1/2 items-center gap-1 min-[1440px]:flex">
             {navLinks.map((link) => (
               <a
                 key={link.href}
@@ -58,6 +58,7 @@ export function Header() {
 
           <div className="hidden items-center gap-2 md:flex">
             <LanguageSelector className="landing-language-trigger" />
+            <button type="button" onClick={onPublisher} disabled={transitioning} className="landing-header-login landing-header-switch disabled:opacity-50">{t("nav.publisher")}</button>
             <AuthDialog
               trigger={
                 <button className="landing-header-login">
@@ -87,8 +88,9 @@ export function Header() {
               ))}
               <div className="mt-2 flex flex-col gap-2 border-t border-white/10 pt-3">
                 <LanguageSelector className="landing-language-trigger landing-language-trigger-mobile" />
-                <AuthDialog trigger={<button className="landing-button landing-button-ghost w-full justify-center text-[15px]">{t("nav.login")}</button>} defaultTab="login" />
-                <AuthDialog trigger={<button className="landing-button landing-button-primary w-full justify-center text-[15px]">{t("nav.register")}</button>} defaultTab="register" />
+                <button type="button" onClick={(event) => { setIsMenuOpen(false); onPublisher(event); }} disabled={transitioning} className="landing-button landing-button-ghost w-full justify-center py-3 text-[15px] disabled:opacity-50">{t("nav.publisher")}</button>
+                <AuthDialog trigger={<button className="landing-button landing-button-ghost min-h-12 w-full justify-center px-4 py-3 text-[15px]">{t("nav.login")}</button>} defaultTab="login" />
+                <AuthDialog trigger={<button className="landing-button landing-button-primary min-h-12 w-full justify-center px-4 py-3 text-[15px]">{t("nav.register")}</button>} defaultTab="register" />
               </div>
             </nav>
           </div>

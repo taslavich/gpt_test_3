@@ -27,3 +27,7 @@ npm run preview
 - React
 - shadcn/ui
 - Tailwind CSS
+
+## Publisher cabinet
+
+Полная интеграция с реальным API, ENV, команды сборки и ограничения тестирования: [README_PUBLISHERS.md](README_PUBLISHERS.md).

@@ -5,7 +5,7 @@ import { LanguageProvider } from "@/contexts/LanguageContext";
 
 describe("PostbackSection", () => {
   beforeEach(() => {
-    window.localStorage.removeItem("twinbid_lang");
+    window.localStorage.setItem("twinbid_lang", "ru");
   });
 
   it("explains required and optional postback parameters", () => {

@@ -1363,7 +1363,7 @@ export default function DashboardStatistics() {
               {data.length === 0 ? (
                 <div className="py-16 text-center text-muted-foreground"><p>{t("stats.noData")}</p></div>
               ) : (
-                <div className="overflow-x-auto overflow-y-hidden">
+                <div className="max-w-full overflow-x-auto overflow-y-hidden overscroll-x-contain">
                   {(() => {
                     const trafficCols = (showImpressions ? 1 : 0) + (showClicks ? 1 : 0) + (showCtr ? 1 : 0);
                     const costCols = (showSpent ? 1 : 0) + (showCpm ? 1 : 0) + (showCpc ? 1 : 0);
@@ -1394,7 +1394,7 @@ export default function DashboardStatistics() {
                     const cpmOf = (r: { spent: number; impressions: number }) => r.impressions > 0 ? r.spent / r.impressions * 1000 : 0;
                     const cpcOf = (r: { spent: number; clicks: number }) => r.clicks > 0 ? r.spent / r.clicks : 0;
                     return (
-                  <table className="w-full min-w-[640px] border-collapse">
+                  <table className="w-full min-w-max table-auto border-collapse">
                     <thead>
                       {/* Group header row */}
                       <tr className="border-b border-border/60 text-[11px] uppercase tracking-wide text-muted-foreground/70">
@@ -1410,7 +1410,7 @@ export default function DashboardStatistics() {
                         )}
                       </tr>
                       <tr className="border-b border-border">
-                        <th className={cn("text-left py-2 px-2 text-sm font-medium text-muted-foreground whitespace-nowrap", stickyHead, canSortByLabel && "cursor-pointer select-none")}
+                        <th className={cn("min-w-[180px] text-left py-2 px-2 text-sm font-medium text-muted-foreground whitespace-nowrap", stickyHead, canSortByLabel && "cursor-pointer select-none")}
                           onClick={() => canSortByLabel && toggleSort("label")}>
                           <span className="inline-flex items-center gap-2">
                             {appliedGroupBy === "siteid" && (

@@ -1,8 +1,10 @@
 import { useAuth } from "@/contexts/AuthContext";
+import { useRole, type UserRole } from "@/contexts/RoleContext";
 import { Navigate } from "react-router-dom";
 
-export function ProtectedRoute({ children }: { children: React.ReactNode }) {
+export function ProtectedRoute({ children, requireRole }: { children: React.ReactNode; requireRole?: UserRole }) {
   const { user, loading } = useAuth();
+  const { role } = useRole();
 
   if (loading) {
     return (
@@ -13,7 +15,11 @@ export function ProtectedRoute({ children }: { children: React.ReactNode }) {
   }
 
   if (!user) {
-    return <Navigate to="/" replace />;
+    return <Navigate to={requireRole === "publisher" ? "/publisher" : "/"} replace />;
+  }
+
+  if (requireRole && role !== requireRole) {
+    return <Navigate to={role === "publisher" ? "/publisher/overview" : role === "advertiser" ? "/dashboard" : "/"} replace />;
   }
 
   return <>{children}</>;

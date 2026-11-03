@@ -26,7 +26,7 @@ export function Footer() {
             <a href="#" className="flex items-center gap-2">
               <img src={twinbidLogo} alt="TwinBid" className="h-10" />
             </a>
-            <p className="text-sm text-muted-foreground">© {new Date().getFullYear()} TwinBid. {lang === "ru" ? "Все права защищены." : "All rights reserved."}</p>
+            <p className="text-sm text-muted-foreground">© {new Date().getFullYear()} TwinBid. {lang === "ru" ? "Все права защищены." : lang === "zh-CN" ? "保留所有权利。" : "All rights reserved."}</p>
           </div>
           <div className="flex-none flex flex-wrap items-center justify-center gap-5 text-sm">
             <Link to="/legal#privacy" className="text-muted-foreground hover:text-foreground transition-colors">{t("footer.privacy")}</Link>

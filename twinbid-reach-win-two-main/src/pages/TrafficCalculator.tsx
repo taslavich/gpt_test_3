@@ -43,6 +43,21 @@ import { getCampaignPricingLabel } from "@/lib/campaignPricing";
 import { availableOsVersions, normalizeSelectedOsVersions, selectableOsVersions } from "@/lib/osVersions";
 
 const copy = {
+  "zh-CN": {
+    title: "流量计算器", subtitle: "查看最近一个完整自然日内，所选定向条件可获得多少展示机会。",
+    selectCampaign: "选择广告活动", selectCampaignDesc: "将自动填入广告活动的定向设置。也可以不选广告活动，直接检查任意参数组合。",
+    free: "自由计算", freeDesc: "手动设置定向", otherCampaign: "选择其他广告活动", parameters: "计算参数",
+    campaignParameters: "参数已从所选广告活动加载，可针对本次计算调整。", allTraffic: "未选择任何值时，表示全部可用流量。",
+    format: "广告形式", trafficType: "流量类型", countries: "国家/地区", languages: "语言", devices: "设备", browsers: "浏览器", sites: "网站 ID",
+    sitesHint: "输入一个或多个 ID，使用逗号分隔。", sitesPlaceholder: "12345,abdjhx", sitesFormatError: "请使用逗号分隔网站 ID，且不要输入空格",
+    getData: "获取数据", placeholderTitle: "可用流量将显示在这里", placeholderDesc: "选择定向条件，查看最近一个完整自然日的可用展示量。",
+    unavailable: "数据不可用", unavailableDesc: "无法加载数据，请检查 POST /api/calculator 集成。",
+    potentialImpressions: "可用展示量", targetingHint: "适用于所选定向", actualImpressions: "实际展示量", sameDay: "同一完整自然日", statsHint: "来自广告活动统计", noData: "该日期暂无数据",
+    share: "获得的流量占比", shareHint: "占可用展示量", currentBid: "当前出价", moreTraffic: "想获得更多流量？",
+    bidDesc: "提高所选广告活动的出价。此处只能修改金额，计费模式保持不变。", newBid: "新出价（美元）", fixedType: "模式固定",
+    save: "保存", bidPositive: "请输入大于零的出价", bidBelowMin: "出价不能低于 {value}", bidAboveMax: "出价不能高于 {value}", bidSaved: "广告活动出价已更新", bidError: "更新出价失败",
+    all: "全部", include: "包含", exclude: "排除", excluded: "已排除", clear: "清除选择",
+  },
   ru: {
     title: "Калькулятор трафика",
     subtitle: "Узнайте, сколько показов было доступно по выбранным таргетингам за последние полностью закрытые сутки.",

@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { PasswordInput } from "@/components/ui/password-input";
@@ -9,6 +9,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Link, useNavigate } from "react-router-dom";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { useAuth } from "@/contexts/AuthContext";
+import { rememberLoginRole, type UserRole } from "@/contexts/RoleContext";
 import { toast } from "sonner";
 import { MailCheck } from "lucide-react";
 import { requestLoginIntro } from "@/lib/loginIntro";
@@ -20,13 +21,15 @@ const authLabelClass = "text-[12px] font-semibold uppercase tracking-[0.09em] te
 interface AuthDialogProps {
   trigger?: React.ReactNode;
   defaultTab?: "login" | "register";
+  defaultRole?: UserRole;
 }
 
-export function AuthDialog({ trigger, defaultTab = "login" }: AuthDialogProps) {
+export function AuthDialog({ trigger, defaultTab = "login", defaultRole = "advertiser" }: AuthDialogProps) {
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [loginEmail, setLoginEmail] = useState("");
   const [loginPassword, setLoginPassword] = useState("");
+  const [loginRole, setLoginRole] = useState<UserRole>(defaultRole);
   const [emailConfirmationRequired, setEmailConfirmationRequired] = useState(false);
   const [regName, setRegName] = useState("");
   const [regTelegram, setRegTelegram] = useState("");
@@ -36,7 +39,7 @@ export function AuthDialog({ trigger, defaultTab = "login" }: AuthDialogProps) {
   const [regConsent, setRegConsent] = useState(false);
   const navigate = useNavigate();
   const { t } = useLanguage();
-  const { signIn, signUp } = useAuth();
+  const { signIn, signUp, signOut } = useAuth();
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -51,9 +54,10 @@ export function AuthDialog({ trigger, defaultTab = "login" }: AuthDialogProps) {
       toast.error(error);
       return;
     }
-    requestLoginIntro();
+    rememberLoginRole(loginRole, loginEmail);
+    if (loginRole === "advertiser") requestLoginIntro();
     setOpen(false);
-    navigate("/dashboard");
+    navigate(loginRole === "publisher" ? "/publisher/overview" : "/dashboard");
   };
 
   const handleRegister = async (e: React.FormEvent) => {
@@ -81,6 +85,8 @@ export function AuthDialog({ trigger, defaultTab = "login" }: AuthDialogProps) {
       toast.error(error);
       return;
     }
+    // Registration creates one account; the cabinet is picked on the next login.
+    await signOut();
     toast.success(t("auth.checkEmail") || "Check your email to confirm your account");
     setOpen(false);
   };
@@ -95,6 +101,7 @@ export function AuthDialog({ trigger, defaultTab = "login" }: AuthDialogProps) {
           <DialogTitle className="flex items-center justify-center">
             <img src={twinbidLogo} alt="TwinBid" className="h-11 w-auto" />
           </DialogTitle>
+          <DialogDescription className="sr-only">{t("auth.unifiedDescription")}</DialogDescription>
         </DialogHeader>
         <Tabs defaultValue={defaultTab} className="w-full">
           <TabsList className="grid h-12 w-full grid-cols-2 rounded-xl border border-white/[0.08] bg-black/20 p-1">
@@ -103,6 +110,17 @@ export function AuthDialog({ trigger, defaultTab = "login" }: AuthDialogProps) {
           </TabsList>
           <TabsContent value="login" className="mt-5 space-y-4">
             <form onSubmit={handleLogin} className="space-y-4">
+              <fieldset className="space-y-2">
+                <legend className={authLabelClass}>{t("auth.role.loginAs")}</legend>
+                <div className="grid grid-cols-2 gap-2">
+                  {(["advertiser", "publisher"] as const).map((role) => (
+                    <label key={role} className={`flex cursor-pointer items-center gap-2 rounded-xl border px-3 py-3 text-sm ${loginRole === role ? "border-primary bg-primary/10 text-foreground" : "border-white/10 text-muted-foreground"}`}>
+                      <input type="radio" name="login-role" value={role} checked={loginRole === role} onChange={() => setLoginRole(role)} className="accent-primary" />
+                      {t(`auth.role.${role}`)}
+                    </label>
+                  ))}
+                </div>
+              </fieldset>
               <div className="space-y-2">
                 <Label htmlFor="email-login" className={authLabelClass}>{t("auth.email")}</Label>
                 <Input id="email-login" type="email" placeholder="your@email.com" className={authInputClass}

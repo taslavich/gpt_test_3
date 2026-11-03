@@ -408,7 +408,7 @@ export default function DashboardCampaigns() {
             </div>
 
             <div className="hidden max-w-full overflow-x-auto overscroll-x-contain md:block">
-              <table className="w-full min-w-[1080px]">
+              <table className="w-full min-w-[1240px] table-auto">
                 <thead className="sticky top-0 bg-card z-10">
                   <tr className="border-b border-border">
                     <th className="w-14 px-2 py-3 text-center text-sm font-medium text-muted-foreground">{t("overview.id")}</th>
@@ -445,7 +445,7 @@ export default function DashboardCampaigns() {
                     return (
                     <tr key={campaign.id} className="border-b border-border/50 hover:bg-muted/50 transition-colors">
                       <td className="w-14 px-2 py-4 text-center"><CampaignIdPopover campaignId={campaign.id} /></td>
-                      <td className="py-4 px-4 font-medium">{campaign.name}</td>
+                      <td className="min-w-[200px] break-words py-4 px-4 font-medium">{campaign.name}</td>
                       <td className="py-4 px-4"><Badge variant="outline" className={cn("font-normal", statusConfig[campaign.status]?.className)}>{statusConfig[campaign.status]?.label}</Badge></td>
                       <td className="py-4 px-4 text-muted-foreground">{campaign.format}</td>
                       <td className="py-4 px-4">${formatNumberWithDot(campaign.budget)}</td>

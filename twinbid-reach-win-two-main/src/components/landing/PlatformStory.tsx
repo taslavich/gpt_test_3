@@ -4,6 +4,16 @@ import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { usePinnedScene } from "./usePinnedScene";
 
 const storyCopy = {
+  "zh-CN": {
+    section: "02 / 运作方式", kicker: "从设置到结果", title: "一个平台，覆盖广告活动的每个阶段", output: "结果", layer: ["统一", "系统"],
+    sources: [["网站", "广告资源"], ["广告网络", "流量"], ["广告活动", "设置"]],
+    steps: [
+      { overline: "01 / 接入", title: "一个账户连接整个广告市场", copy: "TwinBid 汇集数百家广告网络的流量。只需注册一次，即可使用超过 100 万个网站的广告资源。", label: "广告资源已连接", core: "连接", status: "网站资源已开放" },
+      { overline: "02 / 质量", title: "在采购前过滤低质量流量", copy: "内置反欺诈系统会在消耗预算前检查流量，过滤可疑展示和点击。", label: "流量已验证", core: "过滤", status: "反欺诈保护已开启" },
+      { overline: "03 / 控制", title: "掌握每一个投放环节", copy: "选择 CPC 或 CPM，设置受众和预算，添加素材并在同一个控制台启动广告活动。", label: "广告活动已启动", core: "启动", status: "设置已应用" },
+      { overline: "04 / 增长", title: "用数据找到更有效的预算分配方式", copy: "统计报告、可用流量估算和 AI 优化可帮助您识别优质来源并扩大投放。", label: "优质来源已识别", core: "优化", status: "准备扩大投放" },
+    ],
+  },
   ru: {
     section: "02 / КАК ЭТО РАБОТАЕТ",
     kicker: "От настройки до результата",

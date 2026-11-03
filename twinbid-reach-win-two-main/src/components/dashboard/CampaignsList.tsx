@@ -51,7 +51,7 @@ export function CampaignsList() {
         </CardHeader>
         <CardContent>
           <div className="max-w-full overflow-x-auto overscroll-x-contain">
-            <table className="w-full min-w-[860px]">
+            <table className="w-full min-w-[1020px] table-auto">
               <thead>
                 <tr className="border-b border-border">
                   <th className="text-left py-3 px-4 text-sm font-medium text-muted-foreground">{t("legacy.campaignName")}</th>
@@ -67,7 +67,7 @@ export function CampaignsList() {
               <tbody>
                 {campaigns.map((campaign) => (
                   <tr key={campaign.id} className="border-b border-border/50 hover:bg-muted/50 transition-colors">
-                    <td className="py-4 px-4"><span className="font-medium">{campaign.name}</span></td>
+                    <td className="min-w-[180px] break-words py-4 px-4"><span className="font-medium">{campaign.name}</span></td>
                     <td className="py-4 px-4">
                       <Badge variant="outline" className={cn("font-normal", statusConfig[campaign.status].className)}>
                         {statusConfig[campaign.status].label}

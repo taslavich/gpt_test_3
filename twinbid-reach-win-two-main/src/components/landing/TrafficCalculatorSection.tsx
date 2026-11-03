@@ -6,6 +6,10 @@ import { useLanguage } from "@/contexts/LanguageContext";
 import { TypedValue } from "./TypedValue";
 
 const copy = {
+  "zh-CN": {
+    section: "03 / 广告活动工具", console: "流量 / 潜力", live: "最新数据", title: "了解您的广告活动还有多少流量空间",
+    subtitle: "TwinBid 根据最近一个完整自然日的数据展示全部可用流量，帮助您评估增长潜力。", potential: "可用展示量", received: "广告活动展示量", share: "获得的份额", bid: "当前出价", insight: "看清全部可用流量", description: "选择广告活动或手动设置定向。计算器将展示可用量、广告活动获得的份额，并让您直接调整出价。", cta: "打开计算器",
+  },
   ru: {
     section: "03 / ИНСТРУМЕНТЫ",
     console: "ТРАФИК / ПОТЕНЦИАЛ",
@@ -72,6 +76,11 @@ const metrics = [
 ];
 
 const moduleCopy = {
+  "zh-CN": [
+    ["流量计算器", "展示全部可用流量，以及广告活动获得的份额。"],
+    ["素材准备", "无需额外编辑器，即可自动裁剪到所需尺寸。"],
+    ["实时预览", "提交审核前检查每一种广告形式。"],
+  ],
   ru: [
     ["Калькулятор трафика", "Показывает доступный объём и долю, которую уже получает кампания."],
     ["Подготовка креативов", "Позволяет редактировать креативы прямо внутри кабинета."],
@@ -95,6 +104,7 @@ const moduleCopy = {
 };
 
 const visualCopy = {
+  "zh-CN": { source: "原始素材", ready: "尺寸已准备好", crop: "自动裁剪", preview: "广告预览", approved: "素材已准备投放", sponsored: "广告", headline: "触达更多客户", body: "通过 TwinBid 扩大广告活动规模" },
   ru: { source: "Исходное изображение", ready: "3 формата готовы", crop: "Автокадрирование", preview: "Предпросмотр объявления", approved: "Объявление готово к запуску", sponsored: "Реклама", headline: "Больше клиентов для вашего бизнеса", body: "Запускайте и масштабируйте кампании с TwinBid" },
   en: { source: "Source creative", ready: "Sizes ready", crop: "Auto crop", preview: "Ad preview", approved: "Format ready to launch", sponsored: "Sponsored", headline: "Reach more customers", body: "Scale your campaigns with TwinBid" },
   es: { source: "Creatividad original", ready: "Tamaños listos", crop: "Recorte automático", preview: "Vista previa del anuncio", approved: "Formato listo para lanzar", sponsored: "Publicidad", headline: "Llega a más clientes", body: "Escala tus campañas con TwinBid" },

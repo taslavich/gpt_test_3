@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import { ArrowRight, Info } from "lucide-react";
 import { MotionConfig } from "framer-motion";
 import { Header } from "@/components/landing/Header";
+import { useRolePortalTransition } from "@/components/landing/RolePortalTransition";
 import { Footer } from "@/components/landing/Footer";
 import { AnimatedBackground } from "@/components/landing/AnimatedBackground";
 import { AuthDialog } from "@/components/landing/AuthDialog";
@@ -17,9 +18,11 @@ const LOCALES = {
   en: "en-US",
   es: "es-ES",
   fr: "fr-FR",
+  "zh-CN": "zh-CN",
 } as const;
 
 export default function Partners() {
+  const { openPortal, portalOverlay, transitioning } = useRolePortalTransition();
   const { t, lang } = useLanguage();
   const isMobile = useIsMobileImmediate();
   const [affiliatePayout, setAffiliatePayout] = useState(50_000);
@@ -41,7 +44,7 @@ export default function Partners() {
   return (
     <MotionConfig reducedMotion={isMobile ? "always" : "never"}>
       <div className="landing-shell partners-b2b-page min-h-screen bg-background">
-        <Header />
+        <Header onPublisher={(event) => openPortal(event, "/publisher")} transitioning={transitioning} />
         <main>
           <section className="partners-b2b-hero" aria-labelledby="partners-b2b-title">
             <AnimatedBackground />
@@ -236,6 +239,7 @@ export default function Partners() {
           </section>
         </main>
         <Footer />
+        {portalOverlay}
       </div>
     </MotionConfig>
   );

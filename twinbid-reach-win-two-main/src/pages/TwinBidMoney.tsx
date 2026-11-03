@@ -20,9 +20,73 @@ import { AuthDialog } from "@/components/landing/AuthDialog";
 import { useLanguage, type Lang } from "@/contexts/LanguageContext";
 import twinbidLogo from "@/assets/twinbid-logo.svg";
 
-type MoneyLang = Extract<Lang, "en" | "ru" | "es" | "fr">;
+type MoneyLang = Lang;
 
 const copy = {
+  "zh-CN": {
+    nav: { how: "运作方式", example: "示例", benefits: "TwinBid 优势", calculator: "收益计算器", start: "立即开始" },
+    hero: {
+      badge: "轻松开启流量投放",
+      title: "让网络流量带来收益",
+      subtitle: "从全球购买目标访客，将他们引导至高佣金的联盟推广项目，赚取收入与成本的差额。",
+      spend: "流量成本", revenue: "收入", roi: "投资回报率",
+      cta: "创建第一个广告活动", note: "不到一分钟即可注册 TwinBid 账户。",
+    },
+    how: {
+      kicker: "运作模式", title: "如何通过流量获利？",
+      subtitle: "无需拥有自己的产品。选择推广项目，吸引目标访客，让广告活动的收入超过成本。",
+      steps: [
+        { title: "选择推广项目", text: "选择按注册、购买、安装或其他操作支付佣金的联盟推广项目。", metric: "示例佣金：每次注册 $8" },
+        { title: "通过 TwinBid 购买流量", text: "启动广告，将目标访客直接引导至所选推广项目。", metric: "示例流量预算：$100" },
+        { title: "获得收益", text: "跟踪转化、优化定向，并扩大收益超过支出的投放组合。", metric: "30 × $8 − $100 = $140 利润" },
+      ],
+      result: "这就是流量套利。TwinBid 提供流量，你寻找有效的投放组合。", cta: "使用 TwinBid 试试",
+    },
+    example: {
+      kicker: "广告活动示例", title: "盈利的广告活动是什么样的？", subtitle: "在一个面板中查看测试活动的完整收支。",
+      metrics: [["广告支出", "$100"], ["访客", "12,840"], ["转化", "37"], ["联盟收入", "$370"], ["利润", "+$270"], ["投资回报率", "+270%"]],
+      in: "投入 $100", out: "收入 $370", text: "测试推广项目、受众和流量来源，直到访客带来的收入超过购买流量的成本。",
+    },
+    benefits: {
+      kicker: "为什么选择 TWINBID", title: "购买和优化流量所需的工具", subtitle: "你专注于盈利组合，TwinBid 负责流量。",
+      cards: [
+        ["集中管理流量", "在一个账户中获取多个供应商的广告资源，无需管理大量独立账户。"],
+        ["自动优化 CPM", "TwinBid 寻找更高效的购买价格，同时维持流量规模。"],
+        ["全球流量", "通过一个面板面向不同国家和受众投放广告。"],
+        ["精准定向", "控制地区、设备、操作系统、浏览器等活动参数。"],
+        ["多种广告形式", "在同一平台投放 Popunder、Banner、Native 和 In-Page Push 广告。"],
+        ["详细分析", "了解预算去向，找到效果最好的流量来源。"],
+      ],
+    },
+    simple: {
+      kicker: "从首次测试开始", title: "还没购买过流量？没关系。",
+      text: "无需拥有网站、开发产品或从零建立受众。选择一个推广项目、创建一个活动，用可控的预算开始测试。",
+      flow: ["选择推广项目", "创建广告活动", "购买流量", "跟踪转化", "扩大有效投放"], cta: "创建第一个广告活动",
+    },
+    scenarios: {
+      kicker: "收益测算", title: "了解活动如何扩大规模",
+      cards: [["小规模测试", "$25", "$42", "+$17", "+68%"], ["盈利活动", "$100", "$370", "+$270", "+270%"], ["扩大投放", "$1,000", "$2,450", "+$1,450", "+145%"]],
+      labels: ["流量成本", "收入", "利润", "投资回报率"],
+    },
+    calculator: {
+      kicker: "收益计算器", title: "模拟你的流量投放", subtitle: "调整数值，即时了解流量套利的收支情况。",
+      budget: "广告预算", visitorCost: "每位访客的成本", conversionRate: "转化率", payout: "每次转化佣金",
+      visitors: "访客", conversions: "转化", revenue: "收入", profit: "潜在利润", roi: "投资回报率", cta: "按此方案创建广告活动",
+    },
+    voices: {
+      kicker: "为效果而设计", title: "广告投手最关注什么",
+      cards: [
+        ["联盟广告投手", "在同一个面板测试多个地区，更快找到盈利组合。"],
+        ["效果营销人员", "增加活动预算之前，先了解哪些流量来源有效。"],
+        ["首次投放的广告主", "从可控预算开始，依据真实数据改进广告活动。"],
+      ],
+    },
+    final: {
+      kicker: "从一次测试开始", title: "迈出打造盈利活动的第一步。",
+      text: "通过 TwinBid 获取全球流量，今天就开始测试推广项目。",
+      cta: "免费创建账户", note: "注册不到一分钟。",
+    },
+  },
   en: {
     nav: { how: "How it works", example: "Example", benefits: "Why TwinBid", calculator: "Calculator", start: "Start now" },
     hero: {
@@ -79,7 +143,7 @@ const copy = {
     simple: {
       kicker: "BUILT FOR YOUR FIRST TEST",
       title: "Never Bought Traffic Before? That’s Fine.",
-      text: "You do not need to own a website, create a product or build an audience from scratch. Start with one offer, one campaign and a controlled test budget.",
+      text: "You do not need to own a website, create a product or build an audience from scratch. Start with one offer, one campaign and a budget you control.",
       flow: ["Choose offer", "Create campaign", "Buy traffic", "Track conversions", "Scale winners"],
       cta: "CREATE MY FIRST CAMPAIGN",
     },
@@ -174,7 +238,7 @@ const copy = {
     simple: {
       kicker: "ДЛЯ ПЕРВОГО ТЕСТА",
       title: "Никогда не покупали трафик? Это не проблема.",
-      text: "Вам не нужен свой сайт, продукт или готовая аудитория. Начните с одного оффера, одной кампании и контролируемого тестового бюджета.",
+      text: "Вам не нужен свой сайт, продукт или готовая аудитория. Начните с одного оффера, одной кампании и бюджета под вашим контролем.",
       flow: ["Выберите оффер", "Создайте кампанию", "Купите трафик", "Отследите конверсии", "Масштабируйте"],
       cta: "СОЗДАТЬ ПЕРВУЮ КАМПАНИЮ",
     },
@@ -279,6 +343,15 @@ const copy = {
 } as const;
 
 const interfaceCopy = {
+  "zh-CN": {
+    model: "活动收支", spendLabel: "购买流量", offerLabel: "访客进入推广页面", returnLabel: "推广项目产生收入",
+    profitLabel: "差额就是收益", clearModel: "清晰的模式", platform: "统一平台", visibility: "全面掌握数据",
+    clearModelText: "流量成本低于推广项目带来的收入。", platformText: "通过同一个面板启动、定向和优化。",
+    visibilityText: "查看支出、流量、转化和来源。", campaignName: "全球获客测试", active: "投放中",
+    performance: "效果概览", input: "投入", output: "收入", netResult: "净收益",
+    stepsTitle: "从想法到可扩展的广告活动", calculatorCaption: "调整活动参数", liveResult: "实时模拟",
+    campaignReady: "你的流量模型", offer: "推广项目",
+  },
   en: {
     model: "Campaign economics",
     spendLabel: "You buy traffic",
@@ -437,8 +510,7 @@ function CalculatorControl({ label, value, display, min, max, step, onChange }: 
 }
 
 export default function TwinBidMoney() {
-  const { setLang } = useLanguage();
-  const [lang, setMoneyLang] = useState<MoneyLang>("en");
+  const { lang, setLang } = useLanguage();
   const [languageOpen, setLanguageOpen] = useState(false);
   const [budget, setBudget] = useState(100);
   const [visitorCost, setVisitorCost] = useState(0.01);
@@ -448,14 +520,10 @@ export default function TwinBidMoney() {
   const ui = interfaceCopy[lang];
 
   useEffect(() => {
-    setLang(lang);
-  }, [lang, setLang]);
-
-  useEffect(() => {
     const previousTitle = document.title;
-    document.title = "TwinBid — Turn Internet Traffic Into Profit";
+    document.title = `TwinBid — ${text.hero.title}`;
     return () => { document.title = previousTitle; };
-  }, []);
+  }, [text.hero.title]);
 
   const result = useMemo(() => {
     const visitors = visitorCost > 0 ? Math.floor(budget / visitorCost) : 0;
@@ -487,13 +555,13 @@ export default function TwinBidMoney() {
           <div className="flex items-center gap-2">
             <div className="relative">
               <button onClick={() => setLanguageOpen((value) => !value)} className="landing-language-trigger flex h-10 items-center gap-1 px-3 text-xs font-semibold" aria-expanded={languageOpen}>
-                {lang.toUpperCase()}<ChevronDown className="h-3.5 w-3.5" />
+                {lang === "zh-CN" ? "中文" : lang.toUpperCase()}<ChevronDown className="h-3.5 w-3.5" />
               </button>
               {languageOpen && (
                 <div className="absolute right-0 top-12 w-36 overflow-hidden rounded-xl border border-white/10 bg-[#0b1213] p-1 shadow-2xl">
-                  {(["en", "ru", "es", "fr"] as MoneyLang[]).map((code) => (
-                    <button key={code} onClick={() => { setMoneyLang(code); setLanguageOpen(false); }} className="flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-sm hover:bg-white/5">
-                      {code.toUpperCase()}{lang === code && <Check className="h-4 w-4 text-primary" />}
+                  {(["en", "ru", "es", "fr", "zh-CN"] as MoneyLang[]).map((code) => (
+                    <button key={code} onClick={() => { setLang(code); setLanguageOpen(false); }} className="flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-sm hover:bg-white/5">
+                      {code === "zh-CN" ? "中文" : code.toUpperCase()}{lang === code && <Check className="h-4 w-4 text-primary" />}
                     </button>
                   ))}
                 </div>

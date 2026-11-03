@@ -10,8 +10,7 @@ import twinbidLogo from "@/assets/twinbid-logo.svg";
 export default function Legal() {
   const { lang, t } = useLanguage();
   const { hash } = useLocation();
-  // Legal documents are currently available in Russian and English; other UI languages use English.
-  const content = LEGAL_CONTENT[lang === "ru" ? "ru" : "en"];
+  const content = LEGAL_CONTENT[lang === "ru" || lang === "zh-CN" ? lang : "en"];
 
   useEffect(() => {
     if (hash) {

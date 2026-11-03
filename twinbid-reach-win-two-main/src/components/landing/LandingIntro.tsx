@@ -8,6 +8,7 @@ export function LandingIntro() {
     en: "Performance traffic, reimagined",
     es: "Una nueva forma de comprar tráfico",
     fr: "Une nouvelle façon d’acheter du trafic",
+    "zh-CN": "重新定义高效流量采购",
   }[lang];
 
   return (

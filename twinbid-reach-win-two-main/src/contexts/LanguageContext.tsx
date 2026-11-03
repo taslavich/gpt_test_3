@@ -2,13 +2,14 @@ import { createContext, useContext, useState, useCallback, useEffect, type React
 import { setErrorTranslator } from "@/lib/apiStatus";
 import { translateServerError } from "@/lib/serverErrors";
 
-export type Lang = "en" | "ru" | "es" | "fr";
+export type Lang = "en" | "ru" | "es" | "fr" | "zh-CN";
 
 export const LANGUAGE_OPTIONS: { code: Lang; label: string; name: string }[] = [
   { code: "en", label: "EN", name: "English" },
   { code: "ru", label: "RU", name: "Russian" },
   { code: "es", label: "ES", name: "Spanish" },
   { code: "fr", label: "FR", name: "Français" },
+  { code: "zh-CN", label: "中文", name: "简体中文" },
 ];
 
 const translations: Record<string, Record<"ru" | "en", string>> = {
@@ -1131,6 +1132,18 @@ const translations: Record<string, Record<"ru" | "en", string>> = {
 
 import { ES_TRANSLATIONS } from "@/lib/translations-es";
 import { FR_TRANSLATIONS } from "@/lib/translations-fr";
+import { ZH_TRANSLATIONS } from "@/lib/translations-zh";
+import { PUBLISHER_TRANSLATIONS } from "@/lib/publisherTranslations";
+import { ZH_PUBLISHER_TRANSLATIONS } from "@/lib/publisherTranslationsZh";
+
+export function languageFromBrowser(languages: readonly string[]): Lang {
+  for (const locale of languages) {
+    const base = locale.toLowerCase().split("-")[0];
+    if (base === "zh") return "zh-CN";
+    if (base === "en" || base === "ru" || base === "es" || base === "fr") return base;
+  }
+  return "en";
+}
 
 interface LanguageContextType {
   lang: Lang;
@@ -1144,16 +1157,16 @@ export function LanguageProvider({ children }: { children: ReactNode }) {
   const [lang, setLang] = useState<Lang>(() => {
     try {
       const stored = localStorage.getItem("twinbid_lang");
-      if (stored === "en" || stored === "ru" || stored === "es" || stored === "fr") return stored;
+      if (stored === "en" || stored === "ru" || stored === "es" || stored === "fr" || stored === "zh-CN") return stored;
     } catch {
       // localStorage can be unavailable in privacy-restricted browser contexts.
     }
-    return "ru";
+    return languageFromBrowser(typeof navigator !== "undefined" ? navigator.languages?.length ? navigator.languages : [navigator.language] : []);
   });
 
   const handleSetLang = useCallback((newLang: Lang) => {
     setLang(newLang);
-    localStorage.setItem("twinbid_lang", newLang);
+    try { localStorage.setItem("twinbid_lang", newLang); } catch { /* Keep the selected language for this session. */ }
   }, []);
 
   const t = useCallback((key: string): string => {
@@ -1165,7 +1178,11 @@ export function LanguageProvider({ children }: { children: ReactNode }) {
       const fr = FR_TRANSLATIONS[key];
       if (fr !== undefined) return fr;
     }
-    const entry = translations[key];
+    if (lang === "zh-CN") {
+      const zh = ZH_TRANSLATIONS[key] ?? ZH_PUBLISHER_TRANSLATIONS[key];
+      if (zh !== undefined) return zh;
+    }
+    const entry = translations[key] ?? PUBLISHER_TRANSLATIONS[key];
     if (!entry) return key;
     if (lang === "ru") return entry.ru || entry.en || key;
     return entry.en || entry.ru || key;

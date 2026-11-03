@@ -12,17 +12,24 @@ import { Footer } from "@/components/landing/Footer";
 import { AnimatedBackground } from "@/components/landing/AnimatedBackground";
 import { useIsMobileImmediate } from "@/hooks/use-mobile";
 import { MotionConfig } from "framer-motion";
+import { useLocation } from "react-router-dom";
+import { useRef } from "react";
+import { RolePortalReveal, useRolePortalTransition } from "@/components/landing/RolePortalTransition";
 
 const Index = () => {
   const isMobile = useIsMobileImmediate();
+  const location = useLocation();
+  const { openPortal, portalOverlay, transitioning } = useRolePortalTransition();
+  const fromPublisher = useRef(Boolean((location.state as { rolePortalTransition?: boolean } | null)?.rolePortalTransition)).current;
+
   return (
     <MotionConfig reducedMotion={isMobile ? "always" : "never"}>
-      <div className="landing-shell min-h-screen bg-background relative">
-        <LandingIntro />
+      <div className={`landing-shell min-h-screen bg-background relative ${fromPublisher ? "role-portal-arrival" : ""}`}>
+        {fromPublisher ? <RolePortalReveal /> : <LandingIntro />}
         <AnimatedBackground />
-        <Header />
+        <Header onPublisher={(event) => openPortal(event, "/publisher")} transitioning={transitioning} />
         <main>
-          <HeroSection />
+          <HeroSection onPublisher={(event) => openPortal(event, "/publisher")} transitioning={transitioning} />
           <SignalProof />
           <PlatformStory />
           <TrafficCalculatorSection />
@@ -32,6 +39,7 @@ const Index = () => {
           <CTASection />
         </main>
         <Footer />
+        {portalOverlay}
       </div>
     </MotionConfig>
   );

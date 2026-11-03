@@ -25,7 +25,13 @@ const russianTape = [
   ["КАЧЕСТВО", "ФИЛЬТРАЦИЯ · ОПТИМИЗАЦИЯ"],
 ];
 
+const chineseTape = [
+  ["平台", "高效广告流量"], ["规模", "100 万+ 网站"], ["广告资源", "全球网站及应用"], ["采购", "CPC + CPM"],
+  ["形式", "原生 · 横幅 · 推送"], ["分析", "转化与统计"], ["控制台", "一个账户 · 一个余额"], ["质量", "过滤 · 优化"],
+];
+
 const consoleCopy = {
+  "zh-CN": { campaign: "广告活动 / Momentum 01", overview: "效果概览", signal: "广告活动趋势", model: "计费模式", delivery: "投放", quality: "质量控制", active: "投放中", learning: "优化中", filtering: "过滤中", flow: "流量", route: "优质来源", note: "TwinBid 界面示例", live: "实时", create: "+ 广告活动" },
   ru: { campaign: "Кампания / Momentum 01", overview: "Результаты кампании", signal: "Динамика показов", model: "Модель оплаты", delivery: "Открутка", quality: "Контроль качества", active: "Запущена", learning: "Оптимизация", filtering: "Фильтрация", flow: "Объём трафика", route: "эффективные источники", note: "Пример интерфейса TwinBid", live: "АКТИВНО", create: "+ Кампания" },
   en: { campaign: "Campaign / Momentum 01", overview: "Performance overview", signal: "Campaign signal", model: "Buying model", delivery: "Delivery", quality: "Quality layer", active: "Active", learning: "Learning", filtering: "Filtering", flow: "Traffic flow", route: "optimized route", note: "Illustrative TwinBid interface", live: "LIVE", create: "+ Campaign" },
   es: { campaign: "Campaña / Momentum 01", overview: "Resumen de rendimiento", signal: "Señal de campaña", model: "Modelo de compra", delivery: "Entrega", quality: "Capa de calidad", active: "Activo", learning: "Aprendizaje", filtering: "Filtrado", flow: "Flujo de tráfico", route: "ruta optimizada", note: "Interfaz ilustrativa de TwinBid", live: "ACTIVA", create: "+ Campaña" },
@@ -77,18 +83,19 @@ function CampaignConsole() {
 
 export function SignalProof() {
   const { t, lang } = useLanguage();
-  const tape = lang === "ru" ? russianTape : defaultTape;
+  const tape = lang === "ru" ? russianTape : lang === "zh-CN" ? chineseTape : defaultTape;
   const intro = {
     ru: ["Весь рекламный трафик", "В одном кабинете"],
     en: ["Global traffic", "One operating layer"],
     es: ["Tráfico global", "Una sola capa de trabajo"],
     fr: ["Trafic mondial", "Une seule couche de travail"],
+    "zh-CN": ["全球广告流量", "一个控制台管理"],
   }[lang] ?? ["Global traffic", "One operating layer"];
 
   const proof = [
     ["1M+", t("hero.statSites")],
-    ["CPC / CPM", lang === "ru" ? "Две модели оплаты" : "Flexible buying models"],
-    ["Web + in-app", lang === "ru" ? "Сайты и приложения" : "Global ad inventory"],
+    ["CPC / CPM", lang === "ru" ? "Две модели оплаты" : lang === "zh-CN" ? "灵活的计费模式" : "Flexible buying models"],
+    ["Web + in-app", lang === "ru" ? "Сайты и приложения" : lang === "zh-CN" ? "全球网站及应用广告资源" : "Global ad inventory"],
   ];
 
   return (

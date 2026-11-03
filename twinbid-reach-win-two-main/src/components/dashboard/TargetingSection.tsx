@@ -130,6 +130,7 @@ const DAY_SHORT: Record<string, Record<string, string>> = {
   ru: { monday: "Пн", tuesday: "Вт", wednesday: "Ср", thursday: "Чт", friday: "Пт", saturday: "Сб", sunday: "Вс" },
   en: { monday: "Mo", tuesday: "Tu", wednesday: "We", thursday: "Th", friday: "Fr", saturday: "Sa", sunday: "Su" },
   fr: { monday: "Lu", tuesday: "Ma", wednesday: "Me", thursday: "Je", friday: "Ve", saturday: "Sa", sunday: "Di" },
+  "zh-CN": { monday: "周一", tuesday: "周二", wednesday: "周三", thursday: "周四", friday: "周五", saturday: "周六", sunday: "周日" },
 };
 
 const SchedulePicker = memo(function SchedulePicker({ items, onUpdate, t }: { items: string[]; onUpdate: (items: string[]) => void; t: (key: string) => string }) {

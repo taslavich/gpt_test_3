@@ -4,6 +4,9 @@ import { useLanguage } from "@/contexts/LanguageContext";
 import { LineReveal } from "./CinematicReveal";
 
 const ctaCopy = {
+  "zh-CN": {
+    section: "06 / 首次充值", eyebrow: "让首次投放更有力", lead: "首次充值", tail: "额外赠送", text: "一个账户、一个余额，让想法更快变成正在投放的广告活动。", register: "创建账户", contact: "联系客户经理", note: "奖励适用于首次充值 $100 及以上", backdrop: "充值 → 流量 → 增长",
+  },
   ru: {
     section: "06 / ПЕРВОЕ ПОПОЛНЕНИЕ",
     eyebrow: "Больше возможностей на старте",

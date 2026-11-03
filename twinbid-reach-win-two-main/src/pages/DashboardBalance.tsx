@@ -588,7 +588,7 @@ export default function DashboardBalance() {
                 return <div className="py-12 text-center text-muted-foreground">{t("balance.noTransactions")}</div>;
               }
               return (
-              <table className="w-full min-w-[680px]">
+              <table className="w-full min-w-[720px] table-auto">
                 <thead>
                   <tr className="border-b border-border">
                     <th className="text-left py-3 px-4 text-sm font-medium text-muted-foreground">{t("balance.date")}</th>

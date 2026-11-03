@@ -1,10 +1,11 @@
-import { ArrowDown, ArrowDownRight, Send } from "lucide-react";
+import { ArrowDown, ArrowDownRight, ArrowRight, Send } from "lucide-react";
+import type { MouseEvent } from "react";
 import { AuthDialog } from "./AuthDialog";
 import { SignalFlowField } from "./SignalFlowField";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { TypedValue } from "./TypedValue";
 
-export function HeroSection() {
+export function HeroSection({ onPublisher, transitioning }: { onPublisher: (event: MouseEvent<HTMLElement>) => void; transitioning: boolean }) {
   const { t, lang } = useLanguage();
   const title1 = t("hero.title1").trim();
   const title2 = t("hero.title2").trim();
@@ -43,6 +44,10 @@ export function HeroSection() {
                 </button>
               }
             />
+            <button type="button" onClick={onPublisher} disabled={transitioning} className="landing-publisher-switch disabled:opacity-50">
+              {t("hero.publisherCta")}
+              <ArrowRight aria-hidden="true" />
+            </button>
             <a className="landing-hero-telegram" href="https://t.me/twinbid" target="_blank" rel="noopener noreferrer">
               {t("hero.telegram")}
               <Send aria-hidden="true" />
@@ -57,7 +62,7 @@ export function HeroSection() {
       </div>
 
       <a className="landing-hero-scroll" href="#signal-proof" aria-label="Scroll">
-        <span>{lang === "ru" ? "Листайте дальше" : lang === "es" ? "Sigue explorando" : lang === "fr" ? "Continuer" : "Follow the signal"}</span>
+        <span>{lang === "ru" ? "Листайте дальше" : lang === "es" ? "Sigue explorando" : lang === "fr" ? "Continuer" : lang === "zh-CN" ? "继续浏览" : "Follow the signal"}</span>
         <ArrowDown aria-hidden="true" />
       </a>
     </section>
