@@ -1,0 +1,129 @@
+package pub
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"net"
+	"net/http"
+	"net/http/httptest"
+	"strings"
+	"testing"
+	"time"
+
+	utils "gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/utils_grpc"
+)
+
+func TestPubAlertUsesSystemBotAndRetainsCountsOnFailure(t *testing.T) {
+	messages := make(chan string, 2)
+	bot := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var payload struct{ Text string }
+		if r.Method != http.MethodPost || r.URL.Path != "/internal/messages/send" ||
+			r.Header.Get("X-Bot-Secret") != "test-secret" || json.NewDecoder(r.Body).Decode(&payload) != nil {
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+		messages <- payload.Text
+		if len(messages) == 1 {
+			w.WriteHeader(http.StatusServiceUnavailable)
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	defer bot.Close()
+	a := NewSystemAlerts("test-pub", utils.NewBotMessage(bot.URL, "test-secret").SendTextMessageToBot)
+	a.Record(AlertRTB)
+	if !a.flush(context.Background()) {
+		t.Fatal("missing first send")
+	}
+	a.Record(AlertRTB)
+	a.Record(AlertDelivery)
+	if !a.flush(context.Background()) || a.flush(context.Background()) || len(messages) != 2 {
+		t.Fatal("failed count was not retried exactly once")
+	}
+	if first := <-messages; first != "[pub] host=test-pub\nrtb_failed=1" {
+		t.Fatalf("first notice: %q", first)
+	}
+	if second := <-messages; second != "[pub] host=test-pub\nrtb_failed=2\ndelivery=1" {
+		t.Fatalf("retry notice: %q", second)
+	}
+}
+
+func TestPubAlertWorkerDoesNotWaitInRecordAndLimitsSends(t *testing.T) {
+	sends := make(chan time.Time, 2)
+	unblock := make(chan struct{})
+	a := NewSystemAlerts("test-pub", func(ctx context.Context, _ string) error {
+		sends <- time.Now()
+		select {
+		case <-unblock:
+			return nil
+		case <-ctx.Done():
+			return ctx.Err()
+		}
+	})
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	done := make(chan struct{})
+	go func() { defer close(done); a.run(ctx, 40*time.Millisecond) }()
+	defer func() { cancel(); <-done }()
+	next := func() time.Time {
+		t.Helper()
+		select {
+		case at := <-sends:
+			return at
+		case <-ctx.Done():
+			t.Fatal("missing digest")
+			return time.Time{}
+		}
+	}
+	a.Record(AlertRTB)
+	first := next()
+	recorded := make(chan struct{})
+	go func() {
+		for i := 0; i < 1000; i++ {
+			a.Record(AlertRTB)
+		}
+		close(recorded)
+	}()
+	select {
+	case <-recorded:
+	case <-ctx.Done():
+		t.Fatal("recording blocked on the bot")
+	}
+	close(unblock)
+	if second := next(); second.Sub(first) < 40*time.Millisecond {
+		t.Fatal("digest was sent during cooldown")
+	}
+}
+
+func TestPubAlertForUnavailableConfigNotClientRefusals(t *testing.T) {
+	var message string
+	a := NewSystemAlerts("test-pub", func(_ context.Context, text string) error {
+		message = text
+		return nil
+	})
+	_, proxy, _ := net.ParseCIDR("192.0.2.1/32")
+	s := &Server{Alerts: a, proxies: []*net.IPNet{proxy}, InfraSettings: infraSettings{Paths: defaultInfraPaths()}}
+	for _, tc := range []struct {
+		path, remote string
+		want         int
+	}{
+		{"/config", "192.0.2.1:1234", 503},
+		{"/delivery/invalid", "192.0.2.1:1234", 410},
+		{"/config", "192.0.2.2:1234", 403},
+	} {
+		w := httptest.NewRecorder()
+		r := httptest.NewRequest(http.MethodGet, tc.path, nil)
+		r.RemoteAddr = tc.remote
+		s.Handler().ServeHTTP(w, r)
+		if w.Code != tc.want {
+			t.Fatalf("%s %s: status %d, want %d", tc.path, tc.remote, w.Code, tc.want)
+		}
+	}
+	canceled, cancel := context.WithCancel(context.Background())
+	cancel()
+	s.reportRedisRead(canceled, errors.New("browser left"))
+	if !a.flush(context.Background()) || !strings.HasSuffix(message, "\nconfig_unready=1") ||
+		strings.Count(message, "\n") != 1 {
+		t.Fatalf("unexpected digest: %q", message)
+	}
+}

@@ -15,6 +15,7 @@ var runtimeFiles embed.FS
 func (s *Server) script(w http.ResponseWriter, r *http.Request) {
 	b, e := runtimeFiles.ReadFile("pageHelper.js")
 	if e != nil {
+		s.Alerts.Record(AlertRuntime)
 		http.Error(w, "runtime unavailable", 503)
 		return
 	}

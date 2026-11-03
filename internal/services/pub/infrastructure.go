@@ -201,10 +201,12 @@ func (s *Server) RunInfrastructure(ctx context.Context) {
 			if time.Now().Unix()-stamp >= int64(a.settings.CheckInterval.Seconds()) {
 				if e = a.refresh(ctx); e != nil {
 					a.failures.Add(1)
+					s.Alerts.Record(AlertInfrastructure)
 					log.Printf("pub infrastructure refresh: %v (last configuration retained)", e)
 				}
 			}
 		} else {
+			s.Alerts.Record(AlertInfrastructure)
 			log.Printf("pub infrastructure control: %v", e)
 		}
 		select {

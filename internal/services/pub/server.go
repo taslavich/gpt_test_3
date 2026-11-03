@@ -62,6 +62,7 @@ type Server struct {
 	Redis          redis.UniversalClient
 	HTTP           *http.Client
 	Telemetry      *Telemetry
+	Alerts         *SystemAlerts
 	slots          chan struct{}
 	proxies        []*net.IPNet
 	lastMu         sync.Mutex
@@ -158,6 +159,7 @@ func (s *Server) code(ctx context.Context, short, epoch string) (c.Code, error) 
 	}
 	b, e := s.Redis.HGet(ctx, c.CodeKey(short), "data").Bytes()
 	if e != nil {
+		s.reportRedisRead(ctx, e)
 		return out, errors.New("code_unavailable")
 	}
 	if json.Unmarshal(b, &out) != nil || out.Epoch != epoch || out.Validate() != nil {
@@ -165,6 +167,14 @@ func (s *Server) code(ctx context.Context, short, epoch string) (c.Code, error) 
 	}
 	return out, nil
 }
+
+// Missing keys and a canceled browser request are not Redis failures.
+func (s *Server) reportRedisRead(ctx context.Context, err error) {
+	if err != nil && !errors.Is(err, redis.Nil) && !errors.Is(err, context.Canceled) && !errors.Is(ctx.Err(), context.Canceled) {
+		s.Alerts.Record(AlertRedisRead)
+	}
+}
+
 func (s *Server) publicConfig(w http.ResponseWriter, r *http.Request) {
 	epoch, e := s.ready(r.Context())
 	if e != nil {
@@ -214,6 +224,20 @@ func (s *Server) clientIP(r *http.Request) string {
 }
 func (s *Server) negative(w http.ResponseWriter, r *http.Request, in Request, code c.Code, host, site, zone, reason string, status int) {
 	s.Rejected.Add(1)
+	switch reason {
+	case "overload":
+		s.Alerts.Record(AlertOverload)
+	case "policy_unready":
+		s.Alerts.Record(AlertConfig)
+	case "infrastructure_unavailable":
+		s.Alerts.Record(AlertInfrastructure)
+	case "frequency_unavailable", "reservation_release_failed", "request_cache_failed":
+		s.Alerts.Record(AlertReservation)
+	case "delivery_unavailable":
+		s.Alerts.Record(AlertDelivery)
+	case "rtb_failed":
+		s.Alerts.Record(AlertRTB)
+	}
 	if _, e := uuid.Parse(in.ID); e != nil {
 		in.ID = uuid.NewString()
 	}
@@ -225,6 +249,7 @@ func (s *Server) negative(w http.ResponseWriter, r *http.Request, in Request, co
 		_, e := writeError(ctx, s.ORTB, s.Config.ORTBReadySet, id, fields)
 		cancel()
 		if e != nil && (s.Telemetry == nil || s.Telemetry.Record(id, fields) != nil) {
+			s.Alerts.Record(AlertOutboxWrite)
 			respond(w, 503, Result{Status: "error", RequestID: in.ID, Error: true, Reason: "telemetry_unavailable"})
 			return
 		}
@@ -345,7 +370,9 @@ func (s *Server) request(w http.ResponseWriter, r *http.Request) {
 	defer cancelWork()
 	result, err := s.auction(work, r, &in, code, host, site, zone, epoch)
 	if err != nil {
-		s.finish(work, delivery, `{"status":"error","error":true,"reason":"rtb_failed"}`)
+		if e := s.finish(work, delivery, `{"status":"error","error":true,"reason":"rtb_failed"}`); e != nil {
+			s.Alerts.Record(AlertReservation)
+		}
 		reject("rtb_failed", 502)
 		return
 	}
@@ -369,7 +396,9 @@ func (s *Server) request(w http.ResponseWriter, r *http.Request) {
 	b, _ := json.Marshal(delivery)
 	token := delivery.Token + "." + c.Sign(s.Config.DeliverySecret, delivery.Token)
 	if e = s.Redis.Set(work, c.Prefix+"delivery:"+delivery.Token, b, 45*time.Second).Err(); e != nil {
-		s.finish(work, delivery, `{"status":"error","error":true,"reason":"delivery_unavailable"}`)
+		if e := s.finish(work, delivery, `{"status":"error","error":true,"reason":"delivery_unavailable"}`); e != nil {
+			s.Alerts.Record(AlertReservation)
+		}
 		reject("delivery_unavailable", 503)
 		return
 	}
@@ -507,9 +536,11 @@ func (s *Server) loadDelivery(ctx context.Context, token string) (Delivery, erro
 	}
 	b, e := s.Redis.Get(ctx, c.Prefix+"delivery:"+parts[0]).Bytes()
 	if e != nil {
+		s.reportRedisRead(ctx, e)
 		return d, e
 	}
 	if e = json.Unmarshal(b, &d); e != nil {
+		s.Alerts.Record(AlertDelivery)
 		return d, e
 	}
 	epoch, e := s.ready(ctx)
@@ -552,6 +583,9 @@ func (s *Server) confirm(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	n, e := s.confirmState(ctx, d)
+	if e != nil {
+		s.Alerts.Record(AlertConfirm)
+	}
 	if e != nil || n == 0 {
 		http.Error(w, "reservation unavailable", 409)
 		return

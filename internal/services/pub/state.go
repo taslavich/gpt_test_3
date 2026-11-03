@@ -30,12 +30,16 @@ func keys(zone, visitor, session, request string) (string, string, string) {
 }
 func (s *Server) ready(ctx context.Context) (string, error) {
 	if s.safetyUntil.Load() < time.Now().Unix() {
+		s.Alerts.Record(AlertConfig)
 		return "", errors.New("Redis eviction policy unchecked")
 	}
 	// Published configuration and frequency state persist in Redis. Never
 	// require a per-15-second heartbeat from the cabinet backend.
 	v, e := s.Redis.Get(ctx, c.EpochKey).Result()
 	if e != nil || v == "" {
+		if !errors.Is(e, context.Canceled) && !errors.Is(ctx.Err(), context.Canceled) {
+			s.Alerts.Record(AlertConfig)
+		}
 		return "", errors.New("publisher configuration unavailable")
 	}
 	return v, nil

@@ -160,7 +160,7 @@ func (t *Telemetry) Flush(ctx context.Context) error {
 	}
 	return ctx.Err()
 }
-func (t *Telemetry) Run(ctx context.Context) {
+func (t *Telemetry) Run(ctx context.Context, alerts *SystemAlerts) {
 	tick := time.NewTicker(time.Second)
 	defer tick.Stop()
 	for {
@@ -174,6 +174,7 @@ func (t *Telemetry) Run(ctx context.Context) {
 		e := t.Flush(work)
 		cancel()
 		if e != nil && ctx.Err() == nil {
+			alerts.Record(AlertOutboxFlush)
 			log.Printf("publisher error outbox: %v", e)
 		}
 	}

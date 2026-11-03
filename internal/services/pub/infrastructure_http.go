@@ -18,6 +18,7 @@ func (s *Server) infrastructureConfig(w http.ResponseWriter, r *http.Request) {
 	}
 	m, e := s.Infrastructure.manifest()
 	if e != nil {
+		s.Alerts.Record(AlertInfrastructure)
 		respond(w, 503, map[string]string{"error": e.Error()})
 		return
 	}
@@ -29,6 +30,7 @@ func (s *Server) infrastructureHealth(w http.ResponseWriter, r *http.Request) {
 func (s *Server) sdk(w http.ResponseWriter, r *http.Request) {
 	b, e := runtimeFiles.ReadFile("sdk.prod.js")
 	if e != nil {
+		s.Alerts.Record(AlertRuntime)
 		http.Error(w, "SDK unavailable", 503)
 		return
 	}
@@ -42,6 +44,7 @@ func (s *Server) sdk(w http.ResponseWriter, r *http.Request) {
 func (s *Server) routedRuntime(w http.ResponseWriter, r *http.Request) {
 	b, e := runtimeFiles.ReadFile("runtime.prod.js")
 	if e != nil {
+		s.Alerts.Record(AlertRuntime)
 		http.Error(w, "runtime unavailable", 503)
 		return
 	}
