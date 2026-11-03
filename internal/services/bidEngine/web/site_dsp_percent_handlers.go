@@ -11,7 +11,7 @@ import (
 func getSiteIDDspPercentsMap(w http.ResponseWriter, store *bidEngine.Store) {
 	raw, err := store.ReadRaw()
 	if err != nil {
-		http.Error(w, "Cannot read site_id/DSP percent map", http.StatusInternalServerError)
+		http.Error(w, "Cannot read site_id/GEO/DSP percent map", http.StatusInternalServerError)
 		return
 	}
 	if err := rnr.JSON(w, http.StatusOK, raw); err != nil {

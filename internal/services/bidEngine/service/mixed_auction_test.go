@@ -355,7 +355,7 @@ func TestSiteIDDSPPercentOverridesLegacyDSPPercentOnly(t *testing.T) {
 	routes := &types.FormatPercentRoutesV25{POP: types.FormatPercentRouteV25{AdultMap: &legacyMap}}
 
 	filename := filepath.Join(t.TempDir(), "site_id_dsp_percents.json")
-	if err := os.WriteFile(filename, []byte(`{"site-123":{"dsp-main":0.40}}`), 0644); err != nil {
+	if err := os.WriteFile(filename, []byte(`{"site-123":{"US":{"dsp-main":0.40}}}`), 0644); err != nil {
 		t.Fatal(err)
 	}
 	store, err := NewStore(filename)
@@ -371,13 +371,13 @@ func TestSiteIDDSPPercentOverridesLegacyDSPPercentOnly(t *testing.T) {
 		t.Fatalf("winners=%d want 1", len(bids))
 	}
 	if got, want := bids[0].GetPrice(), float32(0.60); math.Abs(float64(got-want)) > 1e-6 {
-		t.Fatalf("site_id/DSP override final price=%f want %f", got, want)
+		t.Fatalf("site_id/GEO/DSP override final price=%f want %f", got, want)
 	}
 }
 
-func TestSiteIDDSPPercentFallsBackToLegacyMapWhenMissing(t *testing.T) {
+func TestSiteIDDSPPercentFallsBackToLegacyMapWhenCountryDoesNotMatch(t *testing.T) {
 	requestID, impID, uuid := "req-site-fallback", "imp-site", "uuid-site"
-	siteID := "site-unmapped"
+	siteID := "site-123"
 	country := "US"
 	price := float32(1.0)
 	adm := "https://dsp.example/adm"
@@ -402,7 +402,7 @@ func TestSiteIDDSPPercentFallsBackToLegacyMapWhenMissing(t *testing.T) {
 	routes := &types.FormatPercentRoutesV25{POP: types.FormatPercentRouteV25{AdultMap: &legacyMap}}
 
 	filename := filepath.Join(t.TempDir(), "site_id_dsp_percents.json")
-	if err := os.WriteFile(filename, []byte(`{"other-site":{"dsp-main":0.40}}`), 0644); err != nil {
+	if err := os.WriteFile(filename, []byte(`{"site-123":{"PHL":{"dsp-main":0.40}}}`), 0644); err != nil {
 		t.Fatal(err)
 	}
 	store, err := NewStore(filename)
@@ -446,7 +446,7 @@ func TestSiteIDDSPPercentDoesNotTouchADVResponse(t *testing.T) {
 	}
 
 	filename := filepath.Join(t.TempDir(), "site_id_dsp_percents.json")
-	if err := os.WriteFile(filename, []byte(`{"site-123":{"ALL":0.95}}`), 0644); err != nil {
+	if err := os.WriteFile(filename, []byte(`{"site-123":{"ALL":{"ALL":0.95}}}`), 0644); err != nil {
 		t.Fatal(err)
 	}
 	store, err := NewStore(filename)
@@ -462,6 +462,6 @@ func TestSiteIDDSPPercentDoesNotTouchADVResponse(t *testing.T) {
 		t.Fatalf("ADV winners=%d want 1", len(bids))
 	}
 	if got := bids[0].GetPrice(); math.Abs(float64(got-advPrice)) > 1e-6 {
-		t.Fatalf("ADV price changed by site_id/DSP map: got=%f want=%f", got, advPrice)
+		t.Fatalf("ADV price changed by site_id/GEO/DSP map: got=%f want=%f", got, advPrice)
 	}
 }

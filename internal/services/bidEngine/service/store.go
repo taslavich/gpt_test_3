@@ -12,10 +12,10 @@ import (
 	"sync/atomic"
 )
 
-// Map is a site_id -> DSP domain -> retained share of the DSP bid.
+// Map is a site_id -> GEO -> DSP domain -> retained share of the DSP bid.
 // Values use the same fractional convention as BidEngine's existing percent
 // maps: 0.20 means 20% is retained by the exchange.
-type Map map[string]map[string]float32
+type Map map[string]map[string]map[string]float32
 
 const allKey = "ALL"
 
@@ -67,16 +67,16 @@ func NewStore(filename string) (*Store, error) {
 			// preserves the existing SSP/GEO/DSP percent behavior.
 			return store, nil
 		}
-		return nil, fmt.Errorf("read site_id/DSP percent map %s: %w", filename, err)
+		return nil, fmt.Errorf("read site_id/GEO/DSP percent map %s: %w", filename, err)
 	}
 
 	raw, err := decode(data)
 	if err != nil {
-		return nil, fmt.Errorf("parse site_id/DSP percent map %s: %w", filename, err)
+		return nil, fmt.Errorf("parse site_id/GEO/DSP percent map %s: %w", filename, err)
 	}
 	expanded, err := expandAndValidate(raw)
 	if err != nil {
-		return nil, fmt.Errorf("validate site_id/DSP percent map %s: %w", filename, err)
+		return nil, fmt.Errorf("validate site_id/GEO/DSP percent map %s: %w", filename, err)
 	}
 	store.runtime.Store(expanded)
 	return store, nil
@@ -103,29 +103,36 @@ func validPercent(value float32) bool {
 
 func expandAndValidate(raw Map) (Map, error) {
 	expanded := make(Map)
-	seen := make(map[string]struct{})
-
-	for siteKey, dspMap := range raw {
-		if dspMap == nil {
-			return nil, &ValidationError{Message: fmt.Sprintf("site_id key %q must contain a DSP object", siteKey)}
+	for siteKey, geoMap := range raw {
+		if geoMap == nil {
+			return nil, &ValidationError{Message: fmt.Sprintf("site_id key %q must contain a GEO object", siteKey)}
 		}
 		siteIDs := splitAndTrimKeys(siteKey)
-		for dspKey, percent := range dspMap {
-			if !validPercent(percent) {
-				return nil, &ValidationError{Message: fmt.Sprintf("percent for site_id %q DSP %q must be between 0 and 1; got %v", siteKey, dspKey, percent)}
+		for geoKey, dspMap := range geoMap {
+			if dspMap == nil {
+				return nil, &ValidationError{Message: fmt.Sprintf("site_id key %q GEO key %q must contain a DSP object", siteKey, geoKey)}
 			}
-			dsps := splitAndTrimKeys(dspKey)
-			for _, siteID := range siteIDs {
-				if expanded[siteID] == nil {
-					expanded[siteID] = make(map[string]float32)
+			geos := splitAndTrimKeys(geoKey)
+			for dspKey, percent := range dspMap {
+				if !validPercent(percent) {
+					return nil, &ValidationError{Message: fmt.Sprintf("percent for site_id %q GEO %q DSP %q must be between 0 and 1; got %v", siteKey, geoKey, dspKey, percent)}
 				}
-				for _, dsp := range dsps {
-					collisionKey := siteID + "\x00" + dsp
-					if _, exists := seen[collisionKey]; exists {
-						return nil, &ValidationError{Message: fmt.Sprintf("duplicate expanded site_id/DSP rule for %q / %q", siteID, dsp)}
+				dsps := splitAndTrimKeys(dspKey)
+				for _, site := range siteIDs {
+					if expanded[site] == nil {
+						expanded[site] = make(map[string]map[string]float32)
 					}
-					seen[collisionKey] = struct{}{}
-					expanded[siteID][dsp] = percent
+					for _, geo := range geos {
+						if expanded[site][geo] == nil {
+							expanded[site][geo] = make(map[string]float32)
+						}
+						for _, dsp := range dsps {
+							if _, exists := expanded[site][geo][dsp]; exists {
+								return nil, &ValidationError{Message: fmt.Sprintf("duplicate expanded site_id/GEO/DSP rule for %q / %q / %q", site, geo, dsp)}
+							}
+							expanded[site][geo][dsp] = percent
+						}
+					}
 				}
 			}
 		}
@@ -135,42 +142,34 @@ func expandAndValidate(raw Map) (Map, error) {
 
 func clone(input Map) Map {
 	output := make(Map, len(input))
-	for siteID, dspMap := range input {
-		clonedDSPMap := make(map[string]float32, len(dspMap))
-		for dsp, percent := range dspMap {
-			clonedDSPMap[dsp] = percent
+	for site, geoMap := range input {
+		clonedGeoMap := make(map[string]map[string]float32, len(geoMap))
+		for geo, dspMap := range geoMap {
+			clonedDSPMap := make(map[string]float32, len(dspMap))
+			for dsp, percent := range dspMap {
+				clonedDSPMap[dsp] = percent
+			}
+			clonedGeoMap[geo] = clonedDSPMap
 		}
-		output[siteID] = clonedDSPMap
+		output[site] = clonedGeoMap
 	}
 	return output
 }
 
-// Lookup specificity order:
-// exact site/exact DSP -> exact site/ALL -> ALL/exact DSP -> ALL/ALL.
-// matched=false means BidEngine must fall back to the existing SSP/GEO/DSP map.
-func (s *Store) Lookup(siteID, dsp string) (percent float32, matched bool) {
+// Lookup uses the same precedence as the SSP/GEO/DSP map: at each level,
+// try the exact key first, then ALL. A missing rule falls back to that map.
+func (s *Store) Lookup(siteID, country, dsp string) (percent float32, matched bool) {
 	if s == nil {
 		return 0, false
 	}
 	runtimeMap, _ := s.runtime.Load().(Map)
-
-	sites := []string{siteID}
-	if siteID != allKey {
-		sites = append(sites, allKey)
-	}
-	dsps := []string{dsp}
-	if dsp != allKey {
-		dsps = append(dsps, allKey)
-	}
-
-	for _, site := range sites {
-		dspMap, ok := runtimeMap[site]
-		if !ok {
-			continue
-		}
-		for _, candidateDSP := range dsps {
-			if value, ok := dspMap[candidateDSP]; ok {
-				return value, true
+	for _, site := range [2]string{siteID, allKey} {
+		for _, geo := range [2]string{country, allKey} {
+			dspMap := runtimeMap[site][geo]
+			for _, candidate := range [2]string{dsp, allKey} {
+				if value, ok := dspMap[candidate]; ok {
+					return value, true
+				}
 			}
 		}
 	}
@@ -201,10 +200,10 @@ func (s *Store) ReadRaw() (Map, error) {
 
 func (s *Store) Update(raw Map) error {
 	if s == nil {
-		return errors.New("site_id/DSP percent store is not configured")
+		return errors.New("site_id/GEO/DSP percent store is not configured")
 	}
 	if strings.TrimSpace(s.filename) == "" {
-		return errors.New("site_id/DSP percent map filename is empty")
+		return errors.New("site_id/GEO/DSP percent map filename is empty")
 	}
 	if raw == nil {
 		raw = Map{}
@@ -215,14 +214,14 @@ func (s *Store) Update(raw Map) error {
 	}
 	fileData, err := json.MarshalIndent(raw, "", "  ")
 	if err != nil {
-		return fmt.Errorf("marshal site_id/DSP percent map: %w", err)
+		return fmt.Errorf("marshal site_id/GEO/DSP percent map: %w", err)
 	}
 
 	s.updateMu.Lock()
 	defer s.updateMu.Unlock()
 
 	if err := atomicWriteFile(s.filename, fileData, 0644); err != nil {
-		return fmt.Errorf("write site_id/DSP percent map %s: %w", s.filename, err)
+		return fmt.Errorf("write site_id/GEO/DSP percent map %s: %w", s.filename, err)
 	}
 	s.runtime.Store(expanded)
 	return nil

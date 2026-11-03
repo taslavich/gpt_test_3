@@ -139,7 +139,7 @@ func main() {
 
 	siteDSPPercentStore, err := bidEngine.NewStore(cfg.SiteIDDspPercentsFilePath)
 	if err != nil {
-		log.Fatalf("Failed to initialize site_id/DSP percents from %s: %v", cfg.SiteIDDspPercentsFilePath, err)
+		log.Fatalf("Failed to initialize site_id/GEO/DSP percents from %s: %v", cfg.SiteIDDspPercentsFilePath, err)
 	}
 
 	percentRoutes := &types.FormatPercentRoutesV25{

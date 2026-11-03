@@ -26,7 +26,7 @@ func TestSiteIDDspPercentHTTPPutGetAndDebug(t *testing.T) {
 	router := chi.NewRouter()
 	InitHttpRoutes(router, nil, store)
 
-	body := `{"site-a, site-b":{"dsp-x, dsp-y":0.25,"dsp-z":0.4}}`
+	body := `{"site-a, site-b":{"US, PHL":{"dsp-x, dsp-y":0.25,"dsp-z":0.4},"ALL":{"ALL":0.2}}}`
 	put := httptest.NewRequest(http.MethodPut, PutSiteIDDspPercentsMapUrl, strings.NewReader(body))
 	put.Header.Set("Content-Type", "application/json")
 	putRecorder := httptest.NewRecorder()
@@ -45,7 +45,7 @@ func TestSiteIDDspPercentHTTPPutGetAndDebug(t *testing.T) {
 	if err := json.Unmarshal(getRecorder.Body.Bytes(), &raw); err != nil {
 		t.Fatal(err)
 	}
-	if got := raw["site-a, site-b"]["dsp-x, dsp-y"]; got != 0.25 {
+	if got := raw["site-a, site-b"]["US, PHL"]["dsp-x, dsp-y"]; got != 0.25 {
 		t.Fatalf("raw grouped percent=%v want 0.25", got)
 	}
 
@@ -59,14 +59,15 @@ func TestSiteIDDspPercentHTTPPutGetAndDebug(t *testing.T) {
 	if err := json.Unmarshal(debugRecorder.Body.Bytes(), &expanded); err != nil {
 		t.Fatal(err)
 	}
-	if got := expanded["site-b"]["dsp-y"]; got != 0.25 {
+	if got := expanded["site-b"]["PHL"]["dsp-y"]; got != 0.25 {
 		t.Fatalf("expanded percent=%v want 0.25", got)
 	}
 }
 
-func TestSiteIDDspPercentHTTPRejectsWholeNumberPercent(t *testing.T) {
+func TestSiteIDDspPercentHTTPRejectsInvalidUpdates(t *testing.T) {
 	filename := filepath.Join(t.TempDir(), "site_id_dsp_percents.json")
-	if err := os.WriteFile(filename, []byte(`{}`), 0644); err != nil {
+	const original = `{"site":{"US":{"dsp":0.2}}}`
+	if err := os.WriteFile(filename, []byte(original), 0644); err != nil {
 		t.Fatal(err)
 	}
 	store, err := bidEngine.NewStore(filename)
@@ -75,12 +76,28 @@ func TestSiteIDDspPercentHTTPRejectsWholeNumberPercent(t *testing.T) {
 	}
 	router := chi.NewRouter()
 	InitHttpRoutes(router, nil, store)
-
-	put := httptest.NewRequest(http.MethodPut, PutSiteIDDspPercentsMapUrl, strings.NewReader(`{"site":{"dsp":25}}`))
-	put.Header.Set("Content-Type", "application/json")
-	recorder := httptest.NewRecorder()
-	router.ServeHTTP(recorder, put)
-	if recorder.Code != http.StatusBadRequest {
-		t.Fatalf("PUT invalid percent status=%d body=%s", recorder.Code, recorder.Body.String())
+	for _, tt := range []struct {
+		name, body string
+		wantStatus int
+	}{
+		{"whole number percent", `{"site":{"US":{"dsp":25}}}`, http.StatusBadRequest},
+		{"old two-level shape", `{"site":{"dsp":0.25}}`, http.StatusUnprocessableEntity},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			put := httptest.NewRequest(http.MethodPut, PutSiteIDDspPercentsMapUrl, strings.NewReader(tt.body))
+			put.Header.Set("Content-Type", "application/json")
+			recorder := httptest.NewRecorder()
+			router.ServeHTTP(recorder, put)
+			if recorder.Code != tt.wantStatus {
+				t.Fatalf("PUT status=%d want=%d body=%s", recorder.Code, tt.wantStatus, recorder.Body.String())
+			}
+			persisted, err := os.ReadFile(filename)
+			if err != nil || string(persisted) != original {
+				t.Fatalf("invalid update changed the persisted map: %q (%v)", persisted, err)
+			}
+			if got, ok := store.Lookup("site", "US", "dsp"); !ok || got != 0.2 {
+				t.Fatalf("invalid update changed the active rule: (%v,%v)", got, ok)
+			}
+		})
 	}
 }

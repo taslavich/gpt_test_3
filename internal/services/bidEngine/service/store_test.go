@@ -18,42 +18,59 @@ func writeMap(t *testing.T, body string) string {
 func TestLookupSupportsCommaKeysAndALL(t *testing.T) {
 	store, err := NewStore(writeMap(t, `{
 		"site-a, site-b": {
-			"dsp-one, dsp-two": 0.25,
-			"ALL": 0.30
+			"US, PHL": {"dsp-one, dsp-two": 0.25, "ALL": 0.30},
+			"ALL": {"dsp-one": 0.35, "ALL": 0.40}
 		},
 		"ALL": {
-			"dsp-fallback": 0.40
-		}
+			"US": {"dsp-one": 0.45, "ALL": 0.50},
+			"ALL": {"dsp-one": 0.55, "ALL": 0.60}
+		},
+		"site-zero": {"US": {"dsp-one": 0}},
+		"site-empty-geo": {"": {"dsp-one": 0.10}}
 	}`))
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	tests := []struct {
-		site, dsp string
-		want      float32
-		matched   bool
+	for _, tt := range []struct {
+		site, geo, dsp string
+		want           float32
 	}{
-		{"site-a", "dsp-one", 0.25, true},
-		{"site-b", "dsp-two", 0.25, true},
-		{"site-a", "other", 0.30, true},
-		{"other", "dsp-fallback", 0.40, true},
-		{"other", "other", 0, false},
-	}
-	for _, tt := range tests {
-		got, matched := store.Lookup(tt.site, tt.dsp)
-		if got != tt.want || matched != tt.matched {
-			t.Fatalf("Lookup(%q,%q)=(%v,%v), want (%v,%v)", tt.site, tt.dsp, got, matched, tt.want, tt.matched)
+		{"site-a", "US", "dsp-one", 0.25},
+		{"site-b", "PHL", "dsp-two", 0.25},
+		{"site-a", "US", "other", 0.30},
+		{"site-a", "other", "dsp-one", 0.35},
+		{"site-a", "other", "other", 0.40},
+		{"other", "US", "dsp-one", 0.45},
+		{"other", "US", "other", 0.50},
+		{"other", "other", "dsp-one", 0.55},
+		{"other", "other", "other", 0.60},
+		{"site-zero", "US", "dsp-one", 0},
+		{"site-a", "", "dsp-one", 0.35},
+		{"site-empty-geo", "", "dsp-one", 0.10},
+	} {
+		got, matched := store.Lookup(tt.site, tt.geo, tt.dsp)
+		if got != tt.want || !matched {
+			t.Errorf("Lookup(%q,%q,%q)=(%v,%v), want (%v,true)", tt.site, tt.geo, tt.dsp, got, matched, tt.want)
 		}
 	}
 }
 
 func TestValidationRejectsOutOfRangeAndDuplicateRules(t *testing.T) {
-	if _, err := NewStore(writeMap(t, `{"site":{"dsp":1.01}}`)); err == nil {
-		t.Fatal("percent above 1 must be rejected")
-	}
-	if _, err := NewStore(writeMap(t, `{"site-a,site-b":{"dsp":0.2},"site-a":{"dsp":0.3}}`)); err == nil {
-		t.Fatal("duplicate expanded pair must be rejected")
+	for _, tt := range []struct{ name, body string }{
+		{"percent above 1", `{"site":{"US":{"dsp":1.01}}}`},
+		{"duplicate expanded site", `{"site-a,site-b":{"US":{"dsp":0.2}},"site-a":{"US":{"dsp":0.3}}}`},
+		{"duplicate expanded GEO", `{"site":{"US,PHL":{"dsp":0.2},"PHL":{"dsp":0.3}}}`},
+		{"duplicate expanded DSP", `{"site":{"US":{"a,b":0.2,"b":0.3}}}`},
+		{"null GEO object", `{"site":null}`},
+		{"null DSP object", `{"site":{"US":null}}`},
+		{"old two-level shape", `{"site":{"dsp":0.2}}`},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			if _, err := NewStore(writeMap(t, tt.body)); err == nil {
+				t.Fatal("invalid rule accepted")
+			}
+		})
 	}
 }
 
@@ -63,7 +80,7 @@ func TestEmptyFileAndMissingFileMeanNoOverride(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, matched := store.Lookup("site", "dsp"); matched {
+	if _, matched := store.Lookup("site", "US", "dsp"); matched {
 		t.Fatal("empty file must not create an override")
 	}
 
@@ -72,7 +89,7 @@ func TestEmptyFileAndMissingFileMeanNoOverride(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, matched := store.Lookup("site", "dsp"); matched {
+	if _, matched := store.Lookup("site", "US", "dsp"); matched {
 		t.Fatal("missing file must not create an override")
 	}
 }
@@ -83,17 +100,29 @@ func TestUpdatePersistsAndPublishesExpandedSnapshot(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := store.Update(Map{"a,b": {"x,y": 0.35}}); err != nil {
+	if err := store.Update(Map{"a,b": {"US,PHL": {"x,y": 0.35}}}); err != nil {
 		t.Fatal(err)
 	}
-	if got, ok := store.Lookup("b", "y"); !ok || got != 0.35 {
+	if got, ok := store.Lookup("b", "PHL", "y"); !ok || got != 0.35 {
 		t.Fatalf("runtime lookup=(%v,%v), want (0.35,true)", got, ok)
 	}
 	raw, err := store.ReadRaw()
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := raw["a,b"]["x,y"]; got != 0.35 {
+	if got := raw["a,b"]["US,PHL"]["x,y"]; got != 0.35 {
 		t.Fatalf("raw persisted percent=%v want 0.35", got)
+	}
+}
+
+func TestSnapshotCannotChangeRuntimeRule(t *testing.T) {
+	store, err := NewStore(writeMap(t, `{"site":{"US":{"dsp":0.25}}}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	snapshot := store.Snapshot()
+	snapshot["site"]["US"]["dsp"] = 0.5
+	if got, ok := store.Lookup("site", "US", "dsp"); !ok || got != 0.25 {
+		t.Fatalf("mutated snapshot affected lookup: (%v,%v)", got, ok)
 	}
 }

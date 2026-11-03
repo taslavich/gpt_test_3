@@ -243,8 +243,8 @@ func getWinnerBidInternalV25(
 			}
 			percent := profitPercent
 			if sitePercentStore != nil {
-				if sitePercent, matched := sitePercentStore.Lookup(siteID, bids[k].domain); matched {
-					// site_id + DSP is authoritative for ordinary DSP responses.
+				if sitePercent, matched := sitePercentStore.Lookup(siteID, country, bids[k].domain); matched {
+					// site_id + GEO + DSP is authoritative for ordinary DSP responses.
 					// When it matches, the legacy SSP + GEO + DSP percent map is ignored.
 					percent = sitePercent
 				} else {
