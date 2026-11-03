@@ -3,7 +3,7 @@
   // Replaced by the server with operator-configured pins; never taken from a query string.
   const pins = __TWINBID_BOOTSTRAP_SETTINGS__;
   const tag = document.currentScript;
-  const code = tag?.dataset.adCodeId;
+  const code = tag?.getAttribute('food');
   if (!code || code.length > 80 || !tag?.src || !crypto.randomUUID) return;
   const sdk = window.__twinbidSDKV1 ||= { pending: new Map(), routesByTag: new WeakMap(), notices: new Set(), configurations: new Map() };
   if (window.__twinbidPopV1?.codes.has(code) || sdk.pending.has(code)) return;
@@ -60,7 +60,7 @@
   };
   const load = (url, manifest) => new Promise((resolve, reject) => {
     const child = document.createElement('script'); child.async = true; child.src = url;
-    child.dataset.adCodeId = code;
+    child.setAttribute('food', code);
     if (tag.nonce) child.nonce = tag.nonce;
     child.referrerPolicy = 'no-referrer'; child.crossOrigin = 'anonymous';
     if (manifest?.enabled && pins.runtime_integrity) child.integrity = pins.runtime_integrity;

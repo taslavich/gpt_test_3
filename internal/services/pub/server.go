@@ -123,7 +123,7 @@ func (s *Server) Handler() http.Handler {
 	m.HandleFunc("POST /request", s.request)
 	m.HandleFunc("GET /delivery/{token}", s.delivery)
 	m.HandleFunc("POST /confirm/{token}", s.confirm)
-	m.HandleFunc("GET /static/adManager.js", s.script)
+	m.HandleFunc("GET "+pageHelperPath, s.script)
 	s.registerInfrastructureRoutes(m)
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Admit only connections from the configured Nginx; never trust a forwarded

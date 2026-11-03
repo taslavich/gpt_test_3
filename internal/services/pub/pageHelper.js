@@ -1,9 +1,9 @@
 (() => {
   'use strict';
   const tag = document.currentScript;
-  const code = tag?.dataset.adCodeId;
+  const code = tag?.getAttribute('food');
   if (!code || !tag.src || !crypto.randomUUID) return;
-  const base = new URL(tag.src).origin;
+  const base = new URL(/* publisher-api-origin */ tag.src).origin;
   const routingContext = window.__twinbidSDKV1?.routesByTag.get(tag);
   const route = routingContext && window.__twinbidCreateRouteV1(routingContext);
   const root = window.__twinbidPopV1 ||= { codes: new Map(), session: crypto.randomUUID() };

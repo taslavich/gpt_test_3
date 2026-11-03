@@ -5,8 +5,8 @@ fix already applied. AGENTS.md is absent in both. No older archive/patch was use
 
 ## Behavior and boundaries
 
-Default PUB_ANTIBLOCK_ENABLED=false. Existing /static/adManager.js and all old URLs
-remain. The SDK also works with the flag off: it loads the old runtime using
+Default PUB_ANTIBLOCK_ENABLED=false. The public runtime is /static/pageHelper.js.
+The SDK also works with the flag off: it loads that runtime using
 PUB_PUBLIC_URL, without infrastructure selection or a new auction protocol.
 
 When enabled, a stable /sdk.js loads /infra.json from the pinned stable origin,
@@ -15,7 +15,7 @@ The child runtime uses anonymous CORS and a pinned SHA-384 SRI hash. Transport
 fetches reject redirects; a session token cannot follow a 307 to an unknown origin.
 Infrastructure caches are scoped by stable origin/fingerprint, not shared across
 different infrastructure configurations.
-It passes data-ad-code-id through the actual dynamically created script tag and
+It passes the food attribute through the actual dynamically created script tag and
 keeps routing context in a WeakMap. Duplicate SDK/legacy/late script executions
 share __twinbidPopV1, one page session, click listener and quota per Code. Nonce is
 passed to the child script. SPA/history/BFCache behavior remains the existing behavior.
@@ -145,7 +145,7 @@ and installed runtime dependencies. Keep scripts/pub-client/{filter.cjs,package*
 node_modules} on the server and set PUB_ANTIBLOCK_FILTER_SCRIPT to its absolute path.
 Production minification uses pinned esbuild 0.25.12 and identifier mangling, without
 property mangling, eval, string packers or obfuscated Go/business logic. Readable
-sdk.js/routing.js/adManager.js stay in the repository; --check detects stale output.
+sdk.js/routing.js/pageHelper.js stay in the repository; --check detects stale output.
 
 1. Register domains manually, install DNS and certificates. Do not use the test
    domains from tests in production. Use no wildcard/untrusted origins in the pool.
@@ -156,17 +156,22 @@ sdk.js/routing.js/adManager.js stay in the repository; --check detects stale out
    Ad Code before enabling. Check /infra.json and /metrics after the first scan.
 4. Set PUB_ANTIBLOCK_ENABLED=true in pub.env, restart ONLY pub. Set the optional
    cabinet PUBLISHER_PUBLIC_SCRIPT_URL to https://STABLE_DOMAIN/sdk.js, restart
-   cabinet, and issue new snippets with the SAME data-ad-code-id attribute:
+   cabinet, and issue snippets with the food attribute:
 
 ```html
-<script async src="https://STABLE_DOMAIN/sdk.js" data-ad-code-id="tb_EXISTING_CODE"></script>
+<script async src="https://STABLE_DOMAIN/sdk.js" food="tb_EXISTING_CODE"></script>
 ```
 
 Do not change the Ad Code ID, visitor/session storage, quotas or financial interval.
-Old published /static/adManager.js snippets continue to use the old same-origin
-request/delivery path. Cabinet's empty override continues returning that old URL.
-The frontend must use the returned public_script_url rather than construct a URL;
-frontend sources are not present and have not been altered.
+Direct snippets use /static/pageHelper.js and food. If the cabinet still uses the
+former default URL, set PUBLISHER_PUBLIC_SCRIPT_URL to the public pageHelper.js URL
+for direct snippets, or use the SDK URL above. The frontend must use the returned
+public_script_url and emit food; frontend sources are not part of this repository.
+Serve the Publisher routes and pageHelper.js on the HTTPS hostname configured
+as PUB_PUBLIC_URL. Point the Nginx Publisher upstream to that hostname on port
+8087 (for example, carloverrcvbg.site:8087). The hostname must resolve from
+Nginx to a reachable Publisher listener. The Publisher bind address, trusted
+proxy settings, RTB upstream URLs and SDK pool routing are unchanged.
 
 ## DNS/TLS/Nginx
 

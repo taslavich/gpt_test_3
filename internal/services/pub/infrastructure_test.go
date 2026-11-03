@@ -208,17 +208,29 @@ func TestInfrastructureAliasesCORSAndLegacySDK(t *testing.T) {
 	s.InfraSettings = settings
 	s.Infrastructure = newInfrastructure(context.Background(), settings, s.Redis)
 	h := s.Handler()
-	for _, path := range []string{"/static/adManager.js", "/sdk.js", "/assets/runtime.js", "/infra.json", "/infra/health"} {
+	for _, path := range []string{pageHelperPath, "/sdk.js", "/assets/runtime.js", "/infra.json", "/infra/health"} {
 		w := httptest.NewRecorder()
 		h.ServeHTTP(w, trustedRequest("GET", path, nil))
 		if w.Code != 200 {
 			t.Fatal(path, w.Code, w.Body.String())
+		}
+		if path == pageHelperPath && (!strings.Contains(w.Body.String(), `new URL("`+s.Config.PublicURL+`").origin`) ||
+			strings.Contains(w.Body.String(), "/* publisher-api-origin */")) {
+			t.Fatal("direct script must use the configured Publisher API origin")
 		}
 		if path == "/sdk.js" && strings.Contains(w.Body.String(), "__TWINBID_BOOTSTRAP_SETTINGS__") {
 			t.Fatal("unreplaced SDK pins")
 		}
 	}
 	w := httptest.NewRecorder()
+	h.ServeHTTP(w, trustedRequest("GET", "/static/adManager.js", nil))
+	if w.Code != http.StatusNotFound {
+		t.Fatal("retired script route", w.Code)
+	}
+	if !strings.HasSuffix(settings.LegacyRuntime, pageHelperPath) {
+		t.Fatal("fallback must point to pageHelper.js", settings.LegacyRuntime)
+	}
+	w = httptest.NewRecorder()
 	h.ServeHTTP(w, trustedRequest("OPTIONS", "/x/query", nil))
 	if w.Code != 204 || w.Header().Get("Access-Control-Allow-Origin") != "*" || !strings.Contains(w.Header().Get("Access-Control-Allow-Headers"), "X-TwinBid-Infrastructure") || w.Header().Get("Access-Control-Allow-Credentials") != "" {
 		t.Fatal(w.Code, w.Header())

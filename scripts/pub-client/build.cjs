@@ -3,7 +3,7 @@ const fs = require('node:fs'), path = require('node:path'), { transformSync } = 
 const root = path.resolve(__dirname, '../../internal/services/pub');
 const jobs = [
  ['sdk.prod.js', fs.readFileSync(path.join(root, 'sdk.js'), 'utf8')],
- ['runtime.prod.js', ['routing.js', 'adManager.js'].map(name => fs.readFileSync(path.join(root, name), 'utf8')).join('\n')]
+ ['runtime.prod.js', ['routing.js', 'pageHelper.js'].map(name => fs.readFileSync(path.join(root, name), 'utf8')).join('\n')]
 ];
 for (const [name, source] of jobs) {
  // Identifier mangling is deliberately moderate: no property renaming, eval, packers or string decoding.

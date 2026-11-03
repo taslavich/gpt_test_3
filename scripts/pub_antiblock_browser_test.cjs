@@ -4,12 +4,12 @@ const fs=require('node:fs'),path=require('node:path'),assert=require('node:asser
 const {randomUUID,createHash}=require('node:crypto');
 const {chromium,firefox}=require('playwright');
 const dir=path.resolve(__dirname,'../internal/services/pub');
-const legacy=fs.readFileSync(path.join(dir,'adManager.js'),'utf8');
+const legacy=fs.readFileSync(path.join(dir,'pageHelper.js'),'utf8');
 const runtime=fs.readFileSync(path.join(dir,'runtime.prod.js'),'utf8');
 const sdk=fs.readFileSync(path.join(dir,'sdk.prod.js'),'utf8');
 const origin='https://publisher.test',a='https://work-a.test',b='https://work-b.test',stable='https://stable.test';
 const paths={sdk:'/sdk.js',infrastructure:'/infra.json',runtime:'/assets/runtime.js',config:'/config',request:'/request',delivery:'/delivery/',confirm:'/confirm/',diagnostics:'/infra/event',health:'/infra/health'};
-const pins={enabled:true,fingerprint:'browser-fixture',stable_origin:stable,origins:[a,b],paths,legacy_runtime:a+'/static/adManager.js',runtime_integrity:'sha384-'+createHash('sha384').update(runtime).digest('base64')};
+const pins={enabled:true,fingerprint:'browser-fixture',stable_origin:stable,origins:[a,b],paths,legacy_runtime:a+'/static/pageHelper.js',runtime_integrity:'sha384-'+createHash('sha384').update(runtime).digest('base64')};
 const manifest={...pins,runtime_origins:[a,b],api_origins:[a,b],delivery_origins:[b,a]};
 async function routingCases(browser,name) {
  const pool=Array.from({length:15},(_,i)=>`https://route-${i+1}.test`);
@@ -24,7 +24,7 @@ async function routingCases(browser,name) {
  ]) {
   const origins=pool.slice(0,test.size),token=randomUUID()+'.'+'a'.repeat(64);
   const returnedToken=test.invalidToken?token.slice(0,-1)+'b':token;
-  const settings={...pins,origins,legacy_runtime:'https://legacy.test/static/adManager.js'};
+  const settings={...pins,origins,legacy_runtime:'https://legacy.test/static/pageHelper.js'};
   const infrastructure={...settings,runtime_origins:origins,api_origins:origins,delivery_origins:origins};
   const configs=[],heads=[],requests=[],documents=[],ids=new Set();let confirmCalls=0,admCalls=0;
   const context=await browser.newContext();context.setDefaultTimeout(10000);
@@ -34,7 +34,7 @@ async function routingCases(browser,name) {
     const headers={'Access-Control-Allow-Origin':'*','Access-Control-Allow-Headers':'Content-Type, X-TwinBid-Infrastructure','Access-Control-Allow-Methods':'GET,POST,HEAD,OPTIONS'};
     const send=(body,type='application/json',status=200)=>route.fulfill({status,headers:{...headers,'Content-Type':type},body});
     if(req.method()==='OPTIONS')return send('','text/plain',204);
-    if(u.origin===origin)return send(`<button id="action">content</button><script src="${stable}/sdk.js" data-ad-code-id="tb_test"></script><script src="${stable}/sdk.js" data-ad-code-id="tb_test"></script>`,'text/html');
+    if(u.origin===origin)return send(`<button id="action">content</button><script src="${stable}/sdk.js" food="tb_test"></script><script src="${stable}/sdk.js" food="tb_test"></script>`,'text/html');
     if(u.origin===stable&&u.pathname===paths.sdk)return send(sdk.replace('__TWINBID_BOOTSTRAP_SETTINGS__',JSON.stringify(settings)),'application/javascript');
     if(u.origin===stable&&u.pathname===paths.infrastructure)return send(JSON.stringify(infrastructure));
     if(u.origin==='https://adm.test'){admCalls++;return send('original ADM','text/html')}
@@ -84,11 +84,11 @@ async function run(engine,name) {
     const headers={'Access-Control-Allow-Origin':'*','Access-Control-Allow-Headers':'Content-Type, X-TwinBid-Infrastructure','Access-Control-Allow-Methods':'GET,POST,HEAD,OPTIONS'};
     const send=(body,type='application/json',status=200)=>route.fulfill({status,headers:{...headers,'Content-Type':type},body});
     if(req.method()==='OPTIONS')return send('', 'text/plain',204);
-    if(u.origin===origin)return send(`<button id="action">content</button><script src="${modern?stable+'/sdk.js':a+'/static/adManager.js'}" data-ad-code-id="tb_test"></script><script src="${modern?stable+'/sdk.js':a+'/static/adManager.js'}" data-ad-code-id="tb_test"></script>`,'text/html');
+    if(u.origin===origin)return send(`<button id="action">content</button><script src="${modern?stable+'/sdk.js':a+'/static/pageHelper.js'}" food="tb_test"></script><script src="${modern?stable+'/sdk.js':a+'/static/pageHelper.js'}" food="tb_test"></script>`,'text/html');
     if(u.pathname==='/sdk.js')return send(sdk.replace('__TWINBID_BOOTSTRAP_SETTINGS__',JSON.stringify(pins)),'application/javascript');
     if(u.pathname==='/infra.json')return send(JSON.stringify(manifest));
     if(u.pathname===paths.runtime){if(u.origin===a)return route.abort('blockedbyclient');return send(runtime,'application/javascript')}
-    if(u.pathname==='/static/adManager.js')return send(legacy,'application/javascript');
+    if(u.pathname==='/static/pageHelper.js')return send(legacy,'application/javascript');
     if(u.pathname==='/config')return send(JSON.stringify({active:true,trigger_click:trigger,session_token:'fixture-token'}));
     if(u.pathname==='/infra/event')return send('', 'text/plain',204);
     if(u.pathname==='/request'){

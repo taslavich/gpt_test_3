@@ -79,7 +79,7 @@ var infraPathPattern = regexp.MustCompile(`^/[A-Za-z0-9_/-]+(?:\.(?:js|json))?/?
 
 func (p infraPaths) validate() error {
 	all := []string{p.SDK, p.Infrastructure, p.Runtime, p.Config, p.Request, p.Delivery, p.Confirm, p.Diagnostics, p.Health}
-	reserved := map[string]bool{"/health": true, "/ready": true, "/metrics": true, "/static/adManager.js": true}
+	reserved := map[string]bool{"/health": true, "/ready": true, "/metrics": true, pageHelperPath: true}
 	seen := map[string]bool{}
 	for i, v := range all {
 		prefix := i == 5 || i == 6
@@ -104,7 +104,7 @@ func (p infraPaths) validate() error {
 	return nil
 }
 func infrastructureSettings(c Config) (infraSettings, error) {
-	s := infraSettings{Enabled: c.AntiBlockEnabled, Paths: defaultInfraPaths(), LegacyRuntime: strings.TrimRight(c.PublicURL, "/") + "/static/adManager.js", Rotate: c.AntiBlockAutoRotate, CheckInterval: c.AntiBlockCheckInterval, PollInterval: c.AntiBlockPollInterval, Timeout: c.AntiBlockHTTPTimeout, MaxBytes: c.AntiBlockMaxListBytes, FilterScript: c.AntiBlockFilterScript, Node: c.AntiBlockNode}
+	s := infraSettings{Enabled: c.AntiBlockEnabled, Paths: defaultInfraPaths(), LegacyRuntime: strings.TrimRight(c.PublicURL, "/") + pageHelperPath, Rotate: c.AntiBlockAutoRotate, CheckInterval: c.AntiBlockCheckInterval, PollInterval: c.AntiBlockPollInterval, Timeout: c.AntiBlockHTTPTimeout, MaxBytes: c.AntiBlockMaxListBytes, FilterScript: c.AntiBlockFilterScript, Node: c.AntiBlockNode}
 	if c.AntiBlockRoutes != "" {
 		d := json.NewDecoder(strings.NewReader(c.AntiBlockRoutes))
 		d.DisallowUnknownFields()
@@ -138,7 +138,7 @@ func infrastructureSettings(c Config) (infraSettings, error) {
 	if e != nil {
 		return s, fmt.Errorf("PUB_PUBLIC_URL: %w", e)
 	}
-	s.LegacyRuntime = legacy + "/static/adManager.js"
+	s.LegacyRuntime = legacy + pageHelperPath
 	seen := map[string]bool{}
 	for _, raw := range strings.Split(c.AntiBlockDomains, ",") {
 		o, e := publicOrigin(strings.TrimSpace(raw))
