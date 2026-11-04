@@ -31,3 +31,9 @@ export function publisherDirectLink(value?: string | null): string {
     throw new Error("Invalid direct_link_url");
   return value;
 }
+
+export function buildDirectLinkSnippet(url: string, label: string): string {
+  return `<a href="${escapeAttribute(publisherDirectLink(url))}" referrerpolicy="origin">
+  ${escapeAttribute(label)}
+</a>`;
+}

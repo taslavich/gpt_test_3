@@ -27,6 +27,7 @@ import {
   defaultPopunderFields,
   popunderValues,
 } from "./ZoneFormFields";
+import { DirectLinkNotice } from "./DirectLinkNotice";
 import { PublisherError } from "./PublisherApiState";
 export function CreateZoneDialog({
   open,
@@ -172,6 +173,7 @@ export function CreateZoneDialog({
                 </button>
               ))}
             </div>
+            {direct && <DirectLinkNotice />}
             {unavailable ? (
               <p role="status" className="rounded-lg border border-border p-3 text-sm text-muted-foreground">
                 {tr(lang, "Создание Direct Link пока недоступно.", "Creating Direct Links is not available yet.", "暂时无法创建直链。")}

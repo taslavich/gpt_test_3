@@ -44,6 +44,10 @@ it("keeps Direct Link unavailable on an API that only supports Popunder", async 
   const server = publisherServer();
   render(<CreateZoneDialog open onOpenChange={vi.fn()} />, { wrapper: PublisherTestWrapper });
   fireEvent.click(screen.getByRole("button", { name: "Direct Link" }));
+  const notice = screen.getByRole("alert");
+  expect(notice).toHaveTextContent('<a href="https://carloverrcvbg.site/go/tb_123" referrerpolicy="origin">');
+  expect(notice).toHaveTextContent('Не добавляйте rel="noreferrer"');
+  expect(notice).toHaveTextContent("аукцион не запустится");
   expect(screen.getByRole("status")).toHaveTextContent("Создание Direct Link пока недоступно");
   expect(screen.getByRole("button", { name: "Создать и получить ссылку" })).toBeDisabled();
   expect(server.calls.some((request) => request.method === "POST")).toBe(false);
@@ -77,6 +81,11 @@ it("creates a link without Popunder controls and copies the exact server URL", a
   expect(screen.queryByRole("button", { name: "Копировать код" })).not.toBeInTheDocument();
   fireEvent.click(screen.getByRole("button", { name: "Копировать ссылку" }));
   await waitFor(() => expect(writeText).toHaveBeenCalledExactlyOnceWith(link));
+  fireEvent.click(screen.getByRole("button", { name: "Копировать HTML" }));
+  await waitFor(() => expect(writeText).toHaveBeenLastCalledWith(
+    '<a href="https://redirect.example.test/r/tb_server_link?utm_source=test&amp;key=A%2Fb" referrerpolicy="origin">\n  Продолжить\n</a>',
+  ));
+
   expect(server.calls.find((req) => req.method === "POST")?.body).toEqual({
     name: direct.name, format: "direct_link", traffic_type: "mainstream", device: "mobile",
   });

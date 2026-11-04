@@ -9,7 +9,7 @@ import {
 import { useLanguage } from "@/contexts/LanguageContext";
 import { publisherUiText as tr } from "@/lib/publisherUiText";
 import { publisherFormatLabel } from "@/lib/publisherInventory";
-import { buildJsSnippet, publisherDirectLink } from "@/lib/publisherSnippets";
+import { buildDirectLinkSnippet, buildJsSnippet, publisherDirectLink } from "@/lib/publisherSnippets";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import {
@@ -19,6 +19,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { DirectLinkNotice } from "./DirectLinkNotice";
 import { PublisherError } from "./PublisherApiState";
 import { PublisherPlacementNotice } from "./PublisherPlacementNotice";
 import { PublisherDiagnostics } from "./PublisherDiagnostics";
@@ -33,11 +34,11 @@ export function ZoneCodeDialog({
     { adCodes, publicScriptUrl, loading, error: apiError, refetch } = usePublisher();
   const direct = code?.format === "direct_link";
   const current = adCodes.find((item) => item.ad_code_id === code?.ad_code_id) ?? code;
-  const [copied, setCopied] = useState(false),
+  const [copied, setCopied] = useState(""),
     [diagnostics, setDiagnostics] = useState(false),
     [copyError, setCopyError] = useState(false);
   useEffect(() => {
-    setCopied(false);
+    setCopied("");
     setDiagnostics(false);
     setCopyError(false);
   }, [code?.ad_code_id]);
@@ -61,12 +62,17 @@ export function ZoneCodeDialog({
   }
   if (code && !direct && !loading && !publicScriptUrl && !error)
     error = new ApiError(200, "The backend did not provide public_script_url");
-  const copy = async () => {
+  const directLinkHtml = direct && snippet
+    ? buildDirectLinkSnippet(snippet, tr(lang, "Продолжить", "Continue", "继续"))
+    : "";
+  const copy = async (value = snippet) => {
     try {
-      await navigator.clipboard.writeText(snippet);
-      setCopied(true);
+      await navigator.clipboard.writeText(value);
+      setCopied(value);
       setCopyError(false);
-      toast.success(direct
+      toast.success(value === directLinkHtml
+        ? tr(lang, "HTML скопирован", "HTML copied", "HTML 已复制")
+        : direct
         ? tr(lang, "Ссылка скопирована", "Link copied", "直链已复制")
         : tr(lang, "Код скопирован", "Code copied", "代码已复制"));
     } catch {
@@ -102,23 +108,29 @@ export function ZoneCodeDialog({
           </p>
         ) : (
           <Card className="space-y-4 p-4">
-            <p className="text-sm">
-              {direct ? tr(lang,
-                "Скопируйте ссылку и разместите её на кнопке или другом элементе. Переход открывает рекламную страницу. JS-код не нужен.",
-                "Copy the link and place it on a button or another element. Following it opens an ad page. No JavaScript is required.",
-                "复制直链并放置在按钮或其他元素上。点击直链会打开广告页面，无需安装 JavaScript。"
-              ) : tr(
-                lang,
-                "Добавьте тег один раз перед </head> или </body> в шаблон страниц, где должен работать этот код. Скопируйте его целиком, без изменений. Popunder открывается после выбранного клика пользователя, с учётом устройств, интервала и лимита показов.",
-                "Add the tag once before </head> or </body> in the template of pages where this code should run. Copy the entire tag without changes. Popunder opens after the selected user click, subject to device targeting, interval and serving limits.",
-                "在需要运行此代码的页面模板中，将标签添加一次，放在 </head> 或 </body> 之前。请完整复制标签，不要修改。Popunder 会在指定的用户点击后打开，并遵循设备、间隔和展示次数限制。",
-              )}
-            </p>
+            {direct ? (
+              <>
+                <DirectLinkNotice html={directLinkHtml} />
+                <Button onClick={() => void copy(directLinkHtml)}>
+                  {copied === directLinkHtml ? <Check className="mr-2 h-4 w-4" /> : <Copy className="mr-2 h-4 w-4" />}
+                  {tr(lang, "Копировать HTML", "Copy HTML", "复制 HTML")}
+                </Button>
+              </>
+            ) : (
+              <p className="text-sm">
+                {tr(
+                  lang,
+                  "Добавьте тег один раз перед </head> или </body> в шаблон страниц, где должен работать этот код. Скопируйте его целиком, без изменений. Popunder открывается после выбранного клика пользователя, с учётом устройств, интервала и лимита показов.",
+                  "Add the tag once before </head> or </body> in the template of pages where this code should run. Copy the entire tag without changes. Popunder opens after the selected user click, subject to device targeting, interval and serving limits.",
+                  "在需要运行此代码的页面模板中，将标签添加一次，放在 </head> 或 </body> 之前。请完整复制标签，不要修改。Popunder 会在指定的用户点击后打开，并遵循设备、间隔和展示次数限制。",
+                )}
+              </p>
+            )}
             <pre className="overflow-x-auto whitespace-pre-wrap break-all rounded-lg bg-muted p-4 text-xs">
               <code>{snippet}</code>
             </pre>
-            <Button onClick={() => void copy()}>
-              {copied ? (
+            <Button variant={direct ? "outline" : "default"} onClick={() => void copy()}>
+              {copied === snippet ? (
                 <Check className="mr-2 h-4 w-4" />
               ) : (
                 <Copy className="mr-2 h-4 w-4" />
@@ -171,9 +183,9 @@ export function ZoneCodeDialog({
         {copyError && (
           <p role="alert" className="text-sm text-destructive">
             {direct ? tr(lang,
-              "Браузер не разрешил копирование. Выделите ссылку и скопируйте вручную.",
-              "The browser blocked clipboard access. Select the link and copy it manually.",
-              "浏览器阻止了剪贴板访问，请选中直链并手动复制。"
+              "Браузер не разрешил копирование. Выделите HTML или ссылку и скопируйте вручную.",
+              "The browser blocked clipboard access. Select the HTML or link and copy it manually.",
+              "浏览器阻止了剪贴板访问，请选中 HTML 或直链并手动复制。"
             ) : tr(
               lang,
               "Браузер не разрешил копирование. Выделите код и скопируйте вручную.",
