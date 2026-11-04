@@ -122,6 +122,7 @@ func (s *Server) Handler() http.Handler {
 	})
 	m.HandleFunc("GET /config", s.publicConfig)
 	m.HandleFunc("POST /request", s.request)
+	m.HandleFunc("GET /go/{code}", s.directLink)
 	m.HandleFunc("GET /delivery/{token}", s.delivery)
 	m.HandleFunc("POST /confirm/{token}", s.confirm)
 	m.HandleFunc("GET "+pageHelperPath, s.script)
@@ -184,6 +185,10 @@ func (s *Server) publicConfig(w http.ResponseWriter, r *http.Request) {
 	code, e := s.code(r.Context(), r.URL.Query().Get("code"), epoch)
 	if e != nil {
 		respond(w, 404, map[string]string{"error": e.Error()})
+		return
+	}
+	if code.Format != "popunder" {
+		respond(w, 404, map[string]string{"error": "unknown_code"})
 		return
 	}
 	session := ""
@@ -289,6 +294,10 @@ func (s *Server) request(w http.ResponseWriter, r *http.Request) {
 		s.negative(w, r, in, code, "", "", "", e.Error(), 404)
 		return
 	}
+	if code.Format != "popunder" {
+		s.negative(w, r, in, code, "", "", "", "wrong_code_format", 404)
+		return
+	}
 	host, page, e := c.Page(in.PageURL)
 	if e != nil {
 		s.negative(w, r, in, code, "", "", "", "invalid_page_url", 400)
@@ -318,6 +327,11 @@ func (s *Server) request(w http.ResponseWriter, r *http.Request) {
 		reject(e.Error(), 403)
 		return
 	}
+	s.serveAuction(ctx, w, r, in, code, host, site, zone, epoch, false)
+}
+
+func (s *Server) serveAuction(ctx context.Context, w http.ResponseWriter, r *http.Request, in Request, code c.Code, host, site, zone, epoch string, direct bool) {
+	reject := func(reason string, status int) { s.negative(w, r, in, code, host, site, zone, reason, status) }
 	mobile := strings.Contains(strings.ToLower(r.UserAgent()), "mobile") || strings.Contains(strings.ToLower(r.UserAgent()), "android")
 	if (code.Device == "desktop" && mobile) || (code.Device == "mobile" && !mobile) {
 		reject("device", 403)
@@ -388,6 +402,10 @@ func (s *Server) request(w http.ResponseWriter, r *http.Request) {
 			reject("reservation_release_failed", 503)
 			return
 		}
+		if direct {
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
 		respond(w, 200, out)
 		return
 	}
@@ -408,6 +426,10 @@ func (s *Server) request(w http.ResponseWriter, r *http.Request) {
 	_, _, key := keys(zone, in.VisitorID, in.SessionID, in.ID)
 	if e = s.Redis.Set(work, key, outJSON, 5*time.Minute).Err(); e != nil {
 		reject("request_cache_failed", 503)
+		return
+	}
+	if direct {
+		http.Redirect(w, r, out.OpenURL, http.StatusFound)
 		return
 	}
 	respond(w, 200, out)
