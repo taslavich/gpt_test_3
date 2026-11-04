@@ -20,9 +20,10 @@ type CompiledRuleSet struct {
 }
 
 type RuleManager struct {
-	dspRules map[string]*CompiledRuleSet
-	sppRules map[string]*CompiledRuleSet
-	mu       sync.RWMutex
+	dspRules      map[string]*CompiledRuleSet
+	sppRules      map[string]*CompiledRuleSet
+	sppDomainAdds map[string]sppCIDAdd
+	mu            sync.RWMutex
 }
 
 func NewRuleManager() *RuleManager {
@@ -97,6 +98,7 @@ func (rm *RuleManager) ClearAllSPPRules() {
 	defer rm.mu.Unlock()
 
 	rm.sppRules = make(map[string]*CompiledRuleSet)
+	rm.sppDomainAdds = nil
 }
 
 // Статические авто-правила (создаются один раз)

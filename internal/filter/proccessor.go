@@ -86,7 +86,11 @@ func (fp *OptimizedFilterProcessor) ProcessResponseForSPPV25(sppURL string, resp
 		return &FilterResult{Allowed: false}
 	}
 	versionedSPPID := fmt.Sprintf("%s|v25", sppURL)
-	return fp.processResponseForSPPOptimized(versionedSPPID, fp.v25RespExtractor, resp)
+	result := fp.processResponseForSPPOptimized(versionedSPPID, fp.v25RespExtractor, resp)
+	if result.Allowed {
+		fp.addMissingSPPFieldsV25(sppURL, resp)
+	}
+	return result
 }
 
 // Оптимизированный метод с рекурсивной проверкой для SPP

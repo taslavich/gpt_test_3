@@ -1,5 +1,10 @@
 {
   "version": "1.0",
   "spps": {
+    "oinkmedia.com": {
+      "add": [
+        {"field": "bid.cid", "pool_size": 50}
+      ]
+    }
   }
 }

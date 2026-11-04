@@ -462,6 +462,10 @@ func (s *Server) GetBids_V2_5(
 		jobs = append(jobs, demandJob{endpoint: endpoint, domain: domain, jsonData: jsonData, client: client})
 	}
 
+	sspDomain := DeletePrefix(req.GetSspDomain())
+	if sspDomain == "" {
+		sspDomain = req.GetSspDomain()
+	}
 	codesCh := make(chan *dspDomainCode, len(jobs))
 	responsesCh := make(chan *dspDomainResp, len(jobs))
 	var wg sync.WaitGroup
@@ -481,7 +485,7 @@ func (s *Server) GetBids_V2_5(
 			if demandResp == nil {
 				return
 			}
-			if s.processor != nil && !s.processor.ProcessResponseForSPPV25(DeletePrefix(req.SspDomain), demandResp).Allowed {
+			if s.processor != nil && !s.processor.ProcessResponseForSPPV25(sspDomain, demandResp).Allowed {
 				return
 			}
 			if strings.HasSuffix(req.SspDomain, "kadam.net") {
@@ -536,6 +540,9 @@ func (s *Server) GetBids_V2_5(
 	winnerBasePrices := map[string]float64{}
 	if adv.err != nil {
 		log.Printf("ADV auction failed; DSP results remain available: %v", adv.err)
+		readyADV = nil
+	} else if readyADV != nil && s.processor != nil && !s.processor.ProcessResponseForSPPV25(sspDomain, readyADV).Allowed {
+		// SSP rejection removes the ready ADV response, allowing DSP fallback.
 		readyADV = nil
 	} else if readyADV != nil {
 		winnerUserIDs = cloneStringMap(adv.response.GetWinnerUserIds())

@@ -84,7 +84,17 @@ func (fl *FileRuleLoader) loadSPPRulesForVersion(filePath, version string) error
 		return err
 	}
 
+	rm := fl.ruleManager
+	ruleSets := make(map[string]*CompiledRuleSet, len(config.SPPs))
+	domainAdds := make(map[string]sppCIDAdd)
 	for sppID, sppSettings := range config.SPPs {
+		add, err := compileSPPCIDAdd(sppSettings, "domain:"+sppID)
+		if err != nil {
+			return fmt.Errorf("SSP %q: %w", sppID, err)
+		}
+		if add.value != "" || add.random {
+			domainAdds[sppID] = add
+		}
 		var rules []RuleNode
 		switch version {
 		case "v25":
@@ -104,8 +114,11 @@ func (fl *FileRuleLoader) loadSPPRulesForVersion(filePath, version string) error
 			collectAllRules(rootNode, &allRules)
 		}
 		versionedSPPID := fmt.Sprintf("%s|%s", sppID, version)
-		fl.ruleManager.SetSPPRules(versionedSPPID, rootNodes, allRules)
+		ruleSets[versionedSPPID] = rm.compileRules(rootNodes, allRules)
 	}
+	rm.mu.Lock()
+	rm.sppRules, rm.sppDomainAdds = ruleSets, domainAdds
+	rm.mu.Unlock()
 	return nil
 }
 

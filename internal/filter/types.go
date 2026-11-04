@@ -194,7 +194,9 @@ type VersionedDSPSettings struct {
 }
 
 type VersionedSPPSettings struct {
-	V25 []RuleNode `json:"v25,omitempty"`
+	V25       []RuleNode     `json:"v25,omitempty"`
+	Add       []sppAdd       `json:"add,omitempty"`
+	AddRandom []sppAddRandom `json:"add_random,omitempty"`
 }
 
 type VersionedRuleConfig struct {
