@@ -6,6 +6,7 @@ import {
   usePublisherResource,
   type PublisherAdCode,
 } from "@/contexts/PublisherContext";
+import { publisherFormatLabel } from "@/lib/publisherInventory";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { publisherUiText as tr, trafficLabels } from "@/lib/publisherUiText";
 import { Button } from "@/components/ui/button";
@@ -28,6 +29,7 @@ import {
 import { PublisherAsync, PublisherError } from "./PublisherApiState";
 import {
   ZoneSettingsFields,
+  PublisherDeviceFields,
   defaultPopunderFields,
   popunderValues,
 } from "./ZoneFormFields";
@@ -56,7 +58,7 @@ export function EditZoneDialog({
     if (c) {
       setName(c.name);
       setTraffic(c.traffic_type);
-      setFields({
+      setFields(c.format === "direct_link" ? { ...defaultPopunderFields(), device: c.device } : {
         device: c.device,
         trigger_click: c.trigger_click,
         frequency_minutes: String(c.frequency_minutes),
@@ -75,7 +77,7 @@ export function EditZoneDialog({
     try {
       await updateAdCode(current.data.ad_code_id, {
         name: name.trim(),
-        ...popunderValues(fields),
+        ...(current.data.format === "direct_link" ? { device: fields.device } : popunderValues(fields)),
         version: current.data.version,
         ...(traffic !== current.data.traffic_type
           ? { traffic_type: traffic }
@@ -109,7 +111,7 @@ export function EditZoneDialog({
               "广告代码设置",
             )}
           </DialogTitle>
-          <DialogDescription>Popunder · {code?.name}</DialogDescription>
+          <DialogDescription>{publisherFormatLabel(code?.format ?? "")} · {code?.name}</DialogDescription>
         </DialogHeader>
         <PublisherAsync
           loading={current.isPending}
@@ -160,7 +162,9 @@ export function EditZoneDialog({
                     </SelectContent>
                   </Select>
                 </div>
-                <ZoneSettingsFields value={fields} onChange={setFields} />
+                {current.data.format === "direct_link" ? (
+                  <PublisherDeviceFields value={fields.device} onChange={(device) => setFields({ ...fields, device })} />
+                ) : <ZoneSettingsFields value={fields} onChange={setFields} />}
               </fieldset>
               {error && (
                 <PublisherError error={error} retry={current.refetch} />

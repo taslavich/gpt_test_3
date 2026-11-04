@@ -3,7 +3,7 @@ import { ChevronDown, Copy, Pencil, Plus, Search, Trash2 } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { publisherFormatLabel } from "@/lib/publisherInventory";
+import { publisherCodeFormatOptions, publisherFormatLabel } from "@/lib/publisherInventory";
 import { PublisherPlacementNotice } from "@/components/publisher/PublisherPlacementNotice";
 import { PublisherStatsFilter } from "@/components/publisher/PublisherStatsFilter";
 import { Switch } from "@/components/ui/switch";
@@ -71,9 +71,9 @@ export default function PublisherZones() {
           <p className="mt-1 text-sm text-muted-foreground">
             {tr(
               lang,
-              "Popunder-коды и автоматически обнаруженные зоны.",
-              "Popunder codes and automatically detected zones.",
-              "Popunder 代码与自动识别的广告位。",
+              "Управляйте рекламными кодами и прямыми ссылками.",
+              "Manage ad codes and direct links.",
+              "管理广告代码和直链。",
             )}
           </p>
         </div>
@@ -107,16 +107,16 @@ export default function PublisherZones() {
             )}
           />
         </div>
-        <PublisherStatsFilter id="publisher-code-format" allLabel={tr(lang,"Все форматы","All formats","全部格式")} label={tr(lang,"Формат","Format","格式")} options={[{value:"popunder",label:"Popunder"}]} value={format} onChange={setFormat} />
+        <PublisherStatsFilter id="publisher-code-format" allLabel={tr(lang,"Все форматы","All formats","全部格式")} label={tr(lang,"Формат","Format","格式")} options={publisherCodeFormatOptions} value={format} onChange={setFormat} />
       </Card>
       <PublisherAsync loading={p.loading} error={p.error} retry={p.refetch}>
         {!items.length ? (
           <PublisherEmpty>
             {tr(
               lang,
-              "Кодов на этой странице нет. Создайте Popunder-код для установки.",
-              "No codes on this page. Create a Popunder code to install.",
-              "本页暂无代码，请创建 Popunder 代码并安装。",
+              "На этой странице нет рекламных кодов.",
+              "There are no ad codes on this page.",
+              "本页暂无广告代码。",
             )}
           </PublisherEmpty>
         ) : (
@@ -182,7 +182,7 @@ export default function PublisherZones() {
                       onClick={() => setSelected(code)}
                     >
                       <Copy className="mr-1 h-4 w-4" />
-                      {tr(lang, "Код", "Code", "代码")}
+                      {code.format === "direct_link" ? tr(lang, "Ссылка", "Link", "直链") : tr(lang, "Код", "Code", "代码")}
                     </Button>
                     <Button
                       size="sm"

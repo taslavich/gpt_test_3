@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
+import { Link2 } from "lucide-react";
+import type { PublisherCodeFormat } from "@/api/publisher";
 import {
   usePublisher,
   type PublisherAdCode,
@@ -21,6 +23,7 @@ import {
 import { PublisherFormatVisual } from "./PublisherFormatVisual";
 import {
   ZoneSettingsFields,
+  PublisherDeviceFields,
   defaultPopunderFields,
   popunderValues,
 } from "./ZoneFormFields";
@@ -35,7 +38,10 @@ export function CreateZoneDialog({
   onCreated?: (code: PublisherAdCode) => void;
 }) {
   const { lang } = useLanguage(),
-    { createAdCode } = usePublisher();
+    { createAdCode, directLinkAvailable } = usePublisher();
+  const [format, setFormat] = useState<PublisherCodeFormat>("popunder");
+  const direct = format === "direct_link";
+  const unavailable = direct && !directLinkAvailable;
   const [name, setName] = useState(""),
     [traffic, setTraffic] = useState<TrafficType | "">("");
   const [fields, setFields] = useState(defaultPopunderFields),
@@ -45,6 +51,7 @@ export function CreateZoneDialog({
   useEffect(() => {
     if (open) {
       setName("");
+      setFormat("popunder");
       setTraffic("");
       setFields(defaultPopunderFields());
       setError(null);
@@ -52,7 +59,7 @@ export function CreateZoneDialog({
   }, [open]);
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (busy.current) return;
+    if (busy.current || unavailable) return;
     if (!traffic || !name.trim()) {
       toast.error(
         tr(
@@ -68,15 +75,13 @@ export function CreateZoneDialog({
     setPending(true);
     setError(null);
     try {
-      const code = await createAdCode({
-        name: name.trim(),
-        format: "popunder",
-        traffic_type: traffic,
-        ...popunderValues(fields),
-      });
-      toast.success(
-        tr(lang, "Рекламный код создан", "Ad code created", "广告代码已创建"),
-      );
+      const common = { name: name.trim(), traffic_type: traffic };
+      const code = await createAdCode(direct
+        ? { ...common, format: "direct_link", device: fields.device }
+        : { ...common, format: "popunder", ...popunderValues(fields) });
+      toast.success(direct
+        ? tr(lang, "Direct Link создан", "Direct Link created", "直链已创建")
+        : tr(lang, "Рекламный код создан", "Ad code created", "广告代码已创建"));
       onOpenChange(false);
       onCreated?.(code);
     } catch (err) {
@@ -99,7 +104,11 @@ export function CreateZoneDialog({
             {tr(lang, "Новый рекламный код", "New ad code", "新广告代码")}
           </DialogTitle>
           <DialogDescription>
-            {tr(
+            {direct ? tr(lang,
+              "Разместите ссылку на кнопке или в другом месте, где пользователь сможет по ней перейти. JS-код не нужен.",
+              "Place the link on a button or anywhere a user can follow it. No JavaScript is required.",
+              "将直链放在按钮或用户可点击的位置，无需安装 JavaScript。"
+            ) : tr(
               lang,
               "Установите код на сайт. Сайт и зона появятся после первого реального запроса.",
               "Install the code on a website. The site and zone appear after the first real request.",
@@ -148,11 +157,35 @@ export function CreateZoneDialog({
                 ))}
               </div>
             </div>
-            <div className="max-w-xs rounded-xl border border-primary bg-primary/10 p-3">
-              <PublisherFormatVisual format="popunder" active />
-              <p className="mt-3 font-medium">Popunder</p>
+            <div role="group" aria-label={tr(lang, "Формат рекламы", "Ad format", "广告形式")} className="grid gap-2 sm:grid-cols-2">
+              {(["popunder", "direct_link"] as const).map((option) => (
+                <button
+                  key={option}
+                  type="button"
+                  aria-pressed={format === option}
+                  onClick={() => { setFormat(option); setError(null); }}
+                  className={cn("flex items-center gap-3 rounded-xl border p-4 text-left",
+                    format === option ? "border-primary bg-primary/10" : "border-border hover:border-primary/50")}
+                >
+                  {option === "direct_link" && <Link2 className="h-5 w-5 shrink-0" aria-hidden="true" />}
+                  <span className="font-medium">{option === "popunder" ? "Popunder" : "Direct Link"}</span>
+                </button>
+              ))}
             </div>
-            <ZoneSettingsFields value={fields} onChange={setFields} />
+            {unavailable ? (
+              <p role="status" className="rounded-lg border border-border p-3 text-sm text-muted-foreground">
+                {tr(lang, "Создание Direct Link пока недоступно.", "Creating Direct Links is not available yet.", "暂时无法创建直链。")}
+              </p>
+            ) : direct ? (
+              <PublisherDeviceFields value={fields.device} onChange={(device) => setFields({ ...fields, device })} />
+            ) : (
+              <>
+                <div className="max-w-xs rounded-xl border border-primary bg-primary/10 p-3">
+                  <PublisherFormatVisual format="popunder" active />
+                </div>
+                <ZoneSettingsFields value={fields} onChange={setFields} />
+              </>
+            )}
           </fieldset>
           {error && <PublisherError error={error} />}
           <div className="flex flex-wrap justify-end gap-2 border-t border-border pt-4">
@@ -164,8 +197,8 @@ export function CreateZoneDialog({
             >
               {tr(lang, "Отмена", "Cancel", "取消")}
             </Button>
-            <Button type="submit" disabled={pending} className="h-auto min-h-10 whitespace-normal py-2 text-center">
-              {tr(
+            <Button type="submit" disabled={pending || unavailable} className="h-auto min-h-10 whitespace-normal py-2 text-center">
+              {direct ? tr(lang, "Создать и получить ссылку", "Create and get link", "创建并获取直链") : tr(
                 lang,
                 "Создать и получить код",
                 "Create and get code",

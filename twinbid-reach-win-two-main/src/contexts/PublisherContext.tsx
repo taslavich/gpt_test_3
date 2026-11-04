@@ -18,7 +18,7 @@ import {
   type PublisherPayout,
   type CreatePublisherPayout,
 } from "@/api/publisher";
-// Public marketing previews retain their format illustrations. Actual Codes are Popunder only.
+// The public landing page has its own format illustrations.
 export type ZoneFormat =
   | "banner"
   | "popunder"
@@ -34,6 +34,7 @@ interface PublisherContextValue {
   scope: string;
   adCodes: PublisherCodeDTO[];
   publicScriptUrl?: string;
+  directLinkAvailable: boolean;
   codePage: { limit: number; offset: number };
   setCodePage: (page: { limit: number; offset: number }) => void;
   loading: boolean;
@@ -109,6 +110,7 @@ export function PublisherProvider({ children }: { children: ReactNode }) {
         scope,
         adCodes: codes.data?.items || [],
         publicScriptUrl: codes.data?.public_script_url,
+        directLinkAvailable: codes.data?.supported_formats?.includes("direct_link") ?? false,
         codePage,
         setCodePage,
         loading: codes.isPending,

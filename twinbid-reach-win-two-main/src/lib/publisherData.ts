@@ -158,6 +158,7 @@ export function publisherErrorText(error: unknown, lang: string) {
   const languageIndex = lang === "ru" ? 0 : lang === "zh-CN" ? 2 : 1;
   if (error instanceof ApiError) {
     const details: Array<[boolean, [string, string, string]]> = [
+      [error.code === "PUBLISHER_DIRECT_LINK", ["Не удалось получить ссылку. Обновите данные и попробуйте снова.", "Could not retrieve the link. Refresh the data and try again.", "无法获取直链，请刷新数据后重试。"]],
       [error.code === "PAYOUT_STORAGE", ["Не удалось сохранить заявку. Проверьте настройки хранения данных в браузере.", "Could not save the request. Check your browser storage settings.", "无法保存申请，请检查浏览器存储设置。"]],
       [error.code === "PAYOUT_PENDING", ["Другая заявка на выплату ещё обрабатывается.", "Another payout request is still being processed.", "另一笔提现申请仍在处理中。"]],
       [error.code === "PAYOUT_BUSY", ["Заявка на выплату уже обрабатывается. Повторите попытку позже.", "A payout request is already being processed. Please try again later.", "提现申请正在处理中，请稍后重试。"]],

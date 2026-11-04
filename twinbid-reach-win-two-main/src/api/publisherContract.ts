@@ -42,25 +42,33 @@ const row = metrics
     last_request_at: z.string().nullable(),
   })
   .passthrough();
-const code = z
-  .object({
-    ad_code_id: z.string().min(1),
-    user_id: z.string().min(1),
-    short_code: z.string().min(1),
-    name: z.string(),
+const codeBase = {
+  ad_code_id: z.string().min(1),
+  user_id: z.string().min(1),
+  short_code: z.string().min(1),
+  name: z.string(),
+  traffic_type: z.enum(["adult", "mainstream"]),
+  device: z.enum(["all", "desktop", "mobile"]),
+  is_active: z.boolean(),
+  archived: z.boolean(),
+  version: z.number().int().positive(),
+  synced_version: z.number().int().nonnegative(),
+  created_at: z.string(),
+};
+const code = z.discriminatedUnion("format", [
+  z.object({
+    ...codeBase,
     format: z.literal("popunder"),
-    traffic_type: z.enum(["adult", "mainstream"]),
-    device: z.enum(["all", "desktop", "mobile"]),
-    is_active: z.boolean(),
-    archived: z.boolean(),
     trigger_click: z.union([z.literal(1), z.literal(2)]),
     frequency_minutes: z.number().min(0.1).max(10080),
     max_per_session: z.number().int().min(1).max(100000).nullable(),
-    version: z.number().int().positive(),
-    synced_version: z.number().int().nonnegative(),
-    created_at: z.string(),
-  })
-  .passthrough();
+  }).passthrough(),
+  z.object({
+    ...codeBase,
+    format: z.literal("direct_link"),
+    direct_link_url: z.string().nullish(),
+  }).passthrough(),
+]);
 const balance = z
   .object({
     cumulative_earned: money,
@@ -157,6 +165,7 @@ export function validatePublisherResponse<T>(
           ...page,
           items: z.array(code),
           public_script_url: z.string().min(1),
+          supported_formats: z.array(z.string()).optional(),
         })
       : path.startsWith("/ad-codes") && verb === "DELETE"
         ? z.object({ archived: z.literal(true) })

@@ -11,7 +11,7 @@ import {
 } from "@/lib/publisherData";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { publisherAllPages, publisherRowFormat } from "@/lib/publisherInventory";
+import { publisherAllPages, publisherCodeFormatOptions, publisherRowFormat } from "@/lib/publisherInventory";
 import { usePublisherCodeDirectory } from "@/components/publisher/usePublisherCodeDirectory";
 import { PublisherStatsFilter } from "@/components/publisher/PublisherStatsFilter";
 import { PublisherZoneTable } from "@/components/publisher/PublisherInventoryTable";
@@ -94,7 +94,7 @@ export default function PublisherSites() {
             )}
           />
         </div>
-        <PublisherStatsFilter id="publisher-site-format" allLabel={tr(lang,"Все форматы","All formats","全部格式")} label={tr(lang,"Формат","Format","格式")} options={[{value:"popunder",label:"Popunder"}]} value={format} onChange={value=>{setFormat(value);reset();}} />
+        <PublisherStatsFilter id="publisher-site-format" allLabel={tr(lang,"Все форматы","All formats","全部格式")} label={tr(lang,"Формат","Format","格式")} options={publisherCodeFormatOptions} value={format} onChange={value=>{setFormat(value);reset();}} />
         <PublisherStatsFilter id="publisher-site-code" allLabel={tr(lang,"Все коды","All codes","全部代码")} label={tr(lang,"Рекламный код","Ad code","广告代码")} options={codes.map(item=>({value:item.ad_code_id,label:item.name || tr(lang,"Без названия","Untitled","未命名")}))} value={code} onChange={value=>{setCode(value);reset();}} />
       </Card>
       <PublisherAsync

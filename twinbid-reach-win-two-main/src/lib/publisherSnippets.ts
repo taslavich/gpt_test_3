@@ -21,3 +21,13 @@ export function buildJsSnippet(
     throw new Error("Unsupported legacy installation URL");
   return `<script async src="${escapeAttribute(publicScriptUrl)}" food="${escapeAttribute(shortCode)}"></script>`;
 }
+
+/** Return the server's public link verbatim after checking that it is safe to copy. */
+export function publisherDirectLink(value?: string | null): string {
+  if (!value || !/^https:\/\//i.test(value) || /[\s\u0000-\u001f\u007f]/u.test(value))
+    throw new Error("Invalid direct_link_url");
+  const url = new URL(value);
+  if (url.protocol !== "https:" || !url.hostname || url.username || url.password)
+    throw new Error("Invalid direct_link_url");
+  return value;
+}

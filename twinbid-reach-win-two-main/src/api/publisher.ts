@@ -9,36 +9,39 @@ export type RevenueStatus =
   | "agg_stats_stale"
   | "agg_stats_unavailable";
 export type PayoutMethod = "usdt_trc20" | "usdt_erc20";
-export interface PublisherCodeDTO {
+export type PublisherCodeFormat = "popunder" | "direct_link";
+interface PublisherCodeBase {
   ad_code_id: string;
   user_id: string;
   short_code: string;
   name: string;
-  format: "popunder";
   traffic_type: PublisherTraffic;
   device: PublisherDevice;
   is_active: boolean;
   archived: boolean;
-  trigger_click: 1 | 2;
-  frequency_minutes: number;
-  max_per_session: number | null;
   version: number;
   synced_version: number;
   created_at: string;
 }
-export type CreatePublisherCode = Pick<
-  PublisherCodeDTO,
-  | "name"
-  | "format"
-  | "traffic_type"
-  | "device"
-  | "trigger_click"
-  | "frequency_minutes"
-  | "max_per_session"
->;
-export type PatchPublisherCode = Partial<
-  Omit<CreatePublisherCode, "format">
-> & { version: number; is_active?: boolean };
+export interface PublisherPopunderCode extends PublisherCodeBase {
+  format: "popunder";
+  trigger_click: 1 | 2;
+  frequency_minutes: number;
+  max_per_session: number | null;
+}
+export interface PublisherDirectLinkCode extends PublisherCodeBase {
+  format: "direct_link";
+  direct_link_url?: string | null;
+}
+export type PublisherCodeDTO = PublisherPopunderCode | PublisherDirectLinkCode;
+type CreateCodeFields = Pick<PublisherCodeBase, "name" | "traffic_type" | "device">;
+export type CreatePopunderCode = CreateCodeFields &
+  Pick<PublisherPopunderCode, "format" | "trigger_click" | "frequency_minutes" | "max_per_session">;
+export type CreatePublisherCode =
+  | CreatePopunderCode
+  | (CreateCodeFields & { format: "direct_link" });
+export type PatchPublisherCode = Partial<Omit<CreatePopunderCode, "format">> &
+  { version: number; is_active?: boolean };
 export interface PublisherPage {
   limit: number;
   offset: number;
@@ -46,6 +49,7 @@ export interface PublisherPage {
 export interface PublisherCodes extends PublisherPage {
   items: PublisherCodeDTO[];
   public_script_url: string;
+  supported_formats?: string[];
 }
 export interface PublisherMetrics {
   requests: number;

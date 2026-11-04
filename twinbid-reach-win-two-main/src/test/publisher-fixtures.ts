@@ -6,13 +6,14 @@ import { vi } from "vitest";
 import { PublisherProvider } from "@/contexts/PublisherContext";
 import type {
   PublisherCodeDTO,
+  PublisherPopunderCode,
   PublisherRow,
   PublisherReport,
   PublisherBalance,
   PublisherSettings,
   PublisherPayout,
 } from "@/api/publisher";
-export const codeFixture: PublisherCodeDTO = {
+export const codeFixture: PublisherPopunderCode = {
   ad_code_id: "11111111-1111-4111-8111-111111111111",
   user_id: "22222222-2222-4222-8222-222222222222",
   short_code: "tb_server_only",
@@ -150,7 +151,7 @@ export function publisherServer() {
     >();
   let balance = { ...balanceFixture },
     payouts: PublisherPayout[] = [],
-    codes = [{ ...codeFixture }],
+    codes: PublisherCodeDTO[] = [{ ...codeFixture }],
     settings = { ...settingsFixture };
   const fetch = vi.fn(
     async (input: RequestInfo | URL, init: RequestInit = {}) => {

@@ -1,5 +1,5 @@
 import { ApiError } from "@/api/http";
-import type { CreatePublisherCode, PublisherDevice } from "@/api/publisher";
+import type { CreatePopunderCode, PublisherDevice } from "@/api/publisher";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -24,7 +24,7 @@ export const defaultPopunderFields = (): PopunderFields => ({
 export function popunderValues(
   fields: PopunderFields,
 ): Pick<
-  CreatePublisherCode,
+  CreatePopunderCode,
   "device" | "trigger_click" | "frequency_minutes" | "max_per_session"
 > {
   const frequency = Number(fields.frequency_minutes),
@@ -50,6 +50,43 @@ export function popunderValues(
     max_per_session: cap,
   };
 }
+export function PublisherDeviceFields({ value, onChange }: {
+  value: PublisherDevice;
+  onChange: (value: PublisherDevice) => void;
+}) {
+  const { lang } = useLanguage();
+  return (
+    <div className="space-y-2">
+      <Label>{tr(lang, "Устройства", "Devices", "设备")}</Label>
+      <div className="grid grid-cols-1 gap-2 min-[420px]:grid-cols-3">
+        {(
+          [
+            ["all", "Все", "All", "全部", MonitorSmartphone],
+            ["desktop", "Компьютеры", "Desktop", "电脑", Monitor],
+            ["mobile", "Мобильные", "Mobile", "移动设备", Smartphone],
+          ] as const
+        ).map(([device, ru, en, zh, Icon]) => (
+          <button
+            key={device}
+            type="button"
+            aria-pressed={value === device}
+            className={cn(
+              "flex min-w-0 items-center justify-center gap-2 rounded-lg border p-3 text-sm",
+              value === device
+                ? "border-primary bg-primary/10"
+                : "border-border",
+            )}
+            onClick={() => onChange(device)}
+          >
+            <Icon className="h-4 w-4 shrink-0" />
+            <span>{tr(lang, ru, en, zh)}</span>
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 export function ZoneSettingsFields({
   value,
   onChange,
@@ -79,34 +116,7 @@ export function ZoneSettingsFields({
       : tr(lang, "на мобильных устройствах", "on mobile devices", "在移动设备上");
   return (
     <Card className="space-y-5 p-4">
-      <div className="space-y-2">
-        <Label>{tr(lang, "Устройства", "Devices", "设备")}</Label>
-        <div className="grid grid-cols-1 gap-2 min-[420px]:grid-cols-3">
-          {(
-            [
-              ["all", "Все", "All", "全部", MonitorSmartphone],
-              ["desktop", "Компьютеры", "Desktop", "电脑", Monitor],
-              ["mobile", "Мобильные", "Mobile", "移动设备", Smartphone],
-            ] as const
-          ).map(([device, ru, en, zh, Icon]) => (
-            <button
-              key={device}
-              type="button"
-              aria-pressed={value.device === device}
-              className={cn(
-                "flex min-w-0 items-center justify-center gap-2 rounded-lg border p-3 text-sm",
-                value.device === device
-                  ? "border-primary bg-primary/10"
-                  : "border-border",
-              )}
-              onClick={() => onChange({ ...value, device })}
-            >
-              <Icon className="h-4 w-4 shrink-0" />
-              <span>{tr(lang, ru, en, zh)}</span>
-            </button>
-          ))}
-        </div>
-      </div>
+      <PublisherDeviceFields value={value.device} onChange={(device) => onChange({ ...value, device })} />
       <div className="space-y-2">
         <Label>{tr(lang, "Первый показ", "First opening", "首次展示")}</Label>
         <div className="grid gap-2 sm:grid-cols-2">

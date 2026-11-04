@@ -25,5 +25,11 @@ export function publisherRowFormat(row: PublisherRow, codes: PublisherCodeDTO[])
 }
 
 export function publisherFormatLabel(format: string): string {
-  return ({ popunder: "Popunder", banner: "Banner", native: "Native", inpage_push: "In-Page Push", video_popup: "Video Popup", instream: "Instream", outstream: "Outstream" } as Record<string, string>)[format] || format || "—";
+  return ({ popunder: "Popunder", direct_link: "Direct Link", banner: "Banner", native: "Native", inpage_push: "In-Page Push", video_popup: "Video Popup", instream: "Instream", outstream: "Outstream" } as Record<string, string>)[format] || format || "—";
 }
+
+
+export const publisherCodeFormatOptions = [
+  { value: "popunder", label: "Popunder" },
+  { value: "direct_link", label: "Direct Link" },
+];
