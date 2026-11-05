@@ -195,15 +195,16 @@ func postBid_V2_5(
 ) {
 	var input *postBidRequest_V2_5
 	defer func() {
-		if r := recover(); r != nil {
+		if panicValue := recover(); panicValue != nil {
 			var payloadInfo string
 			if input != nil && input.Payload != nil {
 				payloadInfo = fmt.Sprintf("%+v", input.Payload)
 			} else {
 				payloadInfo = "nil payload"
 			}
-			err := fmt.Errorf("Recovered from panic in postBid_V2_5: %v, req: %s, stack %s", r, payloadInfo, string(debug.Stack()))
+			err := fmt.Errorf("Recovered from panic in postBid_V2_5: %v, req: %s, stack %s", panicValue, payloadInfo, string(debug.Stack()))
 			log.Print(err.Error())
+			markPublisherRTBFailure(w, r, format, "ssp_panic")
 			http.Error(w, "", http.StatusInternalServerError)
 		}
 	}()
@@ -212,6 +213,7 @@ func postBid_V2_5(
 	if !ok || parsedInput == nil {
 		err := fmt.Errorf("invalid request: parsed input is missing")
 		log.Print(err.Error(), r.RemoteAddr)
+		markPublisherRTBFailure(w, r, format, "ssp_request_invalid")
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
@@ -220,12 +222,14 @@ func postBid_V2_5(
 	if input.Payload == nil || input.Payload.BidRequest == nil {
 		err := fmt.Errorf("invalid request: bid request payload is nil or missing")
 		log.Print(err.Error(), r.RemoteAddr)
+		markPublisherRTBFailure(w, r, format, "ssp_request_invalid")
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
 	if orchestratorClient == nil || isBadIp == nil || getCountryISO == nil || siteIdsAndDomains == nil || ipLimitStore == nil {
 		log.Print("SSP adapter request dependencies are not initialized")
+		markPublisherRTBFailure(w, r, format, "ssp_dependencies")
 		http.Error(w, "service dependencies are unavailable", http.StatusServiceUnavailable)
 		return
 	}
@@ -233,11 +237,13 @@ func postBid_V2_5(
 	ssp_domain, ok := sspFeeds.Lookup(input.Feed)
 	if !ok {
 		err := fmt.Errorf("Busy")
+		markPublisherRTBFailure(w, r, format, "ssp_feed_unknown")
 		http.Error(w, err.Error(), http.StatusForbidden)
 		return
 	}
 	publisherID, err := trustedPublisherUUID(ctx, r, input, format, redisClients)
 	if err != nil {
+		markPublisherRTBFailure(w, r, format, "ssp_uuid_rejected")
 		http.Error(w, "invalid publisher UUID", http.StatusForbidden)
 		return
 	}
@@ -293,6 +299,7 @@ func postBid_V2_5(
 			"There is no device object",
 		)
 		log.Print(err.Error(), r.RemoteAddr)
+		markPublisherRTBFailure(w, r, format, "ssp_device_missing")
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
@@ -304,6 +311,7 @@ func postBid_V2_5(
 			"There is no device ip",
 		)
 		log.Printf("error: %s, feed: %s,  ipv4: %s, ipv6: %s", err.Error(), ssp_domain, device.GetIp(), device.GetIpv6())
+		markPublisherRTBFailure(w, r, format, "ssp_ip_missing")
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 
@@ -344,10 +352,12 @@ func postBid_V2_5(
 			"",
 			0,
 		) {
+			markPublisherRTBFailure(w, r, format, "ssp_ortb_write_failed")
 			w.WriteHeader(http.StatusServiceUnavailable)
 			return
 		}
 
+		markPublisherRTBFailure(w, r, format, "ssp_ip_limited")
 		http.Error(w, err.Error(), http.StatusForbidden)
 		return
 	}
@@ -387,10 +397,12 @@ func postBid_V2_5(
 			"",
 			0,
 		) {
+			markPublisherRTBFailure(w, r, format, "ssp_ortb_write_failed")
 			w.WriteHeader(http.StatusServiceUnavailable)
 			return
 		}
 
+		markPublisherRTBFailure(w, r, format, "ssp_ip_limited")
 		http.Error(w, err.Error(), http.StatusForbidden)
 		return
 	}
@@ -400,6 +412,7 @@ func postBid_V2_5(
 			"There is no device ua",
 		)
 		log.Printf("error: %s, feed: %s,  ua: %s", err.Error(), ssp_domain, device.GetUa())
+		markPublisherRTBFailure(w, r, format, "ssp_ua_missing")
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 
@@ -440,10 +453,12 @@ func postBid_V2_5(
 			"",
 			0,
 		) {
+			markPublisherRTBFailure(w, r, format, "ssp_ortb_write_failed")
 			w.WriteHeader(http.StatusServiceUnavailable)
 			return
 		}
 
+		markPublisherRTBFailure(w, r, format, "ssp_ua_short")
 		http.Error(w, err.Error(), http.StatusForbidden)
 		return
 	}
@@ -453,6 +468,7 @@ func postBid_V2_5(
 			"There is no site object",
 		)
 		log.Print(err.Error(), r.RemoteAddr)
+		markPublisherRTBFailure(w, r, format, "ssp_site_missing")
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
@@ -462,6 +478,7 @@ func postBid_V2_5(
 			"There is no site id",
 		)
 		log.Printf("error: %s, feed: %s,  site id: %s", err.Error(), ssp_domain, input.Payload.Site.GetId())
+		markPublisherRTBFailure(w, r, format, "ssp_site_id_missing")
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 
@@ -480,6 +497,7 @@ func postBid_V2_5(
 			err,
 		)
 		log.Print(err.Error(), r.RemoteAddr)
+		markPublisherRTBFailure(w, r, format, "ssp_ip_check_failed")
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	} else if err != nil && bad == true {
@@ -488,6 +506,7 @@ func postBid_V2_5(
 			err,
 		)
 		log.Print(err.Error(), r.RemoteAddr)
+		markPublisherRTBFailure(w, r, format, "ssp_ip_rejected")
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
@@ -499,6 +518,7 @@ func postBid_V2_5(
 			err,
 		)
 		log.Print(err.Error(), r.RemoteAddr)
+		markPublisherRTBFailure(w, r, format, "ssp_ip_invalid")
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	} else if errors.Is(err, geoBadIp.InnerLookupIpError) {
@@ -507,6 +527,7 @@ func postBid_V2_5(
 			err,
 		)
 		log.Print(err.Error(), r.RemoteAddr)
+		markPublisherRTBFailure(w, r, format, "ssp_geo_lookup_failed")
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -592,6 +613,7 @@ func postBid_V2_5(
 
 	if len(input.Payload.Imp) == 0 {
 		err := fmt.Errorf("invalid request: impressions are missing")
+		markPublisherRTBFailure(w, r, format, "ssp_impressions_missing")
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
@@ -602,20 +624,24 @@ func postBid_V2_5(
 	for _, imp := range input.Payload.Imp {
 		if imp == nil || imp.GetId() == "" {
 			err := fmt.Errorf("invalid request: impression id is missing")
+			markPublisherRTBFailure(w, r, format, "ssp_impression_id_missing")
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
 		if _, duplicate := impIdUuid[imp.GetId()]; duplicate {
 			err := fmt.Errorf("invalid request: duplicate impression id %q", imp.GetId())
+			markPublisherRTBFailure(w, r, format, "ssp_impression_id_duplicate")
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
 		if format == constants.VID {
 			if imp.GetVideo() == nil {
+				markPublisherRTBFailure(w, r, format, "ssp_video_missing")
 				http.Error(w, fmt.Sprintf("invalid VIDEO request: impression %q has no video object", imp.GetId()), http.StatusBadRequest)
 				return
 			}
 			if len(imp.GetVideo().GetMimes()) == 0 {
+				markPublisherRTBFailure(w, r, format, "ssp_video_mimes_missing")
 				http.Error(w, fmt.Sprintf("invalid VIDEO request: impression %q has empty video.mimes", imp.GetId()), http.StatusBadRequest)
 				return
 			}
@@ -646,6 +672,7 @@ func postBid_V2_5(
 	publisherOwnerID, err := publisherOwnerForAuction(reqCtx, redisClients, publisherID)
 	if err != nil {
 		recordRedisError(redisWriteErrorMonitor, err, sspAdapterWorkStatusURL)
+		markPublisherRTBFailure(w, r, format, "ssp_publisher_owner")
 		http.Error(w, "Publisher owner unavailable", http.StatusServiceUnavailable)
 		return
 	}
@@ -684,6 +711,7 @@ func postBid_V2_5(
 			httpCode = grpcRuntime.HTTPStatusFromCode(st.Code())
 		}
 
+		markPublisherRTBFailure(w, r, format, publisherOrchestratorFailureReason(err))
 		http.Error(w, httpErr.Error(), httpCode)
 		log.Print(err.Error())
 		return
@@ -699,6 +727,7 @@ func postBid_V2_5(
 			)
 		}
 		log.Print("orchestrator returned a nil response")
+		markPublisherRTBFailure(w, r, format, "ssp_orchestrator_empty")
 		http.Error(w, "orchestrator returned an empty response", http.StatusServiceUnavailable)
 		return
 	}
@@ -744,11 +773,13 @@ func postBid_V2_5(
 				siteDomain,
 				float64(uuidBidFloor[uuid]),
 			) {
+				markPublisherRTBFailure(w, r, format, "ssp_ortb_write_failed")
 				w.WriteHeader(http.StatusServiceUnavailable)
 				return
 			}
 		}
 
+		markPublisherRTBFailure(w, r, format, "ssp_site_blocked")
 		w.WriteHeader(http.StatusForbidden)
 		return
 	}
@@ -761,6 +792,7 @@ func postBid_V2_5(
 				uuid, logged, format, typic, ssp_domain, device.GetIp(), device.GetIpv6(), lang,
 				countryISO, cityId, 204, uaFileds, siteId, siteDomain, float64(uuidBidFloor[uuid]), exactSegmentHash, segmentHash, pointVersion,
 			) {
+				markPublisherRTBFailure(w, r, format, "ssp_ortb_write_failed")
 				w.WriteHeader(http.StatusServiceUnavailable)
 				return
 			}
