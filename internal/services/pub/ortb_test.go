@@ -344,17 +344,30 @@ func TestPublisherLogsActualRTBResponses(t *testing.T) {
 		wantResponse int
 		wantLog      []string
 		absentLog    string
+		wantAlert    string
+		transportErr error
 	}{
-		{name: "RTB 403 error", upstream: 403, body: `{"error":"invalid publisher feed"}`, wantResponse: 502, wantLog: []string{"RTB upstream_error", "status=403", "invalid publisher feed"}},
+		{name: "RTB 403 error", upstream: 403, body: `{"error":"invalid publisher feed"}`, wantResponse: 502, wantLog: []string{"RTB upstream_error", "status=403", "invalid publisher feed"}, wantAlert: "HTTP 403: " + `{"error":"invalid publisher feed"}`},
+		{name: "RTB IP limited", upstream: 403, body: "Ip is limited: 192.0.2.42\n", wantResponse: 502, wantAlert: "HTTP 403: Ip is limited: 192.0.2.42"},
+		{name: "RTB 429", upstream: 429, body: "Too Many Requests", wantResponse: 502, wantAlert: "HTTP 429: Too Many Requests"},
+		{name: "RTB network error", transportErr: errors.New("dial tcp: connection refused"), wantResponse: 502, wantAlert: "dial tcp: connection refused"},
 		{name: "RTB 204 no fill", upstream: 204, body: "", debug: true, wantResponse: 200, wantLog: []string{"RTB response", "status=204", "outcome=no_fill"}},
 		{name: "RTB 200 trace", upstream: 200, body: `{"seatbid":[]}`, debug: true, wantResponse: 200, wantLog: []string{"RTB response", "status=200", `seatbid`}},
 		{name: "RTB 200 production", upstream: 200, body: `{"seatbid":[]}`, wantResponse: 200, absentLog: "RTB response"},
-		{name: "RTB 200 invalid JSON", upstream: 200, body: `invalid-json`, wantResponse: 502, wantLog: []string{"RTB decode_error", "status=200"}},
+		{name: "RTB 200 invalid JSON", upstream: 200, body: `invalid-json`, wantResponse: 502, wantLog: []string{"RTB decode_error", "status=200"}, wantAlert: "HTTP 200: decode response: invalid character"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			s, code := fixture(t)
 			s.Config.RTBLogResponses = tc.debug
+			var alert string
+			s.Alerts = NewSystemAlerts("test-pub", func(_ context.Context, text string) error {
+				alert = text
+				return nil
+			})
 			s.HTTP.Transport = transport(func(*http.Request) (*http.Response, error) {
+				if tc.transportErr != nil {
+					return nil, tc.transportErr
+				}
 				return &http.Response{StatusCode: tc.upstream, Body: io.NopCloser(strings.NewReader(tc.body))}, nil
 			})
 			var captured bytes.Buffer
@@ -367,8 +380,16 @@ func TestPublisherLogsActualRTBResponses(t *testing.T) {
 			if w.Code != tc.wantResponse {
 				t.Fatalf("HTTP %d, want %d: %s", w.Code, tc.wantResponse, w.Body.String())
 			}
-			if strings.Contains(w.Body.String(), "invalid publisher feed") {
-				t.Fatal("upstream error body leaked into browser response")
+			if sent := s.Alerts.flush(context.Background()); sent != (tc.wantAlert != "") {
+				t.Fatalf("unexpected alert delivery: %v (%q)", sent, alert)
+			}
+			if tc.wantAlert != "" {
+				if !strings.Contains(alert, tc.wantAlert) || strings.Contains(alert, "?feed=") {
+					t.Fatalf("incorrect alert: %q", alert)
+				}
+				if strings.Contains(w.Body.String(), tc.wantAlert) || (tc.body != "" && strings.Contains(w.Body.String(), strings.TrimSpace(tc.body))) {
+					t.Fatal("upstream error leaked into browser response")
+				}
 			}
 			got := captured.String()
 			for _, want := range append(tc.wantLog, "request_id="+in.ID) {

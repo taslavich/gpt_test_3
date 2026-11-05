@@ -240,8 +240,6 @@ func (s *Server) negative(w http.ResponseWriter, r *http.Request, in Request, co
 		s.Alerts.Record(AlertReservation)
 	case "delivery_unavailable":
 		s.Alerts.Record(AlertDelivery)
-	case "rtb_failed":
-		s.Alerts.Record(AlertRTB)
 	}
 	if _, e := uuid.Parse(in.ID); e != nil {
 		in.ID = uuid.NewString()
@@ -384,6 +382,7 @@ func (s *Server) serveAuction(ctx context.Context, w http.ResponseWriter, r *htt
 	defer cancelWork()
 	result, err := s.auction(work, r, &in, code, host, site, zone, epoch)
 	if err != nil {
+		s.Alerts.recordRTBFailure(err)
 		if e := s.finish(work, delivery, `{"status":"error","error":true,"reason":"rtb_failed"}`); e != nil {
 			s.Alerts.Record(AlertReservation)
 		}
@@ -450,8 +449,9 @@ func (s *Server) auction(ctx context.Context, r *http.Request, in *Request, code
 	}
 	u, e := url.Parse(endpoint)
 	if e != nil {
-		return nil, e
+		return nil, fmt.Errorf("invalid RTB endpoint: %w", rtbErrorCause(e))
 	}
+	upstream := u.Host + u.EscapedPath()
 	q := u.Query()
 	q.Set("feed", feed)
 	u.RawQuery = q.Encode()
@@ -466,7 +466,7 @@ func (s *Server) auction(ctx context.Context, r *http.Request, in *Request, code
 	body, _ := json.Marshal(payload)
 	req, e := http.NewRequestWithContext(ctx, "POST", u.String(), bytes.NewReader(body))
 	if e != nil {
-		return nil, e
+		return nil, fmt.Errorf("build RTB request: %w", rtbErrorCause(e))
 	}
 	req.Header.Set("Content-Type", "application/json")
 	var parsed ortb.BidRequest
@@ -477,7 +477,7 @@ func (s *Server) auction(ctx context.Context, r *http.Request, in *Request, code
 	stamp := fmt.Sprint(time.Now().Unix())
 	signature := pubuuid.Sign(s.Config.InternalSecret, id, feed, stamp, &parsed)
 	if e = s.prepareORTB(ctx, id, signature, s.publisherFields(r, *in, code, host, site, zone, "", 0)); e != nil {
-		return nil, e
+		return nil, fmt.Errorf("prepare RTB request in Redis: %w", e)
 	}
 	in.ORTBID = id
 	req.Header.Set(pubuuid.Header, id)
@@ -497,7 +497,7 @@ func (s *Server) auction(ctx context.Context, r *http.Request, in *Request, code
 		if s.failures.Add(1) >= 5 {
 			s.breakerUntil.Store(time.Now().Add(5 * time.Second).UnixMilli())
 		}
-		return nil, e
+		return nil, fmt.Errorf("RTB %s: %w", upstream, rtbErrorCause(e))
 	}
 	defer res.Body.Close()
 	if res.StatusCode == 204 {
@@ -517,7 +517,14 @@ func (s *Server) auction(ctx context.Context, r *http.Request, in *Request, code
 		if s.failures.Add(1) >= 5 {
 			s.breakerUntil.Store(time.Now().Add(5 * time.Second).UnixMilli())
 		}
-		return nil, fmt.Errorf("RTB status %d", res.StatusCode)
+		detail := fmt.Sprintf("RTB %s HTTP %d", upstream, res.StatusCode)
+		if body := strings.TrimSpace(string(excerpt)); body != "" {
+			detail += ": " + body
+		}
+		if readErr != nil {
+			detail += "; read response: " + readErr.Error()
+		}
+		return nil, errors.New(detail)
 	}
 	s.failures.Store(0)
 	responseReader := io.Reader(res.Body)
@@ -527,7 +534,7 @@ func (s *Server) auction(ctx context.Context, r *http.Request, in *Request, code
 		excerpt, readErr := io.ReadAll(io.LimitReader(res.Body, rtbResponseLogLimit))
 		log.Printf("publisher RTB response request_id=%s ortb_id=%s upstream=%s status=200 elapsed_ms=%d body_prefix=%q body_read_error=%v", in.ID, id, u.Host+u.Path, time.Since(started).Milliseconds(), excerpt, readErr)
 		if readErr != nil {
-			return nil, readErr
+			return nil, fmt.Errorf("RTB %s HTTP 200: read response: %w", upstream, readErr)
 		}
 		responseReader = io.MultiReader(bytes.NewReader(excerpt), res.Body)
 	}
@@ -538,7 +545,7 @@ func (s *Server) auction(ctx context.Context, r *http.Request, in *Request, code
 	}
 	if e = json.NewDecoder(io.LimitReader(responseReader, 1<<20)).Decode(&response); e != nil {
 		log.Printf("publisher RTB decode_error request_id=%s ortb_id=%s upstream=%s status=200 elapsed_ms=%d error=%q", in.ID, id, u.Host+u.Path, time.Since(started).Milliseconds(), e.Error())
-		return nil, e
+		return nil, fmt.Errorf("RTB %s HTTP 200: decode response: %w", upstream, e)
 	}
 	for _, seat := range response.Seatbid {
 		for _, b := range seat.Bid {
@@ -548,6 +555,17 @@ func (s *Server) auction(ctx context.Context, r *http.Request, in *Request, code
 		}
 	}
 	return nil, nil
+}
+
+// The HTTP client includes the full URL (including the feed query) in url.Error.
+func rtbErrorCause(err error) error {
+	for {
+		e, ok := err.(*url.Error)
+		if !ok || e.Err == nil {
+			return err
+		}
+		err = e.Err
+	}
 }
 
 func (s *Server) loadDelivery(ctx context.Context, token string) (Delivery, error) {

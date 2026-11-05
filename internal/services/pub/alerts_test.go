@@ -10,6 +10,7 @@ import (
 	"strings"
 	"testing"
 	"time"
+	"unicode/utf8"
 
 	utils "gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/utils_grpc"
 )
@@ -32,19 +33,19 @@ func TestPubAlertUsesSystemBotAndRetainsCountsOnFailure(t *testing.T) {
 	}))
 	defer bot.Close()
 	a := NewSystemAlerts("test-pub", utils.NewBotMessage(bot.URL, "test-secret").SendTextMessageToBot)
-	a.Record(AlertRTB)
+	a.recordRTBFailure(errors.New("RTB HTTP 403: Ip is limited: 192.0.2.42"))
 	if !a.flush(context.Background()) {
 		t.Fatal("missing first send")
 	}
-	a.Record(AlertRTB)
+	a.recordRTBFailure(errors.New("RTB HTTP 429: rate limit"))
 	a.Record(AlertDelivery)
 	if !a.flush(context.Background()) || a.flush(context.Background()) || len(messages) != 2 {
 		t.Fatal("failed count was not retried exactly once")
 	}
-	if first := <-messages; first != "[pub] host=test-pub\nrtb_failed=1" {
+	if first := <-messages; first != "[pub] host=test-pub\nRTB errors: 1\n- RTB HTTP 403: Ip is limited: 192.0.2.42" {
 		t.Fatalf("first notice: %q", first)
 	}
-	if second := <-messages; second != "[pub] host=test-pub\nrtb_failed=2\ndelivery=1" {
+	if second := <-messages; second != "[pub] host=test-pub\nRTB errors: 2\n- RTB HTTP 403: Ip is limited: 192.0.2.42\n- RTB HTTP 429: rate limit\ndelivery=1" {
 		t.Fatalf("retry notice: %q", second)
 	}
 }
@@ -75,12 +76,12 @@ func TestPubAlertWorkerDoesNotWaitInRecordAndLimitsSends(t *testing.T) {
 			return time.Time{}
 		}
 	}
-	a.Record(AlertRTB)
+	a.recordRTBFailure(errors.New("RTB HTTP 403: Ip is limited: 192.0.2.42"))
 	first := next()
 	recorded := make(chan struct{})
 	go func() {
 		for i := 0; i < 1000; i++ {
-			a.Record(AlertRTB)
+			a.recordRTBFailure(errors.New("RTB HTTP 403: Ip is limited: 192.0.2.42"))
 		}
 		close(recorded)
 	}()
@@ -125,5 +126,21 @@ func TestPubAlertForUnavailableConfigNotClientRefusals(t *testing.T) {
 	if !a.flush(context.Background()) || !strings.HasSuffix(message, "\nconfig_unready=1") ||
 		strings.Count(message, "\n") != 1 {
 		t.Fatalf("unexpected digest: %q", message)
+	}
+}
+
+func TestPubRTBAlertBoundsDigest(t *testing.T) {
+	var text string
+	a := NewSystemAlerts("test-pub", func(_ context.Context, message string) error {
+		text = message
+		return nil
+	})
+	for _, detail := range []string{"same", "same", strings.Repeat("Я", 2000), strings.Repeat("界", 2000), "overflow"} {
+		a.recordRTBFailure(errors.New(detail))
+	}
+	if !a.flush(context.Background()) || !strings.Contains(text, "RTB errors: 5") ||
+		strings.Count(text, "- same") != 1 || !strings.Contains(text, "Other RTB errors") ||
+		strings.Contains(text, "overflow") || !utf8.ValidString(text) || len(text) >= 4096 {
+		t.Fatalf("incorrect digest: %q", text)
 	}
 }

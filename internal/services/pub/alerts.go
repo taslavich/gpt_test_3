@@ -5,12 +5,14 @@ import (
 	"fmt"
 	"log"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
+	"unicode/utf8"
 )
 
-// AlertKind is a fixed set of server-side failures. Request data and raw errors
-// stay in local logs, never in the bot payload.
+// AlertKind enumerates failures reported as counters. RTB errors use a separate
+// digest so the operator also sees the reason.
 type AlertKind uint8
 
 const (
@@ -18,7 +20,6 @@ const (
 	AlertLastRequest
 	AlertConfig
 	AlertRedisRead
-	AlertRTB
 	AlertOverload
 	AlertReservation
 	AlertDelivery
@@ -32,7 +33,7 @@ const (
 
 var alertNames = [alertKindCount]string{
 	"redis_safety", "last_request_flush", "config_unready", "redis_read",
-	"rtb_failed", "overload", "reservation", "delivery", "confirm",
+	"overload", "reservation", "delivery", "confirm",
 	"infrastructure", "runtime", "telemetry_outbox_write", "telemetry_outbox_flush",
 }
 
@@ -41,6 +42,8 @@ type SystemAlerts struct {
 	send     func(context.Context, string) error
 	counts   [alertKindCount]atomic.Uint64
 	wake     chan struct{}
+	rtbMu    sync.Mutex
+	rtb      rtbAlertBatch
 }
 
 func NewSystemAlerts(instance string, send func(context.Context, string) error) *SystemAlerts {
@@ -62,9 +65,66 @@ func (a *SystemAlerts) Record(kind AlertKind) {
 	}
 }
 
+const maxRTBAlertSamples = 3
+const maxRTBAlertDetailBytes = 1024
+
+type rtbAlertBatch struct {
+	count   uint64
+	details []string
+	omitted bool
+}
+
+func (b *rtbAlertBatch) add(detail string) {
+	for _, previous := range b.details {
+		if detail == previous {
+			return
+		}
+	}
+	if len(b.details) == maxRTBAlertSamples {
+		b.omitted = true
+		return
+	}
+	b.details = append(b.details, detail)
+}
+
+func (a *SystemAlerts) recordRTBFailure(err error) {
+	if a == nil || err == nil {
+		return
+	}
+	detail := strings.TrimSpace(strings.ToValidUTF8(err.Error(), "�"))
+	if len(detail) > maxRTBAlertDetailBytes {
+		end := maxRTBAlertDetailBytes - len("…")
+		for !utf8.RuneStart(detail[end]) {
+			end--
+		}
+		detail = detail[:end] + "…"
+	}
+	a.rtbMu.Lock()
+	a.rtb.count++
+	a.rtb.add(detail)
+	a.rtbMu.Unlock()
+	select {
+	case a.wake <- struct{}{}:
+	default:
+	}
+}
+
 func (a *SystemAlerts) flush(ctx context.Context) bool {
 	var batch [alertKindCount]uint64
 	var lines []string
+	a.rtbMu.Lock()
+	rtb := a.rtb
+	a.rtb = rtbAlertBatch{}
+	a.rtbMu.Unlock()
+	if rtb.count != 0 {
+		lines = append(lines, fmt.Sprintf("RTB errors: %d", rtb.count))
+		for _, detail := range rtb.details {
+			lines = append(lines, "- "+detail)
+		}
+		if rtb.omitted {
+			lines = append(lines, "Other RTB errors are in the pub journal.")
+		}
+	}
 	for i := range batch {
 		batch[i] = a.counts[i].Swap(0)
 		if batch[i] != 0 {
@@ -80,6 +140,16 @@ func (a *SystemAlerts) flush(ctx context.Context) bool {
 			if n != 0 {
 				a.counts[i].Add(n)
 			}
+		}
+		if rtb.count != 0 {
+			a.rtbMu.Lock()
+			rtb.count += a.rtb.count
+			rtb.omitted = rtb.omitted || a.rtb.omitted
+			for _, detail := range a.rtb.details {
+				rtb.add(detail)
+			}
+			a.rtb = rtb
+			a.rtbMu.Unlock()
 		}
 		if ctx.Err() == nil {
 			log.Printf("pub system notification failed; will retry: %v", err)
