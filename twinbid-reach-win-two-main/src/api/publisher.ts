@@ -1,3 +1,4 @@
+import { publisherDisplayMetrics } from "@/lib/publisherData";
 import { http, ApiError } from "./http";
 import { validatePublisherResponse } from "./publisherContract";
 
@@ -217,7 +218,24 @@ async function call<T>(
         "PUBLISHER_CONTRACT",
       );
     }
-    return validatePublisherResponse<T>(path, method, result.data);
+    const validated = validatePublisherResponse<T>(path, method, result.data);
+    // All Publisher views share the same display correction, after contract validation.
+    if (path === "/stats/query") {
+      const report = validated as PublisherReport;
+      return { ...report, rows: report.rows.map(publisherDisplayMetrics),
+        totals: publisherDisplayMetrics(report.totals) } as T;
+    }
+    if (path === "/overview") {
+      const overview = validated as PublisherOverview;
+      return { ...overview, report: { ...overview.report,
+        rows: overview.report.rows.map(publisherDisplayMetrics),
+        totals: publisherDisplayMetrics(overview.report.totals) } } as T;
+    }
+    if (path === "/sites" || path === "/zones") {
+      const inventory = validated as PublisherInventoryReport;
+      return { ...inventory, rows: inventory.rows.map(publisherDisplayMetrics) } as T;
+    }
+    return validated;
   } finally {
     clearTimeout(timer);
     signal?.removeEventListener("abort", abort);

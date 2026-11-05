@@ -1,3 +1,4 @@
+import type { PublisherMetrics } from "@/api/publisher";
 import { ApiError } from "@/api/http";
 export const publisherLocale = (lang: string) =>
   lang === "ru" ? "ru-RU" : lang === "zh-CN" ? "zh-CN" : "en-US";
@@ -48,6 +49,28 @@ export function formatPublisherMoney(value: string, lang: string): string {
     separator +
     n.fraction.padEnd(2, "0")
   );
+}
+/** Display-only correction; revenue and the original response are never mutated. */
+export function publisherDisplayMetrics<T extends PublisherMetrics>(metrics: T): T {
+  return metrics.clicks > metrics.impressions
+    ? { ...metrics, impressions: metrics.clicks, ctr: 100 }
+    : metrics;
+}
+
+/** CPM in USD, rounded to eight decimals using integer arithmetic. */
+export function publisherCpm(metrics: PublisherMetrics): string {
+  const impressions = Math.max(metrics.impressions, metrics.clicks);
+  if (impressions === 0) return "0";
+  const revenue = decimal(metrics.revenue_usd);
+  const count = decimal(String(impressions));
+  const numerator = BigInt(revenue.integer + revenue.fraction) *
+    1000n * 100000000n * (10n ** BigInt(count.fraction.length));
+  const denominator = BigInt(count.integer + count.fraction) *
+    (10n ** BigInt(revenue.fraction.length));
+  const rounded = (numerator + denominator / 2n) / denominator;
+  const digits = rounded.toString().padStart(9, "0");
+  const value = digits.slice(0, -8) + "." + digits.slice(-8);
+  return (revenue.negative && rounded !== 0n ? "-" : "") + value;
 }
 export function normalizePublisherAmount(value: string): string {
   const raw = value.trim().replace(",", ".");

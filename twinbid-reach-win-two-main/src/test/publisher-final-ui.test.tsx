@@ -35,7 +35,7 @@ describe("Publisher final UI: server metrics and format grouping", () => {
     ["ru", "Формат", "Итого за весь период", "Показы"],
     ["en", "Format", "Total for the full period", "Impressions"],
     ["zh-CN", "格式", "整个期间的合计", "展示"],
-  ])("shows only four metrics and the localized format option in %s", async (lang, formatLabel, totalLabel, impressionLabel) => {
+  ])("shows the CPM column and the localized format option in %s", async (lang, formatLabel, totalLabel, impressionLabel) => {
     languageFixture.lang = lang;
     publisherServer();
     render(<PublisherStatistics />, { wrapper: PublisherTestWrapper });
@@ -43,8 +43,8 @@ describe("Publisher final UI: server metrics and format grouping", () => {
     assertNoHiddenMetrics();
     expect(screen.getAllByRole("button", { name: impressionLabel })).toHaveLength(2);
     const table = screen.getByRole("table");
-    expect(within(table).getAllByRole("columnheader")).toHaveLength(7);
-    for (const row of within(table).getAllByRole("row").slice(2)) expect(within(row).getAllByRole("cell")).toHaveLength(5);
+    expect(within(table).getAllByRole("columnheader")).toHaveLength(8);
+    for (const row of within(table).getAllByRole("row").slice(2)) expect(within(row).getAllByRole("cell")).toHaveLength(6);
     expect(screen.getByRole("button", {name:formatLabel})).toBeInTheDocument();
   });
 
@@ -67,8 +67,8 @@ describe("Publisher final UI: server metrics and format grouping", () => {
     expect(statCalls(s).at(-1)?.body).toMatchObject({ group_by: "format", offset: 0, site_id: rowFixture.site_id, countries: ["US", "GB"] });
     for (const bucket of ["POP", "BAN", "NAT", "IPP", "VID"]) {
       const row = screen.getByRole("cell", { name: bucket }).closest("tr")!;
-      expect(within(row).getAllByRole("cell")).toHaveLength(5);
-      expect(within(row).getAllByRole("cell").at(-1)).toHaveTextContent(bucket === "POP" ? "$1,23456789" : "$0,00");
+      expect(within(row).getAllByRole("cell")).toHaveLength(6);
+      expect(within(row).getAllByRole("cell").at(-2)).toHaveTextContent(bucket === "POP" ? "$1,23456789" : "$0,00");
     }
     expect(screen.getAllByText(/\$98\s765,12345678/).length).toBeGreaterThan(0);
     fireEvent.click(within(screen.getByRole("columnheader", { name: "Показы" })).getByRole("button"));
@@ -91,7 +91,7 @@ describe("Publisher final UI: server metrics and format grouping", () => {
     await screen.findByText(/Нет данных за выбранный период/);
     await chooseGroup("Формат");
     await waitFor(() => expect(statCalls(s).at(-1)?.body?.group_by).toBe("format"));
-    expect((await screen.findByText(/Нет данных за выбранный период/)).closest("td")).toHaveAttribute("colspan", "5");
+    expect((await screen.findByText(/Нет данных за выбранный период/)).closest("td")).toHaveAttribute("colspan", "6");
     for (const bucket of ["POP", "BAN", "NAT", "IPP", "VID"]) expect(screen.queryByRole("cell", { name: bucket })).not.toBeInTheDocument();
     s.overrides.set("POST /api/publisher/stats/query", () => reply(null, 503, "real format API failure"));
     await waitFor(() => expect(screen.getByRole("button", { name: "Обновить" })).toBeEnabled());
