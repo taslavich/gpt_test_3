@@ -64,7 +64,6 @@ type SystemAlerts struct {
 	instance string
 	send     func(context.Context, string) error
 	counts   [alertKindCount]atomic.Uint64
-	wake     chan struct{}
 	rtbMu    sync.Mutex
 	rtb      rtbAlertBatch
 }
@@ -73,7 +72,7 @@ func NewSystemAlerts(instance string, send func(context.Context, string) error) 
 	if send == nil {
 		return nil
 	}
-	return &SystemAlerts{instance: instance, send: send, wake: make(chan struct{}, 1)}
+	return &SystemAlerts{instance: instance, send: send}
 }
 
 // Record performs no I/O. One worker sends a digest even under heavy traffic.
@@ -82,10 +81,6 @@ func (a *SystemAlerts) Record(kind AlertKind) {
 		return
 	}
 	a.counts[kind].Add(1)
-	select {
-	case a.wake <- struct{}{}:
-	default:
-	}
 }
 
 // Keep one representative request for each failure group. Excess categories
@@ -171,10 +166,6 @@ func (a *SystemAlerts) recordRTBFailure(err error) {
 	a.rtb.count++
 	a.rtb.add(rtbAlertGroup{sample: failure, count: 1})
 	a.rtbMu.Unlock()
-	select {
-	case a.wake <- struct{}{}:
-	default:
-	}
 }
 
 func (a *SystemAlerts) flush(ctx context.Context) bool {
@@ -226,29 +217,30 @@ func (a *SystemAlerts) flush(ctx context.Context) bool {
 	return true
 }
 
+const publisherAlertBatchInterval = 10 * time.Minute
+
 func (a *SystemAlerts) Run(ctx context.Context) {
-	a.run(ctx, time.Minute)
+	a.run(ctx, publisherAlertBatchInterval)
 }
 
 func (a *SystemAlerts) run(ctx context.Context, interval time.Duration) {
 	if a == nil {
 		return
 	}
+	timer := time.NewTimer(interval)
+	defer timer.Stop()
 	for {
 		select {
 		case <-ctx.Done():
 			return
-		case <-a.wake:
-		}
-		for ctx.Err() == nil && a.flush(ctx) {
-			// Wait even after a send failure; a broken bot must not cause a retry storm.
-			timer := time.NewTimer(interval)
-			select {
-			case <-ctx.Done():
-				timer.Stop()
+		case <-timer.C:
+			if ctx.Err() != nil {
 				return
-			case <-timer.C:
 			}
+			a.flush(ctx)
+			// Wait a full interval after each attempt, including failed sends.
+			// flush retains a failed digest to merge with the next batch.
+			timer.Reset(interval)
 		}
 	}
 }
