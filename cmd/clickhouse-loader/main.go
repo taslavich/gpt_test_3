@@ -24,14 +24,10 @@ import (
 const clicksWinsMaxBatchSize = 10000
 
 func main() {
-	siteReviewOnly := flag.Bool("publisher-site-review-only", false, "install only the new Publisher site review table and view")
 	diagnosticsOnly := flag.Bool("publisher-zone-diagnostics-only", false, "apply only Publisher zone diagnostics; never run financial DDL")
 	schemaOnly := flag.Bool("schema-only", false, "apply schema/cutover without Kafka consumers (writers and revenue sync must be paused)")
 	repair := flag.Bool("publisher-pop-repair", false, "explicitly reimport retained POP facts/registry after ingestion errors; requires --schema-only")
 	flag.Parse()
-	if *siteReviewOnly && (*diagnosticsOnly || *schemaOnly || *repair) {
-		log.Fatal("publisher-site-review-only cannot be combined with other schema modes")
-	}
 	if *diagnosticsOnly && (*schemaOnly || *repair) {
 		log.Fatal("diagnostics-only cannot be combined with financial schema flags")
 	}
@@ -73,13 +69,6 @@ func main() {
 	}
 	log.Println("✅ Connected to Default ClickHouse")
 
-	if *siteReviewOnly {
-		if err := clickhouse_loader.ApplyPublisherSiteReview(ctx, conn, cfg.Clickhouse.Database); err != nil {
-			log.Fatal(err)
-		}
-		log.Println("Publisher site review schema ready")
-		return
-	}
 	if *diagnosticsOnly {
 		if err := clickhouse_loader.ApplyPublisherZoneDiagnostics(ctx, conn, cfg.Clickhouse.Database); err != nil {
 			log.Fatal(err)

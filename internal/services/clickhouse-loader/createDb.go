@@ -3016,8 +3016,8 @@ WITH now64(3,'UTC') AS stamp,
  SETTINGS max_threads=2,max_memory_usage=1073741824,max_bytes_before_external_group_by=134217728;
 `
 
-// Site moderation is installed separately; never invoke production schema
-// reconciliation (which recreates unrelated views) to enable this feature.
+// Site moderation is additive on both Loader startup paths. The activation
+// event is written once so restarts keep the original moderation cutoff.
 const publisherSiteReviewDDL = `
 CREATE TABLE IF NOT EXISTS {db}.publisher_site_review
 (
@@ -3069,7 +3069,7 @@ WHERE (
 ) = 0;
 `
 
-func ApplyPublisherSiteReview(ctx context.Context, ch clickhouse.Conn, database string) error {
+func ensurePublisherSiteReview(ctx context.Context, ch clickhouse.Conn, database string) error {
 	database = strings.TrimSpace(database)
 	if !diagnosticDatabase.MatchString(database) {
 		return fmt.Errorf("invalid ClickHouse database name")
@@ -3114,7 +3114,10 @@ func CreateDB(ctx context.Context, ch clickhouse.Conn, database string) error {
 		}
 	}
 
-	return ApplyPublisherZoneDiagnostics(ctx, ch, database)
+	if err := ApplyPublisherZoneDiagnostics(ctx, ch, database); err != nil {
+		return err
+	}
+	return ensurePublisherSiteReview(ctx, ch, database)
 }
 
 // Exceptional repair after a failed ClickHouse source->MV write. This is an
@@ -3942,5 +3945,8 @@ func EnsureLoaderSchema(ctx context.Context, ch clickhouse.Conn, database string
 	// when the destination table and the previous MV already exist. The
 	// diagnostic target and its historical rows are never dropped.
 	// Propagate failure: main.go aborts Loader startup.
-	return ApplyPublisherZoneDiagnostics(ctx, ch, database)
+	if err := ApplyPublisherZoneDiagnostics(ctx, ch, database); err != nil {
+		return err
+	}
+	return ensurePublisherSiteReview(ctx, ch, database)
 }
