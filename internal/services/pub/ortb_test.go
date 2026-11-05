@@ -345,13 +345,13 @@ func TestPublisherLogsOnlyRTBErrors(t *testing.T) {
 		wantAlert    string
 		transportErr error
 	}{
-		{name: "RTB 403 error", upstream: 403, body: `{"error":"invalid publisher feed"}`, wantResponse: 502, wantLog: []string{"RTB upstream_error", "status=403", "invalid publisher feed"}, wantAlert: "HTTP 403: " + `{"error":"invalid publisher feed"}`},
-		{name: "RTB IP limited", upstream: 403, body: "Ip is limited: 192.0.2.42\n", wantResponse: 502, wantAlert: "HTTP 403: Ip is limited: 192.0.2.42"},
-		{name: "RTB 429", upstream: 429, body: "Too Many Requests", wantResponse: 502, wantAlert: "HTTP 429: Too Many Requests"},
-		{name: "RTB network error", transportErr: errors.New("dial tcp: connection refused"), wantResponse: 502, wantAlert: "dial tcp: connection refused"},
+		{name: "RTB 403 error", upstream: 403, body: `{"error":"invalid publisher feed"}`, wantResponse: 502, wantLog: []string{"RTB upstream_error", "status=403", "invalid publisher feed"}, wantAlert: "RTB HTTP 403: Request refused ×1"},
+		{name: "RTB IP limited", upstream: 403, body: "Ip is limited: 192.0.2.42\n", wantResponse: 502, wantAlert: "RTB HTTP 403: Visitor IP rate-limited ×1"},
+		{name: "RTB 429", upstream: 429, body: "Too Many Requests", wantResponse: 502, wantAlert: "RTB HTTP 429: Request rate limited ×1"},
+		{name: "RTB network error", transportErr: errors.New("dial tcp: connection refused"), wantResponse: 502, wantAlert: "RTB: Network request failed ×1"},
 		{name: "RTB 204 no fill", upstream: 204, wantResponse: 200},
 		{name: "RTB 200 valid response", upstream: 200, body: `{"seatbid":[{"bid":[{"adm":"https://adm.example.test/adm?id=10000000-0000-4000-8000-000000000010"}]}]}`, wantResponse: 200},
-		{name: "RTB 200 invalid JSON", upstream: 200, body: `invalid-json`, wantResponse: 502, wantLog: []string{"RTB decode_error", "status=200"}, wantAlert: "HTTP 200: decode response: invalid character"},
+		{name: "RTB 200 invalid JSON", upstream: 200, body: `invalid-json`, wantResponse: 502, wantLog: []string{"RTB decode_error", "status=200"}, wantAlert: "RTB HTTP 200: Could not decode bid response ×1"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			s, code := fixture(t)
@@ -380,7 +380,7 @@ func TestPublisherLogsOnlyRTBErrors(t *testing.T) {
 				t.Fatalf("unexpected alert delivery: %v (%q)", sent, alert)
 			}
 			if tc.wantAlert != "" {
-				if !strings.Contains(alert, "RTB errors: 1") || strings.Contains(alert, "?feed=") || (tc.body != "" && strings.Contains(alert, strings.TrimSpace(tc.body))) {
+				if !strings.Contains(alert, tc.wantAlert) || strings.Contains(alert, in.ID) || strings.Contains(alert, "?feed=") || (tc.body != "" && strings.Contains(alert, strings.TrimSpace(tc.body))) {
 					t.Fatalf("incorrect alert: %q", alert)
 				}
 				if strings.Contains(w.Body.String(), tc.wantAlert) || (tc.body != "" && strings.Contains(w.Body.String(), strings.TrimSpace(tc.body))) {

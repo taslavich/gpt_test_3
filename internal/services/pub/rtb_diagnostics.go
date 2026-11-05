@@ -10,30 +10,20 @@ import (
 	"strings"
 	"syscall"
 
-	"github.com/google/uuid"
 	"gitlab.com/twinbid-exchange/RTB-exchange/internal/pubdiagnostic"
 )
 
 type rtbFailure struct {
-	reason, explanation         string
-	upstream, requestID, ortbID string
-	status                      int
+	reason, explanation string
+	path                string
+	status              int
 }
 
 func (f rtbFailure) Error() string { return f.explanation }
 
-func (f rtbFailure) withContext(upstream string, in *Request) rtbFailure {
-	f.upstream = boundedAlertText(upstream, 80)
-	f.requestID = diagnosticUUID(in.ID)
-	f.ortbID = diagnosticUUID(in.ORTBID)
+func (f rtbFailure) withUpstream(upstream string) rtbFailure {
+	f.path = alertRTBPath(upstream)
 	return f
-}
-
-func diagnosticUUID(value string) string {
-	if id, err := uuid.Parse(value); err == nil {
-		return id.String()
-	}
-	return ""
 }
 
 func classifyRTBHTTPFailure(status int, header, body string) rtbFailure {

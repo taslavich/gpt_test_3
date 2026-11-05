@@ -20,18 +20,18 @@ func TestPublisherRTBDiagnosticReasonAndPrivacy(t *testing.T) {
 		status                     int
 		header, body, reason, text string
 	}{
-		{403, "ssp_site_blocked", "", "ssp_site_blocked", "Orchestrator blocked"},
-		{503, "ssp_ortb_write_failed", "private-token", "ssp_ortb_write_failed", "OpenRTB statistics in Redis"},
-		{504, "ssp_orchestrator_timeout", "", "ssp_orchestrator_timeout", "timed out waiting for Orchestrator"},
-		{403, "", "Ip is limited: 192.0.2.42", "ssp_ip_limited", "request-rate policy"},
-		{403, "", "Ipv6 is limited: 2001:db8::2", "ssp_ip_limited", "request-rate policy"},
-		{403, "", "Busy", "ssp_feed_unknown", "route configuration"},
-		{403, "arbitrary-header", "Ip is limited: private-token", "upstream_unclassified", "no specific reason"},
-		{429, "", "<html>private-token</html>", "upstream_unclassified", "throttled"},
-		{502, "", "", "upstream_unclassified", "gateway"},
+		{403, "ssp_site_blocked", "", "ssp_site_blocked", "Site ID blocked"},
+		{503, "ssp_ortb_write_failed", "private-token", "ssp_ortb_write_failed", "auction stats in Redis"},
+		{504, "ssp_orchestrator_timeout", "", "ssp_orchestrator_timeout", "Orchestrator timed out"},
+		{403, "", "Ip is limited: 192.0.2.42", "ssp_ip_limited", "Visitor IP rate-limited"},
+		{403, "", "Ipv6 is limited: 2001:db8::2", "ssp_ip_limited", "Visitor IP rate-limited"},
+		{403, "", "Busy", "ssp_feed_unknown", "Feed missing from SSP config"},
+		{403, "arbitrary-header", "Ip is limited: private-token", "upstream_unclassified", "Request refused"},
+		{429, "", "<html>private-token</html>", "upstream_unclassified", "Request rate limited"},
+		{502, "", "", "upstream_unclassified", "Gateway got no valid response"},
 	} {
 		f := classifyRTBHTTPFailure(tc.status, tc.header, tc.body)
-		line := (rtbAlertGroup{sample: f, count: 1}).line(true)
+		line := (rtbAlertGroup{reason: f.reason, status: f.status, count: 1}).line()
 		if f.reason != tc.reason || !strings.Contains(line, tc.text) || strings.Contains(line, "private-token") || strings.Contains(line, "192.0.2.42") || strings.Contains(line, "2001:db8::2") {
 			t.Errorf("bad diagnostic for %#v: %s", tc, line)
 		}
@@ -72,8 +72,8 @@ func TestPublisherForwardsTypedSSPFailureOnlyToOperators(t *testing.T) {
 		t.Fatal("publisher response changed:", w.Code, w.Body.String())
 	}
 	if !s.Alerts.flush(context.Background()) || ortbID == "" ||
-		!strings.Contains(message, "[ssp_site_blocked] Orchestrator blocked this site ID (HTTP 403)") ||
-		!strings.Contains(message, "request="+in.ID) || !strings.Contains(message, "ortb="+ortbID) ||
+		!strings.Contains(message, "RTB HTTP 403: Site ID blocked ×1") ||
+		strings.Contains(message, in.ID) || strings.Contains(message, ortbID) ||
 		strings.Contains(message, "private-upstream-content") || strings.Contains(message, "?feed=") {
 		t.Fatalf("bad operator alert: %q", message)
 	}

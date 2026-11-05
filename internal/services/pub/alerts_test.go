@@ -43,10 +43,10 @@ func TestPubAlertUsesSystemBotAndRetainsCountsOnFailure(t *testing.T) {
 	if !a.flush(context.Background()) || a.flush(context.Background()) || len(messages) != 2 {
 		t.Fatal("failed count was not retried exactly once")
 	}
-	if first := <-messages; first != "[pub] host=test-pub\nRTB errors: 1\n- 1 x [ssp_ip_limited] SSP Adapter rejected the visitor IP under the request-rate policy (HTTP 403)" {
+	if first := <-messages; first != "[pub] test-pub\nRTB HTTP 403: Visitor IP rate-limited ×1" {
 		t.Fatalf("first notice: %q", first)
 	}
-	if second := <-messages; second != "[pub] host=test-pub\nRTB errors: 2\n- 1 x [ssp_ip_limited] SSP Adapter rejected the visitor IP under the request-rate policy (HTTP 403)\n- 1 x [upstream_unclassified] RTB or its proxy throttled the request (HTTP 429)\ndelivery=1: Publisher could not prepare or validate the ad delivery" {
+	if second := <-messages; second != "[pub] test-pub\nRTB HTTP 429: Request rate limited ×1\nRTB HTTP 403: Visitor IP rate-limited ×1\nAd delivery preparation failed: 1" {
 		t.Fatalf("retry notice: %q", second)
 	}
 }
@@ -124,7 +124,7 @@ func TestPubAlertForUnavailableConfigNotClientRefusals(t *testing.T) {
 	canceled, cancel := context.WithCancel(context.Background())
 	cancel()
 	s.reportRedisRead(canceled, errors.New("browser left"))
-	if !a.flush(context.Background()) || !strings.HasSuffix(message, "\nconfig_unready=1: Publisher configuration in Redis is unavailable or Redis safety has not been verified") ||
+	if !a.flush(context.Background()) || !strings.HasSuffix(message, "\nPublisher config unavailable or Redis unverified: 1") ||
 		strings.Count(message, "\n") != 1 {
 		t.Fatalf("unexpected digest: %q", message)
 	}
@@ -136,14 +136,24 @@ func TestPubRTBAlertBoundsDigest(t *testing.T) {
 		text = message
 		return nil
 	})
+	// Saturate the digest with distinct groups; the limiter and service
+	// counters still fit, and the remaining events get an exact tally.
+	a.recordRTBFailure(classifyRTBHTTPFailure(429, "", "private upstream body"))
 	for i := 0; i < maxRTBAlertGroups+1; i++ {
-		a.recordRTBFailure(rtbFailure{reason: fmt.Sprintf("test_%d", i), explanation: "diagnostic"})
+		a.recordRTBFailure(rtbFailure{reason: fmt.Sprintf("test_%d", i), status: 510, path: "/bid_v_2_5_mc"})
 	}
-	a.recordRTBFailure(rtbFailure{reason: "test_0", explanation: "diagnostic"})
-	a.recordRTBFailure(errors.New("secret upstream payload"))
-	if !a.flush(context.Background()) || !strings.Contains(text, fmt.Sprintf("RTB errors: %d", maxRTBAlertGroups+3)) ||
-		!strings.Contains(text, "- 2 x [test_0]") || !strings.Contains(text, "Other RTB errors: 2") ||
-		strings.Contains(text, "secret upstream payload") || !utf8.ValidString(text) {
+	for i := AlertKind(0); i < alertKindCount; i++ {
+		a.counts[i].Store(^uint64(0))
+	}
+	if !a.flush(context.Background()) || len(text) >= 4096 ||
+		!strings.HasPrefix(text, "[pub] test-pub\nRTB HTTP 429: Request rate limited ×1\n") ||
+		!strings.HasSuffix(text, "Delivery contract unverified; auctions blocked: 18446744073709551615") ||
+		strings.Contains(text, "private upstream body") || !utf8.ValidString(text) {
 		t.Fatalf("incorrect digest: %q", text)
+	}
+	shown := strings.Count(text, "RTB HTTP 510:")
+	if omitted := maxRTBAlertGroups + 1 - shown; omitted <= 0 ||
+		!strings.Contains(text, fmt.Sprintf("Other RTB errors: %d (see pub logs)", omitted)) {
+		t.Fatalf("incorrect omitted count: %q", text)
 	}
 }
