@@ -501,9 +501,6 @@ func (s *Server) auction(ctx context.Context, r *http.Request, in *Request, code
 	}
 	defer res.Body.Close()
 	if res.StatusCode == 204 {
-		if s.Config.RTBLogResponses {
-			log.Printf("publisher RTB response request_id=%s ortb_id=%s upstream=%s status=204 elapsed_ms=%d outcome=no_fill", in.ID, id, u.Host+u.Path, time.Since(started).Milliseconds())
-		}
 		s.failures.Store(0)
 		return nil, nil
 	}
@@ -527,23 +524,12 @@ func (s *Server) auction(ctx context.Context, r *http.Request, in *Request, code
 		return nil, errors.New(detail)
 	}
 	s.failures.Store(0)
-	responseReader := io.Reader(res.Body)
-	if s.Config.RTBLogResponses {
-		// Reading the prefix must not change the JSON decoder's input. Restore
-		// precisely those bytes via MultiReader, keeping the original body closable.
-		excerpt, readErr := io.ReadAll(io.LimitReader(res.Body, rtbResponseLogLimit))
-		log.Printf("publisher RTB response request_id=%s ortb_id=%s upstream=%s status=200 elapsed_ms=%d body_prefix=%q body_read_error=%v", in.ID, id, u.Host+u.Path, time.Since(started).Milliseconds(), excerpt, readErr)
-		if readErr != nil {
-			return nil, fmt.Errorf("RTB %s HTTP 200: read response: %w", upstream, readErr)
-		}
-		responseReader = io.MultiReader(bytes.NewReader(excerpt), res.Body)
-	}
 	var response struct {
 		Seatbid []struct {
 			Bid []bid `json:"bid"`
 		} `json:"seatbid"`
 	}
-	if e = json.NewDecoder(io.LimitReader(responseReader, 1<<20)).Decode(&response); e != nil {
+	if e = json.NewDecoder(io.LimitReader(res.Body, 1<<20)).Decode(&response); e != nil {
 		log.Printf("publisher RTB decode_error request_id=%s ortb_id=%s upstream=%s status=200 elapsed_ms=%d error=%q", in.ID, id, u.Host+u.Path, time.Since(started).Milliseconds(), e.Error())
 		return nil, fmt.Errorf("RTB %s HTTP 200: decode response: %w", upstream, e)
 	}

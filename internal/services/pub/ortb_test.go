@@ -333,17 +333,15 @@ func TestOnlyExplicitPublisherFeedTypes(t *testing.T) {
 	}
 }
 
-func TestPublisherLogsActualRTBResponses(t *testing.T) {
+func TestPublisherLogsOnlyRTBErrors(t *testing.T) {
 	// An RTB failure must be diagnosed at the Publisher without exposing the
 	// upstream response body to the website or changing its existing status.
 	for _, tc := range []struct {
 		name         string
 		upstream     int
 		body         string
-		debug        bool
 		wantResponse int
 		wantLog      []string
-		absentLog    string
 		wantAlert    string
 		transportErr error
 	}{
@@ -351,14 +349,12 @@ func TestPublisherLogsActualRTBResponses(t *testing.T) {
 		{name: "RTB IP limited", upstream: 403, body: "Ip is limited: 192.0.2.42\n", wantResponse: 502, wantAlert: "HTTP 403: Ip is limited: 192.0.2.42"},
 		{name: "RTB 429", upstream: 429, body: "Too Many Requests", wantResponse: 502, wantAlert: "HTTP 429: Too Many Requests"},
 		{name: "RTB network error", transportErr: errors.New("dial tcp: connection refused"), wantResponse: 502, wantAlert: "dial tcp: connection refused"},
-		{name: "RTB 204 no fill", upstream: 204, body: "", debug: true, wantResponse: 200, wantLog: []string{"RTB response", "status=204", "outcome=no_fill"}},
-		{name: "RTB 200 trace", upstream: 200, body: `{"seatbid":[]}`, debug: true, wantResponse: 200, wantLog: []string{"RTB response", "status=200", `seatbid`}},
-		{name: "RTB 200 production", upstream: 200, body: `{"seatbid":[]}`, wantResponse: 200, absentLog: "RTB response"},
+		{name: "RTB 204 no fill", upstream: 204, wantResponse: 200},
+		{name: "RTB 200 valid response", upstream: 200, body: `{"seatbid":[{"bid":[{"adm":"https://adm.example.test/adm?id=10000000-0000-4000-8000-000000000010"}]}]}`, wantResponse: 200},
 		{name: "RTB 200 invalid JSON", upstream: 200, body: `invalid-json`, wantResponse: 502, wantLog: []string{"RTB decode_error", "status=200"}, wantAlert: "HTTP 200: decode response: invalid character"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			s, code := fixture(t)
-			s.Config.RTBLogResponses = tc.debug
 			var alert string
 			s.Alerts = NewSystemAlerts("test-pub", func(_ context.Context, text string) error {
 				alert = text
@@ -392,13 +388,16 @@ func TestPublisherLogsActualRTBResponses(t *testing.T) {
 				}
 			}
 			got := captured.String()
+			if tc.wantAlert == "" {
+				if strings.Contains(got, "publisher RTB ") {
+					t.Fatalf("unexpected RTB log on successful response: %s", got)
+				}
+				return
+			}
 			for _, want := range append(tc.wantLog, "request_id="+in.ID) {
-				if !strings.Contains(got, want) && tc.absentLog == "" {
+				if !strings.Contains(got, want) {
 					t.Fatalf("missing %q in log: %s", want, got)
 				}
-			}
-			if tc.absentLog != "" && strings.Contains(got, tc.absentLog) {
-				t.Fatalf("debug output on production default: %s", got)
 			}
 		})
 	}
