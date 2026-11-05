@@ -380,7 +380,7 @@ func TestPublisherLogsOnlyRTBErrors(t *testing.T) {
 				t.Fatalf("unexpected alert delivery: %v (%q)", sent, alert)
 			}
 			if tc.wantAlert != "" {
-				if !strings.Contains(alert, tc.wantAlert) || strings.Contains(alert, "?feed=") {
+				if !strings.Contains(alert, "RTB errors: 1") || strings.Contains(alert, "?feed=") || (tc.body != "" && strings.Contains(alert, strings.TrimSpace(tc.body))) {
 					t.Fatalf("incorrect alert: %q", alert)
 				}
 				if strings.Contains(w.Body.String(), tc.wantAlert) || (tc.body != "" && strings.Contains(w.Body.String(), strings.TrimSpace(tc.body))) {

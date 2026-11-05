@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -33,19 +34,19 @@ func TestPubAlertUsesSystemBotAndRetainsCountsOnFailure(t *testing.T) {
 	}))
 	defer bot.Close()
 	a := NewSystemAlerts("test-pub", utils.NewBotMessage(bot.URL, "test-secret").SendTextMessageToBot)
-	a.recordRTBFailure(errors.New("RTB HTTP 403: Ip is limited: 192.0.2.42"))
+	a.recordRTBFailure(classifyRTBHTTPFailure(403, "", "Ip is limited: 192.0.2.42"))
 	if !a.flush(context.Background()) {
 		t.Fatal("missing first send")
 	}
-	a.recordRTBFailure(errors.New("RTB HTTP 429: rate limit"))
+	a.recordRTBFailure(classifyRTBHTTPFailure(429, "", "rate limit"))
 	a.Record(AlertDelivery)
 	if !a.flush(context.Background()) || a.flush(context.Background()) || len(messages) != 2 {
 		t.Fatal("failed count was not retried exactly once")
 	}
-	if first := <-messages; first != "[pub] host=test-pub\nRTB errors: 1\n- RTB HTTP 403: Ip is limited: 192.0.2.42" {
+	if first := <-messages; first != "[pub] host=test-pub\nRTB errors: 1\n- 1 x [ssp_ip_limited] SSP Adapter rejected the visitor IP under the request-rate policy (HTTP 403)" {
 		t.Fatalf("first notice: %q", first)
 	}
-	if second := <-messages; second != "[pub] host=test-pub\nRTB errors: 2\n- RTB HTTP 403: Ip is limited: 192.0.2.42\n- RTB HTTP 429: rate limit\ndelivery=1" {
+	if second := <-messages; second != "[pub] host=test-pub\nRTB errors: 2\n- 1 x [ssp_ip_limited] SSP Adapter rejected the visitor IP under the request-rate policy (HTTP 403)\n- 1 x [upstream_unclassified] RTB or its proxy throttled the request (HTTP 429)\ndelivery=1: Publisher could not prepare or validate the ad delivery" {
 		t.Fatalf("retry notice: %q", second)
 	}
 }
@@ -76,12 +77,12 @@ func TestPubAlertWorkerDoesNotWaitInRecordAndLimitsSends(t *testing.T) {
 			return time.Time{}
 		}
 	}
-	a.recordRTBFailure(errors.New("RTB HTTP 403: Ip is limited: 192.0.2.42"))
+	a.recordRTBFailure(classifyRTBHTTPFailure(403, "", "Ip is limited: 192.0.2.42"))
 	first := next()
 	recorded := make(chan struct{})
 	go func() {
 		for i := 0; i < 1000; i++ {
-			a.recordRTBFailure(errors.New("RTB HTTP 403: Ip is limited: 192.0.2.42"))
+			a.recordRTBFailure(classifyRTBHTTPFailure(403, "", "Ip is limited: 192.0.2.42"))
 		}
 		close(recorded)
 	}()
@@ -123,7 +124,7 @@ func TestPubAlertForUnavailableConfigNotClientRefusals(t *testing.T) {
 	canceled, cancel := context.WithCancel(context.Background())
 	cancel()
 	s.reportRedisRead(canceled, errors.New("browser left"))
-	if !a.flush(context.Background()) || !strings.HasSuffix(message, "\nconfig_unready=1") ||
+	if !a.flush(context.Background()) || !strings.HasSuffix(message, "\nconfig_unready=1: Publisher configuration in Redis is unavailable or Redis safety has not been verified") ||
 		strings.Count(message, "\n") != 1 {
 		t.Fatalf("unexpected digest: %q", message)
 	}
@@ -135,12 +136,14 @@ func TestPubRTBAlertBoundsDigest(t *testing.T) {
 		text = message
 		return nil
 	})
-	for _, detail := range []string{"same", "same", strings.Repeat("Я", 2000), strings.Repeat("界", 2000), "overflow"} {
-		a.recordRTBFailure(errors.New(detail))
+	for i := 0; i < maxRTBAlertGroups+1; i++ {
+		a.recordRTBFailure(rtbFailure{reason: fmt.Sprintf("test_%d", i), explanation: "diagnostic"})
 	}
-	if !a.flush(context.Background()) || !strings.Contains(text, "RTB errors: 5") ||
-		strings.Count(text, "- same") != 1 || !strings.Contains(text, "Other RTB errors") ||
-		strings.Contains(text, "overflow") || !utf8.ValidString(text) || len(text) >= 4096 {
+	a.recordRTBFailure(rtbFailure{reason: "test_0", explanation: "diagnostic"})
+	a.recordRTBFailure(errors.New("secret upstream payload"))
+	if !a.flush(context.Background()) || !strings.Contains(text, fmt.Sprintf("RTB errors: %d", maxRTBAlertGroups+3)) ||
+		!strings.Contains(text, "- 2 x [test_0]") || !strings.Contains(text, "Other RTB errors: 2") ||
+		strings.Contains(text, "secret upstream payload") || !utf8.ValidString(text) {
 		t.Fatalf("incorrect digest: %q", text)
 	}
 }

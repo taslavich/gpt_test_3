@@ -2,12 +2,14 @@ package pub
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log"
 	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
+	"unicode"
 	"unicode/utf8"
 )
 
@@ -28,13 +30,34 @@ const (
 	AlertRuntime
 	AlertOutboxWrite
 	AlertOutboxFlush
+	AlertRTBCircuit
+	AlertPolicy
+	AlertDeliveryContract
 	alertKindCount
 )
 
 var alertNames = [alertKindCount]string{
 	"redis_safety", "last_request_flush", "config_unready", "redis_read",
 	"overload", "reservation", "delivery", "confirm",
-	"infrastructure", "runtime", "telemetry_outbox_write", "telemetry_outbox_flush",
+	"infrastructure", "runtime", "telemetry_outbox_write", "telemetry_outbox_flush", "rtb_circuit_open", "policy_unready", "delivery_contract_unverified",
+}
+
+var alertExplanations = [alertKindCount]string{
+	"Publisher could not verify Redis safety settings",
+	"Publisher could not publish the last-request timestamps",
+	"Publisher configuration in Redis is unavailable or Redis safety has not been verified",
+	"Publisher failed to read required data from Redis",
+	"Publisher hit its concurrent request limit",
+	"Publisher could not reserve, release or cache a delivery",
+	"Publisher could not prepare or validate the ad delivery",
+	"Publisher could not record the delivery confirmation",
+	"Publisher infrastructure settings or delivery host were unavailable",
+	"Publisher runtime or client configuration could not be served",
+	"Publisher could not save a failed request to Redis or the local outbox",
+	"Publisher could not flush the telemetry outbox to Redis",
+	"Publisher temporarily skipped auctions after consecutive RTB failures",
+	"Publisher could not load or verify the current site policy",
+	"Publisher cannot run auctions because the delivery contract is not verified",
 }
 
 type SystemAlerts struct {
@@ -65,43 +88,88 @@ func (a *SystemAlerts) Record(kind AlertKind) {
 	}
 }
 
-const maxRTBAlertSamples = 3
-const maxRTBAlertDetailBytes = 1024
+// Keep one representative request for each failure group. Excess categories
+// are counted and can be recovered from the service logs.
+const maxRTBAlertGroups = 64
+const maxRTBAlertSamples = 8
 
-type rtbAlertBatch struct {
-	count   uint64
-	details []string
-	omitted bool
+type rtbAlertGroup struct {
+	sample rtbFailure
+	count  uint64
 }
 
-func (b *rtbAlertBatch) add(detail string) {
-	for _, previous := range b.details {
-		if detail == previous {
+type rtbAlertBatch struct {
+	count, other uint64
+	groups       []rtbAlertGroup
+}
+
+func (b *rtbAlertBatch) add(g rtbAlertGroup) {
+	for i, previous := range b.groups {
+		if previous.sample.reason == g.sample.reason && previous.sample.status == g.sample.status {
+			b.groups[i].count += g.count
 			return
 		}
 	}
-	if len(b.details) == maxRTBAlertSamples {
-		b.omitted = true
+	if len(b.groups) == maxRTBAlertGroups {
+		b.other += g.count
 		return
 	}
-	b.details = append(b.details, detail)
+	b.groups = append(b.groups, g)
+}
+
+func boundedAlertText(text string, max int) string {
+	text = strings.Map(func(r rune) rune {
+		if unicode.IsControl(r) {
+			return -1
+		}
+		return r
+	}, strings.ToValidUTF8(text, ""))
+	if len(text) <= max {
+		return text
+	}
+	end := max - len("…")
+	for !utf8.RuneStart(text[end]) {
+		end--
+	}
+	return text[:end] + "…"
+}
+
+func (g rtbAlertGroup) line(withSample bool) string {
+	f := g.sample
+	line := fmt.Sprintf("- %d x [%s] %s", g.count, f.reason, f.explanation)
+	if f.status != 0 {
+		line += fmt.Sprintf(" (HTTP %d)", f.status)
+	}
+	if !withSample {
+		return line
+	}
+	if f.upstream != "" {
+		line += " | upstream=" + f.upstream
+	}
+	if f.requestID != "" {
+		line += " | request=" + f.requestID
+	}
+	if f.ortbID != "" {
+		line += " | ortb=" + f.ortbID
+	}
+	return line
 }
 
 func (a *SystemAlerts) recordRTBFailure(err error) {
 	if a == nil || err == nil {
 		return
 	}
-	detail := strings.TrimSpace(strings.ToValidUTF8(err.Error(), "�"))
-	if len(detail) > maxRTBAlertDetailBytes {
-		end := maxRTBAlertDetailBytes - len("…")
-		for !utf8.RuneStart(detail[end]) {
-			end--
+	var failure rtbFailure
+	if !errors.As(err, &failure) {
+		if strings.Contains(err.Error(), " HTTP 200: read response:") {
+			failure = rtbFailure{reason: "response_read_failed", explanation: "Publisher could not read the successful HTTP response from RTB", status: 200}
+		} else {
+			failure = rtbFailure{reason: "unknown_failure", explanation: "Publisher hit an unclassified RTB failure; see the pub log"}
 		}
-		detail = detail[:end] + "…"
 	}
 	a.rtbMu.Lock()
 	a.rtb.count++
-	a.rtb.add(detail)
+	a.rtb.add(rtbAlertGroup{sample: failure, count: 1})
 	a.rtbMu.Unlock()
 	select {
 	case a.wake <- struct{}{}:
@@ -118,17 +186,17 @@ func (a *SystemAlerts) flush(ctx context.Context) bool {
 	a.rtbMu.Unlock()
 	if rtb.count != 0 {
 		lines = append(lines, fmt.Sprintf("RTB errors: %d", rtb.count))
-		for _, detail := range rtb.details {
-			lines = append(lines, "- "+detail)
+		for i, group := range rtb.groups {
+			lines = append(lines, group.line(i < maxRTBAlertSamples || group.sample.status == 429))
 		}
-		if rtb.omitted {
-			lines = append(lines, "Other RTB errors are in the pub journal.")
+		if rtb.other != 0 {
+			lines = append(lines, fmt.Sprintf("Other RTB errors: %d; see the pub log.", rtb.other))
 		}
 	}
 	for i := range batch {
 		batch[i] = a.counts[i].Swap(0)
 		if batch[i] != 0 {
-			lines = append(lines, fmt.Sprintf("%s=%d", alertNames[i], batch[i]))
+			lines = append(lines, fmt.Sprintf("%s=%d: %s", alertNames[i], batch[i], alertExplanations[i]))
 		}
 	}
 	if len(lines) == 0 {
@@ -144,9 +212,9 @@ func (a *SystemAlerts) flush(ctx context.Context) bool {
 		if rtb.count != 0 {
 			a.rtbMu.Lock()
 			rtb.count += a.rtb.count
-			rtb.omitted = rtb.omitted || a.rtb.omitted
-			for _, detail := range a.rtb.details {
-				rtb.add(detail)
+			rtb.other += a.rtb.other
+			for _, group := range a.rtb.groups {
+				rtb.add(group)
 			}
 			a.rtb = rtb
 			a.rtbMu.Unlock()

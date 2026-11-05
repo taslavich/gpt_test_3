@@ -10,6 +10,7 @@ import (
 	"github.com/redis/go-redis/v9"
 	ortb "gitlab.com/twinbid-exchange/RTB-exchange/internal/grpc/proto/types/ortb_V2_5"
 	c "gitlab.com/twinbid-exchange/RTB-exchange/internal/pubcontract"
+	"gitlab.com/twinbid-exchange/RTB-exchange/internal/pubdiagnostic"
 	"gitlab.com/twinbid-exchange/RTB-exchange/internal/pubuuid"
 	shard "gitlab.com/twinbid-exchange/RTB-exchange/internal/services/redis"
 	"io"
@@ -233,7 +234,11 @@ func (s *Server) negative(w http.ResponseWriter, r *http.Request, in Request, co
 	case "overload":
 		s.Alerts.Record(AlertOverload)
 	case "policy_unready":
-		s.Alerts.Record(AlertConfig)
+		s.Alerts.Record(AlertPolicy)
+	case "confirmed_open_contract_unverified":
+		s.Alerts.Record(AlertDeliveryContract)
+	case "rtb_circuit_open":
+		s.Alerts.Record(AlertRTBCircuit)
 	case "infrastructure_unavailable":
 		s.Alerts.Record(AlertInfrastructure)
 	case "frequency_unavailable", "reservation_release_failed", "request_cache_failed":
@@ -445,11 +450,11 @@ type bid struct {
 func (s *Server) auction(ctx context.Context, r *http.Request, in *Request, code c.Code, host, site, zone, epoch string) (*bid, error) {
 	endpoint, feed, err := s.feed(code.TrafficType)
 	if err != nil {
-		return nil, err
+		return nil, (rtbFailure{reason: "traffic_type_invalid", explanation: "Publisher could not select an RTB endpoint for this traffic type"}).withContext("", in)
 	}
 	u, e := url.Parse(endpoint)
 	if e != nil {
-		return nil, fmt.Errorf("invalid RTB endpoint: %w", rtbErrorCause(e))
+		return nil, (rtbFailure{reason: "endpoint_invalid", explanation: "The configured RTB endpoint URL is invalid"}).withContext("", in)
 	}
 	upstream := u.Host + u.EscapedPath()
 	q := u.Query()
@@ -466,18 +471,19 @@ func (s *Server) auction(ctx context.Context, r *http.Request, in *Request, code
 	body, _ := json.Marshal(payload)
 	req, e := http.NewRequestWithContext(ctx, "POST", u.String(), bytes.NewReader(body))
 	if e != nil {
-		return nil, fmt.Errorf("build RTB request: %w", rtbErrorCause(e))
+		return nil, (rtbFailure{reason: "request_build_failed", explanation: "Publisher could not build the HTTP request to RTB"}).withContext(upstream, in)
 	}
 	req.Header.Set("Content-Type", "application/json")
 	var parsed ortb.BidRequest
 	if e = json.Unmarshal(body, &parsed); e != nil {
-		return nil, e
+		return nil, (rtbFailure{reason: "request_encode_failed", explanation: "Publisher could not encode its OpenRTB request"}).withContext(upstream, in)
 	}
 	id := uuid.NewString()
 	stamp := fmt.Sprint(time.Now().Unix())
 	signature := pubuuid.Sign(s.Config.InternalSecret, id, feed, stamp, &parsed)
 	if e = s.prepareORTB(ctx, id, signature, s.publisherFields(r, *in, code, host, site, zone, "", 0)); e != nil {
-		return nil, fmt.Errorf("prepare RTB request in Redis: %w", e)
+		log.Printf("publisher RTB prepare_error request_id=%s ortb_id=%s upstream=%s error=%q", in.ID, id, upstream, e.Error())
+		return nil, (rtbFailure{reason: "ortb_prepare_failed", explanation: "Publisher could not prepare the OpenRTB request in Redis"}).withContext(upstream, in)
 	}
 	in.ORTBID = id
 	req.Header.Set(pubuuid.Header, id)
@@ -497,7 +503,7 @@ func (s *Server) auction(ctx context.Context, r *http.Request, in *Request, code
 		if s.failures.Add(1) >= 5 {
 			s.breakerUntil.Store(time.Now().Add(5 * time.Second).UnixMilli())
 		}
-		return nil, fmt.Errorf("RTB %s: %w", upstream, rtbErrorCause(e))
+		return nil, classifyRTBTransportFailure(rtbErrorCause(e)).withContext(upstream, in)
 	}
 	defer res.Body.Close()
 	if res.StatusCode == 204 {
@@ -514,14 +520,7 @@ func (s *Server) auction(ctx context.Context, r *http.Request, in *Request, code
 		if s.failures.Add(1) >= 5 {
 			s.breakerUntil.Store(time.Now().Add(5 * time.Second).UnixMilli())
 		}
-		detail := fmt.Sprintf("RTB %s HTTP %d", upstream, res.StatusCode)
-		if body := strings.TrimSpace(string(excerpt)); body != "" {
-			detail += ": " + body
-		}
-		if readErr != nil {
-			detail += "; read response: " + readErr.Error()
-		}
-		return nil, errors.New(detail)
+		return nil, classifyRTBHTTPFailure(res.StatusCode, res.Header.Get(pubdiagnostic.Header), string(excerpt)).withContext(upstream, in)
 	}
 	s.failures.Store(0)
 	var response struct {
@@ -531,7 +530,7 @@ func (s *Server) auction(ctx context.Context, r *http.Request, in *Request, code
 	}
 	if e = json.NewDecoder(io.LimitReader(res.Body, 1<<20)).Decode(&response); e != nil {
 		log.Printf("publisher RTB decode_error request_id=%s ortb_id=%s upstream=%s status=200 elapsed_ms=%d error=%q", in.ID, id, u.Host+u.Path, time.Since(started).Milliseconds(), e.Error())
-		return nil, fmt.Errorf("RTB %s HTTP 200: decode response: %w", upstream, e)
+		return nil, (rtbFailure{reason: "response_decode_failed", explanation: "RTB returned HTTP 200 but Publisher could not decode the OpenRTB response", status: 200}).withContext(upstream, in)
 	}
 	for _, seat := range response.Seatbid {
 		for _, b := range seat.Bid {
