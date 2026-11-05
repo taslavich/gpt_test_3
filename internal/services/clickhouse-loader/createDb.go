@@ -3016,6 +3016,75 @@ WITH now64(3,'UTC') AS stamp,
  SETTINGS max_threads=2,max_memory_usage=1073741824,max_bytes_before_external_group_by=134217728;
 `
 
+// Site moderation is installed separately; never invoke production schema
+// reconciliation (which recreates unrelated views) to enable this feature.
+const publisherSiteReviewDDL = `
+CREATE TABLE IF NOT EXISTS {db}.publisher_site_review
+(
+    site_id String,
+    action Enum8('enabled'=1, 'notified'=2, 'allowed'=3, 'block_requested'=4, 'blocked'=5),
+    moderator_id Int64 DEFAULT 0,
+    recorded_at DateTime64(3, 'UTC') DEFAULT now64(3, 'UTC')
+)
+ENGINE = MergeTree
+ORDER BY (site_id, action, recorded_at);
+
+CREATE VIEW IF NOT EXISTS {db}.publisher_new_sites AS
+SELECT
+    inventory.site_id AS site_id,
+    inventory.hostname AS hostname,
+    inventory.first_seen AS first_request_at,
+    coalesce(review.notified, toUInt8(0)) AS notified,
+    coalesce(review.block_requested, toUInt8(0)) AS block_requested
+FROM
+(
+    SELECT site_id,
+        argMinIf(i.hostname, tuple(i.first_request_at, i.hostname), i.hostname != '') AS hostname,
+        min(i.first_request_at) AS first_seen
+    FROM {db}.publisher_inventory AS i
+    WHERE match(site_id, '^[0-9A-Za-z]{12}$')
+    GROUP BY site_id
+    HAVING first_seen >= (
+        SELECT minOrNull(recorded_at)
+        FROM {db}.publisher_site_review
+        WHERE site_id = '' AND action = 'enabled'
+    )
+) AS inventory
+LEFT JOIN
+(
+    SELECT site_id,
+        toUInt8(countIf(action = 'notified') > 0) AS notified,
+        toUInt8(countIf(action = 'block_requested') > 0) AS block_requested,
+        toUInt8(countIf(action IN ('allowed', 'blocked')) > 0) AS decided
+    FROM {db}.publisher_site_review
+    WHERE site_id != ''
+    GROUP BY site_id
+) AS review ON inventory.site_id = review.site_id
+WHERE coalesce(review.decided, toUInt8(0)) = 0;
+
+INSERT INTO {db}.publisher_site_review (site_id, action, recorded_at)
+SELECT '', 'enabled', now64(3, 'UTC')
+WHERE (
+    SELECT count() FROM {db}.publisher_site_review WHERE site_id = '' AND action = 'enabled'
+) = 0;
+`
+
+func ApplyPublisherSiteReview(ctx context.Context, ch clickhouse.Conn, database string) error {
+	database = strings.TrimSpace(database)
+	if !diagnosticDatabase.MatchString(database) {
+		return fmt.Errorf("invalid ClickHouse database name")
+	}
+	for _, statement := range splitClickHouseStatements(strings.ReplaceAll(publisherSiteReviewDDL, "{db}", database)) {
+		if statement = strings.TrimSpace(statement); statement == "" {
+			continue
+		}
+		if err := ch.Exec(ctx, statement); err != nil {
+			return fmt.Errorf("publisher site review installation: %w", err)
+		}
+	}
+	return nil
+}
+
 func CreateDB(ctx context.Context, ch clickhouse.Conn, database string) error {
 	database = strings.TrimSpace(database)
 	if !diagnosticDatabase.MatchString(database) {
