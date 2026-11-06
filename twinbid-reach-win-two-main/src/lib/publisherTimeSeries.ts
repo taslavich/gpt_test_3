@@ -29,7 +29,7 @@ function hourStart(instant: number, timezone: string) {
   return instant - Number(p.minute) * 60000 - Number(p.second) * 1000 - instant % 1000;
 }
 function bucketInstant(value: string) {
-  // Unqualified timestamps are UTC in the Publisher statistics contract.
+  // Only timestamps with an explicit offset represent absolute instants here.
   if (!/^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?(?:Z|[+-]\d{2}:?\d{2})?$/i.test(value)) return invalid();
   const iso = value.replace(" ", "T");
   const result = Date.parse(/[zZ]|[+-]\d{2}:?\d{2}$/.test(iso) ? iso : iso + "Z");
@@ -47,11 +47,16 @@ export function publisherTimeSeries(rows: PublisherRow[], request: PublisherStat
   const from = Date.parse(request.from), to = Date.parse(request.to);
   if (!Number.isFinite(from) || !Number.isFinite(to) || to <= from || to - from > 367 * 86400000) return invalid();
   const timezone = publisherTimezone(request.timezone);
+  const localHours = new Map<string, string>();
   const buckets = new Map<string, PublisherRow>();
   if (request.group_by === "hour") {
     for (let time = hourStart(from, timezone); time < to; time += HOUR) {
       const key = new Date(time).toISOString();
       buckets.set(key, emptyRow(key));
+      const p = parts(time, timezone);
+      const local = p.year + "-" + p.month + "-" + p.day + " " + p.hour;
+      // Offset-free buckets cannot distinguish a repeated DST hour; use its first occurrence.
+      if (!localHours.has(local)) localHours.set(local, key);
     }
   } else {
     const last = localDay(to - 1, timezone);
@@ -64,6 +69,12 @@ export function publisherTimeSeries(rows: PublisherRow[], request: PublisherStat
     let key: string;
     if (request.group_by === "date" && /^\d{4}-\d{2}-\d{2}$/.test(row.bucket)) {
       key = row.bucket;
+    } else if (/^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?$/.test(row.bucket)) {
+      // The API has already applied request.timezone to offset-free calendar buckets.
+      // Validate the calendar timestamp, but do not add the profile offset again.
+      bucketInstant(row.bucket);
+      const local = row.bucket.replace("T", " ");
+      key = request.group_by === "hour" ? localHours.get(local.slice(0, 13)) || "" : local.slice(0, 10);
     } else {
       const instant = bucketInstant(row.bucket);
       if (instant < from || instant >= to) continue;
@@ -83,7 +94,7 @@ export function publisherTimeSeries(rows: PublisherRow[], request: PublisherStat
 
 /** Same dd.MM.yyyy HH:00 notation as the advertiser cabinet, in the profile timezone. */
 export function publisherTimeLabel(row: PublisherRow, group: "hour" | "date", timezone?: string) {
-  const p = group === "hour" ? parts(bucketInstant(row.bucket), publisherTimezone(timezone)) : null;
+  const p = group === "hour" ? parts(bucketInstant(row.bucket), timezone && formatters.has(timezone) ? timezone : publisherTimezone(timezone)) : null;
   const day = p ? p.year + "-" + p.month + "-" + p.day : row.bucket;
   return day.slice(8, 10) + "." + day.slice(5, 7) + "." + day.slice(0, 4) + (p ? " " + p.hour + ":00" : "");
 }
@@ -95,9 +106,23 @@ export async function publisherTimeReport(
 ): Promise<PublisherReport> {
   const rows: PublisherRow[] = [];
   let first: PublisherReport | undefined, offset = 0;
+  const deadline = Date.now() + 20000;
   while (offset <= 1000000) {
     if (signal?.aborted) throw new DOMException("Aborted", "AbortError");
-    const page = await load({ ...request, limit: 500, offset });
+    const remaining = deadline - Date.now();
+    if (remaining <= 0) throw new ApiError(0, "Publisher statistics request timed out");
+    let timeout: ReturnType<typeof setTimeout> | undefined;
+    let page: PublisherReport;
+    try {
+      page = await Promise.race([
+        load({ ...request, limit: 500, offset }),
+        new Promise<never>((_, reject) => {
+          timeout = setTimeout(() => reject(new ApiError(0, "Publisher statistics request timed out")), remaining);
+        }),
+      ]);
+    } finally {
+      clearTimeout(timeout);
+    }
     if (signal?.aborted) throw new DOMException("Aborted", "AbortError");
     if (page.offset !== offset || page.limit < 1) return invalid();
     if (!first) first = page;

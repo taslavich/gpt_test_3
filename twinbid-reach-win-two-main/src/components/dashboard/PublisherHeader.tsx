@@ -103,7 +103,7 @@ export function PublisherHeader() {
           </Popover>
           <button
             onClick={() => navigate(role === "publisher" ? "/publisher/settings" : "/dashboard/settings")}
-            className="flex min-w-0 items-center gap-3 hover:opacity-80 transition-opacity cursor-pointer"
+            className="flex min-h-11 min-w-11 items-center justify-center gap-3 hover:opacity-80 transition-opacity cursor-pointer"
             aria-label={t("settings.title")}
           >
             <div className="h-9 w-9 rounded-full bg-primary/20 flex items-center justify-center">

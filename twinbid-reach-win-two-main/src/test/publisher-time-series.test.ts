@@ -54,3 +54,23 @@ it("rejects invalid time data and cancelled loads instead of displaying misleadi
   await expect(publisherTimeReport(request, load, controller.signal)).rejects.toMatchObject({ name: "AbortError" });
   expect(load).not.toHaveBeenCalled();
 });
+
+it("does not apply UTC+3 twice to a backend-local bucket: 09:00 stays 09:00", () => {
+  const range = { ...request, timezone: "utc_3", from: "2026-09-30T21:00:00Z", to: "2026-10-01T21:00:00Z" };
+  const rows = publisherTimeSeries([
+    { ...rowFixture, bucket: "2026-10-01 09:37:20", impressions: 1, clicks: 0 },
+    { ...rowFixture, bucket: "2026-10-01T09:59:00", impressions: 1, clicks: 0 },
+    { ...rowFixture, bucket: "2026-10-01T06:22:00Z", impressions: 1, clicks: 0 },
+    { ...rowFixture, bucket: "2026-10-01T09:23:00+03:00", impressions: 1, clicks: 0 },
+  ], range);
+  const atNine = rows.find(row => publisherTimeLabel(row, "hour", "Etc/GMT-3") === "01.10.2026 09:00")!;
+  expect(atNine.impressions).toBe(4);
+  expect(atNine.bucket).toBe("2026-10-01T06:00:00.000Z");
+  expect(rows.find(row => publisherTimeLabel(row, "hour", "Etc/GMT-3") === "01.10.2026 12:00")?.impressions).toBe(0);
+});
+
+it("keeps offset-free timestamps on the backend-local calendar day", () => {
+  const rows = publisherTimeSeries([{ ...rowFixture, bucket: "2026-10-01 23:50:00", impressions: 1, clicks: 0 }],
+    { ...request, group_by: "date", timezone: "utc_3", from: "2026-09-30T21:00:00Z", to: "2026-10-02T21:00:00Z" });
+  expect(rows.map(row => [row.bucket, row.impressions])).toEqual([["2026-10-01", 1], ["2026-10-02", 0]]);
+});

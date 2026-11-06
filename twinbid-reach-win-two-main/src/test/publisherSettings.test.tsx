@@ -4,6 +4,7 @@ import {
   screen,
   waitFor,
   cleanup,
+  act,
 } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import PublisherSettings from "@/pages/PublisherSettings";
@@ -42,6 +43,7 @@ beforeEach(() => {
 afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
+  vi.useRealTimers();
 });
 const tab = (name: string) =>
   fireEvent.mouseDown(screen.getByRole("tab", { name }), {
@@ -131,4 +133,29 @@ describe("Real Publisher preferences with retained account controls", () => {
       }),
     );
   });
+});
+
+
+it("keeps the settings page and tabs visible while the profile is slow", () => {
+  vi.useFakeTimers();
+  publisherServer();
+  vi.mocked(useProfile).mockReturnValue({ profile: null, loading: true, updateProfile, refetch: vi.fn() });
+  render(<PublisherSettings />, { wrapper: PublisherTestWrapper });
+  expect(screen.getByRole("tab", { name: "Профиль" })).toBeInTheDocument();
+  expect(screen.getByRole("tab", { name: "Безопасность" })).toBeInTheDocument();
+  expect(screen.getByLabelText("Имя")).toBeDisabled();
+  expect(screen.getByRole("status")).toHaveTextContent("Загрузка профиля");
+  act(() => { vi.advanceTimersByTime(12000); });
+  expect(screen.getByRole("status")).toHaveTextContent("дольше обычного");
+  expect(screen.getByRole("button", { name: "Обновить страницу" })).toBeInTheDocument();
+});
+
+it("shows a retry action instead of a blank profile when the API failed", () => {
+  publisherServer();
+  const refetch = vi.fn();
+  vi.mocked(useProfile).mockReturnValue({ profile: null, loading: false, updateProfile, refetch });
+  render(<PublisherSettings />, { wrapper: PublisherTestWrapper });
+  expect(screen.getByRole("alert")).toHaveTextContent("Не удалось загрузить профиль");
+  fireEvent.click(screen.getByRole("button", { name: "Повторить" }));
+  expect(refetch).toHaveBeenCalledOnce();
 });

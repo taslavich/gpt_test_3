@@ -49,7 +49,7 @@ import { publisherUiText as tr } from "@/lib/publisherUiText";
 export default function PublisherSettings() {
   const { t, lang } = useLanguage();
   const ru = lang === "ru";
-  const { profile, loading, updateProfile } = useProfile();
+  const { profile, loading, updateProfile, refetch } = useProfile();
   const { theme, setTheme } = useDashboardTheme();
 
   const [contactName, setContactName] = useState("");
@@ -60,6 +60,13 @@ export default function PublisherSettings() {
   const [payoutMethod, setPayoutMethod] = useState<PayoutMethod | "">("");
   const [wallet, setWallet] = useState("");
   const [saving, setSaving] = useState(false);
+  const [profileSlow, setProfileSlow] = useState(false);
+  useEffect(() => {
+    setProfileSlow(false);
+    if (!loading) return;
+    const timer = window.setTimeout(() => setProfileSlow(true), 12000);
+    return () => window.clearTimeout(timer);
+  }, [loading]);
   const { refreshPublisher } = usePublisher();
   const preferences = usePublisherResource(["settings"], publisherApi.settings);
   const [preferenceError, setPreferenceError] = useState<unknown>(null);
@@ -161,13 +168,6 @@ export default function PublisherSettings() {
     }
   };
 
-  if (loading)
-    return (
-      <div className="py-12 text-center text-muted-foreground">
-        {publisherInlineText(lang, "Загрузка…", "Loading…")}
-      </div>
-    );
-
   return (
     <div className="space-y-6">
       <div>
@@ -177,6 +177,18 @@ export default function PublisherSettings() {
         </p>
       </div>
 
+      {loading && (
+        <div role="status" className="rounded-xl border border-border p-4 text-sm text-muted-foreground">
+          {profileSlow ? tr(lang, "Профиль загружается дольше обычного. Можно перейти в другой раздел или обновить страницу.", "Your profile is taking longer to load. You can open another section or reload the page.", "个人资料加载时间较长，您可以打开其他部分或刷新页面。") : tr(lang, "Загрузка профиля…", "Loading profile…", "正在加载个人资料…")}
+          {profileSlow && <Button variant="outline" className="mt-3 block" onClick={() => window.location.reload()}>{tr(lang, "Обновить страницу", "Reload page", "刷新页面")}</Button>}
+        </div>
+      )}
+      {!loading && !profile && (
+        <div role="alert" className="space-y-3 rounded-xl border border-destructive/40 p-4 text-sm">
+          <p>{tr(lang, "Не удалось загрузить профиль.", "Could not load your profile.", "无法加载个人资料。")}</p>
+          <Button variant="outline" onClick={() => void refetch()}>{tr(lang, "Повторить", "Retry", "重试")}</Button>
+        </div>
+      )}
       {preferences.error && (
         <PublisherError error={preferences.error} retry={preferences.refetch} />
       )}
@@ -192,19 +204,19 @@ export default function PublisherSettings() {
       <Tabs defaultValue="profile" className="min-w-0 space-y-6">
         <div className="max-w-full">
           <TabsList className="h-auto w-full flex-wrap justify-start gap-1 overflow-visible border border-border bg-card sm:w-auto sm:justify-start">
-            <TabsTrigger value="profile" className="gap-2">
+            <TabsTrigger value="profile" className="min-h-11 gap-2">
               <User className="h-4 w-4" /> {t("settings.profile")}
             </TabsTrigger>
-            <TabsTrigger value="notifications" className="gap-2">
+            <TabsTrigger value="notifications" className="min-h-11 gap-2">
               <Bell className="h-4 w-4" /> {t("settings.notifications")}
             </TabsTrigger>
-            <TabsTrigger value="security" className="gap-2">
+            <TabsTrigger value="security" className="min-h-11 gap-2">
               <Shield className="h-4 w-4" /> {t("settings.security")}
             </TabsTrigger>
-            <TabsTrigger value="appearance" className="gap-2">
+            <TabsTrigger value="appearance" className="min-h-11 gap-2">
               <Palette className="h-4 w-4" /> {t("settings.appearance")}
             </TabsTrigger>
-            <TabsTrigger value="payouts" className="gap-2">
+            <TabsTrigger value="payouts" className="min-h-11 gap-2">
               <Wallet className="h-4 w-4" />{" "}
               {publisherInlineText(lang, "Выплаты", "Payouts")}
             </TabsTrigger>
@@ -217,7 +229,8 @@ export default function PublisherSettings() {
               <CardTitle className="text-lg">{t("settings.profile")}</CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
-              <div className="grid sm:grid-cols-2 gap-4">
+              <fieldset disabled={loading || !profile || saving} className="space-y-4">
+              <div className="grid min-w-0 gap-4 sm:grid-cols-2">
                 <div className="space-y-2">
                   <Label htmlFor="publisher-profile-name">
                     {t("settings.name")}
@@ -286,6 +299,7 @@ export default function PublisherSettings() {
                 <Save className="h-4 w-4 mr-2" />
                 {t("settings.save")}
               </Button>
+              </fieldset>
             </CardContent>
           </Card>
         </TabsContent>

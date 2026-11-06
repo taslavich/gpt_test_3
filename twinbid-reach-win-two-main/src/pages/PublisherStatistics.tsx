@@ -244,9 +244,10 @@ export default function PublisherStatistics() {
           maximumFractionDigits: key === "ctr" ? 2 : 0,
         }) + (key === "ctr" ? "%" : "");
   // Approximation is only a visual coordinate; financial totals/tooltips retain decimal strings.
-  const chart = [...(query.data?.rows || [])]
+  const chart = useMemo(() => [...(query.data?.rows || [])]
     .sort((a, b) => a.bucket.localeCompare(b.bucket))
-    .map((row) => ({ ...row, chartLabel: label(row), plot: Number(metric === "cpm" ? publisherCpm(row) : row[metric]) }));
+    .map((row) => ({ ...row, chartLabel: label(row), plot: Number(metric === "cpm" ? publisherCpm(row) : row[metric]) })),
+    [query.data?.rows, metric, request?.group_by, request?.timezone, adCodes, lang]);
   const selectedMetrics = METRICS.filter(([key]) => columns.has(key));
   const groupTitle = GROUPS.find(([value]) => value === request?.group_by);
   const exportCsv = () => {
