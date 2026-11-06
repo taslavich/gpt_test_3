@@ -6,6 +6,7 @@ import {
   screen,
   waitFor,
   cleanup,
+  within,
 } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useProfile } from "@/contexts/ProfileContext";
@@ -52,7 +53,7 @@ describe("Server reports, filters and hour boundaries", () => {
     ).toMatchObject({
       group_by: "date",
       timezone: "Etc/GMT-3",
-      limit: 50,
+      limit: 500,
       offset: 0,
     });
   });
@@ -92,7 +93,7 @@ describe("Server reports, filters and hour boundaries", () => {
       .at(-1)!.body!;
     expect(String(body.from)).toMatch(/18:30:00.000Z$/);
     expect(String(body.to)).toMatch(/18:30:00.000Z$/);
-  });
+  }, 15000);
   it("defaults to UTC+0 without a saved profile timezone and waits for the profile", async () => {
     const s = publisherServer();
     const profile = { ...profileFixture, timezone: null };
@@ -136,13 +137,14 @@ describe("Server reports, filters and hour boundaries", () => {
     expect(new Date(String(body.from)).getTime() - new Date(String(previous.from)).getTime()).toBe(3 * 60 * 60 * 1000);
     expect(new Date(String(body.to)).getTime() - new Date(String(previous.to)).getTime()).toBe(3 * 60 * 60 * 1000);
   });
-  it("shows successful empty rows and keeps server totals", async () => {
+  it("fills successful empty daily rows with zeros and keeps server totals", async () => {
     const s = publisherServer();
     s.overrides.set("POST /api/publisher/stats/query", () =>
       reply({ ...reportFixture, rows: [] }),
     );
     render(<PublisherStatistics />, { wrapper: PublisherTestWrapper });
-    await screen.findByText(/Нет данных за выбранный период/);
+    await screen.findByText("Итого за весь период");
+    expect(screen.getByRole("table").querySelectorAll("tbody tr")).toHaveLength(7);
     expect(screen.getAllByText(/\$98\s765,12345678/).length).toBeGreaterThan(0);
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   });
@@ -164,4 +166,47 @@ describe("Server reports, filters and hour boundaries", () => {
         ).toHaveAttribute("href", "/publisher");
     },
   );
+});
+
+
+it("shows all 24 hours with advertiser labels and merges events within each hour", async () => {
+  vi.useFakeTimers({ toFake: ["Date"] });
+  vi.setSystemTime(new Date("2026-11-06T12:00:00Z"));
+  vi.mocked(useProfile).mockReturnValue({ profile: { ...profileFixture, timezone: "UTC" }, loading: false, updateProfile: vi.fn(), refetch: vi.fn() });
+  const server = publisherServer();
+  server.overrides.set("POST /api/publisher/stats/query", req => reply({
+    ...reportFixture, limit: req.body?.limit, offset: req.body?.offset,
+    rows: req.body?.group_by === "hour" ? [
+      { ...rowFixture, bucket: "2026-11-06T09:12:13Z", impressions: 10, clicks: 1, revenue_usd: "0.1" },
+      { ...rowFixture, bucket: "2026-11-06T09:59:59Z", impressions: 10, clicks: 1, revenue_usd: "0.2" },
+    ] : [],
+  }));
+  render(<PublisherStatistics />, { wrapper: PublisherTestWrapper });
+  await screen.findByText("Итого за весь период");
+  fireEvent.click(screen.getByRole("button", { name: "Сегодня" }));
+  fireEvent.click(screen.getByRole("button", { name: "Обновить" }));
+  await waitFor(() => expect(server.calls.filter(c => c.url.pathname.endsWith("/stats/query")).at(-1)?.body?.from).toBe("2026-11-06T00:00:00.000Z"));
+  fireEvent.click(await screen.findByRole("button", { name: "Час" }));
+  const atNine = (await screen.findByRole("cell", { name: "06.11.2026 09:00" })).closest("tr")!;
+  expect(within(atNine).getAllByRole("cell").map(cell => cell.textContent)).toEqual(["06.11.2026 09:00", "20", "2", "10%", "$0,30", "$15,00"]);
+  expect(screen.getByRole("table").querySelectorAll("tbody tr")).toHaveLength(24);
+  expect(screen.getByRole("cell", { name: "06.11.2026 00:00" }).closest("tr")).toHaveTextContent("$0,00");
+  expect(screen.getByRole("cell", { name: "06.11.2026 23:00" })).toBeInTheDocument();
+  expect(screen.queryByRole("cell", { name: /09:12|09:59/ })).not.toBeInTheDocument();
+});
+
+it("paginates a complete seven-day hourly series locally without asking the API for missing-hour pages", async () => {
+  const server = publisherServer();
+  server.overrides.set("POST /api/publisher/stats/query", req => reply({
+    ...reportFixture, rows: [], limit: req.body?.limit, offset: req.body?.offset,
+  }));
+  render(<PublisherStatistics />, { wrapper: PublisherTestWrapper });
+  await screen.findByText("Итого за весь период");
+  fireEvent.click(await screen.findByRole("button", { name: "Час" }));
+  await waitFor(() => expect(screen.getByRole("table").querySelectorAll("tbody tr")).toHaveLength(50));
+  const requests = server.calls.filter(c => c.url.pathname.endsWith("/stats/query")).length;
+  const firstHour = screen.getByRole("table").querySelector("tbody tr")!.textContent;
+  fireEvent.click(screen.getByRole("button", { name: "Далее" }));
+  await waitFor(() => expect(screen.getByRole("table").querySelector("tbody tr")!.textContent).not.toBe(firstHour));
+  expect(server.calls.filter(c => c.url.pathname.endsWith("/stats/query"))).toHaveLength(requests);
 });

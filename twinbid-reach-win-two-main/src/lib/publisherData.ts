@@ -72,6 +72,16 @@ export function publisherCpm(metrics: PublisherMetrics): string {
   const value = digits.slice(0, -8) + "." + digits.slice(-8);
   return (revenue.negative && rounded !== 0n ? "-" : "") + value;
 }
+/** Add decimal revenue strings without losing precision while regrouping time buckets. */
+export function addPublisherMoney(a: string, b: string): string {
+  const x = decimal(a), y = decimal(b);
+  const places = Math.max(x.fraction.length, y.fraction.length);
+  const integer = (n: typeof x) => (n.negative ? -1n : 1n) *
+    BigInt(n.integer + n.fraction.padEnd(places, "0"));
+  const sum = integer(x) + integer(y);
+  const digits = (sum < 0n ? -sum : sum).toString().padStart(places + 1, "0");
+  return (sum < 0n ? "-" : "") + (places ? digits.slice(0, -places) + "." + digits.slice(-places) : digits);
+}
 export function normalizePublisherAmount(value: string): string {
   const raw = value.trim().replace(",", ".");
   if (

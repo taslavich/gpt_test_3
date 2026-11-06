@@ -19,6 +19,7 @@ import {
   type PublisherRow,
   type PublisherStatsRequest,
 } from "@/api/publisher";
+import { publisherTimeLabel } from "@/lib/publisherTimeSeries";
 import { ApiError } from "@/api/http";
 import {
   usePublisher,
@@ -158,10 +159,11 @@ export default function PublisherStatistics() {
       setInputError(error);
     }
   }, [profileLoading, profile?.timezone]);
-  const body = request ? { ...request, offset } : null;
+  const temporal = request?.group_by === "hour" || request?.group_by === "date";
+  const body = request ? { ...request, offset: temporal ? 0 : offset } : null;
   const query = usePublisherResource(
     ["stats", body],
-    (signal) => publisherApi.stats(body!, signal),
+    (signal) => temporal ? publisherApi.statsSeries(body!, signal) : publisherApi.stats(body!, signal),
     !!body,
   );
   const sites = usePublisherResource(
@@ -210,10 +212,8 @@ export default function PublisherStatistics() {
     }
   };
   const label = (row: PublisherRow) =>
-    (request?.group_by === "date" || request?.group_by === "hour") && /^\d{4}-\d{2}-\d{2}/.test(row.bucket)
-      ? request.group_by === "hour" && /[zZ]|[+-]\d{2}:\d{2}$/.test(row.bucket)
-        ? publisherDate(row.bucket, lang, request.timezone)
-        : `${row.bucket.slice(8,10)}.${row.bucket.slice(5,7)}.${row.bucket.slice(0,4)}${request.group_by === "hour" ? " " + row.bucket.slice(11,16) + " " + publisherTimezoneLabel(request.timezone) : ""}`
+    (request?.group_by === "date" || request?.group_by === "hour")
+      ? publisherTimeLabel(row, request.group_by, request.timezone)
       : request?.group_by === "country"
       ? formatCountryLabel(row.bucket, lang)
       : request?.group_by === "site"
@@ -221,7 +221,7 @@ export default function PublisherStatistics() {
         : request?.group_by === "ad_code"
           ? adCodes.find((c) => c.ad_code_id === row.bucket)?.name || row.bucket
           : row.bucket || "—";
-  const rows = useMemo(
+  const sortedRows = useMemo(
     () =>
       [...(query.data?.rows || [])].sort((a, b) => {
         const compare =
@@ -236,6 +236,7 @@ export default function PublisherStatistics() {
       }),
     [query.data?.rows, sort, desc],
   );
+  const rows = temporal ? sortedRows.slice(offset, offset + 50) : sortedRows;
   const display = (data: PublisherMetrics, key: MetricKey) =>
     key === "cpm" ? "$" + formatPublisherMoney(publisherCpm(data), lang) : key === "revenue_usd"
       ? "$" + formatPublisherMoney(data[key], lang)
@@ -250,7 +251,7 @@ export default function PublisherStatistics() {
   const groupTitle = GROUPS.find(([value]) => value === request?.group_by);
   const exportCsv = () => {
     const cell = (v: string) => '"' + (/^[=+@-]/.test(v) ? "'" + v : v).replace(/"/g, '""') + '"';
-    const records = [[tr(lang, "Группа", "Group", "分组"), ...selectedMetrics.map(([, ruText, en, zh]) => tr(lang, ruText, en, zh))], ...rows.map(row => [label(row), ...selectedMetrics.map(([key]) => display(row, key))])];
+    const records = [[tr(lang, "Группа", "Group", "分组"), ...selectedMetrics.map(([, ruText, en, zh]) => tr(lang, ruText, en, zh))], ...sortedRows.map(row => [label(row), ...selectedMetrics.map(([key]) => display(row, key))])];
     const url = URL.createObjectURL(new Blob(["\uFEFF" + records.map(row => row.map(cell).join(",")).join("\r\n")], { type: "text/csv;charset=utf-8" }));
     const link = document.createElement("a"); link.href = url; link.download = "publisher-statistics.csv"; link.click(); setTimeout(() => URL.revokeObjectURL(url), 1000);
   };
@@ -280,7 +281,7 @@ export default function PublisherStatistics() {
         <div className="grid grid-cols-1 gap-4 min-[480px]:grid-cols-2 lg:grid-cols-4">{METRICS.filter(([key]) => key !== "cpm").map(([key,ruText,en,zh],index)=>{const Icon=[Eye,MousePointer,Percent,DollarSign][index];return <Card key={key} className="border-border bg-card"><CardContent className="p-4 sm:p-6"><div className="flex min-w-0 items-center justify-between gap-3"><div className="min-w-0"><p className="text-sm text-muted-foreground">{tr(lang,ruText,en,zh)}</p><p className="mt-1 break-words text-2xl font-bold [overflow-wrap:anywhere]">{display(query.data.totals,key)}</p></div><div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-lg bg-muted text-primary"><Icon className="h-6 w-6" /></div></div></CardContent></Card>;})}</div>
         {(request?.group_by === "date" || request?.group_by === "hour") && chart.length > 0 && <Card className="border-border bg-card"><CardHeader><div className="flex flex-col items-start gap-3 sm:flex-row sm:items-center sm:justify-between"><CardTitle className="text-lg">{request.group_by === "hour" ? tr(lang,"Динамика по часам","Hourly performance","每小时表现") : tr(lang,"Динамика по дням","Daily performance","每日表现")}</CardTitle><div className="flex max-w-full flex-wrap gap-1">{METRICS.map(([key,ruText,en,zh])=><Button key={key} size="sm" variant={metric===key?"default":"outline"} className="border-border text-xs" onClick={()=>setMetric(key)}>{tr(lang,ruText,en,zh)}</Button>)}</div></div></CardHeader><CardContent><div className="h-[280px]"><ResponsiveContainer width="100%" height="100%"><AreaChart data={chart}><defs><linearGradient id="pubFill" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor="hsl(var(--primary))" stopOpacity={0.3}/><stop offset="95%" stopColor="hsl(var(--primary))" stopOpacity={0}/></linearGradient></defs><CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))"/><XAxis dataKey="chartLabel" minTickGap={24} interval="preserveStartEnd" stroke="hsl(var(--muted-foreground))" fontSize={12}/><YAxis stroke="hsl(var(--muted-foreground))" fontSize={12}/><Tooltip content={({active,payload})=>active && payload?.[0]?.payload ? <div className="rounded-lg border bg-card p-3 text-sm"><p>{payload[0].payload.chartLabel}</p><p>{display(payload[0].payload as PublisherRow,metric)}</p></div>:null}/><Area type="monotone" dataKey="plot" stroke="hsl(var(--primary))" fill="url(#pubFill)" strokeWidth={2} isAnimationActive={false}/></AreaChart></ResponsiveContainer></div></CardContent></Card>}
         <Card className="border-border bg-card"><CardHeader><div className="flex min-w-0 flex-col gap-4 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between"><div role="group" aria-label={tr(lang,"Группировка","Group by","分组")} className="grid min-w-0 grid-cols-2 gap-2 sm:flex sm:flex-wrap sm:items-center">{GROUPS.map(([value,ruText,en,zh])=><Button key={value} size="sm" variant={group===value?"default":"outline"} className="h-auto min-h-9 min-w-0 whitespace-normal border-border py-2 sm:min-w-[100px]" onClick={()=>{setGroup(value);setOffset(0);setRequest(prev=>prev?{...prev,group_by:value,offset:0}:prev);}}>{tr(lang,ruText,en,zh)}</Button>)}</div><Popover><PopoverTrigger asChild><Button variant="outline" size="sm" className="gap-2 border-border"><Filter className="h-3.5 w-3.5"/>{tr(lang,"Колонки","Columns","列")}</Button></PopoverTrigger><PopoverContent className="w-64 p-3" align="end"><div className="space-y-1">{METRICS.map(([key,ruText,en,zh])=><label key={key} className="flex cursor-pointer items-center gap-2 rounded px-2 py-1.5 text-sm hover:bg-muted/50"><Checkbox checked={columns.has(key)} disabled={columns.size===1 && columns.has(key)} onCheckedChange={()=>setColumns(previous=>{const next=new Set(previous);if(next.has(key))next.delete(key);else next.add(key);return next;})}/>{tr(lang,ruText,en,zh)}</label>)}</div></PopoverContent></Popover></div></CardHeader><CardContent className="p-0"><div className="max-w-full overflow-x-auto overscroll-x-contain"><table className="w-full min-w-[640px] border-collapse text-sm tabular-nums"><thead><tr className="border-b border-border text-[11px] uppercase tracking-wide text-muted-foreground/70"><th className="px-2 py-1.5 text-left"/><th colSpan={selectedMetrics.length} className="px-2 py-1.5 text-left">{tr(lang,"Результаты","Performance","表现")}</th></tr><tr className="border-b border-border">{[["bucket",groupTitle?tr(lang,groupTitle[1],groupTitle[2],groupTitle[3]):tr(lang,"Группа","Group","分组")],...selectedMetrics.map(([key,ruText,en,zh])=>[key,tr(lang,ruText,en,zh)])].map(([key,title])=><th key={key} className={`whitespace-nowrap px-2 py-2 text-left font-medium text-muted-foreground ${key === "bucket" ? "sticky left-0 z-10 bg-card" : ""}`}><button className="inline-flex items-center gap-1" onClick={()=>{if(sort===key)setDesc(!desc);else{setSort(key as typeof sort);setDesc(true);}}}>{title}<ArrowUpDown className="h-3 w-3"/></button></th>)}</tr></thead><tbody>{!rows.length?<tr><td colSpan={selectedMetrics.length+1} className="py-16 text-center text-muted-foreground">{tr(lang,"Нет данных за выбранный период на этой странице.","No data for this period on this page.","本页所选期间暂无数据。")}</td></tr>:rows.map(row=><tr key={row.bucket} className="border-b border-border/50 transition-colors hover:bg-muted/50"><td className="sticky left-0 z-10 min-w-[180px] break-words bg-card px-2 py-2 font-medium [overflow-wrap:anywhere]">{label(row)}</td>{selectedMetrics.map(([key])=><td key={key} className="whitespace-nowrap px-2 py-2">{display(row,key)}</td>)}</tr>)}</tbody><tfoot className="bg-muted/30 font-semibold"><tr><td className="sticky left-0 z-10 bg-card px-2 py-2">{tr(lang,"Итого за весь период","Total for the full period","整个期间的合计")}</td>{selectedMetrics.map(([key])=><td key={key} className="whitespace-nowrap px-2 py-2">{display(query.data.totals,key)}</td>)}</tr></tfoot></table></div></CardContent></Card>
-        <PublisherPagination {...query.data} count={query.data.rows.length} onChange={setOffset}/>
+        <PublisherPagination {...query.data} limit={temporal ? 50 : query.data.limit} offset={offset} count={rows.length} hasMore={temporal ? offset + 50 < sortedRows.length : undefined} onChange={setOffset}/>
       </>}
       </PublisherAsync>
     </div>

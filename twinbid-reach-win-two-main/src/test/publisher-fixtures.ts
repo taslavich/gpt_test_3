@@ -233,6 +233,9 @@ export function publisherServer() {
       if (path === "/stats/query")
         return reply({
           ...reportFixture,
+          rows: [{ ...rowFixture, bucket: req.body?.group_by === "date"
+            ? String(req.body?.from).slice(0, 10)
+            : req.body?.group_by === "hour" ? String(req.body?.from) : rowFixture.bucket }],
           limit: req.body?.limit || 50,
           offset: req.body?.offset || 0,
         });

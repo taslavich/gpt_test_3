@@ -56,16 +56,19 @@ it("applies the display rule to stats, overview, site and zone rows and full-rep
 
 it("shows CPM by default, calculates it from corrected impressions and sorts it numerically", async () => {
   const server = publisherServer();
-  server.overrides.set("POST /api/publisher/stats/query", () => reply({
+  server.overrides.set("POST /api/publisher/stats/query", req => reply({
     ...reportFixture,
-    rows: [
+    rows: req.body?.group_by === "date" ? [] : [
       { ...rowFixture, bucket: "a", impressions: 10, clicks: 20, ctr: 200, revenue_usd: "1" },
       { ...rowFixture, bucket: "b", impressions: 1000, clicks: 10, revenue_usd: "2" },
     ],
     totals: { ...reportFixture.totals, impressions: 100, clicks: 200, ctr: 200, revenue_usd: "12" },
   }));
   render(<PublisherStatistics />, { wrapper: PublisherTestWrapper });
-  const totalLabel = await screen.findByText("Итого за весь период");
+  await screen.findByText("Итого за весь период");
+  fireEvent.click(screen.getByRole("button", { name: "Формат" }));
+  await screen.findByRole("cell", { name: "a" });
+  const totalLabel = screen.getByText("Итого за весь период");
   const total = totalLabel.closest("tr")!;
   expect(within(total).getAllByRole("cell").map(cell => cell.textContent)).toEqual([
     "Итого за весь период", "200", "200", "100%", "$12,00", "$60,00",

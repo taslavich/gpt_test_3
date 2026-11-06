@@ -1,3 +1,4 @@
+import { publisherTimeReport } from "@/lib/publisherTimeSeries";
 import { publisherDisplayMetrics } from "@/lib/publisherData";
 import { http, ApiError } from "./http";
 import { validatePublisherResponse } from "./publisherContract";
@@ -198,6 +199,7 @@ async function call<T>(
   body?: unknown,
   query?: Record<string, string | number | undefined>,
   signal?: AbortSignal,
+  displayMetrics = true,
 ): Promise<T> {
   const controller = new AbortController();
   const abort = () => controller.abort();
@@ -220,7 +222,7 @@ async function call<T>(
     }
     const validated = validatePublisherResponse<T>(path, method, result.data);
     // All Publisher views share the same display correction, after contract validation.
-    if (path === "/stats/query") {
+    if (displayMetrics && path === "/stats/query") {
       const report = validated as PublisherReport;
       return { ...report, rows: report.rows.map(publisherDisplayMetrics),
         totals: publisherDisplayMetrics(report.totals) } as T;
@@ -298,6 +300,8 @@ export const publisherApi = {
     call<PublisherOverview>("/overview", "GET", undefined, undefined, signal),
   stats: (body: PublisherStatsRequest, signal?: AbortSignal) =>
     call<PublisherReport>("/stats/query", "POST", body, undefined, signal),
+  statsSeries: (body: PublisherStatsRequest, signal?: AbortSignal) =>
+    publisherTimeReport(body, page => call<PublisherReport>("/stats/query", "POST", page, undefined, signal, false), signal),
   balance: (signal?: AbortSignal) =>
     call<PublisherBalance>("/balance", "GET", undefined, undefined, signal),
   payouts: (page: PublisherPage, signal?: AbortSignal) =>

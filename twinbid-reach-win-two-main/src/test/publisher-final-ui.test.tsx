@@ -54,7 +54,7 @@ describe("Publisher final UI: server metrics and format grouping", () => {
       ...reportFixture, limit: 5, offset: Number(req.body?.offset || 0),
       rows: req.body?.group_by === "format"
         ? ["POP", "BAN", "NAT", "IPP", "VID"].map((bucket, index) => ({ ...rowFixture, bucket, impressions: (index + 1) * 10, revenue_usd: bucket === "POP" ? "1.23456789" : "0" }))
-        : [{ ...rowFixture, bucket: req.body?.group_by === "hour" ? "2026-10-14T12:00:00Z" : "server-" + req.body?.group_by }],
+        : [{ ...rowFixture, bucket: req.body?.group_by === "hour" ? String(req.body?.from) : req.body?.group_by === "date" ? String(req.body?.from).slice(0,10) : "server-" + req.body?.group_by }],
     }));
     render(<PublisherStatistics />, { wrapper: PublisherTestWrapper });
     await screen.findByText("Итого за весь период");
@@ -88,7 +88,7 @@ describe("Publisher final UI: server metrics and format grouping", () => {
     const s = publisherServer();
     s.overrides.set("POST /api/publisher/stats/query", () => reply({ ...reportFixture, rows: [] }));
     render(<PublisherStatistics />, { wrapper: PublisherTestWrapper });
-    await screen.findByText(/Нет данных за выбранный период/);
+    await screen.findByText("Итого за весь период");
     await chooseGroup("Формат");
     await waitFor(() => expect(statCalls(s).at(-1)?.body?.group_by).toBe("format"));
     expect((await screen.findByText(/Нет данных за выбранный период/)).closest("td")).toHaveAttribute("colspan", "6");
